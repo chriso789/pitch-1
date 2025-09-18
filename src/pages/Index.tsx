@@ -9,6 +9,7 @@ import Production from "@/components/Production";
 import EstimatePreview from "@/components/EstimatePreview";
 import JobCalendar from "@/components/JobCalendar";
 import { Contacts } from "@/components/Contacts";
+import { Settings } from "@/components/Settings";
 import Auth from "@/components/Auth";
 import { CollapsibleSidebar } from "@/components/ui/collapsible-sidebar";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
@@ -75,7 +76,7 @@ const Index = () => {
       case "dialer":
         return <div className="p-8 text-center text-muted-foreground">Dialer section coming soon...</div>;
       case "settings":
-        return <div className="p-8 text-center text-muted-foreground">Settings section coming soon...</div>;
+        return <Settings />;
       case "security":
         return <div className="p-8 text-center text-muted-foreground">Security section coming soon...</div>;
       case "help":
