@@ -140,12 +140,12 @@ const EnhancedDashboard = ({ onBack }: EnhancedDashboardProps) => {
         }, {});
 
         const pipelineStats = [
-          { status: "Lead", count: statusCounts.lead || 0, color: "bg-status-lead" },
-          { status: "Legal", count: statusCounts.legal || 0, color: "bg-status-legal" },
-          { status: "Contingency", count: statusCounts.contingency || 0, color: "bg-status-contingency" },
-          { status: "Project", count: statusCounts.project || 0, color: "bg-status-project" },
-          { status: "Completed", count: statusCounts.completed || 0, color: "bg-status-completed" },
-          { status: "Closed", count: statusCounts.closed || 0, color: "bg-status-closed" }
+          { status: "Lead", count: statusCounts.lead || 0, color: "bg-status-lead", expanded: false },
+          { status: "Legal", count: statusCounts.legal || 0, color: "bg-status-legal", expanded: false },
+          { status: "Contingency", count: statusCounts.contingency || 0, color: "bg-status-contingency", expanded: false },
+          { status: "Project", count: statusCounts.project || 0, color: "bg-status-project", expanded: false },
+          { status: "Completed", count: statusCounts.completed || 0, color: "bg-status-completed", expanded: false },
+          { status: "Closed", count: statusCounts.closed || 0, color: "bg-status-closed", expanded: false }
         ];
 
         setPipelineStats(pipelineStats);
@@ -359,18 +359,28 @@ const EnhancedDashboard = ({ onBack }: EnhancedDashboardProps) => {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <HomeIcon className="h-5 w-5 text-primary" />
-            Pipeline Overview
+            Sales Pipeline
           </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
             {pipelineStats.map((stage, index) => (
-              <div key={index} className="text-center">
+              <button
+                key={index}
+                onClick={() => {
+                  // Toggle expanded state for this stage
+                  const updatedStats = pipelineStats.map((s, i) => 
+                    i === index ? { ...s, expanded: !s.expanded } : s
+                  );
+                  setPipelineStats(updatedStats);
+                }}
+                className="text-center p-2 rounded-lg hover:bg-accent/50 transition-colors"
+              >
                 <div className={`w-16 h-16 rounded-full ${stage.color} flex items-center justify-center mx-auto mb-2 shadow-soft`}>
                   <span className="text-2xl font-bold text-white">{stage.count}</span>
                 </div>
                 <p className="text-sm font-medium">{stage.status}</p>
-              </div>
+              </button>
             ))}
           </div>
         </CardContent>

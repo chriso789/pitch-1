@@ -8,6 +8,7 @@ import Pipeline from "@/components/Pipeline";
 import Production from "@/components/Production";
 import EstimatePreview from "@/components/EstimatePreview";
 import JobCalendar from "@/components/JobCalendar";
+import { Contacts } from "@/components/Contacts";
 import Auth from "@/components/Auth";
 import { CollapsibleSidebar } from "@/components/ui/collapsible-sidebar";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
@@ -64,7 +65,7 @@ const Index = () => {
       case "estimates":
         return <EstimatePreview />;
       case "contacts":
-        return <div className="p-8 text-center text-muted-foreground">Contacts section coming soon...</div>;
+        return <Contacts />;
       case "projects":
         return <div className="p-8 text-center text-muted-foreground">Projects section coming soon...</div>;
       case "payments":
