@@ -12,7 +12,8 @@ import {
   Shield,
   HelpCircle,
   Wrench,
-  Code
+  Code,
+  BookOpen
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -102,6 +103,12 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
       href: "dialer",
       icon: Phone,
       description: "AI calling system"
+    },
+    {
+      name: "Smart Docs",
+      href: "smartdocs",
+      icon: BookOpen,
+      description: "Document templates & library"
     }
   ];
 

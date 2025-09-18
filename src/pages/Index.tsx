@@ -14,6 +14,7 @@ import JobCalendar from "@/components/JobCalendar";
 import { Contacts } from "@/components/Contacts";
 import { Settings } from "@/components/Settings";
 import { Dialer } from "@/components/Dialer";
+import SmartDocs from "@/components/SmartDocs";
 import Auth from "@/components/Auth";
 import { CollapsibleSidebar } from "@/components/ui/collapsible-sidebar";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
@@ -79,6 +80,8 @@ const Index = () => {
         return <JobCalendar />;
       case "dialer":
         return <Dialer />;
+      case "smartdocs":
+        return <SmartDocs />;
       case "settings":
         return <Settings />;
       case "security":

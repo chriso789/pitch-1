@@ -4,9 +4,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, FileText, Folder } from "lucide-react";
+import { Plus, Search, FileText, Folder, Upload, Download, Mail } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "sonner";
 import { TemplateEditor } from "./TemplateEditor";
 import { TemplateLibrary } from "./TemplateLibrary";
 
@@ -32,12 +32,12 @@ interface SmartDocFolder {
 const SmartDocs = () => {
   const [templates, setTemplates] = useState<SmartDocTemplate[]>([]);
   const [folders, setFolders] = useState<SmartDocFolder[]>([]);
+  const [companyDocs, setCompanyDocs] = useState<any[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [showEditor, setShowEditor] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<SmartDocTemplate | null>(null);
   const [loading, setLoading] = useState(true);
-  const { toast } = useToast();
 
   useEffect(() => {
     loadData();
@@ -47,8 +47,8 @@ const SmartDocs = () => {
     try {
       setLoading(true);
       
-      // Load templates and folders in parallel
-      const [templatesResult, foldersResult] = await Promise.all([
+      // Load templates, folders, and company docs in parallel
+      const [templatesResult, foldersResult, docsResult] = await Promise.all([
         supabase
           .from('smartdoc_templates')
           .select(`
@@ -66,21 +66,25 @@ const SmartDocs = () => {
         supabase
           .from('smartdoc_folders')
           .select('*')
-          .order('name', { ascending: true })
+          .order('name', { ascending: true }),
+          
+        supabase
+          .from('documents')
+          .select('*')
+          .eq('document_type', 'company_resource')
+          .order('created_at', { ascending: false })
       ]);
 
       if (templatesResult.error) throw templatesResult.error;
       if (foldersResult.error) throw foldersResult.error;
+      if (docsResult.error) console.error('Error loading docs:', docsResult.error);
 
       setTemplates(templatesResult.data || []);
       setFolders(foldersResult.data || []);
+      setCompanyDocs(docsResult.data || []);
     } catch (error) {
       console.error('Error loading Smart Docs data:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load templates and folders",
-        variant: "destructive",
-      });
+      toast.error("Failed to load templates and folders");
     } finally {
       setLoading(false);
     }
@@ -100,6 +104,64 @@ const SmartDocs = () => {
     setShowEditor(false);
     setEditingTemplate(null);
     loadData(); // Refresh data
+  };
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      // Upload to Supabase storage
+      const fileName = `company-docs/${Date.now()}-${file.name}`;
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from('smartdoc-assets')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      // Create document record
+      const { error: insertError } = await supabase
+        .from('documents')
+        .insert({
+          filename: file.name,
+          file_path: uploadData.path,
+          file_size: file.size,
+          mime_type: file.type,
+          document_type: 'company_resource',
+          description: `Company resource document`,
+          tenant_id: "14de934e-7964-4afd-940a-620d2ace125d"
+        });
+
+      if (insertError) throw insertError;
+
+      toast.success('Document uploaded successfully');
+      loadData(); // Reload to show new document
+    } catch (error) {
+      console.error('Error uploading file:', error);
+      toast.error('Failed to upload document');
+    }
+  };
+
+  const handleDownload = async (doc: any) => {
+    try {
+      const { data, error } = await supabase.storage
+        .from('smartdoc-assets')
+        .download(doc.file_path);
+
+      if (error) throw error;
+
+      const url = URL.createObjectURL(data);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = doc.filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      toast.error('Failed to download document');
+    }
   };
 
   const filteredTemplates = templates.filter(template => {
@@ -152,8 +214,9 @@ const SmartDocs = () => {
       </div>
 
       <Tabs defaultValue="library" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
+        <TabsList className="grid w-full grid-cols-3">
           <TabsTrigger value="library">Template Library</TabsTrigger>
+          <TabsTrigger value="company-docs">Company Docs</TabsTrigger>
           <TabsTrigger value="folders">Folders</TabsTrigger>
         </TabsList>
 
@@ -187,6 +250,92 @@ const SmartDocs = () => {
             onEditTemplate={handleEditTemplate}
             onRefresh={loadData}
           />
+        </TabsContent>
+
+        <TabsContent value="company-docs" className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h3 className="text-lg font-medium">Company Documents</h3>
+              <p className="text-sm text-muted-foreground">
+                Upload company resources for your team to access
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <input
+                type="file"
+                id="file-upload"
+                className="hidden"
+                onChange={handleFileUpload}
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png"
+              />
+              <Button
+                onClick={() => document.getElementById('file-upload')?.click()}
+                className="gap-2"
+              >
+                <Upload className="h-4 w-4" />
+                Upload Document
+              </Button>
+            </div>
+          </div>
+
+          <div className="grid gap-4">
+            {companyDocs.map((doc) => (
+              <Card key={doc.id} className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="p-2 bg-primary/10 rounded-lg">
+                      <FileText className="h-5 w-5 text-primary" />
+                    </div>
+                    <div>
+                      <h4 className="font-medium">{doc.filename}</h4>
+                      <p className="text-sm text-muted-foreground">
+                        {doc.description} • {Math.round(doc.file_size / 1024)}KB
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        Uploaded {new Date(doc.created_at).toLocaleDateString()}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => handleDownload(doc)}
+                      className="gap-2"
+                    >
+                      <Download className="h-4 w-4" />
+                      Download
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => toast.info('Email functionality coming soon')}
+                      className="gap-2"
+                    >
+                      <Mail className="h-4 w-4" />
+                      Email
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            ))}
+            {companyDocs.length === 0 && (
+              <Card className="p-8 text-center">
+                <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-medium mb-2">No company documents</h3>
+                <p className="text-muted-foreground mb-4">
+                  Upload documents that your team can access and share with customers
+                </p>
+                <Button
+                  onClick={() => document.getElementById('file-upload')?.click()}
+                  className="gap-2"
+                >
+                  <Upload className="h-4 w-4" />
+                  Upload First Document
+                </Button>
+              </Card>
+            )}
+          </div>
         </TabsContent>
 
         <TabsContent value="folders" className="space-y-4">
