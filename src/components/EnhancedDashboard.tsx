@@ -23,6 +23,7 @@ import {
   AlertCircle
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
+import { cn } from "@/lib/utils";
 
 interface ProjectData {
   id: string;
@@ -54,6 +55,8 @@ const EnhancedDashboard = ({ onBack }: EnhancedDashboardProps) => {
     avgProfitMargin: 0
   });
   const [pipelineStats, setPipelineStats] = useState<any[]>([]);
+  const [pipelineEntries, setPipelineEntries] = useState<any>({});
+  const [expandedStage, setExpandedStage] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -130,66 +133,113 @@ const EnhancedDashboard = ({ onBack }: EnhancedDashboardProps) => {
         avgProfitMargin
       });
 
-      // Fetch pipeline statistics
+      // Fetch detailed pipeline data
       const { data: pipelineData, error: pipelineError } = await supabase
         .from('pipeline_entries')
-        .select('status')
+        .select(`
+          *,
+          contacts (
+            first_name,
+            last_name,
+            email,
+            phone,
+            address_street,
+            address_city,
+            address_state,
+            address_zip
+          ),
+          estimates (
+            id,
+            estimate_number,
+            selling_price,
+            status,
+            actual_margin_percent,
+            created_at
+          ),
+          profiles!pipeline_entries_assigned_to_fkey (
+            first_name,
+            last_name
+          )
+        `)
         .order('created_at', { ascending: false });
 
       if (!pipelineError && pipelineData) {
-        const statusCounts = pipelineData.reduce((acc: any, entry: any) => {
-          acc[entry.status] = (acc[entry.status] || 0) + 1;
-          return acc;
-        }, {});
+        // Group entries by status
+        const groupedEntries: any = {};
+        const statusCounts: any = {};
+        const statusTotals: any = {};
+        
+        // Initialize all statuses
+        const allStatuses = ['lead', 'legal', 'contingency_signed', 'project', 'completed', 'closed'];
+        allStatuses.forEach(status => {
+          groupedEntries[status] = [];
+          statusCounts[status] = 0;
+          statusTotals[status] = 0;
+        });
+
+        // Process entries
+        pipelineData.forEach((entry: any) => {
+          const status = entry.status;
+          if (groupedEntries[status]) {
+            groupedEntries[status].push(entry);
+            statusCounts[status]++;
+            
+            // Calculate total estimate value for this stage
+            const estimate = entry.estimates?.[0];
+            statusTotals[status] += estimate?.selling_price || entry.estimated_value || 0;
+          }
+        });
+
+        setPipelineEntries(groupedEntries);
 
         const pipelineStats = [
           { 
             status: "Lead", 
             key: "lead",
             count: statusCounts.lead || 0, 
-            color: "bg-status-lead", 
-            icon: User,
-            expanded: false 
+            total: statusTotals.lead || 0,
+            color: "bg-yellow-500", 
+            icon: User
           },
           { 
             status: "Legal", 
             key: "legal",
             count: statusCounts.legal || 0, 
-            color: "bg-status-legal", 
-            icon: FileText,
-            expanded: false 
+            total: statusTotals.legal || 0,
+            color: "bg-orange-500", 
+            icon: FileText
           },
           { 
             status: "Contingency", 
             key: "contingency_signed",
             count: statusCounts.contingency_signed || 0, 
-            color: "bg-status-contingency", 
-            icon: AlertCircle,
-            expanded: false 
+            total: statusTotals.contingency_signed || 0,
+            color: "bg-blue-500", 
+            icon: AlertCircle
           },
           { 
             status: "Project", 
             key: "project",
             count: statusCounts.project || 0, 
-            color: "bg-status-project", 
-            icon: HomeIcon,
-            expanded: false 
+            total: statusTotals.project || 0,
+            color: "bg-green-500", 
+            icon: HomeIcon
           },
           { 
             status: "Completed", 
             key: "completed",
             count: statusCounts.completed || 0, 
-            color: "bg-status-completed", 
-            icon: CheckCircle,
-            expanded: false 
+            total: statusTotals.completed || 0,
+            color: "bg-green-600", 
+            icon: CheckCircle
           },
           { 
             status: "Closed", 
             key: "closed",
             count: statusCounts.closed || 0, 
-            color: "bg-status-closed", 
-            icon: Clock,
-            expanded: false 
+            total: statusTotals.closed || 0,
+            color: "bg-gray-500", 
+            icon: Clock
           }
         ];
 
@@ -407,31 +457,125 @@ const EnhancedDashboard = ({ onBack }: EnhancedDashboardProps) => {
             Sales Pipeline
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="space-y-4">
+          {/* Pipeline Stage Buttons */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
             {pipelineStats.map((stage, index) => (
               <button
                 key={index}
                 onClick={() => {
-                  // Toggle expanded state for this stage
-                  const updatedStats = pipelineStats.map((s, i) => 
-                    i === index ? { ...s, expanded: !s.expanded } : s
-                  );
-                  setPipelineStats(updatedStats);
+                  setExpandedStage(expandedStage === stage.key ? null : stage.key);
                 }}
-                className="text-center p-4 rounded-lg border border-border hover:shadow-soft transition-smooth bg-card"
+                className={cn(
+                  "text-center p-4 rounded-lg border-2 transition-all duration-200",
+                  expandedStage === stage.key 
+                    ? "border-primary shadow-medium scale-105" 
+                    : "border-border hover:shadow-soft hover:border-primary/50 bg-card"
+                )}
               >
                 <div className={`w-12 h-12 rounded-full ${stage.color} flex items-center justify-center mx-auto mb-3 shadow-soft`}>
                   <stage.icon className="h-6 w-6 text-white" />
                 </div>
                 <div className="text-2xl font-bold mb-1">{stage.count}</div>
-                <p className="text-sm font-medium text-muted-foreground">{stage.status}</p>
+                <p className="text-sm font-medium">{stage.status}</p>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {stage.count === 1 ? 'lead' : 'leads'}
+                  {stage.count === 1 ? 'item' : 'items'}
                 </p>
+                <div className="flex items-center justify-center gap-1 mt-2">
+                  <TrendingUp className="h-3 w-3 text-success" />
+                  <span className="text-xs font-semibold text-success">
+                    {formatCurrency(stage.total)}
+                  </span>
+                </div>
               </button>
             ))}
           </div>
+
+          {/* Expanded Stage Details */}
+          {expandedStage && pipelineEntries[expandedStage] && (
+            <Card className="mt-6 border-2 border-primary/20 bg-accent/10">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center justify-between">
+                  <span className="flex items-center gap-2">
+                    {(() => {
+                      const stage = pipelineStats.find(s => s.key === expandedStage);
+                      const StageIcon = stage?.icon || User;
+                      return (
+                        <>
+                          <div className={`w-6 h-6 rounded-full ${stage?.color} flex items-center justify-center`}>
+                            <StageIcon className="h-4 w-4 text-white" />
+                          </div>
+                          {stage?.status} Details
+                        </>
+                      );
+                    })()}
+                  </span>
+                  <Button 
+                    variant="ghost" 
+                    size="sm"
+                    onClick={() => setExpandedStage(null)}
+                  >
+                    ✕
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                {pipelineEntries[expandedStage].length > 0 ? (
+                  <div className="space-y-3 max-h-96 overflow-y-auto">
+                    {pipelineEntries[expandedStage].map((entry: any) => {
+                      const contact = entry.contacts;
+                      const estimate = entry.estimates?.[0];
+                      const profile = entry.profiles;
+                      
+                      return (
+                        <div key={entry.id} className="flex items-center justify-between p-3 rounded-lg bg-card border hover:shadow-soft transition-smooth">
+                          <div className="flex-1">
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className="font-mono text-xs text-muted-foreground">
+                                {estimate?.estimate_number || `PIPE-${entry.id.slice(-4)}`}
+                              </span>
+                              {entry.priority && (
+                                <Badge variant="outline" className="text-xs">
+                                  {entry.priority}
+                                </Badge>
+                              )}
+                            </div>
+                            <h4 className="font-semibold">
+                              {contact ? `${contact.first_name} ${contact.last_name}` : 'Unknown'}
+                            </h4>
+                            <p className="text-sm text-muted-foreground">
+                              {contact ? `${contact.address_street}, ${contact.address_city}` : 'No address'}
+                            </p>
+                            {profile && (
+                              <p className="text-xs text-muted-foreground">
+                                Rep: {profile.first_name} {profile.last_name}
+                              </p>
+                            )}
+                          </div>
+                          <div className="text-right mr-4">
+                            <div className="font-bold">
+                              {formatCurrency(estimate?.selling_price || entry.estimated_value || 0)}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {entry.roof_type || 'Roofing'}
+                            </div>
+                          </div>
+                          <Button size="sm" variant="outline">
+                            <Eye className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <User className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                    <p>No leads in this stage</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          )}
         </CardContent>
       </Card>
 
