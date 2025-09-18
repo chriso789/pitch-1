@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   ArrowRight, 
   DollarSign, 
@@ -15,7 +17,10 @@ import {
   AlertCircle,
   CheckCircle,
   Clock,
-  Loader2
+  Loader2,
+  Filter,
+  CalendarDays,
+  TrendingUp
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -25,11 +30,20 @@ const Pipeline = () => {
   const [pipelineData, setPipelineData] = useState({});
   const [loading, setLoading] = useState(true);
   const [updatingEntry, setUpdatingEntry] = useState(null);
+  const [filters, setFilters] = useState({
+    salesRep: '',
+    location: '',
+    dateFrom: '',
+    dateTo: ''
+  });
+  const [stageTotals, setStageTotals] = useState({});
+  const [salesReps, setSalesReps] = useState([]);
+  const [locations, setLocations] = useState([]);
   const { toast } = useToast();
 
   const pipelineStages = [
     { name: "Lead", key: "lead", color: "bg-status-lead", icon: User },
-    { name: "Legal Review", key: "legal_review", color: "bg-status-legal", icon: FileText },
+    { name: "Legal", key: "legal_review", color: "bg-status-legal", icon: FileText },
     { name: "Contingency", key: "contingency_signed", color: "bg-status-contingency", icon: AlertCircle },
     { name: "Project", key: "project", color: "bg-status-project", icon: Home },
     { name: "Completed", key: "completed", color: "bg-status-completed", icon: CheckCircle },
@@ -39,14 +53,14 @@ const Pipeline = () => {
   // Fetch pipeline data from Supabase
   useEffect(() => {
     fetchPipelineData();
-  }, []);
+  }, [filters]);
 
   const fetchPipelineData = async () => {
     try {
       setLoading(true);
       
-      // Fetch pipeline entries with contact information and estimates
-      const { data, error } = await supabase
+      // Build query with filters
+      let query = supabase
         .from('pipeline_entries')
         .select(`
           *,
@@ -65,10 +79,24 @@ const Pipeline = () => {
             estimate_number,
             selling_price,
             status,
-            actual_margin_percent
+            actual_margin_percent,
+            created_at
+          ),
+          profiles!pipeline_entries_assigned_to_fkey (
+            first_name,
+            last_name
           )
-        `)
-        .order('created_at', { ascending: false });
+        `);
+
+      // Apply date filters
+      if (filters.dateFrom) {
+        query = query.gte('created_at', filters.dateFrom);
+      }
+      if (filters.dateTo) {
+        query = query.lte('created_at', filters.dateTo + 'T23:59:59');
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
 
       if (error) {
         console.error('Error fetching pipeline data:', error);
@@ -80,13 +108,52 @@ const Pipeline = () => {
         return;
       }
 
-      // Group data by status
+      // Filter data based on sales rep and location
+      let filteredData = data || [];
+      
+      if (filters.salesRep) {
+        filteredData = filteredData.filter(entry => 
+          entry.profiles?.first_name + ' ' + entry.profiles?.last_name === filters.salesRep
+        );
+      }
+      
+      if (filters.location) {
+        filteredData = filteredData.filter(entry => 
+          entry.contacts?.address_city?.toLowerCase().includes(filters.location.toLowerCase())
+        );
+      }
+
+      // Extract unique sales reps and locations for filter options
+      const uniqueReps = [...new Set(data?.map(entry => 
+        entry.profiles ? `${entry.profiles.first_name} ${entry.profiles.last_name}` : null
+      ).filter(Boolean))];
+      
+      const uniqueLocations = [...new Set(data?.map(entry => 
+        entry.contacts?.address_city
+      ).filter(Boolean))];
+      
+      setSalesReps(uniqueReps);
+      setLocations(uniqueLocations);
+
+      // Group data by status and calculate stage totals
       const groupedData = {};
+      const totals = {};
+      
       pipelineStages.forEach(stage => {
-        groupedData[stage.key] = data?.filter(entry => entry.status === stage.key) || [];
+        const stageEntries = filteredData.filter(entry => entry.status === stage.key);
+        groupedData[stage.key] = stageEntries;
+        
+        // Calculate total estimate value for this stage
+        const stageTotal = stageEntries.reduce((sum, entry) => {
+          const estimate = entry.estimates?.[0];
+          return sum + (estimate?.selling_price || entry.estimated_value || 0);
+        }, 0);
+        
+        totals[stage.key] = stageTotal;
       });
 
       setPipelineData(groupedData);
+      setStageTotals(totals);
     } catch (error) {
       console.error('Error in fetchPipelineData:', error);
       toast({
@@ -298,6 +365,74 @@ const Pipeline = () => {
         </Button>
       </div>
 
+      {/* Filters */}
+      <Card className="shadow-soft border-0">
+        <CardContent className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Sales Rep</label>
+              <Select value={filters.salesRep} onValueChange={(value) => setFilters(prev => ({ ...prev, salesRep: value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Reps" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Reps</SelectItem>
+                  {salesReps.map(rep => (
+                    <SelectItem key={rep} value={rep}>{rep}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <label className="text-sm font-medium mb-2 block">Location</label>
+              <Select value={filters.location} onValueChange={(value) => setFilters(prev => ({ ...prev, location: value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Locations" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">All Locations</SelectItem>
+                  {locations.map(location => (
+                    <SelectItem key={location} value={location}>{location}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <label className="text-sm font-medium mb-2 block">Date From</label>
+              <Input
+                type="date"
+                value={filters.dateFrom}
+                onChange={(e) => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
+              />
+            </div>
+            
+            <div>
+              <label className="text-sm font-medium mb-2 block">Date To</label>
+              <Input
+                type="date"
+                value={filters.dateTo}
+                onChange={(e) => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
+              />
+            </div>
+          </div>
+          
+          {(filters.salesRep || filters.location || filters.dateFrom || filters.dateTo) && (
+            <div className="mt-4">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setFilters({ salesRep: '', location: '', dateFrom: '', dateTo: '' })}
+              >
+                <Filter className="h-4 w-4 mr-2" />
+                Clear Filters
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <Loader2 className="h-8 w-8 animate-spin" />
@@ -315,10 +450,17 @@ const Pipeline = () => {
                     <div className={cn("w-8 h-8 rounded-full flex items-center justify-center", stage.color)}>
                       <stage.icon className="h-4 w-4 text-white" />
                     </div>
-                    <div>
+                    <div className="flex-1">
                       <div>{stage.name}</div>
                       <div className="font-normal text-muted-foreground">
                         {(pipelineData[stage.key] || []).length} items
+                      </div>
+                      {/* Dollar Amount Ticker */}
+                      <div className="flex items-center gap-1 mt-1">
+                        <TrendingUp className="h-3 w-3 text-success" />
+                        <span className="text-xs font-semibold text-success">
+                          {formatCurrency(stageTotals[stage.key] || 0)}
+                        </span>
                       </div>
                     </div>
                   </CardTitle>                

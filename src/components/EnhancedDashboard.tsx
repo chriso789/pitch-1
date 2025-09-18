@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { BackButton } from "./BackButton";
 import { FilterBar } from "./FilterBar";
 import ProjectDetails from "./ProjectDetails";
+import Leaderboard from "./Leaderboard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -448,6 +449,9 @@ const EnhancedDashboard = ({ onBack }: EnhancedDashboardProps) => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Sales Leaderboard */}
+      <Leaderboard />
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
