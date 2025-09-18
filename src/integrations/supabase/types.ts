@@ -1880,7 +1880,15 @@ export type Database = {
           updated_at?: string
           updated_by?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "fk_smartdoc_templates_folder"
+            columns: ["folder_id"]
+            isOneToOne: false
+            referencedRelation: "smartdoc_folders"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       supplier_pricebooks: {
         Row: {
