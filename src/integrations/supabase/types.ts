@@ -14,6 +14,44 @@ export type Database = {
   }
   public: {
     Tables: {
+      app_settings: {
+        Row: {
+          created_at: string | null
+          id: string
+          setting_key: string
+          setting_value: Json
+          tenant_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          setting_key: string
+          setting_value: Json
+          tenant_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          setting_key?: string
+          setting_value?: Json
+          tenant_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "app_settings_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           action: string
@@ -252,6 +290,58 @@ export type Database = {
           },
           {
             foreignKeyName: "contacts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      developer_access_grants: {
+        Row: {
+          access_type: string | null
+          developer_id: string
+          granted_at: string | null
+          granted_by: string | null
+          id: string
+          is_active: boolean | null
+          tenant_id: string
+        }
+        Insert: {
+          access_type?: string | null
+          developer_id: string
+          granted_at?: string | null
+          granted_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          tenant_id: string
+        }
+        Update: {
+          access_type?: string | null
+          developer_id?: string
+          granted_at?: string | null
+          granted_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "developer_access_grants_developer_id_fkey"
+            columns: ["developer_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "developer_access_grants_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "developer_access_grants_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -839,42 +929,51 @@ export type Database = {
       }
       profiles: {
         Row: {
+          company_name: string | null
           created_at: string | null
           email: string | null
           first_name: string | null
           id: string
           is_active: boolean | null
+          is_developer: boolean | null
           last_name: string | null
           metadata: Json | null
           phone: string | null
           role: Database["public"]["Enums"]["app_role"] | null
           tenant_id: string | null
+          title: string | null
           updated_at: string | null
         }
         Insert: {
+          company_name?: string | null
           created_at?: string | null
           email?: string | null
           first_name?: string | null
           id: string
           is_active?: boolean | null
+          is_developer?: boolean | null
           last_name?: string | null
           metadata?: Json | null
           phone?: string | null
           role?: Database["public"]["Enums"]["app_role"] | null
           tenant_id?: string | null
+          title?: string | null
           updated_at?: string | null
         }
         Update: {
+          company_name?: string | null
           created_at?: string | null
           email?: string | null
           first_name?: string | null
           id?: string
           is_active?: boolean | null
+          is_developer?: boolean | null
           last_name?: string | null
           metadata?: Json | null
           phone?: string | null
           role?: Database["public"]["Enums"]["app_role"] | null
           tenant_id?: string | null
+          title?: string | null
           updated_at?: string | null
         }
         Relationships: [
@@ -1400,6 +1499,10 @@ export type Database = {
       }
       has_role: {
         Args: { required_role: Database["public"]["Enums"]["app_role"] }
+        Returns: boolean
+      }
+      switch_developer_context: {
+        Args: { target_tenant_id: string }
         Returns: boolean
       }
     }

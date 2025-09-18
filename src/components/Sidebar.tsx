@@ -1,3 +1,4 @@
+import React, { useState, useEffect } from "react";
 import { 
   Home, 
   Users, 
@@ -10,9 +11,11 @@ import {
   TrendingUp,
   Shield,
   HelpCircle,
-  Wrench
+  Wrench,
+  Code
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
 
 interface SidebarProps {
   activeSection: string;
@@ -21,6 +24,30 @@ interface SidebarProps {
 }
 
 const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: SidebarProps) => {
+  const [currentUser, setCurrentUser] = useState<any>(null);
+  const [currentTenant, setCurrentTenant] = useState<any>(null);
+
+  useEffect(() => {
+    loadUserInfo();
+  }, []);
+
+  const loadUserInfo = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*, tenants!profiles_tenant_id_fkey(*)')
+          .eq('id', user.id)
+          .single();
+        
+        setCurrentUser(profile);
+        setCurrentTenant(profile?.tenants);
+      }
+    } catch (error) {
+      console.error('Error loading user info:', error);
+    }
+  };
   const navigation = [
     {
       name: "Dashboard",
@@ -205,12 +232,24 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
       <div className="p-4 border-t border-border bg-muted/30">
         <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3")}>
           <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-            <span className="text-sm font-bold text-primary-foreground">JD</span>
+            <span className="text-sm font-bold text-primary-foreground">
+              {currentUser?.first_name?.[0] || 'U'}{currentUser?.last_name?.[0] || ''}
+            </span>
           </div>
           {!isCollapsed && (
-            <div className="flex-1">
-              <div className="text-sm font-medium">John Doe</div>
-              <div className="text-xs text-muted-foreground">Master User</div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-medium truncate">
+                {currentUser?.first_name} {currentUser?.last_name}
+                {currentUser?.is_developer && (
+                  <Code className="inline h-3 w-3 ml-1 text-destructive" />
+                )}
+              </div>
+              <div className="text-xs text-muted-foreground truncate">
+                {currentUser?.title || 'User'}
+              </div>
+              <div className="text-xs text-muted-foreground/80 truncate">
+                {currentUser?.company_name || currentTenant?.name || 'Company'}
+              </div>
             </div>
           )}
         </div>
