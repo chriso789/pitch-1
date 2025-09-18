@@ -1,0 +1,405 @@
+import React, { useState, useEffect } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { 
+  FileText, 
+  DollarSign, 
+  Calendar, 
+  MapPin, 
+  Phone,
+  User,
+  Eye,
+  Send,
+  Download,
+  Filter,
+  Loader2,
+  CheckCircle,
+  Clock,
+  AlertCircle,
+  FileX
+} from "lucide-react";
+import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+
+const Estimates = () => {
+  const [estimates, setEstimates] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filters, setFilters] = useState({
+    salesRep: 'all',
+    location: 'all',
+    dateFrom: '',
+    dateTo: '',
+    status: 'all'
+  });
+  const [salesReps, setSalesReps] = useState([]);
+  const [locations, setLocations] = useState([]);
+  const { toast } = useToast();
+
+  const estimateStatuses = [
+    { key: 'draft', label: 'Draft', color: 'bg-muted text-muted-foreground', icon: FileX },
+    { key: 'pending', label: 'Pending', color: 'bg-warning text-warning-foreground', icon: Clock },
+    { key: 'sent', label: 'Sent', color: 'bg-info text-info-foreground', icon: Send },
+    { key: 'approved', label: 'Approved', color: 'bg-success text-success-foreground', icon: CheckCircle },
+    { key: 'rejected', label: 'Rejected', color: 'bg-destructive text-destructive-foreground', icon: AlertCircle }
+  ];
+
+  useEffect(() => {
+    fetchEstimates();
+  }, [filters]);
+
+  const fetchEstimates = async () => {
+    try {
+      setLoading(true);
+      
+      // Build query with filters
+      let query = supabase
+        .from('estimates')
+        .select(`
+          *,
+          pipeline_entries (
+            id,
+            roof_type,
+            probability_percent,
+            assigned_to,
+            contacts (
+              first_name,
+              last_name,
+              email,
+              phone,
+              address_street,
+              address_city,
+              address_state,
+              address_zip
+            ),
+            profiles!pipeline_entries_assigned_to_fkey (
+              first_name,
+              last_name
+            )
+          )
+        `);
+
+      // Apply date filters
+      if (filters.dateFrom) {
+        query = query.gte('created_at', filters.dateFrom);
+      }
+      if (filters.dateTo) {
+        query = query.lte('created_at', filters.dateTo + 'T23:59:59');
+      }
+
+      // Apply status filter
+      if (filters.status && filters.status !== 'all') {
+        query = query.eq('status', filters.status as any);
+      }
+
+      const { data, error } = await query.order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching estimates:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load estimates",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Filter data based on sales rep and location
+      let filteredData = data || [];
+      
+      if (filters.salesRep && filters.salesRep !== 'all') {
+        filteredData = filteredData.filter(estimate => {
+          const profile = estimate.pipeline_entries?.profiles;
+          return profile && `${profile.first_name} ${profile.last_name}` === filters.salesRep;
+        });
+      }
+      
+      if (filters.location && filters.location !== 'all') {
+        filteredData = filteredData.filter(estimate => {
+          const contact = estimate.pipeline_entries?.contacts;
+          return contact?.address_city?.toLowerCase().includes(filters.location.toLowerCase());
+        });
+      }
+
+      // Extract unique sales reps and locations for filter options
+      const uniqueReps = [...new Set(data?.map(estimate => {
+        const profile = estimate.pipeline_entries?.profiles;
+        return profile ? `${profile.first_name} ${profile.last_name}` : null;
+      }).filter(Boolean))];
+      
+      const uniqueLocations = [...new Set(data?.map(estimate => 
+        estimate.pipeline_entries?.contacts?.address_city
+      ).filter(Boolean))];
+      
+      setSalesReps(uniqueReps);
+      setLocations(uniqueLocations);
+      setEstimates(filteredData);
+    } catch (error) {
+      console.error('Error in fetchEstimates:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load estimates",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatCurrency = (amount) => {
+    if (!amount) return '$0';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const formatAddress = (contact) => {
+    if (!contact) return 'No address';
+    return `${contact.address_street}, ${contact.address_city}, ${contact.address_state} ${contact.address_zip}`;
+  };
+
+  const formatName = (contact) => {
+    if (!contact) return 'Unknown';
+    return `${contact.first_name} ${contact.last_name}`;
+  };
+
+  const getStatusInfo = (status) => {
+    return estimateStatuses.find(s => s.key === status) || estimateStatuses[0];
+  };
+
+  const renderEstimateCard = (estimate) => {
+    const contact = estimate.pipeline_entries?.contacts;
+    const profile = estimate.pipeline_entries?.profiles;
+    const statusInfo = getStatusInfo(estimate.status);
+    
+    return (
+      <Card key={estimate.id} className="shadow-soft border-0 hover:shadow-medium transition-smooth">
+        <CardContent className="p-4">
+          <div className="flex items-start justify-between mb-3">
+            <div>
+              <span className="font-mono text-sm text-muted-foreground">
+                {estimate.estimate_number || `EST-${estimate.id.slice(-4)}`}
+              </span>
+              <h3 className="font-semibold">{formatName(contact)}</h3>
+              {profile && (
+                <p className="text-sm text-muted-foreground">
+                  Rep: {profile.first_name} {profile.last_name}
+                </p>
+              )}
+            </div>
+            <Badge className={statusInfo.color}>
+              <statusInfo.icon className="h-3 w-3 mr-1" />
+              {statusInfo.label}
+            </Badge>
+          </div>
+          
+          <div className="space-y-2 text-sm">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <MapPin className="h-4 w-4" />
+              <span>{formatAddress(contact)}</span>
+            </div>
+            
+            {contact?.phone && (
+              <div className="flex items-center gap-2 text-muted-foreground">
+                <Phone className="h-4 w-4" />
+                <span>{contact.phone}</span>
+              </div>
+            )}
+            
+            <div className="flex items-center gap-2 text-primary font-medium">
+              <FileText className="h-4 w-4" />
+              <span>{estimate.pipeline_entries?.roof_type || 'Roofing Project'}</span>
+            </div>
+            
+            <div className="grid grid-cols-2 gap-4">
+              <div className="flex items-center gap-2 font-semibold">
+                <DollarSign className="h-4 w-4 text-success" />
+                <span>{formatCurrency(estimate.selling_price)}</span>
+              </div>
+              <div className="text-right text-sm text-muted-foreground">
+                Margin: {estimate.actual_margin_percent ? `${estimate.actual_margin_percent.toFixed(1)}%` : 'TBD'}
+              </div>
+            </div>
+
+            {/* Cost Breakdown */}
+            <div className="mt-3 pt-3 border-t">
+              <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
+                <div>Material: {formatCurrency(estimate.material_cost)}</div>
+                <div>Labor: {formatCurrency(estimate.labor_cost)}</div>
+                <div>Overhead: {formatCurrency(estimate.overhead_amount)}</div>
+                <div>Profit: {formatCurrency(estimate.actual_profit)}</div>
+              </div>
+            </div>
+
+            {/* Estimate Details */}
+            <div className="mt-3 pt-3 border-t">
+              <div className="flex justify-between text-xs text-muted-foreground">
+                <span>Created: {new Date(estimate.created_at).toLocaleDateString()}</span>
+                {estimate.valid_until && (
+                  <span>Valid Until: {new Date(estimate.valid_until).toLocaleDateString()}</span>
+                )}
+              </div>
+            </div>
+          </div>
+
+          <div className="flex gap-2 mt-4">
+            <Button size="sm" variant="outline" className="flex-1">
+              <Eye className="h-4 w-4 mr-1" />
+              View
+            </Button>
+            <Button size="sm" variant="outline" className="flex-1">
+              <Download className="h-4 w-4 mr-1" />
+              Export
+            </Button>
+            {estimate.status === 'draft' && (
+              <Button size="sm" className="flex-1">
+                <Send className="h-4 w-4 mr-1" />
+                Send
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-3xl font-bold gradient-primary bg-clip-text text-transparent">
+            Estimates
+          </h1>
+          <p className="text-muted-foreground">
+            Manage pricing proposals and estimates
+          </p>
+        </div>
+        <Button className="gradient-primary">
+          <FileText className="h-4 w-4 mr-2" />
+          Create Estimate
+        </Button>
+      </div>
+
+      {/* Filters */}
+      <Card className="shadow-soft border-0">
+        <CardContent className="p-4">
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div>
+              <label className="text-sm font-medium mb-2 block">Sales Rep</label>
+              <Select value={filters.salesRep} onValueChange={(value) => setFilters(prev => ({ ...prev, salesRep: value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Reps" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Reps</SelectItem>
+                  {salesReps.map(rep => (
+                    <SelectItem key={rep} value={rep}>{rep}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <label className="text-sm font-medium mb-2 block">Location</label>
+              <Select value={filters.location} onValueChange={(value) => setFilters(prev => ({ ...prev, location: value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Locations" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Locations</SelectItem>
+                  {locations.map(location => (
+                    <SelectItem key={location} value={location}>{location}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <label className="text-sm font-medium mb-2 block">Status</label>
+              <Select value={filters.status} onValueChange={(value) => setFilters(prev => ({ ...prev, status: value }))}>
+                <SelectTrigger>
+                  <SelectValue placeholder="All Statuses" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Statuses</SelectItem>
+                  {estimateStatuses.map(status => (
+                    <SelectItem key={status.key} value={status.key}>{status.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            
+            <div>
+              <label className="text-sm font-medium mb-2 block">Date From</label>
+              <Input
+                type="date"
+                value={filters.dateFrom}
+                onChange={(e) => setFilters(prev => ({ ...prev, dateFrom: e.target.value }))}
+              />
+            </div>
+            
+            <div>
+              <label className="text-sm font-medium mb-2 block">Date To</label>
+              <Input
+                type="date"
+                value={filters.dateTo}
+                onChange={(e) => setFilters(prev => ({ ...prev, dateTo: e.target.value }))}
+              />
+            </div>
+          </div>
+          
+          {(filters.salesRep !== 'all' || filters.location !== 'all' || filters.status !== 'all' || filters.dateFrom || filters.dateTo) && (
+            <div className="mt-4">
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setFilters({ salesRep: 'all', location: 'all', status: 'all', dateFrom: '', dateTo: '' })}
+              >
+                <Filter className="h-4 w-4 mr-2" />
+                Clear Filters
+              </Button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {loading ? (
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <span className="ml-2">Loading estimates...</span>
+        </div>
+      ) : (
+        /* Estimates Grid */
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          {estimates.length > 0 ? (
+            estimates.map((estimate) => renderEstimateCard(estimate))
+          ) : (
+            <div className="col-span-full text-center py-12">
+              <FileText className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+              <h3 className="text-lg font-semibold mb-2">No estimates found</h3>
+              <p className="text-muted-foreground mb-4">
+                {Object.values(filters).some(f => f !== 'all' && f !== '') 
+                  ? "Try adjusting your filters or create a new estimate"
+                  : "Create your first estimate to get started"
+                }
+              </p>
+              <Button className="gradient-primary">
+                <FileText className="h-4 w-4 mr-2" />
+                Create Estimate
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+export default Estimates;

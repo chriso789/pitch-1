@@ -7,6 +7,7 @@ import Sidebar from "@/components/Sidebar";
 import Pipeline from "@/components/Pipeline";
 import Production from "@/components/Production";
 import EstimatePreview from "@/components/EstimatePreview";
+import Estimates from "@/components/Estimates";
 import JobCalendar from "@/components/JobCalendar";
 import { Contacts } from "@/components/Contacts";
 import { Settings } from "@/components/Settings";
@@ -64,7 +65,7 @@ const Index = () => {
       case "production":
         return <Production />;
       case "estimates":
-        return <EstimatePreview />;
+        return <Estimates />;
       case "contacts":
         return <Contacts />;
       case "projects":
