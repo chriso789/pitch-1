@@ -225,8 +225,8 @@ const Pipeline = () => {
 
   const getNextStatus = (currentStatus) => {
     const statusFlow = {
-      'lead': 'legal_review',
-      'legal_review': 'contingency_signed', 
+      'lead': 'legal',
+      'legal': 'contingency_signed', 
       'contingency_signed': 'project',
       'project': 'completed',
       'completed': 'closed'
@@ -313,7 +313,7 @@ const Pipeline = () => {
               </div>
             )}
 
-            {(stage === "legal_review" || stage === "contingency_signed") && (
+            {(stage === "legal" || stage === "contingency_signed") && (
               <div className="mt-3 pt-3 border-t">
                 <div className="text-xs text-muted-foreground">
                   Expected Close: {item.expected_close_date ? new Date(item.expected_close_date).toLocaleDateString() : 'TBD'}
