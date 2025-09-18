@@ -78,10 +78,10 @@ export const TemplateLibrary: React.FC<TemplateLibraryProps> = ({
           name: `${fullTemplate.name} (Copy)`,
           type: fullTemplate.type,
           description: fullTemplate.description,
-          body: fullTemplate.body,
           default_context: fullTemplate.default_context,
           folder_id: fullTemplate.folder_id,
-          status: 'DRAFT'
+          status: 'DRAFT',
+          tenant_id: "14de934e-7964-4afd-940a-620d2ace125d"
         });
 
       if (insertError) throw insertError;

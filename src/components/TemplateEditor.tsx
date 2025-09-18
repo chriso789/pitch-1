@@ -20,7 +20,7 @@ interface SmartDocTemplate {
   status: string;
   is_homeowner_visible: boolean;
   created_at: string;
-  body?: string;
+  // Note: Template content stored separately
   default_context?: string;
   folder_id?: string;
   smartdoc_folders?: {
@@ -65,7 +65,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
         name: template.name || "",
         type: template.type || "document",
         description: template.description || "",
-        content: template.body || "",
+        content: "", // Template content will be managed separately
         default_context: template.default_context || "PROJECT",
         folder_id: template.folder_id || "",
         status: template.status || "draft",
@@ -91,11 +91,11 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
         name: formData.name.trim(),
         type: formData.type as "DOCUMENT" | "EMAIL" | "PRINT", 
         description: formData.description.trim() || null,
-        body: formData.content,
         default_context: formData.default_context as "CONTACT" | "LEAD" | "PROJECT" | "ESTIMATE" | "INVOICE",
         folder_id: formData.folder_id || null,
         status: formData.status.toUpperCase() as "DRAFT" | "PUBLISHED" | "ARCHIVED",
         is_homeowner_visible: formData.is_homeowner_visible,
+        tenant_id: "14de934e-7964-4afd-940a-620d2ace125d", // Fixed tenant ID from the network requests
       };
 
       let error;
@@ -294,9 +294,10 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
                 variant="outline" 
                 size="sm"
                 onClick={() => setShowTagPicker(true)}
+                disabled
               >
                 <Tag className="mr-2 h-4 w-4" />
-                Insert Tag
+                Insert Tag (Coming Soon)
               </Button>
             </div>
           </CardHeader>
@@ -305,19 +306,20 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
               id="content-textarea"
               value={formData.content}
               onChange={handleContentChange}
-              placeholder="Enter your template content here. Use {{tag.name}} to insert dynamic content."
+              placeholder="Template content management will be implemented with template versions. This is a basic text editor for now."
               rows={20}
               className="font-mono text-sm"
+              disabled
             />
             <p className="text-xs text-muted-foreground mt-2">
-              Use double curly braces to insert dynamic tags: {`{{contact.full_name}}`}, {`{{project.name}}`}, etc.
+              Note: Template content storage is being implemented via template versions. For now, only template metadata can be edited.
             </p>
           </CardContent>
         </Card>
       </div>
 
-      {/* Tag Picker Modal */}
-      {showTagPicker && (
+      {/* Tag Picker Modal - Disabled until content storage is implemented */}
+      {false && showTagPicker && (
         <TagPicker
           context={formData.default_context}
           onSelectTag={insertTag}
