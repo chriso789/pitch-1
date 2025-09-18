@@ -270,11 +270,20 @@ const EnhancedDashboard = ({ onBack }: EnhancedDashboardProps) => {
             Welcome back! Here's your roofing business overview.
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Clock className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">
-            Last updated: {new Date().toLocaleTimeString()}
-          </span>
+        <div className="flex items-center gap-3">
+          <Button size="sm" className="h-8 w-8 rounded-full p-0 gradient-primary">
+            <Users className="h-4 w-4" />
+          </Button>
+          <Button size="sm" variant="outline" className="flex items-center gap-2">
+            <Calendar className="h-4 w-4" />
+            Calendar
+          </Button>
+          <div className="flex items-center gap-2 text-muted-foreground">
+            <Clock className="h-4 w-4" />
+            <span className="text-sm">
+              Last updated: {new Date().toLocaleTimeString()}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -452,33 +461,6 @@ const EnhancedDashboard = ({ onBack }: EnhancedDashboardProps) => {
 
       {/* Sales Leaderboard */}
       <Leaderboard />
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-primary">
-          <CardContent className="p-6 text-center text-white">
-            <Users className="h-8 w-8 mx-auto mb-2" />
-            <h3 className="font-semibold mb-1">New Lead</h3>
-            <p className="text-sm opacity-90">Add a new customer lead</p>
-          </CardContent>
-        </Card>
-        
-        <Card className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-secondary">
-          <CardContent className="p-6 text-center text-white">
-            <DollarSign className="h-8 w-8 mx-auto mb-2" />
-            <h3 className="font-semibold mb-1">Create Estimate</h3>
-            <p className="text-sm opacity-90">Build a new roof estimate</p>
-          </CardContent>
-        </Card>
-        
-        <Card className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-success">
-          <CardContent className="p-6 text-center text-white">
-            <Wrench className="h-8 w-8 mx-auto mb-2" />
-            <h3 className="font-semibold mb-1">Schedule Work</h3>
-            <p className="text-sm opacity-90">Manage project schedules</p>
-          </CardContent>
-        </Card>
-      </div>
     </div>
   );
 };

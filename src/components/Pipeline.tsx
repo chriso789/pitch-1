@@ -43,7 +43,7 @@ const Pipeline = () => {
 
   const pipelineStages = [
     { name: "Lead", key: "lead", color: "bg-status-lead", icon: User },
-    { name: "Legal", key: "legal_review", color: "bg-status-legal", icon: FileText },
+    { name: "Legal", key: "legal", color: "bg-status-legal", icon: FileText },
     { name: "Contingency", key: "contingency_signed", color: "bg-status-contingency", icon: AlertCircle },
     { name: "Project", key: "project", color: "bg-status-project", icon: Home },
     { name: "Completed", key: "completed", color: "bg-status-completed", icon: CheckCircle },
@@ -139,6 +139,7 @@ const Pipeline = () => {
       const groupedData = {};
       const totals = {};
       
+      // Initialize all stages with empty arrays to ensure they always show
       pipelineStages.forEach(stage => {
         const stageEntries = filteredData.filter(entry => entry.status === stage.key);
         groupedData[stage.key] = stageEntries;
