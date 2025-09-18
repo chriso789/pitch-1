@@ -31,8 +31,8 @@ const Pipeline = () => {
   const [loading, setLoading] = useState(true);
   const [updatingEntry, setUpdatingEntry] = useState(null);
   const [filters, setFilters] = useState({
-    salesRep: '',
-    location: '',
+    salesRep: 'all',
+    location: 'all',
     dateFrom: '',
     dateTo: ''
   });
@@ -111,13 +111,13 @@ const Pipeline = () => {
       // Filter data based on sales rep and location
       let filteredData = data || [];
       
-      if (filters.salesRep) {
+      if (filters.salesRep && filters.salesRep !== 'all') {
         filteredData = filteredData.filter(entry => 
           entry.profiles?.first_name + ' ' + entry.profiles?.last_name === filters.salesRep
         );
       }
       
-      if (filters.location) {
+      if (filters.location && filters.location !== 'all') {
         filteredData = filteredData.filter(entry => 
           entry.contacts?.address_city?.toLowerCase().includes(filters.location.toLowerCase())
         );
@@ -377,7 +377,7 @@ const Pipeline = () => {
                   <SelectValue placeholder="All Reps" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Reps</SelectItem>
+                  <SelectItem value="all">All Reps</SelectItem>
                   {salesReps.map(rep => (
                     <SelectItem key={rep} value={rep}>{rep}</SelectItem>
                   ))}
@@ -392,7 +392,7 @@ const Pipeline = () => {
                   <SelectValue placeholder="All Locations" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">All Locations</SelectItem>
+                  <SelectItem value="all">All Locations</SelectItem>
                   {locations.map(location => (
                     <SelectItem key={location} value={location}>{location}</SelectItem>
                   ))}
@@ -419,12 +419,12 @@ const Pipeline = () => {
             </div>
           </div>
           
-          {(filters.salesRep || filters.location || filters.dateFrom || filters.dateTo) && (
+          {(filters.salesRep !== 'all' || filters.location !== 'all' || filters.dateFrom || filters.dateTo) && (
             <div className="mt-4">
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={() => setFilters({ salesRep: '', location: '', dateFrom: '', dateTo: '' })}
+                onClick={() => setFilters({ salesRep: 'all', location: 'all', dateFrom: '', dateTo: '' })}
               >
                 <Filter className="h-4 w-4 mr-2" />
                 Clear Filters

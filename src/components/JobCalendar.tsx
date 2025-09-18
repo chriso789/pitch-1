@@ -43,7 +43,7 @@ const JobCalendar = ({ onBack }: JobCalendarProps) => {
   const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   const [events, setEvents] = useState<CalendarEvent[]>([]);
   const [filteredEvents, setFilteredEvents] = useState<CalendarEvent[]>([]);
-  const [selectedRep, setSelectedRep] = useState('');
+  const [selectedRep, setSelectedRep] = useState('all');
   const [salesReps, setSalesReps] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [showEventDialog, setShowEventDialog] = useState(false);
@@ -165,7 +165,7 @@ const JobCalendar = ({ onBack }: JobCalendarProps) => {
 
   const filterEvents = () => {
     let filtered = events;
-    if (selectedRep) {
+    if (selectedRep && selectedRep !== 'all') {
       filtered = filtered.filter(event => event.salesRep === selectedRep);
     }
     setFilteredEvents(filtered);
@@ -346,18 +346,18 @@ const JobCalendar = ({ onBack }: JobCalendarProps) => {
                       <SelectValue placeholder="All Sales Reps" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">All Sales Reps</SelectItem>
+                      <SelectItem value="all">All Sales Reps</SelectItem>
                       {salesReps.map(rep => (
                         <SelectItem key={rep} value={rep}>{rep}</SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-                {selectedRep && (
+                {selectedRep !== 'all' && (
                   <Button 
                     variant="outline" 
                     size="sm" 
-                    onClick={() => setSelectedRep('')}
+                    onClick={() => setSelectedRep('all')}
                     className="mt-6"
                   >
                     <Filter className="h-4 w-4 mr-2" />
