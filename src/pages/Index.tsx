@@ -1,11 +1,51 @@
-import { useState } from "react";
+import React, { useState, useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { Session, User } from '@supabase/supabase-js';
 import Dashboard from "@/components/Dashboard";
 import Sidebar from "@/components/Sidebar";
 import Pipeline from "@/components/Pipeline";
 import EstimatePreview from "@/components/EstimatePreview";
+import Auth from "@/components/Auth";
+import { Loader2 } from "lucide-react";
 
 const Index = () => {
+  const [session, setSession] = useState<Session | null>(null);
+  const [user, setUser] = useState<User | null>(null);
+  const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState("dashboard");
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event, session) => {
+        setSession(session);
+        setUser(session?.user ?? null);
+        setLoading(false);
+      }
+    );
+
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+      setUser(session?.user ?? null);
+      setLoading(false);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-muted/20 to-primary/5">
+        <div className="flex items-center space-x-2">
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <span>Loading PITCH...</span>
+        </div>
+      </div>
+    );
+  }
+
+  if (!session || !user) {
+    return <Auth onAuthSuccess={() => {}} />;
+  }
 
   const renderActiveSection = () => {
     switch (activeSection) {

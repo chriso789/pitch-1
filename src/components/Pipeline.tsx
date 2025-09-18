@@ -1,3 +1,4 @@
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -13,152 +14,181 @@ import {
   Home,
   AlertCircle,
   CheckCircle,
-  Clock
+  Clock,
+  Loader2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 
 const Pipeline = () => {
+  const [pipelineData, setPipelineData] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [updatingEntry, setUpdatingEntry] = useState(null);
+  const { toast } = useToast();
+
   const pipelineStages = [
     { name: "Lead", key: "lead", color: "bg-status-lead", icon: User },
-    { name: "Legal Review", key: "legal", color: "bg-status-legal", icon: FileText },
-    { name: "Contingency", key: "contingency", color: "bg-status-contingency", icon: AlertCircle },
+    { name: "Legal Review", key: "legal_review", color: "bg-status-legal", icon: FileText },
+    { name: "Contingency", key: "contingency_signed", color: "bg-status-contingency", icon: AlertCircle },
     { name: "Project", key: "project", color: "bg-status-project", icon: Home },
     { name: "Completed", key: "completed", color: "bg-status-completed", icon: CheckCircle },
     { name: "Closed", key: "closed", color: "bg-status-closed", icon: Clock }
   ];
 
-  const pipelineData = {
-    lead: [
-      {
-        id: "L-2024-045",
-        homeowner: "Sarah Martinez",
-        address: "321 Maple Dr, Austin, TX",
-        phone: "(512) 555-0123",
-        email: "sarah@email.com",
-        roofType: "Shingle Replacement",
-        estimatedValue: "$19,500",
-        leadSource: "Google Ads",
-        priority: "High",
-        createdAt: "2024-01-15",
-        notes: "Storm damage, insurance claim pending"
-      },
-      {
-        id: "L-2024-046",
-        homeowner: "Michael Chen",
-        address: "654 Cedar Ave, Dallas, TX", 
-        phone: "(214) 555-0456",
-        email: "mchen@email.com",
-        roofType: "Metal Roof Install",
-        estimatedValue: "$35,200",
-        leadSource: "Referral",
-        priority: "Medium",
-        createdAt: "2024-01-14",
-        notes: "New construction, needs full install"
+  // Fetch pipeline data from Supabase
+  useEffect(() => {
+    fetchPipelineData();
+  }, []);
+
+  const fetchPipelineData = async () => {
+    try {
+      setLoading(true);
+      
+      // Fetch pipeline entries with contact information and estimates
+      const { data, error } = await supabase
+        .from('pipeline_entries')
+        .select(`
+          *,
+          contacts (
+            first_name,
+            last_name,
+            email,
+            phone,
+            address_street,
+            address_city,
+            address_state,
+            address_zip
+          ),
+          estimates (
+            id,
+            estimate_number,
+            selling_price,
+            status,
+            actual_margin_percent
+          )
+        `)
+        .order('created_at', { ascending: false });
+
+      if (error) {
+        console.error('Error fetching pipeline data:', error);
+        toast({
+          title: "Error",
+          description: "Failed to load pipeline data",
+          variant: "destructive",
+        });
+        return;
       }
-    ],
-    legal: [
-      {
-        id: "P-2024-012",
-        homeowner: "Robert Wilson",
-        address: "987 Oak St, Houston, TX",
-        phone: "(713) 555-0789",
-        email: "rwilson@email.com",
-        roofType: "Tile Repair",
-        contractValue: "$12,400",
-        legalStatus: "Contract Review",
-        attorney: "Legal Partners LLC",
-        priority: "High",
-        submittedAt: "2024-01-10"
+
+      // Group data by status
+      const groupedData = {};
+      pipelineStages.forEach(stage => {
+        groupedData[stage.key] = data?.filter(entry => entry.status === stage.key) || [];
+      });
+
+      setPipelineData(groupedData);
+    } catch (error) {
+      console.error('Error in fetchPipelineData:', error);
+      toast({
+        title: "Error",
+        description: "Failed to load pipeline data",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleStatusChange = async (entryId: string, newStatus: string) => {
+    try {
+      setUpdatingEntry(entryId);
+      
+      const { data, error } = await supabase.functions.invoke('pipeline-status', {
+        body: { pipeline_id: entryId, new_status: newStatus }
+      });
+
+      if (error) {
+        toast({
+          title: "Error",
+          description: "Failed to update status",
+          variant: "destructive",
+        });
+        return;
       }
-    ],
-    contingency: [
-      {
-        id: "P-2024-008",
-        homeowner: "Jennifer Davis",
-        address: "123 Pine St, San Antonio, TX",
-        phone: "(210) 555-0321",
-        email: "jdavis@email.com",
-        roofType: "Shingle Replacement",
-        contractValue: "$22,100",
-        contingencies: ["Material Delivery", "Weather Permit"],
-        signedAt: "2024-01-05",
-        priority: "Medium"
-      }
-    ],
-    project: [
-      {
-        id: "P-2024-001",
-        homeowner: "Johnson Residence",
-        address: "123 Oak St, Austin, TX",
-        phone: "(512) 555-1234",
-        roofType: "Shingle Replacement",
-        contractValue: "$18,450",
-        budgetSnapshot: "$18,450",
-        actualCosts: "$12,120",
-        profit: "32.1%",
-        startDate: "2024-01-08",
-        crew: "Team Alpha",
-        progress: 65
-      },
-      {
-        id: "P-2024-003",
-        homeowner: "Williams Home", 
-        address: "789 Elm Dr, Houston, TX",
-        phone: "(713) 555-7890",
-        roofType: "Tile Repair",
-        contractValue: "$8,920",
-        budgetSnapshot: "$8,920",
-        actualCosts: "$5,780",
-        profit: "35.2%",
-        startDate: "2024-01-12",
-        crew: "Team Beta",
-        progress: 45
-      }
-    ],
-    completed: [
-      {
-        id: "P-2024-005",
-        homeowner: "Anderson Property",
-        address: "456 Birch Ln, Fort Worth, TX",
-        roofType: "Metal Roof Install",
-        contractValue: "$28,900",
-        finalProfit: "29.8%",
-        completedAt: "2024-01-10",
-        rating: 5,
-        testimonial: "Excellent work and professional team!"
-      }
-    ],
-    closed: [
-      {
-        id: "P-2023-892",
-        homeowner: "Thompson Residence",
-        address: "789 Willow St, Plano, TX",
-        roofType: "Shingle Replacement",
-        finalValue: "$16,750",
-        status: "Paid in Full",
-        closedAt: "2024-01-08",
-        outcome: "Completed Successfully"
-      }
-    ]
+
+      toast({
+        title: "Success",
+        description: data.message || "Status updated successfully",
+      });
+
+      // Refresh pipeline data
+      fetchPipelineData();
+    } catch (error) {
+      console.error('Error updating status:', error);
+      toast({
+        title: "Error", 
+        description: "Failed to update status",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingEntry(null);
+    }
+  };
+
+  const formatCurrency = (amount) => {
+    if (!amount) return '$0';
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 0,
+    }).format(amount);
+  };
+
+  const formatAddress = (contact) => {
+    if (!contact) return 'No address';
+    return `${contact.address_street}, ${contact.address_city}, ${contact.address_state} ${contact.address_zip}`;
+  };
+
+  const formatName = (contact) => {
+    if (!contact) return 'Unknown';
+    return `${contact.first_name} ${contact.last_name}`;
+  };
+
+  const getNextStatus = (currentStatus) => {
+    const statusFlow = {
+      'lead': 'legal_review',
+      'legal_review': 'contingency_signed', 
+      'contingency_signed': 'project',
+      'project': 'completed',
+      'completed': 'closed'
+    };
+    return statusFlow[currentStatus];
   };
 
   const getPriorityColor = (priority: string) => {
-    switch (priority) {
-      case "High": return "bg-destructive text-destructive-foreground";
-      case "Medium": return "bg-warning text-warning-foreground";
-      case "Low": return "bg-muted text-muted-foreground";
+    switch (priority?.toLowerCase()) {
+      case "high": return "bg-destructive text-destructive-foreground";
+      case "medium": return "bg-warning text-warning-foreground"; 
+      case "low": return "bg-muted text-muted-foreground";
       default: return "bg-muted text-muted-foreground";
     }
   };
 
   const renderStageCard = (item: any, stage: string) => {
+    const contact = item.contacts;
+    const estimate = item.estimates?.[0]; // Get the latest estimate
+    const nextStatus = getNextStatus(item.status);
+    
     return (
       <Card key={item.id} className="shadow-soft border-0 hover:shadow-medium transition-smooth">
         <CardContent className="p-4">
           <div className="flex items-start justify-between mb-3">
             <div>
-              <span className="font-mono text-sm text-muted-foreground">{item.id}</span>
-              <h3 className="font-semibold">{item.homeowner}</h3>
+              <span className="font-mono text-sm text-muted-foreground">
+                {estimate?.estimate_number || `PIPE-${item.id.slice(-4)}`}
+              </span>
+              <h3 className="font-semibold">{formatName(contact)}</h3>
             </div>
             {item.priority && (
               <Badge className={getPriorityColor(item.priority)}>
@@ -170,54 +200,56 @@ const Pipeline = () => {
           <div className="space-y-2 text-sm">
             <div className="flex items-center gap-2 text-muted-foreground">
               <MapPin className="h-4 w-4" />
-              <span>{item.address}</span>
+              <span>{formatAddress(contact)}</span>
             </div>
             
-            {item.phone && (
+            {contact?.phone && (
               <div className="flex items-center gap-2 text-muted-foreground">
                 <Phone className="h-4 w-4" />
-                <span>{item.phone}</span>
+                <span>{contact.phone}</span>
               </div>
             )}
             
             <div className="flex items-center gap-2 text-primary font-medium">
               <Home className="h-4 w-4" />
-              <span>{item.roofType}</span>
+              <span>{item.roof_type || 'Roofing Project'}</span>
             </div>
             
             <div className="flex items-center gap-2 font-semibold">
               <DollarSign className="h-4 w-4 text-success" />
-              <span>{item.contractValue || item.estimatedValue || item.finalValue}</span>
+              <span>{formatCurrency(estimate?.selling_price || item.estimated_value)}</span>
             </div>
 
             {/* Stage-specific information */}
             {stage === "project" && (
               <div className="mt-3 pt-3 border-t">
                 <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs text-muted-foreground">Progress</span>
-                  <span className="text-xs font-medium">{item.progress}%</span>
-                </div>
-                <div className="w-full bg-muted rounded-full h-2">
-                  <div 
-                    className="bg-success h-2 rounded-full transition-smooth" 
-                    style={{ width: `${item.progress}%` }}
-                  />
+                  <span className="text-xs text-muted-foreground">Budget vs Actual</span>
+                  <span className="text-xs font-medium">
+                    {estimate?.actual_margin_percent ? `${estimate.actual_margin_percent.toFixed(1)}%` : 'N/A'}
+                  </span>
                 </div>
                 <div className="flex justify-between text-xs text-muted-foreground mt-2">
-                  <span>Profit: {item.profit}</span>
-                  <span>Crew: {item.crew}</span>
+                  <span>Status: Active</span>
+                  <span>Value: {formatCurrency(estimate?.selling_price)}</span>
                 </div>
               </div>
             )}
 
-            {stage === "contingency" && item.contingencies && (
+            {stage === "lead" && (
               <div className="mt-3 pt-3 border-t">
-                <div className="text-xs text-muted-foreground mb-1">Pending:</div>
-                {item.contingencies.map((cont: string, idx: number) => (
-                  <Badge key={idx} variant="outline" className="mr-1 mb-1 text-xs">
-                    {cont}
-                  </Badge>
-                ))}
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Source: {item.source || 'Unknown'}</span>
+                  <span>Probability: {item.probability_percent || 50}%</span>
+                </div>
+              </div>
+            )}
+
+            {(stage === "legal_review" || stage === "contingency_signed") && (
+              <div className="mt-3 pt-3 border-t">
+                <div className="text-xs text-muted-foreground">
+                  Expected Close: {item.expected_close_date ? new Date(item.expected_close_date).toLocaleDateString() : 'TBD'}
+                </div>
               </div>
             )}
           </div>
@@ -227,10 +259,21 @@ const Pipeline = () => {
               <FileText className="h-4 w-4 mr-1" />
               View
             </Button>
-            <Button size="sm" className="flex-1">
-              <ArrowRight className="h-4 w-4 mr-1" />
-              Advance
-            </Button>
+            {nextStatus && (
+              <Button 
+                size="sm" 
+                className="flex-1"
+                onClick={() => handleStatusChange(item.id, nextStatus)}
+                disabled={updatingEntry === item.id}
+              >
+                {updatingEntry === item.id ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <ArrowRight className="h-4 w-4 mr-1" />
+                )}
+                Advance
+              </Button>
+            )}
           </div>
         </CardContent>
       </Card>
@@ -255,36 +298,43 @@ const Pipeline = () => {
         </Button>
       </div>
 
-      {/* Pipeline Stages */}
-      <div className="grid grid-cols-1 lg:grid-cols-6 gap-6">
-        {pipelineStages.map((stage, index) => (
-          <div key={stage.key} className="space-y-4">
-            {/* Stage Header */}
-            <Card className="shadow-soft border-0">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <div className={cn("w-8 h-8 rounded-full flex items-center justify-center", stage.color)}>
-                    <stage.icon className="h-4 w-4 text-white" />
-                  </div>
-                  <div>
-                    <div>{stage.name}</div>
-                    <div className="font-normal text-muted-foreground">
-                      {pipelineData[stage.key as keyof typeof pipelineData].length} items
+      {loading ? (
+        <div className="flex items-center justify-center h-64">
+          <Loader2 className="h-8 w-8 animate-spin" />
+          <span className="ml-2">Loading pipeline data...</span>
+        </div>
+      ) : (
+        /* Pipeline Stages */
+        <div className="grid grid-cols-1 lg:grid-cols-6 gap-6">
+          {pipelineStages.map((stage, index) => (
+            <div key={stage.key} className="space-y-4">
+              {/* Stage Header */}
+              <Card className="shadow-soft border-0">
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-sm">
+                    <div className={cn("w-8 h-8 rounded-full flex items-center justify-center", stage.color)}>
+                      <stage.icon className="h-4 w-4 text-white" />
                     </div>
-                  </div>
-                </CardTitle>                
-              </CardHeader>
-            </Card>
+                    <div>
+                      <div>{stage.name}</div>
+                      <div className="font-normal text-muted-foreground">
+                        {(pipelineData[stage.key] || []).length} items
+                      </div>
+                    </div>
+                  </CardTitle>                
+                </CardHeader>
+              </Card>
 
-            {/* Stage Items */}
-            <div className="space-y-3">
-              {pipelineData[stage.key as keyof typeof pipelineData].map((item) => 
-                renderStageCard(item, stage.key)
-              )}
+              {/* Stage Items */}
+              <div className="space-y-3">
+                {(pipelineData[stage.key] || []).map((item) => 
+                  renderStageCard(item, stage.key)
+                )}
+              </div>
             </div>
-          </div>
-        ))}
-      </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 };
