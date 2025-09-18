@@ -8,6 +8,7 @@ import Pipeline from "@/components/Pipeline";
 import Production from "@/components/Production";
 import EstimatePreview from "@/components/EstimatePreview";
 import Estimates from "@/components/Estimates";
+import Projects from "@/components/Projects";
 import JobCalendar from "@/components/JobCalendar";
 import { Contacts } from "@/components/Contacts";
 import { Settings } from "@/components/Settings";
@@ -69,7 +70,7 @@ const Index = () => {
       case "contacts":
         return <Contacts />;
       case "projects":
-        return <div className="p-8 text-center text-muted-foreground">Projects section coming soon...</div>;
+        return <Projects />;
       case "payments":
         return <div className="p-8 text-center text-muted-foreground">Payments section coming soon...</div>;
       case "calendar":
