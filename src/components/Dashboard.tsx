@@ -44,7 +44,7 @@ const Dashboard = () => {
     }
   ];
 
-  const pipelineData = [
+  const dashboardPipelineData = [
     { status: "Lead", count: 45, color: "bg-status-lead" },
     { status: "Legal Review", count: 12, color: "bg-status-legal" },
     { status: "Contingency", count: 8, color: "bg-status-contingency" },
@@ -146,7 +146,7 @@ const Dashboard = () => {
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {pipelineData.map((stage, index) => (
+            {dashboardPipelineData.map((stage, index) => (
               <div key={index} className="text-center">
                 <div className={`w-16 h-16 rounded-full ${stage.color} flex items-center justify-center mx-auto mb-2 shadow-soft`}>
                   <span className="text-2xl font-bold text-white">{stage.count}</span>
