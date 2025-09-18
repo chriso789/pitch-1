@@ -496,6 +496,7 @@ export type Database = {
           overhead_percent: number | null
           parameters: Json | null
           pipeline_entry_id: string | null
+          project_id: string | null
           selling_price: number | null
           sent_at: string | null
           status: Database["public"]["Enums"]["estimate_status"] | null
@@ -520,6 +521,7 @@ export type Database = {
           overhead_percent?: number | null
           parameters?: Json | null
           pipeline_entry_id?: string | null
+          project_id?: string | null
           selling_price?: number | null
           sent_at?: string | null
           status?: Database["public"]["Enums"]["estimate_status"] | null
@@ -544,6 +546,7 @@ export type Database = {
           overhead_percent?: number | null
           parameters?: Json | null
           pipeline_entry_id?: string | null
+          project_id?: string | null
           selling_price?: number | null
           sent_at?: string | null
           status?: Database["public"]["Enums"]["estimate_status"] | null
@@ -566,6 +569,13 @@ export type Database = {
             columns: ["pipeline_entry_id"]
             isOneToOne: false
             referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "estimates_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
           {
