@@ -17,7 +17,10 @@ import {
   CheckCircle,
   Clock,
   AlertTriangle,
-  Eye
+  Eye,
+  User,
+  FileText,
+  AlertCircle
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 
@@ -140,12 +143,54 @@ const EnhancedDashboard = ({ onBack }: EnhancedDashboardProps) => {
         }, {});
 
         const pipelineStats = [
-          { status: "Lead", count: statusCounts.lead || 0, color: "bg-status-lead", expanded: false },
-          { status: "Legal", count: statusCounts.legal || 0, color: "bg-status-legal", expanded: false },
-          { status: "Contingency", count: statusCounts.contingency || 0, color: "bg-status-contingency", expanded: false },
-          { status: "Project", count: statusCounts.project || 0, color: "bg-status-project", expanded: false },
-          { status: "Completed", count: statusCounts.completed || 0, color: "bg-status-completed", expanded: false },
-          { status: "Closed", count: statusCounts.closed || 0, color: "bg-status-closed", expanded: false }
+          { 
+            status: "Lead", 
+            key: "lead",
+            count: statusCounts.lead || 0, 
+            color: "bg-status-lead", 
+            icon: User,
+            expanded: false 
+          },
+          { 
+            status: "Legal", 
+            key: "legal",
+            count: statusCounts.legal || 0, 
+            color: "bg-status-legal", 
+            icon: FileText,
+            expanded: false 
+          },
+          { 
+            status: "Contingency", 
+            key: "contingency_signed",
+            count: statusCounts.contingency_signed || 0, 
+            color: "bg-status-contingency", 
+            icon: AlertCircle,
+            expanded: false 
+          },
+          { 
+            status: "Project", 
+            key: "project",
+            count: statusCounts.project || 0, 
+            color: "bg-status-project", 
+            icon: HomeIcon,
+            expanded: false 
+          },
+          { 
+            status: "Completed", 
+            key: "completed",
+            count: statusCounts.completed || 0, 
+            color: "bg-status-completed", 
+            icon: CheckCircle,
+            expanded: false 
+          },
+          { 
+            status: "Closed", 
+            key: "closed",
+            count: statusCounts.closed || 0, 
+            color: "bg-status-closed", 
+            icon: Clock,
+            expanded: false 
+          }
         ];
 
         setPipelineStats(pipelineStats);
@@ -358,12 +403,12 @@ const EnhancedDashboard = ({ onBack }: EnhancedDashboardProps) => {
       <Card className="shadow-soft border-0">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
-            <HomeIcon className="h-5 w-5 text-primary" />
+            <TrendingUp className="h-5 w-5 text-primary" />
             Sales Pipeline
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-6 gap-4">
             {pipelineStats.map((stage, index) => (
               <button
                 key={index}
@@ -374,12 +419,16 @@ const EnhancedDashboard = ({ onBack }: EnhancedDashboardProps) => {
                   );
                   setPipelineStats(updatedStats);
                 }}
-                className="text-center p-2 rounded-lg hover:bg-accent/50 transition-colors"
+                className="text-center p-4 rounded-lg border border-border hover:shadow-soft transition-smooth bg-card"
               >
-                <div className={`w-16 h-16 rounded-full ${stage.color} flex items-center justify-center mx-auto mb-2 shadow-soft`}>
-                  <span className="text-2xl font-bold text-white">{stage.count}</span>
+                <div className={`w-12 h-12 rounded-full ${stage.color} flex items-center justify-center mx-auto mb-3 shadow-soft`}>
+                  <stage.icon className="h-6 w-6 text-white" />
                 </div>
-                <p className="text-sm font-medium">{stage.status}</p>
+                <div className="text-2xl font-bold mb-1">{stage.count}</div>
+                <p className="text-sm font-medium text-muted-foreground">{stage.status}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {stage.count === 1 ? 'lead' : 'leads'}
+                </p>
               </button>
             ))}
           </div>
