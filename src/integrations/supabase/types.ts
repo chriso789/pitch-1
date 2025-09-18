@@ -1337,7 +1337,18 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      get_user_tenant_id: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      has_any_role: {
+        Args: { required_roles: Database["public"]["Enums"]["app_role"][] }
+        Returns: boolean
+      }
+      has_role: {
+        Args: { required_role: Database["public"]["Enums"]["app_role"] }
+        Returns: boolean
+      }
     }
     Enums: {
       app_role: "master" | "admin" | "manager" | "rep" | "user"
