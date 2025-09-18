@@ -1459,6 +1459,429 @@ export type Database = {
           },
         ]
       }
+      smartdoc_assets: {
+        Row: {
+          content_type: string
+          created_at: string
+          created_by: string | null
+          file_size: number | null
+          hash: string | null
+          height: number | null
+          id: string
+          name: string
+          s3_key: string
+          tenant_id: string
+          width: number | null
+        }
+        Insert: {
+          content_type: string
+          created_at?: string
+          created_by?: string | null
+          file_size?: number | null
+          hash?: string | null
+          height?: number | null
+          id?: string
+          name: string
+          s3_key: string
+          tenant_id: string
+          width?: number | null
+        }
+        Update: {
+          content_type?: string
+          created_at?: string
+          created_by?: string | null
+          file_size?: number | null
+          hash?: string | null
+          height?: number | null
+          id?: string
+          name?: string
+          s3_key?: string
+          tenant_id?: string
+          width?: number | null
+        }
+        Relationships: []
+      }
+      smartdoc_blocks: {
+        Row: {
+          block_type: string
+          content: Json
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_global: boolean | null
+          name: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          block_type: string
+          content: Json
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_global?: boolean | null
+          name: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          block_type?: string
+          content?: Json
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_global?: boolean | null
+          name?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      smartdoc_folders: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          name: string
+          parent_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name: string
+          parent_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          name?: string
+          parent_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "smartdoc_folders_parent_id_fkey"
+            columns: ["parent_id"]
+            isOneToOne: false
+            referencedRelation: "smartdoc_folders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      smartdoc_renditions: {
+        Row: {
+          context_id: string
+          context_type: Database["public"]["Enums"]["smartdoc_context_type"]
+          created_at: string
+          created_by: string | null
+          error_message: string | null
+          file_size: number | null
+          id: string
+          output_type: Database["public"]["Enums"]["smartdoc_output_type"]
+          render_ms: number | null
+          s3_key: string | null
+          status: Database["public"]["Enums"]["smartdoc_render_status"]
+          template_id: string
+          template_version_id: string
+          tenant_id: string
+        }
+        Insert: {
+          context_id: string
+          context_type: Database["public"]["Enums"]["smartdoc_context_type"]
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          file_size?: number | null
+          id?: string
+          output_type: Database["public"]["Enums"]["smartdoc_output_type"]
+          render_ms?: number | null
+          s3_key?: string | null
+          status?: Database["public"]["Enums"]["smartdoc_render_status"]
+          template_id: string
+          template_version_id: string
+          tenant_id: string
+        }
+        Update: {
+          context_id?: string
+          context_type?: Database["public"]["Enums"]["smartdoc_context_type"]
+          created_at?: string
+          created_by?: string | null
+          error_message?: string | null
+          file_size?: number | null
+          id?: string
+          output_type?: Database["public"]["Enums"]["smartdoc_output_type"]
+          render_ms?: number | null
+          s3_key?: string | null
+          status?: Database["public"]["Enums"]["smartdoc_render_status"]
+          template_id?: string
+          template_version_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "smartdoc_renditions_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "smartdoc_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "smartdoc_renditions_template_version_id_fkey"
+            columns: ["template_version_id"]
+            isOneToOne: false
+            referencedRelation: "smartdoc_template_versions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      smartdoc_share_rules: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          id: string
+          is_portal_visible: boolean | null
+          rendition_id: string | null
+          require_auth: boolean | null
+          template_id: string | null
+          tenant_id: string
+          watermark_text: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          is_portal_visible?: boolean | null
+          rendition_id?: string | null
+          require_auth?: boolean | null
+          template_id?: string | null
+          tenant_id: string
+          watermark_text?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          id?: string
+          is_portal_visible?: boolean | null
+          rendition_id?: string | null
+          require_auth?: boolean | null
+          template_id?: string | null
+          tenant_id?: string
+          watermark_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "smartdoc_share_rules_rendition_id_fkey"
+            columns: ["rendition_id"]
+            isOneToOne: false
+            referencedRelation: "smartdoc_renditions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "smartdoc_share_rules_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "smartdoc_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      smartdoc_sign_envelopes: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          created_by: string | null
+          envelope_id: string | null
+          id: string
+          provider: Database["public"]["Enums"]["smartdoc_sign_provider"]
+          rendition_id: string
+          signer_roles: Json
+          signing_url: string | null
+          status: Database["public"]["Enums"]["smartdoc_sign_status"]
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          envelope_id?: string | null
+          id?: string
+          provider: Database["public"]["Enums"]["smartdoc_sign_provider"]
+          rendition_id: string
+          signer_roles: Json
+          signing_url?: string | null
+          status?: Database["public"]["Enums"]["smartdoc_sign_status"]
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string | null
+          envelope_id?: string | null
+          id?: string
+          provider?: Database["public"]["Enums"]["smartdoc_sign_provider"]
+          rendition_id?: string
+          signer_roles?: Json
+          signing_url?: string | null
+          status?: Database["public"]["Enums"]["smartdoc_sign_status"]
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "smartdoc_sign_envelopes_rendition_id_fkey"
+            columns: ["rendition_id"]
+            isOneToOne: false
+            referencedRelation: "smartdoc_renditions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      smartdoc_tag_catalog: {
+        Row: {
+          context_type: Database["public"]["Enums"]["smartdoc_context_type"]
+          created_at: string
+          description: string
+          example_value: string | null
+          id: string
+          is_sensitive: boolean | null
+          name: string
+          tenant_id: string | null
+          transform_support: string[] | null
+        }
+        Insert: {
+          context_type: Database["public"]["Enums"]["smartdoc_context_type"]
+          created_at?: string
+          description: string
+          example_value?: string | null
+          id?: string
+          is_sensitive?: boolean | null
+          name: string
+          tenant_id?: string | null
+          transform_support?: string[] | null
+        }
+        Update: {
+          context_type?: Database["public"]["Enums"]["smartdoc_context_type"]
+          created_at?: string
+          description?: string
+          example_value?: string | null
+          id?: string
+          is_sensitive?: boolean | null
+          name?: string
+          tenant_id?: string | null
+          transform_support?: string[] | null
+        }
+        Relationships: []
+      }
+      smartdoc_template_versions: {
+        Row: {
+          changelog: string | null
+          created_at: string
+          engine: Database["public"]["Enums"]["smartdoc_engine"]
+          id: string
+          is_latest: boolean | null
+          published_at: string | null
+          published_by: string | null
+          schema: Json
+          template_id: string
+          tenant_id: string
+          version: number
+        }
+        Insert: {
+          changelog?: string | null
+          created_at?: string
+          engine?: Database["public"]["Enums"]["smartdoc_engine"]
+          id?: string
+          is_latest?: boolean | null
+          published_at?: string | null
+          published_by?: string | null
+          schema: Json
+          template_id: string
+          tenant_id: string
+          version?: number
+        }
+        Update: {
+          changelog?: string | null
+          created_at?: string
+          engine?: Database["public"]["Enums"]["smartdoc_engine"]
+          id?: string
+          is_latest?: boolean | null
+          published_at?: string | null
+          published_by?: string | null
+          schema?: Json
+          template_id?: string
+          tenant_id?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "smartdoc_template_versions_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "smartdoc_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      smartdoc_templates: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          default_context: Database["public"]["Enums"]["smartdoc_context_type"]
+          description: string | null
+          folder_id: string | null
+          id: string
+          is_homeowner_visible: boolean | null
+          name: string
+          status: Database["public"]["Enums"]["smartdoc_status"]
+          tenant_id: string
+          type: Database["public"]["Enums"]["smartdoc_template_type"]
+          updated_at: string
+          updated_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          default_context?: Database["public"]["Enums"]["smartdoc_context_type"]
+          description?: string | null
+          folder_id?: string | null
+          id?: string
+          is_homeowner_visible?: boolean | null
+          name: string
+          status?: Database["public"]["Enums"]["smartdoc_status"]
+          tenant_id: string
+          type?: Database["public"]["Enums"]["smartdoc_template_type"]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          default_context?: Database["public"]["Enums"]["smartdoc_context_type"]
+          description?: string | null
+          folder_id?: string | null
+          id?: string
+          is_homeowner_visible?: boolean | null
+          name?: string
+          status?: Database["public"]["Enums"]["smartdoc_status"]
+          tenant_id?: string
+          type?: Database["public"]["Enums"]["smartdoc_template_type"]
+          updated_at?: string
+          updated_by?: string | null
+        }
+        Relationships: []
+      }
       supplier_pricebooks: {
         Row: {
           category: string | null
@@ -1746,6 +2169,19 @@ export type Database = {
         | "slate"
         | "cedar"
         | "other"
+      smartdoc_context_type:
+        | "CONTACT"
+        | "LEAD"
+        | "PROJECT"
+        | "ESTIMATE"
+        | "INVOICE"
+      smartdoc_engine: "HTML" | "DOCX" | "PDF_FORM"
+      smartdoc_output_type: "PDF" | "DOCX" | "HTML"
+      smartdoc_render_status: "PENDING" | "SUCCEEDED" | "FAILED"
+      smartdoc_sign_provider: "DOCUSIGN" | "NATIVE"
+      smartdoc_sign_status: "PENDING" | "COMPLETED" | "DECLINED" | "VOID"
+      smartdoc_status: "DRAFT" | "PUBLISHED" | "ARCHIVED"
+      smartdoc_template_type: "DOCUMENT" | "EMAIL" | "PRINT"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -1938,6 +2374,20 @@ export const Constants = {
         "cedar",
         "other",
       ],
+      smartdoc_context_type: [
+        "CONTACT",
+        "LEAD",
+        "PROJECT",
+        "ESTIMATE",
+        "INVOICE",
+      ],
+      smartdoc_engine: ["HTML", "DOCX", "PDF_FORM"],
+      smartdoc_output_type: ["PDF", "DOCX", "HTML"],
+      smartdoc_render_status: ["PENDING", "SUCCEEDED", "FAILED"],
+      smartdoc_sign_provider: ["DOCUSIGN", "NATIVE"],
+      smartdoc_sign_status: ["PENDING", "COMPLETED", "DECLINED", "VOID"],
+      smartdoc_status: ["DRAFT", "PUBLISHED", "ARCHIVED"],
+      smartdoc_template_type: ["DOCUMENT", "EMAIL", "PRINT"],
     },
   },
 } as const
