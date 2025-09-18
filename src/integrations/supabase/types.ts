@@ -71,6 +71,59 @@ export type Database = {
           },
         ]
       }
+      calls: {
+        Row: {
+          contact_id: string | null
+          created_at: string
+          created_by: string | null
+          direction: string | null
+          duration: number | null
+          from_number: string | null
+          id: string
+          notes: string | null
+          status: string | null
+          tenant_id: string
+          to_number: string | null
+          updated_at: string
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          direction?: string | null
+          duration?: number | null
+          from_number?: string | null
+          id?: string
+          notes?: string | null
+          status?: string | null
+          tenant_id: string
+          to_number?: string | null
+          updated_at?: string
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          direction?: string | null
+          duration?: number | null
+          from_number?: string | null
+          id?: string
+          notes?: string | null
+          status?: string | null
+          tenant_id?: string
+          to_number?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "calls_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commission_plans: {
         Row: {
           commission_type: Database["public"]["Enums"]["commission_type"]
