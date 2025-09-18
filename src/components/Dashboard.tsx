@@ -46,7 +46,7 @@ const Dashboard = () => {
 
   const dashboardPipelineData = [
     { status: "Lead", count: 45, color: "bg-status-lead" },
-    { status: "Legal Review", count: 12, color: "bg-status-legal" },
+    { status: "Legal", count: 12, color: "bg-status-legal" },
     { status: "Contingency", count: 8, color: "bg-status-contingency" },
     { status: "Project", count: 23, color: "bg-status-project" },
     { status: "Completed", count: 156, color: "bg-status-completed" },
@@ -69,7 +69,7 @@ const Dashboard = () => {
       address: "456 Pine Ave, Dallas, TX",
       type: "Metal Roof Install",
       value: "$32,800",
-      status: "Legal Review",
+      status: "Legal",
       profit: "28.5%"
     },
     {
@@ -86,7 +86,7 @@ const Dashboard = () => {
   const getStatusColor = (status: string) => {
     const colors = {
       "Lead": "bg-status-lead text-foreground",
-      "Legal Review": "bg-status-legal text-status-legal-foreground",
+      "Legal": "bg-status-legal text-status-legal-foreground",
       "Contingency": "bg-status-contingency text-status-contingency-foreground", 
       "Project": "bg-status-project text-status-project-foreground",
       "Completed": "bg-status-completed text-status-completed-foreground",
