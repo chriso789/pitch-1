@@ -1,11 +1,12 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings as SettingsIcon, FileText, Calculator, Users, Building, Shield, Code } from "lucide-react";
+import { Settings as SettingsIcon, FileText, Calculator, Users, Building, Shield, Code, Mic } from "lucide-react";
 import { EstimateBuilder } from "./EstimateBuilder";
 import { GeneralSettings } from "./settings/GeneralSettings";
 import { UserManagement } from "./settings/UserManagement";
 import { DeveloperAccess } from "./settings/DeveloperAccess";
+import VoiceInterface from "./VoiceInterface";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Settings = () => {
@@ -56,6 +57,15 @@ export const Settings = () => {
           <p className="text-muted-foreground">
             Configure your system preferences and templates
           </p>
+        </div>
+        <div className="flex items-center gap-4">
+          <VoiceInterface 
+            onTranscription={(text) => {
+              console.log('Voice transcription:', text);
+              // You can add logic here to handle voice commands in settings
+            }} 
+            className="flex items-center gap-2"
+          />
         </div>
       </div>
 

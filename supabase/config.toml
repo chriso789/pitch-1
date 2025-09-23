@@ -1,1 +1,16 @@
 project_id = "alxelfrbjzkmtnsulcei"
+
+[functions.estimates-preview]
+verify_jwt = false
+
+[functions.pipeline-status]
+verify_jwt = false
+
+[functions.project-actuals]
+verify_jwt = false
+
+[functions.voice-transcribe]
+verify_jwt = true
+
+[functions.send-user-invitation]
+verify_jwt = true

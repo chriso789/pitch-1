@@ -7,9 +7,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Users, Plus, Edit, Trash2, Shield } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Users, Plus, Edit, Trash2, Shield, Settings } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import FeaturePermissions from './FeaturePermissions';
 
 interface User {
   id: string;
@@ -84,53 +86,96 @@ export const UserManagement = () => {
 
   const createUser = async () => {
     try {
-      // Create user in Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      // Generate a temporary password
+      const temporaryPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8).toUpperCase() + "123!";
+
+      // First create the auth user with temporary password
+      const { data, error: authError } = await supabase.auth.signUp({
         email: newUser.email,
-        password: `TempPass123!${Math.random().toString(36).slice(-4)}`,
-        email_confirm: true
+        password: temporaryPassword,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`
+        }
       });
 
-      if (authError) throw authError;
+      if (authError) {
+        // Handle specific auth errors
+        if (authError.message.includes('User already registered')) {
+          throw new Error('A user with this email already exists');
+        }
+        throw authError;
+      }
 
-      // Create profile
-      const { error: profileError } = await supabase
-        .from('profiles')
-        .insert({
-          id: authData.user.id,
-          email: newUser.email,
-          first_name: newUser.first_name,
-          last_name: newUser.last_name,
-          role: newUser.role as any,
-          company_name: newUser.company_name,
-          title: newUser.title,
-          is_developer: newUser.is_developer,
-          tenant_id: currentUser?.tenant_id
+      if (data.user) {
+        // Create the user profile
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert({
+            id: data.user.id,
+            email: newUser.email,
+            first_name: newUser.first_name,
+            last_name: newUser.last_name,
+            role: newUser.role as any,
+            company_name: newUser.company_name,
+            title: newUser.title,
+            is_developer: newUser.is_developer,
+            tenant_id: currentUser?.tenant_id
+          });
+
+        if (profileError) throw profileError;
+
+        // Send invitation email with credentials
+        try {
+          const { error: emailError } = await supabase.functions.invoke('send-user-invitation', {
+            body: {
+              email: newUser.email,
+              firstName: newUser.first_name,
+              lastName: newUser.last_name,
+              role: newUser.role,
+              companyName: newUser.company_name,
+              temporaryPassword
+            }
+          });
+
+          if (emailError) {
+            console.warn('Email sending failed:', emailError);
+            toast({
+              title: "User created but email failed",
+              description: `${newUser.first_name} ${newUser.last_name} has been added, but the invitation email could not be sent. Please provide them with the temporary password: ${temporaryPassword}`,
+              variant: "destructive",
+            });
+          } else {
+            toast({
+              title: "User created successfully",
+              description: `${newUser.first_name} ${newUser.last_name} has been added and an invitation email has been sent.`,
+            });
+          }
+        } catch (emailError) {
+          console.warn('Email sending failed:', emailError);
+          toast({
+            title: "User created but email failed", 
+            description: `${newUser.first_name} ${newUser.last_name} has been added, but the invitation email could not be sent. Temporary password: ${temporaryPassword}`,
+            variant: "destructive",
+          });
+        }
+
+        setIsAddUserOpen(false);
+        setNewUser({
+          email: "",
+          first_name: "",
+          last_name: "",
+          role: "user",
+          company_name: "",
+          title: "",
+          is_developer: false
         });
-
-      if (profileError) throw profileError;
-
-      toast({
-        title: "User Created",
-        description: `${newUser.first_name} ${newUser.last_name} has been added.`,
-      });
-
-      setIsAddUserOpen(false);
-      setNewUser({
-        email: "",
-        first_name: "",
-        last_name: "",
-        role: "user",
-        company_name: "",
-        title: "",
-        is_developer: false
-      });
-      loadUsers();
-    } catch (error) {
+        loadUsers();
+      }
+    } catch (error: any) {
       console.error('Error creating user:', error);
       toast({
-        title: "Error",
-        description: "Failed to create user. Please try again.",
+        title: "Error creating user",
+        description: error.message || "An unexpected error occurred",
         variant: "destructive",
       });
     }
@@ -184,163 +229,180 @@ export const UserManagement = () => {
   }
 
   return (
-    <div className="space-y-6">
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center gap-2">
-              <Users className="h-5 w-5 text-primary" />
-              User Management
-            </CardTitle>
-            <Dialog open={isAddUserOpen} onOpenChange={setIsAddUserOpen}>
-              <DialogTrigger asChild>
-                <Button className="flex items-center gap-2">
-                  <Plus className="h-4 w-4" />
-                  Add User
-                </Button>
-              </DialogTrigger>
-              <DialogContent className="sm:max-w-md">
-                <DialogHeader>
-                  <DialogTitle>Add New User</DialogTitle>
-                </DialogHeader>
-                <div className="space-y-4">
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="first_name">First Name</Label>
-                      <Input
-                        id="first_name"
-                        value={newUser.first_name}
-                        onChange={(e) => setNewUser({ ...newUser, first_name: e.target.value })}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="last_name">Last Name</Label>
-                      <Input
-                        id="last_name"
-                        value={newUser.last_name}
-                        onChange={(e) => setNewUser({ ...newUser, last_name: e.target.value })}
-                      />
-                    </div>
-                  </div>
-                  
-                  <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
-                    <Input
-                      id="email"
-                      type="email"
-                      value={newUser.email}
-                      onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                    />
-                  </div>
+    <Tabs defaultValue="users" className="space-y-6">
+      <TabsList>
+        <TabsTrigger value="users" className="flex items-center gap-2">
+          <Users className="h-4 w-4" />
+          User Management
+        </TabsTrigger>
+        <TabsTrigger value="permissions" className="flex items-center gap-2">
+          <Settings className="h-4 w-4" />
+          Feature Permissions
+        </TabsTrigger>
+      </TabsList>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="role">Role</Label>
-                      <Select value={newUser.role} onValueChange={(value) => setNewUser({ ...newUser, role: value })}>
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="user">User</SelectItem>
-                          <SelectItem value="manager">Manager</SelectItem>
-                          <SelectItem value="admin">Admin</SelectItem>
-                          {currentUser?.role === 'master' && <SelectItem value="master">Master</SelectItem>}
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label htmlFor="title">Title</Label>
-                      <Input
-                        id="title"
-                        value={newUser.title}
-                        onChange={(e) => setNewUser({ ...newUser, title: e.target.value })}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="company_name">Company Name</Label>
-                    <Input
-                      id="company_name"
-                      value={newUser.company_name}
-                      onChange={(e) => setNewUser({ ...newUser, company_name: e.target.value })}
-                    />
-                  </div>
-
-                  {currentUser?.role === 'master' && (
-                    <div className="flex items-center space-x-2">
-                      <input
-                        type="checkbox"
-                        id="is_developer"
-                        checked={newUser.is_developer}
-                        onChange={(e) => setNewUser({ ...newUser, is_developer: e.target.checked })}
-                        className="h-4 w-4"
-                      />
-                      <Label htmlFor="is_developer" className="flex items-center gap-2">
-                        <Shield className="h-4 w-4" />
-                        Developer Access
-                      </Label>
-                    </div>
-                  )}
-
-                  <Button onClick={createUser} className="w-full">
-                    Create User
+      <TabsContent value="users">
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle className="flex items-center gap-2">
+                <Users className="h-5 w-5 text-primary" />
+                User Management
+              </CardTitle>
+              <Dialog open={isAddUserOpen} onOpenChange={setIsAddUserOpen}>
+                <DialogTrigger asChild>
+                  <Button className="flex items-center gap-2">
+                    <Plus className="h-4 w-4" />
+                    Add User
                   </Button>
-                </div>
-              </DialogContent>
-            </Dialog>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Role</TableHead>
-                <TableHead>Company</TableHead>
-                <TableHead>Title</TableHead>
-                <TableHead>Status</TableHead>
-                <TableHead>Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {users.map((user) => (
-                <TableRow key={user.id}>
-                  <TableCell className="font-medium">
-                    <div className="flex items-center gap-2">
-                      {user.first_name} {user.last_name}
-                      {user.is_developer && <Shield className="h-4 w-4 text-primary" />}
+                </DialogTrigger>
+                <DialogContent className="sm:max-w-md">
+                  <DialogHeader>
+                    <DialogTitle>Add New User</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="first_name">First Name</Label>
+                        <Input
+                          id="first_name"
+                          value={newUser.first_name}
+                          onChange={(e) => setNewUser({ ...newUser, first_name: e.target.value })}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="last_name">Last Name</Label>
+                        <Input
+                          id="last_name"
+                          value={newUser.last_name}
+                          onChange={(e) => setNewUser({ ...newUser, last_name: e.target.value })}
+                        />
+                      </div>
                     </div>
-                  </TableCell>
-                  <TableCell>{user.email}</TableCell>
-                  <TableCell>
-                    <Badge variant={getRoleBadgeVariant(user.role)}>
-                      {user.role}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>{user.company_name}</TableCell>
-                  <TableCell>{user.title}</TableCell>
-                  <TableCell>
-                    <Badge variant={user.is_active ? "default" : "secondary"}>
-                      {user.is_active ? "Active" : "Inactive"}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="space-x-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => toggleUserStatus(user.id, user.is_active)}
-                    >
-                      {user.is_active ? "Deactivate" : "Activate"}
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        type="email"
+                        value={newUser.email}
+                        onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-2">
+                        <Label htmlFor="role">Role</Label>
+                        <Select value={newUser.role} onValueChange={(value) => setNewUser({ ...newUser, role: value })}>
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="user">User</SelectItem>
+                            <SelectItem value="manager">Manager</SelectItem>
+                            <SelectItem value="admin">Admin</SelectItem>
+                            {currentUser?.role === 'master' && <SelectItem value="master">Master</SelectItem>}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label htmlFor="title">Title</Label>
+                        <Input
+                          id="title"
+                          value={newUser.title}
+                          onChange={(e) => setNewUser({ ...newUser, title: e.target.value })}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="company_name">Company Name</Label>
+                      <Input
+                        id="company_name"
+                        value={newUser.company_name}
+                        onChange={(e) => setNewUser({ ...newUser, company_name: e.target.value })}
+                      />
+                    </div>
+
+                    {currentUser?.role === 'master' && (
+                      <div className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id="is_developer"
+                          checked={newUser.is_developer}
+                          onChange={(e) => setNewUser({ ...newUser, is_developer: e.target.checked })}
+                          className="h-4 w-4"
+                        />
+                        <Label htmlFor="is_developer" className="flex items-center gap-2">
+                          <Shield className="h-4 w-4" />
+                          Developer Access
+                        </Label>
+                      </div>
+                    )}
+
+                    <Button onClick={createUser} className="w-full">
+                      Create User
                     </Button>
-                  </TableCell>
+                  </div>
+                </DialogContent>
+              </Dialog>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Name</TableHead>
+                  <TableHead>Email</TableHead>
+                  <TableHead>Role</TableHead>
+                  <TableHead>Company</TableHead>
+                  <TableHead>Title</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Actions</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </CardContent>
-      </Card>
-    </div>
+              </TableHeader>
+              <TableBody>
+                {users.map((user) => (
+                  <TableRow key={user.id}>
+                    <TableCell className="font-medium">
+                      <div className="flex items-center gap-2">
+                        {user.first_name} {user.last_name}
+                        {user.is_developer && <Shield className="h-4 w-4 text-primary" />}
+                      </div>
+                    </TableCell>
+                    <TableCell>{user.email}</TableCell>
+                    <TableCell>
+                      <Badge variant={getRoleBadgeVariant(user.role)}>
+                        {user.role}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{user.company_name}</TableCell>
+                    <TableCell>{user.title}</TableCell>
+                    <TableCell>
+                      <Badge variant={user.is_active ? "default" : "secondary"}>
+                        {user.is_active ? "Active" : "Inactive"}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => toggleUserStatus(user.id, user.is_active)}
+                      >
+                        {user.is_active ? "Deactivate" : "Activate"}
+                      </Button>
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      </TabsContent>
+
+      <TabsContent value="permissions">
+        <FeaturePermissions />
+      </TabsContent>
+    </Tabs>
   );
 };
