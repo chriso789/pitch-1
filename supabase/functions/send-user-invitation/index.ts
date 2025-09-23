@@ -55,17 +55,25 @@ const handler = async (req: Request): Promise<Response> => {
           <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
             <h3 style="margin-top: 0; color: #1f2937;">Your Login Credentials:</h3>
             <p style="margin-bottom: 10px;"><strong>Email:</strong> ${email}</p>
-            <p style="margin-bottom: 0;"><strong>Temporary Password:</strong> ${temporaryPassword}</p>
+            <p style="margin-bottom: 10px;"><strong>Temporary Password:</strong> ${temporaryPassword}</p>
+            <p style="margin-bottom: 0; color: #dc2626; font-weight: bold;">This password is temporary and must be changed on first login.</p>
           </div>
           
           <div style="background-color: #fef3cd; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0;">
             <p style="margin: 0; color: #92400e;">
-              <strong>Important:</strong> Please change your password after your first login for security purposes.
+              <strong>Next Steps:</strong>
             </p>
+            <ol style="margin: 10px 0; color: #92400e;">
+              <li>Go to the login page</li>
+              <li>Click "Set Password" tab</li>
+              <li>Enter your email and temporary password</li>
+              <li>Create a strong new password</li>
+              <li>You'll then be logged in automatically</li>
+            </ol>
           </div>
           
           <p style="font-size: 16px; line-height: 1.5; margin-bottom: 15px;">
-            You can access the system using your email and the temporary password provided above.
+            You can access the system using the login page. Make sure to change your password immediately for security.
           </p>
           
           <p style="font-size: 16px; line-height: 1.5; margin-bottom: 30px;">

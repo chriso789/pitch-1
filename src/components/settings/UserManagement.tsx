@@ -141,20 +141,20 @@ export const UserManagement = () => {
             console.warn('Email sending failed:', emailError);
             toast({
               title: "User created but email failed",
-              description: `${newUser.first_name} ${newUser.last_name} has been added, but the invitation email could not be sent. Please provide them with the temporary password: ${temporaryPassword}`,
+              description: `${newUser.first_name} ${newUser.last_name} has been added. Please provide them with these credentials:\nEmail: ${newUser.email}\nTemporary Password: ${temporaryPassword}`,
               variant: "destructive",
             });
           } else {
             toast({
               title: "User created successfully",
-              description: `${newUser.first_name} ${newUser.last_name} has been added and an invitation email has been sent.`,
+              description: `${newUser.first_name} ${newUser.last_name} has been added and an invitation email has been sent with login instructions.`,
             });
           }
         } catch (emailError) {
           console.warn('Email sending failed:', emailError);
           toast({
             title: "User created but email failed", 
-            description: `${newUser.first_name} ${newUser.last_name} has been added, but the invitation email could not be sent. Temporary password: ${temporaryPassword}`,
+            description: `${newUser.first_name} ${newUser.last_name} has been added. Please provide them with these credentials:\nEmail: ${newUser.email}\nTemporary Password: ${temporaryPassword}`,
             variant: "destructive",
           });
         }

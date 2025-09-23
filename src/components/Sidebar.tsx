@@ -13,10 +13,13 @@ import {
   HelpCircle,
   Wrench,
   Code,
-  BookOpen
+  BookOpen,
+  LogOut
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/components/ui/use-toast";
 
 interface SidebarProps {
   activeSection: string;
@@ -25,6 +28,7 @@ interface SidebarProps {
 }
 
 const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: SidebarProps) => {
+  const { toast } = useToast();
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [currentTenant, setCurrentTenant] = useState<any>(null);
 
@@ -38,17 +42,36 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
       if (user) {
         const { data: profile } = await supabase
           .from('profiles')
-          .select('*, tenants!profiles_tenant_id_fkey(*)')
+          .select('*')
           .eq('id', user.id)
           .single();
         
         setCurrentUser(profile);
-        setCurrentTenant(profile?.tenants);
       }
     } catch (error) {
       console.error('Error loading user info:', error);
     }
   };
+
+  const handleSignOut = async () => {
+    try {
+      const { error } = await supabase.auth.signOut();
+      if (error) throw error;
+      
+      toast({
+        title: "Signed out successfully",
+        description: "You have been logged out of the system.",
+      });
+    } catch (error: any) {
+      console.error('Sign out error:', error);
+      toast({
+        title: "Sign out failed",
+        description: error.message || "An error occurred while signing out",
+        variant: "destructive",
+      });
+    }
+  };
+
   const navigation = [
     {
       name: "Dashboard",
@@ -255,11 +278,26 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
                 {currentUser?.title || 'User'}
               </div>
               <div className="text-xs text-muted-foreground/80 truncate">
-                {currentUser?.company_name || currentTenant?.name || 'Company'}
+                {currentUser?.company_name || 'Company'}
               </div>
             </div>
           )}
         </div>
+        
+        {/* Sign Out Button */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className={cn(
+            "w-full mt-2 text-red-600 hover:text-red-700 hover:bg-red-50",
+            isCollapsed ? "px-2" : "justify-start"
+          )}
+          onClick={handleSignOut}
+          title={isCollapsed ? "Sign Out" : undefined}
+        >
+          <LogOut className="h-4 w-4" />
+          {!isCollapsed && <span className="ml-2">Sign Out</span>}
+        </Button>
       </div>
     </div>
   );

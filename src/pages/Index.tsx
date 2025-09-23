@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Session, User } from '@supabase/supabase-js';
 import Dashboard from "@/components/Dashboard";
@@ -15,35 +16,88 @@ import { Contacts } from "@/components/Contacts";
 import { Settings } from "@/components/Settings";
 import { Dialer } from "@/components/Dialer";
 import SmartDocs from "@/components/SmartDocs";
-import Auth from "@/components/Auth";
 import { CollapsibleSidebar } from "@/components/ui/collapsible-sidebar";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 const Index = () => {
+  const navigate = useNavigate();
   const [session, setSession] = useState<Session | null>(null);
   const [user, setUser] = useState<User | null>(null);
+  const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      (event, session) => {
+    const initAuth = async () => {
+      try {
+        // Get initial session
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!session) {
+          navigate('/login');
+          return;
+        }
+
         setSession(session);
-        setUser(session?.user ?? null);
+        setUser(session.user);
+
+        // Fetch user profile
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', session.user.id)
+          .single();
+          
+        if (profileData) {
+          setProfile(profileData);
+        }
+      } catch (error) {
+        console.error('Auth initialization error:', error);
+        navigate('/login');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    initAuth();
+
+    // Listen for auth changes
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        console.log('Auth state changed:', event, session?.user?.email);
+        
+        if (event === 'SIGNED_OUT' || !session) {
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          navigate('/login');
+        } else if (event === 'SIGNED_IN' && session) {
+          setSession(session);
+          setUser(session.user);
+          
+          // Fetch user profile
+          try {
+            const { data: profileData } = await supabase
+              .from('profiles')
+              .select('*')
+              .eq('id', session.user.id)
+              .single();
+              
+            if (profileData) {
+              setProfile(profileData);
+            }
+          } catch (error) {
+            console.error('Error fetching profile:', error);
+          }
+        }
         setLoading(false);
       }
     );
 
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-    });
-
     return () => subscription.unsubscribe();
-  }, []);
+  }, [navigate]);
 
   if (loading) {
     return (
@@ -57,7 +111,8 @@ const Index = () => {
   }
 
   if (!session || !user) {
-    return <Auth onAuthSuccess={() => {}} />;
+    // This should not happen as we redirect to login, but just in case
+    return null;
   }
 
   const renderActiveSection = () => {
