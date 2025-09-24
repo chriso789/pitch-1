@@ -3236,6 +3236,78 @@ export type Database = {
           },
         ]
       }
+      project_photos: {
+        Row: {
+          ai_description: string | null
+          ai_tags: string[] | null
+          capture_timestamp: string | null
+          created_at: string
+          file_size: number | null
+          filename: string
+          gps_accuracy: number | null
+          gps_latitude: number | null
+          gps_longitude: number | null
+          id: string
+          mime_type: string | null
+          project_id: string
+          qc_approved_at: string | null
+          qc_approved_by: string | null
+          qc_notes: string | null
+          storage_path: string
+          task_id: string | null
+          tenant_id: string
+          updated_at: string
+          uploaded_by: string | null
+          workflow_status: string
+        }
+        Insert: {
+          ai_description?: string | null
+          ai_tags?: string[] | null
+          capture_timestamp?: string | null
+          created_at?: string
+          file_size?: number | null
+          filename: string
+          gps_accuracy?: number | null
+          gps_latitude?: number | null
+          gps_longitude?: number | null
+          id?: string
+          mime_type?: string | null
+          project_id: string
+          qc_approved_at?: string | null
+          qc_approved_by?: string | null
+          qc_notes?: string | null
+          storage_path: string
+          task_id?: string | null
+          tenant_id: string
+          updated_at?: string
+          uploaded_by?: string | null
+          workflow_status?: string
+        }
+        Update: {
+          ai_description?: string | null
+          ai_tags?: string[] | null
+          capture_timestamp?: string | null
+          created_at?: string
+          file_size?: number | null
+          filename?: string
+          gps_accuracy?: number | null
+          gps_latitude?: number | null
+          gps_longitude?: number | null
+          id?: string
+          mime_type?: string | null
+          project_id?: string
+          qc_approved_at?: string | null
+          qc_approved_by?: string | null
+          qc_notes?: string | null
+          storage_path?: string
+          task_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+          uploaded_by?: string | null
+          workflow_status?: string
+        }
+        Relationships: []
+      }
       projects: {
         Row: {
           actual_completion_date: string | null
@@ -3472,6 +3544,96 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      qc_inspections: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          critical_failures: number | null
+          id: string
+          inspection_data: Json
+          inspector_id: string
+          overall_score: number | null
+          passed_items: number | null
+          project_id: string
+          report_url: string | null
+          status: string
+          template_id: string
+          tenant_id: string
+          total_items: number | null
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          critical_failures?: number | null
+          id?: string
+          inspection_data?: Json
+          inspector_id: string
+          overall_score?: number | null
+          passed_items?: number | null
+          project_id: string
+          report_url?: string | null
+          status?: string
+          template_id: string
+          tenant_id: string
+          total_items?: number | null
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          critical_failures?: number | null
+          id?: string
+          inspection_data?: Json
+          inspector_id?: string
+          overall_score?: number | null
+          passed_items?: number | null
+          project_id?: string
+          report_url?: string | null
+          status?: string
+          template_id?: string
+          tenant_id?: string
+          total_items?: number | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      qc_templates: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          roof_type: string
+          template_data: Json
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          roof_type: string
+          template_data?: Json
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          roof_type?: string
+          template_data?: Json
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       rep_overhead_rules: {
         Row: {
@@ -4006,6 +4168,168 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      subcontractor_capacity: {
+        Row: {
+          available_slots: number
+          booked_slots: number
+          created_at: string
+          date: string
+          id: string
+          notes: string | null
+          subcontractor_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          available_slots?: number
+          booked_slots?: number
+          created_at?: string
+          date: string
+          id?: string
+          notes?: string | null
+          subcontractor_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          available_slots?: number
+          booked_slots?: number
+          created_at?: string
+          date?: string
+          id?: string
+          notes?: string | null
+          subcontractor_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      subcontractor_jobs: {
+        Row: {
+          actual_end_date: string | null
+          actual_start_date: string | null
+          cost: number | null
+          created_at: string
+          created_by: string | null
+          feedback: string | null
+          id: string
+          project_id: string
+          rating: number | null
+          scheduled_date: string | null
+          status: string
+          subcontractor_id: string
+          task_id: string | null
+          tenant_id: string
+          trade: string
+          updated_at: string
+        }
+        Insert: {
+          actual_end_date?: string | null
+          actual_start_date?: string | null
+          cost?: number | null
+          created_at?: string
+          created_by?: string | null
+          feedback?: string | null
+          id?: string
+          project_id: string
+          rating?: number | null
+          scheduled_date?: string | null
+          status?: string
+          subcontractor_id: string
+          task_id?: string | null
+          tenant_id: string
+          trade: string
+          updated_at?: string
+        }
+        Update: {
+          actual_end_date?: string | null
+          actual_start_date?: string | null
+          cost?: number | null
+          created_at?: string
+          created_by?: string | null
+          feedback?: string | null
+          id?: string
+          project_id?: string
+          rating?: number | null
+          scheduled_date?: string | null
+          status?: string
+          subcontractor_id?: string
+          task_id?: string | null
+          tenant_id?: string
+          trade?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      subcontractors: {
+        Row: {
+          address_city: string | null
+          address_state: string | null
+          address_street: string | null
+          address_zip: string | null
+          company_name: string
+          contact_name: string | null
+          created_at: string
+          created_by: string | null
+          email: string | null
+          id: string
+          insurance_expiry_date: string | null
+          is_active: boolean | null
+          license_expiry_date: string | null
+          license_number: string | null
+          phone: string | null
+          rating: number | null
+          tenant_id: string
+          trade: string
+          updated_at: string
+          w9_url: string | null
+        }
+        Insert: {
+          address_city?: string | null
+          address_state?: string | null
+          address_street?: string | null
+          address_zip?: string | null
+          company_name: string
+          contact_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          insurance_expiry_date?: string | null
+          is_active?: boolean | null
+          license_expiry_date?: string | null
+          license_number?: string | null
+          phone?: string | null
+          rating?: number | null
+          tenant_id: string
+          trade: string
+          updated_at?: string
+          w9_url?: string | null
+        }
+        Update: {
+          address_city?: string | null
+          address_state?: string | null
+          address_street?: string | null
+          address_zip?: string | null
+          company_name?: string
+          contact_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          insurance_expiry_date?: string | null
+          is_active?: boolean | null
+          license_expiry_date?: string | null
+          license_number?: string | null
+          phone?: string | null
+          rating?: number | null
+          tenant_id?: string
+          trade?: string
+          updated_at?: string
+          w9_url?: string | null
+        }
+        Relationships: []
       }
       supplier_accounts: {
         Row: {
@@ -4765,6 +5089,10 @@ export type Database = {
           target_lng: number
           user_location: Json
         }
+        Returns: boolean
+      }
+      check_subcontractor_capacity: {
+        Args: { check_date: string; sub_id: string; tenant_id_param: string }
         Returns: boolean
       }
       get_user_tenant_id: {
