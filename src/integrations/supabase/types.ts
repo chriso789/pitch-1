@@ -1822,6 +1822,111 @@ export type Database = {
           },
         ]
       }
+      pipeline_activities: {
+        Row: {
+          activity_type: string
+          assigned_to: string | null
+          completed_at: string | null
+          contact_id: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          metadata: Json | null
+          pipeline_entry_id: string | null
+          priority: string | null
+          scheduled_at: string | null
+          status: string | null
+          tenant_id: string
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          activity_type: string
+          assigned_to?: string | null
+          completed_at?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          metadata?: Json | null
+          pipeline_entry_id?: string | null
+          priority?: string | null
+          scheduled_at?: string | null
+          status?: string | null
+          tenant_id: string
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          activity_type?: string
+          assigned_to?: string | null
+          completed_at?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          metadata?: Json | null
+          pipeline_entry_id?: string | null
+          priority?: string | null
+          scheduled_at?: string | null
+          status?: string | null
+          tenant_id?: string
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      pipeline_automation_rules: {
+        Row: {
+          actions: Json | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          execution_count: number | null
+          id: string
+          is_active: boolean | null
+          last_executed_at: string | null
+          name: string
+          tenant_id: string
+          trigger_conditions: Json | null
+          trigger_event: string
+          updated_at: string | null
+        }
+        Insert: {
+          actions?: Json | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          execution_count?: number | null
+          id?: string
+          is_active?: boolean | null
+          last_executed_at?: string | null
+          name: string
+          tenant_id: string
+          trigger_conditions?: Json | null
+          trigger_event: string
+          updated_at?: string | null
+        }
+        Update: {
+          actions?: Json | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          execution_count?: number | null
+          id?: string
+          is_active?: boolean | null
+          last_executed_at?: string | null
+          name?: string
+          tenant_id?: string
+          trigger_conditions?: Json | null
+          trigger_event?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       pipeline_entries: {
         Row: {
           assigned_to: string | null
@@ -1925,6 +2030,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      pipeline_stages: {
+        Row: {
+          auto_actions: Json | null
+          color: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          probability_percent: number
+          stage_order: number
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          auto_actions?: Json | null
+          color?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          probability_percent?: number
+          stage_order?: number
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          auto_actions?: Json | null
+          color?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          probability_percent?: number
+          stage_order?: number
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       portal_access_grants: {
         Row: {

@@ -154,6 +154,12 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
       description: "Automated follow-up campaigns"
     },
     {
+      name: "Pipeline Manager",
+      href: "enhanced-pipeline",
+      icon: Target,
+      description: "Advanced pipeline management"
+    },
+    {
       name: "Estimates",
       href: "estimates",
       icon: FileText,

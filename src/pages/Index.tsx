@@ -19,6 +19,8 @@ import SmartDocs from "@/components/SmartDocs";
 import { LeadSources } from "@/components/LeadSources";
 import { LeadScoring } from "@/components/LeadScoring";
 import { LeadNurturing } from "@/components/LeadNurturing";
+import { EnhancedPipeline } from "@/components/EnhancedPipeline";
+import { PipelineStageManager } from "@/components/PipelineStageManager";
 import { CollapsibleSidebar } from "@/components/ui/collapsible-sidebar";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -136,6 +138,8 @@ const Index = () => {
         return <LeadScoring />;
       case "lead-nurturing":
         return <LeadNurturing />;
+      case "enhanced-pipeline":
+        return <EnhancedPipeline />;
       case "projects":
         return <Projects />;
       case "payments":
@@ -159,6 +163,7 @@ const Index = () => {
 
   return (
     <div className="flex h-screen bg-background w-full">
+      <PipelineStageManager />
       {/* Collapsible Sidebar */}
       <div className="relative">
         <Sidebar 
