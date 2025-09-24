@@ -182,7 +182,7 @@ const Login: React.FC = () => {
   const handleDemoLogin = async () => {
     setLoading(true);
     try {
-      const demoEmail = 'demo@roofingcrm.com';
+      const demoEmail = 'demo@pitch.com';
       const demoPassword = 'DemoPassword123!';
 
       // Try to sign in first
@@ -215,7 +215,7 @@ const Login: React.FC = () => {
               first_name: 'Demo',
               last_name: 'User',
               role: 'admin',
-              company_name: 'Demo Company',
+              company_name: 'Pitch Demo Company',
               title: 'Administrator',
               tenant_id: signUpData.user.id // Use user ID as tenant ID for demo
             });
@@ -250,10 +250,10 @@ const Login: React.FC = () => {
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
           <h1 className="text-3xl font-bold gradient-primary bg-clip-text text-transparent">
-            Roofing CRM
+            Pitch
           </h1>
           <p className="text-muted-foreground mt-2">
-            Sign in to manage your roofing business
+            Your AI-powered sales assistant CRM
           </p>
         </div>
 
