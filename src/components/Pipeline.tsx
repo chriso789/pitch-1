@@ -27,6 +27,7 @@ import {
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useNavigate } from "react-router-dom";
 
 const Pipeline = () => {
   const [pipelineData, setPipelineData] = useState({});
@@ -43,6 +44,7 @@ const Pipeline = () => {
   const [salesReps, setSalesReps] = useState([]);
   const [locations, setLocations] = useState([]);
   const { toast } = useToast();
+  const navigate = useNavigate();
 
   const pipelineStages = [
     { name: "Lead", key: "lead", color: "bg-status-lead", icon: User },
@@ -326,7 +328,12 @@ const Pipeline = () => {
           </div>
 
           <div className="flex gap-2 mt-4">
-            <Button size="sm" variant="outline" className="flex-1">
+            <Button 
+              size="sm" 
+              variant="outline" 
+              className="flex-1"
+              onClick={() => navigate(`/contact/${contact?.id || item.contact_id}`)}
+            >
               <FileText className="h-4 w-4 mr-1" />
               View
             </Button>
