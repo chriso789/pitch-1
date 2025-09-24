@@ -8,10 +8,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Plus, Edit, Trash2, Shield, Settings } from "lucide-react";
+import { Users, Plus, Edit, Trash2, Shield, Settings, Eye } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import FeaturePermissions from './FeaturePermissions';
+import { UserProfile } from './UserProfile';
 
 interface User {
   id: string;
@@ -31,6 +32,7 @@ export const UserManagement = () => {
   const [loading, setLoading] = useState(true);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [newUser, setNewUser] = useState({
     email: "",
     first_name: "",
@@ -228,6 +230,16 @@ export const UserManagement = () => {
     );
   }
 
+  // Show user profile if one is selected
+  if (selectedUserId) {
+    return (
+      <UserProfile 
+        userId={selectedUserId} 
+        onClose={() => setSelectedUserId(null)} 
+      />
+    );
+  }
+
   return (
     <Tabs defaultValue="users" className="space-y-6">
       <TabsList>
@@ -384,6 +396,15 @@ export const UserManagement = () => {
                       </Badge>
                     </TableCell>
                     <TableCell className="space-x-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setSelectedUserId(user.id)}
+                        className="flex items-center gap-1"
+                      >
+                        <Eye className="h-3 w-3" />
+                        View
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
