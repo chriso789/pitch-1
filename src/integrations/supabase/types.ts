@@ -2986,6 +2986,157 @@ export type Database = {
           },
         ]
       }
+      purchase_order_items: {
+        Row: {
+          created_at: string | null
+          delivered_quantity: number | null
+          id: string
+          line_total: number
+          metadata: Json | null
+          po_id: string
+          product_id: string
+          quantity: number
+          tenant_id: string
+          unit_price: number
+          vendor_product_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          delivered_quantity?: number | null
+          id?: string
+          line_total: number
+          metadata?: Json | null
+          po_id: string
+          product_id: string
+          quantity: number
+          tenant_id: string
+          unit_price: number
+          vendor_product_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          delivered_quantity?: number | null
+          id?: string
+          line_total?: number
+          metadata?: Json | null
+          po_id?: string
+          product_id?: string
+          quantity?: number
+          tenant_id?: string
+          unit_price?: number
+          vendor_product_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_order_items_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_items_vendor_product_id_fkey"
+            columns: ["vendor_product_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_orders: {
+        Row: {
+          actual_delivery_date: string | null
+          branch_code: string | null
+          created_at: string | null
+          created_by: string | null
+          delivery_address: Json | null
+          expected_delivery_date: string | null
+          external_order_id: string | null
+          id: string
+          notes: string | null
+          order_date: string | null
+          po_number: string
+          project_id: string | null
+          shipping_amount: number | null
+          status: string | null
+          subtotal: number | null
+          tax_amount: number | null
+          tenant_id: string
+          total_amount: number | null
+          tracking_number: string | null
+          updated_at: string | null
+          vendor_id: string
+        }
+        Insert: {
+          actual_delivery_date?: string | null
+          branch_code?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          delivery_address?: Json | null
+          expected_delivery_date?: string | null
+          external_order_id?: string | null
+          id?: string
+          notes?: string | null
+          order_date?: string | null
+          po_number: string
+          project_id?: string | null
+          shipping_amount?: number | null
+          status?: string | null
+          subtotal?: number | null
+          tax_amount?: number | null
+          tenant_id: string
+          total_amount?: number | null
+          tracking_number?: string | null
+          updated_at?: string | null
+          vendor_id: string
+        }
+        Update: {
+          actual_delivery_date?: string | null
+          branch_code?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          delivery_address?: Json | null
+          expected_delivery_date?: string | null
+          external_order_id?: string | null
+          id?: string
+          notes?: string | null
+          order_date?: string | null
+          po_number?: string
+          project_id?: string | null
+          shipping_amount?: number | null
+          status?: string | null
+          subtotal?: number | null
+          tax_amount?: number | null
+          tenant_id?: string
+          total_amount?: number | null
+          tracking_number?: string | null
+          updated_at?: string | null
+          vendor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_orders_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_orders_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       rep_overhead_rules: {
         Row: {
           created_at: string | null
