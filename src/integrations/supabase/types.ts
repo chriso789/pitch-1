@@ -927,6 +927,60 @@ export type Database = {
         }
         Relationships: []
       }
+      dynamic_pricing_config: {
+        Row: {
+          backlog_multiplier: number
+          base_markup_percent: number
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          max_margin_percent: number
+          min_margin_percent: number
+          price_anomaly_threshold_percent: number
+          season_multipliers: Json
+          tenant_id: string
+          updated_at: string
+          vendor_leadtime_multipliers: Json
+          weather_risk_multiplier: number
+          zip_conversion_rates: Json
+        }
+        Insert: {
+          backlog_multiplier?: number
+          base_markup_percent?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          max_margin_percent?: number
+          min_margin_percent?: number
+          price_anomaly_threshold_percent?: number
+          season_multipliers?: Json
+          tenant_id: string
+          updated_at?: string
+          vendor_leadtime_multipliers?: Json
+          weather_risk_multiplier?: number
+          zip_conversion_rates?: Json
+        }
+        Update: {
+          backlog_multiplier?: number
+          base_markup_percent?: number
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          max_margin_percent?: number
+          min_margin_percent?: number
+          price_anomaly_threshold_percent?: number
+          season_multipliers?: Json
+          tenant_id?: string
+          updated_at?: string
+          vendor_leadtime_multipliers?: Json
+          weather_risk_multiplier?: number
+          zip_conversion_rates?: Json
+        }
+        Relationships: []
+      }
       estimate_templates: {
         Row: {
           created_at: string | null
@@ -2632,6 +2686,84 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      pricing_calculations: {
+        Row: {
+          backlog_adjustment: number | null
+          backlog_days: number | null
+          base_cost: number
+          base_markup_percent: number
+          calculated_at: string
+          calculated_by: string | null
+          conversion_rate_percent: number | null
+          estimate_id: string | null
+          final_markup_percent: number
+          id: string
+          is_locked: boolean
+          labor_cost: number
+          leadtime_adjustment: number | null
+          rationale: Json
+          season: string
+          season_adjustment: number | null
+          suggested_price: number
+          tenant_id: string
+          vendor_leadtime_days: number | null
+          weather_adjustment: number | null
+          weather_data: Json | null
+          weather_risk_score: number | null
+          zip_code: string | null
+        }
+        Insert: {
+          backlog_adjustment?: number | null
+          backlog_days?: number | null
+          base_cost: number
+          base_markup_percent: number
+          calculated_at?: string
+          calculated_by?: string | null
+          conversion_rate_percent?: number | null
+          estimate_id?: string | null
+          final_markup_percent: number
+          id?: string
+          is_locked?: boolean
+          labor_cost: number
+          leadtime_adjustment?: number | null
+          rationale?: Json
+          season: string
+          season_adjustment?: number | null
+          suggested_price: number
+          tenant_id: string
+          vendor_leadtime_days?: number | null
+          weather_adjustment?: number | null
+          weather_data?: Json | null
+          weather_risk_score?: number | null
+          zip_code?: string | null
+        }
+        Update: {
+          backlog_adjustment?: number | null
+          backlog_days?: number | null
+          base_cost?: number
+          base_markup_percent?: number
+          calculated_at?: string
+          calculated_by?: string | null
+          conversion_rate_percent?: number | null
+          estimate_id?: string | null
+          final_markup_percent?: number
+          id?: string
+          is_locked?: boolean
+          labor_cost?: number
+          leadtime_adjustment?: number | null
+          rationale?: Json
+          season?: string
+          season_adjustment?: number | null
+          suggested_price?: number
+          tenant_id?: string
+          vendor_leadtime_days?: number | null
+          weather_adjustment?: number | null
+          weather_data?: Json | null
+          weather_risk_score?: number | null
+          zip_code?: string | null
+        }
+        Relationships: []
       }
       products: {
         Row: {
@@ -4351,6 +4483,36 @@ export type Database = {
           name?: string
           tenant_id?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      weather_cache: {
+        Row: {
+          cached_at: string
+          expires_at: string
+          id: string
+          risk_score: number
+          tenant_id: string
+          weather_data: Json
+          zip_code: string
+        }
+        Insert: {
+          cached_at?: string
+          expires_at?: string
+          id?: string
+          risk_score: number
+          tenant_id: string
+          weather_data: Json
+          zip_code: string
+        }
+        Update: {
+          cached_at?: string
+          expires_at?: string
+          id?: string
+          risk_score?: number
+          tenant_id?: string
+          weather_data?: Json
+          zip_code?: string
         }
         Relationships: []
       }

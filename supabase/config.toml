@@ -1,13 +1,43 @@
 project_id = "alxelfrbjzkmtnsulcei"
 
+[functions.ai-command-processor]
+verify_jwt = true
+
+[functions.ai-image-analyzer]
+verify_jwt = true
+
+[functions.ai-sales-advisor]
+verify_jwt = true
+
 [functions.billtrust-auth]
 verify_jwt = true
 
 [functions.billtrust-pricing]
 verify_jwt = true
 
+[functions.duplicate-merger]
+verify_jwt = true
+
+[functions.dynamic-pricing-calculator]
+verify_jwt = true
+
 [functions.estimates-preview]
 verify_jwt = false
+
+[functions.google-maps-proxy]
+verify_jwt = false
+
+[functions.material-pricing-api]
+verify_jwt = true
+
+[functions.notification-processor]
+verify_jwt = true
+
+[functions.nurture-processor]
+verify_jwt = true
+
+[functions.pipeline-manager]
+verify_jwt = true
 
 [functions.pipeline-status]
 verify_jwt = false
@@ -15,8 +45,23 @@ verify_jwt = false
 [functions.project-actuals]
 verify_jwt = false
 
-[functions.voice-transcribe]
+[functions.qxo-pricing]
+verify_jwt = true
+
+[functions.score-lead]
 verify_jwt = true
 
 [functions.send-user-invitation]
+verify_jwt = true
+
+[functions.smart-follow-up]
+verify_jwt = true
+
+[functions.task-generator]
+verify_jwt = true
+
+[functions.voice-transcribe]
+verify_jwt = true
+
+[functions.weather-risk-analyzer]
 verify_jwt = true
