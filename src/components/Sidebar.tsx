@@ -15,7 +15,8 @@ import {
   Code,
   BookOpen,
   LogOut,
-  User
+  User,
+  BarChart
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -137,6 +138,12 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
       href: "contacts",
       icon: Users,
       description: "Customer database"
+    },
+    {
+      name: "Lead Sources",
+      href: "lead-sources",
+      icon: BarChart,
+      description: "Track lead sources & ROI"
     },
     {
       name: "Estimates",

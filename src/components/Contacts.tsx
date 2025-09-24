@@ -20,6 +20,10 @@ interface Contact {
   type: string;
   created_at: string;
   tags: string[];
+  lead_source: string;
+  lead_source_details: any;
+  acquisition_cost: number;
+  referral_source: string;
 }
 
 export const Contacts = () => {

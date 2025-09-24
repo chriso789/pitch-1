@@ -355,6 +355,7 @@ export type Database = {
       }
       contacts: {
         Row: {
+          acquisition_cost: number | null
           address_city: string | null
           address_state: string | null
           address_street: string | null
@@ -367,16 +368,20 @@ export type Database = {
           id: string
           last_name: string | null
           latitude: number | null
+          lead_source: string | null
+          lead_source_details: Json | null
           longitude: number | null
           metadata: Json | null
           notes: string | null
           phone: string | null
+          referral_source: string | null
           tags: string[] | null
           tenant_id: string | null
           type: Database["public"]["Enums"]["contact_type"] | null
           updated_at: string | null
         }
         Insert: {
+          acquisition_cost?: number | null
           address_city?: string | null
           address_state?: string | null
           address_street?: string | null
@@ -389,16 +394,20 @@ export type Database = {
           id?: string
           last_name?: string | null
           latitude?: number | null
+          lead_source?: string | null
+          lead_source_details?: Json | null
           longitude?: number | null
           metadata?: Json | null
           notes?: string | null
           phone?: string | null
+          referral_source?: string | null
           tags?: string[] | null
           tenant_id?: string | null
           type?: Database["public"]["Enums"]["contact_type"] | null
           updated_at?: string | null
         }
         Update: {
+          acquisition_cost?: number | null
           address_city?: string | null
           address_state?: string | null
           address_street?: string | null
@@ -411,10 +420,13 @@ export type Database = {
           id?: string
           last_name?: string | null
           latitude?: number | null
+          lead_source?: string | null
+          lead_source_details?: Json | null
           longitude?: number | null
           metadata?: Json | null
           notes?: string | null
           phone?: string | null
+          referral_source?: string | null
           tags?: string[] | null
           tenant_id?: string | null
           type?: Database["public"]["Enums"]["contact_type"] | null
@@ -1097,6 +1109,110 @@ export type Database = {
           },
         ]
       }
+      lead_source_performance: {
+        Row: {
+          appointments_set: number | null
+          created_at: string
+          deals_closed: number | null
+          estimates_created: number | null
+          id: string
+          lead_source_id: string | null
+          leads_generated: number | null
+          period_end: string
+          period_start: string
+          qualified_leads: number | null
+          roi_percent: number | null
+          tenant_id: string
+          total_cost: number | null
+          total_revenue: number | null
+          updated_at: string
+        }
+        Insert: {
+          appointments_set?: number | null
+          created_at?: string
+          deals_closed?: number | null
+          estimates_created?: number | null
+          id?: string
+          lead_source_id?: string | null
+          leads_generated?: number | null
+          period_end: string
+          period_start: string
+          qualified_leads?: number | null
+          roi_percent?: number | null
+          tenant_id: string
+          total_cost?: number | null
+          total_revenue?: number | null
+          updated_at?: string
+        }
+        Update: {
+          appointments_set?: number | null
+          created_at?: string
+          deals_closed?: number | null
+          estimates_created?: number | null
+          id?: string
+          lead_source_id?: string | null
+          leads_generated?: number | null
+          period_end?: string
+          period_start?: string
+          qualified_leads?: number | null
+          roi_percent?: number | null
+          tenant_id?: string
+          total_cost?: number | null
+          total_revenue?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_source_performance_lead_source_id_fkey"
+            columns: ["lead_source_id"]
+            isOneToOne: false
+            referencedRelation: "lead_sources"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_sources: {
+        Row: {
+          category: string
+          created_at: string
+          created_by: string | null
+          default_acquisition_cost: number | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          tenant_id: string
+          tracking_url: string | null
+          updated_at: string
+        }
+        Insert: {
+          category: string
+          created_at?: string
+          created_by?: string | null
+          default_acquisition_cost?: number | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          tenant_id: string
+          tracking_url?: string | null
+          updated_at?: string
+        }
+        Update: {
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          default_acquisition_cost?: number | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          tenant_id?: string
+          tracking_url?: string | null
+          updated_at?: string
+        }
+        Relationships: []
+      }
       outbox_events: {
         Row: {
           aggregate_id: string
@@ -1249,11 +1365,14 @@ export type Database = {
         Row: {
           assigned_to: string | null
           contact_id: string | null
+          conversion_probability: number | null
           created_at: string | null
           created_by: string | null
           estimated_value: number | null
           expected_close_date: string | null
           id: string
+          lead_quality_score: number | null
+          marketing_campaign: string | null
           metadata: Json | null
           notes: string | null
           priority: string | null
@@ -1267,11 +1386,14 @@ export type Database = {
         Insert: {
           assigned_to?: string | null
           contact_id?: string | null
+          conversion_probability?: number | null
           created_at?: string | null
           created_by?: string | null
           estimated_value?: number | null
           expected_close_date?: string | null
           id?: string
+          lead_quality_score?: number | null
+          marketing_campaign?: string | null
           metadata?: Json | null
           notes?: string | null
           priority?: string | null
@@ -1285,11 +1407,14 @@ export type Database = {
         Update: {
           assigned_to?: string | null
           contact_id?: string | null
+          conversion_probability?: number | null
           created_at?: string | null
           created_by?: string | null
           estimated_value?: number | null
           expected_close_date?: string | null
           id?: string
+          lead_quality_score?: number | null
+          marketing_campaign?: string | null
           metadata?: Json | null
           notes?: string | null
           priority?: string | null
