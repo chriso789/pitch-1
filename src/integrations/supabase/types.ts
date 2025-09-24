@@ -451,10 +451,12 @@ export type Database = {
           address_city: string | null
           address_state: string | null
           address_street: string | null
+          address_verification_data: Json | null
           address_zip: string | null
           company_name: string | null
           created_at: string | null
           created_by: string | null
+          created_by_ghost: string | null
           email: string | null
           email_engagement_score: number | null
           first_name: string | null
@@ -479,16 +481,19 @@ export type Database = {
           total_campaigns_completed: number | null
           type: Database["public"]["Enums"]["contact_type"] | null
           updated_at: string | null
+          verified_address: Json | null
         }
         Insert: {
           acquisition_cost?: number | null
           address_city?: string | null
           address_state?: string | null
           address_street?: string | null
+          address_verification_data?: Json | null
           address_zip?: string | null
           company_name?: string | null
           created_at?: string | null
           created_by?: string | null
+          created_by_ghost?: string | null
           email?: string | null
           email_engagement_score?: number | null
           first_name?: string | null
@@ -513,16 +518,19 @@ export type Database = {
           total_campaigns_completed?: number | null
           type?: Database["public"]["Enums"]["contact_type"] | null
           updated_at?: string | null
+          verified_address?: Json | null
         }
         Update: {
           acquisition_cost?: number | null
           address_city?: string | null
           address_state?: string | null
           address_street?: string | null
+          address_verification_data?: Json | null
           address_zip?: string | null
           company_name?: string | null
           created_at?: string | null
           created_by?: string | null
+          created_by_ghost?: string | null
           email?: string | null
           email_engagement_score?: number | null
           first_name?: string | null
@@ -547,11 +555,19 @@ export type Database = {
           total_campaigns_completed?: number | null
           type?: Database["public"]["Enums"]["contact_type"] | null
           updated_at?: string | null
+          verified_address?: Json | null
         }
         Relationships: [
           {
             foreignKeyName: "contacts_created_by_fkey"
             columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contacts_created_by_ghost_fkey"
+            columns: ["created_by_ghost"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -1219,6 +1235,44 @@ export type Database = {
             columns: ["pipeline_entry_id"]
             isOneToOne: false
             referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ghost_account_reports: {
+        Row: {
+          activity_data: Json | null
+          activity_type: string
+          created_at: string
+          ghost_account_id: string
+          id: string
+          location_data: Json | null
+          tenant_id: string
+        }
+        Insert: {
+          activity_data?: Json | null
+          activity_type: string
+          created_at?: string
+          ghost_account_id: string
+          id?: string
+          location_data?: Json | null
+          tenant_id: string
+        }
+        Update: {
+          activity_data?: Json | null
+          activity_type?: string
+          created_at?: string
+          ghost_account_id?: string
+          id?: string
+          location_data?: Json | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ghost_account_reports_ghost_account_id_fkey"
+            columns: ["ghost_account_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -2439,12 +2493,16 @@ export type Database = {
           avatar_url: string | null
           company_name: string | null
           created_at: string | null
+          created_by_master: string | null
+          current_location: Json | null
           email: string | null
           first_name: string | null
           id: string
           is_active: boolean | null
           is_developer: boolean | null
+          is_ghost_account: boolean | null
           last_name: string | null
+          location_updated_at: string | null
           metadata: Json | null
           phone: string | null
           role: Database["public"]["Enums"]["app_role"] | null
@@ -2456,12 +2514,16 @@ export type Database = {
           avatar_url?: string | null
           company_name?: string | null
           created_at?: string | null
+          created_by_master?: string | null
+          current_location?: Json | null
           email?: string | null
           first_name?: string | null
           id: string
           is_active?: boolean | null
           is_developer?: boolean | null
+          is_ghost_account?: boolean | null
           last_name?: string | null
+          location_updated_at?: string | null
           metadata?: Json | null
           phone?: string | null
           role?: Database["public"]["Enums"]["app_role"] | null
@@ -2473,12 +2535,16 @@ export type Database = {
           avatar_url?: string | null
           company_name?: string | null
           created_at?: string | null
+          created_by_master?: string | null
+          current_location?: Json | null
           email?: string | null
           first_name?: string | null
           id?: string
           is_active?: boolean | null
           is_developer?: boolean | null
+          is_ghost_account?: boolean | null
           last_name?: string | null
+          location_updated_at?: string | null
           metadata?: Json | null
           phone?: string | null
           role?: Database["public"]["Enums"]["app_role"] | null
@@ -2487,6 +2553,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "profiles_created_by_master_fkey"
+            columns: ["created_by_master"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "profiles_tenant_id_fkey"
             columns: ["tenant_id"]
@@ -3581,6 +3654,15 @@ export type Database = {
       }
       check_enrollment_eligibility: {
         Args: { campaign_conditions: Json; contact_data: Json }
+        Returns: boolean
+      }
+      check_location_radius: {
+        Args: {
+          radius_miles?: number
+          target_lat: number
+          target_lng: number
+          user_location: Json
+        }
         Returns: boolean
       }
       get_user_tenant_id: {

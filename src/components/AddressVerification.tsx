@@ -1,0 +1,397 @@
+import React, { useState, useRef, useEffect } from "react";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CheckCircle, AlertCircle, MapPin, Loader2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+
+interface AddressData {
+  street: string;
+  city: string;
+  state: string;
+  zip: string;
+  lat?: number;
+  lng?: number;
+  place_id?: string;
+  formatted_address?: string;
+}
+
+interface AddressVerificationProps {
+  onAddressVerified: (address: AddressData, verificationData: any) => void;
+  initialAddress?: Partial<AddressData>;
+  label?: string;
+  required?: boolean;
+}
+
+const AddressVerification: React.FC<AddressVerificationProps> = ({
+  onAddressVerified,
+  initialAddress = {},
+  label = "Address",
+  required = false,
+}) => {
+  const [address, setAddress] = useState<AddressData>({
+    street: initialAddress.street || "",
+    city: initialAddress.city || "",
+    state: initialAddress.state || "",
+    zip: initialAddress.zip || "",
+    ...initialAddress,
+  });
+  const [isVerifying, setIsVerifying] = useState(false);
+  const [verificationStatus, setVerificationStatus] = useState<
+    "none" | "verified" | "partial" | "failed"
+  >("none");
+  const [suggestions, setSuggestions] = useState<any[]>([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
+  
+  const streetInputRef = useRef<HTMLInputElement>(null);
+  const autocompleteService = useRef<any>(null);
+  const placesService = useRef<any>(null);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    // Initialize Google Places services
+    if (window.google?.maps?.places) {
+      // @ts-ignore - Google Maps API will be loaded dynamically
+      autocompleteService.current = new window.google.maps.places.AutocompleteService();
+      const mapDiv = document.createElement("div");
+      // @ts-ignore - Google Maps API will be loaded dynamically
+      const map = new window.google.maps.Map(mapDiv);
+      // @ts-ignore - Google Maps API will be loaded dynamically
+      placesService.current = new window.google.maps.places.PlacesService(map);
+    } else {
+      // Load Google Maps API
+      loadGoogleMapsAPI();
+    }
+  }, []);
+
+  const loadGoogleMapsAPI = () => {
+    if (window.google?.maps) return;
+    
+    const script = document.createElement("script");
+    // Use direct API key from environment since VITE_ vars aren't supported
+    const apiKey = "YOUR_API_KEY_HERE"; // This will be replaced by edge function
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+    script.async = true;
+    script.onload = () => {
+      // @ts-ignore - Google Maps API loaded dynamically
+      autocompleteService.current = new window.google.maps.places.AutocompleteService();
+      const mapDiv = document.createElement("div");
+      // @ts-ignore - Google Maps API loaded dynamically
+      const map = new window.google.maps.Map(mapDiv);
+      // @ts-ignore - Google Maps API loaded dynamically
+      placesService.current = new window.google.maps.places.PlacesService(map);
+    };
+    document.head.appendChild(script);
+  };
+
+  const handleAddressChange = async (field: keyof AddressData, value: string) => {
+    setAddress(prev => ({ ...prev, [field]: value }));
+    setVerificationStatus("none");
+
+    // Trigger autocomplete for street address
+    if (field === "street" && value.length > 3 && autocompleteService.current) {
+      try {
+        const request = {
+          input: value,
+          types: ["address"],
+          componentRestrictions: { country: "US" },
+        };
+
+        autocompleteService.current.getPlacePredictions(request, (predictions, status) => {
+          // @ts-ignore - Google Maps API status comparison
+          if (status === window.google?.maps?.places?.PlacesServiceStatus?.OK && predictions) {
+            setSuggestions(predictions.slice(0, 5));
+            setShowSuggestions(true);
+          } else {
+            setSuggestions([]);
+            setShowSuggestions(false);
+          }
+        });
+      } catch (error) {
+        console.error("Autocomplete error:", error);
+      }
+    } else if (field === "street") {
+      setShowSuggestions(false);
+    }
+  };
+
+  const selectSuggestion = async (prediction: any) => {
+    if (!placesService.current) return;
+
+    setShowSuggestions(false);
+    setIsVerifying(true);
+
+    try {
+      placesService.current.getDetails(
+        {
+          placeId: prediction.place_id,
+          fields: ["address_components", "formatted_address", "geometry"],
+        },
+        (place, status) => {
+          // @ts-ignore - Google Maps API status comparison
+          if (status === window.google?.maps?.places?.PlacesServiceStatus?.OK && place) {
+            const addressComponents = place.address_components || [];
+            const newAddress: AddressData = {
+              street: "",
+              city: "",
+              state: "",
+              zip: "",
+              lat: place.geometry?.location?.lat(),
+              lng: place.geometry?.location?.lng(),
+              place_id: prediction.place_id,
+              formatted_address: place.formatted_address,
+            };
+
+            // Parse address components
+            addressComponents.forEach((component) => {
+              const types = component.types;
+              if (types.includes("street_number") || types.includes("route")) {
+                newAddress.street += (newAddress.street ? " " : "") + component.long_name;
+              } else if (types.includes("locality")) {
+                newAddress.city = component.long_name;
+              } else if (types.includes("administrative_area_level_1")) {
+                newAddress.state = component.short_name;
+              } else if (types.includes("postal_code")) {
+                newAddress.zip = component.long_name;
+              }
+            });
+
+            setAddress(newAddress);
+            setVerificationStatus("verified");
+            
+            const verificationData = {
+              place_id: prediction.place_id,
+              formatted_address: place.formatted_address,
+              geometry: place.geometry,
+              verification_timestamp: new Date().toISOString(),
+              verification_status: "verified",
+            };
+
+            onAddressVerified(newAddress, verificationData);
+            setIsVerifying(false);
+            
+            toast({
+              title: "Address Verified",
+              description: "Address has been verified with Google Places.",
+            });
+          } else {
+            setIsVerifying(false);
+            setVerificationStatus("failed");
+            toast({
+              title: "Verification Failed",
+              description: "Could not verify address details.",
+              variant: "destructive",
+            });
+          }
+        }
+      );
+    } catch (error) {
+      setIsVerifying(false);
+      setVerificationStatus("failed");
+      console.error("Places details error:", error);
+    }
+  };
+
+  const verifyAddress = async () => {
+    if (!address.street || !address.city || !address.state) {
+      toast({
+        title: "Incomplete Address",
+        description: "Please fill in street, city, and state.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsVerifying(true);
+    
+    try {
+      // Try to verify using geocoding
+      // @ts-ignore - Google Maps API
+      const geocoder = new window.google.maps.Geocoder();
+      const fullAddress = `${address.street}, ${address.city}, ${address.state} ${address.zip}`;
+      
+      geocoder.geocode({ address: fullAddress }, (results, status) => {
+        if (status === "OK" && results && results[0]) {
+          const result = results[0];
+          const location = result.geometry.location;
+          
+          const verifiedAddress: AddressData = {
+            ...address,
+            lat: location.lat(),
+            lng: location.lng(),
+            formatted_address: result.formatted_address,
+            place_id: result.place_id,
+          };
+          
+          setAddress(verifiedAddress);
+          setVerificationStatus("verified");
+          
+          const verificationData = {
+            place_id: result.place_id,
+            formatted_address: result.formatted_address,
+            geometry: result.geometry,
+            verification_timestamp: new Date().toISOString(),
+            verification_status: "verified",
+          };
+          
+          onAddressVerified(verifiedAddress, verificationData);
+          setIsVerifying(false);
+          
+          toast({
+            title: "Address Verified",
+            description: "Address has been verified successfully.",
+          });
+        } else {
+          setIsVerifying(false);
+          setVerificationStatus("partial");
+          
+          // Still call onAddressVerified with partial data
+          const verificationData = {
+            verification_timestamp: new Date().toISOString(),
+            verification_status: "partial",
+            error: status,
+          };
+          
+          onAddressVerified(address, verificationData);
+          
+          toast({
+            title: "Partial Verification",
+            description: "Address could not be fully verified but has been saved.",
+            variant: "destructive",
+          });
+        }
+      });
+    } catch (error) {
+      setIsVerifying(false);
+      setVerificationStatus("failed");
+      console.error("Geocoding error:", error);
+      
+      toast({
+        title: "Verification Error",
+        description: "An error occurred while verifying the address.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const getStatusIcon = () => {
+    switch (verificationStatus) {
+      case "verified":
+        return <CheckCircle className="h-4 w-4 text-green-500" />;
+      case "partial":
+        return <AlertCircle className="h-4 w-4 text-yellow-500" />;
+      case "failed":
+        return <AlertCircle className="h-4 w-4 text-red-500" />;
+      default:
+        return <MapPin className="h-4 w-4 text-muted-foreground" />;
+    }
+  };
+
+  const getStatusBadge = () => {
+    switch (verificationStatus) {
+      case "verified":
+        return <Badge variant="default" className="bg-green-100 text-green-800">Verified</Badge>;
+      case "partial":
+        return <Badge variant="secondary" className="bg-yellow-100 text-yellow-800">Partial</Badge>;
+      case "failed":
+        return <Badge variant="destructive">Failed</Badge>;
+      default:
+        return null;
+    }
+  };
+
+  return (
+    <Card className="w-full">
+      <CardHeader className="pb-4">
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg flex items-center gap-2">
+            {getStatusIcon()}
+            {label}
+            {required && <span className="text-red-500">*</span>}
+          </CardTitle>
+          {getStatusBadge()}
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="relative">
+          <Input
+            ref={streetInputRef}
+            placeholder="Street Address"
+            value={address.street}
+            onChange={(e) => handleAddressChange("street", e.target.value)}
+            className="w-full"
+          />
+          
+          {showSuggestions && suggestions.length > 0 && (
+            <div className="absolute z-50 w-full mt-1 bg-background border rounded-md shadow-lg max-h-60 overflow-auto">
+              {suggestions.map((suggestion, index) => (
+                <div
+                  key={index}
+                  className="px-4 py-2 cursor-pointer hover:bg-muted"
+                  onClick={() => selectSuggestion(suggestion)}
+                >
+                  <div className="font-medium">{suggestion.structured_formatting.main_text}</div>
+                  <div className="text-sm text-muted-foreground">
+                    {suggestion.structured_formatting.secondary_text}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Input
+            placeholder="City"
+            value={address.city}
+            onChange={(e) => handleAddressChange("city", e.target.value)}
+          />
+          <div className="grid grid-cols-2 gap-2">
+            <Input
+              placeholder="State"
+              value={address.state}
+              onChange={(e) => handleAddressChange("state", e.target.value)}
+              maxLength={2}
+            />
+            <Input
+              placeholder="ZIP"
+              value={address.zip}
+              onChange={(e) => handleAddressChange("zip", e.target.value)}
+              maxLength={10}
+            />
+          </div>
+        </div>
+
+        {verificationStatus === "none" && (address.street || address.city) && (
+          <Button
+            onClick={verifyAddress}
+            disabled={isVerifying}
+            className="w-full"
+            variant="outline"
+          >
+            {isVerifying ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Verifying...
+              </>
+            ) : (
+              <>
+                <MapPin className="h-4 w-4 mr-2" />
+                Verify Address
+              </>
+            )}
+          </Button>
+        )}
+
+        {address.lat && address.lng && (
+          <div className="text-sm text-muted-foreground">
+            Coordinates: {address.lat.toFixed(6)}, {address.lng.toFixed(6)}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+};
+
+export default AddressVerification;
