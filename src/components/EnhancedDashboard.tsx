@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from 'react';
 import { BackButton } from "./BackButton";
 import { FilterBar } from "./FilterBar";
 import ProjectDetails from "./ProjectDetails";
@@ -45,7 +45,7 @@ interface EnhancedDashboardProps {
   onBack?: () => void;
 }
 
-const EnhancedDashboard = ({ onBack }: EnhancedDashboardProps) => {
+export const EnhancedDashboard = ({ onBack }: EnhancedDashboardProps) => {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [projects, setProjects] = useState<ProjectData[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<ProjectData[]>([]);
