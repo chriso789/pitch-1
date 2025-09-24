@@ -76,56 +76,59 @@ const Login: React.FC = () => {
   useEffect(() => {
     let mounted = true;
     
-    const loadingTimeout = setTimeout(() => {
-      if (mounted && !sessionCheckComplete) {
-        setSessionCheckComplete(true);
-        setConnectionStatus('offline');
-        console.warn('Session check timeout - possible connection issue');
-      }
-    }, 10000);
-
-    const checkConnection = async () => {
+    const checkInitialSession = async () => {
       try {
-        const { data, error } = await supabase.auth.getSession();
+        const { data: { session } } = await supabase.auth.getSession();
         if (mounted) {
           setConnectionStatus('online');
-          if (data.session && !error) {
+          if (session) {
+            console.log('Existing session found, redirecting to dashboard');
             navigate('/');
-          } else {
-            setSessionCheckComplete(true);
+            return;
           }
+          setSessionCheckComplete(true);
         }
       } catch (error) {
         if (mounted) {
-          setConnectionStatus('offline');
+          console.error('Session check failed:', error);
           setSessionCheckComplete(true);
-          console.error('Connection check failed:', error);
+          setConnectionStatus('offline');
         }
       }
     };
 
-    checkConnection();
+    checkInitialSession();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
       if (!mounted) return;
       
       console.log('Auth state change:', event, session?.user?.id);
       
-      if (session) {
-        setTimeout(async () => {
+      if (event === 'SIGNED_IN' && session) {
+        setConnectionStatus('online');
+        console.log('User signed in successfully, creating profile and redirecting...');
+        try {
           await ensureUserProfile(session.user);
+          if (mounted) {
+            // Small delay to ensure profile is created
+            setTimeout(() => {
+              navigate('/');
+            }, 500);
+          }
+        } catch (error) {
+          console.error('Error ensuring user profile:', error);
           if (mounted) {
             navigate('/');
           }
-        }, 0);
+        }
       } else if (event === 'SIGNED_OUT') {
         setSessionCheckComplete(true);
+        setConnectionStatus('online');
       }
     });
 
     return () => {
       mounted = false;
-      clearTimeout(loadingTimeout);
       subscription.unsubscribe();
     };
   }, [navigate]);
