@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Settings as SettingsIcon, FileText, Calculator, Users, Building, Shield, Code, Mic } from "lucide-react";
+import { NotificationAutomations } from "@/components/NotificationAutomations";
+import { Settings as SettingsIcon, FileText, Calculator, Users, Building, Shield, Code, Mic, Bell } from "lucide-react";
 import { EstimateBuilder } from "./EstimateBuilder";
 import { GeneralSettings } from "./settings/GeneralSettings";
 import { UserManagement } from "./settings/UserManagement";
@@ -70,7 +71,7 @@ export const Settings = () => {
       </div>
 
       <Tabs defaultValue="general" className="space-y-6">
-        <TabsList className={`grid w-full ${showDeveloperTab ? 'grid-cols-6' : 'grid-cols-5'}`}>
+        <TabsList className={`grid w-full ${showDeveloperTab ? 'grid-cols-7' : 'grid-cols-6'}`}>
           <TabsTrigger value="general" className="flex items-center gap-2">
             <SettingsIcon className="h-4 w-4" />
             General
@@ -90,6 +91,10 @@ export const Settings = () => {
           <TabsTrigger value="security" className="flex items-center gap-2">
             <Shield className="h-4 w-4" />
             Security
+          </TabsTrigger>
+          <TabsTrigger value="automations" className="flex items-center gap-2">
+            <Bell className="h-4 w-4" />
+            Automations
           </TabsTrigger>
           {showDeveloperTab && (
             <TabsTrigger value="developer" className="flex items-center gap-2">
@@ -141,6 +146,10 @@ export const Settings = () => {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="automations" className="space-y-6">
+          <NotificationAutomations />
         </TabsContent>
 
         {showDeveloperTab && (
