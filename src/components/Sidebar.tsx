@@ -48,7 +48,7 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
           .from('profiles')
           .select('*')
           .eq('id', user.id)
-          .single();
+          .maybeSingle();
         
         setCurrentUser(profile);
       }

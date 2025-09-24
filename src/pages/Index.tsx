@@ -48,7 +48,7 @@ const Index = () => {
           .from('profiles')
           .select('*')
           .eq('id', session.user.id)
-          .single();
+          .maybeSingle();
           
         if (profileData) {
           setProfile(profileData);
@@ -83,7 +83,7 @@ const Index = () => {
               .from('profiles')
               .select('*')
               .eq('id', session.user.id)
-              .single();
+              .maybeSingle();
               
             if (profileData) {
               setProfile(profileData);
