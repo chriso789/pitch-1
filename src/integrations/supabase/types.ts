@@ -14,6 +14,60 @@ export type Database = {
   }
   public: {
     Tables: {
+      ai_insights: {
+        Row: {
+          action_taken: Json | null
+          confidence_score: number | null
+          context_id: string
+          context_type: string
+          created_at: string
+          description: string
+          expires_at: string | null
+          id: string
+          insight_type: string
+          metadata: Json | null
+          priority: string
+          status: string
+          tenant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          action_taken?: Json | null
+          confidence_score?: number | null
+          context_id: string
+          context_type: string
+          created_at?: string
+          description: string
+          expires_at?: string | null
+          id?: string
+          insight_type: string
+          metadata?: Json | null
+          priority?: string
+          status?: string
+          tenant_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          action_taken?: Json | null
+          confidence_score?: number | null
+          context_id?: string
+          context_type?: string
+          created_at?: string
+          description?: string
+          expires_at?: string | null
+          id?: string
+          insight_type?: string
+          metadata?: Json | null
+          priority?: string
+          status?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       app_settings: {
         Row: {
           created_at: string | null
@@ -209,6 +263,92 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      communication_history: {
+        Row: {
+          ai_insights: Json | null
+          communication_type: string
+          contact_id: string | null
+          content: string | null
+          created_at: string
+          direction: string
+          id: string
+          metadata: Json | null
+          pipeline_entry_id: string | null
+          project_id: string | null
+          rep_id: string | null
+          sentiment_score: number | null
+          subject: string | null
+          tenant_id: string
+          transcription: string | null
+          updated_at: string
+        }
+        Insert: {
+          ai_insights?: Json | null
+          communication_type: string
+          contact_id?: string | null
+          content?: string | null
+          created_at?: string
+          direction: string
+          id?: string
+          metadata?: Json | null
+          pipeline_entry_id?: string | null
+          project_id?: string | null
+          rep_id?: string | null
+          sentiment_score?: number | null
+          subject?: string | null
+          tenant_id: string
+          transcription?: string | null
+          updated_at?: string
+        }
+        Update: {
+          ai_insights?: Json | null
+          communication_type?: string
+          contact_id?: string | null
+          content?: string | null
+          created_at?: string
+          direction?: string
+          id?: string
+          metadata?: Json | null
+          pipeline_entry_id?: string | null
+          project_id?: string | null
+          rep_id?: string | null
+          sentiment_score?: number | null
+          subject?: string | null
+          tenant_id?: string
+          transcription?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "communication_history_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "communication_history_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "communication_history_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "communication_history_rep_id_fkey"
+            columns: ["rep_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -795,6 +935,126 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      follow_up_campaigns: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          sequence_steps: Json
+          tenant_id: string
+          trigger_conditions: Json
+          trigger_event: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          sequence_steps?: Json
+          tenant_id: string
+          trigger_conditions?: Json
+          trigger_event: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          sequence_steps?: Json
+          tenant_id?: string
+          trigger_conditions?: Json
+          trigger_event?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "follow_up_campaigns_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      follow_up_instances: {
+        Row: {
+          campaign_id: string | null
+          contact_id: string | null
+          created_at: string
+          delivery_status: Json | null
+          id: string
+          pipeline_entry_id: string | null
+          response_data: Json | null
+          scheduled_for: string
+          sent_at: string | null
+          status: string
+          step_index: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          campaign_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          delivery_status?: Json | null
+          id?: string
+          pipeline_entry_id?: string | null
+          response_data?: Json | null
+          scheduled_for: string
+          sent_at?: string | null
+          status?: string
+          step_index: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          campaign_id?: string | null
+          contact_id?: string | null
+          created_at?: string
+          delivery_status?: Json | null
+          id?: string
+          pipeline_entry_id?: string | null
+          response_data?: Json | null
+          scheduled_for?: string
+          sent_at?: string | null
+          status?: string
+          step_index?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "follow_up_instances_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "follow_up_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "follow_up_instances_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "follow_up_instances_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       idempotency_keys: {
         Row: {
@@ -1978,6 +2238,105 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      tasks: {
+        Row: {
+          ai_context: Json | null
+          ai_generated: boolean | null
+          assigned_to: string | null
+          completed_at: string | null
+          contact_id: string | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          due_date: string | null
+          id: string
+          metadata: Json | null
+          pipeline_entry_id: string | null
+          priority: string
+          project_id: string | null
+          status: string
+          tenant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          ai_context?: Json | null
+          ai_generated?: boolean | null
+          assigned_to?: string | null
+          completed_at?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          metadata?: Json | null
+          pipeline_entry_id?: string | null
+          priority?: string
+          project_id?: string | null
+          status?: string
+          tenant_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          ai_context?: Json | null
+          ai_generated?: boolean | null
+          assigned_to?: string | null
+          completed_at?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          due_date?: string | null
+          id?: string
+          metadata?: Json | null
+          pipeline_entry_id?: string | null
+          priority?: string
+          project_id?: string | null
+          status?: string
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tasks_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tasks_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
