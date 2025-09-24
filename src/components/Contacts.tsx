@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FilterBar } from "@/components/FilterBar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { LeadForm } from "@/components/LeadFormSimple";
+import { LeadForm } from "@/components/LeadForm";
 import { Users, Phone, Mail, MapPin, Plus } from "lucide-react";
 import { toast } from "sonner";
 
