@@ -4654,6 +4654,10 @@ export type Database = {
         }
         Returns: string
       }
+      rollback_estimate_to_version: {
+        Args: { estimate_id_param: string; version_id_param: string }
+        Returns: boolean
+      }
       switch_developer_context: {
         Args: { target_tenant_id: string }
         Returns: boolean

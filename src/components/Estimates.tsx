@@ -19,8 +19,11 @@ import {
   CheckCircle,
   Clock,
   AlertCircle,
-  FileX
+  FileX,
+  GitBranch,
+  History
 } from "lucide-react";
+import EstimateVersionControl from './EstimateVersionControl';
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -37,6 +40,8 @@ const Estimates = () => {
   });
   const [salesReps, setSalesReps] = useState([]);
   const [locations, setLocations] = useState([]);
+  const [versionControlOpen, setVersionControlOpen] = useState(false);
+  const [selectedEstimateId, setSelectedEstimateId] = useState<string | null>(null);
   const { toast } = useToast();
 
   const estimateStatuses = [
@@ -173,6 +178,20 @@ const Estimates = () => {
     return estimateStatuses.find(s => s.key === status) || estimateStatuses[0];
   };
 
+  const handleVersionHistory = (estimateId: string) => {
+    setSelectedEstimateId(estimateId);
+    setVersionControlOpen(true);
+  };
+
+  const handleVersionRollback = () => {
+    // Refresh estimates after rollback
+    fetchEstimates();
+    toast({
+      title: "Success",
+      description: "Estimate has been updated to the selected version",
+    });
+  };
+
   const renderEstimateCard = (estimate) => {
     const contact = estimate.pipeline_entries?.contacts;
     const profile = estimate.pipeline_entries?.profiles;
@@ -252,6 +271,15 @@ const Estimates = () => {
             <Button size="sm" variant="outline" className="flex-1">
               <Eye className="h-4 w-4 mr-1" />
               View
+            </Button>
+            <Button 
+              size="sm" 
+              variant="outline" 
+              className="flex-1"
+              onClick={() => handleVersionHistory(estimate.id)}
+            >
+              <History className="h-4 w-4 mr-1" />
+              History
             </Button>
             <Button size="sm" variant="outline" className="flex-1">
               <Download className="h-4 w-4 mr-1" />
@@ -397,6 +425,16 @@ const Estimates = () => {
             </div>
           )}
         </div>
+      )}
+
+      {/* Version Control Dialog */}
+      {selectedEstimateId && (
+        <EstimateVersionControl
+          estimateId={selectedEstimateId}
+          open={versionControlOpen}
+          onOpenChange={setVersionControlOpen}
+          onVersionRollback={handleVersionRollback}
+        />
       )}
     </div>
   );
