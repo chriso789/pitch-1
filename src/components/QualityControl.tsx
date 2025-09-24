@@ -99,11 +99,7 @@ export default function QualityControl() {
           .order('name'),
         supabase
           .from('qc_inspections')
-          .select(`
-            *,
-            projects(name, project_number),
-            qc_templates(name)
-          `)
+          .select('*')
           .order('created_at', { ascending: false }),
         supabase
           .from('projects')
@@ -116,7 +112,10 @@ export default function QualityControl() {
       if (projectsResult.error) throw projectsResult.error;
 
       setTemplates(templatesResult.data || []);
-      setInspections(inspectionsResult.data || []);
+      setInspections((inspectionsResult.data || []).map(inspection => ({
+        ...inspection,
+        status: inspection.status as 'in_progress' | 'completed' | 'failed'
+      })));
       setProjects(projectsResult.data || []);
     } catch (error) {
       console.error('Error loading data:', error);
@@ -133,14 +132,16 @@ export default function QualityControl() {
   const createTemplate = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      const user = await supabase.auth.getUser();
       const { error } = await supabase
         .from('qc_templates')
-        .insert([{
+        .insert({
           name: templateForm.name,
           roof_type: templateForm.roof_type,
-          template_data: templateForm.items,
-          created_by: (await supabase.auth.getUser()).data.user?.id
-        }]);
+          template_data: templateForm.items as any,
+          created_by: user.data.user?.id || '',
+          tenant_id: user.data.user?.user_metadata?.tenant_id || ''
+        });
 
       if (error) throw error;
 
@@ -177,16 +178,18 @@ export default function QualityControl() {
         };
       });
 
+      const user = await supabase.auth.getUser();
       const { data, error } = await supabase
         .from('qc_inspections')
-        .insert([{
+        .insert({
           project_id: inspectionForm.project_id,
           template_id: inspectionForm.template_id,
-          inspector_id: (await supabase.auth.getUser()).data.user?.id,
-          inspection_data: initialData,
+          inspector_id: user.data.user?.id || '',
+          inspection_data: initialData as any,
           total_items: template.template_data.length,
-          status: 'in_progress'
-        }])
+          status: 'in_progress',
+          tenant_id: user.data.user?.user_metadata?.tenant_id || ''
+        })
         .select()
         .single();
 
@@ -227,7 +230,7 @@ export default function QualityControl() {
       const template = templates.find(t => t.id === inspection.template_id);
       if (!template) return;
 
-      const results = Object.values(updatedData);
+      const results = Object.values(updatedData) as QCResult[];
       const passedItems = results.filter(r => r.passed).length;
       const criticalFailures = template.template_data
         .filter(item => item.is_critical && !updatedData[item.id]?.passed)

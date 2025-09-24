@@ -68,18 +68,26 @@ export default function SubcontractorManagement() {
           .order('company_name'),
         supabase
           .from('subcontractor_jobs')
-          .select(`
-            *,
-            subcontractors(company_name)
-          `)
+          .select('*')
           .order('scheduled_date', { ascending: false })
       ]);
 
       if (subsResult.error) throw subsResult.error;
       if (jobsResult.error) throw jobsResult.error;
 
+      // Load jobs and match with subcontractor names manually
+      const jobsWithSubs = (jobsResult.data || []).map(job => {
+        const subcontractor = subsResult.data?.find(sub => sub.id === job.subcontractor_id);
+        return {
+          ...job,
+          subcontractors: {
+            company_name: subcontractor?.company_name || 'Unknown'
+          }
+        };
+      });
+
       setSubcontractors(subsResult.data || []);
-      setJobs(jobsResult.data || []);
+      setJobs(jobsWithSubs);
     } catch (error) {
       console.error('Error loading data:', error);
       toast({
