@@ -154,6 +154,12 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
       description: "Automated follow-up campaigns"
     },
     {
+      name: "Duplicate Detection",
+      href: "duplicates", 
+      icon: Users,
+      description: "Find & merge duplicate contacts"
+    },
+    {
       name: "Pipeline Manager",
       href: "enhanced-pipeline",
       icon: Target,

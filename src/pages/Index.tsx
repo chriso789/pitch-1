@@ -19,6 +19,7 @@ import SmartDocs from "@/components/SmartDocs";
 import { LeadSources } from "@/components/LeadSources";
 import { LeadScoring } from "@/components/LeadScoring";
 import { LeadNurturing } from "@/components/LeadNurturing";
+import { DuplicateDetection } from "@/components/DuplicateDetection";
 import { EnhancedPipeline } from "@/components/EnhancedPipeline";
 import { PipelineStageManager } from "@/components/PipelineStageManager";
 import { CollapsibleSidebar } from "@/components/ui/collapsible-sidebar";
@@ -138,6 +139,8 @@ const Index = () => {
         return <LeadScoring />;
       case "lead-nurturing":
         return <LeadNurturing />;
+      case "duplicates":
+        return <DuplicateDetection />;
       case "enhanced-pipeline":
         return <EnhancedPipeline />;
       case "projects":
