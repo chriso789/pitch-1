@@ -3,7 +3,9 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { FilterBar } from "@/components/FilterBar";
 import { Badge } from "@/components/ui/badge";
-import { Users, Phone, Mail, MapPin } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { LeadForm } from "@/components/LeadFormSimple";
+import { Users, Phone, Mail, MapPin, Plus } from "lucide-react";
 import { toast } from "sonner";
 
 interface Contact {
@@ -34,6 +36,7 @@ export const Contacts = () => {
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showLeadForm, setShowLeadForm] = useState(false);
 
   useEffect(() => {
     fetchContacts();
@@ -137,6 +140,10 @@ export const Contacts = () => {
             All contacts sorted by date entered
           </p>
         </div>
+        <Button className="gradient-primary" onClick={() => setShowLeadForm(true)}>
+          <Plus className="h-4 w-4 mr-2" />
+          Add New Lead
+        </Button>
       </div>
 
       <Card className="shadow-soft border-0">
@@ -265,6 +272,15 @@ export const Contacts = () => {
           </div>
         </CardContent>
       </Card>
+
+      {/* Lead Form Dialog */}
+      <LeadForm 
+        open={showLeadForm} 
+        onOpenChange={setShowLeadForm}
+        onLeadCreated={() => {
+          fetchContacts(); // Refresh contacts list
+        }}
+      />
     </div>
   );
 };

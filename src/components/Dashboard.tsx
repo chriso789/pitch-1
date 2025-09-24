@@ -1,5 +1,7 @@
+import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { LeadForm } from "@/components/LeadFormSimple";
 import { 
   DollarSign, 
   TrendingUp, 
@@ -9,10 +11,12 @@ import {
   Wrench,
   CheckCircle,
   Clock,
-  AlertTriangle
+  AlertTriangle,
+  Plus
 } from "lucide-react";
 
 const Dashboard = () => {
+  const [showLeadForm, setShowLeadForm] = useState(false);
   const metrics = [
     {
       title: "Total Revenue",
@@ -195,9 +199,12 @@ const Dashboard = () => {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-primary">
+        <Card 
+          className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-primary"
+          onClick={() => setShowLeadForm(true)}
+        >
           <CardContent className="p-6 text-center text-white">
-            <Users className="h-8 w-8 mx-auto mb-2" />
+            <Plus className="h-8 w-8 mx-auto mb-2" />
             <h3 className="font-semibold mb-1">New Lead</h3>
             <p className="text-sm opacity-90">Add a new customer lead</p>
           </CardContent>
@@ -219,6 +226,16 @@ const Dashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Lead Form Dialog */}
+      <LeadForm 
+        open={showLeadForm} 
+        onOpenChange={setShowLeadForm}
+        onLeadCreated={() => {
+          // Refresh dashboard data if needed
+          console.log('New lead created');
+        }}
+      />
     </div>
   );
 };

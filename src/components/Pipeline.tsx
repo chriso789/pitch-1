@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { LeadForm } from "@/components/LeadFormSimple";
 import { 
   ArrowRight, 
   DollarSign, 
@@ -20,7 +21,8 @@ import {
   Loader2,
   Filter,
   CalendarDays,
-  TrendingUp
+  TrendingUp,
+  Plus
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -30,6 +32,7 @@ const Pipeline = () => {
   const [pipelineData, setPipelineData] = useState({});
   const [loading, setLoading] = useState(true);
   const [updatingEntry, setUpdatingEntry] = useState(null);
+  const [showLeadForm, setShowLeadForm] = useState(false);
   const [filters, setFilters] = useState({
     salesRep: 'all',
     location: 'all',
@@ -360,8 +363,8 @@ const Pipeline = () => {
             Track leads through the complete roofing sales process
           </p>
         </div>
-        <Button className="gradient-primary">
-          <User className="h-4 w-4 mr-2" />
+        <Button className="gradient-primary" onClick={() => setShowLeadForm(true)}>
+          <Plus className="h-4 w-4 mr-2" />
           Add New Lead
         </Button>
       </div>
@@ -478,6 +481,15 @@ const Pipeline = () => {
           ))}
         </div>
       )}
+
+      {/* Lead Form Dialog */}
+      <LeadForm 
+        open={showLeadForm} 
+        onOpenChange={setShowLeadForm}
+        onLeadCreated={() => {
+          fetchPipelineData(); // Refresh pipeline data
+        }}
+      />
     </div>
   );
 };
