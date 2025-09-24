@@ -18,6 +18,7 @@ import { Dialer } from "@/components/Dialer";
 import SmartDocs from "@/components/SmartDocs";
 import { LeadSources } from "@/components/LeadSources";
 import { LeadScoring } from "@/components/LeadScoring";
+import { LeadNurturing } from "@/components/LeadNurturing";
 import { CollapsibleSidebar } from "@/components/ui/collapsible-sidebar";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -133,6 +134,8 @@ const Index = () => {
         return <LeadSources />;
       case "lead-scoring":
         return <LeadScoring />;
+      case "lead-nurturing":
+        return <LeadNurturing />;
       case "projects":
         return <Projects />;
       case "payments":

@@ -364,9 +364,11 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           email: string | null
+          email_engagement_score: number | null
           first_name: string | null
           id: string
           last_name: string | null
+          last_nurturing_activity: string | null
           last_scored_at: string | null
           latitude: number | null
           lead_score: number | null
@@ -375,12 +377,14 @@ export type Database = {
           longitude: number | null
           metadata: Json | null
           notes: string | null
+          nurturing_status: string | null
           phone: string | null
           qualification_status: string | null
           referral_source: string | null
           scoring_details: Json | null
           tags: string[] | null
           tenant_id: string | null
+          total_campaigns_completed: number | null
           type: Database["public"]["Enums"]["contact_type"] | null
           updated_at: string | null
         }
@@ -394,9 +398,11 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           email?: string | null
+          email_engagement_score?: number | null
           first_name?: string | null
           id?: string
           last_name?: string | null
+          last_nurturing_activity?: string | null
           last_scored_at?: string | null
           latitude?: number | null
           lead_score?: number | null
@@ -405,12 +411,14 @@ export type Database = {
           longitude?: number | null
           metadata?: Json | null
           notes?: string | null
+          nurturing_status?: string | null
           phone?: string | null
           qualification_status?: string | null
           referral_source?: string | null
           scoring_details?: Json | null
           tags?: string[] | null
           tenant_id?: string | null
+          total_campaigns_completed?: number | null
           type?: Database["public"]["Enums"]["contact_type"] | null
           updated_at?: string | null
         }
@@ -424,9 +432,11 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           email?: string | null
+          email_engagement_score?: number | null
           first_name?: string | null
           id?: string
           last_name?: string | null
+          last_nurturing_activity?: string | null
           last_scored_at?: string | null
           latitude?: number | null
           lead_score?: number | null
@@ -435,12 +445,14 @@ export type Database = {
           longitude?: number | null
           metadata?: Json | null
           notes?: string | null
+          nurturing_status?: string | null
           phone?: string | null
           qualification_status?: string | null
           referral_source?: string | null
           scoring_details?: Json | null
           tags?: string[] | null
           tenant_id?: string | null
+          total_campaigns_completed?: number | null
           type?: Database["public"]["Enums"]["contact_type"] | null
           updated_at?: string | null
         }
@@ -1364,6 +1376,303 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      message_templates: {
+        Row: {
+          category: string | null
+          content: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_system_template: boolean | null
+          name: string
+          subject: string | null
+          template_type: string
+          tenant_id: string
+          updated_at: string
+          usage_count: number | null
+          variables: Json | null
+        }
+        Insert: {
+          category?: string | null
+          content: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_system_template?: boolean | null
+          name: string
+          subject?: string | null
+          template_type: string
+          tenant_id: string
+          updated_at?: string
+          usage_count?: number | null
+          variables?: Json | null
+        }
+        Update: {
+          category?: string | null
+          content?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_system_template?: boolean | null
+          name?: string
+          subject?: string | null
+          template_type?: string
+          tenant_id?: string
+          updated_at?: string
+          usage_count?: number | null
+          variables?: Json | null
+        }
+        Relationships: []
+      }
+      nurturing_campaign_steps: {
+        Row: {
+          campaign_id: string | null
+          conditions: Json | null
+          content_template: string | null
+          content_variables: Json | null
+          created_at: string
+          delay_hours: number
+          failure_count: number | null
+          id: string
+          is_active: boolean | null
+          step_name: string
+          step_order: number
+          step_type: string
+          success_count: number | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          campaign_id?: string | null
+          conditions?: Json | null
+          content_template?: string | null
+          content_variables?: Json | null
+          created_at?: string
+          delay_hours?: number
+          failure_count?: number | null
+          id?: string
+          is_active?: boolean | null
+          step_name: string
+          step_order: number
+          step_type: string
+          success_count?: number | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          campaign_id?: string | null
+          conditions?: Json | null
+          content_template?: string | null
+          content_variables?: Json | null
+          created_at?: string
+          delay_hours?: number
+          failure_count?: number | null
+          id?: string
+          is_active?: boolean | null
+          step_name?: string
+          step_order?: number
+          step_type?: string
+          success_count?: number | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nurturing_campaign_steps_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "nurturing_campaigns"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nurturing_campaigns: {
+        Row: {
+          conversion_rate: number | null
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          priority: number | null
+          target_audience: Json
+          tenant_id: string
+          total_completed: number | null
+          total_enrolled: number | null
+          trigger_conditions: Json
+          trigger_type: string
+          updated_at: string
+        }
+        Insert: {
+          conversion_rate?: number | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          priority?: number | null
+          target_audience?: Json
+          tenant_id: string
+          total_completed?: number | null
+          total_enrolled?: number | null
+          trigger_conditions?: Json
+          trigger_type: string
+          updated_at?: string
+        }
+        Update: {
+          conversion_rate?: number | null
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          priority?: number | null
+          target_audience?: Json
+          tenant_id?: string
+          total_completed?: number | null
+          total_enrolled?: number | null
+          trigger_conditions?: Json
+          trigger_type?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      nurturing_enrollments: {
+        Row: {
+          campaign_id: string | null
+          completion_date: string | null
+          contact_id: string | null
+          conversion_date: string | null
+          converted: boolean | null
+          created_at: string
+          current_step_id: string | null
+          enrollment_date: string
+          id: string
+          metadata: Json | null
+          next_action_date: string | null
+          status: string
+          tenant_id: string
+          total_steps_completed: number | null
+          updated_at: string
+        }
+        Insert: {
+          campaign_id?: string | null
+          completion_date?: string | null
+          contact_id?: string | null
+          conversion_date?: string | null
+          converted?: boolean | null
+          created_at?: string
+          current_step_id?: string | null
+          enrollment_date?: string
+          id?: string
+          metadata?: Json | null
+          next_action_date?: string | null
+          status?: string
+          tenant_id: string
+          total_steps_completed?: number | null
+          updated_at?: string
+        }
+        Update: {
+          campaign_id?: string | null
+          completion_date?: string | null
+          contact_id?: string | null
+          conversion_date?: string | null
+          converted?: boolean | null
+          created_at?: string
+          current_step_id?: string | null
+          enrollment_date?: string
+          id?: string
+          metadata?: Json | null
+          next_action_date?: string | null
+          status?: string
+          tenant_id?: string
+          total_steps_completed?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nurturing_enrollments_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "nurturing_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nurturing_enrollments_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nurturing_enrollments_current_step_id_fkey"
+            columns: ["current_step_id"]
+            isOneToOne: false
+            referencedRelation: "nurturing_campaign_steps"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      nurturing_step_executions: {
+        Row: {
+          created_at: string
+          enrollment_id: string | null
+          error_message: string | null
+          executed_at: string
+          id: string
+          response_data: Json | null
+          retry_count: number | null
+          scheduled_for: string | null
+          status: string
+          step_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          enrollment_id?: string | null
+          error_message?: string | null
+          executed_at?: string
+          id?: string
+          response_data?: Json | null
+          retry_count?: number | null
+          scheduled_for?: string | null
+          status?: string
+          step_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          enrollment_id?: string | null
+          error_message?: string | null
+          executed_at?: string
+          id?: string
+          response_data?: Json | null
+          retry_count?: number | null
+          scheduled_for?: string | null
+          status?: string
+          step_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "nurturing_step_executions_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "nurturing_enrollments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "nurturing_step_executions_step_id_fkey"
+            columns: ["step_id"]
+            isOneToOne: false
+            referencedRelation: "nurturing_campaign_steps"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       outbox_events: {
         Row: {
@@ -2783,6 +3092,10 @@ export type Database = {
       calculate_lead_score: {
         Args: { contact_data: Json; tenant_id_param: string }
         Returns: number
+      }
+      check_enrollment_eligibility: {
+        Args: { campaign_conditions: Json; contact_data: Json }
+        Returns: boolean
       }
       get_user_tenant_id: {
         Args: Record<PropertyKey, never>
