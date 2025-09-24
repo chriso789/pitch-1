@@ -74,63 +74,35 @@ const Login: React.FC = () => {
   };
 
   useEffect(() => {
-    let mounted = true;
-    
-    const checkInitialSession = async () => {
+    // Check if user is already authenticated and redirect if so
+    const checkAuth = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (mounted) {
-          setConnectionStatus('online');
-          if (session) {
-            console.log('Existing session found, redirecting to dashboard');
-            navigate('/');
-            return;
-          }
-          setSessionCheckComplete(true);
+        if (session) {
+          console.log('User already authenticated, redirecting to dashboard');
+          navigate('/');
+          return;
         }
       } catch (error) {
-        if (mounted) {
-          console.error('Session check failed:', error);
-          setSessionCheckComplete(true);
-          setConnectionStatus('offline');
-        }
+        console.error('Auth check error:', error);
       }
     };
 
-    checkInitialSession();
+    checkAuth();
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
-      if (!mounted) return;
-      
-      console.log('Auth state change:', event, session?.user?.id);
-      
-      if (event === 'SIGNED_IN' && session) {
+    const checkConnection = async () => {
+      try {
+        // Simple connection test
+        await supabase.auth.getSession();
         setConnectionStatus('online');
-        console.log('User signed in successfully, creating profile and redirecting...');
-        try {
-          await ensureUserProfile(session.user);
-          if (mounted) {
-            // Small delay to ensure profile is created
-            setTimeout(() => {
-              navigate('/');
-            }, 500);
-          }
-        } catch (error) {
-          console.error('Error ensuring user profile:', error);
-          if (mounted) {
-            navigate('/');
-          }
-        }
-      } else if (event === 'SIGNED_OUT') {
-        setSessionCheckComplete(true);
-        setConnectionStatus('online');
+      } catch (error) {
+        console.error('Connection check failed:', error);
+        setConnectionStatus('offline');
       }
-    });
-
-    return () => {
-      mounted = false;
-      subscription.unsubscribe();
+      setSessionCheckComplete(true);
     };
+
+    checkConnection();
   }, [navigate]);
 
   const validateEmail = (email: string) => {
@@ -184,6 +156,8 @@ const Login: React.FC = () => {
       }
 
       if (data.user) {
+        console.log('Login successful, user will be handled by Index.tsx');
+        await ensureUserProfile(data.user);
         toast({
           title: "Login successful",
           description: "Welcome back to PITCH CRM!",

@@ -37,81 +37,117 @@ const Index = () => {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
+    let mounted = true;
+    
+    // Set up auth state listener FIRST to avoid missing events
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!mounted) return;
+        
+        console.log('Auth state changed:', event, session?.user?.email);
+        
+        if (event === 'SIGNED_OUT' || !session) {
+          console.log('User signed out, redirecting to login');
+          setSession(null);
+          setUser(null);
+          setProfile(null);
+          setLoading(false);
+          navigate('/login');
+        } else if (event === 'SIGNED_IN' && session) {
+          console.log('User signed in, fetching profile');
+          setSession(session);
+          setUser(session.user);
+          
+          // Fetch user profile asynchronously to avoid deadlock
+          setTimeout(async () => {
+            if (!mounted) return;
+            
+            try {
+              const { data: profileData } = await supabase
+                .from('profiles')
+                .select('*')
+                .eq('id', session.user.id)
+                .maybeSingle();
+                
+              if (mounted && profileData) {
+                setProfile(profileData);
+              }
+            } catch (error) {
+              console.error('Error fetching profile:', error);
+            } finally {
+              if (mounted) {
+                setLoading(false);
+              }
+            }
+          }, 0);
+        }
+      }
+    );
+
+    // THEN check for existing session
     const initAuth = async () => {
+      if (!mounted) return;
+      
       try {
-        // Get initial session
+        console.log('Checking for existing session...');
         const { data: { session } } = await supabase.auth.getSession();
         
+        if (!mounted) return;
+        
         if (!session) {
+          console.log('No existing session, redirecting to login');
+          setLoading(false);
           navigate('/login');
           return;
         }
 
+        console.log('Existing session found:', session.user.email);
         setSession(session);
         setUser(session.user);
 
         // Fetch user profile
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', session.user.id)
-          .maybeSingle();
-          
-        if (profileData) {
-          setProfile(profileData);
+        try {
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('*')
+            .eq('id', session.user.id)
+            .maybeSingle();
+            
+          if (mounted && profileData) {
+            setProfile(profileData);
+          }
+        } catch (error) {
+          console.error('Error fetching profile:', error);
         }
       } catch (error) {
         console.error('Auth initialization error:', error);
-        navigate('/login');
+        if (mounted) {
+          navigate('/login');
+        }
       } finally {
-        setLoading(false);
+        if (mounted) {
+          setLoading(false);
+        }
       }
     };
 
     initAuth();
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
-        console.log('Auth state changed:', event, session?.user?.email);
-        
-        if (event === 'SIGNED_OUT' || !session) {
-          setSession(null);
-          setUser(null);
-          setProfile(null);
-          navigate('/login');
-        } else if (event === 'SIGNED_IN' && session) {
-          setSession(session);
-          setUser(session.user);
-          
-          // Fetch user profile
-          try {
-            const { data: profileData } = await supabase
-              .from('profiles')
-              .select('*')
-              .eq('id', session.user.id)
-              .maybeSingle();
-              
-            if (profileData) {
-              setProfile(profileData);
-            }
-          } catch (error) {
-            console.error('Error fetching profile:', error);
-          }
-        }
-        setLoading(false);
-      }
-    );
-
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, [navigate]);
 
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-background via-muted/20 to-primary/5">
-        <div className="flex items-center space-x-2">
-          <Loader2 className="h-6 w-6 animate-spin" />
-          <span>Loading PITCH...</span>
+        <div className="flex flex-col items-center space-y-4">
+          <div className="flex items-center space-x-2">
+            <Loader2 className="h-6 w-6 animate-spin" />
+            <span>Loading PITCH...</span>
+          </div>
+          <p className="text-sm text-muted-foreground">Authenticating and setting up your workspace</p>
         </div>
       </div>
     );
