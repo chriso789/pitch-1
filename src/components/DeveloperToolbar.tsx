@@ -13,7 +13,9 @@ import {
   Eye,
   EyeOff,
   Settings,
-  Layers
+  Layers,
+  Undo2,
+  RotateCcw
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -25,12 +27,25 @@ interface DeveloperToolbarProps {
 
 type EditMode = 'none' | 'select' | 'move' | 'code' | 'delete';
 
+interface ElementChange {
+  element: HTMLElement;
+  originalStyles: {
+    position: string;
+    left: string;
+    top: string;
+    zIndex: string;
+  };
+  timestamp: number;
+}
+
 export const DeveloperToolbar = ({ className }: DeveloperToolbarProps) => {
   const [isVisible, setIsVisible] = useState(false);
   const [isDeveloper, setIsDeveloper] = useState(false);
   const [editMode, setEditMode] = useState<EditMode>('none');
   const [selectedElement, setSelectedElement] = useState<Element | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [changeHistory, setChangeHistory] = useState<ElementChange[]>([]);
+  const [hoveredElement, setHoveredElement] = useState<Element | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -46,6 +61,70 @@ export const DeveloperToolbar = ({ className }: DeveloperToolbarProps) => {
 
     return () => disableEditMode();
   }, [editMode]);
+
+  const saveChange = (element: HTMLElement) => {
+    const change: ElementChange = {
+      element,
+      originalStyles: {
+        position: element.style.position || '',
+        left: element.style.left || '',
+        top: element.style.top || '',
+        zIndex: element.style.zIndex || '',
+      },
+      timestamp: Date.now()
+    };
+    setChangeHistory(prev => [...prev, change]);
+  };
+
+  const undoLastChange = () => {
+    if (changeHistory.length === 0) {
+      toast({
+        title: "Nothing to Undo",
+        description: "No changes to revert.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const lastChange = changeHistory[changeHistory.length - 1];
+    const { element, originalStyles } = lastChange;
+
+    // Restore original styles
+    element.style.position = originalStyles.position;
+    element.style.left = originalStyles.left;
+    element.style.top = originalStyles.top;
+    element.style.zIndex = originalStyles.zIndex;
+
+    setChangeHistory(prev => prev.slice(0, -1));
+    toast({
+      title: "Change Undone",
+      description: "Last modification has been reverted.",
+    });
+  };
+
+  const restartAll = () => {
+    if (changeHistory.length === 0) {
+      toast({
+        title: "Nothing to Reset",
+        description: "No changes to restart.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    changeHistory.forEach(({ element, originalStyles }) => {
+      element.style.position = originalStyles.position;
+      element.style.left = originalStyles.left;
+      element.style.top = originalStyles.top;
+      element.style.zIndex = originalStyles.zIndex;
+    });
+
+    setChangeHistory([]);
+    toast({
+      title: "Layout Reset",
+      description: "All changes have been reverted.",
+    });
+  };
 
   const checkDeveloperStatus = async () => {
     try {
@@ -81,21 +160,78 @@ export const DeveloperToolbar = ({ className }: DeveloperToolbarProps) => {
         outline-offset: 2px !important;
         cursor: pointer !important;
         position: relative !important;
+        transition: all 0.2s ease !important;
+      }
+      .dev-selectable:before {
+        content: '';
+        position: absolute !important;
+        top: -4px !important;
+        left: -4px !important;
+        right: -4px !important;
+        bottom: -4px !important;
+        background: hsla(var(--primary), 0.05) !important;
+        border: 1px solid hsl(var(--primary)) !important;
+        border-radius: 4px !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+        transition: opacity 0.2s ease !important;
+        z-index: 999 !important;
       }
       .dev-selected {
         outline: 3px solid hsl(var(--destructive)) !important;
         outline-offset: 2px !important;
+        background: hsla(var(--destructive), 0.1) !important;
+        box-shadow: 0 0 0 4px hsla(var(--destructive), 0.2) !important;
+      }
+      .dev-selected:before {
+        opacity: 1 !important;
+        border-color: hsl(var(--destructive)) !important;
         background: hsla(var(--destructive), 0.1) !important;
       }
       .dev-hover {
         outline: 2px solid hsl(var(--primary)) !important;
         outline-offset: 2px !important;
       }
+      .dev-hover:before {
+        opacity: 1 !important;
+      }
       .dev-moveable {
         cursor: move !important;
       }
       .dev-deletable {
         cursor: crosshair !important;
+      }
+      .dev-moveable:hover:after {
+        content: 'DRAG TO MOVE' !important;
+        position: absolute !important;
+        top: -30px !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        background: hsl(var(--primary)) !important;
+        color: hsl(var(--primary-foreground)) !important;
+        padding: 4px 8px !important;
+        border-radius: 4px !important;
+        font-size: 11px !important;
+        font-weight: 600 !important;
+        z-index: 10000 !important;
+        pointer-events: none !important;
+        white-space: nowrap !important;
+      }
+      .dev-deletable:hover:after {
+        content: 'CLICK TO DELETE' !important;
+        position: absolute !important;
+        top: -30px !important;
+        left: 50% !important;
+        transform: translateX(-50%) !important;
+        background: hsl(var(--destructive)) !important;
+        color: hsl(var(--destructive-foreground)) !important;
+        padding: 4px 8px !important;
+        border-radius: 4px !important;
+        font-size: 11px !important;
+        font-weight: 600 !important;
+        z-index: 10000 !important;
+        pointer-events: none !important;
+        white-space: nowrap !important;
       }
     `;
     document.head.appendChild(style);
@@ -124,22 +260,31 @@ export const DeveloperToolbar = ({ className }: DeveloperToolbarProps) => {
   };
 
   const makeElementsSelectable = () => {
-    // Target common UI elements but exclude the developer toolbar itself
+    // Target more specific UI elements including nested containers
     const selectors = [
       'button:not([data-dev-toolbar])',
       '.card',
-      'nav',
-      'header',
-      'main > div',
-      '[role="button"]',
-      '.flex',
-      '.grid'
+      '.flex > *:not([data-dev-toolbar])',
+      '.grid > *:not([data-dev-toolbar])',
+      'nav *:not([data-dev-toolbar])',
+      'header *:not([data-dev-toolbar])',
+      'main > div > *:not([data-dev-toolbar])',
+      '[role="button"]:not([data-dev-toolbar])',
+      'input:not([data-dev-toolbar])',
+      'textarea:not([data-dev-toolbar])',
+      '.sidebar-menu-button:not([data-dev-toolbar])',
+      'div[class*="container"]:not([data-dev-toolbar]) > *',
+      'section:not([data-dev-toolbar]) > *',
+      'article:not([data-dev-toolbar]) > *'
     ];
 
     selectors.forEach(selector => {
       document.querySelectorAll(selector).forEach(el => {
         // Skip if it's part of the developer toolbar
         if (el.closest('[data-dev-toolbar]')) return;
+        
+        // Skip if parent is already selectable to avoid nested selection
+        if (el.parentElement?.classList.contains('dev-selectable')) return;
         
         el.classList.add('dev-selectable');
         
@@ -211,6 +356,11 @@ export const DeveloperToolbar = ({ className }: DeveloperToolbarProps) => {
   };
 
   const handleMoveElement = (element: Element) => {
+    const htmlElement = element as HTMLElement;
+    
+    // Save the original state before making changes
+    saveChange(htmlElement);
+    
     // Simple drag functionality
     let isDragging = false;
     let startX = 0;
@@ -218,7 +368,6 @@ export const DeveloperToolbar = ({ className }: DeveloperToolbarProps) => {
     let elementX = 0;
     let elementY = 0;
 
-    const htmlElement = element as HTMLElement;
     htmlElement.style.position = 'relative';
     htmlElement.style.zIndex = '1000';
 
@@ -360,6 +509,32 @@ Content: ${element.textContent?.substring(0, 100) || 'none'}...
                 <span className="text-xs">{tool.label}</span>
               </Button>
             ))}
+          </div>
+
+          {/* Undo and Restart Controls */}
+          <div className="mt-3 flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={undoLastChange}
+              disabled={changeHistory.length === 0}
+              className="flex-1"
+              data-dev-toolbar="true"
+            >
+              <Undo2 className="h-3 w-3 mr-1" />
+              <span className="text-xs">Undo ({changeHistory.length})</span>
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={restartAll}
+              disabled={changeHistory.length === 0}
+              className="flex-1"
+              data-dev-toolbar="true"
+            >
+              <RotateCcw className="h-3 w-3 mr-1" />
+              <span className="text-xs">Reset</span>
+            </Button>
           </div>
 
           {editMode !== 'none' && (
