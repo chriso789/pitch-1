@@ -12,7 +12,7 @@ import { Users, Plus, Edit, Trash2, Shield, Settings, Eye, MapPin } from "lucide
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import FeaturePermissions from './FeaturePermissions';
-import { UserProfile } from './UserProfile';
+import { EnhancedUserProfile } from './EnhancedUserProfile';
 import { UserLocationAssignments } from './UserLocationAssignments';
 
 interface User {

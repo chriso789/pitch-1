@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Progress } from "@/components/ui/progress";
 import { 
   User, 
   Phone, 
@@ -19,7 +20,11 @@ import {
   ArrowLeft,
   Edit3,
   Save,
-  X
+  X,
+  DollarSign,
+  TrendingUp,
+  Target,
+  Upload
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -42,6 +47,9 @@ interface UserData {
   is_developer: boolean;
   metadata: any;
   avatar_url?: string;
+  photo_url?: string;
+  personal_overhead_rate?: number;
+  pay_structure_display?: any;
 }
 
 export const UserProfile: React.FC<UserProfileProps> = ({ userId, onClose }) => {
@@ -113,14 +121,14 @@ export const UserProfile: React.FC<UserProfileProps> = ({ userId, onClose }) => 
     }
   };
 
-  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file || !user) return;
 
     setUploading(true);
     try {
       const fileExt = file.name.split('.').pop();
-      const fileName = `${userId}/avatar.${fileExt}`;
+      const fileName = `${userId}/photo.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from('avatars')
@@ -134,21 +142,21 @@ export const UserProfile: React.FC<UserProfileProps> = ({ userId, onClose }) => 
 
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({ avatar_url: publicUrl } as any)
+        .update({ photo_url: publicUrl, avatar_url: publicUrl } as any)
         .eq('id', userId);
 
       if (updateError) throw updateError;
 
-      setUser({ ...user, avatar_url: publicUrl });
+      setUser({ ...user, photo_url: publicUrl, avatar_url: publicUrl });
       toast({
-        title: "Avatar Updated",
-        description: "Profile picture has been updated successfully.",
+        title: "Photo Updated",
+        description: "Profile photo has been updated successfully.",
       });
     } catch (error) {
-      console.error('Error uploading avatar:', error);
+      console.error('Error uploading photo:', error);
       toast({
         title: "Error",
-        description: "Failed to upload avatar.",
+        description: "Failed to upload photo.",
         variant: "destructive",
       });
     } finally {
@@ -392,6 +400,154 @@ export const UserProfile: React.FC<UserProfileProps> = ({ userId, onClose }) => 
                 <Label htmlFor="title">Title</Label>
                 <Input
                   id="title"
+                  value={user.title}
+                  onChange={(e) => setUser({ ...user, title: e.target.value })}
+                  disabled={!editing}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="phone">Phone</Label>
+                <Input
+                  id="phone"
+                  value={user.phone}
+                  onChange={(e) => setUser({ ...user, phone: e.target.value })}
+                  disabled={!editing}
+                />
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="company">Company</Label>
+                <Input
+                  id="company"
+                  value={user.company_name}
+                  onChange={(e) => setUser({ ...user, company_name: e.target.value })}
+                  disabled={!editing}
+                />
+              </div>
+
+              {user.role === 'rep' && (
+                <div className="space-y-2">
+                  <Label htmlFor="overhead_rate">Personal Overhead Rate (%)</Label>
+                  <Input
+                    id="overhead_rate"
+                    type="number"
+                    step="0.1"
+                    value={user.personal_overhead_rate || 0}
+                    onChange={(e) => setUser({ ...user, personal_overhead_rate: parseFloat(e.target.value) || 0 })}
+                    disabled={!editing}
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    This rate will be applied to all projects for commission calculations
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Sales Rep Pay Structure Display */}
+          {user.role === 'rep' && (
+            <>
+              <hr />
+              <div className="space-y-4">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <DollarSign className="h-5 w-5" />
+                  Pay Structure & Performance
+                </h3>
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  {/* Commission Structure */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Commission Structure</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Personal Overhead Rate:</span>
+                        <span className="font-semibold">{user.personal_overhead_rate || 0}%</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Payment Method:</span>
+                        <Badge variant="outline">Percentage of Sales</Badge>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-muted-foreground">Commission Tier:</span>
+                        <Badge>Standard 5%</Badge>
+                      </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Performance Metrics */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Performance Metrics</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                      {performanceMetrics ? (
+                        <>
+                          <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground">Total Sales:</span>
+                            <span className="font-semibold">${performanceMetrics.total_sales?.toLocaleString() || 0}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground">Commissions Earned:</span>
+                            <span className="font-semibold text-success">${performanceMetrics.total_commission?.toLocaleString() || 0}</span>
+                          </div>
+                          <div className="flex justify-between items-center">
+                            <span className="text-muted-foreground">Conversion Rate:</span>
+                            <span className="font-semibold">{performanceMetrics.conversion_rate || 0}%</span>
+                          </div>
+                        </>
+                      ) : (
+                        <p className="text-muted-foreground text-sm">Performance data loading...</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                </div>
+
+                {/* Commission History */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-base">Recent Commission History</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {commissionHistory.length > 0 ? (
+                      <div className="space-y-2">
+                        {commissionHistory.slice(0, 5).map((commission) => (
+                          <div key={commission.id} className="flex justify-between items-center p-2 bg-muted/30 rounded">
+                            <div>
+                              <p className="font-medium text-sm">
+                                Project Commission
+                              </p>
+                              <p className="text-xs text-muted-foreground">
+                                {new Date(commission.calculated_at).toLocaleDateString()}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <p className="font-semibold text-success">
+                                ${commission.commission_amount.toLocaleString()}
+                              </p>
+                              <Badge variant="outline" className="text-xs">
+                                {commission.status}
+                              </Badge>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground text-sm text-center py-4">
+                        No commission history available yet
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </>
+          )}
+              <div className="space-y-2">
+                <Label htmlFor="title">Title</Label>
+                <Input
+                  id="title"
                   value={user.title || ""}
                   onChange={(e) => setUser({ ...user, title: e.target.value })}
                   disabled={!editing}
@@ -443,7 +599,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ userId, onClose }) => 
         ref={fileInputRef}
         type="file"
         accept="image/*"
-        onChange={handleAvatarUpload}
+        onChange={handlePhotoUpload}
         className="hidden"
       />
 
