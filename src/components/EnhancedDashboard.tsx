@@ -3,6 +3,7 @@ import { BackButton } from "./BackButton";
 import { FilterBar } from "./FilterBar";
 import ProjectDetails from "./ProjectDetails";
 import Leaderboard from "./Leaderboard";
+import { LocationSwitcher } from "./LocationSwitcher";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -366,6 +367,10 @@ const EnhancedDashboard = ({ onBack }: EnhancedDashboardProps) => {
           </p>
         </div>
         <div className="flex items-center gap-3">
+          <LocationSwitcher onLocationChange={(locationId) => {
+            // Re-fetch dashboard data when location changes
+            fetchDashboardData();
+          }} />
           <Button size="sm" className="h-8 w-8 rounded-full p-0 gradient-primary">
             <Users className="h-4 w-4" />
           </Button>

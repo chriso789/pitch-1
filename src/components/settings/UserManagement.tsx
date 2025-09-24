@@ -8,11 +8,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Plus, Edit, Trash2, Shield, Settings, Eye } from "lucide-react";
+import { Users, Plus, Edit, Trash2, Shield, Settings, Eye, MapPin } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import FeaturePermissions from './FeaturePermissions';
 import { UserProfile } from './UserProfile';
+import { UserLocationAssignments } from './UserLocationAssignments';
 
 interface User {
   id: string;
@@ -247,6 +248,10 @@ export const UserManagement = () => {
           <Users className="h-4 w-4" />
           User Management
         </TabsTrigger>
+        <TabsTrigger value="locations" className="flex items-center gap-2">
+          <MapPin className="h-4 w-4" />
+          Location Access
+        </TabsTrigger>
         <TabsTrigger value="permissions" className="flex items-center gap-2">
           <Settings className="h-4 w-4" />
           Feature Permissions
@@ -419,6 +424,10 @@ export const UserManagement = () => {
             </Table>
           </CardContent>
         </Card>
+      </TabsContent>
+
+      <TabsContent value="locations">
+        <UserLocationAssignments />
       </TabsContent>
 
       <TabsContent value="permissions">

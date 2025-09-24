@@ -468,6 +468,7 @@ export type Database = {
           lead_score: number | null
           lead_source: string | null
           lead_source_details: Json | null
+          location_id: string | null
           longitude: number | null
           metadata: Json | null
           notes: string | null
@@ -505,6 +506,7 @@ export type Database = {
           lead_score?: number | null
           lead_source?: string | null
           lead_source_details?: Json | null
+          location_id?: string | null
           longitude?: number | null
           metadata?: Json | null
           notes?: string | null
@@ -542,6 +544,7 @@ export type Database = {
           lead_score?: number | null
           lead_source?: string | null
           lead_source_details?: Json | null
+          location_id?: string | null
           longitude?: number | null
           metadata?: Json | null
           notes?: string | null
@@ -1562,6 +1565,57 @@ export type Database = {
         }
         Relationships: []
       }
+      locations: {
+        Row: {
+          address_city: string | null
+          address_state: string | null
+          address_street: string | null
+          address_zip: string | null
+          created_at: string
+          created_by: string | null
+          email: string | null
+          id: string
+          is_active: boolean
+          manager_id: string | null
+          name: string
+          phone: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          address_city?: string | null
+          address_state?: string | null
+          address_street?: string | null
+          address_zip?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          manager_id?: string | null
+          name: string
+          phone?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          address_city?: string | null
+          address_state?: string | null
+          address_street?: string | null
+          address_zip?: string | null
+          created_at?: string
+          created_by?: string | null
+          email?: string | null
+          id?: string
+          is_active?: boolean
+          manager_id?: string | null
+          name?: string
+          phone?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       message_templates: {
         Row: {
           category: string | null
@@ -2242,6 +2296,7 @@ export type Database = {
           id: string
           lead_quality_score: number | null
           lead_temperature: string | null
+          location_id: string | null
           marketing_campaign: string | null
           metadata: Json | null
           notes: string | null
@@ -2266,6 +2321,7 @@ export type Database = {
           id?: string
           lead_quality_score?: number | null
           lead_temperature?: string | null
+          location_id?: string | null
           marketing_campaign?: string | null
           metadata?: Json | null
           notes?: string | null
@@ -2290,6 +2346,7 @@ export type Database = {
           id?: string
           lead_quality_score?: number | null
           lead_temperature?: string | null
+          location_id?: string | null
           marketing_campaign?: string | null
           metadata?: Json | null
           notes?: string | null
@@ -2851,6 +2908,7 @@ export type Database = {
           description: string | null
           estimated_completion_date: string | null
           id: string
+          location_id: string | null
           metadata: Json | null
           name: string
           pipeline_entry_id: string | null
@@ -2868,6 +2926,7 @@ export type Database = {
           description?: string | null
           estimated_completion_date?: string | null
           id?: string
+          location_id?: string | null
           metadata?: Json | null
           name: string
           pipeline_entry_id?: string | null
@@ -2885,6 +2944,7 @@ export type Database = {
           description?: string | null
           estimated_completion_date?: string | null
           id?: string
+          location_id?: string | null
           metadata?: Json | null
           name?: string
           pipeline_entry_id?: string | null
@@ -3866,6 +3926,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      user_location_assignments: {
+        Row: {
+          assigned_at: string
+          assigned_by: string | null
+          id: string
+          is_active: boolean
+          location_id: string
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          assigned_at?: string
+          assigned_by?: string | null
+          id?: string
+          is_active?: boolean
+          location_id: string
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          assigned_at?: string
+          assigned_by?: string | null
+          id?: string
+          is_active?: boolean
+          location_id?: string
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: []
       }
       vendor_order_items: {
         Row: {

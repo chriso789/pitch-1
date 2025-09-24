@@ -7,6 +7,7 @@ import { EstimateBuilder } from "./EstimateBuilder";
 import { GeneralSettings } from "./settings/GeneralSettings";
 import { UserManagement } from "./settings/UserManagement";
 import { DeveloperAccess } from "./settings/DeveloperAccess";
+import { LocationManagement } from "./settings/LocationManagement";
 import SupplierManagement from "./SupplierManagement";
 import VoiceInterface from "./VoiceInterface";
 import { supabase } from "@/integrations/supabase/client";
@@ -122,19 +123,7 @@ export const Settings = () => {
         </TabsContent>
 
         <TabsContent value="company" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Building className="h-5 w-5 text-primary" />
-                Company Information
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-center py-8 text-muted-foreground">
-                Company settings coming soon...
-              </div>
-            </CardContent>
-          </Card>
+          <LocationManagement />
         </TabsContent>
 
         <TabsContent value="users" className="space-y-6">
