@@ -578,6 +578,7 @@ export type Database = {
           address_verification_data: Json | null
           address_zip: string | null
           company_name: string | null
+          contact_number: string | null
           created_at: string | null
           created_by: string | null
           created_by_ghost: string | null
@@ -616,6 +617,7 @@ export type Database = {
           address_verification_data?: Json | null
           address_zip?: string | null
           company_name?: string | null
+          contact_number?: string | null
           created_at?: string | null
           created_by?: string | null
           created_by_ghost?: string | null
@@ -654,6 +656,7 @@ export type Database = {
           address_verification_data?: Json | null
           address_zip?: string | null
           company_name?: string | null
+          contact_number?: string | null
           created_at?: string | null
           created_by?: string | null
           created_by_ghost?: string | null
@@ -1657,6 +1660,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      jobs: {
+        Row: {
+          contact_id: string
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          job_number: string
+          name: string
+          project_id: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          contact_id: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          job_number: string
+          name: string
+          project_id?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          contact_id?: string
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          job_number?: string
+          name?: string
+          project_id?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       lead_qualification_statuses: {
         Row: {
@@ -5278,6 +5323,14 @@ export type Database = {
       check_subcontractor_capacity: {
         Args: { check_date: string; sub_id: string; tenant_id_param: string }
         Returns: boolean
+      }
+      generate_contact_number: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      generate_job_number: {
+        Args: Record<PropertyKey, never>
+        Returns: string
       }
       get_user_tenant_id: {
         Args: Record<PropertyKey, never>

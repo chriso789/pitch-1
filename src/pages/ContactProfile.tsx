@@ -3,6 +3,10 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Label } from "@/components/ui/label";
 import { BackButton } from "@/components/BackButton";
 import {
   User,
@@ -13,7 +17,9 @@ import {
   Home,
   AlertCircle,
   Loader2,
-  Edit
+  Edit,
+  Plus,
+  Briefcase
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -24,7 +30,13 @@ const ContactProfile = () => {
   const { toast } = useToast();
   const [contact, setContact] = useState<any>(null);
   const [pipelineEntry, setPipelineEntry] = useState<any>(null);
+  const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [isCreatingJob, setIsCreatingJob] = useState(false);
+  const [jobForm, setJobForm] = useState({
+    name: '',
+    description: ''
+  });
 
   useEffect(() => {
     if (id) {
@@ -65,6 +77,17 @@ const ContactProfile = () => {
         setPipelineEntry(pipelineData[0]);
       }
 
+      // Fetch jobs for this contact
+      const { data: jobsData } = await supabase
+        .from('jobs')
+        .select('*')
+        .eq('contact_id', id)
+        .order('created_at', { ascending: false });
+
+      if (jobsData) {
+        setJobs(jobsData);
+      }
+
     } catch (error) {
       console.error('Error:', error);
       toast({
@@ -74,6 +97,61 @@ const ContactProfile = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleCreateJob = async () => {
+    if (!jobForm.name.trim()) {
+      toast({
+        title: "Error",
+        description: "Job name is required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setIsCreatingJob(true);
+
+      const { data: tenantData } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', (await supabase.auth.getUser()).data.user?.id)
+        .single();
+
+      const { data: jobData, error } = await supabase
+        .from('jobs')
+        .insert({
+          contact_id: id,
+          name: jobForm.name,
+          description: jobForm.description || null,
+          tenant_id: tenantData?.tenant_id,
+          created_by: (await supabase.auth.getUser()).data.user?.id
+        })
+        .select()
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      toast({
+        title: "Success",
+        description: `Job ${jobData.job_number} created successfully`,
+      });
+
+      setJobs(prev => [jobData, ...prev]);
+      setJobForm({ name: '', description: '' });
+      
+    } catch (error) {
+      console.error('Error creating job:', error);
+      toast({
+        title: "Error",
+        description: "Failed to create job",
+        variant: "destructive",
+      });
+    } finally {
+      setIsCreatingJob(false);
     }
   };
 
@@ -120,10 +198,60 @@ const ContactProfile = () => {
               <h1 className="text-2xl font-bold">
                 {contact.first_name} {contact.last_name}
               </h1>
-              <p className="text-muted-foreground">{contact.company_name || 'Homeowner'}</p>
+              <div className="flex items-center gap-3">
+                <p className="text-muted-foreground">{contact.company_name || 'Homeowner'}</p>
+                {contact.contact_number && (
+                  <Badge variant="secondary">#{contact.contact_number}</Badge>
+                )}
+              </div>
             </div>
           </div>
         </div>
+        <Dialog>
+          <DialogTrigger asChild>
+            <Button className="flex items-center gap-2">
+              <Plus className="h-4 w-4" />
+              Add Job
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Create New Job</DialogTitle>
+              <DialogDescription>
+                Create a new job for {contact.first_name} {contact.last_name}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="job-name">Job Name</Label>
+                <Input
+                  id="job-name"
+                  placeholder="Enter job name"
+                  value={jobForm.name}
+                  onChange={(e) => setJobForm(prev => ({ ...prev, name: e.target.value }))}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="job-description">Description (Optional)</Label>
+                <Textarea
+                  id="job-description"
+                  placeholder="Enter job description"
+                  value={jobForm.description}
+                  onChange={(e) => setJobForm(prev => ({ ...prev, description: e.target.value }))}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button 
+                onClick={handleCreateJob} 
+                disabled={isCreatingJob || !jobForm.name.trim()}
+              >
+                {isCreatingJob && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Create Job
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -183,6 +311,42 @@ const ContactProfile = () => {
           </Card>
         )}
       </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Briefcase className="h-5 w-5" />
+            Jobs ({jobs.length})
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {jobs.length > 0 ? (
+            <div className="space-y-3">
+              {jobs.map((job) => (
+                <div key={job.id} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-medium">{job.name}</span>
+                      <Badge variant="outline">{job.job_number}</Badge>
+                      <Badge variant={job.status === 'pending' ? 'secondary' : 'default'}>
+                        {job.status}
+                      </Badge>
+                    </div>
+                    {job.description && (
+                      <p className="text-sm text-muted-foreground mt-1">{job.description}</p>
+                    )}
+                  </div>
+                  <Button variant="outline" size="sm">
+                    View Details
+                  </Button>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-muted-foreground">No jobs created yet.</p>
+          )}
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader>
