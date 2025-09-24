@@ -126,7 +126,8 @@ const ContactProfile = () => {
           name: jobForm.name,
           description: jobForm.description || null,
           tenant_id: tenantData?.tenant_id,
-          created_by: (await supabase.auth.getUser()).data.user?.id
+          created_by: (await supabase.auth.getUser()).data.user?.id,
+          job_number: '' // Will be overwritten by trigger
         })
         .select()
         .single();

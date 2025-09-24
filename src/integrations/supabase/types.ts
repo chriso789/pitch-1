@@ -1668,7 +1668,7 @@ export type Database = {
           created_by: string | null
           description: string | null
           id: string
-          job_number: string
+          job_number: string | null
           name: string
           project_id: string | null
           status: string
@@ -1681,7 +1681,7 @@ export type Database = {
           created_by?: string | null
           description?: string | null
           id?: string
-          job_number: string
+          job_number?: string | null
           name: string
           project_id?: string | null
           status?: string
@@ -1694,7 +1694,7 @@ export type Database = {
           created_by?: string | null
           description?: string | null
           id?: string
-          job_number?: string
+          job_number?: string | null
           name?: string
           project_id?: string | null
           status?: string
