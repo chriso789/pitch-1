@@ -2488,6 +2488,123 @@ export type Database = {
         }
         Relationships: []
       }
+      price_cache: {
+        Row: {
+          branch_code: string | null
+          created_at: string | null
+          currency: string | null
+          effective_date: string | null
+          expires_at: string | null
+          id: string
+          last_seen_at: string | null
+          price: number
+          product_id: string
+          quantity_break: number | null
+          source_data: Json | null
+          source_type: string
+          tenant_id: string
+          updated_at: string | null
+          vendor_id: string
+        }
+        Insert: {
+          branch_code?: string | null
+          created_at?: string | null
+          currency?: string | null
+          effective_date?: string | null
+          expires_at?: string | null
+          id?: string
+          last_seen_at?: string | null
+          price: number
+          product_id: string
+          quantity_break?: number | null
+          source_data?: Json | null
+          source_type: string
+          tenant_id: string
+          updated_at?: string | null
+          vendor_id: string
+        }
+        Update: {
+          branch_code?: string | null
+          created_at?: string | null
+          currency?: string | null
+          effective_date?: string | null
+          expires_at?: string | null
+          id?: string
+          last_seen_at?: string | null
+          price?: number
+          product_id?: string
+          quantity_break?: number | null
+          source_data?: Json | null
+          source_type?: string
+          tenant_id?: string
+          updated_at?: string | null
+          vendor_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "price_cache_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "price_cache_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      products: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          manufacturer: string | null
+          name: string
+          sku: string
+          specifications: Json | null
+          tenant_id: string
+          unit_of_measure: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          manufacturer?: string | null
+          name: string
+          sku: string
+          specifications?: Json | null
+          tenant_id: string
+          unit_of_measure?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          manufacturer?: string | null
+          name?: string
+          sku?: string
+          specifications?: Json | null
+          tenant_id?: string
+          unit_of_measure?: string | null
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -3638,6 +3755,243 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      vendor_order_items: {
+        Row: {
+          created_at: string | null
+          id: string
+          line_total: number | null
+          order_id: string
+          product_id: string
+          quantity: number
+          tenant_id: string
+          unit_price: number
+          vendor_sku: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          line_total?: number | null
+          order_id: string
+          product_id: string
+          quantity: number
+          tenant_id: string
+          unit_price: number
+          vendor_sku?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          line_total?: number | null
+          order_id?: string
+          product_id?: string
+          quantity?: number
+          tenant_id?: string
+          unit_price?: number
+          vendor_sku?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_order_items_order_id_fkey"
+            columns: ["order_id"]
+            isOneToOne: false
+            referencedRelation: "vendor_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_order_items_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendor_orders: {
+        Row: {
+          actual_delivery_date: string | null
+          created_at: string | null
+          created_by: string | null
+          expected_delivery_date: string | null
+          id: string
+          notes: string | null
+          order_data: Json | null
+          order_date: string | null
+          order_number: string
+          project_id: string | null
+          shipping_address: Json | null
+          status: string | null
+          tenant_id: string
+          total_amount: number | null
+          tracking_data: Json | null
+          updated_at: string | null
+          vendor_id: string
+          vendor_order_id: string | null
+        }
+        Insert: {
+          actual_delivery_date?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          expected_delivery_date?: string | null
+          id?: string
+          notes?: string | null
+          order_data?: Json | null
+          order_date?: string | null
+          order_number: string
+          project_id?: string | null
+          shipping_address?: Json | null
+          status?: string | null
+          tenant_id: string
+          total_amount?: number | null
+          tracking_data?: Json | null
+          updated_at?: string | null
+          vendor_id: string
+          vendor_order_id?: string | null
+        }
+        Update: {
+          actual_delivery_date?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          expected_delivery_date?: string | null
+          id?: string
+          notes?: string | null
+          order_data?: Json | null
+          order_date?: string | null
+          order_number?: string
+          project_id?: string | null
+          shipping_address?: Json | null
+          status?: string | null
+          tenant_id?: string
+          total_amount?: number | null
+          tracking_data?: Json | null
+          updated_at?: string | null
+          vendor_id?: string
+          vendor_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_orders_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_orders_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendor_products: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_active: boolean | null
+          is_preferred: boolean | null
+          lead_time_days: number | null
+          minimum_order_qty: number | null
+          product_id: string
+          tenant_id: string
+          updated_at: string | null
+          vendor_id: string
+          vendor_product_name: string | null
+          vendor_sku: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_preferred?: boolean | null
+          lead_time_days?: number | null
+          minimum_order_qty?: number | null
+          product_id: string
+          tenant_id: string
+          updated_at?: string | null
+          vendor_id: string
+          vendor_product_name?: string | null
+          vendor_sku?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_preferred?: boolean | null
+          lead_time_days?: number | null
+          minimum_order_qty?: number | null
+          product_id?: string
+          tenant_id?: string
+          updated_at?: string | null
+          vendor_id?: string
+          vendor_product_name?: string | null
+          vendor_sku?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "vendor_products_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "vendor_products_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      vendors: {
+        Row: {
+          address: Json | null
+          api_config: Json | null
+          code: string
+          contact_email: string | null
+          contact_phone: string | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          address?: Json | null
+          api_config?: Json | null
+          code: string
+          contact_email?: string | null
+          contact_phone?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          address?: Json | null
+          api_config?: Json | null
+          code?: string
+          contact_email?: string | null
+          contact_phone?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
       }
     }
     Views: {
