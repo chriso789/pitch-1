@@ -163,6 +163,68 @@ export type Database = {
           },
         ]
       }
+      automation_rules: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          delay_minutes: number | null
+          description: string | null
+          execution_count: number | null
+          id: string
+          is_active: boolean | null
+          last_executed_at: string | null
+          name: string
+          recipient_rules: Json | null
+          template_id: string | null
+          tenant_id: string
+          trigger_conditions: Json | null
+          trigger_event: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          delay_minutes?: number | null
+          description?: string | null
+          execution_count?: number | null
+          id?: string
+          is_active?: boolean | null
+          last_executed_at?: string | null
+          name: string
+          recipient_rules?: Json | null
+          template_id?: string | null
+          tenant_id: string
+          trigger_conditions?: Json | null
+          trigger_event: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          delay_minutes?: number | null
+          description?: string | null
+          execution_count?: number | null
+          id?: string
+          is_active?: boolean | null
+          last_executed_at?: string | null
+          name?: string
+          recipient_rules?: Json | null
+          template_id?: string | null
+          tenant_id?: string
+          trigger_conditions?: Json | null
+          trigger_event?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_rules_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "notification_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       calls: {
         Row: {
           contact_id: string | null
@@ -1425,6 +1487,123 @@ export type Database = {
         }
         Relationships: []
       }
+      notification_executions: {
+        Row: {
+          automation_rule_id: string | null
+          created_at: string | null
+          error_message: string | null
+          id: string
+          recipient_email: string | null
+          recipient_phone: string | null
+          recipient_type: string
+          rendered_content: string | null
+          scheduled_for: string | null
+          sent_at: string | null
+          status: string | null
+          template_id: string | null
+          tenant_id: string
+          trigger_data: Json | null
+          trigger_event: string
+        }
+        Insert: {
+          automation_rule_id?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          recipient_email?: string | null
+          recipient_phone?: string | null
+          recipient_type: string
+          rendered_content?: string | null
+          scheduled_for?: string | null
+          sent_at?: string | null
+          status?: string | null
+          template_id?: string | null
+          tenant_id: string
+          trigger_data?: Json | null
+          trigger_event: string
+        }
+        Update: {
+          automation_rule_id?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          recipient_email?: string | null
+          recipient_phone?: string | null
+          recipient_type?: string
+          rendered_content?: string | null
+          scheduled_for?: string | null
+          sent_at?: string | null
+          status?: string | null
+          template_id?: string | null
+          tenant_id?: string
+          trigger_data?: Json | null
+          trigger_event?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_executions_automation_rule_id_fkey"
+            columns: ["automation_rule_id"]
+            isOneToOne: false
+            referencedRelation: "automation_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_executions_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "notification_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      notification_templates: {
+        Row: {
+          content: string
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          recipient_type: string
+          smart_words: Json | null
+          subject: string | null
+          template_type: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          content: string
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          recipient_type: string
+          smart_words?: Json | null
+          subject?: string | null
+          template_type: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          content?: string
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          recipient_type?: string
+          smart_words?: Json | null
+          subject?: string | null
+          template_type?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       nurturing_campaign_steps: {
         Row: {
           campaign_id: string | null
@@ -2497,6 +2676,48 @@ export type Database = {
           },
         ]
       }
+      smart_word_definitions: {
+        Row: {
+          category: string | null
+          created_at: string | null
+          data_field: string
+          data_source: string
+          description: string | null
+          display_name: string
+          format_type: string | null
+          id: string
+          is_system: boolean | null
+          tenant_id: string
+          word_key: string
+        }
+        Insert: {
+          category?: string | null
+          created_at?: string | null
+          data_field: string
+          data_source: string
+          description?: string | null
+          display_name: string
+          format_type?: string | null
+          id?: string
+          is_system?: boolean | null
+          tenant_id: string
+          word_key: string
+        }
+        Update: {
+          category?: string | null
+          created_at?: string | null
+          data_field?: string
+          data_source?: string
+          description?: string | null
+          display_name?: string
+          format_type?: string | null
+          id?: string
+          is_system?: boolean | null
+          tenant_id?: string
+          word_key?: string
+        }
+        Relationships: []
+      }
       smartdoc_assets: {
         Row: {
           content_type: string
@@ -3258,6 +3479,14 @@ export type Database = {
       has_role: {
         Args: { required_role: Database["public"]["Enums"]["app_role"] }
         Returns: boolean
+      }
+      process_smart_words: {
+        Args: {
+          context_data: Json
+          template_content: string
+          tenant_id_param: string
+        }
+        Returns: string
       }
       switch_developer_context: {
         Args: { target_tenant_id: string }
