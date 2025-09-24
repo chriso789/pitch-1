@@ -1,6 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { Resend } from "npm:resend@2.0.0";
+import { Resend } from "https://esm.sh/resend@2.0.0";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -84,10 +84,10 @@ serve(async (req) => {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('Notification processor error:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: error instanceof Error ? error.message : String(error) }),
       { 
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -310,7 +310,7 @@ async function processNotificationExecution(supabase: any, executionData: any) {
       .from('notification_executions')
       .update({
         status: 'failed',
-        error_message: error.message
+        error_message: error instanceof Error ? error.message : String(error)
       })
       .eq('automation_rule_id', executionData.automation_rule_id)
       .eq('recipient_email', recipient.email);

@@ -87,7 +87,7 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in pipeline-status function:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
