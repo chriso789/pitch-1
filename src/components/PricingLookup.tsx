@@ -111,8 +111,6 @@ const PricingLookup = () => {
           product: item.products,
           vendor: item.vendors,
           price: item.price,
-          list_price: item.list_price,
-          discount_percent: item.discount_percent,
           branch_code: item.branch_code,
           last_seen_at: item.last_seen_at,
           source: item.source,
@@ -269,9 +267,7 @@ const PricingLookup = () => {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {results.map((result, index) => {
-                const savings = calculateSavings(result.price, result.list_price);
-                
+              {results.map((result, index) => {                
                 return (
                   <div key={index} className="border rounded-lg p-4">
                     <div className="flex justify-between items-start mb-3">
@@ -312,22 +308,12 @@ const PricingLookup = () => {
                           <p className="text-lg line-through text-muted-foreground">
                             {formatCurrency(result.list_price)}
                           </p>
-                          {savings && (
-                            <p className="text-xs text-green-600 font-medium">
-                              Save {formatCurrency(savings.amount)} ({savings.percentage}%)
-                            </p>
-                          )}
                         </div>
                       )}
 
                       <div className="space-y-1">
                         <Label className="text-xs text-muted-foreground">Branch</Label>
                         <p className="font-medium">{result.branch_code}</p>
-                        {result.discount_percent > 0 && (
-                          <Badge variant="secondary">
-                            {result.discount_percent}% discount
-                          </Badge>
-                        )}
                       </div>
 
                       <div className="space-y-1">
