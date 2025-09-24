@@ -2554,9 +2554,12 @@ export type Database = {
           expires_at: string | null
           id: string
           last_seen_at: string | null
+          metadata: Json | null
           price: number
           product_id: string
           quantity_break: number | null
+          seen_at: string | null
+          source: string | null
           source_data: Json | null
           source_type: string
           supplier_account_id: string | null
@@ -2572,9 +2575,12 @@ export type Database = {
           expires_at?: string | null
           id?: string
           last_seen_at?: string | null
+          metadata?: Json | null
           price: number
           product_id: string
           quantity_break?: number | null
+          seen_at?: string | null
+          source?: string | null
           source_data?: Json | null
           source_type: string
           supplier_account_id?: string | null
@@ -2590,9 +2596,12 @@ export type Database = {
           expires_at?: string | null
           id?: string
           last_seen_at?: string | null
+          metadata?: Json | null
           price?: number
           product_id?: string
           quantity_break?: number | null
+          seen_at?: string | null
+          source?: string | null
           source_data?: Json | null
           source_type?: string
           supplier_account_id?: string | null
