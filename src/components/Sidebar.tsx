@@ -15,13 +15,11 @@ import {
   Code,
   BookOpen,
   LogOut,
-  ChevronDown,
-  UserCog
+  User
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 
@@ -333,44 +331,16 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
           )}
         </div>
         
-        {/* Role Switcher */}
+        {/* User Role Display */}
         {!isCollapsed && currentUser && (
-          <div className="mt-2">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  className="w-full justify-between h-8 bg-background border-border hover:bg-accent"
-                >
-                  <div className="flex items-center gap-2">
-                    <UserCog className="h-3 w-3" />
-                    <Badge variant={getRoleBadgeVariant(currentUser.role)} className="text-xs">
-                      {currentUser.role}
-                    </Badge>
-                  </div>
-                  <ChevronDown className="h-3 w-3" />
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent 
-                align="center" 
-                className="w-full min-w-[200px] bg-background border border-border shadow-lg z-50"
-              >
-                {getAvailableRoles().map((role) => (
-                  <DropdownMenuItem
-                    key={role}
-                    onClick={() => handleRoleChange(role)}
-                    className="flex items-center justify-between cursor-pointer hover:bg-accent"
-                    disabled={role === currentUser.role}
-                  >
-                    <span className="capitalize">{role}</span>
-                    <Badge variant={getRoleBadgeVariant(role)} className="text-xs">
-                      {role}
-                    </Badge>
-                  </DropdownMenuItem>
-                ))}
-              </DropdownMenuContent>
-            </DropdownMenu>
+          <div className="mt-2 p-2 bg-muted/30 rounded-md">
+            <div className="flex items-center gap-2 text-sm text-muted-foreground">
+              <User className="h-3 w-3" />
+              <span>Role:</span>
+              <Badge variant={getRoleBadgeVariant(currentUser.role)} className="text-xs">
+                {currentUser.role}
+              </Badge>
+            </div>
           </div>
         )}
         
