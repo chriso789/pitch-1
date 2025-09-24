@@ -24,6 +24,10 @@ interface Contact {
   lead_source_details: any;
   acquisition_cost: number;
   referral_source: string;
+  lead_score: number;
+  qualification_status: string;
+  last_scored_at: string;
+  scoring_details: any;
 }
 
 export const Contacts = () => {
@@ -186,9 +190,35 @@ export const Contacts = () => {
                         </p>
                       )}
                     </div>
-                    <Badge className={getContactTypeColor(contact.type)}>
-                      {contact.type}
-                    </Badge>
+                    <div className="flex items-center gap-2">
+                      <Badge className={getContactTypeColor(contact.type)}>
+                        {contact.type}
+                      </Badge>
+                      {contact.lead_score !== undefined && (
+                        <div className="flex items-center space-x-1">
+                          <div className={`w-2 h-2 rounded-full ${
+                            contact.lead_score >= 80 ? 'bg-red-500' :
+                            contact.lead_score >= 60 ? 'bg-orange-500' :
+                            contact.lead_score >= 40 ? 'bg-yellow-500' : 'bg-blue-500'
+                          }`} />
+                          <span className="text-xs font-medium bg-muted px-2 py-1 rounded">
+                            Score: {contact.lead_score}
+                          </span>
+                        </div>
+                      )}
+                      {contact.qualification_status && contact.qualification_status !== 'unqualified' && (
+                        <Badge 
+                          variant={
+                            contact.qualification_status === 'hot' ? 'destructive' :
+                            contact.qualification_status === 'warm' ? 'default' :
+                            contact.qualification_status === 'qualified' ? 'secondary' : 'outline'
+                          }
+                          className="text-xs"
+                        >
+                          {contact.qualification_status.toUpperCase()}
+                        </Badge>
+                      )}
+                    </div>
                   </div>
                   
                   <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
@@ -210,11 +240,19 @@ export const Contacts = () => {
                         {contact.address_street}, {contact.address_city}, {contact.address_state}
                       </div>
                     )}
+                    {contact.lead_source && (
+                      <Badge variant="outline" className="text-xs">
+                        Source: {contact.lead_source}
+                      </Badge>
+                    )}
                   </div>
                   
-                  <p className="text-xs text-muted-foreground">
-                    Added: {new Date(contact.created_at).toLocaleDateString()}
-                  </p>
+                  <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                    <span>Added: {new Date(contact.created_at).toLocaleDateString()}</span>
+                    {contact.last_scored_at && (
+                      <span>Scored: {new Date(contact.last_scored_at).toLocaleDateString()}</span>
+                    )}
+                  </div>
                 </div>
               </div>
             ))}

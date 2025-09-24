@@ -16,7 +16,8 @@ import {
   BookOpen,
   LogOut,
   User,
-  BarChart
+  BarChart,
+  Target
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -144,6 +145,12 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
       href: "lead-sources",
       icon: BarChart,
       description: "Track lead sources & ROI"
+    },
+    {
+      name: "Lead Scoring",
+      href: "lead-scoring",
+      icon: Target,
+      description: "Qualify & score leads"
     },
     {
       name: "Estimates",

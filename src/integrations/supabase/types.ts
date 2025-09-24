@@ -367,14 +367,18 @@ export type Database = {
           first_name: string | null
           id: string
           last_name: string | null
+          last_scored_at: string | null
           latitude: number | null
+          lead_score: number | null
           lead_source: string | null
           lead_source_details: Json | null
           longitude: number | null
           metadata: Json | null
           notes: string | null
           phone: string | null
+          qualification_status: string | null
           referral_source: string | null
+          scoring_details: Json | null
           tags: string[] | null
           tenant_id: string | null
           type: Database["public"]["Enums"]["contact_type"] | null
@@ -393,14 +397,18 @@ export type Database = {
           first_name?: string | null
           id?: string
           last_name?: string | null
+          last_scored_at?: string | null
           latitude?: number | null
+          lead_score?: number | null
           lead_source?: string | null
           lead_source_details?: Json | null
           longitude?: number | null
           metadata?: Json | null
           notes?: string | null
           phone?: string | null
+          qualification_status?: string | null
           referral_source?: string | null
+          scoring_details?: Json | null
           tags?: string[] | null
           tenant_id?: string | null
           type?: Database["public"]["Enums"]["contact_type"] | null
@@ -419,14 +427,18 @@ export type Database = {
           first_name?: string | null
           id?: string
           last_name?: string | null
+          last_scored_at?: string | null
           latitude?: number | null
+          lead_score?: number | null
           lead_source?: string | null
           lead_source_details?: Json | null
           longitude?: number | null
           metadata?: Json | null
           notes?: string | null
           phone?: string | null
+          qualification_status?: string | null
           referral_source?: string | null
+          scoring_details?: Json | null
           tags?: string[] | null
           tenant_id?: string | null
           type?: Database["public"]["Enums"]["contact_type"] | null
@@ -1109,6 +1121,146 @@ export type Database = {
           },
         ]
       }
+      lead_qualification_statuses: {
+        Row: {
+          auto_assign: boolean | null
+          color: string | null
+          created_at: string
+          created_by: string | null
+          default_assigned_user: string | null
+          id: string
+          is_active: boolean | null
+          max_score: number
+          min_score: number
+          name: string
+          priority: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          auto_assign?: boolean | null
+          color?: string | null
+          created_at?: string
+          created_by?: string | null
+          default_assigned_user?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_score?: number
+          min_score?: number
+          name: string
+          priority?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          auto_assign?: boolean | null
+          color?: string | null
+          created_at?: string
+          created_by?: string | null
+          default_assigned_user?: string | null
+          id?: string
+          is_active?: boolean | null
+          max_score?: number
+          min_score?: number
+          name?: string
+          priority?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      lead_scoring_history: {
+        Row: {
+          contact_id: string | null
+          id: string
+          new_score: number | null
+          old_score: number | null
+          reason: string | null
+          rule_applied: string | null
+          score_change: number | null
+          scored_at: string
+          scored_by: string | null
+          tenant_id: string
+        }
+        Insert: {
+          contact_id?: string | null
+          id?: string
+          new_score?: number | null
+          old_score?: number | null
+          reason?: string | null
+          rule_applied?: string | null
+          score_change?: number | null
+          scored_at?: string
+          scored_by?: string | null
+          tenant_id: string
+        }
+        Update: {
+          contact_id?: string | null
+          id?: string
+          new_score?: number | null
+          old_score?: number | null
+          reason?: string | null
+          rule_applied?: string | null
+          score_change?: number | null
+          scored_at?: string
+          scored_by?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lead_scoring_history_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      lead_scoring_rules: {
+        Row: {
+          condition_type: string
+          condition_value: Json
+          created_at: string
+          created_by: string | null
+          field_name: string
+          id: string
+          is_active: boolean | null
+          points: number
+          rule_name: string
+          rule_type: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          condition_type: string
+          condition_value?: Json
+          created_at?: string
+          created_by?: string | null
+          field_name: string
+          id?: string
+          is_active?: boolean | null
+          points?: number
+          rule_name: string
+          rule_type: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          condition_type?: string
+          condition_value?: Json
+          created_at?: string
+          created_by?: string | null
+          field_name?: string
+          id?: string
+          is_active?: boolean | null
+          points?: number
+          rule_name?: string
+          rule_type?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       lead_source_performance: {
         Row: {
           appointments_set: number | null
@@ -1368,15 +1520,18 @@ export type Database = {
           conversion_probability: number | null
           created_at: string | null
           created_by: string | null
+          disqualification_reason: string | null
           estimated_value: number | null
           expected_close_date: string | null
           id: string
           lead_quality_score: number | null
+          lead_temperature: string | null
           marketing_campaign: string | null
           metadata: Json | null
           notes: string | null
           priority: string | null
           probability_percent: number | null
+          qualification_notes: string | null
           roof_type: Database["public"]["Enums"]["roof_type"] | null
           source: Database["public"]["Enums"]["lead_source"] | null
           status: Database["public"]["Enums"]["pipeline_status"] | null
@@ -1389,15 +1544,18 @@ export type Database = {
           conversion_probability?: number | null
           created_at?: string | null
           created_by?: string | null
+          disqualification_reason?: string | null
           estimated_value?: number | null
           expected_close_date?: string | null
           id?: string
           lead_quality_score?: number | null
+          lead_temperature?: string | null
           marketing_campaign?: string | null
           metadata?: Json | null
           notes?: string | null
           priority?: string | null
           probability_percent?: number | null
+          qualification_notes?: string | null
           roof_type?: Database["public"]["Enums"]["roof_type"] | null
           source?: Database["public"]["Enums"]["lead_source"] | null
           status?: Database["public"]["Enums"]["pipeline_status"] | null
@@ -1410,15 +1568,18 @@ export type Database = {
           conversion_probability?: number | null
           created_at?: string | null
           created_by?: string | null
+          disqualification_reason?: string | null
           estimated_value?: number | null
           expected_close_date?: string | null
           id?: string
           lead_quality_score?: number | null
+          lead_temperature?: string | null
           marketing_campaign?: string | null
           metadata?: Json | null
           notes?: string | null
           priority?: string | null
           probability_percent?: number | null
+          qualification_notes?: string | null
           roof_type?: Database["public"]["Enums"]["roof_type"] | null
           source?: Database["public"]["Enums"]["lead_source"] | null
           status?: Database["public"]["Enums"]["pipeline_status"] | null
@@ -2619,6 +2780,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calculate_lead_score: {
+        Args: { contact_data: Json; tenant_id_param: string }
+        Returns: number
+      }
       get_user_tenant_id: {
         Args: Record<PropertyKey, never>
         Returns: string
