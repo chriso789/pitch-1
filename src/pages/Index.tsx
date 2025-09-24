@@ -38,6 +38,10 @@ const Index = () => {
   useEffect(() => {
     const initAuth = async () => {
       try {
+        // Clear all localStorage and sessionStorage for fresh start
+        localStorage.clear();
+        sessionStorage.clear();
+        
         // Get initial session
         const { data: { session } } = await supabase.auth.getSession();
         
