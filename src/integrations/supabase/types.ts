@@ -415,6 +415,36 @@ export type Database = {
           },
         ]
       }
+      contact_merge_log: {
+        Row: {
+          id: string
+          merged_at: string | null
+          merged_by: string | null
+          merged_contact_id: string
+          merged_data: Json
+          primary_contact_id: string
+          tenant_id: string
+        }
+        Insert: {
+          id?: string
+          merged_at?: string | null
+          merged_by?: string | null
+          merged_contact_id: string
+          merged_data: Json
+          primary_contact_id: string
+          tenant_id: string
+        }
+        Update: {
+          id?: string
+          merged_at?: string | null
+          merged_by?: string | null
+          merged_contact_id?: string
+          merged_data?: Json
+          primary_contact_id?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       contacts: {
         Row: {
           acquisition_cost: number | null
@@ -838,6 +868,45 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      duplicate_detection_rules: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          field_name: string
+          id: string
+          is_active: boolean | null
+          match_type: string
+          rule_name: string
+          tenant_id: string
+          threshold_score: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          field_name: string
+          id?: string
+          is_active?: boolean | null
+          match_type: string
+          rule_name: string
+          tenant_id: string
+          threshold_score?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          field_name?: string
+          id?: string
+          is_active?: boolean | null
+          match_type?: string
+          rule_name?: string
+          tenant_id?: string
+          threshold_score?: number | null
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       estimate_templates: {
         Row: {
@@ -2323,6 +2392,48 @@ export type Database = {
           },
         ]
       }
+      potential_duplicates: {
+        Row: {
+          contact_id_1: string
+          contact_id_2: string
+          created_at: string | null
+          id: string
+          match_fields: Json | null
+          reviewed_at: string | null
+          reviewed_by: string | null
+          similarity_score: number
+          status: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          contact_id_1: string
+          contact_id_2: string
+          created_at?: string | null
+          id?: string
+          match_fields?: Json | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          similarity_score: number
+          status?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          contact_id_1?: string
+          contact_id_2?: string
+          created_at?: string | null
+          id?: string
+          match_fields?: Json | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          similarity_score?: number
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           avatar_url: string | null
@@ -3464,6 +3575,10 @@ export type Database = {
         Args: { contact_data: Json; tenant_id_param: string }
         Returns: number
       }
+      calculate_name_similarity: {
+        Args: { name1: string; name2: string }
+        Returns: number
+      }
       check_enrollment_eligibility: {
         Args: { campaign_conditions: Json; contact_data: Json }
         Returns: boolean
@@ -3479,6 +3594,14 @@ export type Database = {
       has_role: {
         Args: { required_role: Database["public"]["Enums"]["app_role"] }
         Returns: boolean
+      }
+      normalize_email: {
+        Args: { email_text: string }
+        Returns: string
+      }
+      normalize_phone: {
+        Args: { phone_text: string }
+        Returns: string
       }
       process_smart_words: {
         Args: {
