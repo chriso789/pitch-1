@@ -225,6 +225,42 @@ export type Database = {
           },
         ]
       }
+      calendar_sync_events: {
+        Row: {
+          created_at: string
+          google_calendar_event_id: string | null
+          id: string
+          last_synced_at: string | null
+          sync_error: string | null
+          sync_status: string
+          task_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          google_calendar_event_id?: string | null
+          id?: string
+          last_synced_at?: string | null
+          sync_error?: string | null
+          sync_status?: string
+          task_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          google_calendar_event_id?: string | null
+          id?: string
+          last_synced_at?: string | null
+          sync_error?: string | null
+          sync_status?: string
+          task_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       calls: {
         Row: {
           contact_id: string | null
@@ -583,6 +619,81 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      crew_availability: {
+        Row: {
+          available_slots: number
+          created_at: string
+          crew_id: string
+          date: string
+          id: string
+          notes: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          available_slots?: number
+          created_at?: string
+          crew_id: string
+          date: string
+          id?: string
+          notes?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          available_slots?: number
+          created_at?: string
+          crew_id?: string
+          date?: string
+          id?: string
+          notes?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      crews: {
+        Row: {
+          capacity_slots: number
+          color: string | null
+          created_at: string
+          created_by: string | null
+          hourly_rate: number | null
+          id: string
+          is_active: boolean
+          name: string
+          skills: Json
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          capacity_slots?: number
+          color?: string | null
+          created_at?: string
+          created_by?: string | null
+          hourly_rate?: number | null
+          id?: string
+          is_active?: boolean
+          name: string
+          skills?: Json
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          capacity_slots?: number
+          color?: string | null
+          created_at?: string
+          created_by?: string | null
+          hourly_rate?: number | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          skills?: Json
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       developer_access_grants: {
         Row: {
@@ -4058,6 +4169,36 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      task_dependencies: {
+        Row: {
+          created_at: string
+          dependency_type: string
+          depends_on_task_id: string
+          id: string
+          lag_days: number | null
+          task_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          dependency_type?: string
+          depends_on_task_id: string
+          id?: string
+          lag_days?: number | null
+          task_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          dependency_type?: string
+          depends_on_task_id?: string
+          id?: string
+          lag_days?: number | null
+          task_id?: string
+          tenant_id?: string
+        }
+        Relationships: []
       }
       tasks: {
         Row: {
