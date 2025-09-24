@@ -81,6 +81,34 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
     try {
       setIsSubmitting(true);
 
+      // Check authentication first
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session?.user) {
+        toast({
+          title: "Authentication required",
+          description: "Please log in to create leads.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Get user profile to get tenant_id
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', session.user.id)
+        .single();
+
+      if (profileError || !profile?.tenant_id) {
+        console.error('Profile error:', profileError);
+        toast({
+          title: "Profile error",
+          description: "Unable to find your account profile. Please contact support.",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Validate required fields
       if (!formData.firstName || !formData.lastName || !formData.phone) {
         toast({
@@ -91,16 +119,19 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
         return;
       }
 
+      console.log('Creating lead with tenant_id:', profile.tenant_id);
+
       // Calculate basic lead score
       let leadScore = 50;
       if (formData.email && formData.phone) leadScore += 20;
       if (formData.urgency === 'immediate') leadScore += 20;
       if (formData.leadSource === 'referral') leadScore += 10;
 
-      // Create contact first
+      // Create contact first with explicit tenant_id
       const { data: contact, error: contactError } = await supabase
         .from('contacts')
         .insert({
+          tenant_id: profile.tenant_id,
           first_name: formData.firstName,
           last_name: formData.lastName,
           email: formData.email || null,
@@ -123,12 +154,18 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
         .select()
         .single();
 
-      if (contactError) throw contactError;
+      if (contactError) {
+        console.error('Contact creation error:', contactError);
+        throw contactError;
+      }
 
-      // Create basic pipeline entry
+      console.log('Contact created successfully:', contact.id);
+
+      // Create basic pipeline entry with explicit tenant_id
       const { data: pipelineEntry, error: pipelineError } = await supabase
         .from('pipeline_entries')
         .insert({
+          tenant_id: profile.tenant_id,
           contact_id: contact.id,
           status: 'lead',
           priority: formData.urgency === 'immediate' ? 'urgent' : 'medium',
@@ -138,7 +175,12 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
         .select()
         .single();
 
-      if (pipelineError) throw pipelineError;
+      if (pipelineError) {
+        console.error('Pipeline entry creation error:', pipelineError);
+        throw pipelineError;
+      }
+
+      console.log('Pipeline entry created successfully:', pipelineEntry.id);
 
       toast({
         title: "Lead created successfully!",
