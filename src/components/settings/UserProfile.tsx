@@ -134,7 +134,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ userId, onClose }) => 
 
       const { error: updateError } = await supabase
         .from('profiles')
-        .update({ avatar_url: publicUrl })
+        .update({ avatar_url: publicUrl } as any)
         .eq('id', userId);
 
       if (updateError) throw updateError;
