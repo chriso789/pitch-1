@@ -1,5 +1,11 @@
 project_id = "alxelfrbjzkmtnsulcei"
 
+[functions.billtrust-auth]
+verify_jwt = true
+
+[functions.billtrust-pricing]
+verify_jwt = true
+
 [functions.estimates-preview]
 verify_jwt = false
 

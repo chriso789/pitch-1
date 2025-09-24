@@ -2,11 +2,12 @@ import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NotificationAutomations } from "@/components/NotificationAutomations";
-import { Settings as SettingsIcon, FileText, Calculator, Users, Building, Shield, Code, Mic, Bell } from "lucide-react";
+import { Settings as SettingsIcon, FileText, Calculator, Users, Building, Shield, Code, Mic, Bell, Package } from "lucide-react";
 import { EstimateBuilder } from "./EstimateBuilder";
 import { GeneralSettings } from "./settings/GeneralSettings";
 import { UserManagement } from "./settings/UserManagement";
 import { DeveloperAccess } from "./settings/DeveloperAccess";
+import SupplierManagement from "./SupplierManagement";
 import VoiceInterface from "./VoiceInterface";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -71,7 +72,7 @@ export const Settings = () => {
       </div>
 
       <Tabs defaultValue="general" className="space-y-6">
-        <TabsList className={`grid w-full ${showDeveloperTab ? 'grid-cols-7' : 'grid-cols-6'}`}>
+        <TabsList className={`grid w-full ${showDeveloperTab ? 'grid-cols-8' : 'grid-cols-7'}`}>
           <TabsTrigger value="general" className="flex items-center gap-2">
             <SettingsIcon className="h-4 w-4" />
             General
@@ -79,6 +80,10 @@ export const Settings = () => {
           <TabsTrigger value="estimates" className="flex items-center gap-2">
             <Calculator className="h-4 w-4" />
             Estimates
+          </TabsTrigger>
+          <TabsTrigger value="suppliers" className="flex items-center gap-2">
+            <Package className="h-4 w-4" />
+            Suppliers
           </TabsTrigger>
           <TabsTrigger value="company" className="flex items-center gap-2">
             <Building className="h-4 w-4" />
@@ -110,6 +115,10 @@ export const Settings = () => {
 
         <TabsContent value="estimates" className="space-y-6">
           <EstimateBuilder />
+        </TabsContent>
+
+        <TabsContent value="suppliers" className="space-y-6">
+          <SupplierManagement />
         </TabsContent>
 
         <TabsContent value="company" className="space-y-6">

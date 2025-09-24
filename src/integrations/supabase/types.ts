@@ -2502,6 +2502,7 @@ export type Database = {
           quantity_break: number | null
           source_data: Json | null
           source_type: string
+          supplier_account_id: string | null
           tenant_id: string
           updated_at: string | null
           vendor_id: string
@@ -2519,6 +2520,7 @@ export type Database = {
           quantity_break?: number | null
           source_data?: Json | null
           source_type: string
+          supplier_account_id?: string | null
           tenant_id: string
           updated_at?: string | null
           vendor_id: string
@@ -2536,6 +2538,7 @@ export type Database = {
           quantity_break?: number | null
           source_data?: Json | null
           source_type?: string
+          supplier_account_id?: string | null
           tenant_id?: string
           updated_at?: string | null
           vendor_id?: string
@@ -2546,6 +2549,13 @@ export type Database = {
             columns: ["product_id"]
             isOneToOne: false
             referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "price_cache_supplier_account_id_fkey"
+            columns: ["supplier_account_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_accounts"
             referencedColumns: ["id"]
           },
           {
@@ -3446,6 +3456,107 @@ export type Database = {
             columns: ["folder_id"]
             isOneToOne: false
             referencedRelation: "smartdoc_folders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_accounts: {
+        Row: {
+          api_key_id: string | null
+          billtrust_email: string
+          billtrust_tenant_id: string | null
+          connection_status: string
+          created_at: string
+          created_by: string | null
+          encrypted_credentials: Json | null
+          id: string
+          is_active: boolean
+          last_error: string | null
+          last_sync_at: string | null
+          supplier_name: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          api_key_id?: string | null
+          billtrust_email: string
+          billtrust_tenant_id?: string | null
+          connection_status?: string
+          created_at?: string
+          created_by?: string | null
+          encrypted_credentials?: Json | null
+          id?: string
+          is_active?: boolean
+          last_error?: string | null
+          last_sync_at?: string | null
+          supplier_name: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          api_key_id?: string | null
+          billtrust_email?: string
+          billtrust_tenant_id?: string | null
+          connection_status?: string
+          created_at?: string
+          created_by?: string | null
+          encrypted_credentials?: Json | null
+          id?: string
+          is_active?: boolean
+          last_error?: string | null
+          last_sync_at?: string | null
+          supplier_name?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      supplier_price_sync_logs: {
+        Row: {
+          completed_at: string | null
+          error_details: Json | null
+          id: string
+          products_added: number | null
+          products_processed: number | null
+          products_updated: number | null
+          started_at: string
+          status: string
+          supplier_account_id: string
+          sync_type: string
+          tenant_id: string
+        }
+        Insert: {
+          completed_at?: string | null
+          error_details?: Json | null
+          id?: string
+          products_added?: number | null
+          products_processed?: number | null
+          products_updated?: number | null
+          started_at?: string
+          status: string
+          supplier_account_id: string
+          sync_type: string
+          tenant_id: string
+        }
+        Update: {
+          completed_at?: string | null
+          error_details?: Json | null
+          id?: string
+          products_added?: number | null
+          products_processed?: number | null
+          products_updated?: number | null
+          started_at?: string
+          status?: string
+          supplier_account_id?: string
+          sync_type?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_price_sync_logs_supplier_account_id_fkey"
+            columns: ["supplier_account_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_accounts"
             referencedColumns: ["id"]
           },
         ]
