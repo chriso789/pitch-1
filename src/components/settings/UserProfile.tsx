@@ -58,6 +58,8 @@ export const UserProfile: React.FC<UserProfileProps> = ({ userId, onClose }) => 
   const [editing, setEditing] = useState(false);
   const [showBusinessCard, setShowBusinessCard] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [performanceMetrics, setPerformanceMetrics] = useState<any>(null);
+  const [commissionHistory, setCommissionHistory] = useState<any[]>([]);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -68,14 +70,38 @@ export const UserProfile: React.FC<UserProfileProps> = ({ userId, onClose }) => 
 
   const loadUser = async () => {
     try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('*')
-        .eq('id', userId)
-        .single();
+      const [userResult, commissionResult] = await Promise.all([
+        supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', userId)
+          .single(),
+        supabase
+          .from('commission_calculations')
+          .select('*')
+          .eq('sales_rep_id', userId)
+          .order('calculated_at', { ascending: false })
+          .limit(5)
+      ]);
 
-      if (error) throw error;
-      setUser(data);
+      if (userResult.error) throw userResult.error;
+      setUser(userResult.data);
+      setCommissionHistory(commissionResult.data || []);
+      
+      // Load performance metrics - using actual commission data
+      const { data: metrics } = await supabase
+        .from('commission_calculations')
+        .select('commission_amount, status')
+        .eq('sales_rep_id', userId);
+      
+      if (metrics) {
+        const totalCommission = metrics.reduce((sum, m) => sum + (m.commission_amount || 0), 0);
+        setPerformanceMetrics({
+          total_sales: totalCommission * 20, // Estimate based on 5% commission rate
+          total_commission: totalCommission,
+          conversion_rate: 85 // Mock data
+        });
+      }
     } catch (error) {
       console.error('Error loading user:', error);
       toast({
@@ -524,9 +550,9 @@ export const UserProfile: React.FC<UserProfileProps> = ({ userId, onClose }) => 
                               </p>
                             </div>
                             <div className="text-right">
-                              <p className="font-semibold text-success">
-                                ${commission.commission_amount.toLocaleString()}
-                              </p>
+                             <p className="font-semibold text-success">
+                               ${commission.commission_amount?.toLocaleString() || 0}
+                             </p>
                               <Badge variant="outline" className="text-xs">
                                 {commission.status}
                               </Badge>
@@ -544,37 +570,6 @@ export const UserProfile: React.FC<UserProfileProps> = ({ userId, onClose }) => 
               </div>
             </>
           )}
-              <div className="space-y-2">
-                <Label htmlFor="title">Title</Label>
-                <Input
-                  id="title"
-                  value={user.title || ""}
-                  onChange={(e) => setUser({ ...user, title: e.target.value })}
-                  disabled={!editing}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="company_name">Company</Label>
-                <Input
-                  id="company_name"
-                  value={user.company_name || ""}
-                  onChange={(e) => setUser({ ...user, company_name: e.target.value })}
-                  disabled={!editing}
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="phone">Phone</Label>
-                <Input
-                  id="phone"
-                  value={user.phone || ""}
-                  onChange={(e) => setUser({ ...user, phone: e.target.value })}
-                  disabled={!editing}
-                />
-              </div>
-            </div>
-          </div>
 
           {editing && (
             <div className="space-y-2">

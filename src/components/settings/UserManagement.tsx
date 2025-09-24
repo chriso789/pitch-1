@@ -234,7 +234,7 @@ export const UserManagement = () => {
   // Show user profile if one is selected
   if (selectedUserId) {
     return (
-      <UserProfile 
+      <EnhancedUserProfile 
         userId={selectedUserId} 
         onClose={() => setSelectedUserId(null)} 
       />
