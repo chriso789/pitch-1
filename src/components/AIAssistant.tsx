@@ -3,10 +3,13 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import VoiceInterface from '@/components/VoiceInterface';
-import { Send, Mic, Brain, User, Bot } from 'lucide-react';
+import { Send, Mic, Brain, User, Bot, Lightbulb, TrendingUp, AlertTriangle, CheckCircle } from 'lucide-react';
 
 interface Message {
   id: string;
@@ -14,6 +17,18 @@ interface Message {
   content: string;
   timestamp: Date;
   metadata?: any;
+  messageType?: 'text' | 'insight' | 'suggestion' | 'alert';
+}
+
+interface AIInsight {
+  id: string;
+  title: string;
+  description: string;
+  priority: string;
+  insight_type: string;
+  context_type: string;
+  context_id: string;
+  created_at: string;
 }
 
 interface AIAssistantProps {
@@ -36,6 +51,8 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({
   const [inputText, setInputText] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [insights, setInsights] = useState<AIInsight[]>([]);
+  const [selectedContext, setSelectedContext] = useState("all");
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -45,12 +62,37 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({
   useEffect(scrollToBottom, [messages]);
 
   useEffect(() => {
-    // Initialize with welcome message
-    addMessage({
-      type: 'assistant',
-      content: "Hi! I'm your AI sales assistant. I can help you with leads, create tasks, navigate the app, analyze your pipeline, and much more. Just tell me what you need!",
-    });
+    loadInitialData();
   }, []);
+
+  const loadInitialData = async () => {
+    try {
+      // Load AI insights
+      const { data: insightsData } = await supabase
+        .from('ai_insights')
+        .select('*')
+        .eq('status', 'active')
+        .order('created_at', { ascending: false })
+        .limit(10);
+
+      if (insightsData) {
+        setInsights(insightsData);
+        
+        // Add welcome message with insights summary
+        addMessage({
+          type: 'assistant',
+          content: `Hi! I'm your AI sales assistant. I've found ${insightsData.length} insights that might interest you. I can help you with leads, create tasks, navigate the app, analyze your pipeline, and much more. Just tell me what you need!`,
+          messageType: 'text'
+        });
+      }
+    } catch (error) {
+      console.error('Error loading AI data:', error);
+      addMessage({
+        type: 'assistant',
+        content: "Hi! I'm your AI sales assistant. I can help you with leads, create tasks, navigate the app, analyze your pipeline, and much more. Just tell me what you need!",
+      });
+    }
+  };
 
   const addMessage = (message: Omit<Message, 'id' | 'timestamp'>) => {
     const newMessage: Message = {
@@ -70,7 +112,8 @@ export const AIAssistant: React.FC<AIAssistantProps> = ({
         body: {
           command,
           context: currentContext,
-          conversation_history: messages.slice(-5) // Last 5 messages for context
+          conversation_history: messages.slice(-5), // Last 5 messages for context
+          selectedContext: selectedContext
         }
       });
 
