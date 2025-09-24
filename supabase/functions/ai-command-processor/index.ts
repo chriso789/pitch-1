@@ -203,7 +203,7 @@ Be conversational and helpful. Extract specific information from commands.`;
     console.error('Error in ai-command-processor:', error);
     return new Response(
       JSON.stringify({ 
-        error: error.message,
+        error: error instanceof Error ? error.message : String(error),
         response: "I'm sorry, I encountered an error processing your request. Please try again.",
         actions: []
       }),

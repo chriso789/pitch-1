@@ -37,7 +37,7 @@ serve(async (req) => {
     }
 
     // Define valid status transitions
-    const validTransitions = {
+    const validTransitions: Record<string, string[]> = {
       'lead': ['legal_review', 'lost', 'canceled', 'duplicate'],
       'legal_review': ['contingency_signed', 'lead', 'lost', 'canceled'],
       'contingency_signed': ['project', 'legal_review', 'lost', 'canceled'],

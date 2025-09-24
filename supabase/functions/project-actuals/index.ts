@@ -73,7 +73,7 @@ serve(async (req) => {
     const totalActualCost = actualMaterialCost + actualLaborCost + actualOtherCost;
 
     // Get original budget from snapshot
-    const currentSnapshot = project.project_budget_snapshots?.find(s => s.is_current);
+    const currentSnapshot = project.project_budget_snapshots?.find((s: any) => s.is_current);
     const originalBudget = currentSnapshot?.original_budget || {};
 
     const budgetMaterialCost = parseFloat(originalBudget.material_cost) || 0;

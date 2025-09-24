@@ -54,7 +54,7 @@ serve(async (req) => {
     console.error('Error in nurture-processor function:', error);
     return new Response(JSON.stringify({ 
       success: false,
-      error: error.message 
+      error: error instanceof Error ? error.message : String(error) 
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -224,7 +224,7 @@ async function processPendingActions(supabase: any) {
           .from('nurturing_step_executions')
           .update({
             status: 'failed',
-            error_message: error.message,
+            error_message: error instanceof Error ? error.message : String(error),
             retry_count: (execution.retry_count || 0) + 1
           })
           .eq('id', execution.id);

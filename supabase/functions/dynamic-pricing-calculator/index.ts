@@ -89,7 +89,7 @@ serve(async (req) => {
           weatherData = weatherResult.weatherData;
         }
       } catch (error) {
-        console.warn(`Failed to get weather data: ${error.message}`);
+        console.warn(`Failed to get weather data: ${error instanceof Error ? error.message : String(error)}`);
       }
     }
 
@@ -244,7 +244,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in dynamic-pricing-calculator:', error);
     return new Response(JSON.stringify({ 
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
       details: 'Failed to calculate dynamic pricing'
     }), {
       status: 500,

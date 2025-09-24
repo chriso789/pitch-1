@@ -160,7 +160,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Error in weather-risk-analyzer:', error);
     return new Response(JSON.stringify({ 
-      error: error.message,
+      error: error instanceof Error ? error.message : String(error),
       details: 'Failed to analyze weather risk'
     }), {
       status: 500,

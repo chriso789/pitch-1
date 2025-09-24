@@ -140,7 +140,7 @@ Deno.serve(async (req) => {
           processed++;
 
         } catch (productError) {
-          errors.push(`Error processing ${product.sku}: ${productError.message}`);
+          errors.push(`Error processing ${product.sku}: ${productError instanceof Error ? productError.message : String(productError)}`);
           processed++;
         }
       }
@@ -196,7 +196,7 @@ Deno.serve(async (req) => {
         .from('supplier_price_sync_logs')
         .update({
           status: 'failed',
-          error_details: { error: syncProcessError.message },
+          error_details: { error: syncProcessError instanceof Error ? syncProcessError.message : String(syncProcessError) },
           completed_at: new Date().toISOString()
         })
         .eq('id', syncLog.id);
@@ -209,7 +209,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         error: 'Internal server error', 
-        details: error.message 
+        details: error instanceof Error ? error.message : String(error) 
       }),
       { 
         status: 500, 
