@@ -23,6 +23,7 @@ import { DuplicateDetection } from "@/components/DuplicateDetection";
 import { EnhancedPipeline } from "@/components/EnhancedPipeline";
 import { PipelineStageManager } from "@/components/PipelineStageManager";
 import { CollapsibleSidebar } from "@/components/ui/collapsible-sidebar";
+import { DeveloperToolbar } from "@/components/DeveloperToolbar";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -194,6 +195,9 @@ const Index = () => {
           {renderActiveSection()}
         </div>
       </main>
+      
+      {/* Developer Toolbar - Only shows in developer mode */}
+      <DeveloperToolbar />
     </div>
   );
 };
