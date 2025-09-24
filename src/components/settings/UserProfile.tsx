@@ -24,7 +24,11 @@ import {
   DollarSign,
   TrendingUp,
   Target,
-  Upload
+  Upload,
+  Shield,
+  Eye,
+  EyeOff,
+  KeyRound
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -60,6 +64,17 @@ export const UserProfile: React.FC<UserProfileProps> = ({ userId, onClose }) => 
   const [uploading, setUploading] = useState(false);
   const [performanceMetrics, setPerformanceMetrics] = useState<any>(null);
   const [commissionHistory, setCommissionHistory] = useState<any[]>([]);
+  const [showPasswordDialog, setShowPasswordDialog] = useState(false);
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: '',
+    newPassword: '',
+    confirmPassword: ''
+  });
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [passwordErrors, setPasswordErrors] = useState<{ [key: string]: string }>({});
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
@@ -293,6 +308,86 @@ export const UserProfile: React.FC<UserProfileProps> = ({ userId, onClose }) => 
     }
   };
 
+  const validatePassword = (password: string) => {
+    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
+    return passwordRegex.test(password);
+  };
+
+  const handlePasswordChange = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setPasswordErrors({});
+
+    // Validate current password
+    if (!passwordForm.currentPassword) {
+      setPasswordErrors({ currentPassword: 'Current password is required' });
+      return;
+    }
+
+    // Validate new password
+    if (!validatePassword(passwordForm.newPassword)) {
+      setPasswordErrors({ 
+        newPassword: 'Password must be at least 8 characters with uppercase, lowercase, number, and special character' 
+      });
+      return;
+    }
+
+    // Confirm passwords match
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      setPasswordErrors({ confirmPassword: 'New passwords do not match' });
+      return;
+    }
+
+    // Check if new password is different from current
+    if (passwordForm.currentPassword === passwordForm.newPassword) {
+      setPasswordErrors({ newPassword: 'New password must be different from current password' });
+      return;
+    }
+
+    setPasswordLoading(true);
+
+    try {
+      // First verify current password by attempting to sign in
+      const { error: verifyError } = await supabase.auth.signInWithPassword({
+        email: user?.email || '',
+        password: passwordForm.currentPassword
+      });
+
+      if (verifyError) {
+        setPasswordErrors({ currentPassword: 'Current password is incorrect' });
+        return;
+      }
+
+      // Update password
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: passwordForm.newPassword
+      });
+
+      if (updateError) {
+        setPasswordErrors({ general: updateError.message });
+        return;
+      }
+
+      toast({
+        title: "Password Updated",
+        description: "Your password has been updated successfully.",
+      });
+
+      // Reset form and close dialog
+      setPasswordForm({
+        currentPassword: '',
+        newPassword: '',
+        confirmPassword: ''
+      });
+      setShowPasswordDialog(false);
+
+    } catch (error: any) {
+      console.error('Password change error:', error);
+      setPasswordErrors({ general: 'An error occurred while updating password' });
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <Card>
@@ -325,6 +420,14 @@ export const UserProfile: React.FC<UserProfileProps> = ({ userId, onClose }) => 
           Back to Users
         </Button>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            onClick={() => setShowPasswordDialog(true)}
+            className="flex items-center gap-2"
+          >
+            <KeyRound className="h-4 w-4" />
+            Change Password
+          </Button>
           <Button
             variant="outline"
             onClick={() => setShowBusinessCard(true)}
@@ -636,6 +739,140 @@ export const UserProfile: React.FC<UserProfileProps> = ({ userId, onClose }) => 
               </Button>
             </div>
           </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Password Change Dialog */}
+      <Dialog open={showPasswordDialog} onOpenChange={setShowPasswordDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Shield className="h-5 w-5" />
+              Change Password
+            </DialogTitle>
+          </DialogHeader>
+
+          <form onSubmit={handlePasswordChange} className="space-y-4">
+            {passwordErrors.general && (
+              <div className="text-sm text-destructive bg-destructive/10 p-3 rounded-md">
+                {passwordErrors.general}
+              </div>
+            )}
+
+            <div className="space-y-2">
+              <Label htmlFor="current-password">Current Password</Label>
+              <div className="relative">
+                <Input
+                  id="current-password"
+                  type={showCurrentPassword ? 'text' : 'password'}
+                  value={passwordForm.currentPassword}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, currentPassword: e.target.value })}
+                  className={passwordErrors.currentPassword ? 'border-destructive pr-10' : 'pr-10'}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                >
+                  {showCurrentPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+              {passwordErrors.currentPassword && (
+                <p className="text-sm text-destructive">{passwordErrors.currentPassword}</p>
+              )}
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="new-password">New Password</Label>
+              <div className="relative">
+                <Input
+                  id="new-password"
+                  type={showNewPassword ? 'text' : 'password'}
+                  value={passwordForm.newPassword}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, newPassword: e.target.value })}
+                  className={passwordErrors.newPassword ? 'border-destructive pr-10' : 'pr-10'}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowNewPassword(!showNewPassword)}
+                >
+                  {showNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+              {passwordErrors.newPassword && (
+                <p className="text-sm text-destructive">{passwordErrors.newPassword}</p>
+              )}
+              <p className="text-xs text-muted-foreground">
+                Must contain at least 8 characters with uppercase, lowercase, number, and special character
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="confirm-password">Confirm New Password</Label>
+              <div className="relative">
+                <Input
+                  id="confirm-password"
+                  type={showConfirmPassword ? 'text' : 'password'}
+                  value={passwordForm.confirmPassword}
+                  onChange={(e) => setPasswordForm({ ...passwordForm, confirmPassword: e.target.value })}
+                  className={passwordErrors.confirmPassword ? 'border-destructive pr-10' : 'pr-10'}
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                >
+                  {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                </Button>
+              </div>
+              {passwordErrors.confirmPassword && (
+                <p className="text-sm text-destructive">{passwordErrors.confirmPassword}</p>
+              )}
+            </div>
+
+            <div className="flex gap-2 pt-4">
+              <Button 
+                type="submit" 
+                className="flex-1" 
+                disabled={passwordLoading}
+              >
+                {passwordLoading ? (
+                  <>
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-background border-t-transparent mr-2" />
+                    Updating...
+                  </>
+                ) : (
+                  <>
+                    <Shield className="h-4 w-4 mr-2" />
+                    Update Password
+                  </>
+                )}
+              </Button>
+              <Button 
+                type="button" 
+                variant="outline" 
+                onClick={() => {
+                  setShowPasswordDialog(false);
+                  setPasswordForm({
+                    currentPassword: '',
+                    newPassword: '',
+                    confirmPassword: ''
+                  });
+                  setPasswordErrors({});
+                }}
+                disabled={passwordLoading}
+              >
+                Cancel
+              </Button>
+            </div>
+          </form>
         </DialogContent>
       </Dialog>
     </div>

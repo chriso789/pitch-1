@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, AlertCircle, Eye, EyeOff, Wifi, WifiOff, Shield, UserPlus } from 'lucide-react';
+import { Loader2, AlertCircle, Eye, EyeOff, Wifi, WifiOff, Shield, UserPlus, KeyRound, ArrowLeft, CheckCircle } from 'lucide-react';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -16,6 +16,8 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [activeTab, setActiveTab] = useState('login');
+  const [resetLoading, setResetLoading] = useState(false);
+  const [resetEmail, setResetEmail] = useState('');
   const [connectionStatus, setConnectionStatus] = useState<'online' | 'offline' | 'checking'>('checking');
   const [sessionCheckComplete, setSessionCheckComplete] = useState(false);
   
@@ -89,6 +91,22 @@ const Login: React.FC = () => {
     };
 
     checkAuth();
+
+    // Check URL params for password reset success message
+    const urlParams = new URLSearchParams(window.location.search);
+    const message = urlParams.get('message');
+    const tab = urlParams.get('tab');
+    
+    if (message === 'password-reset-success') {
+      toast({
+        title: "Password Reset Successful",
+        description: "You can now sign in with your new password.",
+      });
+    }
+    
+    if (tab === 'forgot') {
+      setActiveTab('forgot');
+    }
 
     const checkConnection = async () => {
       try {
@@ -314,6 +332,57 @@ const Login: React.FC = () => {
     }
   };
 
+  const handleForgotPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrors({});
+    
+    if (!validateEmail(resetEmail)) {
+      setErrors({ email: 'Please enter a valid email address' });
+      return;
+    }
+
+    setResetLoading(true);
+
+    try {
+      // Send password reset email using Supabase Auth
+      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
+        redirectTo: `${window.location.origin}/reset-password`,
+      });
+
+      if (error) {
+        // Don't reveal if email exists or not for security
+        console.error('Password reset error:', error);
+      }
+
+      // Always show success message for security (don't reveal if email exists)
+      toast({
+        title: "Reset Link Sent",
+        description: "If an account with that email exists, we've sent a password reset link.",
+      });
+
+      // Also send via our custom email function for better styling
+      try {
+        await supabase.functions.invoke('send-password-reset', {
+          body: {
+            email: resetEmail,
+            resetUrl: `${window.location.origin}/reset-password`
+          }
+        });
+      } catch (emailError) {
+        console.warn('Custom email failed, but Supabase email should work:', emailError);
+      }
+
+      setResetEmail('');
+      setActiveTab('login');
+
+    } catch (error: any) {
+      console.error('Forgot password error:', error);
+      setErrors({ general: 'An error occurred. Please try again.' });
+    } finally {
+      setResetLoading(false);
+    }
+  };
+
   return (
     <div className="min-h-screen flex items-center justify-center gradient-hero p-4">
       <div className="w-full max-w-md space-y-6">
@@ -370,7 +439,7 @@ const Login: React.FC = () => {
             )}
 
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-              <TabsList className="grid w-full grid-cols-2">
+              <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="login">
                   <Shield className="h-4 w-4 mr-2" />
                   Sign In
@@ -378,6 +447,10 @@ const Login: React.FC = () => {
                 <TabsTrigger value="signup">
                   <UserPlus className="h-4 w-4 mr-2" />
                   Sign Up
+                </TabsTrigger>
+                <TabsTrigger value="forgot">
+                  <KeyRound className="h-4 w-4 mr-2" />
+                  Reset
                 </TabsTrigger>
               </TabsList>
 
@@ -430,6 +503,17 @@ const Login: React.FC = () => {
                       'Sign In'
                     )}
                   </Button>
+
+                  <div className="text-center">
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="text-sm text-muted-foreground hover:text-primary"
+                      onClick={() => setActiveTab('forgot')}
+                    >
+                      Forgot your password?
+                    </Button>
+                  </div>
                 </form>
               </TabsContent>
 
@@ -536,6 +620,67 @@ const Login: React.FC = () => {
                     )}
                   </Button>
                 </form>
+              </TabsContent>
+
+              <TabsContent value="forgot" className="space-y-4">
+                <div className="text-center mb-4">
+                  <div className="mx-auto mb-3 h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                    <KeyRound className="h-6 w-6 text-primary" />
+                  </div>
+                  <h3 className="text-lg font-semibold">Reset Your Password</h3>
+                  <p className="text-sm text-muted-foreground">
+                    Enter your email address and we'll send you a link to reset your password.
+                  </p>
+                </div>
+
+                <form onSubmit={handleForgotPassword} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="reset-email">Email Address</Label>
+                    <Input
+                      id="reset-email"
+                      type="email"
+                      placeholder="Enter your email address"
+                      value={resetEmail}
+                      onChange={(e) => setResetEmail(e.target.value)}
+                      className={errors.email ? 'border-destructive' : ''}
+                    />
+                    {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
+                  </div>
+
+                  <Button type="submit" className="w-full" disabled={resetLoading}>
+                    {resetLoading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Sending Reset Link...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        Send Reset Link
+                      </>
+                    )}
+                  </Button>
+
+                  <div className="text-center">
+                    <Button
+                      type="button"
+                      variant="link"
+                      className="text-sm text-muted-foreground hover:text-primary"
+                      onClick={() => setActiveTab('login')}
+                    >
+                      <ArrowLeft className="h-4 w-4 mr-1" />
+                      Back to Sign In
+                    </Button>
+                  </div>
+                </form>
+
+                <Alert className="border-primary/50 bg-primary/10">
+                  <Shield className="h-4 w-4" />
+                  <AlertDescription className="text-sm">
+                    For security reasons, we'll send a reset link to your email if an account exists. 
+                    The link will expire in 1 hour.
+                  </AlertDescription>
+                </Alert>
               </TabsContent>
             </Tabs>
 
