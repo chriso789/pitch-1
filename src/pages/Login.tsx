@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import { Loader2, AlertCircle, Eye, EyeOff, Wifi, WifiOff, Shield, UserPlus } from 'lucide-react';
 
 const Login: React.FC = () => {
   const navigate = useNavigate();
@@ -16,6 +16,8 @@ const Login: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [activeTab, setActiveTab] = useState('login');
+  const [connectionStatus, setConnectionStatus] = useState<'online' | 'offline' | 'checking'>('checking');
+  const [sessionCheckComplete, setSessionCheckComplete] = useState(false);
   
   // Login form state
   const [loginForm, setLoginForm] = useState({
@@ -23,34 +25,109 @@ const Login: React.FC = () => {
     password: ''
   });
 
-  // Password setup form state
-  const [setupForm, setSetupForm] = useState({
+  // Signup form state  
+  const [signupForm, setSignupForm] = useState({
     email: '',
-    tempPassword: '',
-    newPassword: '',
-    confirmPassword: ''
+    password: '',
+    confirmPassword: '',
+    firstName: '',
+    lastName: '',
+    companyName: ''
   });
 
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
+  
+  // Enhanced profile creation for all users
+  const ensureUserProfile = async (user: any) => {
+    try {
+      const { data: existingProfile } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (!existingProfile) {
+        const profileData = {
+          id: user.id,
+          email: user.email,
+          first_name: user.user_metadata?.first_name || user.email?.split('@')[0] || 'User',
+          last_name: user.user_metadata?.last_name || '',
+          role: 'user' as const,
+          company_name: user.user_metadata?.company_name || '',
+          title: user.user_metadata?.title || '',
+          tenant_id: user.user_metadata?.tenant_id || user.id,
+        };
+
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .insert(profileData);
+
+        if (profileError) {
+          console.warn('Profile creation failed:', profileError);
+        } else {
+          console.log('Profile created successfully for user:', user.id);
+        }
+      }
+    } catch (error) {
+      console.warn('Profile check/creation error:', error);
+    }
+  };
 
   useEffect(() => {
-    // Check if user is already logged in
-    const checkAuth = async () => {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session) {
-        navigate('/');
+    let mounted = true;
+    
+    const loadingTimeout = setTimeout(() => {
+      if (mounted && !sessionCheckComplete) {
+        setSessionCheckComplete(true);
+        setConnectionStatus('offline');
+        console.warn('Session check timeout - possible connection issue');
+      }
+    }, 10000);
+
+    const checkConnection = async () => {
+      try {
+        const { data, error } = await supabase.auth.getSession();
+        if (mounted) {
+          setConnectionStatus('online');
+          if (data.session && !error) {
+            navigate('/');
+          } else {
+            setSessionCheckComplete(true);
+          }
+        }
+      } catch (error) {
+        if (mounted) {
+          setConnectionStatus('offline');
+          setSessionCheckComplete(true);
+          console.error('Connection check failed:', error);
+        }
       }
     };
-    checkAuth();
 
-    // Listen for auth changes
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    checkConnection();
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (event, session) => {
+      if (!mounted) return;
+      
+      console.log('Auth state change:', event, session?.user?.id);
+      
       if (session) {
-        navigate('/');
+        setTimeout(async () => {
+          await ensureUserProfile(session.user);
+          if (mounted) {
+            navigate('/');
+          }
+        }, 0);
+      } else if (event === 'SIGNED_OUT') {
+        setSessionCheckComplete(true);
       }
     });
 
-    return () => subscription.unsubscribe();
+    return () => {
+      mounted = false;
+      clearTimeout(loadingTimeout);
+      subscription.unsubscribe();
+    };
   }, [navigate]);
 
   const validateEmail = (email: string) => {
@@ -59,7 +136,6 @@ const Login: React.FC = () => {
   };
 
   const validatePassword = (password: string) => {
-    // At least 8 characters, 1 uppercase, 1 lowercase, 1 number, 1 special char
     const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
     return passwordRegex.test(password);
   };
@@ -79,15 +155,25 @@ const Login: React.FC = () => {
     }
 
     setLoading(true);
+    
+    const timeoutId = setTimeout(() => {
+      setLoading(false);
+      setErrors({ general: 'Login timeout - please check your connection and try again' });
+    }, 15000);
+
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
         email: loginForm.email,
         password: loginForm.password
       });
 
+      clearTimeout(timeoutId);
+
       if (error) {
         if (error.message.includes('Invalid login credentials')) {
           setErrors({ general: 'Invalid email or password' });
+        } else if (error.message.includes('Email not confirmed')) {
+          setErrors({ general: 'Please check your email and click the confirmation link before signing in' });
         } else {
           setErrors({ general: error.message });
         }
@@ -97,83 +183,88 @@ const Login: React.FC = () => {
       if (data.user) {
         toast({
           title: "Login successful",
-          description: "Welcome back!",
+          description: "Welcome back to PITCH CRM!",
         });
       }
     } catch (error: any) {
+      clearTimeout(timeoutId);
       console.error('Login error:', error);
-      setErrors({ general: 'An unexpected error occurred' });
+      setErrors({ general: 'Connection error - please check your internet and try again' });
     } finally {
       setLoading(false);
     }
   };
 
-  const handlePasswordSetup = async (e: React.FormEvent) => {
+  const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrors({});
-
-    if (!validateEmail(setupForm.email)) {
+    
+    if (!validateEmail(signupForm.email)) {
       setErrors({ email: 'Please enter a valid email address' });
       return;
     }
 
-    if (!setupForm.tempPassword) {
-      setErrors({ tempPassword: 'Temporary password is required' });
-      return;
-    }
-
-    if (!validatePassword(setupForm.newPassword)) {
+    if (!validatePassword(signupForm.password)) {
       setErrors({ 
-        newPassword: 'Password must be at least 8 characters with uppercase, lowercase, number, and special character' 
+        password: 'Password must be at least 8 characters with uppercase, lowercase, number, and special character' 
       });
       return;
     }
 
-    if (setupForm.newPassword !== setupForm.confirmPassword) {
+    if (signupForm.password !== signupForm.confirmPassword) {
       setErrors({ confirmPassword: 'Passwords do not match' });
       return;
     }
 
+    if (!signupForm.firstName.trim()) {
+      setErrors({ firstName: 'First name is required' });
+      return;
+    }
+
     setLoading(true);
+
     try {
-      // First, sign in with temporary password
-      const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
-        email: setupForm.email,
-        password: setupForm.tempPassword
+      const { data, error } = await supabase.auth.signUp({
+        email: signupForm.email,
+        password: signupForm.password,
+        options: {
+          emailRedirectTo: `${window.location.origin}/`,
+          data: {
+            first_name: signupForm.firstName.trim(),
+            last_name: signupForm.lastName.trim(),
+            company_name: signupForm.companyName.trim()
+          }
+        }
       });
 
-      if (loginError) {
-        setErrors({ tempPassword: 'Invalid email or temporary password' });
+      if (error) {
+        if (error.message.includes('User already registered')) {
+          setErrors({ general: 'An account with this email already exists. Please sign in instead.' });
+        } else {
+          setErrors({ general: error.message });
+        }
         return;
       }
 
-      // Update password
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: setupForm.newPassword
-      });
-
-      if (updateError) {
-        setErrors({ general: 'Failed to update password' });
-        return;
+      if (data.user) {
+        toast({
+          title: "Account created successfully",
+          description: "Please check your email to confirm your account.",
+        });
+        
+        setSignupForm({
+          email: '',
+          password: '',
+          confirmPassword: '',
+          firstName: '',
+          lastName: '',
+          companyName: ''
+        });
+        setActiveTab('login');
       }
-
-      toast({
-        title: "Password updated successfully",
-        description: "You can now use your new password to log in.",
-      });
-
-      // Clear form and switch to login tab
-      setSetupForm({
-        email: '',
-        tempPassword: '',
-        newPassword: '',
-        confirmPassword: ''
-      });
-      setActiveTab('login');
-      
     } catch (error: any) {
-      console.error('Password setup error:', error);
-      setErrors({ general: 'An unexpected error occurred' });
+      console.error('Signup error:', error);
+      setErrors({ general: 'Connection error - please try again' });
     } finally {
       setLoading(false);
     }
@@ -181,23 +272,28 @@ const Login: React.FC = () => {
 
   const handleDemoLogin = async () => {
     setLoading(true);
+
     try {
       const demoEmail = 'demo@pitch.com';
       const demoPassword = 'DemoPassword123!';
 
-      // Try to sign in first
       let { data, error } = await supabase.auth.signInWithPassword({
         email: demoEmail,
         password: demoPassword
       });
 
       if (error && error.message.includes('Invalid login credentials')) {
-        // Create demo account if it doesn't exist
         const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
           email: demoEmail,
           password: demoPassword,
           options: {
-            emailRedirectTo: `${window.location.origin}/`
+            emailRedirectTo: `${window.location.origin}/`,
+            data: {
+              first_name: 'Demo',
+              last_name: 'User',
+              company_name: 'PITCH Demo Company',
+              title: 'Administrator'
+            }
           }
         });
 
@@ -206,27 +302,23 @@ const Login: React.FC = () => {
         }
 
         if (signUpData.user) {
-          // Create demo profile
-          const { error: profileError } = await supabase
-            .from('profiles')
-            .insert({
-              id: signUpData.user.id,
-              email: demoEmail,
-              first_name: 'Demo',
-              last_name: 'User',
-              role: 'admin',
-              company_name: 'Pitch Demo Company',
-              title: 'Administrator',
-              tenant_id: signUpData.user.id // Use user ID as tenant ID for demo
-            });
+          const profileData = {
+            id: signUpData.user.id,
+            email: demoEmail,
+            first_name: 'Demo',
+            last_name: 'User',
+            role: 'admin' as const,
+            company_name: 'PITCH Demo Company',
+            title: 'Administrator',
+            tenant_id: signUpData.user.id,
+            is_active: true
+          };
 
-          if (profileError) {
-            console.warn('Profile creation failed:', profileError);
-          }
+          await supabase.from('profiles').insert(profileData);
 
           toast({
             title: "Demo account created",
-            description: "Welcome to the demo!",
+            description: "Welcome to PITCH CRM! Explore with full sample data.",
           });
         }
       } else if (error) {
@@ -234,7 +326,7 @@ const Login: React.FC = () => {
       } else {
         toast({
           title: "Demo login successful",
-          description: "Welcome to the demo!",
+          description: "Welcome back to the PITCH CRM demo!",
         });
       }
     } catch (error: any) {
@@ -246,37 +338,71 @@ const Login: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
+    <div className="min-h-screen flex items-center justify-center gradient-hero p-4">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
-          <h1 className="text-3xl font-bold gradient-primary bg-clip-text text-transparent">
-            Pitch
+          <h1 className="text-4xl font-bold text-white mb-2">
+            PITCH
           </h1>
-          <p className="text-muted-foreground mt-2">
-            Your AI-powered sales assistant CRM
+          <p className="text-white/90 text-lg">
+            Professional Roofing CRM
           </p>
+          
+          <div className="flex items-center justify-center gap-2 mt-4 text-sm">
+            {connectionStatus === 'online' ? (
+              <>
+                <Wifi className="h-4 w-4 text-success-light" />
+                <span className="text-white/80">Connected</span>
+              </>
+            ) : connectionStatus === 'offline' ? (
+              <>
+                <WifiOff className="h-4 w-4 text-warning" />
+                <span className="text-white/80">Connection issues detected</span>
+              </>
+            ) : (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin text-white/60" />
+                <span className="text-white/80">Checking connection...</span>
+              </>
+            )}
+          </div>
         </div>
 
-        <Card>
-          <CardHeader className="space-y-1">
-            <CardTitle>Welcome</CardTitle>
-            <CardDescription>
-              Sign in to your account or set up your password
+        <Card className="shadow-strong border-0 bg-white/95 backdrop-blur-sm">
+          <CardHeader className="space-y-1 text-center">
+            <CardTitle className="text-2xl font-semibold">Welcome Back</CardTitle>
+            <CardDescription className="text-base">
+              Sign in to access your roofing CRM dashboard
             </CardDescription>
           </CardHeader>
           <CardContent>
+            {errors.general && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>{errors.general}</AlertDescription>
+              </Alert>
+            )}
+
+            {!sessionCheckComplete && (
+              <Alert className="mb-4 border-primary/50 bg-primary/10">
+                <Loader2 className="h-4 w-4 animate-spin" />
+                <AlertDescription>
+                  Checking your session... This may take a moment.
+                </AlertDescription>
+              </Alert>
+            )}
+
             <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
               <TabsList className="grid w-full grid-cols-2">
-                <TabsTrigger value="login">Sign In</TabsTrigger>
-                <TabsTrigger value="setup">Set Password</TabsTrigger>
+                <TabsTrigger value="login">
+                  <Shield className="h-4 w-4 mr-2" />
+                  Sign In
+                </TabsTrigger>
+                <TabsTrigger value="signup">
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  Sign Up
+                </TabsTrigger>
               </TabsList>
-
-              {errors.general && (
-                <Alert variant="destructive">
-                  <AlertCircle className="h-4 w-4" />
-                  <AlertDescription>{errors.general}</AlertDescription>
-                </Alert>
-              )}
 
               <TabsContent value="login" className="space-y-4">
                 <form onSubmit={handleLogin} className="space-y-4">
@@ -288,9 +414,9 @@ const Login: React.FC = () => {
                       placeholder="Enter your email"
                       value={loginForm.email}
                       onChange={(e) => setLoginForm({ ...loginForm, email: e.target.value })}
-                      className={errors.email ? 'border-red-500' : ''}
+                      className={errors.email ? 'border-destructive' : ''}
                     />
-                    {errors.email && <p className="text-sm text-red-500">{errors.email}</p>}
+                    {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
                   </div>
 
                   <div className="space-y-2">
@@ -302,7 +428,7 @@ const Login: React.FC = () => {
                         placeholder="Enter your password"
                         value={loginForm.password}
                         onChange={(e) => setLoginForm({ ...loginForm, password: e.target.value })}
-                        className={errors.password ? 'border-red-500 pr-10' : 'pr-10'}
+                        className={errors.password ? 'border-destructive pr-10' : 'pr-10'}
                       />
                       <Button
                         type="button"
@@ -311,14 +437,10 @@ const Login: React.FC = () => {
                         className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                         onClick={() => setShowPassword(!showPassword)}
                       >
-                        {showPassword ? (
-                          <EyeOff className="h-4 w-4" />
-                        ) : (
-                          <Eye className="h-4 w-4" />
-                        )}
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                     </div>
-                    {errors.password && <p className="text-sm text-red-500">{errors.password}</p>}
+                    {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
                   </div>
 
                   <Button type="submit" className="w-full" disabled={loading}>
@@ -334,44 +456,68 @@ const Login: React.FC = () => {
                 </form>
               </TabsContent>
 
-              <TabsContent value="setup" className="space-y-4">
-                <form onSubmit={handlePasswordSetup} className="space-y-4">
+              <TabsContent value="signup" className="space-y-4">
+                <form onSubmit={handleSignup} className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-firstName">First Name</Label>
+                      <Input
+                        id="signup-firstName"
+                        type="text"
+                        placeholder="First name"
+                        value={signupForm.firstName}
+                        onChange={(e) => setSignupForm({ ...signupForm, firstName: e.target.value })}
+                        className={errors.firstName ? 'border-destructive' : ''}
+                      />
+                      {errors.firstName && <p className="text-sm text-destructive">{errors.firstName}</p>}
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label htmlFor="signup-lastName">Last Name</Label>
+                      <Input
+                        id="signup-lastName"
+                        type="text"
+                        placeholder="Last name"
+                        value={signupForm.lastName}
+                        onChange={(e) => setSignupForm({ ...signupForm, lastName: e.target.value })}
+                      />
+                    </div>
+                  </div>
+
                   <div className="space-y-2">
-                    <Label htmlFor="setup-email">Email</Label>
+                    <Label htmlFor="signup-email">Email</Label>
                     <Input
-                      id="setup-email"
+                      id="signup-email"
                       type="email"
                       placeholder="Enter your email"
-                      value={setupForm.email}
-                      onChange={(e) => setSetupForm({ ...setupForm, email: e.target.value })}
-                      className={errors.email ? 'border-red-500' : ''}
+                      value={signupForm.email}
+                      onChange={(e) => setSignupForm({ ...signupForm, email: e.target.value })}
+                      className={errors.email ? 'border-destructive' : ''}
                     />
-                    {errors.email && <p className="text-sm text-red-500">{errors.email}</p>}
+                    {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="temp-password">Temporary Password</Label>
+                    <Label htmlFor="signup-company">Company Name (Optional)</Label>
                     <Input
-                      id="temp-password"
-                      type="password"
-                      placeholder="Enter the temporary password from email"
-                      value={setupForm.tempPassword}
-                      onChange={(e) => setSetupForm({ ...setupForm, tempPassword: e.target.value })}
-                      className={errors.tempPassword ? 'border-red-500' : ''}
+                      id="signup-company"
+                      type="text"
+                      placeholder="Your company name"
+                      value={signupForm.companyName}
+                      onChange={(e) => setSignupForm({ ...signupForm, companyName: e.target.value })}
                     />
-                    {errors.tempPassword && <p className="text-sm text-red-500">{errors.tempPassword}</p>}
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="new-password">New Password</Label>
+                    <Label htmlFor="signup-password">Password</Label>
                     <div className="relative">
                       <Input
-                        id="new-password"
+                        id="signup-password"
                         type={showPassword ? 'text' : 'password'}
                         placeholder="Create a strong password"
-                        value={setupForm.newPassword}
-                        onChange={(e) => setSetupForm({ ...setupForm, newPassword: e.target.value })}
-                        className={errors.newPassword ? 'border-red-500 pr-10' : 'pr-10'}
+                        value={signupForm.password}
+                        onChange={(e) => setSignupForm({ ...signupForm, password: e.target.value })}
+                        className={errors.password ? 'border-destructive pr-10' : 'pr-10'}
                       />
                       <Button
                         type="button"
@@ -380,40 +526,36 @@ const Login: React.FC = () => {
                         className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                         onClick={() => setShowPassword(!showPassword)}
                       >
-                        {showPassword ? (
-                          <EyeOff className="h-4 w-4" />
-                        ) : (
-                          <Eye className="h-4 w-4" />
-                        )}
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </Button>
                     </div>
-                    {errors.newPassword && <p className="text-sm text-red-500">{errors.newPassword}</p>}
-                    <p className="text-xs text-muted-foreground">
-                      Must be 8+ characters with uppercase, lowercase, number, and special character
-                    </p>
+                    {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="confirm-password">Confirm Password</Label>
+                    <Label htmlFor="signup-confirmPassword">Confirm Password</Label>
                     <Input
-                      id="confirm-password"
+                      id="signup-confirmPassword"
                       type="password"
-                      placeholder="Confirm your new password"
-                      value={setupForm.confirmPassword}
-                      onChange={(e) => setSetupForm({ ...setupForm, confirmPassword: e.target.value })}
-                      className={errors.confirmPassword ? 'border-red-500' : ''}
+                      placeholder="Confirm your password"
+                      value={signupForm.confirmPassword}
+                      onChange={(e) => setSignupForm({ ...signupForm, confirmPassword: e.target.value })}
+                      className={errors.confirmPassword ? 'border-destructive' : ''}
                     />
-                    {errors.confirmPassword && <p className="text-sm text-red-500">{errors.confirmPassword}</p>}
+                    {errors.confirmPassword && <p className="text-sm text-destructive">{errors.confirmPassword}</p>}
+                    <p className="text-xs text-muted-foreground">
+                      Must be 8+ characters with uppercase, lowercase, number, and special character
+                    </p>
                   </div>
 
                   <Button type="submit" className="w-full" disabled={loading}>
                     {loading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Setting up password...
+                        Creating account...
                       </>
                     ) : (
-                      'Set Password'
+                      'Create Account'
                     )}
                   </Button>
                 </form>
@@ -437,15 +579,20 @@ const Login: React.FC = () => {
                 )}
               </Button>
               <p className="text-xs text-muted-foreground text-center mt-2">
-                Explore the system with sample data
+                Explore PITCH CRM with full sample data
               </p>
             </div>
           </CardContent>
         </Card>
 
-        <p className="text-center text-sm text-muted-foreground">
-          Need help? Contact your system administrator
-        </p>
+        <div className="text-center space-y-2">
+          <p className="text-white/80 text-sm">
+            Need help accessing your account?
+          </p>
+          <p className="text-white/60 text-xs">
+            Contact your system administrator or PITCH support
+          </p>
+        </div>
       </div>
     </div>
   );
