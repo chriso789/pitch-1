@@ -142,22 +142,10 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
       description: "Customer database"
     },
     {
-      name: "Lead Sources",
-      href: "lead-sources",
-      icon: BarChart,
-      description: "Track lead sources & ROI"
-    },
-    {
       name: "Lead Nurturing",
       href: "lead-nurturing",
       icon: Mail,
       description: "Automated follow-up campaigns"
-    },
-    {
-      name: "Duplicate Detection",
-      href: "duplicates", 
-      icon: Users,
-      description: "Find & merge duplicate contacts"
     },
     {
       name: "Pipeline Manager",
