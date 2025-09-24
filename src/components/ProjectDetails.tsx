@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Progress } from "@/components/ui/progress";
+import { BudgetTracker } from "./BudgetTracker";
 import { supabase } from "@/integrations/supabase/client";
 import { 
   DollarSign, 
@@ -14,7 +16,15 @@ import {
   User,
   Phone,
   Mail,
-  Home
+  Home,
+  TrendingUp,
+  TrendingDown,
+  AlertTriangle,
+  Clock,
+  Calculator,
+  Upload,
+  Target,
+  BarChart3
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
 
@@ -23,9 +33,28 @@ interface ProjectDetailsProps {
   onBack: () => void;
 }
 
+interface BudgetItem {
+  id: string;
+  category: string;
+  item_name: string;
+  description?: string;
+  budgeted_quantity: number;
+  budgeted_unit_cost: number;
+  budgeted_total_cost: number;
+  actual_quantity: number;
+  actual_unit_cost: number;
+  actual_total_cost: number;
+  variance_amount: number;
+  variance_percent: number;
+  vendor_name?: string;
+  purchase_order_number?: string;
+}
+
 const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
   const [project, setProject] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [budgetItems, setBudgetItems] = useState<BudgetItem[]>([]);
+  const [commission, setCommission] = useState<any>(null);
 
   useEffect(() => {
     fetchProjectDetails();
@@ -36,23 +65,47 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
       setLoading(true);
       
       // Fetch project with related data
-      const { data: projectData, error: projectError } = await supabase
-        .from('projects')
-        .select(`
-          *,
-          pipeline_entries!inner(
+      const [projectResult, budgetItemsResult] = await Promise.all([
+        supabase
+          .from('projects')
+          .select(`
             *,
-            contacts(*)
-          ),
-          estimates(*),
-          project_costs(*),
-          project_budget_snapshots(*)
-        `)
-        .eq('id', projectId)
-        .single();
+            pipeline_entries!inner(
+              *,
+              contacts(*),
+              profiles!pipeline_entries_assigned_to_fkey(
+                id,
+                first_name,
+                last_name,
+                personal_overhead_rate
+              )
+            ),
+            estimates(*),
+            project_costs(*),
+            project_budget_snapshots(*)
+          `)
+          .eq('id', projectId)
+          .single(),
+        supabase
+          .from('project_budget_items')
+          .select('*')
+          .eq('project_id', projectId)
+          .order('category, item_name')
+      ]);
 
-      if (projectError) throw projectError;
-      setProject(projectData);
+      if (projectResult.error) throw projectResult.error;
+      setProject(projectResult.data);
+      setBudgetItems(budgetItemsResult.data || []);
+
+      // Calculate commission if there's a sales rep
+      const salesRep = projectResult.data?.pipeline_entries?.profiles;
+      if (salesRep) {
+        const { data: commissionData } = await supabase.rpc('calculate_rep_commission', {
+          project_id_param: projectId,
+          sales_rep_id_param: salesRep.id
+        });
+        setCommission(commissionData);
+      }
     } catch (error) {
       console.error('Error fetching project details:', error);
       toast({
@@ -77,9 +130,14 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
   const estimate = project.estimates?.[0];
   const costs = project.project_costs || [];
   const budget = project.project_budget_snapshots?.[0]?.original_budget;
+  const salesRep = project.pipeline_entries?.profiles;
 
   const totalCosts = costs.reduce((sum: number, cost: any) => sum + Number(cost.total_cost), 0);
-  const profitLoss = estimate ? Number(estimate.selling_price) - totalCosts : 0;
+  const totalBudgetedCosts = budgetItems.reduce((sum: number, item: BudgetItem) => sum + Number(item.budgeted_total_cost), 0);
+  const totalActualCosts = budgetItems.reduce((sum: number, item: BudgetItem) => sum + Number(item.actual_total_cost), 0);
+  const budgetVariance = totalActualCosts - totalBudgetedCosts;
+  const budgetVariancePercent = totalBudgetedCosts > 0 ? (budgetVariance / totalBudgetedCosts) * 100 : 0;
+  const profitLoss = estimate ? Number(estimate.selling_price) - totalCosts - totalActualCosts : 0;
 
   return (
     <div className="space-y-6">
@@ -145,6 +203,23 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
+              <Target className={`h-4 w-4 ${budgetVariance <= 0 ? 'text-success' : 'text-warning'}`} />
+              <div>
+                <p className="text-sm text-muted-foreground">Budget Variance</p>
+                <p className={`text-lg font-bold ${budgetVariance <= 0 ? 'text-success' : 'text-warning'}`}>
+                  {budgetVariance >= 0 ? '+' : ''}${budgetVariance.toLocaleString()}
+                  <span className="text-xs ml-1">
+                    ({budgetVariancePercent >= 0 ? '+' : ''}{budgetVariancePercent.toFixed(1)}%)
+                  </span>
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
               <Calendar className="h-4 w-4 text-primary" />
               <div>
                 <p className="text-sm text-muted-foreground">Est. Completion</p>
@@ -164,8 +239,11 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
       <Tabs defaultValue="overview" className="space-y-4">
         <TabsList>
           <TabsTrigger value="overview">Overview</TabsTrigger>
+          <TabsTrigger value="budget">Budget</TabsTrigger>
           <TabsTrigger value="estimate">Estimate</TabsTrigger>
+          <TabsTrigger value="commission">Commission</TabsTrigger>
           <TabsTrigger value="costs">Costs</TabsTrigger>
+          <TabsTrigger value="timeline">Timeline</TabsTrigger>
           <TabsTrigger value="photos">Photos</TabsTrigger>
           <TabsTrigger value="documents">Documents</TabsTrigger>
         </TabsList>
@@ -237,6 +315,14 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
           </div>
         </TabsContent>
 
+        <TabsContent value="budget" className="space-y-4">
+          <BudgetTracker 
+            projectId={projectId} 
+            budgetItems={budgetItems}
+            onRefresh={fetchProjectDetails}
+          />
+        </TabsContent>
+
         <TabsContent value="estimate">
           {estimate ? (
             <Card>
@@ -273,6 +359,85 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
           )}
         </TabsContent>
 
+        <TabsContent value="commission" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Calculator className="h-5 w-5" />
+                Sales Representative Commission
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {salesRep && commission ? (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div>
+                      <h4 className="font-medium mb-3">Representative Details</h4>
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Name:</span>
+                          <span>{salesRep.first_name} {salesRep.last_name}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Personal Overhead Rate:</span>
+                          <span>{salesRep.personal_overhead_rate || 0}%</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Payment Method:</span>
+                          <span className="capitalize">
+                            {commission.payment_method?.replace('_', ' ') || 'Percentage of selling price'}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div>
+                      <h4 className="font-medium mb-3">Commission Breakdown</h4>
+                      <div className="space-y-2">
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Contract Value:</span>
+                          <span>${commission.contract_value?.toLocaleString() || 0}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Total Costs:</span>
+                          <span>${commission.total_costs?.toLocaleString() || 0}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Rep Overhead:</span>
+                          <span>${commission.rep_overhead?.toLocaleString() || 0}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Net Profit:</span>
+                          <span>${commission.net_profit?.toLocaleString() || 0}</span>
+                        </div>
+                        <hr />
+                        <div className="flex justify-between font-semibold">
+                          <span>Commission ({commission.commission_rate}%):</span>
+                          <span className="text-success">
+                            ${commission.commission_amount?.toLocaleString() || 0}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-6 p-4 bg-muted/30 rounded-lg">
+                    <h4 className="font-medium mb-2">Commission Summary</h4>
+                    <p className="text-sm text-muted-foreground">
+                      Based on the {commission.payment_method === 'commission_after_costs' ? 'commission after costs' : 'percentage of selling price'} method,
+                      the representative will earn <strong>${commission.commission_amount?.toLocaleString() || 0}</strong> in commission for this project.
+                    </p>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Calculator className="h-8 w-8 mx-auto mb-2 opacity-50" />
+                  <p>No sales representative assigned or commission data available</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         <TabsContent value="costs">
           <Card>
             <CardHeader>
@@ -305,6 +470,108 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
               ) : (
                 <p className="text-center text-muted-foreground">No costs recorded yet</p>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="timeline" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Clock className="h-5 w-5" />
+                Project Timeline
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-medium">Project Progress</p>
+                    <p className="text-sm text-muted-foreground">
+                      Started: {project.start_date 
+                        ? new Date(project.start_date).toLocaleDateString()
+                        : 'Not set'
+                      }
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-2xl font-bold">
+                      {project.status === 'completed' ? '100' : 
+                       project.status === 'active' ? '45' : '0'}%
+                    </p>
+                    <p className="text-sm text-muted-foreground">Complete</p>
+                  </div>
+                </div>
+                
+                <Progress 
+                  value={project.status === 'completed' ? 100 : 
+                         project.status === 'active' ? 45 : 0} 
+                  className="h-2"
+                />
+                
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">
+                  <div>
+                    <h4 className="font-medium mb-3">Key Milestones</h4>
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-3">
+                        <div className="w-3 h-3 bg-success rounded-full" />
+                        <div>
+                          <p className="text-sm font-medium">Project Started</p>
+                          <p className="text-xs text-muted-foreground">
+                            {project.start_date 
+                              ? new Date(project.start_date).toLocaleDateString()
+                              : 'Pending'
+                            }
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className={`w-3 h-3 rounded-full ${
+                          project.status === 'active' ? 'bg-warning' : 'bg-muted'
+                        }`} />
+                        <div>
+                          <p className="text-sm font-medium">Materials Ordered</p>
+                          <p className="text-xs text-muted-foreground">
+                            {project.status === 'active' ? 'In Progress' : 'Pending'}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className={`w-3 h-3 rounded-full ${
+                          project.status === 'completed' ? 'bg-success' : 'bg-muted'
+                        }`} />
+                        <div>
+                          <p className="text-sm font-medium">Project Completed</p>
+                          <p className="text-xs text-muted-foreground">
+                            {project.estimated_completion_date 
+                              ? `Est. ${new Date(project.estimated_completion_date).toLocaleDateString()}`
+                              : 'TBD'
+                            }
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div>
+                    <h4 className="font-medium mb-3">Upcoming Tasks</h4>
+                    <div className="space-y-2">
+                      <div className="p-2 bg-muted/30 rounded">
+                        <p className="text-sm font-medium">Schedule material delivery</p>
+                        <p className="text-xs text-muted-foreground">Due in 3 days</p>
+                      </div>
+                      <div className="p-2 bg-muted/30 rounded">
+                        <p className="text-sm font-medium">Crew assignment</p>
+                        <p className="text-xs text-muted-foreground">Due in 5 days</p>
+                      </div>
+                      <div className="p-2 bg-muted/30 rounded">
+                        <p className="text-sm font-medium">Quality inspection</p>
+                        <p className="text-xs text-muted-foreground">After completion</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

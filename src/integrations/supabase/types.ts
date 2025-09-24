@@ -314,14 +314,98 @@ export type Database = {
           },
         ]
       }
+      commission_calculations: {
+        Row: {
+          approved_at: string | null
+          calculated_at: string | null
+          calculation_details: Json | null
+          commission_amount: number
+          commission_plan_id: string | null
+          commission_rate: number
+          contract_value: number
+          created_by: string | null
+          id: string
+          paid_at: string | null
+          payment_method: string
+          project_id: string
+          rep_overhead: number
+          sales_rep_id: string
+          status: string | null
+          tenant_id: string
+          total_costs: number
+        }
+        Insert: {
+          approved_at?: string | null
+          calculated_at?: string | null
+          calculation_details?: Json | null
+          commission_amount?: number
+          commission_plan_id?: string | null
+          commission_rate?: number
+          contract_value?: number
+          created_by?: string | null
+          id?: string
+          paid_at?: string | null
+          payment_method?: string
+          project_id: string
+          rep_overhead?: number
+          sales_rep_id: string
+          status?: string | null
+          tenant_id: string
+          total_costs?: number
+        }
+        Update: {
+          approved_at?: string | null
+          calculated_at?: string | null
+          calculation_details?: Json | null
+          commission_amount?: number
+          commission_plan_id?: string | null
+          commission_rate?: number
+          contract_value?: number
+          created_by?: string | null
+          id?: string
+          paid_at?: string | null
+          payment_method?: string
+          project_id?: string
+          rep_overhead?: number
+          sales_rep_id?: string
+          status?: string | null
+          tenant_id?: string
+          total_costs?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commission_calculations_commission_plan_id_fkey"
+            columns: ["commission_plan_id"]
+            isOneToOne: false
+            referencedRelation: "commission_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_calculations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_calculations_sales_rep_id_fkey"
+            columns: ["sales_rep_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commission_plans: {
         Row: {
           commission_type: Database["public"]["Enums"]["commission_type"]
           created_at: string | null
           created_by: string | null
           id: string
+          include_overhead: boolean | null
           is_active: boolean | null
           name: string
+          payment_method: string | null
           plan_config: Json
           tenant_id: string | null
           updated_at: string | null
@@ -331,8 +415,10 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           id?: string
+          include_overhead?: boolean | null
           is_active?: boolean | null
           name: string
+          payment_method?: string | null
           plan_config: Json
           tenant_id?: string | null
           updated_at?: string | null
@@ -342,8 +428,10 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           id?: string
+          include_overhead?: boolean | null
           is_active?: boolean | null
           name?: string
+          payment_method?: string | null
           plan_config?: Json
           tenant_id?: string | null
           updated_at?: string | null
@@ -3024,7 +3112,10 @@ export type Database = {
           last_name: string | null
           location_updated_at: string | null
           metadata: Json | null
+          pay_structure_display: Json | null
+          personal_overhead_rate: number | null
           phone: string | null
+          photo_url: string | null
           role: Database["public"]["Enums"]["app_role"] | null
           tenant_id: string | null
           title: string | null
@@ -3045,7 +3136,10 @@ export type Database = {
           last_name?: string | null
           location_updated_at?: string | null
           metadata?: Json | null
+          pay_structure_display?: Json | null
+          personal_overhead_rate?: number | null
           phone?: string | null
+          photo_url?: string | null
           role?: Database["public"]["Enums"]["app_role"] | null
           tenant_id?: string | null
           title?: string | null
@@ -3066,7 +3160,10 @@ export type Database = {
           last_name?: string | null
           location_updated_at?: string | null
           metadata?: Json | null
+          pay_structure_display?: Json | null
+          personal_overhead_rate?: number | null
           phone?: string | null
+          photo_url?: string | null
           role?: Database["public"]["Enums"]["app_role"] | null
           tenant_id?: string | null
           title?: string | null
@@ -3085,6 +3182,80 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_budget_items: {
+        Row: {
+          actual_quantity: number | null
+          actual_total_cost: number | null
+          actual_unit_cost: number | null
+          budgeted_quantity: number | null
+          budgeted_total_cost: number | null
+          budgeted_unit_cost: number | null
+          category: string
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          item_name: string
+          project_id: string
+          purchase_order_number: string | null
+          tenant_id: string
+          updated_at: string | null
+          variance_amount: number | null
+          variance_percent: number | null
+          vendor_name: string | null
+        }
+        Insert: {
+          actual_quantity?: number | null
+          actual_total_cost?: number | null
+          actual_unit_cost?: number | null
+          budgeted_quantity?: number | null
+          budgeted_total_cost?: number | null
+          budgeted_unit_cost?: number | null
+          category: string
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          item_name: string
+          project_id: string
+          purchase_order_number?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          variance_amount?: number | null
+          variance_percent?: number | null
+          vendor_name?: string | null
+        }
+        Update: {
+          actual_quantity?: number | null
+          actual_total_cost?: number | null
+          actual_unit_cost?: number | null
+          budgeted_quantity?: number | null
+          budgeted_total_cost?: number | null
+          budgeted_unit_cost?: number | null
+          category?: string
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          item_name?: string
+          project_id?: string
+          purchase_order_number?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          variance_amount?: number | null
+          variance_percent?: number | null
+          vendor_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_budget_items_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
             referencedColumns: ["id"]
           },
         ]
@@ -3311,6 +3482,9 @@ export type Database = {
       projects: {
         Row: {
           actual_completion_date: string | null
+          budget_data: Json | null
+          budget_file_path: string | null
+          budget_variance_alerts: boolean | null
           created_at: string | null
           created_by: string | null
           description: string | null
@@ -3329,6 +3503,9 @@ export type Database = {
         }
         Insert: {
           actual_completion_date?: string | null
+          budget_data?: Json | null
+          budget_file_path?: string | null
+          budget_variance_alerts?: boolean | null
           created_at?: string | null
           created_by?: string | null
           description?: string | null
@@ -3347,6 +3524,9 @@ export type Database = {
         }
         Update: {
           actual_completion_date?: string | null
+          budget_data?: Json | null
+          budget_file_path?: string | null
+          budget_variance_alerts?: boolean | null
           created_at?: string | null
           created_by?: string | null
           description?: string | null
@@ -5077,6 +5257,10 @@ export type Database = {
       calculate_name_similarity: {
         Args: { name1: string; name2: string }
         Returns: number
+      }
+      calculate_rep_commission: {
+        Args: { project_id_param: string; sales_rep_id_param: string }
+        Returns: Json
       }
       check_enrollment_eligibility: {
         Args: { campaign_conditions: Json; contact_data: Json }

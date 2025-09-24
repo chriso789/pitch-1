@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import ProjectDetails from "./ProjectDetails";
 import { 
   HomeIcon, 
   DollarSign, 
@@ -45,6 +46,7 @@ const Projects = () => {
   const [projects, setProjects] = useState<ProjectData[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<ProjectData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     salesRep: 'all',
     location: 'all',
@@ -55,6 +57,15 @@ const Projects = () => {
   const [salesReps, setSalesReps] = useState<string[]>([]);
   const [locations, setLocations] = useState<string[]>([]);
   const { toast } = useToast();
+
+  if (selectedProject) {
+    return (
+      <ProjectDetails
+        projectId={selectedProject}
+        onBack={() => setSelectedProject(null)}
+      />
+    );
+  }
 
   useEffect(() => {
     fetchProjects();
@@ -347,7 +358,12 @@ const Projects = () => {
           </div>
 
           <div className="flex gap-2 mt-6">
-            <Button size="sm" variant="outline" className="flex-1">
+            <Button 
+              size="sm" 
+              variant="outline" 
+              className="flex-1"
+              onClick={() => setSelectedProject(project.id)}
+            >
               <Eye className="h-4 w-4 mr-1" />
               View Details
             </Button>
