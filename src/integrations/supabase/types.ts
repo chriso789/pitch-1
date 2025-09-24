@@ -981,6 +981,48 @@ export type Database = {
         }
         Relationships: []
       }
+      estimate_approvals: {
+        Row: {
+          approval_notes: string | null
+          approved_at: string | null
+          approver_id: string | null
+          created_at: string
+          estimate_id: string
+          estimate_version_id: string
+          id: string
+          rejection_reason: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          approval_notes?: string | null
+          approved_at?: string | null
+          approver_id?: string | null
+          created_at?: string
+          estimate_id: string
+          estimate_version_id: string
+          id?: string
+          rejection_reason?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          approval_notes?: string | null
+          approved_at?: string | null
+          approver_id?: string | null
+          created_at?: string
+          estimate_id?: string
+          estimate_version_id?: string
+          id?: string
+          rejection_reason?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       estimate_templates: {
         Row: {
           created_at: string | null
@@ -1031,6 +1073,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      estimate_versions: {
+        Row: {
+          change_reason: string | null
+          changes_summary: Json | null
+          created_at: string
+          created_by: string | null
+          estimate_id: string
+          id: string
+          is_current: boolean
+          previous_version_id: string | null
+          snapshot_data: Json
+          tenant_id: string
+          version_number: number
+        }
+        Insert: {
+          change_reason?: string | null
+          changes_summary?: Json | null
+          created_at?: string
+          created_by?: string | null
+          estimate_id: string
+          id?: string
+          is_current?: boolean
+          previous_version_id?: string | null
+          snapshot_data: Json
+          tenant_id: string
+          version_number: number
+        }
+        Update: {
+          change_reason?: string | null
+          changes_summary?: Json | null
+          created_at?: string
+          created_by?: string | null
+          estimate_id?: string
+          id?: string
+          is_current?: boolean
+          previous_version_id?: string | null
+          snapshot_data?: Json
+          tenant_id?: string
+          version_number?: number
+        }
+        Relationships: []
       }
       estimates: {
         Row: {
