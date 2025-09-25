@@ -229,7 +229,7 @@ const ComprehensiveWalkthrough = ({ onSectionChange }: { onSectionChange: (secti
     console.log(`Testing step: ${step.name}`);
     
     // Update step status to testing
-    let updatedStep = { ...step, status: 'testing' as const };
+    let updatedStep: WalkthroughStep = { ...step, status: 'testing' };
     setTestResults(prev => new Map(prev.set(step.id, updatedStep)));
 
     // Play voice over
