@@ -532,17 +532,99 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
-                <Key className="h-5 w-5" />
-                Password & Security
+                <Shield className="h-5 w-5" />
+                Password & Security Management
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Manual Password Override Section - Priority Access */}
+              {canManuallySetPassword() && (
+                <div className="p-6 border-2 border-orange-200 rounded-lg bg-gradient-to-r from-orange-50 to-yellow-50">
+                  <div className="flex items-start justify-between mb-4">
+                    <div className="space-y-2">
+                      <h3 className="text-lg font-semibold text-orange-800 flex items-center gap-2">
+                        <Key className="h-5 w-5" />
+                        Manual Password Override
+                      </h3>
+                      <p className="text-sm text-orange-700">
+                        Admin access to directly set new passwords. Available for Chris O'Brien accounts and self-management.
+                      </p>
+                    </div>
+                  </div>
+                  
+                  <div className="grid gap-4">
+                    <div className="space-y-3">
+                      <Label htmlFor="manual-new-password" className="text-sm font-medium text-orange-800">
+                        New Password (minimum 6 characters)
+                      </Label>
+                      <Input
+                        id="manual-new-password"
+                        type="password"
+                        value={newPassword}
+                        onChange={(e) => setNewPassword(e.target.value)}
+                        placeholder="Enter new password"
+                        className="border-orange-200 focus:border-orange-400"
+                      />
+                    </div>
+                    
+                    <div className="space-y-3">
+                      <Label htmlFor="manual-confirm-password" className="text-sm font-medium text-orange-800">
+                        Confirm New Password
+                      </Label>
+                      <Input
+                        id="manual-confirm-password"
+                        type="password"
+                        value={confirmPassword}
+                        onChange={(e) => setConfirmPassword(e.target.value)}
+                        placeholder="Confirm new password"
+                        className="border-orange-200 focus:border-orange-400"
+                      />
+                    </div>
+                    
+                    {newPassword && newPassword !== confirmPassword && (
+                      <p className="text-sm text-red-600">Passwords do not match</p>
+                    )}
+                    
+                    <div className="flex gap-3">
+                      <Button 
+                        onClick={updatePasswordDirectly} 
+                        disabled={updatingPassword || !newPassword || newPassword !== confirmPassword || newPassword.length < 6}
+                        className="bg-orange-600 hover:bg-orange-700 text-white"
+                      >
+                        {updatingPassword ? "Updating Password..." : "Set New Password"}
+                      </Button>
+                      
+                      <Button 
+                        variant="outline" 
+                        onClick={() => {
+                          setNewPassword('');
+                          setConfirmPassword('');
+                        }}
+                        className="border-orange-300 text-orange-700 hover:bg-orange-50"
+                      >
+                        Clear Fields
+                      </Button>
+                    </div>
+                    
+                    <div className="p-3 bg-orange-100 border border-orange-200 rounded-lg">
+                      <p className="text-xs text-orange-800">
+                        <strong>Security Note:</strong> This action immediately updates the user's password and invalidates all previous passwords and sessions. 
+                        Ensure you communicate the new password securely to the user.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* Standard Password Reset Section */}
               <div className="space-y-4">
+                <h3 className="text-lg font-semibold">Standard Password Reset</h3>
+                
                 <div className="flex items-start justify-between p-4 border rounded-lg">
                   <div className="space-y-1">
-                    <h4 className="font-medium">Password Reset</h4>
+                    <h4 className="font-medium">Email Reset Link</h4>
                     <p className="text-sm text-muted-foreground">
-                      Send a password reset email to {user.email}. The user will receive a secure link to create a new password.
+                      Send a secure password reset email to {user.email}. The user will receive a link to create a new password.
                     </p>
                   </div>
                   <AlertDialog>
@@ -570,70 +652,7 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
                   </AlertDialog>
                 </div>
 
-                {canManuallySetPassword() && (
-                  <div className="flex items-start justify-between p-4 border rounded-lg bg-yellow-50 border-yellow-200">
-                    <div className="space-y-1">
-                      <h4 className="font-medium text-yellow-800">Manual Password Reset</h4>
-                      <p className="text-sm text-yellow-700">
-                        Directly set a new password for this user (Admin access for Chris O'Brien accounts only).
-                      </p>
-                    </div>
-                    <Dialog open={showPasswordForm} onOpenChange={setShowPasswordForm}>
-                      <DialogTrigger asChild>
-                        <Button variant="outline" className="flex items-center gap-2 border-yellow-300 text-yellow-800 hover:bg-yellow-100">
-                          <Key className="h-4 w-4" />
-                          Set Password
-                        </Button>
-                      </DialogTrigger>
-                      <DialogContent>
-                        <DialogHeader>
-                          <DialogTitle>Set New Password</DialogTitle>
-                        </DialogHeader>
-                        <div className="space-y-4">
-                          <div className="space-y-2">
-                            <Label htmlFor="new-password">New Password</Label>
-                            <Input
-                              id="new-password"
-                              type="password"
-                              value={newPassword}
-                              onChange={(e) => setNewPassword(e.target.value)}
-                              placeholder="Enter new password (min 6 characters)"
-                            />
-                          </div>
-                          <div className="space-y-2">
-                            <Label htmlFor="confirm-password">Confirm Password</Label>
-                            <Input
-                              id="confirm-password"
-                              type="password"
-                              value={confirmPassword}
-                              onChange={(e) => setConfirmPassword(e.target.value)}
-                              placeholder="Confirm new password"
-                            />
-                          </div>
-                          <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
-                            <p className="text-sm text-yellow-800">
-                              <strong>Warning:</strong> This will immediately update the user's password. 
-                              Make sure to securely communicate the new password to the user.
-                            </p>
-                          </div>
-                          <div className="flex gap-2">
-                            <Button 
-                              onClick={updatePasswordDirectly} 
-                              disabled={updatingPassword || !newPassword || newPassword !== confirmPassword}
-                              className="flex-1"
-                            >
-                              {updatingPassword ? "Updating..." : "Update Password"}
-                            </Button>
-                            <Button variant="outline" onClick={() => setShowPasswordForm(false)}>
-                              Cancel
-                            </Button>
-                          </div>
-                        </div>
-                      </DialogContent>
-                    </Dialog>
-                  </div>
-                )}
-
+                {/* Account Status Section */}
                 <div className="flex items-start justify-between p-4 border rounded-lg">
                   <div className="space-y-1">
                     <h4 className="font-medium">Account Status</h4>
@@ -650,13 +669,16 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
                   </div>
                 </div>
 
+                {/* Security Information */}
                 <div className="p-4 bg-muted/50 rounded-lg">
-                  <h4 className="font-medium mb-2">Security Information</h4>
+                  <h4 className="font-medium mb-2">Security Policies</h4>
                   <ul className="text-sm text-muted-foreground space-y-1">
                     <li>• Password resets are valid for 24 hours</li>
-                    <li>• Users must verify their email address</li>
+                    <li>• Manual password updates invalidate all existing sessions</li>
+                    <li>• Users must verify their email address for reset links</li>
                     <li>• Account access is controlled by role permissions</li>
-                    <li>• All password changes are logged for security</li>
+                    <li>• All password changes are logged for security auditing</li>
+                    <li>• Manual overrides are restricted to authorized administrators</li>
                   </ul>
                 </div>
               </div>
