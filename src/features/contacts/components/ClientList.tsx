@@ -93,6 +93,31 @@ export const ClientList = () => {
   const [preferredView, setPreferredView] = useState<ViewType>('contacts');
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  
+  // Debug authentication state
+  useEffect(() => {
+    const checkAuthDebug = async () => {
+      console.log("=== AUTH DEBUG START ===");
+      
+      // Check client-side auth state
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
+      console.log("Client session:", session?.user?.email, sessionError);
+      console.log("Access token exists:", !!session?.access_token);
+      
+      // Check user
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      console.log("Client user:", user?.email, userError);
+      console.log("User app_metadata:", user?.app_metadata);
+      
+      // Test database auth
+      const { data: authTest, error: authTestError } = await supabase.rpc('get_user_tenant_id');
+      console.log("Database auth test:", authTest, authTestError);
+      
+      console.log("=== AUTH DEBUG END ===");
+    };
+    
+    checkAuthDebug();
+  }, []);
   const [filteredData, setFilteredData] = useState<Contact[] | Job[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
