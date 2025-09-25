@@ -199,12 +199,6 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
       description: "System configuration"
     },
     {
-      name: "Security",
-      href: "security", 
-      icon: Shield,
-      description: "Access & permissions"
-    },
-    {
       name: "Help",
       href: "help",
       icon: HelpCircle,
