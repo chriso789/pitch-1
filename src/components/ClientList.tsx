@@ -330,30 +330,6 @@ export const ClientList = () => {
     }
   };
 
-  const getStatusColor = (status: string, type: 'contact' | 'job') => {
-    if (type === 'contact') {
-      switch (status) {
-        case 'qualified': return 'bg-green-100 text-green-800 border-green-300';
-        case 'unqualified': return 'bg-gray-100 text-gray-800 border-gray-300';
-        case 'hot': return 'bg-red-100 text-red-800 border-red-300';
-        case 'warm': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-        case 'cold': return 'bg-blue-100 text-blue-800 border-blue-300';
-        default: return 'bg-gray-100 text-gray-800 border-gray-300';
-      }
-    } else {
-      switch (status?.toLowerCase()) {
-        case 'pending': return 'bg-yellow-100 text-yellow-800 border-yellow-300';
-        case 'in_progress': return 'bg-blue-100 text-blue-800 border-blue-300';
-        case 'completed': return 'bg-green-100 text-green-800 border-green-300';
-        case 'cancelled': return 'bg-red-100 text-red-800 border-red-300';
-        default: return 'bg-gray-100 text-gray-800 border-gray-300';
-      }
-    }
-  };
-
-  const formatStatus = (status: string) => {
-    return status?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Unknown';
-  };
 
   if (loading) {
     return (
@@ -443,10 +419,11 @@ export const ClientList = () => {
                 <SelectTrigger className="w-40">
                   <SelectValue placeholder="Filter by status" />
                 </SelectTrigger>
-                <SelectContent>
+                  <SelectContent>
                   <SelectItem value="all">All Statuses</SelectItem>
                   {activeView === 'contacts' ? (
                     <>
+                      <SelectItem value="lead">Lead</SelectItem>
                       <SelectItem value="qualified">Qualified</SelectItem>
                       <SelectItem value="unqualified">Unqualified</SelectItem>
                       <SelectItem value="hot">Hot</SelectItem>
@@ -815,6 +792,7 @@ const JobCard = ({ job, onViewDetails }: { job: Job; onViewDetails: (id: string)
 const getStatusColor = (status: string, type: 'contact' | 'job') => {
   if (type === 'contact') {
     switch (status) {
+      case 'lead': return 'bg-purple-100 text-purple-800 border-purple-300';
       case 'qualified': return 'bg-green-100 text-green-800 border-green-300';
       case 'unqualified': return 'bg-gray-100 text-gray-800 border-gray-300';
       case 'hot': return 'bg-red-100 text-red-800 border-red-300';
