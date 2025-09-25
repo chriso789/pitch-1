@@ -11,7 +11,7 @@ import ContactProfile from "./pages/ContactProfile";
 import JobDetails from "./pages/JobDetails";
 import DemoRequest from "./pages/DemoRequest";
 import NotFound from "./pages/NotFound";
-import KanbanPipeline from "./components/KanbanPipeline";
+import KanbanPipeline from "./features/pipeline/components/KanbanPipeline";
 
 
 const queryClient = new QueryClient({

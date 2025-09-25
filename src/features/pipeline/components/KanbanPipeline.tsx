@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { KanbanCard } from './KanbanCard';
 import { KanbanColumn } from './KanbanColumn';
-import { LeadForm } from './LeadForm';
+import { LeadForm } from '@/features/contacts';
 import { 
   Plus, 
   Filter, 
