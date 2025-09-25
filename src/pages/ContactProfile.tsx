@@ -3,11 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BackButton } from "@/components/BackButton";
+import { ContactDetailsTab } from "@/components/contact-profile/ContactDetailsTab";
+import { ContactJobsTab } from "@/components/contact-profile/ContactJobsTab";
+import { ContactCommunicationTab } from "@/components/contact-profile/ContactCommunicationTab";
 import {
   User,
   Phone,
@@ -19,7 +19,9 @@ import {
   Loader2,
   Edit,
   Plus,
-  Briefcase
+  Briefcase,
+  MessageSquare,
+  Activity
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -32,11 +34,7 @@ const ContactProfile = () => {
   const [pipelineEntry, setPipelineEntry] = useState<any>(null);
   const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [isCreatingJob, setIsCreatingJob] = useState(false);
-  const [jobForm, setJobForm] = useState({
-    name: '',
-    description: ''
-  });
+  const [activeTab, setActiveTab] = useState('details');
 
   useEffect(() => {
     if (id) {
@@ -100,71 +98,12 @@ const ContactProfile = () => {
     }
   };
 
-  const handleCreateJob = async () => {
-    if (!jobForm.name.trim()) {
-      toast({
-        title: "Error",
-        description: "Job name is required",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      setIsCreatingJob(true);
-
-      const { data: tenantData } = await supabase
-        .from('profiles')
-        .select('tenant_id')
-        .eq('id', (await supabase.auth.getUser()).data.user?.id)
-        .single();
-
-      const { data: jobData, error } = await supabase
-        .from('jobs')
-        .insert({
-          contact_id: id,
-          name: jobForm.name,
-          description: jobForm.description || null,
-          tenant_id: tenantData?.tenant_id,
-          created_by: (await supabase.auth.getUser()).data.user?.id,
-          job_number: '' // Will be overwritten by trigger
-        })
-        .select()
-        .single();
-
-      if (error) {
-        throw error;
-      }
-
-      toast({
-        title: "Success",
-        description: `Job ${jobData.job_number} created successfully`,
-      });
-
-      setJobs(prev => [jobData, ...prev]);
-      setJobForm({ name: '', description: '' });
-      
-    } catch (error) {
-      console.error('Error creating job:', error);
-      toast({
-        title: "Error",
-        description: "Failed to create job",
-        variant: "destructive",
-      });
-    } finally {
-      setIsCreatingJob(false);
-    }
+  const handleContactUpdate = (updatedContact: any) => {
+    setContact(updatedContact);
   };
 
-  const formatAddress = (contact: any) => {
-    if (!contact) return 'No address available';
-    const parts = [
-      contact.address_street,
-      contact.address_city,
-      contact.address_state,
-      contact.address_zip
-    ].filter(Boolean);
-    return parts.join(', ') || 'No address available';
+  const handleJobsUpdate = (updatedJobs: any[]) => {
+    setJobs(updatedJobs);
   };
 
   if (loading) {
@@ -188,180 +127,121 @@ const ContactProfile = () => {
 
   return (
     <div className="container mx-auto p-6 space-y-6">
-      <div className="flex items-center gap-4 mb-6">
+      {/* Header Section */}
+      <div className="flex items-center gap-4 mb-8">
         <BackButton onClick={() => navigate('/')} />
         <div className="flex-1">
           <div className="flex items-center gap-4">
-            <div className="w-12 h-12 bg-primary rounded-full flex items-center justify-center">
-              <User className="h-6 w-6 text-white" />
+            <div className="w-16 h-16 gradient-primary rounded-full flex items-center justify-center shadow-medium">
+              <User className="h-8 w-8 text-white" />
             </div>
             <div>
-              <h1 className="text-2xl font-bold">
+              <h1 className="text-3xl font-bold text-foreground">
                 {contact.first_name} {contact.last_name}
               </h1>
-              <div className="flex items-center gap-3">
-                <p className="text-muted-foreground">{contact.company_name || 'Homeowner'}</p>
+              <div className="flex items-center gap-3 mt-1">
+                <p className="text-muted-foreground text-lg">{contact.company_name || 'Homeowner'}</p>
                 {contact.contact_number && (
-                  <Badge variant="secondary">#{contact.contact_number}</Badge>
+                  <Badge variant="secondary" className="text-sm">#{contact.contact_number}</Badge>
                 )}
+                <Badge variant="outline" className="text-sm">
+                  {contact.qualification_status || 'Unqualified'}
+                </Badge>
               </div>
             </div>
           </div>
         </div>
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button className="flex items-center gap-2 gradient-primary">
-              <Plus className="h-4 w-4" />
-              Create Job
-            </Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create New Job</DialogTitle>
-              <DialogDescription>
-                Create a new job for {contact.first_name} {contact.last_name}
-              </DialogDescription>
-            </DialogHeader>
-            <div className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="job-name">Job Name</Label>
-                <Input
-                  id="job-name"
-                  placeholder="Enter job name"
-                  value={jobForm.name}
-                  onChange={(e) => setJobForm(prev => ({ ...prev, name: e.target.value }))}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="job-description">Description (Optional)</Label>
-                <Textarea
-                  id="job-description"
-                  placeholder="Enter job description"
-                  value={jobForm.description}
-                  onChange={(e) => setJobForm(prev => ({ ...prev, description: e.target.value }))}
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button 
-                onClick={handleCreateJob} 
-                disabled={isCreatingJob || !jobForm.name.trim()}
-              >
-                {isCreatingJob && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Create Job
-              </Button>
-            </DialogFooter>
-          </DialogContent>
-        </Dialog>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Contact Details</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            {contact.phone && (
-              <div className="flex items-center gap-3">
-                <Phone className="h-4 w-4 text-muted-foreground" />
-                <span>{contact.phone}</span>
+      {/* Pipeline Status Card */}
+      {pipelineEntry && (
+        <Card className="shadow-soft border-l-4 border-l-primary">
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="flex items-center gap-2">
+                  <Activity className="h-5 w-5 text-primary" />
+                  <span className="font-semibold">Pipeline Status:</span>
+                  <Badge className="bg-primary text-primary-foreground">{pipelineEntry.status}</Badge>
+                </div>
               </div>
-            )}
-            
-            {contact.email && (
-              <div className="flex items-center gap-3">
-                <Mail className="h-4 w-4 text-muted-foreground" />
-                <span>{contact.email}</span>
-              </div>
-            )}
-            
-            <div className="flex items-start gap-3">
-              <MapPin className="h-4 w-4 text-muted-foreground mt-1" />
-              <span className="text-sm">{formatAddress(contact)}</span>
-            </div>
-
-            {contact.lead_source && (
-              <div className="pt-3 border-t">
-                <p className="text-sm text-muted-foreground">Lead Source</p>
-                <p className="font-medium">{contact.lead_source}</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        {pipelineEntry && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Pipeline Status</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <Badge variant="outline">{pipelineEntry.status}</Badge>
-              <div className="space-y-2">
-                <div className="flex justify-between text-sm">
-                  <span className="text-muted-foreground">Estimated Value</span>
-                  <span className="font-medium">${pipelineEntry.estimated_value || 0}</span>
+              <div className="flex items-center gap-6 text-sm">
+                <div>
+                  <span className="text-muted-foreground">Estimated Value:</span>
+                  <span className="font-semibold ml-1">${pipelineEntry.estimated_value || 0}</span>
                 </div>
                 {pipelineEntry.probability_percent && (
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">Win Probability</span>
-                    <span className="font-medium">{pipelineEntry.probability_percent}%</span>
+                  <div>
+                    <span className="text-muted-foreground">Win Probability:</span>
+                    <span className="font-semibold ml-1">{pipelineEntry.probability_percent}%</span>
                   </div>
                 )}
               </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Tabbed Interface */}
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
+        <TabsList className="grid w-full grid-cols-4 h-12">
+          <TabsTrigger value="details" className="flex items-center gap-2">
+            <User className="h-4 w-4" />
+            Details
+          </TabsTrigger>
+          <TabsTrigger value="jobs" className="flex items-center gap-2">
+            <Briefcase className="h-4 w-4" />
+            Jobs ({jobs.length})
+          </TabsTrigger>
+          <TabsTrigger value="communication" className="flex items-center gap-2">
+            <MessageSquare className="h-4 w-4" />
+            Communication
+          </TabsTrigger>
+          <TabsTrigger value="documents" className="flex items-center gap-2">
+            <FileText className="h-4 w-4" />
+            Documents
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="details" className="space-y-0">
+          <ContactDetailsTab 
+            contact={contact} 
+            onContactUpdate={handleContactUpdate}
+          />
+        </TabsContent>
+
+        <TabsContent value="jobs" className="space-y-0">
+          <ContactJobsTab 
+            contact={contact}
+            jobs={jobs}
+            onJobsUpdate={handleJobsUpdate}
+          />
+        </TabsContent>
+
+        <TabsContent value="communication" className="space-y-0">
+          <ContactCommunicationTab contact={contact} />
+        </TabsContent>
+
+        <TabsContent value="documents" className="space-y-0">
+          <Card className="shadow-soft">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <FileText className="h-5 w-5" />
+                Documents & Files
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center py-12">
+                <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <h3 className="text-lg font-semibold mb-2">Document Management</h3>
+                <p className="text-muted-foreground">
+                  Document management features will be available here.
+                </p>
+              </div>
             </CardContent>
           </Card>
-        )}
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Briefcase className="h-5 w-5" />
-            Jobs ({jobs.length})
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {jobs.length > 0 ? (
-            <div className="space-y-3">
-              {jobs.map((job) => (
-                <div key={job.id} className="flex items-center justify-between p-3 border rounded-lg">
-                  <div>
-                    <div className="flex items-center gap-2">
-                      <span className="font-medium">{job.name}</span>
-                      <Badge variant="outline">{job.job_number}</Badge>
-                      <Badge variant={job.status === 'pending' ? 'secondary' : 'default'}>
-                        {job.status}
-                      </Badge>
-                    </div>
-                    {job.description && (
-                      <p className="text-sm text-muted-foreground mt-1">{job.description}</p>
-                    )}
-                  </div>
-                  <Button variant="outline" size="sm">
-                    View Details
-                  </Button>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="text-muted-foreground">No jobs created yet.</p>
-          )}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
-            Project Information
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <p className="text-muted-foreground">
-            Full project details, estimates, and communication history will be displayed here.
-          </p>
-        </CardContent>
-      </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 };
