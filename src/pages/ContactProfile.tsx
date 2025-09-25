@@ -210,9 +210,9 @@ const ContactProfile = () => {
         </div>
         <Dialog>
           <DialogTrigger asChild>
-            <Button className="flex items-center gap-2">
+            <Button className="flex items-center gap-2 gradient-primary">
               <Plus className="h-4 w-4" />
-              Add Job
+              Create Job
             </Button>
           </DialogTrigger>
           <DialogContent>

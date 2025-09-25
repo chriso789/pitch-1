@@ -102,7 +102,7 @@ const KanbanPipeline = () => {
         .from('pipeline_entries')
         .select(`
           *,
-          contacts (
+          contacts!inner (
             id,
             contact_number,
             first_name,
@@ -127,7 +127,6 @@ const KanbanPipeline = () => {
             last_name
           )
         `)
-        .not('contact_id', 'is', null)  // Only show entries with contacts
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -140,13 +139,11 @@ const KanbanPipeline = () => {
         return;
       }
 
-      // Group data by status, only include entries with valid contacts
+      // Group data by status - entries without contacts are already filtered out by inner join
       const groupedData: Record<string, PipelineEntry[]> = {};
       
       pipelineStages.forEach(stage => {
-        groupedData[stage.key] = data?.filter(entry => 
-          entry.status === stage.key && entry.contacts != null
-        ) || [];
+        groupedData[stage.key] = data?.filter(entry => entry.status === stage.key) || [];
       });
 
       setPipelineData(groupedData);
