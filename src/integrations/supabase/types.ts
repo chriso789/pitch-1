@@ -582,10 +582,13 @@ export type Database = {
           created_at: string | null
           created_by: string | null
           created_by_ghost: string | null
+          deleted_at: string | null
+          deleted_by: string | null
           email: string | null
           email_engagement_score: number | null
           first_name: string | null
           id: string
+          is_deleted: boolean | null
           last_name: string | null
           last_nurturing_activity: string | null
           last_scored_at: string | null
@@ -621,10 +624,13 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           created_by_ghost?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           email?: string | null
           email_engagement_score?: number | null
           first_name?: string | null
           id?: string
+          is_deleted?: boolean | null
           last_name?: string | null
           last_nurturing_activity?: string | null
           last_scored_at?: string | null
@@ -660,10 +666,13 @@ export type Database = {
           created_at?: string | null
           created_by?: string | null
           created_by_ghost?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           email?: string | null
           email_engagement_score?: number | null
           first_name?: string | null
           id?: string
+          is_deleted?: boolean | null
           last_name?: string | null
           last_nurturing_activity?: string | null
           last_scored_at?: string | null
@@ -783,6 +792,39 @@ export type Database = {
           skills?: Json
           tenant_id?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      deleted_contacts: {
+        Row: {
+          access_level: string | null
+          contact_data: Json
+          deleted_at: string | null
+          deleted_by: string | null
+          deletion_reason: string | null
+          id: string
+          original_contact_id: string
+          tenant_id: string
+        }
+        Insert: {
+          access_level?: string | null
+          contact_data: Json
+          deleted_at?: string | null
+          deleted_by?: string | null
+          deletion_reason?: string | null
+          id?: string
+          original_contact_id: string
+          tenant_id: string
+        }
+        Update: {
+          access_level?: string | null
+          contact_data?: Json
+          deleted_at?: string | null
+          deleted_by?: string | null
+          deletion_reason?: string | null
+          id?: string
+          original_contact_id?: string
+          tenant_id?: string
         }
         Relationships: []
       }
@@ -3700,16 +3742,58 @@ export type Database = {
           },
         ]
       }
+      production_stages: {
+        Row: {
+          color: string
+          created_at: string | null
+          icon: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          sort_order: number
+          stage_key: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          color?: string
+          created_at?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          sort_order: number
+          stage_key: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          color?: string
+          created_at?: string | null
+          icon?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          sort_order?: number
+          stage_key?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       production_workflows: {
         Row: {
           created_at: string
           created_by: string | null
           current_stage: string
+          documents_uploaded: Json | null
           id: string
           noc_uploaded: boolean
           permit_application_submitted: boolean
+          photos: Json | null
           pipeline_entry_id: string | null
           project_id: string
+          stage_changed_at: string | null
           stage_data: Json
           tenant_id: string
           updated_at: string
@@ -3718,11 +3802,14 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           current_stage?: string
+          documents_uploaded?: Json | null
           id?: string
           noc_uploaded?: boolean
           permit_application_submitted?: boolean
+          photos?: Json | null
           pipeline_entry_id?: string | null
           project_id: string
+          stage_changed_at?: string | null
           stage_data?: Json
           tenant_id: string
           updated_at?: string
@@ -3731,11 +3818,14 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           current_stage?: string
+          documents_uploaded?: Json | null
           id?: string
           noc_uploaded?: boolean
           permit_application_submitted?: boolean
+          photos?: Json | null
           pipeline_entry_id?: string | null
           project_id?: string
+          stage_changed_at?: string | null
           stage_data?: Json
           tenant_id?: string
           updated_at?: string
@@ -6154,6 +6244,10 @@ export type Database = {
       }
       rollback_estimate_to_version: {
         Args: { estimate_id_param: string; version_id_param: string }
+        Returns: boolean
+      }
+      soft_delete_contact: {
+        Args: { contact_id_param: string }
         Returns: boolean
       }
       switch_developer_context: {
