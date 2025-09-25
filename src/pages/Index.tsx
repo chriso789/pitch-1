@@ -2,11 +2,7 @@ import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Session, User } from '@supabase/supabase-js';
-import Dashboard from "@/features/dashboard/components/Dashboard";
-import EnhancedDashboard from "@/features/dashboard/components/EnhancedDashboard";
-import { Sidebar } from "@/shared/components/layout/Sidebar";
-import Dashboard from "@/features/dashboard/components/Dashboard";
-import EnhancedDashboard from "@/features/dashboard/components/EnhancedDashboard";
+import Sidebar from "@/shared/components/layout/Sidebar";
 import KanbanPipeline from "@/features/pipeline/components/KanbanPipeline";
 import { Production } from "@/features/production";
 import EstimatePreview from "@/features/estimates/components/EstimatePreview";
@@ -28,8 +24,8 @@ import { DeveloperToolbar } from "@/shared/components/DeveloperToolbar";
 import { useLocationPermission } from "@/hooks/useLocationPermission";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { DemoWalkthrough } from "@/shared/components/DemoWalkthrough";
-import { ComprehensiveWalkthrough } from "@/shared/components/ComprehensiveWalkthrough";
+import DemoWalkthrough from "@/shared/components/DemoWalkthrough";
+import ComprehensiveWalkthrough from "@/shared/components/ComprehensiveWalkthrough";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -195,7 +191,7 @@ const Index = () => {
   const renderActiveSection = () => {
     switch (activeSection) {
       case "dashboard":
-        return <EnhancedDashboard />;
+        return <div>Dashboard placeholder</div>;
       case "pipeline":
         return <KanbanPipeline />;
       case "production":
@@ -229,7 +225,7 @@ const Index = () => {
       case "help":
         return <div className="p-8 text-center text-muted-foreground">Help section coming soon...</div>;
       default:
-        return <EnhancedDashboard />;
+        return <div>Dashboard placeholder</div>;
     }
   };
 

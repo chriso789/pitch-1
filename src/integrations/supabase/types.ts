@@ -1183,6 +1183,233 @@ export type Database = {
         }
         Relationships: []
       }
+      dynamic_pricing_rules: {
+        Row: {
+          adjustment_value: number
+          applies_to: string
+          category_filter: string[] | null
+          conditions: Json
+          created_at: string
+          created_by: string | null
+          effective_date: string
+          expiry_date: string | null
+          id: string
+          is_active: boolean
+          max_adjustment_percent: number | null
+          price_adjustment_type: string
+          rule_name: string
+          rule_type: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          adjustment_value: number
+          applies_to?: string
+          category_filter?: string[] | null
+          conditions?: Json
+          created_at?: string
+          created_by?: string | null
+          effective_date?: string
+          expiry_date?: string | null
+          id?: string
+          is_active?: boolean
+          max_adjustment_percent?: number | null
+          price_adjustment_type: string
+          rule_name: string
+          rule_type: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          adjustment_value?: number
+          applies_to?: string
+          category_filter?: string[] | null
+          conditions?: Json
+          created_at?: string
+          created_by?: string | null
+          effective_date?: string
+          expiry_date?: string | null
+          id?: string
+          is_active?: boolean
+          max_adjustment_percent?: number | null
+          price_adjustment_type?: string
+          rule_name?: string
+          rule_type?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      enhanced_estimates: {
+        Row: {
+          actual_profit_amount: number
+          actual_profit_percent: number
+          approval_required: boolean
+          approved_at: string | null
+          approved_by: string | null
+          calculation_metadata: Json
+          complexity_level: string
+          contingency_percent: number
+          created_at: string
+          created_by: string | null
+          customer_address: string
+          customer_name: string
+          customer_viewed_at: string | null
+          estimate_number: string
+          expires_at: string | null
+          id: string
+          internal_notes: string | null
+          labor_cost: number
+          labor_hours: number
+          labor_markup_percent: number
+          labor_rate_per_hour: number
+          labor_total: number
+          line_items: Json
+          location_zone: string | null
+          material_cost: number
+          material_markup_percent: number
+          material_total: number
+          notes: string | null
+          overhead_amount: number
+          overhead_percent: number
+          permit_costs: number
+          pipeline_entry_id: string | null
+          price_per_sq_ft: number
+          project_id: string | null
+          property_details: Json
+          roof_area_sq_ft: number
+          roof_pitch: string
+          sales_rep_commission_amount: number
+          sales_rep_commission_percent: number
+          sales_rep_id: string | null
+          season: string
+          selling_price: number
+          sent_to_customer_at: string | null
+          status: Database["public"]["Enums"]["estimate_status"]
+          subtotal: number
+          target_profit_amount: number
+          target_profit_percent: number
+          template_id: string | null
+          tenant_id: string
+          updated_at: string
+          waste_factor_percent: number
+        }
+        Insert: {
+          actual_profit_amount?: number
+          actual_profit_percent?: number
+          approval_required?: boolean
+          approved_at?: string | null
+          approved_by?: string | null
+          calculation_metadata?: Json
+          complexity_level?: string
+          contingency_percent?: number
+          created_at?: string
+          created_by?: string | null
+          customer_address: string
+          customer_name: string
+          customer_viewed_at?: string | null
+          estimate_number: string
+          expires_at?: string | null
+          id?: string
+          internal_notes?: string | null
+          labor_cost?: number
+          labor_hours?: number
+          labor_markup_percent?: number
+          labor_rate_per_hour?: number
+          labor_total?: number
+          line_items?: Json
+          location_zone?: string | null
+          material_cost?: number
+          material_markup_percent?: number
+          material_total?: number
+          notes?: string | null
+          overhead_amount?: number
+          overhead_percent?: number
+          permit_costs?: number
+          pipeline_entry_id?: string | null
+          price_per_sq_ft?: number
+          project_id?: string | null
+          property_details?: Json
+          roof_area_sq_ft: number
+          roof_pitch?: string
+          sales_rep_commission_amount?: number
+          sales_rep_commission_percent?: number
+          sales_rep_id?: string | null
+          season?: string
+          selling_price?: number
+          sent_to_customer_at?: string | null
+          status?: Database["public"]["Enums"]["estimate_status"]
+          subtotal?: number
+          target_profit_amount?: number
+          target_profit_percent?: number
+          template_id?: string | null
+          tenant_id: string
+          updated_at?: string
+          waste_factor_percent?: number
+        }
+        Update: {
+          actual_profit_amount?: number
+          actual_profit_percent?: number
+          approval_required?: boolean
+          approved_at?: string | null
+          approved_by?: string | null
+          calculation_metadata?: Json
+          complexity_level?: string
+          contingency_percent?: number
+          created_at?: string
+          created_by?: string | null
+          customer_address?: string
+          customer_name?: string
+          customer_viewed_at?: string | null
+          estimate_number?: string
+          expires_at?: string | null
+          id?: string
+          internal_notes?: string | null
+          labor_cost?: number
+          labor_hours?: number
+          labor_markup_percent?: number
+          labor_rate_per_hour?: number
+          labor_total?: number
+          line_items?: Json
+          location_zone?: string | null
+          material_cost?: number
+          material_markup_percent?: number
+          material_total?: number
+          notes?: string | null
+          overhead_amount?: number
+          overhead_percent?: number
+          permit_costs?: number
+          pipeline_entry_id?: string | null
+          price_per_sq_ft?: number
+          project_id?: string | null
+          property_details?: Json
+          roof_area_sq_ft?: number
+          roof_pitch?: string
+          sales_rep_commission_amount?: number
+          sales_rep_commission_percent?: number
+          sales_rep_id?: string | null
+          season?: string
+          selling_price?: number
+          sent_to_customer_at?: string | null
+          status?: Database["public"]["Enums"]["estimate_status"]
+          subtotal?: number
+          target_profit_amount?: number
+          target_profit_percent?: number
+          template_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+          waste_factor_percent?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enhanced_estimates_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "estimate_calculation_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       estimate_approvals: {
         Row: {
           approval_notes: string | null
@@ -1224,6 +1451,228 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      estimate_calculation_templates: {
+        Row: {
+          base_labor_hours_per_sq: number
+          base_labor_rate_per_hour: number
+          base_material_cost_per_sq: number
+          complexity_multipliers: Json
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          labor_breakdown: Json
+          location_multipliers: Json
+          material_specifications: Json
+          name: string
+          overhead_percentage: number
+          roof_type: Database["public"]["Enums"]["roof_type"]
+          seasonal_multipliers: Json
+          target_profit_percentage: number
+          template_category: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          base_labor_hours_per_sq?: number
+          base_labor_rate_per_hour?: number
+          base_material_cost_per_sq?: number
+          complexity_multipliers?: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          labor_breakdown?: Json
+          location_multipliers?: Json
+          material_specifications?: Json
+          name: string
+          overhead_percentage?: number
+          roof_type: Database["public"]["Enums"]["roof_type"]
+          seasonal_multipliers?: Json
+          target_profit_percentage?: number
+          template_category?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          base_labor_hours_per_sq?: number
+          base_labor_rate_per_hour?: number
+          base_material_cost_per_sq?: number
+          complexity_multipliers?: Json
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          labor_breakdown?: Json
+          location_multipliers?: Json
+          material_specifications?: Json
+          name?: string
+          overhead_percentage?: number
+          roof_type?: Database["public"]["Enums"]["roof_type"]
+          seasonal_multipliers?: Json
+          target_profit_percentage?: number
+          template_category?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      estimate_commissions: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          commission_amount: number
+          commission_base_amount: number
+          commission_rate: number
+          commission_type: string
+          created_at: string
+          estimate_id: string
+          id: string
+          payment_date: string | null
+          payment_reference: string | null
+          payment_status: string
+          sales_rep_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          commission_amount?: number
+          commission_base_amount: number
+          commission_rate?: number
+          commission_type?: string
+          created_at?: string
+          estimate_id: string
+          id?: string
+          payment_date?: string | null
+          payment_reference?: string | null
+          payment_status?: string
+          sales_rep_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          commission_amount?: number
+          commission_base_amount?: number
+          commission_rate?: number
+          commission_type?: string
+          created_at?: string
+          estimate_id?: string
+          id?: string
+          payment_date?: string | null
+          payment_reference?: string | null
+          payment_status?: string
+          sales_rep_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_commissions_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "enhanced_estimates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      estimate_line_items: {
+        Row: {
+          created_at: string
+          description: string | null
+          estimate_id: string
+          extended_cost: number
+          id: string
+          is_optional: boolean | null
+          item_category: string
+          item_name: string
+          labor_rate_id: string | null
+          line_number: number
+          markup_amount: number | null
+          markup_percent: number | null
+          material_id: string | null
+          notes: string | null
+          quantity: number
+          sort_order: number | null
+          tenant_id: string
+          total_price: number
+          unit_cost: number
+          unit_type: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          estimate_id: string
+          extended_cost?: number
+          id?: string
+          is_optional?: boolean | null
+          item_category: string
+          item_name: string
+          labor_rate_id?: string | null
+          line_number: number
+          markup_amount?: number | null
+          markup_percent?: number | null
+          material_id?: string | null
+          notes?: string | null
+          quantity?: number
+          sort_order?: number | null
+          tenant_id: string
+          total_price?: number
+          unit_cost?: number
+          unit_type?: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          estimate_id?: string
+          extended_cost?: number
+          id?: string
+          is_optional?: boolean | null
+          item_category?: string
+          item_name?: string
+          labor_rate_id?: string | null
+          line_number?: number
+          markup_amount?: number | null
+          markup_percent?: number | null
+          material_id?: string | null
+          notes?: string | null
+          quantity?: number
+          sort_order?: number | null
+          tenant_id?: string
+          total_price?: number
+          unit_cost?: number
+          unit_type?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_line_items_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "enhanced_estimates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "estimate_line_items_labor_rate_id_fkey"
+            columns: ["labor_rate_id"]
+            isOneToOne: false
+            referencedRelation: "labor_rates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "estimate_line_items_material_id_fkey"
+            columns: ["material_id"]
+            isOneToOne: false
+            referencedRelation: "material_costs"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       estimate_templates: {
         Row: {
@@ -1703,6 +2152,54 @@ export type Database = {
         }
         Relationships: []
       }
+      labor_rates: {
+        Row: {
+          base_rate_per_hour: number
+          complexity_multiplier: number | null
+          created_at: string
+          effective_date: string
+          expires_date: string | null
+          id: string
+          is_active: boolean
+          job_type: string
+          location_zone: string | null
+          seasonal_adjustment: number | null
+          skill_level: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          base_rate_per_hour: number
+          complexity_multiplier?: number | null
+          created_at?: string
+          effective_date?: string
+          expires_date?: string | null
+          id?: string
+          is_active?: boolean
+          job_type: string
+          location_zone?: string | null
+          seasonal_adjustment?: number | null
+          skill_level?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          base_rate_per_hour?: number
+          complexity_multiplier?: number | null
+          created_at?: string
+          effective_date?: string
+          expires_date?: string | null
+          id?: string
+          is_active?: boolean
+          job_type?: string
+          location_zone?: string | null
+          seasonal_adjustment?: number | null
+          skill_level?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       lead_qualification_statuses: {
         Row: {
           auto_assign: boolean | null
@@ -1995,6 +2492,72 @@ export type Database = {
           phone?: string | null
           tenant_id?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      material_costs: {
+        Row: {
+          brand: string | null
+          cost_per_unit: number
+          created_at: string
+          current_market_price: number
+          id: string
+          is_active: boolean
+          lead_time_days: number | null
+          location_specific: boolean | null
+          location_zones: string[] | null
+          material_category: string
+          material_name: string
+          minimum_order_quantity: number | null
+          model: string | null
+          price_valid_until: string | null
+          supplier_id: string | null
+          tenant_id: string
+          unit_type: string
+          updated_at: string
+          waste_factor_percent: number | null
+        }
+        Insert: {
+          brand?: string | null
+          cost_per_unit: number
+          created_at?: string
+          current_market_price: number
+          id?: string
+          is_active?: boolean
+          lead_time_days?: number | null
+          location_specific?: boolean | null
+          location_zones?: string[] | null
+          material_category: string
+          material_name: string
+          minimum_order_quantity?: number | null
+          model?: string | null
+          price_valid_until?: string | null
+          supplier_id?: string | null
+          tenant_id: string
+          unit_type?: string
+          updated_at?: string
+          waste_factor_percent?: number | null
+        }
+        Update: {
+          brand?: string | null
+          cost_per_unit?: number
+          created_at?: string
+          current_market_price?: number
+          id?: string
+          is_active?: boolean
+          lead_time_days?: number | null
+          location_specific?: boolean | null
+          location_zones?: string[] | null
+          material_category?: string
+          material_name?: string
+          minimum_order_quantity?: number | null
+          model?: string | null
+          price_valid_until?: string | null
+          supplier_id?: string | null
+          tenant_id?: string
+          unit_type?: string
+          updated_at?: string
+          waste_factor_percent?: number | null
         }
         Relationships: []
       }
@@ -3363,6 +3926,95 @@ export type Database = {
             columns: ["pipeline_entry_id"]
             isOneToOne: false
             referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_budget_actuals: {
+        Row: {
+          actual_labor_cost: number
+          actual_material_cost: number
+          actual_profit_amount: number
+          actual_total: number
+          budget_date: string
+          budgeted_labor_cost: number
+          budgeted_material_cost: number
+          budgeted_total: number
+          completion_date: string | null
+          created_at: string
+          estimate_id: string | null
+          id: string
+          labor_variance: number
+          labor_variance_percent: number
+          material_variance: number
+          material_variance_percent: number
+          notes: string | null
+          original_profit_amount: number
+          profit_variance: number
+          project_id: string
+          tenant_id: string
+          total_variance: number
+          total_variance_percent: number
+          updated_at: string
+        }
+        Insert: {
+          actual_labor_cost?: number
+          actual_material_cost?: number
+          actual_profit_amount?: number
+          actual_total?: number
+          budget_date?: string
+          budgeted_labor_cost?: number
+          budgeted_material_cost?: number
+          budgeted_total?: number
+          completion_date?: string | null
+          created_at?: string
+          estimate_id?: string | null
+          id?: string
+          labor_variance?: number
+          labor_variance_percent?: number
+          material_variance?: number
+          material_variance_percent?: number
+          notes?: string | null
+          original_profit_amount?: number
+          profit_variance?: number
+          project_id: string
+          tenant_id: string
+          total_variance?: number
+          total_variance_percent?: number
+          updated_at?: string
+        }
+        Update: {
+          actual_labor_cost?: number
+          actual_material_cost?: number
+          actual_profit_amount?: number
+          actual_total?: number
+          budget_date?: string
+          budgeted_labor_cost?: number
+          budgeted_material_cost?: number
+          budgeted_total?: number
+          completion_date?: string | null
+          created_at?: string
+          estimate_id?: string | null
+          id?: string
+          labor_variance?: number
+          labor_variance_percent?: number
+          material_variance?: number
+          material_variance_percent?: number
+          notes?: string | null
+          original_profit_amount?: number
+          profit_variance?: number
+          project_id?: string
+          tenant_id?: string
+          total_variance?: number
+          total_variance_percent?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_budget_actuals_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "enhanced_estimates"
             referencedColumns: ["id"]
           },
         ]
@@ -5431,6 +6083,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      calculate_enhanced_estimate: {
+        Args: { estimate_id_param: string }
+        Returns: Json
+      }
       calculate_lead_score: {
         Args: { contact_data: Json; tenant_id_param: string }
         Returns: number
