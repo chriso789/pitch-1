@@ -4,6 +4,7 @@ import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { KanbanCard } from './KanbanCard';
 import { KanbanColumn } from './KanbanColumn';
 import { LeadForm } from './LeadForm';
@@ -312,66 +313,48 @@ const KanbanPipeline = () => {
         </div>
       </div>
 
-      {/* Kanban Board */}
+      {/* Kanban Board with Horizontal Scrolling */}
       <DndContext 
         collisionDetection={closestCorners}
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-      {/* Kanban Board */}
-      <DndContext 
-        collisionDetection={closestCorners}
-        onDragStart={handleDragStart}
-        onDragEnd={handleDragEnd}
-      >
-        <div className="grid grid-cols-1 lg:grid-cols-7 gap-6 min-h-[600px]">
-          {jobStages.map((stage) => {
-            const stageJobs = pipelineData[stage.key] || [];
-            const stageTotal = getStageTotal(stage.key);
+        <ScrollArea className="w-full">
+          <div className="flex gap-6 min-h-[600px] pb-4" style={{ minWidth: `${jobStages.length * 280}px` }}>
+            {jobStages.map((stage) => {
+              const stageJobs = pipelineData[stage.key] || [];
+              const stageTotal = getStageTotal(stage.key);
 
-            return (
-              <KanbanColumn
-                key={stage.key}
-                id={stage.key}
-                title={stage.name}
-                color={stage.color}
-                icon={stage.icon}
-                count={stageJobs.length}
-                total={formatCurrency(stageTotal)}
-              >
-                <SortableContext 
-                  items={stageJobs.map(job => job.id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  {stageJobs.map((job) => (
-                    <KanbanCard
-                      key={job.id}
-                      id={job.id}
-                      entry={job}
-                      onView={(contactId) => navigate(`/contact/${contactId}`)}
-                    />
-                  ))}
-                </SortableContext>
-              </KanbanColumn>
-            );
-          })}
-        </div>
-      </DndContext>
-
-      {/* Empty State Message */}
-      {Object.values(pipelineData).flat().length === 0 && (
-        <div className="text-center p-8 bg-card rounded-lg border-2 border-dashed border-border mt-6">
-          <Home className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">No Jobs Yet</h3>
-          <p className="text-muted-foreground mb-4">
-            Jobs are created from contacts. Visit the contacts page to create your first job.
-          </p>
-          <Button onClick={() => navigate('/contacts')}>
-            <User className="h-4 w-4 mr-2" />
-            Go to Contacts
-          </Button>
-        </div>
-      )}
+              return (
+                <div key={stage.key} className="flex-shrink-0 w-[260px]">
+                  <KanbanColumn
+                    id={stage.key}
+                    title={stage.name}
+                    color={stage.color}
+                    icon={stage.icon}
+                    count={stageJobs.length}
+                    total={formatCurrency(stageTotal)}
+                  >
+                    <SortableContext 
+                      items={stageJobs.map(job => job.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      {stageJobs.map((job) => (
+                        <KanbanCard
+                          key={job.id}
+                          id={job.id}
+                          entry={job}
+                          onView={(contactId) => navigate(`/contact/${contactId}`)}
+                        />
+                      ))}
+                    </SortableContext>
+                  </KanbanColumn>
+                </div>
+              );
+            })}
+          </div>
+          <ScrollBar orientation="horizontal" />
+        </ScrollArea>
 
         <DragOverlay>
           {activeId ? (
@@ -392,6 +375,22 @@ const KanbanPipeline = () => {
           ) : null}
         </DragOverlay>
       </DndContext>
+
+      {/* Empty State Message */}
+      {Object.values(pipelineData).flat().length === 0 && (
+        <div className="text-center p-8 bg-card rounded-lg border-2 border-dashed border-border mt-6">
+          <Home className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold mb-2">No Jobs Yet</h3>
+          <p className="text-muted-foreground mb-4">
+            Jobs are created from contacts. Visit the contacts page to create your first job.
+          </p>
+          <Button onClick={() => navigate('/contacts')}>
+            <User className="h-4 w-4 mr-2" />
+            Go to Contacts
+          </Button>
+        </div>
+      )}
+
 
     </div>
   );

@@ -29,25 +29,27 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
 
   return (
     <div className="space-y-4">
-      {/* Column Header */}
+      {/* Column Header - Compact horizontal layout */}
       <Card className="shadow-soft border-0">
-        <CardHeader className="pb-3">
-          <CardTitle className="flex items-center gap-2 text-sm">
-            <div className={cn("w-8 h-8 rounded-full flex items-center justify-center", color)}>
-              <Icon className="h-4 w-4 text-white" />
+        <CardHeader className="pb-2 pt-3">
+          <CardTitle className="flex items-center justify-between text-sm">
+            <div className="flex items-center gap-2">
+              <div className={cn("w-6 h-6 rounded-full flex items-center justify-center", color)}>
+                <Icon className="h-3 w-3 text-white" />
+              </div>
+              <div>
+                <div className="font-medium">{title}</div>
+                <div className="text-xs font-normal text-muted-foreground">
+                  {count} items
+                </div>
+              </div>
             </div>
-            <div className="flex-1">
-              <div>{title}</div>
-              <div className="font-normal text-muted-foreground">
-                {count} items
-              </div>
-              {/* Dollar Amount Ticker */}
-              <div className="flex items-center gap-1 mt-1">
-                <TrendingUp className="h-3 w-3 text-success" />
-                <span className="text-xs font-semibold text-success">
-                  {total}
-                </span>
-              </div>
+            {/* Dollar Amount - Right aligned */}
+            <div className="flex items-center gap-1">
+              <TrendingUp className="h-3 w-3 text-success" />
+              <span className="text-xs font-semibold text-success">
+                {total}
+              </span>
             </div>
           </CardTitle>                
         </CardHeader>
