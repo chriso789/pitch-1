@@ -48,11 +48,31 @@ const ComprehensiveWalkthrough = ({ onSectionChange }: { onSectionChange: (secti
   const [audioEnabled, setAudioEnabled] = useState(true);
   const [testResults, setTestResults] = useState<Map<string, WalkthroughStep>>(new Map());
   const [problemReport, setProblemReport] = useState<string>('');
+  const [issueCounter, setIssueCounter] = useState(1);
+  const [reportCounter, setReportCounter] = useState(1);
   
   const { toast } = useToast();
   const audioRef = useRef<HTMLAudioElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const recordedChunks = useRef<Blob[]>([]);
+
+  useEffect(() => {
+    loadCounters();
+  }, []);
+
+  const loadCounters = () => {
+    const issueCount = localStorage.getItem('issue-counter');
+    const reportCount = localStorage.getItem('report-counter');
+    if (issueCount) setIssueCounter(parseInt(issueCount));
+    if (reportCount) setReportCounter(parseInt(reportCount));
+  };
+
+  const saveCounters = (issueCount: number, reportCount: number) => {
+    localStorage.setItem('issue-counter', issueCount.toString());
+    localStorage.setItem('report-counter', reportCount.toString());
+    setIssueCounter(issueCount);
+    setReportCounter(reportCount);
+  };
 
   const walkthroughSteps: WalkthroughStep[] = [
     {
@@ -291,22 +311,78 @@ const ComprehensiveWalkthrough = ({ onSectionChange }: { onSectionChange: (secti
   };
 
   const generateProblemReport = () => {
-    const issues: string[] = [];
-    const missing: string[] = [];
+    const issues: any[] = [];
+    const missing: any[] = [];
     const working: string[] = [];
+    let currentIssueNumber = issueCounter;
 
+    // Create numbered issues and save them to storage
+    const reportIssues: any[] = [];
+    
     testResults.forEach((step) => {
       if (step.status === 'error') {
-        issues.push(`❌ ${step.name}: ${step.errorMessage || 'Unknown error'}`);
+        const issue = {
+          id: `issue-${Date.now()}-${step.id}`,
+          issueNumber: currentIssueNumber++,
+          title: `${step.name} - Error`,
+          description: step.errorMessage || 'Unknown error occurred',
+          status: 'open',
+          severity: 'high',
+          section: step.section,
+          errorMessage: step.errorMessage,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          reportData: step
+        };
+        issues.push(`❌ Issue #${issue.issueNumber}: ${step.name} - ${step.errorMessage || 'Unknown error'}`);
+        reportIssues.push(issue);
       } else if (step.status === 'missing') {
-        missing.push(`⏳ ${step.name}: ${step.description} - Needs implementation`);
+        const issue = {
+          id: `issue-${Date.now()}-${step.id}`,
+          issueNumber: currentIssueNumber++,
+          title: `${step.name} - Missing Implementation`,
+          description: `${step.description} - Needs implementation`,
+          status: 'open',
+          severity: 'medium',
+          section: step.section,
+          createdAt: new Date(),
+          updatedAt: new Date(),
+          reportData: step
+        };
+        missing.push(`⏳ Issue #${issue.issueNumber}: ${step.name} - Needs implementation`);
+        reportIssues.push(issue);
       } else if (step.status === 'success') {
         working.push(`✅ ${step.name}: Working correctly`);
       }
     });
 
+    // Save issues to localStorage
+    const existingIssues = JSON.parse(localStorage.getItem('walkthrough-issues') || '[]');
+    const updatedIssues = [...existingIssues, ...reportIssues];
+    localStorage.setItem('walkthrough-issues', JSON.stringify(updatedIssues));
+
+    // Create and save walkthrough report
+    const walkthroughReport = {
+      id: `report-${Date.now()}`,
+      reportNumber: reportCounter,
+      timestamp: new Date(),
+      totalIssues: reportIssues.length,
+      resolvedIssues: 0,
+      openIssues: reportIssues.length,
+      sections: Array.from(new Set(Array.from(testResults.values()).map(step => step.section))),
+      issues: reportIssues,
+      reportSummary: `Generated comprehensive test report with ${reportIssues.length} issues found across ${Array.from(testResults.values()).length} sections tested.`
+    };
+
+    const existingReports = JSON.parse(localStorage.getItem('walkthrough-reports') || '[]');
+    const updatedReports = [...existingReports, walkthroughReport];
+    localStorage.setItem('walkthrough-reports', JSON.stringify(updatedReports));
+
+    // Update counters
+    saveCounters(currentIssueNumber, reportCounter + 1);
+
     const report = `
-# PITCH CRM - Comprehensive Test Report
+# PITCH CRM - Comprehensive Test Report #${reportCounter}
 Generated: ${new Date().toLocaleString()}
 
 ## Working Features (${working.length})
@@ -318,11 +394,10 @@ ${issues.join('\n')}
 ## Missing Features (${missing.length})
 ${missing.join('\n')}
 
-## Completion Commands
-${missing.map(item => {
-  const stepName = item.split(':')[0].replace('⏳ ', '');
-  return `- Complete ${stepName} implementation`;
-}).join('\n')}
+## Issue Numbers Assigned
+- Issues #${issueCounter} through #${currentIssueNumber - 1} have been logged
+- Total new issues: ${reportIssues.length}
+- Check Settings > Reports for detailed issue tracking
 
 ## Next Steps
 1. Fix all console errors and loading issues
@@ -369,16 +444,28 @@ ${missing.map(item => {
     }
   };
 
+  const getCurrentIssueCount = () => {
+    const existingIssues = JSON.parse(localStorage.getItem('walkthrough-issues') || '[]');
+    return existingIssues.filter((issue: any) => issue.status === 'open').length;
+  };
+
+  const hasOpenIssues = getCurrentIssueCount() > 0;
+
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
       <DialogTrigger asChild>
         <Button 
-          variant="outline" 
+          variant={hasOpenIssues ? "destructive" : "outline"}
           size="sm" 
-          className="fixed top-4 right-20 z-50 bg-background/80 backdrop-blur-sm border-primary/20 hover:bg-primary/10"
+          className={cn(
+            "fixed top-4 right-20 z-50 backdrop-blur-sm text-xs px-2 py-1 h-8",
+            hasOpenIssues 
+              ? "bg-red-600 hover:bg-red-700 text-white border-red-600" 
+              : "bg-background/80 border-primary/20 hover:bg-primary/10"
+          )}
         >
-          <Camera className="h-4 w-4 mr-2" />
-          Full System Test
+          <Camera className="h-3 w-3 mr-1" />
+          Test{hasOpenIssues && ` (${getCurrentIssueCount()})`}
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-7xl h-[95vh] p-0">

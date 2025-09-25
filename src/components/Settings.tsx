@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { NotificationAutomations } from "@/components/NotificationAutomations";
-import { Settings as SettingsIcon, FileText, Calculator, Users, Building, Shield, Code, Mic, Bell, Package, DollarSign } from "lucide-react";
+import { Settings as SettingsIcon, FileText, Calculator, Users, Building, Shield, Code, Mic, Bell, Package, DollarSign, AlertTriangle } from "lucide-react";
 import { EstimateBuilder } from "./EstimateBuilder";
 import { GeneralSettings } from "./settings/GeneralSettings";
 import { UserManagement } from "./settings/UserManagement";
@@ -11,6 +11,7 @@ import { LocationManagement } from "./settings/LocationManagement";
 import { CommissionManagement } from "./settings/CommissionManagement";
 import SupplierManagement from "./SupplierManagement";
 import VoiceInterface from "./VoiceInterface";
+import ErrorReportsManager from "./ErrorReportsManager";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Settings = () => {
@@ -74,7 +75,7 @@ export const Settings = () => {
       </div>
 
       <Tabs defaultValue="general" className="space-y-6">
-        <TabsList className={`grid w-full ${showDeveloperTab ? 'grid-cols-9' : 'grid-cols-8'}`}>
+        <TabsList className={`grid w-full ${showDeveloperTab ? 'grid-cols-10' : 'grid-cols-9'}`}>
           <TabsTrigger value="general" className="flex items-center gap-2">
             <SettingsIcon className="h-4 w-4" />
             General
@@ -102,6 +103,10 @@ export const Settings = () => {
           <TabsTrigger value="security" className="flex items-center gap-2">
             <Shield className="h-4 w-4" />
             Security
+          </TabsTrigger>
+          <TabsTrigger value="reports" className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4" />
+            Reports
           </TabsTrigger>
           <TabsTrigger value="automations" className="flex items-center gap-2">
             <Bell className="h-4 w-4" />
@@ -153,6 +158,10 @@ export const Settings = () => {
               </div>
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="reports" className="space-y-6">
+          <ErrorReportsManager />
         </TabsContent>
 
         <TabsContent value="automations" className="space-y-6">
