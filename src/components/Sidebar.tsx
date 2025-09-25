@@ -136,16 +136,10 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
       description: "Lead management"
     },
     {
-      name: "Contacts",
-      href: "contacts",
+      name: "CLIENT LIST",
+      href: "client-list",
       icon: Users,
-      description: "Customer database"
-    },
-    {
-      name: "Lead Nurturing",
-      href: "lead-nurturing",
-      icon: Mail,
-      description: "Automated follow-up campaigns"
+      description: "Contacts & jobs unified"
     },
     {
       name: "Pipeline Manager",

@@ -14,7 +14,7 @@ import Payments from "@/components/Payments";
 import JobCalendar from "@/components/JobCalendar";
 import { Contacts } from "@/components/Contacts";
 import { Settings } from "@/components/Settings";
-import { Jobs } from "@/components/Jobs";
+import { ClientList } from "@/components/ClientList";
 import { Dialer } from "@/components/Dialer";
 import SmartDocs from "@/components/SmartDocs";
 import { LeadSources } from "@/components/LeadSources";
@@ -181,8 +181,8 @@ const Index = () => {
         return <Production />;
       case "estimates":
         return <Estimates />;
-      case "contacts":
-        return <Contacts />;
+      case "client-list":
+        return <ClientList />;
       case "lead-sources":
         return <LeadSources />;
       case "lead-scoring":
@@ -199,8 +199,6 @@ const Index = () => {
         return <Payments />;
       case "calendar":
         return <JobCalendar />;
-      case "jobs":
-        return <Jobs />;
       case "dialer":
         return <Dialer />;
       case "smartdocs":
