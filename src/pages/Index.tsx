@@ -29,6 +29,7 @@ import { useLocationPermission } from "@/hooks/useLocationPermission";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import DemoWalkthrough from "@/components/DemoWalkthrough";
+import ComprehensiveWalkthrough from "@/components/ComprehensiveWalkthrough";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -218,6 +219,7 @@ const Index = () => {
   return (
     <div className="flex h-screen bg-background w-full">
       <DemoWalkthrough />
+      <ComprehensiveWalkthrough onSectionChange={setActiveSection} />
       <PipelineStageManager />
       {/* Collapsible Sidebar */}
       <div className="relative">

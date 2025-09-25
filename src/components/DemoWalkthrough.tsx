@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogDescription } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Play, Pause, Square, RotateCcw, RotateCw, X, Video } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -110,6 +110,9 @@ const DemoWalkthrough = () => {
               <X className="h-4 w-4" />
             </Button>
           </DialogTitle>
+          <DialogDescription>
+            Interactive demo showing all CRM features and capabilities
+          </DialogDescription>
         </DialogHeader>
         
         <div className="flex h-full">
