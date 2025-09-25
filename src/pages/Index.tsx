@@ -4,32 +4,32 @@ import { supabase } from "@/integrations/supabase/client";
 import { Session, User } from '@supabase/supabase-js';
 import Dashboard from "@/features/dashboard/components/Dashboard";
 import EnhancedDashboard from "@/features/dashboard/components/EnhancedDashboard";
-import Sidebar from "@/components/Sidebar";
+import { Sidebar } from "@/shared/components/layout/Sidebar";
+import Dashboard from "@/features/dashboard/components/Dashboard";
+import EnhancedDashboard from "@/features/dashboard/components/EnhancedDashboard";
 import KanbanPipeline from "@/features/pipeline/components/KanbanPipeline";
-import Production from "@/components/Production";
+import { Production } from "@/features/production";
 import EstimatePreview from "@/features/estimates/components/EstimatePreview";
 import Estimates from "@/features/estimates/components/Estimates";
-import Projects from "@/components/Projects";
-import Payments from "@/components/Payments";
-import JobCalendar from "@/components/JobCalendar";
+import { Projects } from "@/features/projects";
+import { Payments } from "@/features/payments";
+import { JobCalendar } from "@/features/jobs";
 import { Contacts } from "@/features/contacts/components/Contacts";
-import { Settings } from "@/components/Settings";
+import { Settings } from "@/features/settings";
 import { ClientList } from "@/features/contacts/components/ClientList";
-import { Dialer } from "@/components/Dialer";
-import SmartDocs from "@/components/SmartDocs";
-import { LeadSources } from "@/components/LeadSources";
-import { LeadScoring } from "@/components/LeadScoring";
-import { LeadNurturing } from "@/components/LeadNurturing";
+import { Dialer } from "@/features/communication";
+import { SmartDocs } from "@/features/documents";
+import { LeadSources, LeadScoring, LeadNurturing } from "@/features/leads";
 import { DuplicateDetection } from "@/features/contacts/components/DuplicateDetection";
 import { EnhancedPipeline } from "@/features/pipeline/components/EnhancedPipeline";
 import { PipelineStageManager } from "@/features/pipeline/components/PipelineStageManager";
 import { CollapsibleSidebar } from "@/components/ui/collapsible-sidebar";
-import { DeveloperToolbar } from "@/components/DeveloperToolbar";
+import { DeveloperToolbar } from "@/shared/components/DeveloperToolbar";
 import { useLocationPermission } from "@/hooks/useLocationPermission";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import DemoWalkthrough from "@/components/DemoWalkthrough";
-import ComprehensiveWalkthrough from "@/components/ComprehensiveWalkthrough";
+import { DemoWalkthrough } from "@/shared/components/DemoWalkthrough";
+import { ComprehensiveWalkthrough } from "@/shared/components/ComprehensiveWalkthrough";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -235,25 +235,25 @@ const Index = () => {
 
   return (
     <div className="flex h-screen bg-background w-full">
-      <DemoWalkthrough />
-      {showWalkthrough && (
-        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm">
-          <div className="fixed left-[50%] top-[50%] z-50 grid w-full max-w-4xl translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 sm:rounded-lg">
-            <div className="flex items-center justify-between">
-              <h2 className="text-lg font-semibold">System Test & Walkthrough</h2>
-              <Button 
-                variant="ghost" 
-                size="sm" 
-                onClick={() => setShowWalkthrough(false)}
-              >
-                <ChevronLeft className="h-4 w-4 mr-1" />
-                Close
-              </Button>
+        <DemoWalkthrough />
+        {showWalkthrough && (
+          <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm">
+            <div className="fixed left-[50%] top-[50%] z-50 grid w-full max-w-4xl translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 sm:rounded-lg">
+              <div className="flex items-center justify-between">
+                <h2 className="text-lg font-semibold">System Test & Walkthrough</h2>
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  onClick={() => setShowWalkthrough(false)}
+                >
+                  <ChevronLeft className="h-4 w-4 mr-1" />
+                  Close
+                </Button>
+              </div>
+              <ComprehensiveWalkthrough onSectionChange={setActiveSection} />
             </div>
-            <ComprehensiveWalkthrough onSectionChange={setActiveSection} />
           </div>
-        </div>
-      )}
+        )}
       <PipelineStageManager />
       {/* Collapsible Sidebar */}
       <div className="relative">

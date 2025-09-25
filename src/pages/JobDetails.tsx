@@ -6,11 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { BudgetTracker } from '@/components/BudgetTracker';
-import { JobInvoiceTracker } from '@/components/JobInvoiceTracker';
-import { JobPhotoGallery } from '@/components/JobPhotoGallery';
-import { JobDocumentManager } from '@/components/JobDocumentManager';
-import { JobTimelineTracker } from '@/components/JobTimelineTracker';
+import { BudgetTracker } from "@/features/projects";
+import { JobInvoiceTracker, JobPhotoGallery, JobDocumentManager, JobTimelineTracker } from "@/features/jobs";
 import { Loader2, ArrowLeft, MapPin, Calendar, User, Phone, Mail, DollarSign, FileText, Camera, Clock, Settings } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 

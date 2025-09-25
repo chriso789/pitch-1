@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { BackButton } from "@/components/BackButton";
+import { BackButton } from "@/shared/components/BackButton";
 import { ContactDetailsTab } from "@/components/contact-profile/ContactDetailsTab";
 import { ContactJobsTab } from "@/components/contact-profile/ContactJobsTab";
 import { ContactCommunicationTab } from "@/components/contact-profile/ContactCommunicationTab";
