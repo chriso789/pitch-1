@@ -174,12 +174,15 @@ const Login: React.FC = () => {
       }
 
       if (data.user) {
-        console.log('Login successful, user will be handled by Index.tsx');
+        console.log('Login successful, redirecting to dashboard');
         await ensureUserProfile(data.user);
         toast({
           title: "Login successful",
-          description: "Welcome back to PITCH CRM!",
+          description: "Redirecting to dashboard...",
         });
+        
+        // Immediately navigate to dashboard
+        navigate('/');
       }
     } catch (error: any) {
       clearTimeout(timeoutId);
