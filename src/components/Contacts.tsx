@@ -5,8 +5,9 @@ import { FilterBar } from "@/components/FilterBar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { LeadForm } from "@/components/LeadForm";
-import { Users, Phone, Mail, MapPin, Plus } from "lucide-react";
+import { Users, Phone, Mail, MapPin, Plus, Eye } from "lucide-react";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 
 interface Contact {
   id: string;
@@ -33,6 +34,7 @@ interface Contact {
 }
 
 export const Contacts = () => {
+  const navigate = useNavigate();
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [filteredContacts, setFilteredContacts] = useState<Contact[]>([]);
   const [loading, setLoading] = useState(true);
@@ -292,6 +294,17 @@ export const Contacts = () => {
                       <span>Scored: {new Date(contact.last_scored_at).toLocaleDateString()}</span>
                     )}
                   </div>
+                </div>
+                
+                <div className="flex items-center gap-2 ml-4">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => navigate(`/contact/${contact.id}`)}
+                  >
+                    <Eye className="h-4 w-4 mr-2" />
+                    View Details
+                  </Button>
                 </div>
               </div>
             ))}
