@@ -118,13 +118,13 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
       tabIndex={0}
       aria-label={`Job ${jobNumber}, ${lastName}, ${daysInStatus} days in status, last contact ${daysSinceComm} days ago`}
     >
-      <CardContent className="p-3 h-full flex flex-col justify-between">
+      <CardContent className="p-2 h-full flex flex-col justify-between">
         {/* Row 1: Days Badge + Job Number + Comm Badge */}
-        <div className="flex items-center justify-between w-full mb-1">
+        <div className="flex items-center justify-between w-full mb-0.5">
           {/* Days in Status Badge */}
           <Badge 
             className={cn(
-              "text-xs px-2 py-0.5 border font-medium",
+              "text-[10px] px-1.5 py-0.5 border font-medium leading-none",
               getStatusBadgeColor()
             )}
           >
@@ -133,12 +133,12 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
 
           {/* Job Number - Centered */}
           <div 
-            className="flex-1 text-center px-2"
+            className="flex-1 text-center px-1 min-w-0"
             title={jobNumber}
           >
             <span 
-              className="font-mono font-semibold text-foreground"
-              style={{ fontSize: 'clamp(14px, 1.1vw, 16px)' }}
+              className="font-mono font-semibold text-foreground block truncate"
+              style={{ fontSize: 'clamp(10px, 2.5vw, 12px)' }}
             >
               {jobNumber}
             </span>
@@ -146,26 +146,26 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
 
           {/* Communication Recency Badge */}
           <Badge 
-            className="text-xs px-2 py-0.5 bg-muted/10 text-muted-foreground border-muted/20 flex items-center gap-1"
+            className="text-[10px] px-1.5 py-0.5 bg-muted/10 text-muted-foreground border-muted/20 flex items-center gap-0.5 leading-none"
             title={`Last contact ${daysSinceComm} days ago`}
           >
-            <span role="img" aria-label="communication status">{commEmoji}</span>
+            <span role="img" aria-label="communication status" className="text-[8px]">{commEmoji}</span>
             <span>{daysSinceComm}d</span>
           </Badge>
         </div>
 
         {/* Row 2: Last Name */}
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex-1 flex items-center justify-center min-h-0">
           <div 
-            className="text-center w-full"
+            className="text-center w-full min-w-0"
             title={lastName}
           >
             <span 
               className={cn(
-                "font-medium text-foreground block truncate px-2",
-                lastName.length > 12 ? "group-hover:text-clip" : ""
+                "font-medium text-foreground block truncate px-1",
+                lastName.length > 15 ? "group-hover:text-clip" : ""
               )}
-              style={{ fontSize: 'clamp(14px, 1.1vw, 16px)' }}
+              style={{ fontSize: 'clamp(10px, 2.5vw, 13px)' }}
             >
               {lastName}
             </span>
@@ -174,7 +174,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
 
         {/* Drag Handle (hidden, accessible via keyboard/screen reader) */}
         <GripVertical 
-          className="absolute top-1 right-1 h-3 w-3 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="absolute top-0.5 right-0.5 h-2.5 w-2.5 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity"
           aria-hidden="true"
         />
       </CardContent>
