@@ -26,6 +26,7 @@ import {
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
+import { VideoWalkthrough } from './VideoWalkthrough';
 
 interface WalkthroughStep {
   id: string;
@@ -50,6 +51,10 @@ const ComprehensiveWalkthrough = ({ onSectionChange }: { onSectionChange: (secti
   const [problemReport, setProblemReport] = useState<string>('');
   const [issueCounter, setIssueCounter] = useState(1);
   const [reportCounter, setReportCounter] = useState(1);
+  
+  // Video walkthrough states
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [showVideoWalkthrough, setShowVideoWalkthrough] = useState(false);
   
   // Pointer tracking states
   const [isPointerTracking, setIsPointerTracking] = useState(false);
@@ -640,7 +645,16 @@ ${missing.join('\n')}
             </TabsList>
             
             <TabsContent value="walkthrough" className="flex-1 flex gap-6">
-              {/* Controls */}
+              {/* Video Walkthrough */}
+              <div className="flex-1">
+                <VideoWalkthrough 
+                  onSectionChange={onSectionChange}
+                  isPlaying={isVideoPlaying}
+                  onPlayingChange={setIsVideoPlaying}
+                />
+              </div>
+              
+              {/* Controls Sidebar */}
               <div className="w-80 space-y-4">
                 <Card>
                   <CardHeader>
