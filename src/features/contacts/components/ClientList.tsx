@@ -11,6 +11,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { 
   Search, 
   Plus, 
@@ -24,7 +32,10 @@ import {
   Building,
   Settings,
   Users,
-  Briefcase
+  Briefcase,
+  LayoutGrid,
+  Table as TableIcon,
+  ArrowUpDown
 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
@@ -78,11 +89,13 @@ interface Job {
 }
 
 type ViewType = 'contacts' | 'jobs';
+type LayoutType = 'cards' | 'table';
 
 export const ClientList = () => {
   const navigate = useNavigate();
   const [activeView, setActiveView] = useState<ViewType>('contacts');
   const [preferredView, setPreferredView] = useState<ViewType>('contacts');
+  const [layoutType, setLayoutType] = useState<LayoutType>('cards');
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [filteredData, setFilteredData] = useState<Contact[] | Job[]>([]);
@@ -90,6 +103,8 @@ export const ClientList = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [sortField, setSortField] = useState<string>('created_at');
+  const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
 
   useEffect(() => {
     loadUserPreferences();
@@ -239,6 +254,8 @@ export const ClientList = () => {
         }
       } else {
         console.log('🔓 Admin/Master role - showing all data');
+        // For non-restricted roles, also ensure we fetch all active contacts
+        contactsQuery = contactsQuery.eq('is_deleted', false);
       }
 
       const [contactsResult, jobsResult] = await Promise.all([
@@ -300,6 +317,9 @@ export const ClientList = () => {
         console.log('📊 After status filter:', filtered.length, 'contacts');
       }
 
+      // Apply sorting
+      filtered = sortData(filtered, activeView);
+
       console.log('✅ Final filtered contacts:', filtered.length);
       setFilteredData(filtered);
     } else {
@@ -325,8 +345,84 @@ export const ClientList = () => {
         console.log('📊 After status filter:', filtered.length, 'jobs');
       }
 
+      // Apply sorting
+      filtered = sortData(filtered, activeView);
+
       console.log('✅ Final filtered jobs:', filtered.length);
       setFilteredData(filtered);
+    }
+  };
+
+  const sortData = (data: any[], viewType: ViewType) => {
+    return [...data].sort((a, b) => {
+      let aValue, bValue;
+      
+      if (viewType === 'contacts') {
+        switch (sortField) {
+          case 'name':
+            aValue = `${a.first_name} ${a.last_name}`.toLowerCase();
+            bValue = `${b.first_name} ${b.last_name}`.toLowerCase();
+            break;
+          case 'email':
+            aValue = a.email?.toLowerCase() || '';
+            bValue = b.email?.toLowerCase() || '';
+            break;
+          case 'phone':
+            aValue = a.phone || '';
+            bValue = b.phone || '';
+            break;
+          case 'company_name':
+            aValue = a.company_name?.toLowerCase() || '';
+            bValue = b.company_name?.toLowerCase() || '';
+            break;
+          case 'qualification_status':
+            aValue = a.qualification_status?.toLowerCase() || '';
+            bValue = b.qualification_status?.toLowerCase() || '';
+            break;
+          case 'lead_score':
+            aValue = a.lead_score || 0;
+            bValue = b.lead_score || 0;
+            break;
+          case 'created_at':
+          default:
+            aValue = new Date(a.created_at);
+            bValue = new Date(b.created_at);
+            break;
+        }
+      } else {
+        switch (sortField) {
+          case 'name':
+            aValue = a.name?.toLowerCase() || '';
+            bValue = b.name?.toLowerCase() || '';
+            break;
+          case 'contact_name':
+            aValue = `${a.contacts?.first_name} ${a.contacts?.last_name}`.toLowerCase();
+            bValue = `${b.contacts?.first_name} ${b.contacts?.last_name}`.toLowerCase();
+            break;
+          case 'status':
+            aValue = a.status?.toLowerCase() || '';
+            bValue = b.status?.toLowerCase() || '';
+            break;
+          case 'created_at':
+          default:
+            aValue = new Date(a.created_at);
+            bValue = new Date(b.created_at);
+            break;
+        }
+      }
+
+      if (aValue < bValue) return sortDirection === 'asc' ? -1 : 1;
+      if (aValue > bValue) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+  };
+
+  const handleSort = (field: string) => {
+    if (sortField === field) {
+      setSortDirection(sortDirection === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortField(field);
+      setSortDirection('asc');
     }
   };
 
@@ -398,6 +494,26 @@ export const ClientList = () => {
                   </SelectItem>
                 </SelectContent>
               </Select>
+            </div>
+
+            {/* Layout Toggle */}
+            <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+              <Button
+                variant={layoutType === 'cards' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setLayoutType('cards')}
+                className="h-8 px-3"
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </Button>
+              <Button
+                variant={layoutType === 'table' ? 'default' : 'ghost'}
+                size="sm"
+                onClick={() => setLayoutType('table')}
+                className="h-8 px-3"
+              >
+                <TableIcon className="h-4 w-4" />
+              </Button>
             </div>
 
             {/* Search */}
@@ -576,41 +692,41 @@ export const ClientList = () => {
       </div>
 
       {/* Data List */}
-      <div className="grid gap-4">
-        {filteredData.length === 0 ? (
-          <Card>
-            <CardContent className="p-8 text-center">
-              <div className="text-muted-foreground mb-4">
-                {activeView === 'contacts' ? (
-                  <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                ) : (
-                  <Briefcase className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                )}
-                <h3 className="text-lg font-semibold mb-2">
-                  No {activeView} found
-                </h3>
-                <p>
-                  {searchTerm || statusFilter !== 'all'
-                    ? "Try adjusting your search or filters"
-                    : `Create your first ${activeView === 'contacts' ? 'contact' : 'job'} to get started`}
-                </p>
-              </div>
-              {!searchTerm && statusFilter === 'all' && (
-                <Button onClick={() => {
-                  if (activeView === 'contacts') {
-                    navigate('/contact/new');
-                  } else {
-                    navigate('/job/new');
-                  }
-                }}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create First {activeView === 'contacts' ? 'Contact' : 'Job'}
-                </Button>
+      {filteredData.length === 0 ? (
+        <Card>
+          <CardContent className="p-8 text-center">
+            <div className="text-muted-foreground mb-4">
+              {activeView === 'contacts' ? (
+                <Users className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              ) : (
+                <Briefcase className="h-12 w-12 mx-auto mb-4 opacity-50" />
               )}
-            </CardContent>
-          </Card>
-        ) : (
-          filteredData.map((item) => (
+              <h3 className="text-lg font-semibold mb-2">
+                No {activeView} found
+              </h3>
+              <p>
+                {searchTerm || statusFilter !== 'all'
+                  ? "Try adjusting your search or filters"
+                  : `Create your first ${activeView === 'contacts' ? 'contact' : 'job'} to get started`}
+              </p>
+            </div>
+            {!searchTerm && statusFilter === 'all' && (
+              <Button onClick={() => {
+                if (activeView === 'contacts') {
+                  navigate('/contact/new');
+                } else {
+                  navigate('/job/new');
+                }
+              }}>
+                <Plus className="h-4 w-4 mr-2" />
+                Create First {activeView === 'contacts' ? 'Contact' : 'Job'}
+              </Button>
+            )}
+          </CardContent>
+        </Card>
+      ) : layoutType === 'cards' ? (
+        <div className="grid gap-4">
+          {filteredData.map((item) => (
             <Card key={item.id} className="hover:shadow-md transition-shadow">
               <CardContent className="p-6">
                 {activeView === 'contacts' ? (
@@ -620,9 +736,31 @@ export const ClientList = () => {
                 )}
               </CardContent>
             </Card>
-          ))
-        )}
-      </div>
+          ))}
+        </div>
+      ) : (
+        <Card>
+          <CardContent className="p-0">
+            {activeView === 'contacts' ? (
+              <ContactsTable 
+                contacts={filteredData as Contact[]} 
+                onViewDetails={(id) => navigate(`/contact/${id}`)}
+                onSort={handleSort}
+                sortField={sortField}
+                sortDirection={sortDirection}
+              />
+            ) : (
+              <JobsTable 
+                jobs={filteredData as Job[]} 
+                onViewDetails={(id) => navigate(`/job/${id}`)}
+                onSort={handleSort}
+                sortField={sortField}
+                sortDirection={sortDirection}
+              />
+            )}
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 };
@@ -814,3 +952,203 @@ const getStatusColor = (status: string, type: 'contact' | 'job') => {
 const formatStatus = (status: string) => {
   return status?.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Unknown';
 };
+
+// Table Components
+const ContactsTable = ({ 
+  contacts, 
+  onViewDetails, 
+  onSort, 
+  sortField, 
+  sortDirection 
+}: { 
+  contacts: Contact[]; 
+  onViewDetails: (id: string) => void;
+  onSort: (field: string) => void;
+  sortField: string;
+  sortDirection: 'asc' | 'desc';
+}) => (
+  <Table>
+    <TableHeader>
+      <TableRow>
+        <TableHead>
+          <Button variant="ghost" onClick={() => onSort('contact_number')} className="h-auto p-0 font-medium">
+            Contact # <ArrowUpDown className="ml-1 h-3 w-3" />
+          </Button>
+        </TableHead>
+        <TableHead>
+          <Button variant="ghost" onClick={() => onSort('name')} className="h-auto p-0 font-medium">
+            Name <ArrowUpDown className="ml-1 h-3 w-3" />
+          </Button>
+        </TableHead>
+        <TableHead>
+          <Button variant="ghost" onClick={() => onSort('email')} className="h-auto p-0 font-medium">
+            Email <ArrowUpDown className="ml-1 h-3 w-3" />
+          </Button>
+        </TableHead>
+        <TableHead>
+          <Button variant="ghost" onClick={() => onSort('phone')} className="h-auto p-0 font-medium">
+            Phone <ArrowUpDown className="ml-1 h-3 w-3" />
+          </Button>
+        </TableHead>
+        <TableHead>
+          <Button variant="ghost" onClick={() => onSort('company_name')} className="h-auto p-0 font-medium">
+            Company <ArrowUpDown className="ml-1 h-3 w-3" />
+          </Button>
+        </TableHead>
+        <TableHead>Address</TableHead>
+        <TableHead>
+          <Button variant="ghost" onClick={() => onSort('qualification_status')} className="h-auto p-0 font-medium">
+            Status <ArrowUpDown className="ml-1 h-3 w-3" />
+          </Button>
+        </TableHead>
+        <TableHead>
+          <Button variant="ghost" onClick={() => onSort('lead_score')} className="h-auto p-0 font-medium">
+            Score <ArrowUpDown className="ml-1 h-3 w-3" />
+          </Button>
+        </TableHead>
+        <TableHead>Source</TableHead>
+        <TableHead>
+          <Button variant="ghost" onClick={() => onSort('created_at')} className="h-auto p-0 font-medium">
+            Created <ArrowUpDown className="ml-1 h-3 w-3" />
+          </Button>
+        </TableHead>
+        <TableHead>Actions</TableHead>
+      </TableRow>
+    </TableHeader>
+    <TableBody>
+      {contacts.map((contact) => (
+        <TableRow key={contact.id} className="hover:bg-muted/50">
+          <TableCell>
+            <Badge variant="outline" className="text-xs">
+              {contact.contact_number}
+            </Badge>
+          </TableCell>
+          <TableCell className="font-medium">
+            {contact.first_name} {contact.last_name}
+          </TableCell>
+          <TableCell>{contact.email || '-'}</TableCell>
+          <TableCell>{contact.phone || '-'}</TableCell>
+          <TableCell>{contact.company_name || '-'}</TableCell>
+          <TableCell className="max-w-xs truncate">
+            {contact.address_street ? `${contact.address_street}, ${contact.address_city}, ${contact.address_state}` : '-'}
+          </TableCell>
+          <TableCell>
+            <Badge className={`text-xs ${getStatusColor(contact.qualification_status, 'contact')}`}>
+              {formatStatus(contact.qualification_status)}
+            </Badge>
+          </TableCell>
+          <TableCell>
+            {contact.lead_score > 0 ? (
+              <Badge variant="secondary" className="text-xs">
+                {contact.lead_score}
+              </Badge>
+            ) : '-'}
+          </TableCell>
+          <TableCell>{contact.lead_source || '-'}</TableCell>
+          <TableCell className="text-sm text-muted-foreground">
+            {new Date(contact.created_at).toLocaleDateString()}
+          </TableCell>
+          <TableCell>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onViewDetails(contact.id)}
+            >
+              <Eye className="h-4 w-4 mr-1" />
+              View
+            </Button>
+          </TableCell>
+        </TableRow>
+      ))}
+    </TableBody>
+  </Table>
+);
+
+const JobsTable = ({ 
+  jobs, 
+  onViewDetails, 
+  onSort, 
+  sortField, 
+  sortDirection 
+}: { 
+  jobs: Job[]; 
+  onViewDetails: (id: string) => void;
+  onSort: (field: string) => void;
+  sortField: string;
+  sortDirection: 'asc' | 'desc';
+}) => (
+  <Table>
+    <TableHeader>
+      <TableRow>
+        <TableHead>
+          <Button variant="ghost" onClick={() => onSort('job_number')} className="h-auto p-0 font-medium">
+            Job # <ArrowUpDown className="ml-1 h-3 w-3" />
+          </Button>
+        </TableHead>
+        <TableHead>
+          <Button variant="ghost" onClick={() => onSort('name')} className="h-auto p-0 font-medium">
+            Job Name <ArrowUpDown className="ml-1 h-3 w-3" />
+          </Button>
+        </TableHead>
+        <TableHead>
+          <Button variant="ghost" onClick={() => onSort('contact_name')} className="h-auto p-0 font-medium">
+            Contact <ArrowUpDown className="ml-1 h-3 w-3" />
+          </Button>
+        </TableHead>
+        <TableHead>
+          <Button variant="ghost" onClick={() => onSort('status')} className="h-auto p-0 font-medium">
+            Status <ArrowUpDown className="ml-1 h-3 w-3" />
+          </Button>
+        </TableHead>
+        <TableHead>Project</TableHead>
+        <TableHead>
+          <Button variant="ghost" onClick={() => onSort('created_at')} className="h-auto p-0 font-medium">
+            Created <ArrowUpDown className="ml-1 h-3 w-3" />
+          </Button>
+        </TableHead>
+        <TableHead>Due Date</TableHead>
+        <TableHead>Actions</TableHead>
+      </TableRow>
+    </TableHeader>
+    <TableBody>
+      {jobs.map((job) => (
+        <TableRow key={job.id} className="hover:bg-muted/50">
+          <TableCell>
+            <Badge variant="outline" className="text-xs">
+              {job.job_number}
+            </Badge>
+          </TableCell>
+          <TableCell className="font-medium">{job.name}</TableCell>
+          <TableCell>
+            {job.contacts?.first_name} {job.contacts?.last_name}
+          </TableCell>
+          <TableCell>
+            <Badge className={`text-xs ${getStatusColor(job.status, 'job')}`}>
+              {formatStatus(job.status)}
+            </Badge>
+          </TableCell>
+          <TableCell>{job.projects?.name || '-'}</TableCell>
+          <TableCell className="text-sm text-muted-foreground">
+            {new Date(job.created_at).toLocaleDateString()}
+          </TableCell>
+          <TableCell className="text-sm text-muted-foreground">
+            {job.projects?.estimated_completion_date 
+              ? new Date(job.projects.estimated_completion_date).toLocaleDateString()
+              : '-'
+            }
+          </TableCell>
+          <TableCell>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => onViewDetails(job.id)}
+            >
+              <Eye className="h-4 w-4 mr-1" />
+              View
+            </Button>
+          </TableCell>
+        </TableRow>
+      ))}
+    </TableBody>
+  </Table>
+);
