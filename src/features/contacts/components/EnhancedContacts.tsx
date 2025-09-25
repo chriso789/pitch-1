@@ -74,13 +74,16 @@ const EnhancedContacts = () => {
     try {
       setLoading(true);
       
+      // Fetch all active contacts - no filtering to ensure we see everyone including Christopher O'Brien
       const { data, error } = await supabase
         .from('contacts')
         .select('*')
+        .eq('is_deleted', false)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
 
+      console.log(`Fetched ${data?.length || 0} contacts:`, data);
       setContacts(data || []);
     } catch (error) {
       console.error('Error fetching contacts:', error);

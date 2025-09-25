@@ -27,16 +27,16 @@ export const ProductionColumn: React.FC<ProductionColumnProps> = ({
     id,
   });
 
-  // Convert hex color to Tailwind-compatible background
+  // Convert hex color to proper CSS class
   const getBackgroundColor = (colorStr: string) => {
-    if (colorStr.includes('#ef4444')) return 'bg-red-500';
-    if (colorStr.includes('#f97316')) return 'bg-orange-500';
-    if (colorStr.includes('#eab308')) return 'bg-yellow-500';
-    if (colorStr.includes('#3b82f6')) return 'bg-blue-500';
-    if (colorStr.includes('#8b5cf6')) return 'bg-violet-500';
-    if (colorStr.includes('#10b981')) return 'bg-emerald-500';
-    if (colorStr.includes('#06b6d4')) return 'bg-cyan-500';
-    if (colorStr.includes('#6b7280')) return 'bg-gray-500';
+    if (colorStr.includes('#ef4444') || colorStr.includes('red')) return 'bg-red-500';
+    if (colorStr.includes('#f97316') || colorStr.includes('orange')) return 'bg-orange-500';
+    if (colorStr.includes('#eab308') || colorStr.includes('yellow')) return 'bg-yellow-500';
+    if (colorStr.includes('#3b82f6') || colorStr.includes('blue')) return 'bg-blue-500';
+    if (colorStr.includes('#8b5cf6') || colorStr.includes('violet')) return 'bg-violet-500';
+    if (colorStr.includes('#10b981') || colorStr.includes('emerald')) return 'bg-emerald-500';
+    if (colorStr.includes('#06b6d4') || colorStr.includes('cyan')) return 'bg-cyan-500';
+    if (colorStr.includes('#6b7280') || colorStr.includes('gray')) return 'bg-gray-500';
     return 'bg-blue-500'; // fallback
   };
 

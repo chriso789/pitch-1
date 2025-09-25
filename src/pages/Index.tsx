@@ -11,6 +11,7 @@ import { Projects } from "@/features/projects";
 import { Payments } from "@/features/payments";
 import { JobCalendar } from "@/features/jobs";
 import { Contacts } from "@/features/contacts/components/Contacts";
+import EnhancedContacts from "@/features/contacts/components/EnhancedContacts";
 import { Settings } from "@/features/settings";
 import { ClientList } from "@/features/contacts/components/ClientList";
 import { Dialer } from "@/features/communication";
@@ -199,7 +200,7 @@ const Index = () => {
       case "estimates":
         return <Estimates />;
       case "client-list":
-        return <ClientList />;
+        return <EnhancedContacts />;
       case "lead-sources":
         return <LeadSources />;
       case "lead-scoring":

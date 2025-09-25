@@ -349,16 +349,16 @@ const ProductionKanban = () => {
       >
         <ScrollArea className="w-full">
           <div className="flex gap-6 min-h-[600px] pb-4" style={{ minWidth: `${stages.length * 280}px` }}>
-            {stages.map((stage) => {
+            {stages.map((stage, index) => {
               const stageProjects = productionData[stage.stage_key] || [];
               const stageTotal = getStageTotal(stage.stage_key);
 
               return (
-                <div key={stage.stage_key} className="flex-shrink-0 w-[260px]">
+                <div key={`stage-${stage.stage_key}-${index}`} className="flex-shrink-0 w-[260px]">
                   <ProductionColumn
                     id={stage.stage_key}
                     title={stage.name}
-                    color={`bg-[${stage.color}]`}
+                    color={stage.color}
                     icon={stage.icon}
                     count={stageProjects.length}
                     total={formatCurrency(stageTotal)}
@@ -369,7 +369,7 @@ const ProductionKanban = () => {
                     >
                       {stageProjects.map((project) => (
                         <ProductionCard
-                          key={project.id}
+                          key={`project-${project.id}`}
                           id={project.id}
                           project={project}
                           onView={(contactId) => navigate(`/contact/${contactId}`)}
