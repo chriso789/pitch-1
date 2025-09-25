@@ -24,17 +24,18 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 
-interface PipelineEntry {
+interface JobEntry {
   id: string;
+  job_number: string;
   contact_id: string;
+  project_id: string;
+  name: string;
+  description: string;
   status: string;
-  priority: string;
-  estimated_value: number;
-  lead_quality_score: number;
-  roof_type: string;
-  source: string;
   created_at: string;
   contacts: {
+    id: string;
+    contact_number: string;
     first_name: string;
     last_name: string;
     email: string;
@@ -44,42 +45,35 @@ interface PipelineEntry {
     address_state: string;
     address_zip: string;
   };
-  estimates: Array<{
+  projects?: {
     id: string;
-    estimate_number: string;
-    selling_price: number;
-    status: string;
-    actual_margin_percent: number;
-  }>;
-  profiles: {
-    first_name: string;
-    last_name: string;
+    name: string;
   };
 }
 
 const KanbanPipeline = () => {
-  const [pipelineData, setPipelineData] = useState<Record<string, PipelineEntry[]>>({});
+  const [pipelineData, setPipelineData] = useState<Record<string, JobEntry[]>>({});
   const [loading, setLoading] = useState(true);
   const [dragging, setDragging] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
-  const [showLeadForm, setShowLeadForm] = useState(false);
+  const [showJobForm, setShowJobForm] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const pipelineStages = [
-    { name: "Lead", key: "lead", color: "bg-status-lead", icon: User },
-    { name: "Legal", key: "legal_review", color: "bg-status-legal", icon: FileText },
-    { name: "Contingency", key: "contingency_signed", color: "bg-status-contingency", icon: AlertCircle },
-    { name: "Hold (Mgr Review)", key: "hold_mgr_review", color: "bg-amber-500", icon: HourglassIcon },
-    { name: "Project", key: "project", color: "bg-status-project", icon: Home },
-    { name: "Completed", key: "completed", color: "bg-status-completed", icon: CheckCircle },
-    { name: "Closed", key: "closed", color: "bg-status-closed", icon: Clock }
+  const jobStages = [
+    { name: "Scheduled", key: "scheduled", color: "bg-blue-500", icon: Clock },
+    { name: "Materials Ordered", key: "materials_ordered", color: "bg-yellow-500", icon: FileText },
+    { name: "In Progress", key: "in_progress", color: "bg-orange-500", icon: Loader2 },
+    { name: "Quality Check", key: "quality_check", color: "bg-purple-500", icon: AlertCircle },
+    { name: "Completed", key: "completed", color: "bg-green-500", icon: CheckCircle },
+    { name: "Invoiced", key: "invoiced", color: "bg-emerald-600", icon: FileText },
+    { name: "Closed", key: "closed", color: "bg-gray-500", icon: CheckCircle }
   ];
 
   useEffect(() => {
     getCurrentUser();
-    fetchPipelineData();
+    fetchJobsData();
   }, []);
 
   const getCurrentUser = async () => {
@@ -94,64 +88,95 @@ const KanbanPipeline = () => {
     }
   };
 
-  const fetchPipelineData = async () => {
+  const fetchJobsData = async () => {
     try {
       setLoading(true);
       
-      const { data, error } = await supabase
-        .from('pipeline_entries')
-        .select(`
-          *,
-          contacts!inner (
-            id,
-            contact_number,
-            first_name,
-            last_name,
-            email,
-            phone,
-            address_street,
-            address_city,
-            address_state,
-            address_zip
-          ),
-          estimates (
-            id,
-            estimate_number,
-            selling_price,
-            status,
-            actual_margin_percent,
-            created_at
-          ),
-          profiles!pipeline_entries_assigned_to_fkey (
-            first_name,
-            last_name
-          )
-        `)
+      // Fetch jobs first
+      const { data: jobsData, error: jobsError } = await supabase
+        .from('jobs')
+        .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching pipeline data:', error);
+      if (jobsError) {
+        console.error('Error fetching jobs data:', jobsError);
         toast({
           title: "Error",
-          description: "Failed to load pipeline data",
+          description: "Failed to load jobs data",
           variant: "destructive",
         });
         return;
       }
 
-      // Group data by status - entries without contacts are already filtered out by inner join
-      const groupedData: Record<string, PipelineEntry[]> = {};
-      
-      pipelineStages.forEach(stage => {
-        groupedData[stage.key] = data?.filter(entry => entry.status === stage.key) || [];
+      // If no jobs, set empty state
+      if (!jobsData || jobsData.length === 0) {
+        const emptyData: Record<string, JobEntry[]> = {};
+        jobStages.forEach(stage => {
+          emptyData[stage.key] = [];
+        });
+        setPipelineData(emptyData);
+        return;
+      }
+
+      // Fetch contacts for all jobs
+      const contactIds = [...new Set(jobsData.map(job => job.contact_id).filter(Boolean))];
+      const { data: contactsData, error: contactsError } = await supabase
+        .from('contacts')
+        .select('id, contact_number, first_name, last_name, email, phone, address_street, address_city, address_state, address_zip')
+        .in('id', contactIds);
+
+      if (contactsError) {
+        console.error('Error fetching contacts:', contactsError);
+      }
+
+      // Fetch projects for all jobs
+      const projectIds = [...new Set(jobsData.map(job => job.project_id).filter(Boolean))];
+      const { data: projectsData, error: projectsError } = await supabase
+        .from('projects')
+        .select('id, name')
+        .in('id', projectIds);
+
+      if (projectsError) {
+        console.error('Error fetching projects:', projectsError);
+      }
+
+      // Create lookup maps
+      const contactsMap = new Map(contactsData?.map(c => [c.id, c]) || []);
+      const projectsMap = new Map(projectsData?.map(p => [p.id, p]) || []);
+
+      // Combine the data
+      const combinedJobs: JobEntry[] = jobsData
+        .map(job => {
+          const contact = contactsMap.get(job.contact_id);
+          if (!contact) return null; // Skip jobs without valid contacts
+          
+          return {
+            id: job.id,
+            job_number: job.job_number,
+            contact_id: job.contact_id,
+            project_id: job.project_id,
+            name: job.name,
+            description: job.description,
+            status: job.status,
+            created_at: job.created_at,
+            contacts: contact,
+            projects: job.project_id ? projectsMap.get(job.project_id) : undefined
+          };
+        })
+        .filter(Boolean) as JobEntry[];
+
+      // Group data by status
+      const groupedData: Record<string, JobEntry[]> = {};
+      jobStages.forEach(stage => {
+        groupedData[stage.key] = combinedJobs.filter(job => job.status === stage.key) || [];
       });
 
       setPipelineData(groupedData);
     } catch (error) {
-      console.error('Error in fetchPipelineData:', error);
+      console.error('Error in fetchJobsData:', error);
       toast({
         title: "Error",
-        description: "Failed to load pipeline data",
+        description: "Failed to load jobs data",
         variant: "destructive",
       });
     } finally {
@@ -174,31 +199,31 @@ const KanbanPipeline = () => {
     const entryId = active.id as string;
     const newStatus = over.id as string;
 
-    // Find the entry being moved
-    let movedEntry: PipelineEntry | null = null;
+    // Find the job being moved
+    let movedJob: JobEntry | null = null;
     let fromStatus = '';
 
-    for (const [status, entries] of Object.entries(pipelineData)) {
-      const entry = entries.find(e => e.id === entryId);
-      if (entry) {
-        movedEntry = entry;
+    for (const [status, jobs] of Object.entries(pipelineData)) {
+      const job = jobs.find(j => j.id === entryId);
+      if (job) {
+        movedJob = job;
         fromStatus = status;
         break;
       }
     }
 
-    if (!movedEntry) return;
+    if (!movedJob) return;
 
     // Optimistically update UI
     const newPipelineData = { ...pipelineData };
-    newPipelineData[fromStatus] = newPipelineData[fromStatus].filter(e => e.id !== entryId);
-    newPipelineData[newStatus] = [...newPipelineData[newStatus], { ...movedEntry, status: newStatus }];
+    newPipelineData[fromStatus] = newPipelineData[fromStatus].filter(j => j.id !== entryId);
+    newPipelineData[newStatus] = [...newPipelineData[newStatus], { ...movedJob, status: newStatus }];
     setPipelineData(newPipelineData);
 
     try {
-      const { data, error } = await supabase.functions.invoke('pipeline-drag-handler', {
+      const { data, error } = await supabase.functions.invoke('job-drag-handler', {
         body: {
-          pipelineEntryId: entryId,
+          jobId: entryId,
           newStatus: newStatus,
           fromStatus: fromStatus
         }
@@ -211,8 +236,8 @@ const KanbanPipeline = () => {
       if (data.error) {
         // Revert optimistic update
         const revertedData = { ...pipelineData };
-        revertedData[newStatus] = revertedData[newStatus].filter(e => e.id !== entryId);
-        revertedData[fromStatus] = [...revertedData[fromStatus], movedEntry];
+        revertedData[newStatus] = revertedData[newStatus].filter(j => j.id !== entryId);
+        revertedData[fromStatus] = [...revertedData[fromStatus], movedJob];
         setPipelineData(revertedData);
 
         toast({
@@ -225,31 +250,24 @@ const KanbanPipeline = () => {
 
       toast({
         title: "Success",
-        description: data.message || "Pipeline entry moved successfully",
+        description: data.message || "Job moved successfully",
       });
 
-      if (data.autoApprovalCreated) {
-        toast({
-          title: "Approval Requested",
-          description: "Your request has been submitted for manager approval",
-        });
-      }
-
       // Refresh data to ensure consistency
-      await fetchPipelineData();
+      await fetchJobsData();
 
     } catch (error) {
       console.error('Error moving pipeline entry:', error);
       
       // Revert optimistic update
       const revertedData = { ...pipelineData };
-      revertedData[newStatus] = revertedData[newStatus].filter(e => e.id !== entryId);
-      revertedData[fromStatus] = [...revertedData[fromStatus], movedEntry];
+      revertedData[newStatus] = revertedData[newStatus].filter(j => j.id !== entryId);
+      revertedData[fromStatus] = [...revertedData[fromStatus], movedJob];
       setPipelineData(revertedData);
 
       toast({
         title: "Error",
-        description: "Failed to move pipeline entry",
+        description: "Failed to move job",
         variant: "destructive",
       });
     }
@@ -266,11 +284,9 @@ const KanbanPipeline = () => {
   };
 
   const getStageTotal = (stageKey: string) => {
-    const entries = pipelineData[stageKey] || [];
-    return entries.reduce((sum, entry) => {
-      const estimate = entry.estimates?.[0];
-      return sum + (estimate?.selling_price || entry.estimated_value || 0);
-    }, 0);
+    const jobs = pipelineData[stageKey] || [];
+    // For now, we don't have project values, so return 0
+    return 0;
   };
 
   if (loading) {
@@ -288,16 +304,25 @@ const KanbanPipeline = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold gradient-primary bg-clip-text text-transparent">
-            Sales Pipeline
+            Jobs Pipeline
           </h1>
           <p className="text-muted-foreground">
-            Drag and drop leads through the roofing sales process
+            Manage jobs through the roofing production workflow
           </p>
         </div>
-        <Button className="gradient-primary" onClick={() => setShowLeadForm(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add New Lead
-        </Button>
+        {pipelineData && Object.values(pipelineData).flat().length === 0 && (
+          <div className="text-center p-8 bg-card rounded-lg border-2 border-dashed border-border">
+            <Home className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No Jobs Yet</h3>
+            <p className="text-muted-foreground mb-4">
+              Jobs are created from contacts. Visit the contacts page to create your first job.
+            </p>
+            <Button onClick={() => navigate('/contacts')}>
+              <User className="h-4 w-4 mr-2" />
+              Go to Contacts
+            </Button>
+          </div>
+        )}
       </div>
 
       {/* Kanban Board */}
@@ -306,38 +331,40 @@ const KanbanPipeline = () => {
         onDragStart={handleDragStart}
         onDragEnd={handleDragEnd}
       >
-        <div className="grid grid-cols-1 lg:grid-cols-7 gap-6 min-h-[600px]">
-          {pipelineStages.map((stage) => {
-            const stageEntries = pipelineData[stage.key] || [];
-            const stageTotal = getStageTotal(stage.key);
+        {Object.values(pipelineData).flat().length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-7 gap-6 min-h-[600px]">
+            {jobStages.map((stage) => {
+              const stageJobs = pipelineData[stage.key] || [];
+              const stageTotal = getStageTotal(stage.key);
 
-            return (
-              <KanbanColumn
-                key={stage.key}
-                id={stage.key}
-                title={stage.name}
-                color={stage.color}
-                icon={stage.icon}
-                count={stageEntries.length}
-                total={formatCurrency(stageTotal)}
-              >
-                <SortableContext 
-                  items={stageEntries.map(entry => entry.id)}
-                  strategy={verticalListSortingStrategy}
+              return (
+                <KanbanColumn
+                  key={stage.key}
+                  id={stage.key}
+                  title={stage.name}
+                  color={stage.color}
+                  icon={stage.icon}
+                  count={stageJobs.length}
+                  total={formatCurrency(stageTotal)}
                 >
-                  {stageEntries.map((entry) => (
-                    <KanbanCard
-                      key={entry.id}
-                      id={entry.id}
-                      entry={entry}
-                      onView={(contactId) => navigate(`/contact/${contactId}`)}
-                    />
-                  ))}
-                </SortableContext>
-              </KanbanColumn>
-            );
-          })}
-        </div>
+                  <SortableContext 
+                    items={stageJobs.map(job => job.id)}
+                    strategy={verticalListSortingStrategy}
+                  >
+                    {stageJobs.map((job) => (
+                      <KanbanCard
+                        key={job.id}
+                        id={job.id}
+                        entry={job}
+                        onView={(contactId) => navigate(`/contact/${contactId}`)}
+                      />
+                    ))}
+                  </SortableContext>
+                </KanbanColumn>
+              );
+            })}
+          </div>
+        )}
 
         <DragOverlay>
           {activeId ? (
@@ -359,14 +386,6 @@ const KanbanPipeline = () => {
         </DragOverlay>
       </DndContext>
 
-      {/* Lead Form Dialog */}
-      <LeadForm 
-        open={showLeadForm} 
-        onOpenChange={setShowLeadForm}
-        onLeadCreated={() => {
-          fetchPipelineData();
-        }}
-      />
     </div>
   );
 };
