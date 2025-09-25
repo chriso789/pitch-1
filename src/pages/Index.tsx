@@ -39,6 +39,7 @@ const Index = () => {
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [showWalkthrough, setShowWalkthrough] = useState(false);
   const { requestLocationPermission } = useLocationPermission();
 
   useEffect(() => {
@@ -148,9 +149,27 @@ const Index = () => {
 
     initAuth();
 
+    // Listen for walkthrough test trigger from floating button
+    const handleStartTest = () => {
+      setShowWalkthrough(true);
+      setTimeout(() => {
+        const event = new CustomEvent('start-walkthrough-test');
+        window.dispatchEvent(event);
+      }, 100);
+    };
+
+    // Check URL params for test trigger
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('test') === 'true') {
+      setTimeout(handleStartTest, 1000);
+    }
+
+    window.addEventListener('start-walkthrough-test', handleStartTest);
+
     return () => {
       mounted = false;
       subscription.unsubscribe();
+      window.removeEventListener('start-walkthrough-test', handleStartTest);
     };
   }, [navigate]);
 
@@ -219,7 +238,24 @@ const Index = () => {
   return (
     <div className="flex h-screen bg-background w-full">
       <DemoWalkthrough />
-      <ComprehensiveWalkthrough onSectionChange={setActiveSection} />
+      {showWalkthrough && (
+        <div className="fixed inset-0 z-50 bg-background/80 backdrop-blur-sm">
+          <div className="fixed left-[50%] top-[50%] z-50 grid w-full max-w-4xl translate-x-[-50%] translate-y-[-50%] gap-4 border bg-background p-6 shadow-lg duration-200 sm:rounded-lg">
+            <div className="flex items-center justify-between">
+              <h2 className="text-lg font-semibold">System Test & Walkthrough</h2>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setShowWalkthrough(false)}
+              >
+                <ChevronLeft className="h-4 w-4 mr-1" />
+                Close
+              </Button>
+            </div>
+            <ComprehensiveWalkthrough onSectionChange={setActiveSection} />
+          </div>
+        </div>
+      )}
       <PipelineStageManager />
       {/* Collapsible Sidebar */}
       <div className="relative">

@@ -64,6 +64,17 @@ const ComprehensiveWalkthrough = ({ onSectionChange }: { onSectionChange: (secti
 
   useEffect(() => {
     loadCounters();
+    
+    // Listen for start test event from floating button
+    const handleStartTest = () => {
+      runFullWalkthrough();
+    };
+    
+    window.addEventListener('start-walkthrough-test', handleStartTest);
+    
+    return () => {
+      window.removeEventListener('start-walkthrough-test', handleStartTest);
+    };
   }, []);
 
   // Pointer tracking effects
@@ -604,26 +615,10 @@ ${missing.join('\n')}
         </div>
       )}
 
-      <Dialog open={isOpen} onOpenChange={setIsOpen}>
-        <DialogTrigger asChild>
-          <Button 
-            variant={hasOpenIssues ? "destructive" : "outline"}
-            size="sm" 
-            className={cn(
-              "fixed top-4 right-20 z-50 backdrop-blur-sm text-xs px-2 py-1 h-8",
-              hasOpenIssues 
-                ? "bg-red-600 hover:bg-red-700 text-white border-red-600" 
-                : "bg-background/80 border-primary/20 hover:bg-primary/10"
-            )}
-          >
-            <Camera className="h-3 w-3 mr-1" />
-            Test{hasOpenIssues && ` (${getCurrentIssueCount()})`}
-          </Button>
-      </DialogTrigger>
-      <DialogContent className="max-w-7xl h-[95vh] p-0">
-        <DialogHeader className="p-6 pb-0">
-          <DialogTitle className="flex items-center justify-between">
-            <span>Comprehensive CRM Walkthrough & Testing</span>
+      <div className="h-full max-w-7xl mx-auto p-0">
+        <div className="mb-6">
+          <div className="flex items-center justify-between">
+            <h2 className="text-2xl font-bold">Comprehensive System Test & Walkthrough</h2>
             <div className="flex items-center gap-2">
               <Button
                 variant="ghost"
@@ -632,18 +627,11 @@ ${missing.join('\n')}
               >
                 {audioEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
               </Button>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setIsOpen(false)}
-              >
-                <X className="h-4 w-4" />
-              </Button>
             </div>
-          </DialogTitle>
-        </DialogHeader>
+          </div>
+        </div>
         
-        <div className="flex-1 p-6">
+        <div className="flex-1">
           <Tabs defaultValue="walkthrough" className="h-full flex flex-col">
             <TabsList>
               <TabsTrigger value="walkthrough">Walkthrough</TabsTrigger>
@@ -859,8 +847,7 @@ ${missing.join('\n')}
             </TabsContent>
           </Tabs>
         </div>
-        </DialogContent>
-      </Dialog>
+      </div>
     </>
   );
 };
