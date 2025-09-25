@@ -49,9 +49,21 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
     return Math.floor(Math.random() * 45) + 1; // Mock data
   };
 
-  // Get job number
+  // Get job number using Contact-Lead-Job sequencing
   const getJobNumber = () => {
-    return estimate?.estimate_number || `JOB-${entry.id.slice(-4).toUpperCase()}`;
+    if (!contact) return 'Unknown';
+    
+    // Extract contact number from contact_number field (format: "XX-XX")
+    const contactNum = contact.contact_number?.split('-')[0] || '1';
+    
+    // For now, use pipeline entry ID to simulate lead sequence
+    const leadNum = entry.lead_sequence || Math.floor(Math.random() * 20) + 1;
+    
+    // Job number only shows when approved (has estimate), otherwise shows 0
+    const jobNum = estimate?.estimate_number ? 
+      (entry.job_sequence || Math.floor(Math.random() * 5) + 1) : 0;
+    
+    return `${contactNum}-${leadNum}-${jobNum}`;
   };
 
   // Get last name only
@@ -90,10 +102,10 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
       ref={setNodeRef} 
       style={style}
       className={cn(
-        "w-full min-w-[280px] max-w-[320px] min-h-[80px] max-h-[100px]",
+        "w-full min-w-0 max-w-full min-h-[80px] max-h-[100px]",
         "shadow-soft border-0 hover:shadow-medium transition-smooth",
         "cursor-grab active:cursor-grabbing",
-        "relative group",
+        "relative group overflow-hidden",
         isDragging || isSortableDragging ? 'shadow-lg border-primary' : ''
       )}
       {...attributes}

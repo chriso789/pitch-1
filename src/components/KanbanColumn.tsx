@@ -57,11 +57,14 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
       <div
         ref={setNodeRef}
         className={cn(
-          "min-h-[400px] p-2 rounded-lg transition-colors",
+          "min-h-[400px] p-2 rounded-lg transition-colors overflow-hidden",
+          "max-w-full", // Constrain to column width
           isOver ? "bg-primary/10 border-2 border-primary border-dashed" : "bg-muted/20 border-2 border-transparent"
         )}
       >
-        {children}
+        <div className="space-y-3 w-full">
+          {children}
+        </div>
       </div>
     </div>
   );

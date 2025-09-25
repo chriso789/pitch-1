@@ -103,6 +103,8 @@ const KanbanPipeline = () => {
         .select(`
           *,
           contacts (
+            id,
+            contact_number,
             first_name,
             last_name,
             email,
@@ -125,6 +127,7 @@ const KanbanPipeline = () => {
             last_name
           )
         `)
+        .not('contact_id', 'is', null)  // Only show entries with contacts
         .order('created_at', { ascending: false });
 
       if (error) {
@@ -137,11 +140,13 @@ const KanbanPipeline = () => {
         return;
       }
 
-      // Group data by status
+      // Group data by status, only include entries with valid contacts
       const groupedData: Record<string, PipelineEntry[]> = {};
       
       pipelineStages.forEach(stage => {
-        groupedData[stage.key] = data?.filter(entry => entry.status === stage.key) || [];
+        groupedData[stage.key] = data?.filter(entry => 
+          entry.status === stage.key && entry.contacts != null
+        ) || [];
       });
 
       setPipelineData(groupedData);
@@ -323,16 +328,14 @@ const KanbanPipeline = () => {
                   items={stageEntries.map(entry => entry.id)}
                   strategy={verticalListSortingStrategy}
                 >
-                  <div className="space-y-3">
-                    {stageEntries.map((entry) => (
-                      <KanbanCard
-                        key={entry.id}
-                        id={entry.id}
-                        entry={entry}
-                        onView={(contactId) => navigate(`/contact/${contactId}`)}
-                      />
-                    ))}
-                  </div>
+                  {stageEntries.map((entry) => (
+                    <KanbanCard
+                      key={entry.id}
+                      id={entry.id}
+                      entry={entry}
+                      onView={(contactId) => navigate(`/contact/${contactId}`)}
+                    />
+                  ))}
                 </SortableContext>
               </KanbanColumn>
             );
