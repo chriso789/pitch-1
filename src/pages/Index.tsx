@@ -7,6 +7,7 @@ import KanbanPipeline from "@/features/pipeline/components/KanbanPipeline";
 import { Production } from "@/features/production";
 import EstimatePreview from "@/features/estimates/components/EstimatePreview";
 import Estimates from "@/features/estimates/components/Estimates";
+import Dashboard from "@/features/dashboard/components/Dashboard";
 import { Projects } from "@/features/projects";
 import { Payments } from "@/features/payments";
 import { JobCalendar } from "@/features/jobs";
@@ -191,7 +192,7 @@ const Index = () => {
   const renderActiveSection = () => {
     switch (activeSection) {
       case "dashboard":
-        return <div>Dashboard placeholder</div>;
+        return <Dashboard />;
       case "pipeline":
         return <KanbanPipeline />;
       case "production":

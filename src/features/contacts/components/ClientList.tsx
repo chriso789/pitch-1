@@ -33,8 +33,6 @@ import {
   Settings,
   Users,
   Briefcase,
-  LayoutGrid,
-  Table as TableIcon,
   ArrowUpDown
 } from "lucide-react";
 import { toast } from "sonner";
@@ -89,13 +87,10 @@ interface Job {
 }
 
 type ViewType = 'contacts' | 'jobs';
-type LayoutType = 'cards' | 'table';
-
 export const ClientList = () => {
   const navigate = useNavigate();
   const [activeView, setActiveView] = useState<ViewType>('contacts');
   const [preferredView, setPreferredView] = useState<ViewType>('contacts');
-  const [layoutType, setLayoutType] = useState<LayoutType>('cards');
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
   const [filteredData, setFilteredData] = useState<Contact[] | Job[]>([]);
@@ -218,44 +213,20 @@ export const ClientList = () => {
         `)
         .order("created_at", { ascending: false });
 
-      // Apply role-based filtering
-      if (profile?.role === 'user' || profile?.role === 'manager') {
-        // Get user's location assignments
-        const { data: locationAssignments } = await supabase
-          .from('user_location_assignments')
-          .select('location_id')
-          .eq('user_id', user.id)
-          .eq('is_active', true);
+      // Simplified filtering - show all active contacts regardless of role
+      console.log('📊 Fetching all active contacts and jobs');
+      contactsQuery = contactsQuery.eq('is_deleted', false);
+      
+      // Filter jobs by contacts that exist and are not deleted
+      const { data: activeContacts } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('is_deleted', false);
 
-        const assignedLocationIds = locationAssignments?.map(assignment => assignment.location_id) || [];
-        console.log('📍 User location assignments:', assignedLocationIds);
-
-        if (assignedLocationIds.length > 0) {
-          // Filter contacts by location - include contacts with assigned locations OR null location_id
-          contactsQuery = contactsQuery.or(`location_id.in.(${assignedLocationIds.join(',')}),location_id.is.null`);
-          
-          // Filter jobs by contact location
-          const { data: contactsInLocations } = await supabase
-            .from('contacts')
-            .select('id')
-            .or(`location_id.in.(${assignedLocationIds.join(',')}),location_id.is.null`);
-
-          const contactIds = contactsInLocations?.map(contact => contact.id) || [];
-          
-          if (contactIds.length > 0) {
-            jobsQuery = jobsQuery.in('contact_id', contactIds);
-          } else {
-            setJobs([]);
-          }
-        } else {
-          // No locations assigned - show ALL contacts (remove location restriction)
-          console.log('⚠️ No location assignments found - showing all contacts');
-          // Don't add any location filtering - let all contacts through
-        }
-      } else {
-        console.log('🔓 Admin/Master role - showing all data');
-        // For non-restricted roles, also ensure we fetch all active contacts
-        contactsQuery = contactsQuery.eq('is_deleted', false);
+      const contactIds = activeContacts?.map(contact => contact.id) || [];
+      
+      if (contactIds.length > 0) {
+        jobsQuery = jobsQuery.in('contact_id', contactIds);
       }
 
       const [contactsResult, jobsResult] = await Promise.all([
@@ -496,25 +467,6 @@ export const ClientList = () => {
               </Select>
             </div>
 
-            {/* Layout Toggle */}
-            <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
-              <Button
-                variant={layoutType === 'cards' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setLayoutType('cards')}
-                className="h-8 px-3"
-              >
-                <LayoutGrid className="h-4 w-4" />
-              </Button>
-              <Button
-                variant={layoutType === 'table' ? 'default' : 'ghost'}
-                size="sm"
-                onClick={() => setLayoutType('table')}
-                className="h-8 px-3"
-              >
-                <TableIcon className="h-4 w-4" />
-              </Button>
-            </div>
 
             {/* Search */}
             <div className="flex-1">
@@ -724,20 +676,6 @@ export const ClientList = () => {
             )}
           </CardContent>
         </Card>
-      ) : layoutType === 'cards' ? (
-        <div className="grid gap-4">
-          {filteredData.map((item) => (
-            <Card key={item.id} className="hover:shadow-md transition-shadow">
-              <CardContent className="p-6">
-                {activeView === 'contacts' ? (
-                  <ContactCard contact={item as Contact} onViewDetails={(id) => navigate(`/contact/${id}`)} />
-                ) : (
-                  <JobCard job={item as Job} onViewDetails={(id) => navigate(`/job/${id}`)} />
-                )}
-              </CardContent>
-            </Card>
-          ))}
-        </div>
       ) : (
         <Card>
           <CardContent className="p-0">
