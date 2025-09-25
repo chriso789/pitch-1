@@ -6,7 +6,19 @@ verify_jwt = true
 [functions.ai-image-analyzer]
 verify_jwt = true
 
+[functions.ai-lead-scorer]
+verify_jwt = true
+
 [functions.ai-sales-advisor]
+verify_jwt = true
+
+[functions.api-approve-job-from-lead]
+verify_jwt = true
+
+[functions.enhanced-estimate-calculator]
+verify_jwt = true
+
+[functions.production-workflow-manager]
 verify_jwt = true
 
 [functions.billtrust-auth]
