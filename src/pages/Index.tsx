@@ -207,8 +207,12 @@ const Index = () => {
         return <SmartDocs />;
       case "settings":
         return <Settings />;
-      case "settings":
-        return <Settings />;
+      case "security":
+        return <div className="p-8 text-center text-muted-foreground">Security section coming soon...</div>;
+      case "help":
+        return <div className="p-8 text-center text-muted-foreground">Help section coming soon...</div>;
+      default:
+        return <EnhancedDashboard />;
     }
   };
 
