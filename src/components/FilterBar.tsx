@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { X, Filter, Search } from "lucide-react";
+import { AutocompleteSearch } from "@/components/ui/autocomplete-search";
 
 interface FilterOption {
   key: string;
@@ -22,6 +23,7 @@ interface FilterBarProps {
   onFilterChange: (filters: FilterOption[]) => void;
   onSortChange: (sort: { field: string; direction: 'asc' | 'desc' }) => void;
   sortOptions: { value: string; label: string }[];
+  useAutocomplete?: boolean;
 }
 
 export const FilterBar = ({
@@ -30,7 +32,8 @@ export const FilterBar = ({
   onSearchChange,
   onFilterChange,
   onSortChange,
-  sortOptions
+  sortOptions,
+  useAutocomplete = false
 }: FilterBarProps) => {
   const [search, setSearch] = useState("");
   const [activeFilters, setActiveFilters] = useState<FilterOption[]>([]);
@@ -82,13 +85,22 @@ export const FilterBar = ({
       {/* Search and Sort Row */}
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder={searchPlaceholder}
-            value={search}
-            onChange={(e) => handleSearchChange(e.target.value)}
-            className="pl-10"
-          />
+          {useAutocomplete ? (
+            <AutocompleteSearch
+              placeholder={searchPlaceholder}
+              onSearchChange={handleSearchChange}
+            />
+          ) : (
+            <>
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder={searchPlaceholder}
+                value={search}
+                onChange={(e) => handleSearchChange(e.target.value)}
+                className="pl-10"
+              />
+            </>
+          )}
         </div>
         
         <div className="flex gap-2">

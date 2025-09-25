@@ -594,7 +594,8 @@ export const EnhancedDashboard = ({ onBack }: EnhancedDashboardProps) => {
         </CardHeader>
         <CardContent className="space-y-4">
           <FilterBar
-            searchPlaceholder="Search projects..."
+            searchPlaceholder="Search contacts..."
+            useAutocomplete={true}
             filterOptions={[
               {
                 key: 'salesRep',
