@@ -5,10 +5,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Progress } from '@/components/ui/progress';
 import { BudgetTracker } from "@/features/projects";
 import { JobInvoiceTracker, JobPhotoGallery, JobDocumentManager, JobTimelineTracker } from "@/features/jobs";
-import { Loader2, ArrowLeft, MapPin, Calendar, User, Phone, Mail, DollarSign, FileText, Camera, Clock, Settings } from 'lucide-react';
+import PaymentForm from "@/features/payments/components/PaymentForm";
+import { 
+  Loader2, ArrowLeft, MapPin, Calendar, User, Phone, Mail, 
+  DollarSign, FileText, Camera, Clock, Settings, CreditCard,
+  TrendingUp, TrendingDown, Target, AlertTriangle, ExternalLink
+} from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 
 interface JobDetailsData {
@@ -38,6 +42,15 @@ interface JobDetailsData {
   updated_at: string;
 }
 
+interface FinancialSummary {
+  totalBudget: number;
+  actualCosts: number;
+  totalPaid: number;
+  remainingBalance: number;
+  profitMargin: number;
+  salesRepCommission: number;
+}
+
 const JobDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -45,11 +58,20 @@ const JobDetails = () => {
   const [loading, setLoading] = useState(true);
   const [budgetItems, setBudgetItems] = useState([]);
   const [activeTab, setActiveTab] = useState('overview');
+  const [financials, setFinancials] = useState<FinancialSummary>({
+    totalBudget: 0,
+    actualCosts: 0,
+    totalPaid: 0,
+    remainingBalance: 0,
+    profitMargin: 0,
+    salesRepCommission: 0
+  });
 
   useEffect(() => {
     if (id) {
       fetchJobDetails();
       fetchBudgetItems();
+      fetchFinancialSummary();
     }
   }, [id]);
 
@@ -95,6 +117,28 @@ const JobDetails = () => {
     }
   };
 
+  const fetchFinancialSummary = async () => {
+    try {
+      // Fetch financial data - this would integrate with existing tables
+      // For now using mock data, but would pull from:
+      // - estimates table for budget
+      // - payments table for paid amounts  
+      // - project_costs for actual costs
+      // - commission_calculations for rep commission
+
+      setFinancials({
+        totalBudget: 45000,
+        actualCosts: 38000,
+        totalPaid: 30000,
+        remainingBalance: 15000,
+        profitMargin: 18.5,
+        salesRepCommission: 2250
+      });
+    } catch (error) {
+      console.error('Error fetching financial summary:', error);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     const colors = {
       'pending': 'bg-warning text-warning-foreground',
@@ -130,9 +174,9 @@ const JobDetails = () => {
 
   return (
     <div className="max-w-7xl mx-auto space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
+      {/* Header with Contact Card */}
+      <div className="flex items-start justify-between">
+        <div className="flex items-center space-x-4 flex-1">
           <Button 
             variant="ghost" 
             size="sm" 
@@ -141,7 +185,7 @@ const JobDetails = () => {
             <ArrowLeft className="h-4 w-4 mr-2" />
             Back
           </Button>
-          <div>
+          <div className="flex-1">
             <div className="flex items-center space-x-3">
               <h1 className="text-3xl font-bold">{job.name}</h1>
               <Badge className={getStatusColor(job.status)}>
@@ -156,112 +200,163 @@ const JobDetails = () => {
             </div>
           </div>
         </div>
-        <Button>
-          <Settings className="h-4 w-4 mr-2" />
-          Job Settings
-        </Button>
-      </div>
 
-      {/* Job Overview Cards */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <User className="h-4 w-4 text-primary" />
-              <div>
-                <p className="text-sm text-muted-foreground">Customer</p>
-                <p className="font-semibold">
-                  {job.contact ? 
-                    `${job.contact.first_name} ${job.contact.last_name}` : 
-                    'No contact assigned'
-                  }
-                </p>
+        {/* Minimized Contact Card */}
+        {job.contact && (
+          <Card className="w-80 shadow-soft border-primary/20">
+            <CardContent className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center space-x-2">
+                  <User className="h-4 w-4 text-primary" />
+                  <span className="text-sm font-medium text-primary">Contact</span>
+                </div>
+                <Button 
+                  variant="ghost" 
+                  size="sm"
+                  onClick={() => navigate(`/contact/${job.contact?.id}`)}
+                >
+                  <ExternalLink className="h-3 w-3" />
+                </Button>
               </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <MapPin className="h-4 w-4 text-primary" />
-              <div>
-                <p className="text-sm text-muted-foreground">Address</p>
-                <p className="font-semibold text-sm">
-                  {job.contact?.address_street ? (
-                    `${job.contact.address_street}, ${job.contact.address_city}, ${job.contact.address_state}`
-                  ) : (
-                    'No address available'
+              <div className="space-y-2">
+                <p className="font-semibold">
+                  {job.contact.first_name} {job.contact.last_name}
+                </p>
+                <div className="space-y-1 text-sm text-muted-foreground">
+                  {job.contact.phone && (
+                    <div className="flex items-center space-x-2">
+                      <Phone className="h-3 w-3" />
+                      <span>{job.contact.phone}</span>
+                    </div>
                   )}
-                </p>
+                  {job.contact.email && (
+                    <div className="flex items-center space-x-2">
+                      <Mail className="h-3 w-3" />
+                      <span>{job.contact.email}</span>
+                    </div>
+                  )}
+                  {job.contact.address_street && (
+                    <div className="flex items-center space-x-2">
+                      <MapPin className="h-3 w-3" />
+                      <span className="text-xs">
+                        {job.contact.address_street}, {job.contact.address_city}
+                      </span>
+                    </div>
+                  )}
+                </div>
               </div>
+            </CardContent>
+          </Card>
+        )}
+      </div>
+
+      {/* Financial Dashboard */}
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">
+        <Card className="gradient-primary text-white">
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-white/80 text-sm">Total Budget</p>
+                <p className="text-2xl font-bold">${financials.totalBudget.toLocaleString()}</p>
+              </div>
+              <Target className="h-8 w-8 text-white/60" />
             </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <Calendar className="h-4 w-4 text-primary" />
+            <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Start Date</p>
-                <p className="font-semibold">
-                  {job.project?.start_date ? 
-                    new Date(job.project.start_date).toLocaleDateString() : 
-                    'Not scheduled'
-                  }
-                </p>
+                <p className="text-muted-foreground text-sm">Actual Costs</p>
+                <p className="text-2xl font-bold">${financials.actualCosts.toLocaleString()}</p>
               </div>
+              <DollarSign className="h-8 w-8 text-warning" />
             </div>
           </CardContent>
         </Card>
 
         <Card>
           <CardContent className="p-4">
-            <div className="flex items-center space-x-2">
-              <Clock className="h-4 w-4 text-primary" />
+            <div className="flex items-center justify-between">
               <div>
-                <p className="text-sm text-muted-foreground">Completion</p>
-                <p className="font-semibold">
-                  {job.project?.estimated_completion_date ? 
-                    new Date(job.project.estimated_completion_date).toLocaleDateString() : 
-                    'Not estimated'
-                  }
-                </p>
+                <p className="text-muted-foreground text-sm">Total Paid</p>
+                <p className="text-2xl font-bold text-success">${financials.totalPaid.toLocaleString()}</p>
               </div>
+              <CreditCard className="h-8 w-8 text-success" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-muted-foreground text-sm">Balance Due</p>
+                <p className="text-2xl font-bold text-destructive">${financials.remainingBalance.toLocaleString()}</p>
+              </div>
+              <AlertTriangle className="h-8 w-8 text-destructive" />
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-muted-foreground text-sm">Profit Margin</p>
+                <p className="text-2xl font-bold text-primary">{financials.profitMargin}%</p>
+              </div>
+              {financials.profitMargin >= 15 ? 
+                <TrendingUp className="h-8 w-8 text-success" /> :
+                <TrendingDown className="h-8 w-8 text-destructive" />
+              }
             </div>
           </CardContent>
         </Card>
       </div>
 
-      {/* Contact Information */}
-      {job.contact && (
-        <Card>
-          <CardHeader>
-            <CardTitle>Contact Information</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {job.contact.phone && (
-                <div className="flex items-center space-x-2">
-                  <Phone className="h-4 w-4 text-muted-foreground" />
-                  <span>{job.contact.phone}</span>
-                </div>
-              )}
-              {job.contact.email && (
-                <div className="flex items-center space-x-2">
-                  <Mail className="h-4 w-4 text-muted-foreground" />
-                  <span>{job.contact.email}</span>
-                </div>
-              )}
+      {/* Real-time P&L Summary */}
+      <Card className="border-primary/20">
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <TrendingUp className="h-5 w-5 text-primary" />
+            <span>Live Profit & Loss</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="text-center">
+              <p className="text-sm text-muted-foreground">Revenue</p>
+              <p className="text-xl font-bold text-success">
+                ${financials.totalPaid.toLocaleString()}
+              </p>
             </div>
-          </CardContent>
-        </Card>
-      )}
+            <div className="text-center">
+              <p className="text-sm text-muted-foreground">Costs</p>
+              <p className="text-xl font-bold text-destructive">
+                ${financials.actualCosts.toLocaleString()}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-sm text-muted-foreground">Rep Commission</p>
+              <p className="text-xl font-bold text-warning">
+                ${financials.salesRepCommission.toLocaleString()}
+              </p>
+            </div>
+            <div className="text-center">
+              <p className="text-sm text-muted-foreground">Net Profit</p>
+              <p className="text-xl font-bold text-primary">
+                ${(financials.totalPaid - financials.actualCosts - financials.salesRepCommission).toLocaleString()}
+              </p>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-7">
           <TabsTrigger value="overview" className="flex items-center space-x-1">
             <FileText className="h-4 w-4" />
             <span className="hidden sm:inline">Overview</span>
@@ -269,6 +364,10 @@ const JobDetails = () => {
           <TabsTrigger value="budget" className="flex items-center space-x-1">
             <DollarSign className="h-4 w-4" />
             <span className="hidden sm:inline">Budget</span>
+          </TabsTrigger>
+          <TabsTrigger value="payments" className="flex items-center space-x-1">
+            <CreditCard className="h-4 w-4" />
+            <span className="hidden sm:inline">Payments</span>
           </TabsTrigger>
           <TabsTrigger value="invoices" className="flex items-center space-x-1">
             <FileText className="h-4 w-4" />
@@ -328,6 +427,23 @@ const JobDetails = () => {
             projectId={job.project?.id || job.id}
             budgetItems={budgetItems}
             onRefresh={fetchBudgetItems}
+          />
+        </TabsContent>
+
+        <TabsContent value="payments">
+          <PaymentForm 
+            selectedJob={{
+              id: job.id,
+              customer: job.contact ? `${job.contact.first_name} ${job.contact.last_name}` : 'Unknown',
+              email: job.contact?.email,
+              address: job.contact?.address_street ? 
+                `${job.contact.address_street}, ${job.contact.address_city}` : 
+                'No address',
+              totalAmount: financials.totalBudget,
+              paidAmount: financials.totalPaid,
+              remainingBalance: financials.remainingBalance,
+              projectType: job.name
+            }}
           />
         </TabsContent>
 

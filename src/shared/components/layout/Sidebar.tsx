@@ -160,12 +160,6 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
       description: "Job tracking"
     },
     {
-      name: "Payments", 
-      href: "payments",
-      icon: DollarSign,
-      description: "Billing & revenue"
-    },
-    {
       name: "Calendar",
       href: "calendar",
       icon: Calendar,
