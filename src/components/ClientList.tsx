@@ -161,6 +161,7 @@ export const ClientList = () => {
 
   const fetchData = async () => {
     try {
+      console.log('🔍 Fetching client data...');
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
@@ -170,6 +171,8 @@ export const ClientList = () => {
         .select('*')
         .eq('id', user.id)
         .maybeSingle();
+      
+      console.log('👤 User profile:', profile);
 
       // Fetch contacts with role-based filtering
       let contactsQuery = supabase
@@ -210,9 +213,10 @@ export const ClientList = () => {
           .eq('is_active', true);
 
         const assignedLocationIds = locationAssignments?.map(assignment => assignment.location_id) || [];
+        console.log('📍 User location assignments:', assignedLocationIds);
 
         if (assignedLocationIds.length > 0) {
-          // Filter contacts by location
+          // Filter contacts by location - include contacts with assigned locations OR null location_id
           contactsQuery = contactsQuery.or(`location_id.in.(${assignedLocationIds.join(',')}),location_id.is.null`);
           
           // Filter jobs by contact location
@@ -229,22 +233,12 @@ export const ClientList = () => {
             setJobs([]);
           }
         } else {
-          // No locations assigned, show only items without location
-          contactsQuery = contactsQuery.is('location_id', null);
-          
-          const { data: contactsWithoutLocation } = await supabase
-            .from('contacts')
-            .select('id')
-            .is('location_id', null);
-
-          const contactIds = contactsWithoutLocation?.map(contact => contact.id) || [];
-          
-          if (contactIds.length > 0) {
-            jobsQuery = jobsQuery.in('contact_id', contactIds);
-          } else {
-            setJobs([]);
-          }
+          // No locations assigned - show ALL contacts (remove location restriction)
+          console.log('⚠️ No location assignments found - showing all contacts');
+          // Don't add any location filtering - let all contacts through
         }
+      } else {
+        console.log('🔓 Admin/Master role - showing all data');
       }
 
       const [contactsResult, jobsResult] = await Promise.all([
@@ -252,8 +246,18 @@ export const ClientList = () => {
         jobsQuery
       ]);
 
-      if (contactsResult.error) throw contactsResult.error;
-      if (jobsResult.error) throw jobsResult.error;
+      if (contactsResult.error) {
+        console.error('❌ Error fetching contacts:', contactsResult.error);
+        throw contactsResult.error;
+      }
+      if (jobsResult.error) {
+        console.error('❌ Error fetching jobs:', jobsResult.error);
+        throw jobsResult.error;
+      }
+
+      console.log('📊 Fetched contacts:', contactsResult.data?.length || 0, 'items');
+      console.log('📋 Fetched jobs:', jobsResult.data?.length || 0, 'items');
+      console.log('📝 Contact data:', contactsResult.data);
 
       setContacts(contactsResult.data || []);
       setJobs((jobsResult.data as any) || []);
@@ -266,8 +270,13 @@ export const ClientList = () => {
   };
 
   const filterData = () => {
+    console.log('🔄 Filtering data for view:', activeView);
+    console.log('📊 Raw contacts:', contacts.length);
+    console.log('📋 Raw jobs:', jobs.length);
+    
     if (activeView === 'contacts') {
       let filtered = contacts as Contact[];
+      console.log('🎯 Starting with', filtered.length, 'contacts');
 
       // Search filter
       if (searchTerm) {
@@ -282,16 +291,20 @@ export const ClientList = () => {
             contact.address_street?.toLowerCase().includes(searchTerm.toLowerCase())
           );
         });
+        console.log('🔍 After search filter:', filtered.length, 'contacts');
       }
 
       // Status filter
       if (statusFilter !== "all") {
         filtered = filtered.filter(contact => contact.qualification_status === statusFilter);
+        console.log('📊 After status filter:', filtered.length, 'contacts');
       }
 
+      console.log('✅ Final filtered contacts:', filtered.length);
       setFilteredData(filtered);
     } else {
       let filtered = jobs as Job[];
+      console.log('🎯 Starting with', filtered.length, 'jobs');
 
       // Search filter
       if (searchTerm) {
@@ -303,13 +316,16 @@ export const ClientList = () => {
             job.contacts?.address_street?.toLowerCase().includes(searchTerm.toLowerCase())
           );
         });
+        console.log('🔍 After search filter:', filtered.length, 'jobs');
       }
 
       // Status filter
       if (statusFilter !== "all") {
         filtered = filtered.filter(job => job.status === statusFilter);
+        console.log('📊 After status filter:', filtered.length, 'jobs');
       }
 
+      console.log('✅ Final filtered jobs:', filtered.length);
       setFilteredData(filtered);
     }
   };
