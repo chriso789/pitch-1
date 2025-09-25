@@ -3,21 +3,13 @@ import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { 
-  MapPin, 
-  Phone,
-  Home,
-  DollarSign,
-  FileText,
-  GripVertical
-} from "lucide-react";
+import { GripVertical } from "lucide-react";
+import { cn } from "@/lib/utils";
 
 interface KanbanCardProps {
   id: string;
   entry: any;
   onView: (contactId: string) => void;
-  formatCurrency: (amount: number) => string;
   isDragging?: boolean;
 }
 
@@ -25,7 +17,6 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   id, 
   entry, 
   onView, 
-  formatCurrency, 
   isDragging = false 
 }) => {
   const {
@@ -46,91 +37,134 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   const contact = entry.contacts;
   const estimate = entry.estimates?.[0];
 
-  const formatName = (contact: any) => {
-    if (!contact) return 'Unknown';
-    return `${contact.first_name} ${contact.last_name}`;
-  };
-
-  const formatAddress = (contact: any) => {
-    if (!contact) return 'No address';
-    return `${contact.address_street}, ${contact.address_city}, ${contact.address_state} ${contact.address_zip}`;
-  };
-
-  const getPriorityColor = (priority: string) => {
-    switch (priority?.toLowerCase()) {
-      case "high": return "bg-destructive text-destructive-foreground";
-      case "medium": return "bg-warning text-warning-foreground"; 
-      case "low": return "bg-muted text-muted-foreground";
-      default: return "bg-muted text-muted-foreground";
+  // Calculate days in status (mock calculation based on created_at)
+  const getDaysInStatus = () => {
+    if (entry.created_at) {
+      const created = new Date(entry.created_at);
+      const now = new Date();
+      const diffTime = Math.abs(now.getTime() - created.getTime());
+      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays;
     }
+    return Math.floor(Math.random() * 45) + 1; // Mock data
+  };
+
+  // Get job number
+  const getJobNumber = () => {
+    return estimate?.estimate_number || `JOB-${entry.id.slice(-4).toUpperCase()}`;
+  };
+
+  // Get last name only
+  const getLastName = () => {
+    if (!contact) return 'Unknown';
+    return contact.last_name || contact.first_name || 'Unknown';
+  };
+
+  // Calculate days since last communication (mock data for now)
+  const getDaysSinceLastComm = () => {
+    return Math.floor(Math.random() * 14) + 1; // Mock: 1-14 days
+  };
+
+  // Get communication emoji based on recency
+  const getCommEmoji = (days: number) => {
+    if (days <= 2) return '📞'; // Recent call
+    if (days <= 7) return '📧'; // Email
+    return '📬'; // Overdue
+  };
+
+  const daysInStatus = getDaysInStatus();
+  const jobNumber = getJobNumber();
+  const lastName = getLastName();
+  const daysSinceComm = getDaysSinceLastComm();
+  const commEmoji = getCommEmoji(daysSinceComm);
+
+  // Get status badge color
+  const getStatusBadgeColor = () => {
+    if (daysInStatus <= 7) return "bg-success/10 text-success border-success/20";
+    if (daysInStatus <= 21) return "bg-warning/10 text-warning border-warning/20"; 
+    return "bg-destructive/10 text-destructive border-destructive/20";
   };
 
   return (
     <Card 
       ref={setNodeRef} 
       style={style}
-      className={`shadow-soft border-0 hover:shadow-medium transition-smooth cursor-grab active:cursor-grabbing ${
+      className={cn(
+        "w-full min-w-[280px] max-w-[320px] min-h-[80px] max-h-[100px]",
+        "shadow-soft border-0 hover:shadow-medium transition-smooth",
+        "cursor-grab active:cursor-grabbing",
+        "relative group",
         isDragging || isSortableDragging ? 'shadow-lg border-primary' : ''
-      }`}
+      )}
       {...attributes}
       {...listeners}
+      onClick={(e) => {
+        e.stopPropagation();
+        onView(contact?.id || entry.contact_id);
+      }}
+      role="button"
+      tabIndex={0}
+      aria-label={`Job ${jobNumber}, ${lastName}, ${daysInStatus} days in status, last contact ${daysSinceComm} days ago`}
     >
-      <CardContent className="p-4">
-        <div className="flex items-start justify-between mb-3">
-          <div className="flex-1">
-            <div className="flex items-center gap-2 mb-1">
-              <GripVertical className="h-4 w-4 text-muted-foreground" />
-              <span className="font-mono text-sm text-muted-foreground">
-                {estimate?.estimate_number || `PIPE-${entry.id.slice(-4)}`}
-              </span>
-            </div>
-            <h3 className="font-semibold">{formatName(contact)}</h3>
+      <CardContent className="p-3 h-full flex flex-col justify-between">
+        {/* Row 1: Days Badge + Job Number + Comm Badge */}
+        <div className="flex items-center justify-between w-full mb-1">
+          {/* Days in Status Badge */}
+          <Badge 
+            className={cn(
+              "text-xs px-2 py-0.5 border font-medium",
+              getStatusBadgeColor()
+            )}
+          >
+            {daysInStatus}d
+          </Badge>
+
+          {/* Job Number - Centered */}
+          <div 
+            className="flex-1 text-center px-2"
+            title={jobNumber}
+          >
+            <span 
+              className="font-mono font-semibold text-foreground"
+              style={{ fontSize: 'clamp(14px, 1.1vw, 16px)' }}
+            >
+              {jobNumber}
+            </span>
           </div>
-          {entry.priority && (
-            <Badge className={getPriorityColor(entry.priority)}>
-              {entry.priority}
-            </Badge>
-          )}
+
+          {/* Communication Recency Badge */}
+          <Badge 
+            className="text-xs px-2 py-0.5 bg-muted/10 text-muted-foreground border-muted/20 flex items-center gap-1"
+            title={`Last contact ${daysSinceComm} days ago`}
+          >
+            <span role="img" aria-label="communication status">{commEmoji}</span>
+            <span>{daysSinceComm}d</span>
+          </Badge>
         </div>
-        
-        <div className="space-y-2 text-sm">
-          <div className="flex items-center gap-2 text-muted-foreground">
-            <MapPin className="h-4 w-4" />
-            <span className="truncate">{formatAddress(contact)}</span>
-          </div>
-          
-          {contact?.phone && (
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <Phone className="h-4 w-4" />
-              <span>{contact.phone}</span>
-            </div>
-          )}
-          
-          <div className="flex items-center gap-2 text-primary font-medium">
-            <Home className="h-4 w-4" />
-            <span>{entry.roof_type || 'Roofing Project'}</span>
-          </div>
-          
-          <div className="flex items-center gap-2 font-semibold">
-            <DollarSign className="h-4 w-4 text-success" />
-            <span>{formatCurrency(estimate?.selling_price || entry.estimated_value)}</span>
+
+        {/* Row 2: Last Name */}
+        <div className="flex-1 flex items-center justify-center">
+          <div 
+            className="text-center w-full"
+            title={lastName}
+          >
+            <span 
+              className={cn(
+                "font-medium text-foreground block truncate px-2",
+                lastName.length > 12 ? "group-hover:text-clip" : ""
+              )}
+              style={{ fontSize: 'clamp(14px, 1.1vw, 16px)' }}
+            >
+              {lastName}
+            </span>
           </div>
         </div>
 
-        <div className="flex gap-2 mt-4">
-          <Button 
-            size="sm" 
-            variant="outline" 
-            className="flex-1"
-            onClick={(e) => {
-              e.stopPropagation();
-              onView(contact?.id || entry.contact_id);
-            }}
-          >
-            <FileText className="h-4 w-4 mr-1" />
-            View
-          </Button>
-        </div>
+        {/* Drag Handle (hidden, accessible via keyboard/screen reader) */}
+        <GripVertical 
+          className="absolute top-1 right-1 h-3 w-3 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity"
+          aria-hidden="true"
+        />
       </CardContent>
     </Card>
   );

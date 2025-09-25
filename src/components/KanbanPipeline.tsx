@@ -330,7 +330,6 @@ const KanbanPipeline = () => {
                         id={entry.id}
                         entry={entry}
                         onView={(contactId) => navigate(`/contact/${contactId}`)}
-                        formatCurrency={formatCurrency}
                       />
                     ))}
                   </div>
@@ -351,7 +350,6 @@ const KanbanPipeline = () => {
                     id={entry.id}
                     entry={entry}
                     onView={() => {}}
-                    formatCurrency={formatCurrency}
                     isDragging={true}
                   />
                 ) : null
