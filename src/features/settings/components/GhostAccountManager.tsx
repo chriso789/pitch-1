@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { UserPlus, Eye, MapPin, Calendar, Activity } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import LocationTracker from "./LocationTracker";
+import { default as LocationTracker } from "@/shared/components/LocationTracker";
 import { LocationData } from "@/services/locationService";
 
 interface GhostAccount {

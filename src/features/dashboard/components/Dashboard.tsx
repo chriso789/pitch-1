@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { LeadForm } from "@/components/LeadForm";
+import { LeadForm } from "@/features/contacts/components/LeadForm";
 import { 
   DollarSign, 
   TrendingUp, 

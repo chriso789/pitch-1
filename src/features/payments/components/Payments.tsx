@@ -13,7 +13,7 @@ import {
   TrendingUp,
   FileText
 } from "lucide-react";
-import JobSearch from "./JobSearch";
+import { default as JobSearch } from "@/features/jobs/components/JobSearch";
 import PaymentForm from "./PaymentForm";
 
 const Payments = () => {

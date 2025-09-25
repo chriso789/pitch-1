@@ -10,7 +10,7 @@ import { Plus, Play, Pause, Users, Mail, MessageCircle, Target, TrendingUp, Cloc
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
 import { CampaignBuilder } from '@/components/CampaignBuilder';
-import { MessageTemplates } from '@/components/MessageTemplates';
+import { MessageTemplates } from '@/features/communication/components/MessageTemplates';
 
 interface NurturingCampaign {
   id: string;

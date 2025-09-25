@@ -13,7 +13,7 @@ import { Progress } from '@/components/ui/progress';
 import { Plus, Edit, Trash2, Target, TrendingUp, Users, Award, Activity } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/components/ui/use-toast';
-import { LeadScoringActions } from '@/components/LeadScoringActions';
+import { LeadScoringActions } from '@/features/contacts/components/LeadScoringActions';
 
 interface ScoringRule {
   id: string;

@@ -1,4 +1,4 @@
 // Projects feature barrel exports
-export { Projects } from './components/Projects';
+export { default as Projects } from './components/Projects';
 export { BudgetTracker } from './components/BudgetTracker';
-export { ProjectDetails } from './components/ProjectDetails';
+export { default as ProjectDetails } from './components/ProjectDetails';

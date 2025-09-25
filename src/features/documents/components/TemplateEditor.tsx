@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, Save, Eye, Plus, X, Tag } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
-import { TagPicker } from "./TagPicker";
+import { TagPicker } from "@/shared/components/forms/TagPicker";
 
 interface SmartDocTemplate {
   id: string;

@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { LeadForm } from "@/components/LeadForm";
+import { LeadForm } from "@/features/contacts/components/LeadForm";
 import { 
   ArrowRight, 
   DollarSign, 

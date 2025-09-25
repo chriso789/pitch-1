@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import VoiceInterface from '@/components/VoiceInterface';
+import { default as VoiceInterface } from '@/features/communication/components/VoiceInterface';
 import { Send, Mic, Brain, User, Bot, Lightbulb, TrendingUp, AlertTriangle, CheckCircle } from 'lucide-react';
 
 interface Message {

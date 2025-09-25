@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { FilterBar } from "@/components/FilterBar";
+import { FilterBar } from "@/shared/components/FilterBar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { LeadForm } from "@/components/LeadForm";
+import { LeadForm } from "./LeadForm";
 import { Users, Phone, Mail, MapPin, Plus, Eye } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";

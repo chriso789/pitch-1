@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { UserPlus, Save, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import AddressVerification from "./AddressVerification";
+import { default as AddressVerification } from "@/shared/components/forms/AddressVerification";
 
 interface ContactFormData {
   first_name: string;

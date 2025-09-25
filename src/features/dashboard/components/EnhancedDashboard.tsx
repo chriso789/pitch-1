@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { BackButton } from "./BackButton";
-import { FilterBar } from "./FilterBar";
-import ProjectDetails from "./ProjectDetails";
-import Leaderboard from "./Leaderboard";
-import { LocationSwitcher } from "./LocationSwitcher";
+import { BackButton } from "@/shared/components/BackButton";
+import { FilterBar } from "@/shared/components/FilterBar";
+import { default as ProjectDetails } from "@/features/projects/components/ProjectDetails";
+import { default as Leaderboard } from "./Leaderboard";
+import { LocationSwitcher } from "@/shared/components/LocationSwitcher";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
