@@ -5,7 +5,7 @@ import { Session, User } from '@supabase/supabase-js';
 import Dashboard from "@/components/Dashboard";
 import EnhancedDashboard from "@/components/EnhancedDashboard";
 import Sidebar from "@/components/Sidebar";
-import Pipeline from "@/components/Pipeline";
+import KanbanPipeline from "@/components/KanbanPipeline";
 import Production from "@/components/Production";
 import EstimatePreview from "@/components/EstimatePreview";
 import Estimates from "@/components/Estimates";
@@ -197,7 +197,7 @@ const Index = () => {
       case "dashboard":
         return <EnhancedDashboard />;
       case "pipeline":
-        return <Pipeline />;
+        return <KanbanPipeline />;
       case "production":
         return <Production />;
       case "estimates":
@@ -212,8 +212,6 @@ const Index = () => {
         return <LeadNurturing />;
       case "duplicates":
         return <DuplicateDetection />;
-      case "enhanced-pipeline":
-        return <EnhancedPipeline />;
       case "projects":
         return <Projects />;
       case "payments":

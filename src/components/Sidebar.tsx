@@ -133,19 +133,13 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
       name: "Pipeline",
       href: "pipeline", 
       icon: TrendingUp,
-      description: "Lead management"
+      description: "Drag & drop sales pipeline"
     },
     {
       name: "CLIENT LIST",
       href: "client-list",
       icon: Users,
       description: "Contacts & jobs unified"
-    },
-    {
-      name: "Pipeline Manager",
-      href: "enhanced-pipeline",
-      icon: Target,
-      description: "Advanced pipeline management"
     },
     {
       name: "Estimates",

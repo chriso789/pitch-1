@@ -234,8 +234,8 @@ const ComprehensiveWalkthrough = ({ onSectionChange }: { onSectionChange: (secti
       id: 'pipeline',
       name: 'Pipeline',
       section: 'pipeline',
-      description: 'Basic lead management pipeline',
-      voiceOverText: 'The Pipeline section shows your lead progression through different stages from initial contact to closed deals.',
+      description: 'Drag & drop Kanban sales pipeline with manager approvals',
+      voiceOverText: 'The Pipeline section shows a visual Kanban board where you can drag leads through stages. Includes manager approval gates and automatic production workflow triggers.',
       expectedAction: 'Show pipeline stages and leads',
       status: 'pending',
       requirements: ['Pipeline stages visible', 'Lead cards display', 'Drag and drop works']
@@ -249,16 +249,6 @@ const ComprehensiveWalkthrough = ({ onSectionChange }: { onSectionChange: (secti
       expectedAction: 'Display contacts and jobs with filters',
       status: 'pending',
       requirements: ['Contact list loads', 'Job list loads', 'Toggle between views works', 'Search functionality']
-    },
-    {
-      id: 'enhanced-pipeline',
-      name: 'Pipeline Manager',
-      section: 'enhanced-pipeline',
-      description: 'Advanced pipeline management with automation',
-      voiceOverText: 'The Pipeline Manager offers advanced features for pipeline customization, automation rules, and detailed analytics.',
-      expectedAction: 'Show advanced pipeline features',
-      status: 'pending',
-      requirements: ['Advanced features visible', 'Settings panel works', 'Analytics display']
     },
     {
       id: 'estimates',
