@@ -223,18 +223,18 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
     // Allow for yourself
     if (currentUser.id === user?.id) return true;
     
-    // Allow for users with Chris/Christopher O'Brien variations and manager+ roles
-    const isChrisVariant = (
-      user?.first_name?.toLowerCase().includes('chris') && 
-      user?.last_name?.toLowerCase().includes('brien')
+    // Allow for Chris/Christopher O'Brien variations with manager+ roles to reset any password
+    const isCurrentUserChrisVariant = (
+      currentUser?.first_name?.toLowerCase().includes('chris') && 
+      currentUser?.last_name?.toLowerCase().includes('brien')
     ) || (
-      user?.first_name?.toLowerCase().includes('christopher') && 
-      user?.last_name?.toLowerCase().includes('brien')
+      currentUser?.first_name?.toLowerCase().includes('christopher') && 
+      currentUser?.last_name?.toLowerCase().includes('brien')
     );
     
-    const isManagerOrAbove = ['manager', 'admin', 'master'].includes(user?.role);
+    const isCurrentUserManagerOrAbove = ['manager', 'admin', 'master'].includes(currentUser?.role);
     
-    return isChrisVariant && isManagerOrAbove;
+    return isCurrentUserChrisVariant && isCurrentUserManagerOrAbove;
   };
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
