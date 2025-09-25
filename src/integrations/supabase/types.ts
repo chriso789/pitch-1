@@ -3093,6 +3093,92 @@ export type Database = {
         }
         Relationships: []
       }
+      production_stage_history: {
+        Row: {
+          changed_at: string
+          changed_by: string | null
+          from_stage: string | null
+          id: string
+          metadata: Json | null
+          notes: string | null
+          production_workflow_id: string
+          tenant_id: string
+          to_stage: string
+        }
+        Insert: {
+          changed_at?: string
+          changed_by?: string | null
+          from_stage?: string | null
+          id?: string
+          metadata?: Json | null
+          notes?: string | null
+          production_workflow_id: string
+          tenant_id: string
+          to_stage: string
+        }
+        Update: {
+          changed_at?: string
+          changed_by?: string | null
+          from_stage?: string | null
+          id?: string
+          metadata?: Json | null
+          notes?: string | null
+          production_workflow_id?: string
+          tenant_id?: string
+          to_stage?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_stage_history_production_workflow_id_fkey"
+            columns: ["production_workflow_id"]
+            isOneToOne: false
+            referencedRelation: "production_workflows"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      production_workflows: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          current_stage: string
+          id: string
+          noc_uploaded: boolean
+          permit_application_submitted: boolean
+          pipeline_entry_id: string | null
+          project_id: string
+          stage_data: Json
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          current_stage?: string
+          id?: string
+          noc_uploaded?: boolean
+          permit_application_submitted?: boolean
+          pipeline_entry_id?: string | null
+          project_id: string
+          stage_data?: Json
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          current_stage?: string
+          id?: string
+          noc_uploaded?: boolean
+          permit_application_submitted?: boolean
+          pipeline_entry_id?: string | null
+          project_id?: string
+          stage_data?: Json
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       products: {
         Row: {
           category: string | null
@@ -3227,6 +3313,56 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_approval_requests: {
+        Row: {
+          id: string
+          metadata: Json | null
+          notes: string | null
+          pipeline_entry_id: string
+          rejection_reason: string | null
+          requested_at: string
+          requested_by: string
+          reviewed_at: string | null
+          reviewed_by: string | null
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          id?: string
+          metadata?: Json | null
+          notes?: string | null
+          pipeline_entry_id: string
+          rejection_reason?: string | null
+          requested_at?: string
+          requested_by: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          tenant_id: string
+        }
+        Update: {
+          id?: string
+          metadata?: Json | null
+          notes?: string | null
+          pipeline_entry_id?: string
+          rejection_reason?: string | null
+          requested_at?: string
+          requested_by?: string
+          reviewed_at?: string | null
+          reviewed_by?: string | null
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_approval_requests_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
             referencedColumns: ["id"]
           },
         ]
@@ -5419,6 +5555,7 @@ export type Database = {
         | "lost"
         | "canceled"
         | "duplicate"
+        | "hold_mgr_review"
       roof_type:
         | "shingle"
         | "metal"
@@ -5622,6 +5759,7 @@ export const Constants = {
         "lost",
         "canceled",
         "duplicate",
+        "hold_mgr_review",
       ],
       roof_type: [
         "shingle",

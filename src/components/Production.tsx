@@ -14,6 +14,7 @@ import {
   AlertTriangle
 } from "lucide-react";
 import { toast } from "@/components/ui/use-toast";
+import { ProductionWorkflow } from "./ProductionWorkflow";
 
 interface ProductionTask {
   id: string;
