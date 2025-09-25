@@ -51,6 +51,12 @@ const ComprehensiveWalkthrough = ({ onSectionChange }: { onSectionChange: (secti
   const [issueCounter, setIssueCounter] = useState(1);
   const [reportCounter, setReportCounter] = useState(1);
   
+  // Pointer tracking states
+  const [isPointerTracking, setIsPointerTracking] = useState(false);
+  const [pointerPosition, setPointerPosition] = useState({ x: 0, y: 0 });
+  const [clickHistory, setClickHistory] = useState<Array<{x: number, y: number, timestamp: number, element: string}>>([]);
+  const [lastClickElement, setLastClickElement] = useState<string>('');
+  
   const { toast } = useToast();
   const audioRef = useRef<HTMLAudioElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
@@ -59,6 +65,129 @@ const ComprehensiveWalkthrough = ({ onSectionChange }: { onSectionChange: (secti
   useEffect(() => {
     loadCounters();
   }, []);
+
+  // Pointer tracking effects
+  useEffect(() => {
+    if (!isPointerTracking) return;
+
+    const handleMouseMove = (e: MouseEvent) => {
+      setPointerPosition({ x: e.clientX, y: e.clientY });
+    };
+
+    const handleClick = (e: MouseEvent) => {
+      const element = e.target as HTMLElement;
+      const elementDescription = getElementDescription(element);
+      
+      const clickData = {
+        x: e.clientX,
+        y: e.clientY,
+        timestamp: Date.now(),
+        element: elementDescription
+      };
+      
+      setClickHistory(prev => [...prev, clickData]);
+      setLastClickElement(elementDescription);
+      
+      toast({
+        title: "Click Tracked",
+        description: `Clicked: ${elementDescription}. Press 'X' if this didn't work as expected.`,
+        duration: 2000
+      });
+    };
+
+    const handleKeyPress = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() === 'x' && lastClickElement) {
+        reportClickIssue();
+      } else if (e.key === 'Escape') {
+        setIsPointerTracking(false);
+        toast({
+          title: "Pointer Tracking Stopped",
+          description: "Exited pointer tracking mode"
+        });
+      }
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('click', handleClick);
+    document.addEventListener('keydown', handleKeyPress);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('click', handleClick);
+      document.removeEventListener('keydown', handleKeyPress);
+    };
+  }, [isPointerTracking, lastClickElement]);
+
+  const getElementDescription = (element: HTMLElement): string => {
+    const tagName = element.tagName.toLowerCase();
+    const className = element.className;
+    const id = element.id;
+    const textContent = element.textContent?.trim().substring(0, 50) || '';
+    
+    let description = tagName;
+    if (id) description += `#${id}`;
+    if (className) description += `.${className.split(' ')[0]}`;
+    if (textContent) description += ` ("${textContent}")`;
+    
+    return description;
+  };
+
+  const startPointerTracking = () => {
+    setIsPointerTracking(true);
+    setClickHistory([]);
+    setLastClickElement('');
+    toast({
+      title: "Pointer Tracking Started",
+      description: "Click anywhere to track interactions. Press 'X' after a click if it doesn't work, or 'Esc' to exit."
+    });
+  };
+
+  const stopPointerTracking = () => {
+    setIsPointerTracking(false);
+    toast({
+      title: "Pointer Tracking Stopped",
+      description: `Tracked ${clickHistory.length} clicks during this session`
+    });
+  };
+
+  const reportClickIssue = () => {
+    if (!lastClickElement) return;
+    
+    let currentIssueNumber = issueCounter;
+    
+    const issue = {
+      id: `issue-${Date.now()}-pointer`,
+      issueNumber: currentIssueNumber,
+      title: `Click Issue - ${lastClickElement}`,
+      description: `User reported that clicking "${lastClickElement}" did not work as expected during pointer tracking session.`,
+      status: 'open',
+      severity: 'medium',
+      section: 'pointer-tracking',
+      createdAt: new Date(),
+      updatedAt: new Date(),
+      reportData: {
+        element: lastClickElement,
+        clickHistory: clickHistory.slice(-5), // Last 5 clicks for context
+        userReported: true
+      }
+    };
+
+    // Save issue to localStorage
+    const existingIssues = JSON.parse(localStorage.getItem('walkthrough-issues') || '[]');
+    const updatedIssues = [...existingIssues, issue];
+    localStorage.setItem('walkthrough-issues', JSON.stringify(updatedIssues));
+
+    // Update counter
+    saveCounters(currentIssueNumber + 1, reportCounter);
+    
+    toast({
+      title: `Issue #${currentIssueNumber} Reported`,
+      description: `Logged click issue with "${lastClickElement}"`,
+      variant: "destructive"
+    });
+
+    setLastClickElement(''); // Clear after reporting
+  };
 
   const loadCounters = () => {
     const issueCount = localStorage.getItem('issue-counter');
@@ -452,21 +581,44 @@ ${missing.join('\n')}
   const hasOpenIssues = getCurrentIssueCount() > 0;
 
   return (
-    <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger asChild>
-        <Button 
-          variant={hasOpenIssues ? "destructive" : "outline"}
-          size="sm" 
-          className={cn(
-            "fixed top-4 right-20 z-50 backdrop-blur-sm text-xs px-2 py-1 h-8",
-            hasOpenIssues 
-              ? "bg-red-600 hover:bg-red-700 text-white border-red-600" 
-              : "bg-background/80 border-primary/20 hover:bg-primary/10"
-          )}
-        >
-          <Camera className="h-3 w-3 mr-1" />
-          Test{hasOpenIssues && ` (${getCurrentIssueCount()})`}
-        </Button>
+    <>
+      {/* Pointer Tracking Overlay */}
+      {isPointerTracking && (
+        <div className="fixed inset-0 z-50 pointer-events-none">
+          {/* Crosshair cursor follower */}
+          <div 
+            className="absolute w-6 h-6 border-2 border-red-500 bg-red-500/20 rounded-full transform -translate-x-1/2 -translate-y-1/2 transition-all duration-75"
+            style={{ 
+              left: pointerPosition.x, 
+              top: pointerPosition.y 
+            }}
+          />
+          {/* Instructions overlay */}
+          <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-black/80 text-white px-4 py-2 rounded-lg text-sm">
+            Pointer Tracking Active • Click to track • Press 'X' after click if issue • Press 'Esc' to exit
+          </div>
+          {/* Click counter */}
+          <div className="absolute bottom-4 right-4 bg-black/80 text-white px-3 py-2 rounded-lg text-sm">
+            Clicks Tracked: {clickHistory.length}
+          </div>
+        </div>
+      )}
+
+      <Dialog open={isOpen} onOpenChange={setIsOpen}>
+        <DialogTrigger asChild>
+          <Button 
+            variant={hasOpenIssues ? "destructive" : "outline"}
+            size="sm" 
+            className={cn(
+              "fixed top-4 right-20 z-50 backdrop-blur-sm text-xs px-2 py-1 h-8",
+              hasOpenIssues 
+                ? "bg-red-600 hover:bg-red-700 text-white border-red-600" 
+                : "bg-background/80 border-primary/20 hover:bg-primary/10"
+            )}
+          >
+            <Camera className="h-3 w-3 mr-1" />
+            Test{hasOpenIssues && ` (${getCurrentIssueCount()})`}
+          </Button>
       </DialogTrigger>
       <DialogContent className="max-w-7xl h-[95vh] p-0">
         <DialogHeader className="p-6 pb-0">
@@ -510,7 +662,7 @@ ${missing.join('\n')}
                     <Button 
                       onClick={runFullWalkthrough}
                       disabled={isTesting}
-                      className="w-full"
+                      className="w-full mb-2"
                     >
                       {isTesting ? (
                         <>
@@ -521,6 +673,26 @@ ${missing.join('\n')}
                         <>
                           <Play className="h-4 w-4 mr-2" />
                           Start Full Test
+                        </>
+                      )}
+                    </Button>
+                    
+                    {/* Pointer Tracking Button */}
+                    <Button 
+                      onClick={isPointerTracking ? stopPointerTracking : startPointerTracking}
+                      disabled={isTesting}
+                      variant={isPointerTracking ? "destructive" : "secondary"}
+                      className="w-full"
+                    >
+                      {isPointerTracking ? (
+                        <>
+                          <X className="h-4 w-4 mr-2" />
+                          Stop Pointer Tracking
+                        </>
+                      ) : (
+                        <>
+                          <Video className="h-4 w-4 mr-2" />
+                          Start Pointer Tracking
                         </>
                       )}
                     </Button>
@@ -687,8 +859,9 @@ ${missing.join('\n')}
             </TabsContent>
           </Tabs>
         </div>
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 };
 
