@@ -42,12 +42,34 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
   const [commissionHistory, setCommissionHistory] = useState<any[]>([]);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [sendingReset, setSendingReset] = useState(false);
+  const [showPasswordForm, setShowPasswordForm] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
+  const [updatingPassword, setUpdatingPassword] = useState(false);
+  const [currentUser, setCurrentUser] = useState<any>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     loadUserProfile();
+    getCurrentUser();
   }, [userId]);
+
+  const getCurrentUser = async () => {
+    try {
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      if (authUser) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', authUser.id)
+          .single();
+        setCurrentUser(profile);
+      }
+    } catch (error) {
+      console.error('Error getting current user:', error);
+    }
+  };
 
   const loadUserProfile = async () => {
     try {
@@ -140,6 +162,79 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
     } finally {
       setSendingReset(false);
     }
+  };
+
+  const updatePasswordDirectly = async () => {
+    if (!newPassword || newPassword !== confirmPassword) {
+      toast({
+        title: "Password Mismatch",
+        description: "Passwords do not match or are empty.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      toast({
+        title: "Password Too Short",
+        description: "Password must be at least 6 characters long.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      setUpdatingPassword(true);
+      
+      // Use the admin function to update the user's password
+      const { error } = await supabase.functions.invoke('admin-update-password', {
+        body: {
+          userId: user.id,
+          newPassword: newPassword
+        }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Password Updated",
+        description: `Password has been updated successfully for ${user.first_name} ${user.last_name}`,
+      });
+
+      setShowPasswordForm(false);
+      setNewPassword('');
+      setConfirmPassword('');
+    } catch (error) {
+      console.error('Error updating password:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update password. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setUpdatingPassword(false);
+    }
+  };
+
+  // Check if current user has permission to manually set passwords
+  const canManuallySetPassword = () => {
+    if (!currentUser) return false;
+    
+    // Allow for yourself
+    if (currentUser.id === user?.id) return true;
+    
+    // Allow for users with Chris/Christopher O'Brien variations and manager+ roles
+    const isChrisVariant = (
+      user?.first_name?.toLowerCase().includes('chris') && 
+      user?.last_name?.toLowerCase().includes('brien')
+    ) || (
+      user?.first_name?.toLowerCase().includes('christopher') && 
+      user?.last_name?.toLowerCase().includes('brien')
+    );
+    
+    const isManagerOrAbove = ['manager', 'admin', 'master'].includes(user?.role);
+    
+    return isChrisVariant && isManagerOrAbove;
   };
 
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -474,6 +569,70 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
                     </AlertDialogContent>
                   </AlertDialog>
                 </div>
+
+                {canManuallySetPassword() && (
+                  <div className="flex items-start justify-between p-4 border rounded-lg bg-yellow-50 border-yellow-200">
+                    <div className="space-y-1">
+                      <h4 className="font-medium text-yellow-800">Manual Password Reset</h4>
+                      <p className="text-sm text-yellow-700">
+                        Directly set a new password for this user (Admin access for Chris O'Brien accounts only).
+                      </p>
+                    </div>
+                    <Dialog open={showPasswordForm} onOpenChange={setShowPasswordForm}>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" className="flex items-center gap-2 border-yellow-300 text-yellow-800 hover:bg-yellow-100">
+                          <Key className="h-4 w-4" />
+                          Set Password
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Set New Password</DialogTitle>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <Label htmlFor="new-password">New Password</Label>
+                            <Input
+                              id="new-password"
+                              type="password"
+                              value={newPassword}
+                              onChange={(e) => setNewPassword(e.target.value)}
+                              placeholder="Enter new password (min 6 characters)"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label htmlFor="confirm-password">Confirm Password</Label>
+                            <Input
+                              id="confirm-password"
+                              type="password"
+                              value={confirmPassword}
+                              onChange={(e) => setConfirmPassword(e.target.value)}
+                              placeholder="Confirm new password"
+                            />
+                          </div>
+                          <div className="p-3 bg-yellow-50 border border-yellow-200 rounded-lg">
+                            <p className="text-sm text-yellow-800">
+                              <strong>Warning:</strong> This will immediately update the user's password. 
+                              Make sure to securely communicate the new password to the user.
+                            </p>
+                          </div>
+                          <div className="flex gap-2">
+                            <Button 
+                              onClick={updatePasswordDirectly} 
+                              disabled={updatingPassword || !newPassword || newPassword !== confirmPassword}
+                              className="flex-1"
+                            >
+                              {updatingPassword ? "Updating..." : "Update Password"}
+                            </Button>
+                            <Button variant="outline" onClick={() => setShowPasswordForm(false)}>
+                              Cancel
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                  </div>
+                )}
 
                 <div className="flex items-start justify-between p-4 border rounded-lg">
                   <div className="space-y-1">
