@@ -71,7 +71,7 @@ export const ContactJobsTab: React.FC<ContactJobsTabProps> = ({
           description: data.description || null,
           tenant_id: tenantData?.tenant_id,
           created_by: (await supabase.auth.getUser()).data.user?.id,
-          job_number: ''
+          status: 'scheduled'
         })
         .select()
         .single();
@@ -82,7 +82,7 @@ export const ContactJobsTab: React.FC<ContactJobsTabProps> = ({
 
       toast({
         title: "Success",
-        description: `Job ${jobData.job_number} created successfully`,
+        description: `Job "${jobData.name}" created successfully`,
       });
 
       onJobsUpdate([jobData, ...jobs]);
@@ -104,11 +104,19 @@ export const ContactJobsTab: React.FC<ContactJobsTabProps> = ({
   const getStatusColor = (status: string) => {
     switch (status.toLowerCase()) {
       case 'completed':
-        return 'bg-success text-success-foreground';
+        return 'bg-green-500 text-white';
       case 'in_progress':
-        return 'bg-primary text-primary-foreground';
-      case 'pending':
-        return 'bg-warning text-warning-foreground';
+        return 'bg-orange-500 text-white';
+      case 'scheduled':
+        return 'bg-blue-500 text-white';
+      case 'materials_ordered':
+        return 'bg-yellow-500 text-white';
+      case 'quality_check':
+        return 'bg-purple-500 text-white';
+      case 'invoiced':
+        return 'bg-emerald-600 text-white';
+      case 'closed':
+        return 'bg-gray-500 text-white';
       default:
         return 'bg-muted text-muted-foreground';
     }
@@ -137,7 +145,7 @@ export const ContactJobsTab: React.FC<ContactJobsTabProps> = ({
               <div className="space-y-1">
                 <p className="text-sm font-medium leading-none">Active Jobs</p>
                 <p className="text-2xl font-bold">
-                  {jobs.filter(job => job.status === 'in_progress' || job.status === 'pending').length}
+                  {jobs.filter(job => ['scheduled', 'in_progress', 'materials_ordered', 'quality_check'].includes(job.status)).length}
                 </p>
               </div>
             </div>

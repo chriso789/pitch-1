@@ -8,7 +8,30 @@ import { cn } from "@/lib/utils";
 
 interface KanbanCardProps {
   id: string;
-  entry: any;
+  entry: {
+    id: string;
+    job_number: string;
+    name: string;
+    status: string;
+    created_at: string;
+    contact_id: string;
+    contacts: {
+      id: string;
+      contact_number: string;
+      first_name: string;
+      last_name: string;
+      email: string;
+      phone: string;
+      address_street: string;
+      address_city: string;
+      address_state: string;
+      address_zip: string;
+    };
+    projects?: {
+      id: string;
+      name: string;
+    };
+  };
   onView: (contactId: string) => void;
   isDragging?: boolean;
 }
@@ -35,9 +58,8 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   };
 
   const contact = entry.contacts;
-  const estimate = entry.estimates?.[0];
 
-  // Calculate days in status (mock calculation based on created_at)
+  // Calculate days in status (based on created_at)
   const getDaysInStatus = () => {
     if (entry.created_at) {
       const created = new Date(entry.created_at);
@@ -46,24 +68,12 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
       const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
       return diffDays;
     }
-    return Math.floor(Math.random() * 45) + 1; // Mock data
+    return 1; // Default to 1 day
   };
 
-  // Get job number using Contact-Lead-Job sequencing
+  // Get job number - use the job_number field directly
   const getJobNumber = () => {
-    if (!contact) return 'Unknown';
-    
-    // Extract contact number from contact_number field (format: "XX-XX")
-    const contactNum = contact.contact_number?.split('-')[0] || '1';
-    
-    // For now, use pipeline entry ID to simulate lead sequence
-    const leadNum = entry.lead_sequence || Math.floor(Math.random() * 20) + 1;
-    
-    // Job number only shows when approved (has estimate), otherwise shows 0
-    const jobNum = estimate?.estimate_number ? 
-      (entry.job_sequence || Math.floor(Math.random() * 5) + 1) : 0;
-    
-    return `${contactNum}-${leadNum}-${jobNum}`;
+    return entry.job_number || entry.name || 'New Job';
   };
 
   // Get last name only
@@ -112,7 +122,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
       {...listeners}
       onClick={(e) => {
         e.stopPropagation();
-        onView(contact?.id || entry.contact_id);
+        onView(entry.contact_id);
       }}
       role="button"
       tabIndex={0}
