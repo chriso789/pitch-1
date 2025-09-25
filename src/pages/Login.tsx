@@ -265,71 +265,8 @@ const Login: React.FC = () => {
     }
   };
 
-  const handleDemoLogin = async () => {
-    setLoading(true);
-
-    try {
-      const demoEmail = 'demo@pitch.com';
-      const demoPassword = 'DemoPassword123!';
-
-      let { data, error } = await supabase.auth.signInWithPassword({
-        email: demoEmail,
-        password: demoPassword
-      });
-
-      if (error && error.message.includes('Invalid login credentials')) {
-        const { data: signUpData, error: signUpError } = await supabase.auth.signUp({
-          email: demoEmail,
-          password: demoPassword,
-          options: {
-            emailRedirectTo: `${window.location.origin}/`,
-            data: {
-              first_name: 'Demo',
-              last_name: 'User',
-              company_name: 'PITCH Demo Company',
-              title: 'Administrator'
-            }
-          }
-        });
-
-        if (signUpError) {
-          throw signUpError;
-        }
-
-        if (signUpData.user) {
-          const profileData = {
-            id: signUpData.user.id,
-            email: demoEmail,
-            first_name: 'Demo',
-            last_name: 'User',
-            role: 'admin' as const,
-            company_name: 'PITCH Demo Company',
-            title: 'Administrator',
-            tenant_id: signUpData.user.id,
-            is_active: true
-          };
-
-          await supabase.from('profiles').insert(profileData);
-
-          toast({
-            title: "Demo account created",
-            description: "Welcome to PITCH CRM! Explore with full sample data.",
-          });
-        }
-      } else if (error) {
-        throw error;
-      } else {
-        toast({
-          title: "Demo login successful",
-          description: "Welcome back to the PITCH CRM demo!",
-        });
-      }
-    } catch (error: any) {
-      console.error('Demo login error:', error);
-      setErrors({ general: 'Demo login failed. Please try again.' });
-    } finally {
-      setLoading(false);
-    }
+  const handleDemoRequest = () => {
+    navigate('/demo-request');
   };
 
   const handleForgotPassword = async (e: React.FormEvent) => {
@@ -686,22 +623,15 @@ const Login: React.FC = () => {
 
             <div className="mt-6 pt-6 border-t">
               <Button
-                onClick={handleDemoLogin}
+                onClick={handleDemoRequest}
                 variant="outline"
                 className="w-full"
                 disabled={loading}
               >
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Loading demo...
-                  </>
-                ) : (
-                  'Try Demo Account'
-                )}
+                Request Demo Access
               </Button>
               <p className="text-xs text-muted-foreground text-center mt-2">
-                Explore PITCH CRM with full sample data
+                Get personalized access to PITCH CRM
               </p>
             </div>
           </CardContent>

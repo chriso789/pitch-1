@@ -14,6 +14,7 @@ import Payments from "@/components/Payments";
 import JobCalendar from "@/components/JobCalendar";
 import { Contacts } from "@/components/Contacts";
 import { Settings } from "@/components/Settings";
+import { Jobs } from "@/components/Jobs";
 import { Dialer } from "@/components/Dialer";
 import SmartDocs from "@/components/SmartDocs";
 import { LeadSources } from "@/components/LeadSources";
@@ -24,6 +25,7 @@ import { EnhancedPipeline } from "@/components/EnhancedPipeline";
 import { PipelineStageManager } from "@/components/PipelineStageManager";
 import { CollapsibleSidebar } from "@/components/ui/collapsible-sidebar";
 import { DeveloperToolbar } from "@/components/DeveloperToolbar";
+import { useLocationPermission } from "@/hooks/useLocationPermission";
 import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -35,6 +37,7 @@ const Index = () => {
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState("dashboard");
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const { requestLocationPermission } = useLocationPermission();
 
   useEffect(() => {
     let mounted = true;
@@ -71,6 +74,11 @@ const Index = () => {
                 
               if (mounted && profileData) {
                 setProfile(profileData);
+                
+                // Request location permission after successful login
+                setTimeout(() => {
+                  requestLocationPermission();
+                }, 1000);
               }
             } catch (error) {
               console.error('Error fetching profile:', error);
@@ -115,6 +123,11 @@ const Index = () => {
             
           if (mounted && profileData) {
             setProfile(profileData);
+            
+            // Request location permission after loading existing session
+            setTimeout(() => {
+              requestLocationPermission();
+            }, 1000);
           }
         } catch (error) {
           console.error('Error fetching profile:', error);
@@ -186,18 +199,16 @@ const Index = () => {
         return <Payments />;
       case "calendar":
         return <JobCalendar />;
+      case "jobs":
+        return <Jobs />;
       case "dialer":
         return <Dialer />;
       case "smartdocs":
         return <SmartDocs />;
       case "settings":
         return <Settings />;
-      case "security":
-        return <div className="p-8 text-center text-muted-foreground">Security section coming soon...</div>;
-      case "help":
-        return <div className="p-8 text-center text-muted-foreground">Help section coming soon...</div>;
-      default:
-        return <EnhancedDashboard />;
+      case "settings":
+        return <Settings />;
     }
   };
 

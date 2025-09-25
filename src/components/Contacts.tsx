@@ -44,13 +44,45 @@ export const Contacts = () => {
 
   const fetchContacts = async () => {
     try {
-      const { data, error } = await supabase
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // Get user profile
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('*')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      let query = supabase
         .from("contacts")
         .select("*")
         .order("created_at", { ascending: false });
 
-      if (error) throw error;
+      // Apply role-based filtering
+      if (profile?.role === 'user' || profile?.role === 'manager') {
+        // Get user's location assignments
+        const { data: locationAssignments } = await supabase
+          .from('user_location_assignments')
+          .select('location_id')
+          .eq('user_id', user.id)
+          .eq('is_active', true);
 
+        const assignedLocationIds = locationAssignments?.map(assignment => assignment.location_id) || [];
+
+        if (assignedLocationIds.length > 0) {
+          // Show contacts from assigned locations OR contacts without location
+          query = query.or(`location_id.in.(${assignedLocationIds.join(',')}),location_id.is.null`);
+        } else {
+          // If no locations assigned, show only contacts without location
+          query = query.is('location_id', null);
+        }
+      }
+      // Admins and masters see all contacts (no additional filtering)
+
+      const { data, error } = await query;
+
+      if (error) throw error;
       setContacts(data || []);
       setFilteredContacts(data || []);
     } catch (error) {

@@ -9,6 +9,7 @@ import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import ContactProfile from "./pages/ContactProfile";
 import JobDetails from "./pages/JobDetails";
+import DemoRequest from "./pages/DemoRequest";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient({
@@ -30,6 +31,7 @@ const App = () => {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/reset-password" element={<ResetPassword />} />
+            <Route path="/demo-request" element={<DemoRequest />} />
             <Route path="/contact/:id" element={<ContactProfile />} />
             <Route path="/job/:id" element={<JobDetails />} />
             <Route path="/" element={<Index />} />

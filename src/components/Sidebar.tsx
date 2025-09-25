@@ -162,8 +162,8 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
     {
       name: "Projects",
       href: "projects",
-      icon: MapPin,
-      description: "Active jobs"
+      icon: Wrench,
+      description: "Project management"
     },
     {
       name: "Production",
