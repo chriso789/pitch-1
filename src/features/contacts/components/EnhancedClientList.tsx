@@ -50,6 +50,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import ContactFormDialog from "@/components/ContactFormDialog";
+import EnhancedJobCreationDialog from "@/components/EnhancedJobCreationDialog";
+import PermanentDeleteDialog from "@/components/PermanentDeleteDialog";
 
 interface Contact {
   id: string;
@@ -411,24 +413,29 @@ export const EnhancedClientList = () => {
     toast.success(`Contact ${newContact.first_name} ${newContact.last_name} created successfully!`);
   };
 
-  const handleDeleteContact = async (contactId: string, contactName: string) => {
-    if (!confirm(`Are you sure you want to delete contact "${contactName}"? This will soft delete the contact while preserving all job/contact numbers.`)) {
-      return;
-    }
+  const [deleteDialog, setDeleteDialog] = useState({ open: false, contactId: '', contactName: '' });
 
+  const handleDeleteContact = async (contactId: string, contactName: string) => {
+    setDeleteDialog({ open: true, contactId, contactName });
+  };
+
+  const confirmPermanentDelete = async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error('Authentication required');
+        return;
+      }
+
+      // Permanently delete the contact from the database
       const { error } = await supabase
         .from('contacts')
-        .update({ 
-          is_deleted: true, 
-          deleted_at: new Date().toISOString(),
-          deleted_by: (await supabase.auth.getUser()).data.user?.id
-        })
-        .eq('id', contactId);
+        .delete()
+        .eq('id', deleteDialog.contactId);
 
       if (error) throw error;
 
-      toast.success(`Contact ${contactName} deleted successfully`);
+      toast.success(`Contact ${deleteDialog.contactName} permanently removed`);
       fetchData();
     } catch (error) {
       console.error('Error deleting contact:', error);
@@ -633,9 +640,12 @@ export const EnhancedClientList = () => {
             <Settings className="h-4 w-4 mr-2" />
             Set as Default
           </Button>
+          <EnhancedJobCreationDialog 
+            onJobCreated={fetchData}
+          />
           <ContactFormDialog 
             onContactCreated={handleContactCreated}
-            buttonText={`New ${activeView === 'contacts' ? 'Contact' : 'Job'}`}
+            buttonText="New Contact"
           />
         </div>
       </div>
@@ -838,7 +848,7 @@ export const EnhancedClientList = () => {
                             Contact <ArrowUpDown className="ml-2 h-4 w-4" />
                           </Button>
                         </TableHead>
-                        <TableHead>Company</TableHead>
+                        
                         <TableHead>
                           <Button variant="ghost" onClick={() => handleSort('qualification_status')} className="p-0 h-auto font-medium">
                             Status <ArrowUpDown className="ml-2 h-4 w-4" />
@@ -904,14 +914,6 @@ export const EnhancedClientList = () => {
                                 </div>
                               )}
                             </div>
-                          </TableCell>
-                          <TableCell>
-                            {item.company_name && (
-                              <div className="flex items-center gap-2">
-                                <Building className="h-3 w-3 text-muted-foreground" />
-                                <span className="text-sm">{item.company_name}</span>
-                              </div>
-                            )}
                           </TableCell>
                           <TableCell>
                             <Badge className={getStatusColor(item.qualification_status)}>
@@ -989,6 +991,14 @@ export const EnhancedClientList = () => {
           )}
         </CardContent>
       </Card>
+
+      <PermanentDeleteDialog
+        open={deleteDialog.open}
+        onOpenChange={(open) => setDeleteDialog(prev => ({ ...prev, open }))}
+        itemName={deleteDialog.contactName}
+        itemType="contact"
+        onConfirm={confirmPermanentDelete}
+      />
     </div>
   );
 };
