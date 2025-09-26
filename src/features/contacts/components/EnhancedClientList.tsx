@@ -35,8 +35,18 @@ import {
   ArrowUpDown,
   Activity,
   Target,
-  Award
+  Award,
+  MoreHorizontal,
+  Trash2,
+  MessageSquare
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import ContactFormDialog from "@/components/ContactFormDialog";
@@ -401,6 +411,163 @@ export const EnhancedClientList = () => {
     toast.success(`Contact ${newContact.first_name} ${newContact.last_name} created successfully!`);
   };
 
+  const handleDeleteContact = async (contactId: string, contactName: string) => {
+    if (!confirm(`Are you sure you want to delete ${contactName}? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update({ is_deleted: true, deleted_at: new Date().toISOString() })
+        .eq('id', contactId);
+
+      if (error) throw error;
+
+      toast.success(`Contact ${contactName} deleted successfully`);
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting contact:', error);
+      toast.error('Failed to delete contact');
+    }
+  };
+
+  const handleDeleteJob = async (jobId: string, jobName: string) => {
+    if (!confirm(`Are you sure you want to delete job "${jobName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('jobs')
+        .delete()
+        .eq('id', jobId);
+
+      if (error) throw error;
+
+      toast.success(`Job "${jobName}" deleted successfully`);
+      fetchData();
+    } catch (error) {
+      console.error('Error deleting job:', error);
+      toast.error('Failed to delete job');
+    }
+  };
+
+  const handleCall = (phone: string) => {
+    if (phone) {
+      window.open(`tel:${phone}`);
+    } else {
+      toast.error('No phone number available');
+    }
+  };
+
+  const handleText = (phone: string) => {
+    if (phone) {
+      window.open(`sms:${phone}`);
+    } else {
+      toast.error('No phone number available');
+    }
+  };
+
+  const handleEmail = (email: string) => {
+    if (email) {
+      window.open(`mailto:${email}`);
+    } else {
+      toast.error('No email address available');
+    }
+  };
+
+  const handleMapSurroundingJobs = (address: string) => {
+    if (address) {
+      const encodedAddress = encodeURIComponent(address);
+      window.open(`https://www.google.com/maps/search/roofing+jobs+near+${encodedAddress}`, '_blank');
+    } else {
+      toast.error('No address available');
+    }
+  };
+
+  const ActionsDropdown = ({ item, type }: { item: any, type: 'contact' | 'job' }) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
+          <MoreHorizontal className="h-4 w-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-48">
+        <DropdownMenuItem onClick={() => navigate(type === 'contact' ? `/contact/${item.id}` : `/job/${item.id}`)}>
+          <Eye className="mr-2 h-4 w-4" />
+          View Details Page
+        </DropdownMenuItem>
+        
+        {type === 'contact' && item.phone && (
+          <DropdownMenuItem onClick={() => handleCall(item.phone)}>
+            <Phone className="mr-2 h-4 w-4" />
+            Call
+          </DropdownMenuItem>
+        )}
+        
+        {type === 'job' && item.contact?.phone && (
+          <DropdownMenuItem onClick={() => handleCall(item.contact.phone)}>
+            <Phone className="mr-2 h-4 w-4" />
+            Call Contact
+          </DropdownMenuItem>
+        )}
+        
+        {type === 'contact' && item.phone && (
+          <DropdownMenuItem onClick={() => handleText(item.phone)}>
+            <MessageSquare className="mr-2 h-4 w-4" />
+            Text
+          </DropdownMenuItem>
+        )}
+        
+        {type === 'job' && item.contact?.phone && (
+          <DropdownMenuItem onClick={() => handleText(item.contact.phone)}>
+            <MessageSquare className="mr-2 h-4 w-4" />
+            Text Contact
+          </DropdownMenuItem>
+        )}
+        
+        {type === 'contact' && item.email && (
+          <DropdownMenuItem onClick={() => handleEmail(item.email)}>
+            <Mail className="mr-2 h-4 w-4" />
+            Email
+          </DropdownMenuItem>
+        )}
+        
+        {type === 'job' && item.contact?.email && (
+          <DropdownMenuItem onClick={() => handleEmail(item.contact.email)}>
+            <Mail className="mr-2 h-4 w-4" />
+            Email Contact
+          </DropdownMenuItem>
+        )}
+        
+        <DropdownMenuItem 
+          onClick={() => handleMapSurroundingJobs(
+            type === 'contact' 
+              ? `${item.address_street}, ${item.address_city}, ${item.address_state}` 
+              : `${item.contact?.address_street}, ${item.contact?.address_city}, ${item.contact?.address_state}`
+          )}
+        >
+          <MapPin className="mr-2 h-4 w-4" />
+          Map Surrounding Jobs
+        </DropdownMenuItem>
+        
+        <DropdownMenuSeparator />
+        
+        <DropdownMenuItem 
+          onClick={() => type === 'contact' 
+            ? handleDeleteContact(item.id, `${item.first_name} ${item.last_name}`) 
+            : handleDeleteJob(item.id, item.name)
+          }
+          className="text-destructive"
+        >
+          <Trash2 className="mr-2 h-4 w-4" />
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+
   // Calculate statistics
   const totalContacts = contacts.length;
   const qualifiedContacts = contacts.filter(c => c.qualification_status === 'qualified').length;
@@ -747,24 +914,7 @@ export const EnhancedClientList = () => {
                             )}
                           </TableCell>
                           <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => navigate(`/contact/${item.id}`)}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                              {item.phone && (
-                                <Button
-                                  variant="ghost"
-                                  size="sm"
-                                  onClick={() => window.open(`tel:${item.phone}`)}
-                                >
-                                  <Phone className="h-4 w-4" />
-                                </Button>
-                              )}
-                            </div>
+                            <ActionsDropdown item={item} type="contact" />
                           </TableCell>
                         </>
                       ) : (
@@ -806,15 +956,7 @@ export const EnhancedClientList = () => {
                             </div>
                           </TableCell>
                           <TableCell>
-                            <div className="flex items-center gap-2">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => navigate(`/job/${item.id}`)}
-                              >
-                                <Eye className="h-4 w-4" />
-                              </Button>
-                            </div>
+                            <ActionsDropdown item={item} type="job" />
                           </TableCell>
                         </>
                       )}
