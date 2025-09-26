@@ -8,6 +8,7 @@ import { Badge } from '@/components/ui/badge';
 import { BudgetTracker } from "@/features/projects";
 import { JobInvoiceTracker, JobPhotoGallery, JobDocumentManager, JobTimelineTracker } from "@/features/jobs";
 import PaymentForm from "@/features/payments/components/PaymentForm";
+import { ContactCommunicationTab } from "@/components/contact-profile/ContactCommunicationTab";
 import { 
   Loader2, ArrowLeft, MapPin, Calendar, User, Phone, Mail, 
   DollarSign, FileText, Camera, Clock, Settings, CreditCard,
@@ -356,7 +357,7 @@ const JobDetails = () => {
 
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-7">
+        <TabsList className="grid w-full grid-cols-8">
           <TabsTrigger value="overview" className="flex items-center space-x-1">
             <FileText className="h-4 w-4" />
             <span className="hidden sm:inline">Overview</span>
@@ -368,6 +369,10 @@ const JobDetails = () => {
           <TabsTrigger value="payments" className="flex items-center space-x-1">
             <CreditCard className="h-4 w-4" />
             <span className="hidden sm:inline">Payments</span>
+          </TabsTrigger>
+          <TabsTrigger value="communication" className="flex items-center space-x-1">
+            <Phone className="h-4 w-4" />
+            <span className="hidden sm:inline">Comms</span>
           </TabsTrigger>
           <TabsTrigger value="invoices" className="flex items-center space-x-1">
             <FileText className="h-4 w-4" />
@@ -445,6 +450,18 @@ const JobDetails = () => {
               projectType: job.name
             }}
           />
+        </TabsContent>
+
+        <TabsContent value="communication">
+          {job.contact ? (
+            <ContactCommunicationTab contact={job.contact} />
+          ) : (
+            <Card>
+              <CardContent className="p-6 text-center">
+                <p className="text-muted-foreground">No contact associated with this job</p>
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="invoices">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -424,6 +425,23 @@ export const EnhancedClientList = () => {
 
       if (error) throw error;
 
+  const handleDeleteContact = async (contactId: string, contactName: string) => {
+    if (!confirm(`Are you sure you want to delete contact "${contactName}"? This will soft delete the contact while preserving all job/contact numbers.`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('contacts')
+        .update({ 
+          is_deleted: true, 
+          deleted_at: new Date().toISOString(),
+          deleted_by: (await supabase.auth.getUser()).data.user?.id
+        })
+        .eq('id', contactId);
+
+      if (error) throw error;
+
       toast.success(`Contact ${contactName} deleted successfully`);
       fetchData();
     } catch (error) {
@@ -453,12 +471,16 @@ export const EnhancedClientList = () => {
     }
   };
 
-  const handleCall = (phone: string) => {
-    if (phone) {
-      window.open(`tel:${phone}`);
-    } else {
-      toast.error('No phone number available');
-    }
+  const handleCall = (contact: Contact | Job) => {
+    const contactData = {
+      id: contact.id,
+      name: contact.name || `${contact.first_name} ${contact.last_name}`,
+      phone: contact.phone,
+      email: contact.email
+    };
+    
+    // Navigate to Dialer with pre-populated contact info
+    navigate('/dialer', { state: { preloadedContact: contactData } });
   };
 
   const handleText = (phone: string) => {
@@ -500,14 +522,14 @@ export const EnhancedClientList = () => {
         </DropdownMenuItem>
         
         {type === 'contact' && item.phone && (
-          <DropdownMenuItem onClick={() => handleCall(item.phone)}>
+          <DropdownMenuItem onClick={() => handleCall(item)}>
             <Phone className="mr-2 h-4 w-4" />
             Call
           </DropdownMenuItem>
         )}
         
         {type === 'job' && item.contact?.phone && (
-          <DropdownMenuItem onClick={() => handleCall(item.contact.phone)}>
+          <DropdownMenuItem onClick={() => handleCall(item)}>
             <Phone className="mr-2 h-4 w-4" />
             Call Contact
           </DropdownMenuItem>

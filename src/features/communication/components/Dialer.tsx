@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useLocation } from "react-router-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -8,7 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Phone, Play, Pause, Square, PhoneOff, Clock, Users, List, Settings, Plus } from "lucide-react";
+import { Phone, Play, Pause, Square, PhoneOff, Clock, Users, List, Settings, Plus, Building } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -46,6 +47,7 @@ interface CallDisposition {
 }
 
 export const Dialer = () => {
+  const location = useLocation();
   const [lists, setLists] = useState<DialerList[]>([]);
   const [campaigns, setCampaigns] = useState<DialerCampaign[]>([]);
   const [dispositions, setDispositions] = useState<CallDisposition[]>([]);
@@ -55,11 +57,35 @@ export const Dialer = () => {
   const [callStartTime, setCallStartTime] = useState<Date | null>(null);
   const [showDispositionDialog, setShowDispositionDialog] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [callerIdSettings] = useState({ name: "O'Brien Contracting", number: "+1-555-OBRIEN" });
   const { toast } = useToast();
 
   useEffect(() => {
     loadData();
-  }, []);
+    
+    // Check if we have a preloaded contact from navigation state
+    const preloadedContact = location.state?.preloadedContact;
+    if (preloadedContact) {
+      setCurrentCall({
+        id: preloadedContact.id,
+        first_name: preloadedContact.name?.split(' ')[0] || '',
+        last_name: preloadedContact.name?.split(' ').slice(1).join(' ') || '',
+        phone: preloadedContact.phone,
+        email: preloadedContact.email,
+        status: 'ready'
+      });
+      
+      // Start a quick campaign for this contact
+      setActiveCampaign({
+        id: 'direct-call',
+        name: 'Direct Call',
+        description: `Calling ${preloadedContact.name}`,
+        status: 'active',
+        list_id: 'direct',
+        created_at: new Date().toISOString()
+      });
+    }
+  }, [location]);
 
   const loadData = async () => {
     try {
@@ -130,16 +156,37 @@ export const Dialer = () => {
     }
   };
 
-  const initiateCall = () => {
+  const initiateCall = async () => {
     if (!currentCall) return;
     
     setCallInProgress(true);
     setCallStartTime(new Date());
     
-    toast({
-      title: "Call Initiated",
-      description: `Calling ${currentCall.first_name} ${currentCall.last_name} at ${currentCall.phone}`,
-    });
+    try {
+      // Log call initiation to communication history
+      await supabase.from('communication_history').insert({
+        contact_id: currentCall.id,
+        communication_type: 'call',
+        direction: 'outbound',
+        content: `Call initiated to ${currentCall.phone}`,
+        metadata: {
+          caller_id: callerIdSettings,
+          phone_number: currentCall.phone,
+          status: 'initiated'
+        }
+      });
+
+      toast({
+        title: "Call Initiated",
+        description: `Calling ${currentCall.first_name} ${currentCall.last_name} at ${currentCall.phone}`,
+      });
+    } catch (error) {
+      console.error('Error logging call:', error);
+      toast({
+        title: "Call Initiated", 
+        description: `Calling ${currentCall.first_name} ${currentCall.last_name} at ${currentCall.phone}`,
+      });
+    }
   };
 
   const endCall = () => {
@@ -207,11 +254,19 @@ export const Dialer = () => {
             Manage campaigns and make calls efficiently
           </p>
         </div>
-        {activeCampaign && (
-          <Badge variant="default" className="px-4 py-2 text-lg">
-            Active: {activeCampaign.name}
-          </Badge>
-        )}
+        <div className="flex items-center gap-4">
+          {/* Caller ID Display */}
+          <div className="flex items-center gap-2 text-sm bg-card border rounded-lg px-3 py-2">
+            <Building className="h-4 w-4 text-primary" />
+            <span className="font-medium">{callerIdSettings.name}</span>
+            <Badge variant="outline">{callerIdSettings.number}</Badge>
+          </div>
+          {activeCampaign && (
+            <Badge variant="default" className="px-4 py-2 text-lg">
+              Active: {activeCampaign.name}
+            </Badge>
+          )}
+        </div>
       </div>
 
       {/* Active Call Interface */}
