@@ -49,7 +49,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
-import { useNavigate } from "react-router-dom";
 import ContactFormDialog from "@/components/ContactFormDialog";
 
 interface Contact {
@@ -413,19 +412,6 @@ export const EnhancedClientList = () => {
   };
 
   const handleDeleteContact = async (contactId: string, contactName: string) => {
-    if (!confirm(`Are you sure you want to delete ${contactName}? This action cannot be undone.`)) {
-      return;
-    }
-
-    try {
-      const { error } = await supabase
-        .from('contacts')
-        .update({ is_deleted: true, deleted_at: new Date().toISOString() })
-        .eq('id', contactId);
-
-      if (error) throw error;
-
-  const handleDeleteContact = async (contactId: string, contactName: string) => {
     if (!confirm(`Are you sure you want to delete contact "${contactName}"? This will soft delete the contact while preserving all job/contact numbers.`)) {
       return;
     }
@@ -472,12 +458,25 @@ export const EnhancedClientList = () => {
   };
 
   const handleCall = (contact: Contact | Job) => {
-    const contactData = {
-      id: contact.id,
-      name: contact.name || `${contact.first_name} ${contact.last_name}`,
-      phone: contact.phone,
-      email: contact.email
-    };
+    let contactData;
+    
+    if ('first_name' in contact) {
+      // It's a Contact
+      contactData = {
+        id: contact.id,
+        name: `${contact.first_name} ${contact.last_name}`,
+        phone: contact.phone,
+        email: contact.email
+      };
+    } else {
+      // It's a Job
+      contactData = {
+        id: contact.id,
+        name: contact.name || 'Unknown Job',
+        phone: contact.contact?.phone,
+        email: contact.contact?.email
+      };
+    }
     
     // Navigate to Dialer with pre-populated contact info
     navigate('/dialer', { state: { preloadedContact: contactData } });

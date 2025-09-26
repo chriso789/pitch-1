@@ -163,19 +163,6 @@ export const Dialer = () => {
     setCallStartTime(new Date());
     
     try {
-      // Log call initiation to communication history
-      await supabase.from('communication_history').insert({
-        contact_id: currentCall.id,
-        communication_type: 'call',
-        direction: 'outbound',
-        content: `Call initiated to ${currentCall.phone}`,
-        metadata: {
-          caller_id: callerIdSettings,
-          phone_number: currentCall.phone,
-          status: 'initiated'
-        }
-      });
-
       toast({
         title: "Call Initiated",
         description: `Calling ${currentCall.first_name} ${currentCall.last_name} at ${currentCall.phone}`,

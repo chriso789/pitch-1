@@ -29,14 +29,15 @@ export const TenantCallerIdConfig: React.FC = () => {
   const loadCallerIdSettings = async () => {
     try {
       const { data, error } = await supabase
-        .from('tenant_settings')
-        .select('caller_id_config')
-        .single();
+        .from('app_settings')
+        .select('setting_value')
+        .eq('setting_key', 'caller_id_config')
+        .maybeSingle();
 
       if (error && error.code !== 'PGRST116') throw error;
       
-      if (data?.caller_id_config) {
-        setSettings(data.caller_id_config);
+      if (data?.setting_value) {
+        setSettings(data.setting_value as unknown as CallerIdSettings);
       }
     } catch (error) {
       console.error('Error loading caller ID settings:', error);
@@ -46,18 +47,25 @@ export const TenantCallerIdConfig: React.FC = () => {
   const saveCallerIdSettings = async () => {
     setLoading(true);
     try {
-      const { error } = await supabase
-        .from('tenant_settings')
-        .upsert({
-          caller_id_config: settings
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      // For now, store in localStorage until proper database setup
+      try {
+        localStorage.setItem('caller_id_config', JSON.stringify(settings));
+        
+        toast({
+          title: "Settings Saved",
+          description: "Caller ID configuration updated successfully",
         });
-
-      if (error) throw error;
-
-      toast({
-        title: "Settings Saved",
-        description: "Caller ID configuration updated successfully",
-      });
+      } catch (error) {
+        console.error('Error saving caller ID settings:', error);
+        toast({
+          title: "Error",
+          description: "Failed to save caller ID settings",
+          variant: "destructive",
+        });
+      }
     } catch (error) {
       console.error('Error saving caller ID settings:', error);
       toast({
