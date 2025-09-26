@@ -95,8 +95,24 @@ const ContactForm: React.FC<ContactFormProps> = ({
     setIsSubmitting(true);
 
     try {
+      // Get current user and their profile to get tenant_id
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+      if (userError) throw userError;
+      if (!user) throw new Error("User not authenticated");
+
+      // Get user profile to fetch tenant_id
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("tenant_id")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError) throw profileError;
+      if (!profile?.tenant_id) throw new Error("User profile not found or missing tenant");
+
       const contactData = {
         ...formData,
+        tenant_id: profile.tenant_id,
         // Address fields
         address_street: addressData?.street || "",
         address_city: addressData?.city || "",
@@ -117,7 +133,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
         } : null,
         address_verification_data: addressVerificationData,
         // Ghost account data
-        created_by_ghost: isGhostAccount ? (await supabase.auth.getUser()).data.user?.id : null,
+        created_by_ghost: isGhostAccount ? user.id : null,
       };
 
       const { data, error } = await supabase
