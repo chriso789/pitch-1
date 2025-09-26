@@ -13,7 +13,7 @@ import { Payments } from "@/features/payments";
 import { JobCalendar } from "@/features/jobs";
 import { Contacts } from "@/features/contacts/components/Contacts";
 import { Settings } from "@/features/settings";
-import { ClientList } from "@/features/contacts/components/ClientList";
+import { EnhancedClientList } from "@/features/contacts";
 import { Dialer } from "@/features/communication";
 import { SmartDocs } from "@/features/documents";
 import { LeadSources, LeadScoring, LeadNurturing } from "@/features/leads";
@@ -200,7 +200,7 @@ const Index = () => {
       case "estimates":
         return <Estimates />;
       case "client-list":
-        return <ClientList />;
+        return <EnhancedClientList />;
       case "lead-sources":
         return <LeadSources />;
       case "lead-scoring":
