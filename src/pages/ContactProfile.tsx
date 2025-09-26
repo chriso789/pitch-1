@@ -130,7 +130,7 @@ const ContactProfile = () => {
     <div className="container mx-auto p-6 space-y-6">
       {/* Header Section */}
       <div className="flex items-center gap-4 mb-8">
-        <BackButton onClick={() => navigate('/')} />
+        <BackButton respectHistory={true} fallbackPath="/" />
         <div className="flex-1">
           <div className="flex items-center gap-4">
             <div className="w-16 h-16 gradient-primary rounded-full flex items-center justify-center shadow-medium">

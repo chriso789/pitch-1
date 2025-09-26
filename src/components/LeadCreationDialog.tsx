@@ -18,6 +18,7 @@ import { Plus, MapPin, Check, AlertCircle, Loader2, Users } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import { useFormNavigationGuard } from "@/hooks/useFormNavigationGuard";
 
 interface LeadCreationDialogProps {
   trigger?: React.ReactNode;
@@ -71,6 +72,26 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
   const { toast } = useToast();
   const navigate = useNavigate();
 
+  // Initialize form navigation guard
+  const {
+    hasUnsavedChanges,
+    isSubmitting,
+    initializeForm,
+    checkForChanges,
+    markAsSaved,
+    markAsSubmitting,
+    resetForm
+  } = useFormNavigationGuard({
+    message: "You have unsaved changes in the lead form. Are you sure you want to close it?",
+    onUnsavedChangesAttempt: () => {
+      toast({
+        title: "Unsaved Changes",
+        description: "Please save your lead or cancel to discard changes.",
+        variant: "default"
+      });
+    }
+  });
+
   const pipelineStatuses = [
     { value: "lead", label: "Lead" },
     { value: "legal", label: "Legal Review" },
@@ -91,8 +112,30 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     if (open) {
       loadSalesReps();
       loadUserProfile();
+      // Initialize form tracking when dialog opens
+      const initialFormData = {
+        name: "",
+        phone: "",
+        status: "lead",
+        roofType: "",
+        priority: "medium",
+        estimatedValue: "",
+        address: "",
+        useSameInfo: false,
+        assignedTo: [] as string[],
+        notes: "",
+      };
+      setFormData(initialFormData);
+      initializeForm(initialFormData);
     }
-  }, [open]);
+  }, [open, initializeForm]);
+
+  // Check for changes when form data updates
+  useEffect(() => {
+    if (open) {
+      checkForChanges(formData);
+    }
+  }, [formData, checkForChanges, open]);
 
   useEffect(() => {
     if (contact && formData.useSameInfo) {
@@ -254,6 +297,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
   const handleSubmit = async () => {
     if (!validateForm()) return;
 
+    markAsSubmitting();
     setLoading(true);
     try {
       const { data: { session } } = await supabase.auth.getSession();
@@ -327,10 +371,13 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       });
 
       onLeadCreated?.(pipelineEntry);
+      
+      // Mark form as saved and close
+      markAsSaved();
       setOpen(false);
       
       // Reset form
-      setFormData({
+      const resetFormData = {
         name: "",
         phone: "",
         status: "lead",
@@ -341,9 +388,11 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
         useSameInfo: false,
         assignedTo: [],
         notes: "",
-      });
+      };
+      setFormData(resetFormData);
       setSelectedAddress(null);
       setShowAddressPicker(false);
+      resetForm();
 
     } catch (error) {
       console.error('Error creating lead:', error);
@@ -377,6 +426,11 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
             {contact && (
               <Badge variant="outline">
                 for {contact.first_name} {contact.last_name}
+              </Badge>
+            )}
+            {hasUnsavedChanges && (
+              <Badge variant="secondary" className="text-orange-600 bg-orange-50">
+                • Unsaved changes
               </Badge>
             )}
           </DialogTitle>
@@ -581,10 +635,26 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
           </div>
 
           <div className="flex justify-end gap-2 pt-4">
-            <Button variant="outline" onClick={() => setOpen(false)}>
+            <Button 
+              variant="outline" 
+              onClick={() => {
+                if (hasUnsavedChanges) {
+                  const confirmed = window.confirm("You have unsaved changes. Are you sure you want to cancel?");
+                  if (confirmed) {
+                    resetForm();
+                    setOpen(false);
+                  }
+                } else {
+                  setOpen(false);
+                }
+              }}
+            >
               Cancel
             </Button>
-            <Button onClick={handleSubmit} disabled={loading || !selectedAddress}>
+            <Button 
+              onClick={handleSubmit} 
+              disabled={loading || !selectedAddress || isSubmitting}
+            >
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
