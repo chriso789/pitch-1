@@ -72,7 +72,7 @@ interface Job {
   updated_at: string;
   contact_id: string;
   project_id: string;
-  contacts?: {
+  contact?: {
     first_name: string;
     last_name: string;
     email: string;
@@ -173,9 +173,13 @@ export const EnhancedClientList = () => {
   };
 
   const fetchData = async () => {
+    setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        console.log("No authenticated user found");
+        return;
+      }
 
       const { data: profile } = await supabase
         .from('profiles')
@@ -183,56 +187,64 @@ export const EnhancedClientList = () => {
         .eq('id', user.id)
         .maybeSingle();
 
-      let contactsQuery = supabase
-        .from("contacts")
-        .select("*")
-        .order("created_at", { ascending: false });
-
-      let jobsQuery = supabase
-        .from("jobs")
-        .select(`
-          *,
-          contacts (
-            first_name,
-            last_name,
-            email,
-            phone,
-            address_street,
-            address_city,
-            address_state,
-            location_id
-          ),
-          projects (
-            name,
-            estimated_completion_date,
-            status
-          )
-        `)
-        .order("created_at", { ascending: false });
-
-      contactsQuery = contactsQuery.eq('is_deleted', false);
-      
-      const { data: activeContacts } = await supabase
-        .from('contacts')
-        .select('id')
-        .eq('is_deleted', false);
-
-      const contactIds = activeContacts?.map(contact => contact.id) || [];
-      
-      if (contactIds.length > 0) {
-        jobsQuery = jobsQuery.in('contact_id', contactIds);
+      if (!profile) {
+        console.log("No profile found for user");
+        return;
       }
 
-      const [contactsResult, jobsResult] = await Promise.all([
-        contactsQuery,
-        jobsQuery
-      ]);
+      console.log("User profile:", profile);
+      setUserProfile(profile);
 
-      if (contactsResult.error) throw contactsResult.error;
-      if (jobsResult.error) throw jobsResult.error;
+      // Query contacts with proper tenant filtering
+      console.log("Fetching contacts...");
+      const { data: contactsData, error: contactsError } = await supabase
+        .from("contacts")
+        .select("*")
+        .eq('tenant_id', profile.tenant_id)
+        .eq('is_deleted', false)
+        .order("created_at", { ascending: false });
 
-      setContacts(contactsResult.data || []);
-      setJobs((jobsResult.data as any) || []);
+      if (contactsError) {
+        console.error("Contacts query error:", contactsError);
+        throw contactsError;
+      }
+
+      console.log("Contacts fetched:", contactsData?.length || 0);
+
+      // Query jobs with proper tenant filtering and separately fetch contacts
+      console.log("Fetching jobs...");
+      const { data: jobsData, error: jobsError } = await supabase
+        .from("jobs")
+        .select("*")
+        .eq('tenant_id', profile.tenant_id)
+        .order("created_at", { ascending: false });
+
+      if (jobsError) {
+        console.error("Jobs query error:", jobsError);
+        throw jobsError;
+      }
+
+      console.log("Jobs fetched:", jobsData?.length || 0);
+
+      // Enhance jobs with contact information
+      const enhancedJobs = await Promise.all(
+        (jobsData || []).map(async (job) => {
+          const { data: contactData } = await supabase
+            .from("contacts")
+            .select("first_name, last_name, email, phone, address_street, address_city, address_state, location_id")
+            .eq("id", job.contact_id)
+            .eq('tenant_id', profile.tenant_id)
+            .maybeSingle();
+
+          return {
+            ...job,
+            contact: contactData
+          };
+        })
+      );
+
+      setContacts(contactsData || []);
+      setJobs(enhancedJobs || []);
     } catch (error) {
       console.error("Error fetching data:", error);
       toast.error("Failed to load client data");
@@ -273,8 +285,8 @@ export const EnhancedClientList = () => {
           return (
             job.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             job.job_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            `${job.contacts?.first_name} ${job.contacts?.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
-            job.contacts?.address_street?.toLowerCase().includes(searchTerm.toLowerCase())
+            `${job.contact?.first_name} ${job.contact?.last_name}`.toLowerCase().includes(searchTerm.toLowerCase()) ||
+            job.contact?.address_street?.toLowerCase().includes(searchTerm.toLowerCase())
           );
         });
       }
@@ -768,9 +780,9 @@ export const EnhancedClientList = () => {
                           </TableCell>
                           <TableCell>
                             <div className="font-medium">
-                              {item.contacts?.first_name} {item.contacts?.last_name}
+                              {item.contact?.first_name} {item.contact?.last_name}
                             </div>
-                            <div className="text-sm text-muted-foreground">{item.contacts?.email}</div>
+                            <div className="text-sm text-muted-foreground">{item.contact?.email}</div>
                           </TableCell>
                           <TableCell>
                             <Badge className={getStatusColor(item.status)}>
@@ -778,11 +790,11 @@ export const EnhancedClientList = () => {
                             </Badge>
                           </TableCell>
                           <TableCell>
-                            {item.contacts?.address_street && (
+                            {item.contact?.address_street && (
                               <div className="flex items-center gap-2 text-sm text-muted-foreground">
                                 <MapPin className="h-3 w-3" />
                                 <span className="truncate max-w-[200px]">
-                                  {item.contacts.address_street}
+                                  {item.contact.address_street}
                                 </span>
                               </div>
                             )}
