@@ -8,7 +8,7 @@ import { BackButton } from "@/shared/components/BackButton";
 import { ContactDetailsTab } from "@/components/contact-profile/ContactDetailsTab";
 import { ContactJobsTab } from "@/components/contact-profile/ContactJobsTab";
 import { ContactCommunicationTab } from "@/components/contact-profile/ContactCommunicationTab";
-import { JobCreationDialog } from "@/components/JobCreationDialog";
+import { LeadCreationDialog } from "@/components/LeadCreationDialog";
 import {
   User,
   Phone,
@@ -151,13 +151,15 @@ const ContactProfile = () => {
               </div>
             </div>
           </div>
-          <JobCreationDialog 
+          <LeadCreationDialog 
             contact={contact}
-            onJobCreated={handleJobsUpdate}
+            onLeadCreated={() => {
+              fetchContactData(); // Refresh to get updated pipeline data
+            }}
             trigger={
               <Button className="shadow-soft">
                 <Plus className="h-4 w-4 mr-2" />
-                Create Job
+                Create Lead
               </Button>
             }
           />
