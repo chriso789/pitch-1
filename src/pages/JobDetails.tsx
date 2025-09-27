@@ -141,6 +141,83 @@ const JobDetails = () => {
     }
   };
 
+  const handleSaveAndExit = async () => {
+    if (!job) return;
+    
+    setLoading(true);
+    try {
+      // Ensure job exists in database and is properly saved
+      const { data: existingJob, error: checkError } = await supabase
+        .from('jobs')
+        .select('id, tenant_id')
+        .eq('id', id)
+        .maybeSingle();
+
+      if (checkError) throw checkError;
+      
+      if (!existingJob) {
+        // Job doesn't exist in jobs table, create it
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) throw new Error("No authenticated user");
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('tenant_id')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (!profile) throw new Error("No user profile found");
+
+        const { data: newJob, error: createError } = await supabase
+          .from('jobs')
+          .insert({
+            id: job.id,
+            tenant_id: profile.tenant_id,
+            contact_id: job.contact?.id,
+            name: job.name,
+            description: job.description,
+            status: job.status,
+            created_by: user.id
+          })
+          .select()
+          .single();
+
+        if (createError) throw createError;
+        
+        toast({
+          title: 'Job Saved',
+          description: 'Job has been successfully saved to the database',
+        });
+      } else {
+        // Job exists, just update timestamp
+        const { error: updateError } = await supabase
+          .from('jobs')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', job.id);
+
+        if (updateError) throw updateError;
+
+        toast({
+          title: 'Job Saved',
+          description: 'Job has been successfully updated',
+        });
+      }
+
+      // Navigate back to previous page
+      navigate(-1);
+      
+    } catch (error) {
+      console.error('Error saving job:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to save job. Please try again.',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const getStatusColor = (status: string) => {
     const colors = {
       'pending': 'bg-warning text-warning-foreground',
@@ -252,6 +329,20 @@ const JobDetails = () => {
             </CardContent>
           </Card>
         )}
+        
+        {/* Save & Exit Button */}
+        <Button 
+          onClick={handleSaveAndExit}
+          className="bg-success hover:bg-success/90 text-success-foreground"
+          disabled={loading}
+        >
+          {loading ? (
+            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+          ) : (
+            <Settings className="h-4 w-4 mr-2" />
+          )}
+          Save & Exit
+        </Button>
       </div>
 
       {/* Financial Dashboard */}

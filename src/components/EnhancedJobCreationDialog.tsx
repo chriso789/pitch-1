@@ -332,7 +332,7 @@ export const EnhancedJobCreationDialog: React.FC<EnhancedJobCreationDialogProps>
         contactId = newContact.id;
       }
 
-      // Create pipeline entry (this is how jobs are created in this system)
+      // Create pipeline entry first
       const pipelineData = {
         tenant_id: userProfile.tenant_id,
         contact_id: contactId,
@@ -353,15 +353,38 @@ export const EnhancedJobCreationDialog: React.FC<EnhancedJobCreationDialogProps>
 
       if (pipelineError) throw pipelineError;
 
+      // Create actual job record in jobs table
+      const jobData = {
+        tenant_id: userProfile.tenant_id,
+        contact_id: contactId,
+        pipeline_entry_id: pipelineEntry.id,
+        name: formData.name,
+        description: formData.description,
+        status: 'active',
+        priority: formData.priority,
+        estimated_value: formData.estimatedValue ? parseFloat(formData.estimatedValue) : null,
+        roof_type: formData.roofType || null,
+        address_street: selectedAddress?.formatted_address || '',
+        created_by: user.id,
+      };
+
+      const { data: jobRecord, error: jobError } = await supabase
+        .from('jobs')
+        .insert([jobData])
+        .select()
+        .single();
+
+      if (jobError) throw jobError;
+
       toast({
         title: "Job Created Successfully",
         description: `Job "${formData.name}" has been created and added to the pipeline`,
       });
 
-      onJobCreated?.(pipelineEntry);
+      onJobCreated?.(jobRecord);
       
-      // Navigate to the job details page
-      navigate(`/job/${pipelineEntry.id}`);
+      // Navigate to the job details page using the actual job ID
+      navigate(`/job/${jobRecord.id}`);
       
       // Reset form
       setOpen(false);
