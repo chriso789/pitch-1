@@ -3625,12 +3625,14 @@ export type Database = {
           lead_quality_score: number | null
           lead_temperature: string | null
           location_id: string | null
+          manager_approval_status: string | null
           marketing_campaign: string | null
           metadata: Json | null
           notes: string | null
           priority: string | null
           probability_percent: number | null
           qualification_notes: string | null
+          requires_manager_approval: boolean | null
           roof_type: Database["public"]["Enums"]["roof_type"] | null
           source: Database["public"]["Enums"]["lead_source"] | null
           status: Database["public"]["Enums"]["pipeline_status"] | null
@@ -3650,12 +3652,14 @@ export type Database = {
           lead_quality_score?: number | null
           lead_temperature?: string | null
           location_id?: string | null
+          manager_approval_status?: string | null
           marketing_campaign?: string | null
           metadata?: Json | null
           notes?: string | null
           priority?: string | null
           probability_percent?: number | null
           qualification_notes?: string | null
+          requires_manager_approval?: boolean | null
           roof_type?: Database["public"]["Enums"]["roof_type"] | null
           source?: Database["public"]["Enums"]["lead_source"] | null
           status?: Database["public"]["Enums"]["pipeline_status"] | null
@@ -3675,12 +3679,14 @@ export type Database = {
           lead_quality_score?: number | null
           lead_temperature?: string | null
           location_id?: string | null
+          manager_approval_status?: string | null
           marketing_campaign?: string | null
           metadata?: Json | null
           notes?: string | null
           priority?: string | null
           probability_percent?: number | null
           qualification_notes?: string | null
+          requires_manager_approval?: boolean | null
           roof_type?: Database["public"]["Enums"]["roof_type"] | null
           source?: Database["public"]["Enums"]["lead_source"] | null
           status?: Database["public"]["Enums"]["pipeline_status"] | null
@@ -6669,6 +6675,10 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      api_approve_job_from_lead: {
+        Args: { approval_notes?: string; pipeline_entry_id_param: string }
+        Returns: Json
+      }
       api_estimate_bind_template: {
         Args: { p_estimate_id: string; p_template_id: string }
         Returns: undefined
@@ -6714,6 +6724,14 @@ export type Database = {
       }
       api_estimate_status_get: {
         Args: { p_estimate_id: string }
+        Returns: Json
+      }
+      api_request_manager_approval: {
+        Args: {
+          business_justification_param?: string
+          estimated_value_param?: number
+          pipeline_entry_id_param: string
+        }
         Returns: Json
       }
       api_template_get_full: {
