@@ -7136,6 +7136,10 @@ export type Database = {
         Args: { estimate_id_param: string; version_id_param: string }
         Returns: boolean
       }
+      seed_dynamic_tags: {
+        Args: { p_tenant_id: string }
+        Returns: undefined
+      }
       set_limit: {
         Args: { "": number }
         Returns: number

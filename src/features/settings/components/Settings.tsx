@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { NotificationAutomations } from "@/components/NotificationAutomations";
+import { AutomationManager } from "@/components/AutomationManager";
+import { SmartDocumentEditor } from "@/components/SmartDocumentEditor";
+import { DynamicTagManager } from "@/components/DynamicTagManager";
 import { Settings as SettingsIcon, FileText, Calculator, Users, Building, Shield, Code, Mic, Bell, Package, DollarSign, AlertTriangle } from "lucide-react";
 import { EstimateBuilder } from "@/features/estimates/components/EstimateBuilder";
 import { GeneralSettings } from "@/components/settings/GeneralSettings";
@@ -147,7 +149,25 @@ export const Settings = () => {
         </TabsContent>
 
         <TabsContent value="automations" className="space-y-6">
-          <NotificationAutomations />
+          <Tabs defaultValue="automations" className="w-full">
+            <TabsList>
+              <TabsTrigger value="automations">Automations</TabsTrigger>
+              <TabsTrigger value="templates">Smart Documents</TabsTrigger>
+              <TabsTrigger value="tags">Dynamic Tags</TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="automations">
+              <AutomationManager />
+            </TabsContent>
+            
+            <TabsContent value="templates">
+              <SmartDocumentEditor />
+            </TabsContent>
+            
+            <TabsContent value="tags">
+              <DynamicTagManager />
+            </TabsContent>
+          </Tabs>
         </TabsContent>
 
         {showDeveloperTab && (
