@@ -50,6 +50,7 @@ const Pipeline = () => {
     { name: "Lead", key: "lead", color: "bg-status-lead", icon: User },
     { name: "Legal", key: "legal", color: "bg-status-legal", icon: FileText },
     { name: "Contingency", key: "contingency_signed", color: "bg-status-contingency", icon: AlertCircle },
+    { name: "On Hold (Mgr Review)", key: "hold_manager_review", color: "bg-orange-500", icon: Clock },
     { name: "Project", key: "project", color: "bg-status-project", icon: Home },
     { name: "Completed", key: "completed", color: "bg-status-completed", icon: CheckCircle },
     { name: "Closed", key: "closed", color: "bg-status-closed", icon: Clock }
@@ -232,7 +233,8 @@ const Pipeline = () => {
     const statusFlow = {
       'lead': 'legal',
       'legal': 'contingency_signed', 
-      'contingency_signed': 'project',
+      'contingency_signed': 'hold_manager_review',
+      'hold_manager_review': null, // No automatic advancement - requires manager approval
       'project': 'completed',
       'completed': 'closed'
     };
@@ -325,6 +327,18 @@ const Pipeline = () => {
                 </div>
               </div>
             )}
+
+            {stage === "hold_manager_review" && (
+              <div className="mt-3 pt-3 border-t">
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
+                  <span className="text-orange-700 font-medium">Awaiting Manager Approval</span>
+                </div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Status: {item.manager_approval_status || 'Pending Review'}
+                </div>
+              </div>
+            )}
           </div>
 
           <div className="flex gap-2 mt-4">
@@ -337,7 +351,17 @@ const Pipeline = () => {
               <FileText className="h-4 w-4 mr-1" />
               View
             </Button>
-            {nextStatus && (
+            {stage === "hold_manager_review" ? (
+              <Button 
+                size="sm" 
+                variant="outline"
+                className="flex-1 text-orange-700 border-orange-200 hover:bg-orange-50"
+                disabled
+              >
+                <Clock className="h-4 w-4 mr-1" />
+                On Hold
+              </Button>
+            ) : nextStatus && (
               <Button 
                 size="sm" 
                 className="flex-1"
@@ -454,29 +478,32 @@ const Pipeline = () => {
         <div className="grid grid-cols-1 lg:grid-cols-6 gap-6">
           {pipelineStages.map((stage, index) => (
             <div key={stage.key} className="space-y-4">
-              {/* Stage Header */}
-              <Card className="shadow-soft border-0">
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-sm">
-                    <div className={cn("w-8 h-8 rounded-full flex items-center justify-center", stage.color)}>
-                      <stage.icon className="h-4 w-4 text-white" />
+            {/* Stage Header */}
+            <Card className="shadow-soft border-0">
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-sm">
+                  <div className={cn("w-8 h-8 rounded-full flex items-center justify-center", stage.color)}>
+                    <stage.icon className="h-4 w-4 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <div>{stage.name}</div>
+                    <div className="font-normal text-muted-foreground">
+                      {(pipelineData[stage.key] || []).length} items
+                      {stage.key === 'hold_manager_review' && (pipelineData[stage.key] || []).length > 0 && (
+                        <span className="ml-1 text-orange-600">• Needs Approval</span>
+                      )}
                     </div>
-                    <div className="flex-1">
-                      <div>{stage.name}</div>
-                      <div className="font-normal text-muted-foreground">
-                        {(pipelineData[stage.key] || []).length} items
-                      </div>
-                      {/* Dollar Amount Ticker */}
-                      <div className="flex items-center gap-1 mt-1">
-                        <TrendingUp className="h-3 w-3 text-success" />
-                        <span className="text-xs font-semibold text-success">
-                          {formatCurrency(stageTotals[stage.key] || 0)}
-                        </span>
-                      </div>
+                    {/* Dollar Amount Ticker */}
+                    <div className="flex items-center gap-1 mt-1">
+                      <TrendingUp className="h-3 w-3 text-success" />
+                      <span className="text-xs font-semibold text-success">
+                        {formatCurrency(stageTotals[stage.key] || 0)}
+                      </span>
                     </div>
-                  </CardTitle>                
-                </CardHeader>
-              </Card>
+                  </div>
+                </CardTitle>                
+              </CardHeader>
+            </Card>
 
               {/* Stage Items */}
               <div className="space-y-3">

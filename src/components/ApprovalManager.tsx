@@ -20,19 +20,24 @@ import { useToast } from "@/hooks/use-toast";
 interface ApprovalRequest {
   id: string;
   pipeline_entry_id: string;
+  contact_id: string;
   requested_by: string;
-  requested_at: string;
+  approval_type: string;
   status: string;
-  notes?: string;
-  rejection_reason?: string;
+  priority: string;
+  estimated_value: number;
+  business_justification: string;
+  created_at: string;
   pipeline_entries: {
     id: string;
     estimated_value: number;
+    clj_formatted_number: string;
     contacts: {
       first_name: string;
       last_name: string;
       address_street: string;
       address_city: string;
+      clj_formatted_number: string;
     };
   };
   profiles: {
@@ -56,26 +61,28 @@ export const ApprovalManager: React.FC = () => {
   const fetchApprovalRequests = async () => {
     try {
       const { data, error } = await supabase
-        .from('project_approval_requests')
+        .from('manager_approval_queue' as any)
         .select(`
           *,
           pipeline_entries (
             id,
             estimated_value,
+            clj_formatted_number,
             contacts (
               first_name,
               last_name,
               address_street,
-              address_city
+              address_city,
+              clj_formatted_number
             )
           ),
-          profiles!project_approval_requests_requested_by_fkey (
+          profiles!manager_approval_queue_requested_by_fkey (
             first_name,
             last_name
           )
         `)
         .eq('status', 'pending')
-        .order('requested_at', { ascending: false });
+        .order('created_at', { ascending: false });
 
       if (error) {
         console.error('Error fetching approval requests:', error);
@@ -100,47 +107,73 @@ export const ApprovalManager: React.FC = () => {
       const request = requests.find(r => r.id === requestId);
       if (!request) return;
 
-      // Update approval request
-      const { error: updateError } = await supabase
-        .from('project_approval_requests')
-        .update({
-          status: approved ? 'approved' : 'rejected',
-          reviewed_at: new Date().toISOString(),
-          notes: approved ? approvalNotes : undefined,
-          rejection_reason: approved ? undefined : rejectionReason
-        })
-        .eq('id', requestId);
-
-      if (updateError) {
-        toast({
-          title: "Error",
-          description: "Failed to update approval request",
-          variant: "destructive",
-        });
-        return;
-      }
-
       if (approved) {
-        // Move pipeline entry to project status
-        const { error: pipelineError } = await supabase
-          .from('pipeline_entries')
-          .update({ status: 'project' })
-          .eq('id', request.pipeline_entry_id);
+        // Use the new RPC function to approve and create project
+        const { data, error } = await supabase.rpc('api_approve_job_from_lead', {
+          pipeline_entry_id_param: request.pipeline_entry_id,
+          approval_notes: approvalNotes || null
+        });
 
-        if (pipelineError) {
+        if (error) {
           toast({
             title: "Error",
-            description: "Failed to move pipeline entry to project",
+            description: error.message || "Failed to approve request",
             variant: "destructive",
           });
           return;
         }
-      }
 
-      toast({
-        title: "Success",
-        description: `Request ${approved ? 'approved' : 'rejected'} successfully`,
-      });
+        if (data && typeof data === 'object' && 'success' in data) {
+          const result = data as { success: boolean; project_clj_number?: string; error?: string };
+          if (result.success) {
+            toast({
+              title: "Success",
+              description: `Lead approved and converted to project. C-L-J: ${result.project_clj_number}`,
+            });
+          } else {
+            toast({
+              title: "Error",
+              description: result.error || "Failed to approve request",
+              variant: "destructive",
+            });
+            return;
+          }
+        } else {
+          toast({
+            title: "Error",
+            description: "Unexpected response format",
+            variant: "destructive",
+          });
+          return;
+        }
+      } else {
+        // Reject the approval
+        const { error } = await supabase
+          .from('manager_approval_queue' as any)
+          .update({
+            status: 'rejected',
+            rejected_by: (await supabase.auth.getUser()).data.user?.id,
+            rejected_at: new Date().toISOString(),
+            rejection_reason: rejectionReason || 'No reason provided',
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', requestId);
+
+        if (error) {
+          toast({
+            title: "Error",
+            description: "Failed to reject request",
+            variant: "destructive",
+          });
+          return;
+        }
+
+        toast({
+          title: "Success",
+          description: "Request rejected successfully",
+          variant: "destructive",
+        });
+      }
 
       // Reset form
       setSelectedRequest(null);
@@ -185,6 +218,19 @@ export const ApprovalManager: React.FC = () => {
     }
   };
 
+  const getPriorityColor = (priority: string) => {
+    switch (priority?.toLowerCase()) {
+      case 'high':
+        return 'destructive';
+      case 'medium':
+        return 'default';
+      case 'low':
+        return 'secondary';
+      default:
+        return 'outline';
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -226,51 +272,62 @@ export const ApprovalManager: React.FC = () => {
         <div className="grid gap-4">
           {requests.map((request) => {
             const contact = request.pipeline_entries.contacts;
-            const requestAge = getTimeAgo(request.requested_at);
-            const isOld = new Date().getTime() - new Date(request.requested_at).getTime() > 24 * 60 * 60 * 1000;
+            const requestAge = getTimeAgo(request.created_at);
+            const isOld = new Date().getTime() - new Date(request.created_at).getTime() > 24 * 60 * 60 * 1000;
 
             return (
               <Card key={request.id} className={isOld ? 'border-orange-200 bg-orange-50' : ''}>
                 <CardContent className="p-6">
                   <div className="flex items-start justify-between">
-                    <div className="space-y-3 flex-1">
-                      <div className="flex items-center gap-3">
-                        <div>
-                          <h3 className="font-semibold text-lg">
-                            {contact.first_name} {contact.last_name}
-                          </h3>
-                          <p className="text-muted-foreground">
-                            {contact.address_street}, {contact.address_city}
-                          </p>
+                      <div className="space-y-3 flex-1">
+                        <div className="flex items-center gap-3">
+                          <div>
+                            <h3 className="font-semibold text-lg">
+                              {contact.first_name} {contact.last_name}
+                            </h3>
+                            <p className="text-muted-foreground">
+                              {contact.address_street}, {contact.address_city}
+                            </p>
+                            <p className="text-sm font-mono text-muted-foreground">
+                              C-L-J: {contact.clj_formatted_number || request.pipeline_entries.clj_formatted_number || 'Not assigned'}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {isOld && (
+                              <Badge variant="destructive">
+                                <AlertCircle className="h-3 w-3 mr-1" />
+                                Overdue
+                              </Badge>
+                            )}
+                            {request.priority && (
+                              <Badge variant={getPriorityColor(request.priority) as any}>
+                                {request.priority.toUpperCase()}
+                              </Badge>
+                            )}
+                          </div>
                         </div>
-                        {isOld && (
-                          <Badge variant="destructive">
-                            <AlertCircle className="h-3 w-3 mr-1" />
-                            Overdue
-                          </Badge>
+
+                        <div className="flex items-center gap-6 text-sm text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <User className="h-4 w-4" />
+                            Requested by {request.profiles?.first_name} {request.profiles?.last_name}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-4 w-4" />
+                            {requestAge}
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <DollarSign className="h-4 w-4" />
+                            {formatCurrency(request.estimated_value || request.pipeline_entries.estimated_value)}
+                          </div>
+                        </div>
+
+                        {request.business_justification && (
+                          <div className="bg-muted p-3 rounded-lg">
+                            <p className="text-sm font-medium mb-1">Business Justification:</p>
+                            <p className="text-sm">{request.business_justification}</p>
+                          </div>
                         )}
-                      </div>
-
-                      <div className="flex items-center gap-6 text-sm text-muted-foreground">
-                        <div className="flex items-center gap-1">
-                          <User className="h-4 w-4" />
-                          Requested by {request.profiles?.first_name} {request.profiles?.last_name}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-4 w-4" />
-                          {requestAge}
-                        </div>
-                        <div className="flex items-center gap-1">
-                          <DollarSign className="h-4 w-4" />
-                          {formatCurrency(request.pipeline_entries.estimated_value)}
-                        </div>
-                      </div>
-
-                      {request.notes && (
-                        <div className="bg-muted p-3 rounded-lg">
-                          <p className="text-sm">{request.notes}</p>
-                        </div>
-                      )}
                     </div>
 
                     <div className="flex gap-2 ml-4">
