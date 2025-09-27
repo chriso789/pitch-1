@@ -5,9 +5,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
+import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Calculator, Plus, Trash2, FileText, DollarSign } from 'lucide-react';
+import { Calculator, Plus, Trash2, FileText, DollarSign, Target, TrendingUp } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { ProfitBreakdownDisplay } from './ProfitBreakdownDisplay';
 
@@ -62,10 +63,13 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     }
   ]);
 
-  const [overrides, setOverrides] = useState({
-    overhead_percent: 20,
-    target_profit_percent: 30,
-    sales_rep_commission_percent: 5
+  // Excel-style calculation controls
+  const [excelConfig, setExcelConfig] = useState({
+    target_margin_percent: 30.0,  // Guaranteed 30% margin
+    overhead_percent: 15.0,       // Overhead as % of selling price
+    commission_percent: 5.0,      // Commission as % of selling price
+    waste_factor_percent: 10.0,   // Material waste factor
+    contingency_percent: 5.0      // Labor contingency
   });
 
   const [templateId, setTemplateId] = useState('');
@@ -154,14 +158,18 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 
     setCalculating(true);
     try {
-      const { data, error } = await supabase.functions.invoke('enhanced-estimate-calculator', {
+      const { data, error } = await supabase.functions.invoke('excel-style-estimate-calculator', {
         body: {
           pipeline_entry_id: pipelineEntryId,
           template_id: templateId || null,
           property_details: propertyDetails,
           line_items: lineItems.filter(item => item.item_name.trim()),
           sales_rep_id: salesRepId || null,
-          override_percentages: overrides
+          target_margin_percent: excelConfig.target_margin_percent,
+          overhead_percent: excelConfig.overhead_percent,
+          commission_percent: excelConfig.commission_percent,
+          waste_factor_percent: excelConfig.waste_factor_percent,
+          contingency_percent: excelConfig.contingency_percent
         }
       });
 
@@ -171,8 +179,8 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       onEstimateCreated?.(data.estimate);
 
       toast({
-        title: "Estimate Created",
-        description: `Enhanced estimate ${data.estimate.estimate_number} created successfully`,
+        title: "Excel-Style Estimate Created",
+        description: `Estimate ${data.estimate.estimate_number} created with guaranteed ${excelConfig.target_margin_percent}% margin`,
       });
 
     } catch (error: any) {
@@ -201,7 +209,11 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Calculator className="h-5 w-5" />
-            Enhanced Estimate Builder
+            Excel-Style Estimate Builder
+            <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
+              <Target className="h-4 w-4" />
+              Guaranteed {excelConfig.target_margin_percent}% Margin
+            </div>
           </CardTitle>
         </CardHeader>
       </Card>
@@ -454,12 +466,102 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 
         {/* Right Column - Configuration & Results */}
         <div className="space-y-6">
-          {/* Configuration */}
+          {/* Excel-Style Calculation Controls */}
           <Card>
             <CardHeader>
-              <CardTitle className="text-lg">Configuration</CardTitle>
+              <CardTitle className="text-lg flex items-center gap-2">
+                <TrendingUp className="h-5 w-5" />
+                Excel-Style Controls
+              </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-4">
+            <CardContent className="space-y-6">
+              {/* Target Margin Slider */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <Label className="text-sm font-medium">Target Margin (Guaranteed)</Label>
+                  <span className="text-sm font-bold text-primary">{excelConfig.target_margin_percent}%</span>
+                </div>
+                <Slider
+                  value={[excelConfig.target_margin_percent]}
+                  onValueChange={(value) => setExcelConfig(prev => ({ ...prev, target_margin_percent: value[0] }))}
+                  min={15}
+                  max={50}
+                  step={1}
+                  className="w-full"
+                />
+                <div className="text-xs text-muted-foreground">15% - 50%</div>
+              </div>
+
+              {/* Overhead Slider */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <Label className="text-sm font-medium">Overhead (% of Selling Price)</Label>
+                  <span className="text-sm font-bold text-secondary">{excelConfig.overhead_percent}%</span>
+                </div>
+                <Slider
+                  value={[excelConfig.overhead_percent]}
+                  onValueChange={(value) => setExcelConfig(prev => ({ ...prev, overhead_percent: value[0] }))}
+                  min={10}
+                  max={25}
+                  step={0.5}
+                  className="w-full"
+                />
+                <div className="text-xs text-muted-foreground">10% - 25%</div>
+              </div>
+
+              {/* Commission Slider */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <Label className="text-sm font-medium">Sales Commission (% of Selling Price)</Label>
+                  <span className="text-sm font-bold text-accent">{excelConfig.commission_percent}%</span>
+                </div>
+                <Slider
+                  value={[excelConfig.commission_percent]}
+                  onValueChange={(value) => setExcelConfig(prev => ({ ...prev, commission_percent: value[0] }))}
+                  min={2}
+                  max={10}
+                  step={0.5}
+                  className="w-full"
+                />
+                <div className="text-xs text-muted-foreground">2% - 10%</div>
+              </div>
+
+              {/* Waste Factor Slider */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <Label className="text-sm font-medium">Material Waste Factor</Label>
+                  <span className="text-sm font-bold">{excelConfig.waste_factor_percent}%</span>
+                </div>
+                <Slider
+                  value={[excelConfig.waste_factor_percent]}
+                  onValueChange={(value) => setExcelConfig(prev => ({ ...prev, waste_factor_percent: value[0] }))}
+                  min={5}
+                  max={20}
+                  step={1}
+                  className="w-full"
+                />
+                <div className="text-xs text-muted-foreground">5% - 20%</div>
+              </div>
+
+              {/* Contingency Slider */}
+              <div className="space-y-3">
+                <div className="flex justify-between items-center">
+                  <Label className="text-sm font-medium">Labor Contingency</Label>
+                  <span className="text-sm font-bold">{excelConfig.contingency_percent}%</span>
+                </div>
+                <Slider
+                  value={[excelConfig.contingency_percent]}
+                  onValueChange={(value) => setExcelConfig(prev => ({ ...prev, contingency_percent: value[0] }))}
+                  min={0}
+                  max={15}
+                  step={1}
+                  className="w-full"
+                />
+                <div className="text-xs text-muted-foreground">0% - 15%</div>
+              </div>
+
+              <Separator />
+
               <div className="space-y-2">
                 <Label htmlFor="template">Template</Label>
                 <Select value={templateId} onValueChange={setTemplateId}>
@@ -501,41 +603,14 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                 </Select>
               </div>
 
-              <Separator />
-
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label>Overhead %</Label>
-                  <Input
-                    type="number"
-                    value={overrides.overhead_percent}
-                    onChange={(e) => setOverrides(prev => ({ ...prev, overhead_percent: parseFloat(e.target.value) || 0 }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Profit %</Label>
-                  <Input
-                    type="number"
-                    value={overrides.target_profit_percent}
-                    onChange={(e) => setOverrides(prev => ({ ...prev, target_profit_percent: parseFloat(e.target.value) || 0 }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Commission %</Label>
-                  <Input
-                    type="number"
-                    value={overrides.sales_rep_commission_percent}
-                    onChange={(e) => setOverrides(prev => ({ ...prev, sales_rep_commission_percent: parseFloat(e.target.value) || 0 }))}
-                  />
-                </div>
-              </div>
 
               <Button 
                 onClick={calculateEstimate} 
-                disabled={calculating}
-                className="w-full bg-primary hover:bg-primary/90"
+                disabled={calculating || !propertyDetails.customer_name.trim() || !propertyDetails.roof_area_sq_ft}
+                className="w-full"
+                variant={propertyDetails.customer_name.trim() && propertyDetails.roof_area_sq_ft ? "default" : "outline"}
               >
-                {calculating ? 'Calculating...' : 'Calculate Estimate'}
+                {calculating ? 'Calculating Excel-Style Estimate...' : 'Calculate Guaranteed Margin Estimate'}
               </Button>
             </CardContent>
           </Card>
@@ -588,9 +663,11 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                   </div>
                 </div>
 
-                <div className="text-xs text-muted-foreground">
-                  <p>Profit Margin: {calculationResults.actual_profit_percent?.toFixed(1)}%</p>
-                  <p>Labor Hours: {calculationResults.labor_hours?.toFixed(1)}</p>
+                <div className="text-xs text-muted-foreground space-y-1">
+                  <p><span className="font-medium text-primary">Guaranteed Margin:</span> {calculationResults.actual_profit_percent?.toFixed(1)}%</p>
+                  <p><span className="font-medium">Labor Hours:</span> {calculationResults.labor_hours?.toFixed(1)}</p>
+                  <p><span className="font-medium">Waste Factor:</span> {calculationResults.waste_factor_percent || 10}%</p>
+                  <p><span className="font-medium">Overhead on Selling Price:</span> {calculationResults.overhead_percent?.toFixed(1)}%</p>
                 </div>
               </CardContent>
             </Card>
