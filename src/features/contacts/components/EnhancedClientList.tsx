@@ -39,7 +39,8 @@ import {
   Award,
   MoreHorizontal,
   Trash2,
-  MessageSquare
+  MessageSquare,
+  Plus
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -117,6 +118,8 @@ export const EnhancedClientList = () => {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [sortField, setSortField] = useState<string>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [selectedContactForJob, setSelectedContactForJob] = useState<Contact | null>(null);
+  const [showJobDialog, setShowJobDialog] = useState(false);
 
   useEffect(() => {
     loadUserPreferences();
@@ -413,6 +416,18 @@ export const EnhancedClientList = () => {
     toast.success(`Contact ${newContact.first_name} ${newContact.last_name} created successfully!`);
   };
 
+  const handleAddJob = (contact: Contact) => {
+    setSelectedContactForJob(contact);
+    setShowJobDialog(true);
+  };
+
+  const handleJobCreated = (newJob: any) => {
+    fetchData(); // Refresh the data
+    setSelectedContactForJob(null);
+    setShowJobDialog(false);
+    toast.success(`Job "${newJob.name}" created successfully!`);
+  };
+
   const [deleteDialog, setDeleteDialog] = useState({ open: false, contactId: '', contactName: '' });
 
   const handleDeleteContact = async (contactId: string, contactName: string) => {
@@ -576,6 +591,13 @@ export const EnhancedClientList = () => {
           <DropdownMenuItem onClick={() => handleEmail(item.contact.email)}>
             <Mail className="mr-2 h-4 w-4" />
             Email Contact
+          </DropdownMenuItem>
+        )}
+        
+        {type === 'contact' && (
+          <DropdownMenuItem onClick={() => handleAddJob(item)}>
+            <Plus className="mr-2 h-4 w-4" />
+            Add Job
           </DropdownMenuItem>
         )}
         
@@ -1009,6 +1031,13 @@ export const EnhancedClientList = () => {
         itemType="contact"
         onConfirm={confirmPermanentDelete}
       />
+
+{showJobDialog && selectedContactForJob && (
+        <EnhancedJobCreationDialog
+          contact={selectedContactForJob}
+          onJobCreated={handleJobCreated}
+        />
+      )}
     </div>
   );
 };
