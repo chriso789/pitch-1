@@ -68,6 +68,72 @@ export type Database = {
         }
         Relationships: []
       }
+      answered_calls_log: {
+        Row: {
+          answered_at: string | null
+          caller_number: string
+          disposition: string | null
+          duration: number | null
+          escalated_to_human: boolean | null
+          id: string
+          status: string
+          tenant_id: string
+          transcription: string | null
+        }
+        Insert: {
+          answered_at?: string | null
+          caller_number: string
+          disposition?: string | null
+          duration?: number | null
+          escalated_to_human?: boolean | null
+          id?: string
+          status: string
+          tenant_id: string
+          transcription?: string | null
+        }
+        Update: {
+          answered_at?: string | null
+          caller_number?: string
+          disposition?: string | null
+          duration?: number | null
+          escalated_to_human?: boolean | null
+          id?: string
+          status?: string
+          tenant_id?: string
+          transcription?: string | null
+        }
+        Relationships: []
+      }
+      answering_service_config: {
+        Row: {
+          created_at: string | null
+          custom_greeting: string | null
+          id: string
+          is_active: boolean
+          tenant_id: string
+          updated_at: string | null
+          voice_settings: Json | null
+        }
+        Insert: {
+          created_at?: string | null
+          custom_greeting?: string | null
+          id?: string
+          is_active?: boolean
+          tenant_id: string
+          updated_at?: string | null
+          voice_settings?: Json | null
+        }
+        Update: {
+          created_at?: string | null
+          custom_greeting?: string | null
+          id?: string
+          is_active?: boolean
+          tenant_id?: string
+          updated_at?: string | null
+          voice_settings?: Json | null
+        }
+        Relationships: []
+      }
       app_settings: {
         Row: {
           created_at: string | null
@@ -258,6 +324,66 @@ export type Database = {
           task_id?: string
           tenant_id?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      call_forwarding_log: {
+        Row: {
+          forwarded_number: string
+          from_number: string
+          id: string
+          original_number: string
+          status: string
+          tenant_id: string
+          timestamp: string | null
+        }
+        Insert: {
+          forwarded_number: string
+          from_number: string
+          id?: string
+          original_number: string
+          status: string
+          tenant_id: string
+          timestamp?: string | null
+        }
+        Update: {
+          forwarded_number?: string
+          from_number?: string
+          id?: string
+          original_number?: string
+          status?: string
+          tenant_id?: string
+          timestamp?: string | null
+        }
+        Relationships: []
+      }
+      call_forwarding_rules: {
+        Row: {
+          created_at: string | null
+          id: string
+          is_active: boolean
+          rules: Json
+          tenant_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean
+          rules?: Json
+          tenant_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          is_active?: boolean
+          rules?: Json
+          tenant_id?: string
+          updated_at?: string | null
+          user_id?: string
         }
         Relationships: []
       }
