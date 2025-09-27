@@ -1,0 +1,219 @@
+openapi: 3.0.3
+info:
+  title: PITCH Roofing CRM — Automations & Dynamic Tags
+  version: "1.0.0"
+paths:
+  /automations:
+    post:
+      summary: Create automation
+      description: Create an automation (triggers → conditions → actions). Returns the new ID.
+      tags: [Automations]
+      x-supabase-rpc: api_automations_create
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutomationUpsertRequest'
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id: { type: string, format: uuid }
+  /automations/{id}:
+    put:
+      summary: Update automation
+      description: Update name/description/triggers/conditions/actions/scope/is_active.
+      tags: [Automations]
+      x-supabase-rpc: api_automations_update
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutomationUpsertRequest'
+      responses:
+        "204": { description: No Content }
+  /automations/{id}/activate:
+    post:
+      summary: Activate or deactivate automation
+      tags: [Automations]
+      x-supabase-rpc: api_automations_activate
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [active]
+              properties:
+                active: { type: boolean }
+      responses:
+        "204": { description: No Content }
+  /automations/{id}/log:
+    get:
+      summary: Get automation logs
+      description: Returns recent firings with input/outcome for forensics.
+      tags: [Automations]
+      x-supabase-rpc: api_automations_log_get
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 0, default: 50 }
+        - in: query
+          name: offset
+          schema: { type: integer, minimum: 0, default: 0 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/AutomationLogEntry' }
+  /dynamic-tags/frequently-used:
+    get:
+      summary: Frequently used dynamic tags
+      description: Returns commonly used tags (token, label, description, json_path, sample).
+      tags: [Dynamic Tags]
+      x-supabase-rpc: api_dynamic_tags_frequently_used
+      parameters:
+        - in: query
+          name: limit
+          schema: { type: integer, minimum: 0, default: 100 }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/DynamicTag' }
+  /smart-docs/render:
+    post:
+      summary: Render a smart document (server-side {{token}} interpolation)
+      description: |
+        Render a smart doc against the provided context. For full Liquid/Mustache rendering,
+        call an Edge/runtime service; this RPC performs safe token substitution only.
+      tags: [Smart Docs]
+      x-supabase-rpc: api_smart_doc_render
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SmartDocRenderRequest'
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SmartDocRenderResponse'
+components:
+  schemas:
+    AutomationUpsertRequest:
+      type: object
+      required: [name, triggers, actions]
+      properties:
+        name: { type: string }
+        description: { type: string }
+        is_active: { type: boolean, default: false }
+        triggers:
+          type: array
+          items:
+            $ref: '#/components/schemas/AutomationTrigger'
+        conditions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AutomationCondition'
+        actions:
+          type: array
+          items:
+            $ref: '#/components/schemas/AutomationAction'
+        scope:
+          type: object
+          additionalProperties: true
+    AutomationTrigger:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          description: e.g., pipeline_transition, permit_submitted, permit_approved, payment_received, message_inbound, message_outbound, weather_alert
+        params:
+          type: object
+          additionalProperties: true
+    AutomationCondition:
+      type: object
+      properties:
+        field: { type: string }
+        op: { type: string, enum: [eq, ne, gt, gte, lt, lte, in, nin, contains] }
+        value: {}
+    AutomationAction:
+      type: object
+      required: [type]
+      properties:
+        type:
+          type: string
+          description: e.g., send_email, send_sms, send_imessage, assign_task, push_doc, create_payment_link
+        params:
+          type: object
+          additionalProperties: true
+    AutomationLogEntry:
+      type: object
+      properties:
+        id: { type: integer, format: int64 }
+        fired_at: { type: string, format: date-time }
+        event: { type: string }
+        cause: { type: string }
+        input: { type: object, additionalProperties: true }
+        outcome: { type: string, enum: [success, skipped, failure] }
+        result: { type: object, additionalProperties: true }
+    DynamicTag:
+      type: object
+      properties:
+        token: { type: string, example: contact.last_name }
+        label: { type: string }
+        description: { type: string }
+        json_path: { type: string, example: contact.last_name }
+        sample_value: { type: string }
+    SmartDocRenderRequest:
+      type: object
+      required: [smart_doc_id]
+      properties:
+        smart_doc_id: { type: string, format: uuid }
+        context:
+          type: object
+          additionalProperties: true
+        contact_id: { type: string, format: uuid, nullable: true }
+        lead_id: { type: string, format: uuid, nullable: true }
+        job_id: { type: string, format: uuid, nullable: true }
+        estimate_id: { type: string, format: uuid, nullable: true }
+    SmartDocRenderResponse:
+      type: object
+      properties:
+        smart_doc_id: { type: string, format: uuid }
+        rendered_text: { type: string }
+        unresolved_tokens:
+          type: array
+          items: { type: string }
+        resolved_count: { type: integer }
