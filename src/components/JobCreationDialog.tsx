@@ -146,24 +146,47 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
 
     setLoading(true);
     try {
-        // Create the job record (simplified for now)
-        const jobData = {
+      // Generate job number
+      const { data: jobNumberResult } = await supabase.rpc('generate_job_number');
+      const jobNumber = jobNumberResult || `JOB-${Date.now()}`;
+
+      // Create the job record in the database
+      const { data: userData } = await supabase.auth.getUser();
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', userData.user?.id)
+        .single();
+      
+      const { data: newJob, error: jobError } = await supabase
+        .from('jobs')
+        .insert({
+          tenant_id: profile?.tenant_id,
+          job_number: jobNumber,
           name: formData.name,
           description: formData.description,
           contact_id: contact?.id,
-          status: 'pending' as const,
-        };
+          status: 'scheduled',
+          priority: 'medium',
+          created_by: userData.user?.id,
+          address_street: selectedAddress.formatted_address,
+          estimated_value: 0
+        })
+        .select()
+        .single();
 
-        toast({
-          title: "Job Created",
-          description: `Job "${formData.name}" created successfully`,
-        });
+      if (jobError) throw jobError;
 
-        onJobCreated?.(jobData);
-        setOpen(false);
-        setFormData({ name: "", description: "", address: "", useSameAddress: false });
-        setSelectedAddress(null);
-        setShowAddressPicker(false);
+      toast({
+        title: "Job Created",
+        description: `Job "${formData.name}" created successfully with number ${jobNumber}`,
+      });
+
+      onJobCreated?.(newJob);
+      setOpen(false);
+      setFormData({ name: "", description: "", address: "", useSameAddress: false });
+      setSelectedAddress(null);
+      setShowAddressPicker(false);
     } catch (error) {
       console.error('Error creating job:', error);
       toast({

@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { LeadCreationDialog } from "@/components/LeadCreationDialog";
+import { PipelineToJobConverter } from "@/components/PipelineToJobConverter";
 import { 
   Plus, 
   Briefcase, 
@@ -26,6 +27,7 @@ interface ContactJobsTabProps {
 export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabProps) => {
   const [showLeadDialog, setShowLeadDialog] = useState(false);
   const [allJobs, setAllJobs] = useState<any[]>([]);
+  const [pipelineEntries, setPipelineEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -54,8 +56,8 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
 
       if (jobsError) throw jobsError;
 
-      // Fetch jobs from pipeline entries
-      const { data: pipelineJobs, error: pipelineError } = await supabase
+      // Fetch all pipeline entries for this contact
+      const { data: allPipelineEntries, error: allPipelineError } = await supabase
         .from('pipeline_entries')
         .select(`
           id,
@@ -64,30 +66,46 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
           updated_at,
           estimated_value,
           roof_type,
-          jobs (
-            id,
-            job_number,
-            name,
-            description,
-            status,
-            created_at,
-            updated_at,
+          probability_percent,
+          contacts (
+            first_name,
+            last_name,
+            address_street
+          )
+        `)
+        .eq('contact_id', contact.id);
+
+      if (allPipelineError) throw allPipelineError;
+
+      // Set pipeline entries for conversion
+      setPipelineEntries(allPipelineEntries || []);
+
+      // Fetch jobs that are linked to these pipeline entries
+      const pipelineEntryIds = (allPipelineEntries || []).map(pe => pe.id);
+      let jobsFromPipeline: any[] = [];
+      
+      if (pipelineEntryIds.length > 0) {
+        const { data: linkedJobs, error: linkedJobsError } = await supabase
+          .from('jobs')
+          .select(`
+            *,
             projects (
               name,
               status,
               estimated_completion_date
             )
-          )
-        `)
-        .eq('contact_id', contact.id)
-        .not('jobs', 'is', null);
-
-      if (pipelineError) throw pipelineError;
+          `)
+          .in('pipeline_entry_id', pipelineEntryIds);
+          
+        if (!linkedJobsError && linkedJobs) {
+          jobsFromPipeline = linkedJobs;
+        }
+      }
 
       // Combine and deduplicate jobs
       const combinedJobs = [
         ...(directJobs || []),
-        ...(pipelineJobs?.flatMap(pe => pe.jobs || []) || [])
+        ...jobsFromPipeline
       ];
 
       // Remove duplicates by ID
@@ -139,6 +157,12 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
 
   return (
     <div className="space-y-6">
+      {/* Pipeline to Job Converter */}
+      <PipelineToJobConverter 
+        pipelineEntries={pipelineEntries}
+        onJobCreated={fetchAllJobs}
+      />
+
       {/* Jobs Overview */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <Card className="shadow-soft">
