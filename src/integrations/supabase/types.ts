@@ -1426,6 +1426,73 @@ export type Database = {
         }
         Relationships: []
       }
+      digital_signatures: {
+        Row: {
+          created_at: string
+          envelope_id: string
+          field_id: string | null
+          id: string
+          ip_address: unknown | null
+          is_valid: boolean
+          recipient_id: string
+          signature_data: string
+          signature_hash: string
+          signature_metadata: Json | null
+          signed_at: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          envelope_id: string
+          field_id?: string | null
+          id?: string
+          ip_address?: unknown | null
+          is_valid?: boolean
+          recipient_id: string
+          signature_data: string
+          signature_hash: string
+          signature_metadata?: Json | null
+          signed_at?: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          envelope_id?: string
+          field_id?: string | null
+          id?: string
+          ip_address?: unknown | null
+          is_valid?: boolean
+          recipient_id?: string
+          signature_data?: string
+          signature_hash?: string
+          signature_metadata?: Json | null
+          signed_at?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "digital_signatures_envelope_id_fkey"
+            columns: ["envelope_id"]
+            isOneToOne: false
+            referencedRelation: "signature_envelopes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "digital_signatures_field_id_fkey"
+            columns: ["field_id"]
+            isOneToOne: false
+            referencedRelation: "signature_fields"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "digital_signatures_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "signature_recipients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       docgen_fields: {
         Row: {
           agreement_instance_id: string
@@ -5638,6 +5705,294 @@ export type Database = {
           },
         ]
       }
+      signature_envelopes: {
+        Row: {
+          completed_at: string | null
+          contact_id: string | null
+          created_at: string
+          created_by: string | null
+          envelope_number: string | null
+          estimate_id: string | null
+          expires_at: string | null
+          generated_pdf_path: string | null
+          id: string
+          pipeline_entry_id: string | null
+          project_id: string | null
+          sent_at: string | null
+          signed_pdf_path: string | null
+          status: string
+          template_id: string | null
+          tenant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          envelope_number?: string | null
+          estimate_id?: string | null
+          expires_at?: string | null
+          generated_pdf_path?: string | null
+          id?: string
+          pipeline_entry_id?: string | null
+          project_id?: string | null
+          sent_at?: string | null
+          signed_pdf_path?: string | null
+          status?: string
+          template_id?: string | null
+          tenant_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          contact_id?: string | null
+          created_at?: string
+          created_by?: string | null
+          envelope_number?: string | null
+          estimate_id?: string | null
+          expires_at?: string | null
+          generated_pdf_path?: string | null
+          id?: string
+          pipeline_entry_id?: string | null
+          project_id?: string | null
+          sent_at?: string | null
+          signed_pdf_path?: string | null
+          status?: string
+          template_id?: string | null
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signature_envelopes_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "signature_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      signature_events: {
+        Row: {
+          created_at: string
+          envelope_id: string
+          event_description: string | null
+          event_metadata: Json | null
+          event_type: string
+          id: string
+          ip_address: unknown | null
+          recipient_id: string | null
+          tenant_id: string
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string
+          envelope_id: string
+          event_description?: string | null
+          event_metadata?: Json | null
+          event_type: string
+          id?: string
+          ip_address?: unknown | null
+          recipient_id?: string | null
+          tenant_id: string
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string
+          envelope_id?: string
+          event_description?: string | null
+          event_metadata?: Json | null
+          event_type?: string
+          id?: string
+          ip_address?: unknown | null
+          recipient_id?: string | null
+          tenant_id?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signature_events_envelope_id_fkey"
+            columns: ["envelope_id"]
+            isOneToOne: false
+            referencedRelation: "signature_envelopes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "signature_events_recipient_id_fkey"
+            columns: ["recipient_id"]
+            isOneToOne: false
+            referencedRelation: "signature_recipients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      signature_fields: {
+        Row: {
+          created_at: string
+          envelope_id: string
+          field_key: string
+          field_type: string
+          field_value: string | null
+          height: number | null
+          id: string
+          is_required: boolean | null
+          page_number: number | null
+          recipient_id: string | null
+          tenant_id: string
+          updated_at: string
+          width: number | null
+          x_position: number | null
+          y_position: number | null
+        }
+        Insert: {
+          created_at?: string
+          envelope_id: string
+          field_key: string
+          field_type?: string
+          field_value?: string | null
+          height?: number | null
+          id?: string
+          is_required?: boolean | null
+          page_number?: number | null
+          recipient_id?: string | null
+          tenant_id: string
+          updated_at?: string
+          width?: number | null
+          x_position?: number | null
+          y_position?: number | null
+        }
+        Update: {
+          created_at?: string
+          envelope_id?: string
+          field_key?: string
+          field_type?: string
+          field_value?: string | null
+          height?: number | null
+          id?: string
+          is_required?: boolean | null
+          page_number?: number | null
+          recipient_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+          width?: number | null
+          x_position?: number | null
+          y_position?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signature_fields_envelope_id_fkey"
+            columns: ["envelope_id"]
+            isOneToOne: false
+            referencedRelation: "signature_envelopes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      signature_recipients: {
+        Row: {
+          access_token: string | null
+          created_at: string
+          envelope_id: string
+          id: string
+          ip_address: unknown | null
+          recipient_email: string
+          recipient_name: string
+          recipient_role: string
+          signed_at: string | null
+          signing_order: number
+          status: string
+          tenant_id: string
+          updated_at: string
+          user_agent: string | null
+        }
+        Insert: {
+          access_token?: string | null
+          created_at?: string
+          envelope_id: string
+          id?: string
+          ip_address?: unknown | null
+          recipient_email: string
+          recipient_name: string
+          recipient_role?: string
+          signed_at?: string | null
+          signing_order?: number
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          user_agent?: string | null
+        }
+        Update: {
+          access_token?: string | null
+          created_at?: string
+          envelope_id?: string
+          id?: string
+          ip_address?: unknown | null
+          recipient_email?: string
+          recipient_name?: string
+          recipient_role?: string
+          signed_at?: string | null
+          signing_order?: number
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signature_recipients_envelope_id_fkey"
+            columns: ["envelope_id"]
+            isOneToOne: false
+            referencedRelation: "signature_envelopes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      signature_templates: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean
+          liquid_template: string
+          name: string
+          signature_fields: Json
+          template_type: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          liquid_template: string
+          name: string
+          signature_fields?: Json
+          template_type?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          liquid_template?: string
+          name?: string
+          signature_fields?: Json
+          template_type?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       smart_doc_renders: {
         Row: {
           context: Json | null
@@ -7431,7 +7786,15 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      generate_envelope_number: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       generate_job_number: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      generate_signature_access_token: {
         Args: Record<PropertyKey, never>
         Returns: string
       }
@@ -7469,6 +7832,16 @@ export type Database = {
       }
       jsonb_get_path: {
         Args: { obj: Json; path: string }
+        Returns: string
+      }
+      log_signature_event: {
+        Args: {
+          p_description?: string
+          p_envelope_id: string
+          p_event_type: string
+          p_metadata?: Json
+          p_recipient_id: string
+        }
         Returns: string
       }
       normalize_email: {
