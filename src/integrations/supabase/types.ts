@@ -2480,40 +2480,55 @@ export type Database = {
       }
       jobs: {
         Row: {
+          address_street: string | null
           contact_id: string
           created_at: string
           created_by: string | null
           description: string | null
+          estimated_value: number | null
           id: string
           job_number: string | null
           name: string
+          pipeline_entry_id: string | null
+          priority: string | null
           project_id: string | null
+          roof_type: string | null
           status: string
           tenant_id: string
           updated_at: string
         }
         Insert: {
+          address_street?: string | null
           contact_id: string
           created_at?: string
           created_by?: string | null
           description?: string | null
+          estimated_value?: number | null
           id?: string
           job_number?: string | null
           name: string
+          pipeline_entry_id?: string | null
+          priority?: string | null
           project_id?: string | null
+          roof_type?: string | null
           status?: string
           tenant_id: string
           updated_at?: string
         }
         Update: {
+          address_street?: string | null
           contact_id?: string
           created_at?: string
           created_by?: string | null
           description?: string | null
+          estimated_value?: number | null
           id?: string
           job_number?: string | null
           name?: string
+          pipeline_entry_id?: string | null
+          priority?: string | null
           project_id?: string | null
+          roof_type?: string | null
           status?: string
           tenant_id?: string
           updated_at?: string
