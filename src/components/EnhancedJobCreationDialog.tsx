@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { useNavigate } from "react-router-dom";
 import {
   Dialog,
   DialogContent,
@@ -54,6 +55,7 @@ export const EnhancedJobCreationDialog: React.FC<EnhancedJobCreationDialogProps>
   contact,
   onJobCreated,
 }) => {
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
   const [addressLoading, setAddressLoading] = useState(false);
@@ -123,9 +125,31 @@ export const EnhancedJobCreationDialog: React.FC<EnhancedJobCreationDialogProps>
         name: `${contact.first_name} ${contact.last_name} - Roofing Project`
       }));
       
+      // Create a mock address object for validation when using contact info
       if (fullAddress) {
+        const mockAddress: AddressSuggestion = {
+          place_id: `contact_${contact.id}`,
+          formatted_address: fullAddress,
+          geometry: {
+            location: {
+              lat: contact.latitude || 0,
+              lng: contact.longitude || 0
+            }
+          },
+          address_components: []
+        };
+        setSelectedAddress(mockAddress);
         handleAddressVerification(fullAddress);
       }
+    } else if (!formData.useSameInfo) {
+      // Clear address when unchecking useSameInfo
+      setSelectedAddress(null);
+      setFormData(prev => ({ 
+        ...prev, 
+        address: "",
+        phone: "",
+        name: ""
+      }));
     }
   }, [formData.useSameInfo, contact]);
 
@@ -335,6 +359,9 @@ export const EnhancedJobCreationDialog: React.FC<EnhancedJobCreationDialogProps>
       });
 
       onJobCreated?.(pipelineEntry);
+      
+      // Navigate to the job details page
+      navigate(`/job/${pipelineEntry.id}`);
       
       // Reset form
       setOpen(false);
