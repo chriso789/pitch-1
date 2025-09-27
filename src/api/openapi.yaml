@@ -49,6 +49,24 @@ paths:
                 type: array
                 items: { $ref: "#/components/schemas/PricingLineItem" }
 
+  /estimates/{estimate_id}/status:
+    get:
+      summary: Estimate gating status (template/measurements readiness)
+      description: Returns simple flags used to enable/disable pricing UI and show "pending" states.
+      tags: [Estimates]
+      x-supabase-rpc: api_estimate_status_get
+      parameters:
+        - in: path
+          name: estimate_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/EstimateStatusResponse" }
+
   /estimates/{estimate_id}/hyperlink-bar:
     get:
       summary: Hyperlink Bar totals + gating flags
@@ -66,6 +84,24 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/HyperlinkBarResponse" }
+
+  /templates/{template_id}:
+    get:
+      summary: Get template (builder-ready, includes items)
+      description: Hydrates the template builder UI with config + material items (formulas, costs, waste).
+      tags: [Templates]
+      x-supabase-rpc: api_template_get_full
+      parameters:
+        - in: path
+          name: template_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TemplateFull" }
 
 components:
   schemas:
@@ -103,6 +139,58 @@ components:
           type: object
           additionalProperties: true
           description: Optional extras (e.g., squares, margin_pct, markup_pct, slider_disabled)
+
+    EstimateStatusResponse:
+      type: object
+      properties:
+        estimate_id:          { type: string, format: uuid }
+        template_bound:       { type: boolean }
+        measurements_present: { type: boolean }
+        ready:                { type: boolean, description: "template_bound && measurements_present" }
+        slider_disabled:      { type: boolean }
+        last_computed_at:     { type: string, format: date-time, nullable: true }
+        mode:                 { type: string, enum: [margin, markup], nullable: true }
+        margin_pct:           { type: number, format: double, nullable: true }
+        markup_pct:           { type: number, format: double, nullable: true }
+        next_required:
+          type: array
+          items: { type: string, enum: [template, measurements] }
+        messages:
+          type: array
+          items: { type: string }
+
+    TemplateFull:
+      type: object
+      properties:
+        id:        { type: string, format: uuid }
+        name:      { type: string }
+        currency:  { type: string, example: USD }
+        labor:
+          type: object
+          properties:
+            rate_per_square: { type: number, format: double, example: 125.00 }
+            complexity:
+              type: object
+              additionalProperties: { type: number, format: double }
+        overhead:
+          type: object
+          properties:
+            type:    { type: string, enum: [percent, fixed, both] }
+            percent: { type: number, format: double, nullable: true }
+            fixed:   { type: number, format: double, nullable: true }
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id:          { type: string, format: uuid }
+              item_name:   { type: string }
+              unit:        { type: string }
+              waste_pct:   { type: number, format: double }
+              unit_cost:   { type: number, format: double }
+              qty_formula: { type: string }
+              sort_order:  { type: integer }
+              active:      { type: boolean }
 
     HyperlinkBarResponse:
       type: object

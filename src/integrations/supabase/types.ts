@@ -6712,6 +6712,14 @@ export type Database = {
         Args: { p_estimate_id: string; p_payload: Json }
         Returns: undefined
       }
+      api_estimate_status_get: {
+        Args: { p_estimate_id: string }
+        Returns: Json
+      }
+      api_template_get_full: {
+        Args: { p_template_id: string }
+        Returns: Json
+      }
       api_template_items_get: {
         Args: { p_template_id: string }
         Returns: {
