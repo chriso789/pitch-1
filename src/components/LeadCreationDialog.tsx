@@ -376,6 +376,11 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       markAsSaved();
       setOpen(false);
       
+      // Navigate to lead details if at least one rep is assigned
+      if (formData.assignedTo.length > 0) {
+        navigate(`/lead/${pipelineEntry.id}`);
+      }
+      
       // Reset form
       const resetFormData = {
         name: "",

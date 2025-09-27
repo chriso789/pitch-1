@@ -9,6 +9,7 @@ import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import ContactProfile from "./pages/ContactProfile";
 import JobDetails from "./pages/JobDetails";
+import LeadDetails from "./pages/LeadDetails";
 import DemoRequest from "./pages/DemoRequest";
 import NotFound from "./pages/NotFound";
 import KanbanPipeline from "./features/pipeline/components/KanbanPipeline";
@@ -36,6 +37,7 @@ const App = () => {
             <Route path="/demo-request" element={<DemoRequest />} />
             <Route path="/pipeline" element={<KanbanPipeline />} />
             <Route path="/contact/:id" element={<ContactProfile />} />
+            <Route path="/lead/:id" element={<LeadDetails />} />
             <Route path="/job/:id" element={<JobDetails />} />
             <Route path="/" element={<Index />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
