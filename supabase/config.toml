@@ -1,5 +1,20 @@
 project_id = "alxelfrbjzkmtnsulcei"
 
+[functions.canvass-auth]
+verify_jwt = false
+
+[functions.canvass-pin-sync]
+verify_jwt = false
+
+[functions.canvass-document-sync]
+verify_jwt = false
+
+[functions.canvass-estimate-sync]
+verify_jwt = false
+
+[functions.canvass-dispositions]
+verify_jwt = false
+
 [functions.ai-command-processor]
 verify_jwt = true
 
