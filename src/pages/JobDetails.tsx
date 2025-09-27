@@ -9,6 +9,7 @@ import { BudgetTracker } from "@/features/projects";
 import { JobInvoiceTracker, JobPhotoGallery, JobDocumentManager, JobTimelineTracker } from "@/features/jobs";
 import PaymentForm from "@/features/payments/components/PaymentForm";
 import { ContactCommunicationTab } from "@/components/contact-profile/ContactCommunicationTab";
+import { CollapsibleDeveloperToolbar } from "@/shared/components/CollapsibleDeveloperToolbar";
 import { 
   Loader2, ArrowLeft, MapPin, Calendar, User, Phone, Mail, 
   DollarSign, FileText, Camera, Clock, Settings, CreditCard,
@@ -174,7 +175,9 @@ const JobDetails = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <>
+      <CollapsibleDeveloperToolbar />
+      <div className="max-w-7xl mx-auto space-y-6">
       {/* Header with Contact Card */}
       <div className="flex items-start justify-between">
         <div className="flex items-center space-x-4 flex-1">
@@ -480,7 +483,8 @@ const JobDetails = () => {
           <JobTimelineTracker jobId={job.id} />
         </TabsContent>
       </Tabs>
-    </div>
+      </div>
+    </>
   );
 };
 

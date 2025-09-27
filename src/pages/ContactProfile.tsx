@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { BackButton } from "@/shared/components/BackButton";
+import { CollapsibleDeveloperToolbar } from "@/shared/components/CollapsibleDeveloperToolbar";
 import { ContactDetailsTab } from "@/components/contact-profile/ContactDetailsTab";
 import { ContactJobsTab } from "@/components/contact-profile/ContactJobsTab";
 import { ContactCommunicationTab } from "@/components/contact-profile/ContactCommunicationTab";
@@ -127,7 +128,9 @@ const ContactProfile = () => {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <>
+      <CollapsibleDeveloperToolbar />
+      <div className="container mx-auto p-6 space-y-6">
       {/* Header Section */}
       <div className="flex items-center gap-4 mb-8">
         <BackButton respectHistory={true} fallbackPath="/" />
@@ -255,7 +258,8 @@ const ContactProfile = () => {
           </Card>
         </TabsContent>
       </Tabs>
-    </div>
+      </div>
+    </>
   );
 };
 

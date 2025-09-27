@@ -8,4 +8,5 @@ export { default as ComprehensiveWalkthrough } from './ComprehensiveWalkthrough'
 export { VideoWalkthrough } from './VideoWalkthrough';
 export { AIAssistant } from './AIAssistant';
 export { DeveloperToolbar } from './DeveloperToolbar';
+export { CollapsibleDeveloperToolbar } from './CollapsibleDeveloperToolbar';
 export { default as Sidebar } from './layout/Sidebar';
