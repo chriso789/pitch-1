@@ -1,26 +1,18 @@
-import React, { useState } from 'react';
-import { useForm } from 'react-hook-form';
+import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
-import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { 
   Briefcase, 
   Plus, 
   Calendar,
   DollarSign,
   Clock,
-  User,
-  Loader2,
   ExternalLink,
   Edit
 } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { LeadCreationDialog } from "@/components/LeadCreationDialog";
 
 interface ContactJobsTabProps {
   contact: any;
@@ -33,72 +25,13 @@ export const ContactJobsTab: React.FC<ContactJobsTabProps> = ({
   jobs, 
   onJobsUpdate 
 }) => {
-  const [isCreatingJob, setIsCreatingJob] = useState(false);
-  const [dialogOpen, setDialogOpen] = useState(false);
   const { toast } = useToast();
   
-  const form = useForm({
-    defaultValues: {
-      name: '',
-      description: ''
-    }
-  });
-
-  const handleCreateJob = async (data: any) => {
-    if (!data.name.trim()) {
-      toast({
-        title: "Error",
-        description: "Job name is required",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    try {
-      setIsCreatingJob(true);
-
-      const { data: tenantData } = await supabase
-        .from('profiles')
-        .select('tenant_id')
-        .eq('id', (await supabase.auth.getUser()).data.user?.id)
-        .single();
-
-      const { data: jobData, error } = await supabase
-        .from('jobs')
-        .insert({
-          contact_id: contact.id,
-          name: data.name,
-          description: data.description || null,
-          tenant_id: tenantData?.tenant_id,
-          created_by: (await supabase.auth.getUser()).data.user?.id,
-          status: 'scheduled'
-        })
-        .select()
-        .single();
-
-      if (error) {
-        throw error;
-      }
-
-      toast({
-        title: "Success",
-        description: `Job "${jobData.name}" created successfully`,
-      });
-
-      onJobsUpdate([jobData, ...jobs]);
-      form.reset();
-      setDialogOpen(false);
-      
-    } catch (error) {
-      console.error('Error creating job:', error);
-      toast({
-        title: "Error",
-        description: "Failed to create job",
-        variant: "destructive",
-      });
-    } finally {
-      setIsCreatingJob(false);
-    }
+  const handleLeadCreated = () => {
+    toast({
+      title: "Lead Created",
+      description: "Lead created successfully. It will appear in the pipeline for approval.",
+    });
   };
 
   const getStatusColor = (status: string) => {
@@ -174,64 +107,16 @@ export const ContactJobsTab: React.FC<ContactJobsTabProps> = ({
             <Briefcase className="h-5 w-5" />
             Jobs ({jobs.length})
           </CardTitle>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
+          <LeadCreationDialog 
+            contact={contact}
+            onLeadCreated={handleLeadCreated}
+            trigger={
               <Button className="gradient-primary">
                 <Plus className="h-4 w-4 mr-2" />
-                Create Job
+                Create Lead
               </Button>
-            </DialogTrigger>
-            <DialogContent>
-              <DialogHeader>
-                <DialogTitle>Create New Job</DialogTitle>
-                <DialogDescription>
-                  Create a new job for {contact?.first_name} {contact?.last_name}
-                </DialogDescription>
-              </DialogHeader>
-              <Form {...form}>
-                <form onSubmit={form.handleSubmit(handleCreateJob)} className="space-y-4">
-                  <FormField
-                    control={form.control}
-                    name="name"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Job Name</FormLabel>
-                        <FormControl>
-                          <Input {...field} placeholder="Enter job name" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <FormField
-                    control={form.control}
-                    name="description"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Description (Optional)</FormLabel>
-                        <FormControl>
-                          <Textarea {...field} placeholder="Enter job description" />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
-                  <DialogFooter>
-                    <Button 
-                      type="submit" 
-                      disabled={isCreatingJob}
-                      className="gradient-primary"
-                    >
-                      {isCreatingJob && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                      Create Job
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </Form>
-            </DialogContent>
-          </Dialog>
+            }
+          />
         </CardHeader>
         <CardContent>
           {jobs.length > 0 ? (
@@ -287,16 +172,18 @@ export const ContactJobsTab: React.FC<ContactJobsTabProps> = ({
               <Briefcase className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
               <h3 className="text-lg font-semibold mb-2">No Jobs Yet</h3>
               <p className="text-muted-foreground mb-4">
-                Create the first job for {contact?.first_name} {contact?.last_name}
+                Create the first lead for {contact?.first_name} {contact?.last_name}
               </p>
-              <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-                <DialogTrigger asChild>
+              <LeadCreationDialog 
+                contact={contact}
+                onLeadCreated={handleLeadCreated}
+                trigger={
                   <Button className="gradient-primary">
                     <Plus className="h-4 w-4 mr-2" />
-                    Create First Job
+                    Create First Lead
                   </Button>
-                </DialogTrigger>
-              </Dialog>
+                }
+              />
             </div>
           )}
         </CardContent>
