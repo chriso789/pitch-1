@@ -10,6 +10,7 @@ import { JobInvoiceTracker, JobPhotoGallery, JobDocumentManager, JobTimelineTrac
 import PaymentForm from "@/features/payments/components/PaymentForm";
 import { ContactCommunicationTab } from "@/components/contact-profile/ContactCommunicationTab";
 import { CollapsibleDeveloperToolbar } from "@/shared/components/CollapsibleDeveloperToolbar";
+import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 import { 
   Loader2, ArrowLeft, MapPin, Calendar, User, Phone, Mail, 
   DollarSign, FileText, Camera, Clock, Settings, CreditCard,
@@ -60,6 +61,7 @@ const JobDetails = () => {
   const [loading, setLoading] = useState(true);
   const [budgetItems, setBudgetItems] = useState([]);
   const [activeTab, setActiveTab] = useState('overview');
+  const [activeSection, setActiveSection] = useState('jobs');
   const [financials, setFinancials] = useState<FinancialSummary>({
     totalBudget: 0,
     actualCosts: 0,
@@ -252,8 +254,10 @@ const JobDetails = () => {
   }
 
   return (
-    <>
-      <CollapsibleDeveloperToolbar />
+    <GlobalLayout 
+      activeSection={activeSection} 
+      onSectionChange={setActiveSection}
+    >
       <div className="max-w-7xl mx-auto space-y-6">
       {/* Header with Contact Card */}
       <div className="flex items-start justify-between">
@@ -261,10 +265,17 @@ const JobDetails = () => {
           <Button 
             variant="ghost" 
             size="sm" 
-            onClick={() => navigate(-1)}
+            onClick={() => {
+              // Navigate back to contact if we have contact info, otherwise go back
+              if (job?.contact?.id) {
+                navigate(`/contact/${job.contact.id}`);
+              } else {
+                navigate(-1);
+              }
+            }}
           >
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
+            Back to Contact
           </Button>
           <div className="flex-1">
             <div className="flex items-center space-x-3">
@@ -295,6 +306,7 @@ const JobDetails = () => {
                   variant="ghost" 
                   size="sm"
                   onClick={() => navigate(`/contact/${job.contact?.id}`)}
+                  title="View Contact Profile"
                 >
                   <ExternalLink className="h-3 w-3" />
                 </Button>
@@ -575,7 +587,7 @@ const JobDetails = () => {
         </TabsContent>
       </Tabs>
       </div>
-    </>
+    </GlobalLayout>
   );
 };
 

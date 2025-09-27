@@ -255,6 +255,30 @@ const Pipeline = () => {
     const estimate = item.estimates?.[0]; // Get the latest estimate
     const nextStatus = getNextStatus(item.status);
     
+    // Check if this pipeline entry has an associated job
+    const handleViewClick = async () => {
+      try {
+        // Check if there's a job for this pipeline entry
+        const { data: job } = await supabase
+          .from('jobs')
+          .select('id')
+          .eq('pipeline_entry_id', item.id)
+          .maybeSingle();
+        
+        if (job) {
+          // Navigate to job details
+          navigate(`/job/${job.id}`);
+        } else {
+          // Navigate to contact profile
+          navigate(`/contact/${contact?.id || item.contact_id}`);
+        }
+      } catch (error) {
+        console.error('Error checking for job:', error);
+        // Fallback to contact profile
+        navigate(`/contact/${contact?.id || item.contact_id}`);
+      }
+    };
+    
     return (
       <Card key={item.id} className="shadow-soft border-0 hover:shadow-medium transition-smooth">
         <CardContent className="p-4">
@@ -346,7 +370,7 @@ const Pipeline = () => {
               size="sm" 
               variant="outline" 
               className="flex-1"
-              onClick={() => navigate(`/contact/${contact?.id || item.contact_id}`)}
+              onClick={handleViewClick}
             >
               <FileText className="h-4 w-4 mr-1" />
               View
