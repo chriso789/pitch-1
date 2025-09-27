@@ -47,6 +47,10 @@ interface UnifiedJobItem {
   pipeline_entry_id?: string;
   // Job specific
   project?: any;
+  // Project navigation
+  projectId?: string | null;
+  projectNumber?: string | null;
+  originalStatus?: string;
 }
 
 export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabProps) => {
@@ -113,7 +117,8 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
             first_name,
             last_name,
             address_street
-          )
+          ),
+          projects(id, project_number, name)
         `)
         .eq('contact_id', contact.id);
 
@@ -149,7 +154,10 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
         estimated_value: entry.estimated_value,
         probability_percent: entry.probability_percent,
         roof_type: entry.roof_type,
-        pipeline_entry_id: entry.id
+        pipeline_entry_id: entry.id,
+        projectId: entry.projects?.[0]?.id || null,
+        projectNumber: entry.projects?.[0]?.project_number || null,
+        originalStatus: entry.status
       }));
 
       // Transform actual jobs to unified job items
@@ -487,10 +495,16 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
                           variant="outline" 
                           className={job.type === 'pipeline' && nextAction ? "px-3" : "flex-1"}
                           onClick={() => {
-                            if (job.type === 'job') {
-                              navigate(`/job/${job.id}`);
+                            if (job.type === 'pipeline') {
+                              // If pipeline entry has associated project and status indicates it's a project
+                              if (job.projectId && (job.originalStatus === 'project' || job.originalStatus === 'active_project')) {
+                                navigate(`/project/${job.projectId}`);
+                              } else {
+                                navigate(`/lead/${job.pipeline_entry_id}`);
+                              }
                             } else {
-                              navigate(`/lead/${job.pipeline_entry_id}`);
+                              // For actual jobs, navigate to job details for now
+                              navigate(`/job/${job.id}`);
                             }
                           }}
                         >

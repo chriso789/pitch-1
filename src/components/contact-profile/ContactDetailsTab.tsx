@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useForm } from 'react-hook-form';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,8 @@ import {
   X,
   Calendar,
   Star,
-  Tag
+  Tag,
+  Briefcase
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -33,8 +34,36 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
   onContactUpdate 
 }) => {
   const [isEditing, setIsEditing] = useState(false);
+  const [jobCount, setJobCount] = useState(0);
   const { toast } = useToast();
   
+  useEffect(() => {
+    if (contact?.id) {
+      fetchJobCount();
+    }
+  }, [contact?.id]);
+
+  const fetchJobCount = async () => {
+    try {
+      const [pipelineResult, jobsResult] = await Promise.all([
+        supabase
+          .from('pipeline_entries')
+          .select('id')
+          .eq('contact_id', contact.id),
+        supabase
+          .from('projects')
+          .select('id, pipeline_entry_id')
+          .not('pipeline_entry_id', 'is', null)
+      ]);
+
+      const pipelineCount = pipelineResult.data?.length || 0;
+      const jobsCount = jobsResult.data?.length || 0;
+      setJobCount(pipelineCount + jobsCount);
+    } catch (error) {
+      console.error('Error fetching job count:', error);
+    }
+  };
+
   const form = useForm({
     defaultValues: {
       first_name: contact?.first_name || '',
@@ -95,7 +124,7 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
   return (
     <div className="space-y-6">
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card className="shadow-soft">
           <CardContent className="pt-6">
             <div className="flex items-center space-x-2">
@@ -143,6 +172,18 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
                 <Badge variant="outline" className="text-xs">
                   {contact?.qualification_status || 'Unqualified'}
                 </Badge>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card className="shadow-soft">
+          <CardContent className="pt-6">
+            <div className="flex items-center space-x-2">
+              <Briefcase className="h-4 w-4 text-primary" />
+              <div className="space-y-1">
+                <p className="text-sm font-medium leading-none">Total Jobs</p>
+                <p className="text-2xl font-bold">{jobCount}</p>
               </div>
             </div>
           </CardContent>
