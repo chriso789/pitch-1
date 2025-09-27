@@ -42,6 +42,10 @@ import {
   MessageSquare,
   Plus
 } from "lucide-react";
+import { ActionsSelector } from "@/components/ui/actions-selector";
+import { FloatingChatWidget } from "@/components/messaging/FloatingChatWidget";
+import { FloatingEmailComposer } from "@/components/messaging/FloatingEmailComposer";
+import { SimpleJobMap } from "@/components/maps/SimpleJobMap";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -120,6 +124,11 @@ export const EnhancedClientList = () => {
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [selectedContactForJob, setSelectedContactForJob] = useState<Contact | null>(null);
   const [showJobDialog, setShowJobDialog] = useState(false);
+  
+  // Enhanced messaging and mapping state
+  const [activeChatContact, setActiveChatContact] = useState<{ id: string; name: string; phone: string } | null>(null);
+  const [activeEmailContact, setActiveEmailContact] = useState<{ id: string; name: string; email: string } | null>(null);
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number; address: string } | null>(null);
 
   useEffect(() => {
     loadUserPreferences();
@@ -539,94 +548,89 @@ export const EnhancedClientList = () => {
     }
   };
 
-  const ActionsDropdown = ({ item, type }: { item: any, type: 'contact' | 'job' }) => (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <Button variant="ghost" size="sm" className="h-8 w-8 p-0">
-          <MoreHorizontal className="h-4 w-4" />
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-48">
-        <DropdownMenuItem onClick={() => navigate(type === 'contact' ? `/contact/${item.id}` : `/job/${item.id}`)}>
-          <Eye className="mr-2 h-4 w-4" />
-          View Details Page
-        </DropdownMenuItem>
-        
-        {type === 'contact' && item.phone && (
-          <DropdownMenuItem onClick={() => handleCall(item)}>
-            <Phone className="mr-2 h-4 w-4" />
-            Call
-          </DropdownMenuItem>
-        )}
-        
-        {type === 'job' && item.contact?.phone && (
-          <DropdownMenuItem onClick={() => handleCall(item)}>
-            <Phone className="mr-2 h-4 w-4" />
-            Call Contact
-          </DropdownMenuItem>
-        )}
-        
-        {type === 'contact' && item.phone && (
-          <DropdownMenuItem onClick={() => handleText(item.phone)}>
-            <MessageSquare className="mr-2 h-4 w-4" />
-            Text
-          </DropdownMenuItem>
-        )}
-        
-        {type === 'job' && item.contact?.phone && (
-          <DropdownMenuItem onClick={() => handleText(item.contact.phone)}>
-            <MessageSquare className="mr-2 h-4 w-4" />
-            Text Contact
-          </DropdownMenuItem>
-        )}
-        
-        {type === 'contact' && item.email && (
-          <DropdownMenuItem onClick={() => handleEmail(item.email)}>
-            <Mail className="mr-2 h-4 w-4" />
-            Email
-          </DropdownMenuItem>
-        )}
-        
-        {type === 'job' && item.contact?.email && (
-          <DropdownMenuItem onClick={() => handleEmail(item.contact.email)}>
-            <Mail className="mr-2 h-4 w-4" />
-            Email Contact
-          </DropdownMenuItem>
-        )}
-        
-        {type === 'contact' && (
-          <DropdownMenuItem onClick={() => handleAddJob(item)}>
-            <Plus className="mr-2 h-4 w-4" />
-            Add Job
-          </DropdownMenuItem>
-        )}
-        
-        <DropdownMenuItem 
-          onClick={() => handleMapSurroundingJobs(
-            type === 'contact' 
-              ? `${item.address_street}, ${item.address_city}, ${item.address_state}` 
-              : `${item.contact?.address_street}, ${item.contact?.address_city}, ${item.contact?.address_state}`
-          )}
-        >
-          <MapPin className="mr-2 h-4 w-4" />
-          Map Surrounding Jobs
-        </DropdownMenuItem>
-        
-        <DropdownMenuSeparator />
-        
-        <DropdownMenuItem 
-          onClick={() => type === 'contact' 
-            ? handleDeleteContact(item.id, `${item.first_name} ${item.last_name}`) 
-            : handleDeleteJob(item.id, item.name)
-          }
-          className="text-destructive"
-        >
-          <Trash2 className="mr-2 h-4 w-4" />
-          Delete
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
+  const ActionsDropdown = ({ item, type }: { item: any, type: 'contact' | 'job' }) => {
+    const actions = [
+      {
+        label: "View Details Page",
+        icon: Eye,
+        onClick: () => navigate(type === 'contact' ? `/contact/${item.id}` : `/job/${item.id}`)
+      },
+      ...(type === 'contact' && item.phone ? [{
+        label: "Call",
+        icon: Phone,
+        onClick: () => handleCall(item)
+      }] : []),
+      ...(type === 'job' && item.contact?.phone ? [{
+        label: "Call Contact", 
+        icon: Phone,
+        onClick: () => handleCall(item)
+      }] : []),
+      ...(type === 'contact' && item.phone ? [{
+        label: "Text",
+        icon: MessageSquare,
+        onClick: () => setActiveChatContact({ 
+          id: item.id, 
+          name: `${item.first_name} ${item.last_name}`, 
+          phone: item.phone 
+        })
+      }] : []),
+      ...(type === 'job' && item.contact?.phone ? [{
+        label: "Text Contact",
+        icon: MessageSquare,
+        onClick: () => setActiveChatContact({ 
+          id: item.contact.id, 
+          name: `${item.contact.first_name} ${item.contact.last_name}`, 
+          phone: item.contact.phone 
+        })
+      }] : []),
+      ...(type === 'contact' && item.email ? [{
+        label: "Email",
+        icon: Mail,
+        onClick: () => setActiveEmailContact({ 
+          id: item.id, 
+          name: `${item.first_name} ${item.last_name}`, 
+          email: item.email 
+        })
+      }] : []),
+      ...(type === 'job' && item.contact?.email ? [{
+        label: "Email Contact",
+        icon: Mail,
+        onClick: () => setActiveEmailContact({ 
+          id: item.contact.id, 
+          name: `${item.contact.first_name} ${item.contact.last_name}`, 
+          email: item.contact.email 
+        })
+      }] : []),
+      ...(type === 'contact' ? [{
+        label: "Add Job",
+        icon: Plus,
+        onClick: () => handleAddJob(item)
+      }] : []),
+      {
+        label: "Map Surrounding Jobs",
+        icon: MapPin,
+        onClick: () => setMapCenter({
+          lat: item.latitude || 27.0820246,
+          lng: item.longitude || -82.19621560000002,
+          address: type === 'contact' 
+            ? `${item.address_street}, ${item.address_city}, ${item.address_state}` 
+            : `${item.contact?.address_street}, ${item.contact?.address_city}, ${item.contact?.address_state}`
+        }),
+        separator: true
+      },
+      {
+        label: "Delete",
+        icon: Trash2,
+        onClick: () => type === 'contact' 
+          ? handleDeleteContact(item.id, `${item.first_name} ${item.last_name}`) 
+          : handleDeleteJob(item.id, item.name),
+        variant: 'destructive' as const,
+        separator: true
+      }
+    ];
+
+    return <ActionsSelector actions={actions} />;
+  };
 
   // Calculate statistics
   const totalContacts = contacts.length;
@@ -1032,10 +1036,80 @@ export const EnhancedClientList = () => {
         onConfirm={confirmPermanentDelete}
       />
 
-{showJobDialog && selectedContactForJob && (
+      {showJobDialog && selectedContactForJob && (
         <EnhancedJobCreationDialog
           contact={selectedContactForJob}
           onJobCreated={handleJobCreated}
+        />
+      )}
+
+      {/* Floating Chat Widget */}
+      {activeChatContact && (
+        <FloatingChatWidget
+          isOpen={!!activeChatContact}
+          onClose={() => setActiveChatContact(null)}
+          contactName={activeChatContact.name}
+          contactPhone={activeChatContact.phone}
+          onSendMessage={(message) => {
+            console.log('Sending message:', message, 'to:', activeChatContact.phone);
+            // TODO: Implement iMessage sending via edge function
+          }}
+        />
+      )}
+
+      {/* Floating Email Composer */}
+      {activeEmailContact && (
+        <FloatingEmailComposer
+          isOpen={!!activeEmailContact}
+          onClose={() => setActiveEmailContact(null)}
+          defaultRecipient={{
+            id: activeEmailContact.id,
+            name: activeEmailContact.name,
+            email: activeEmailContact.email,
+            type: 'contact'
+          }}
+          onSendEmail={(emailData) => {
+            console.log('Sending email:', emailData);
+            // TODO: Implement email sending via edge function
+            setActiveEmailContact(null);
+          }}
+        />
+      )}
+
+      {/* Interactive Job Map */}
+      {mapCenter && (
+        <SimpleJobMap
+          isOpen={!!mapCenter}
+          onClose={() => setMapCenter(null)}
+          centerLocation={{ lat: mapCenter.lat, lng: mapCenter.lng }}
+          radiusMiles={50}
+          locations={[
+            ...contacts.map(contact => ({
+              id: contact.id,
+              type: 'contact' as const,
+              name: `${contact.first_name} ${contact.last_name}`,
+              address: `${contact.address_street}, ${contact.address_city}, ${contact.address_state}`,
+              lat: mapCenter.lat,
+              lng: mapCenter.lng,
+              phone: contact.phone,
+              email: contact.email,
+              status: contact.qualification_status
+            })),
+            ...jobs.map(job => ({
+              id: job.id,
+              type: 'job' as const,
+              name: job.name || `Job for ${job.contact?.first_name} ${job.contact?.last_name}`,
+              address: `${job.contact?.address_street}, ${job.contact?.address_city}, ${job.contact?.address_state}`,
+              lat: mapCenter.lat,
+              lng: mapCenter.lng,
+              phone: job.contact?.phone,
+              email: job.contact?.email,
+              status: job.status,
+              value: 0,
+              roofType: undefined,
+              priority: undefined
+            }))
+          ]}
         />
       )}
     </div>
