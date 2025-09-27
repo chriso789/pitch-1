@@ -493,12 +493,33 @@ const LeadDetails = () => {
             <CardHeader>
               <CardTitle>Estimate Details</CardTitle>
             </CardHeader>
-            <CardContent className="text-center py-12">
-              <DollarSign className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground mb-4">Estimate creation and management coming soon</p>
-              <Button variant="outline" disabled>
-                Create Estimate
-              </Button>
+            <CardContent>
+              {requirements.hasEstimate ? (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Estimate has been created for this lead.</p>
+                    <Button 
+                      onClick={() => navigate(`/estimates?lead=${id}`)}
+                      className="flex items-center gap-2"
+                    >
+                      <ExternalLink className="h-4 w-4" />
+                      View Estimate
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <DollarSign className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground mb-4">Create a detailed estimate for this lead</p>
+                  <Button 
+                    onClick={() => navigate(`/estimates?create=true&lead=${id}`)}
+                    className="flex items-center gap-2"
+                  >
+                    <DollarSign className="h-4 w-4" />
+                    Create Estimate
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -508,12 +529,33 @@ const LeadDetails = () => {
             <CardHeader>
               <CardTitle>Material List</CardTitle>
             </CardHeader>
-            <CardContent className="text-center py-12">
-              <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground mb-4">Material management coming soon</p>
-              <Button variant="outline" disabled>
-                Add Materials
-              </Button>
+            <CardContent>
+              {requirements.hasMaterials ? (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">Materials have been added to the estimate.</p>
+                  <Button 
+                    onClick={() => navigate(`/estimates?lead=${id}#materials`)}
+                    className="flex items-center gap-2"
+                  >
+                    <Package className="h-4 w-4" />
+                    Manage Materials
+                  </Button>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground mb-4">Add materials to the estimate first</p>
+                  <Button 
+                    onClick={() => navigate(`/estimates?create=true&lead=${id}#materials`)}
+                    variant="outline" 
+                    className="flex items-center gap-2"
+                    disabled={!requirements.hasEstimate}
+                  >
+                    <Package className="h-4 w-4" />
+                    {requirements.hasEstimate ? 'Add Materials' : 'Create Estimate First'}
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>
@@ -523,12 +565,33 @@ const LeadDetails = () => {
             <CardHeader>
               <CardTitle>Labor Breakdown</CardTitle>
             </CardHeader>
-            <CardContent className="text-center py-12">
-              <Hammer className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground mb-4">Labor templates and breakdown coming soon</p>
-              <Button variant="outline" disabled>
-                Add Labor
-              </Button>
+            <CardContent>
+              {requirements.hasLabor ? (
+                <div className="space-y-4">
+                  <p className="text-sm text-muted-foreground">Labor breakdown has been added to the estimate.</p>
+                  <Button 
+                    onClick={() => navigate(`/estimates?lead=${id}#labor`)}
+                    className="flex items-center gap-2"
+                  >
+                    <Hammer className="h-4 w-4" />
+                    Manage Labor
+                  </Button>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <Hammer className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground mb-4">Add labor breakdown to the estimate first</p>
+                  <Button 
+                    onClick={() => navigate(`/estimates?create=true&lead=${id}#labor`)}
+                    variant="outline" 
+                    className="flex items-center gap-2"
+                    disabled={!requirements.hasEstimate}
+                  >
+                    <Hammer className="h-4 w-4" />
+                    {requirements.hasEstimate ? 'Add Labor' : 'Create Estimate First'}
+                  </Button>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

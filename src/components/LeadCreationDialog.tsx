@@ -112,8 +112,9 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     if (open) {
       loadSalesReps();
       loadUserProfile();
+      
       // Initialize form tracking when dialog opens
-      const initialFormData = {
+      let initialFormData = {
         name: "",
         phone: "",
         status: "lead",
@@ -125,10 +126,34 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
         assignedTo: [] as string[],
         notes: "",
       };
+      
+      // If contact is provided, pre-fill the form
+      if (contact) {
+        const fullAddress = [
+          contact.address_street,
+          contact.address_city,
+          contact.address_state,
+          contact.address_zip
+        ].filter(Boolean).join(", ");
+        
+        initialFormData = {
+          ...initialFormData,
+          name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim(),
+          phone: contact.phone || "",
+          address: fullAddress,
+          useSameInfo: true
+        };
+        
+        // Trigger address verification if address exists
+        if (fullAddress) {
+          setTimeout(() => handleAddressVerification(fullAddress), 100);
+        }
+      }
+      
       setFormData(initialFormData);
       initializeForm(initialFormData);
     }
-  }, [open, initializeForm]);
+  }, [open, initializeForm, contact]);
 
   // Check for changes when form data updates
   useEffect(() => {
@@ -256,13 +281,27 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
 
   // Enhanced validation with illumination logic
   const isFormValid = React.useMemo(() => {
-    return (
+    const valid = (
       formData.name.trim() !== "" &&
       formData.phone.trim() !== "" &&
       selectedAddress !== null &&
       formData.status !== "" &&
       formData.assignedTo.length > 0  // At least one rep required for measurement flow
     );
+    
+    // Debug logging to help identify what's missing
+    console.log('Form validation check:', {
+      name: formData.name.trim() !== "",
+      phone: formData.phone.trim() !== "",
+      hasSelectedAddress: selectedAddress !== null,
+      status: formData.status !== "",
+      assignedTo: formData.assignedTo.length > 0,
+      isValid: valid,
+      currentFormData: formData,
+      currentSelectedAddress: selectedAddress
+    });
+    
+    return valid;
   }, [formData, selectedAddress]);
 
   const validateForm = () => {
@@ -315,6 +354,8 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
   };
 
   const handleSubmit = async () => {
+    console.log('handleSubmit called with form data:', formData);
+    console.log('isFormValid:', isFormValid);
     if (!validateForm()) return;
 
     markAsSubmitting();
@@ -677,7 +718,16 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
               Cancel
             </Button>
             <Button 
-              onClick={handleSubmit} 
+              onClick={(e) => {
+                console.log('Button clicked!', { 
+                  isFormValid, 
+                  loading, 
+                  isSubmitting,
+                  disabled: loading || !isFormValid || isSubmitting 
+                });
+                e.preventDefault();
+                handleSubmit();
+              }} 
               disabled={loading || !isFormValid || isSubmitting}
               className={`transition-all duration-300 ${
                 isFormValid 
