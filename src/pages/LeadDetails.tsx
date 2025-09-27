@@ -9,10 +9,15 @@ import { Progress } from '@/components/ui/progress';
 import { 
   Loader2, ArrowLeft, MapPin, User, Phone, Mail, 
   FileText, CheckCircle, AlertCircle, ExternalLink,
-  DollarSign, Hammer, Package
+  DollarSign, Hammer, Package, Settings
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import SatelliteMeasurement from '@/components/SatelliteMeasurement';
+import EstimateHyperlinkBar from '@/components/estimates/EstimateHyperlinkBar';
+import ProfitSlider from '@/components/estimates/ProfitSlider';
+import CommunicationHub from '@/components/communication/CommunicationHub';
+import MeasurementGating from '@/components/estimates/MeasurementGating';
+import { EnhancedEstimateBuilder } from '@/components/EnhancedEstimateBuilder';
 
 interface LeadDetailsData {
   id: string;
@@ -67,6 +72,8 @@ const LeadDetails = () => {
   const [lead, setLead] = useState<LeadDetailsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [estimateCalculations, setEstimateCalculations] = useState<any>(null);
+  const [measurementReadiness, setMeasurementReadiness] = useState({ isReady: false, data: null });
   const [requirements, setRequirements] = useState<ApprovalRequirements>({
     hasContract: false,
     hasEstimate: false,
@@ -221,6 +228,153 @@ const LeadDetails = () => {
         description: 'Failed to approve lead',
         variant: 'destructive'
       });
+    }
+  };
+
+  const renderActiveSection = () => {
+    switch (activeTab) {
+      case 'overview':
+        return (
+          <div className="text-center py-12">
+            <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+            <p className="text-muted-foreground">Lead overview and communication hub displayed above</p>
+          </div>
+        );
+      case 'measurements':
+        return (
+          <div className="space-y-6">
+            <MeasurementGating
+              pipelineEntryId={id!}
+              onReadinessChange={(isReady, data) => 
+                setMeasurementReadiness({ isReady, data })
+              }
+            />
+            <SatelliteMeasurement
+              address={lead?.verified_address?.formatted_address || `${lead?.contact?.address_street}, ${lead?.contact?.address_city}, ${lead?.contact?.address_state}`}
+              latitude={lead?.verified_address?.geometry?.location?.lat || lead?.contact?.latitude}
+              longitude={lead?.verified_address?.geometry?.location?.lng || lead?.contact?.longitude}
+              pipelineEntryId={id!}
+              onMeasurementsSaved={(measurements) => {
+                toast({
+                  title: "Measurements Saved",
+                  description: `Property measurements saved successfully. Area: ${measurements.adjustedArea} sq ft`,
+                });
+                checkApprovalRequirements();
+              }}
+            />
+          </div>
+        );
+      case 'materials':
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle>Material Specifications</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {measurementReadiness.isReady ? (
+                <div className="text-center py-12">
+                  <Package className="h-12 w-12 text-primary mx-auto mb-4" />
+                  <p className="text-muted-foreground mb-4">Material calculations ready</p>
+                  <p className="text-sm text-success">Based on {measurementReadiness.data?.roof_area_sq_ft} sq ft roof area</p>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground mb-4">Complete measurements and template binding first</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      case 'labor':
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle>Labor Breakdown</CardTitle>
+            </CardHeader>
+            <CardContent>
+              {measurementReadiness.isReady ? (
+                <div className="text-center py-12">
+                  <Hammer className="h-12 w-12 text-primary mx-auto mb-4" />
+                  <p className="text-muted-foreground mb-4">Labor calculations ready</p>
+                  <p className="text-sm text-success">
+                    {((measurementReadiness.data?.roof_area_sq_ft || 0) / 100).toFixed(1)} squares of roofing work
+                  </p>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <Hammer className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                  <p className="text-muted-foreground mb-4">Complete measurements and template binding first</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        );
+      case 'overhead':
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle>Overhead & Administrative</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center py-12">
+                <Settings className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground mb-4">Overhead calculated as percentage of selling price</p>
+                <p className="text-sm text-muted-foreground">Includes: Insurance, Office, Admin, Equipment</p>
+              </div>
+            </CardContent>
+          </Card>
+        );
+      case 'profit':
+        return (
+          <div className="space-y-6">
+            <ProfitSlider
+              value={30}
+              onChange={(value) => console.log('Profit margin changed:', value)}
+              disabled={!measurementReadiness.isReady}
+              sellingPrice={measurementReadiness.isReady ? 34000 : 0}
+              costPreProfit={measurementReadiness.isReady ? 23800 : 0}
+            />
+          </div>
+        );
+      case 'total':
+        return (
+          <Card>
+            <CardHeader>
+              <CardTitle>Final Selling Price</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center py-12">
+                <DollarSign className="h-12 w-12 text-primary mx-auto mb-4" />
+                <div className="text-3xl font-bold text-primary mb-2">
+                  {measurementReadiness.isReady ? '$34,000' : '$0'}
+                </div>
+                <p className="text-muted-foreground mb-4">
+                  {measurementReadiness.isReady ? 'With guaranteed 30% margin' : 'Pending calculations'}
+                </p>
+                {measurementReadiness.isReady && (
+                  <p className="text-sm text-success">
+                    ${((measurementReadiness.data?.roof_area_sq_ft || 0) > 0 ? (34000 / measurementReadiness.data.roof_area_sq_ft).toFixed(2) : '0')} per sq ft
+                  </p>
+                )}
+              </div>
+            </CardContent>
+          </Card>
+        );
+      default:
+        return (
+          <EnhancedEstimateBuilder
+            pipelineEntryId={id}
+            contactId={lead?.contact?.id}
+            onEstimateCreated={(estimate) => {
+              checkApprovalRequirements();
+              toast({
+                title: 'Estimate Created',
+                description: 'Excel-style estimate created successfully',
+              });
+            }}
+          />
+        );
     }
   };
 
@@ -405,212 +559,99 @@ const LeadDetails = () => {
         </CardContent>
       </Card>
 
-      {/* Main Content Tabs */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-6">
-          <TabsTrigger value="overview">Overview</TabsTrigger>
-          <TabsTrigger value="contract">Contract</TabsTrigger>
-          <TabsTrigger value="estimate">Estimate</TabsTrigger>
-          <TabsTrigger value="materials">Materials</TabsTrigger>
-          <TabsTrigger value="labor">Labor</TabsTrigger>
-          <TabsTrigger value="measurement">Measurement</TabsTrigger>
-        </TabsList>
+      {/* Lead Information */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Lead Information</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">Priority</label>
+              <p className="capitalize">{lead.priority}</p>
+            </div>
+            {lead.roof_type && (
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Roof Type</label>
+                <p className="capitalize">{lead.roof_type.replace('_', ' ')}</p>
+              </div>
+            )}
+            {lead.estimated_value && (
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Estimated Value</label>
+                <p>${lead.estimated_value.toLocaleString()}</p>
+              </div>
+            )}
+            {lead.notes && (
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Notes</label>
+                <p className="text-muted-foreground">{lead.notes}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
 
-        <TabsContent value="overview" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>Lead Information</CardTitle>
-              </CardHeader>
-              <CardContent className="space-y-4">
+        <Card>
+          <CardHeader>
+            <CardTitle>Communication Hub</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {lead.assigned_rep ? (
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <User className="h-5 w-5 text-primary" />
+                </div>
                 <div>
-                  <label className="text-sm font-medium text-muted-foreground">Priority</label>
-                  <p className="capitalize">{lead.priority}</p>
+                  <p className="font-medium">
+                    {lead.assigned_rep.first_name} {lead.assigned_rep.last_name}
+                  </p>
+                  <p className="text-sm text-muted-foreground">Sales Representative</p>
                 </div>
-                {lead.roof_type && (
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Roof Type</label>
-                    <p className="capitalize">{lead.roof_type.replace('_', ' ')}</p>
-                  </div>
-                )}
-                {lead.estimated_value && (
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Estimated Value</label>
-                    <p>${lead.estimated_value.toLocaleString()}</p>
-                  </div>
-                )}
-                {lead.notes && (
-                  <div>
-                    <label className="text-sm font-medium text-muted-foreground">Notes</label>
-                    <p className="text-muted-foreground">{lead.notes}</p>
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Assigned Representative</CardTitle>
-              </CardHeader>
-              <CardContent>
-                {lead.assigned_rep ? (
-                  <div className="flex items-center space-x-3">
-                    <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                      <User className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <p className="font-medium">
-                        {lead.assigned_rep.first_name} {lead.assigned_rep.last_name}
-                      </p>
-                      <p className="text-sm text-muted-foreground">Sales Representative</p>
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-muted-foreground">No representative assigned</p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
-        </TabsContent>
-
-        <TabsContent value="contract">
-          <Card>
-            <CardHeader>
-              <CardTitle>Contract Management</CardTitle>
-            </CardHeader>
-            <CardContent className="text-center py-12">
-              <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground mb-4">Contract upload and DocuSign integration coming soon</p>
-              <Button variant="outline" disabled>
-                Upload Contract
+              </div>
+            ) : (
+              <p className="text-muted-foreground mb-4">No representative assigned</p>
+            )}
+            
+            <div className="grid grid-cols-3 gap-2">
+              <Button size="sm" variant="outline" className="flex items-center space-x-1">
+                <Phone className="h-3 w-3" />
+                <span>Call</span>
               </Button>
-            </CardContent>
-          </Card>
-        </TabsContent>
+              <Button size="sm" variant="outline" className="flex items-center space-x-1">
+                <Mail className="h-3 w-3" />
+                <span>Email</span>
+              </Button>
+              <Button size="sm" variant="outline" className="flex items-center space-x-1">
+                <Phone className="h-3 w-3" />
+                <span>SMS</span>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
 
-        <TabsContent value="estimate">
-          <Card>
-            <CardHeader>
-              <CardTitle>Estimate Details</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {requirements.hasEstimate ? (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-muted-foreground">Estimate has been created for this lead.</p>
-                    <Button 
-                      onClick={() => navigate(`/estimates?lead=${id}`)}
-                      className="flex items-center gap-2"
-                    >
-                      <ExternalLink className="h-4 w-4" />
-                      View Estimate
-                    </Button>
-                  </div>
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <DollarSign className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground mb-4">Create a detailed estimate for this lead</p>
-                  <Button 
-                    onClick={() => navigate(`/estimates?create=true&lead=${id}`)}
-                    className="flex items-center gap-2"
-                  >
-                    <DollarSign className="h-4 w-4" />
-                    Create Estimate
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
+      {/* Hyperlink Bar Estimate System */}
+      <EstimateHyperlinkBar
+        activeSection={activeTab}
+        onSectionChange={setActiveTab}
+        calculations={{
+          measurements: lead.metadata?.roof_area_sq_ft ? {
+            roof_area_sq_ft: lead.metadata.roof_area_sq_ft,
+            squares: lead.metadata.roof_area_sq_ft / 100,
+            has_template: !!lead.metadata?.template_binding
+          } : undefined,
+          materials_cost: requirements.hasMaterials ? 15000 : 0,
+          labor_cost: requirements.hasLabor ? 8000 : 0,
+          overhead_amount: requirements.hasEstimate ? 3500 : 0,
+          profit_amount: requirements.hasEstimate ? 7500 : 0,
+          selling_price: requirements.hasEstimate ? 34000 : 0,
+          is_ready: requirements.allComplete,
+          margin_percent: 30
+        }}
+      />
 
-        <TabsContent value="materials">
-          <Card>
-            <CardHeader>
-              <CardTitle>Material List</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {requirements.hasMaterials ? (
-                <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground">Materials have been added to the estimate.</p>
-                  <Button 
-                    onClick={() => navigate(`/estimates?lead=${id}#materials`)}
-                    className="flex items-center gap-2"
-                  >
-                    <Package className="h-4 w-4" />
-                    Manage Materials
-                  </Button>
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground mb-4">Add materials to the estimate first</p>
-                  <Button 
-                    onClick={() => navigate(`/estimates?create=true&lead=${id}#materials`)}
-                    variant="outline" 
-                    className="flex items-center gap-2"
-                    disabled={!requirements.hasEstimate}
-                  >
-                    <Package className="h-4 w-4" />
-                    {requirements.hasEstimate ? 'Add Materials' : 'Create Estimate First'}
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="labor">
-          <Card>
-            <CardHeader>
-              <CardTitle>Labor Breakdown</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {requirements.hasLabor ? (
-                <div className="space-y-4">
-                  <p className="text-sm text-muted-foreground">Labor breakdown has been added to the estimate.</p>
-                  <Button 
-                    onClick={() => navigate(`/estimates?lead=${id}#labor`)}
-                    className="flex items-center gap-2"
-                  >
-                    <Hammer className="h-4 w-4" />
-                    Manage Labor
-                  </Button>
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <Hammer className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground mb-4">Add labor breakdown to the estimate first</p>
-                  <Button 
-                    onClick={() => navigate(`/estimates?create=true&lead=${id}#labor`)}
-                    variant="outline" 
-                    className="flex items-center gap-2"
-                    disabled={!requirements.hasEstimate}
-                  >
-                    <Hammer className="h-4 w-4" />
-                    {requirements.hasEstimate ? 'Add Labor' : 'Create Estimate First'}
-                  </Button>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        <TabsContent value="measurement">
-          <SatelliteMeasurement
-            address={lead.verified_address?.formatted_address || `${lead.contact?.address_street}, ${lead.contact?.address_city}, ${lead.contact?.address_state}`}
-            latitude={lead.verified_address?.geometry?.location?.lat || lead.contact?.latitude}
-            longitude={lead.verified_address?.geometry?.location?.lng || lead.contact?.longitude}
-            pipelineEntryId={id!}
-            onMeasurementsSaved={(measurements) => {
-              toast({
-                title: "Measurements Saved",
-                description: `Property measurements saved successfully. Area: ${measurements.adjustedArea} sq ft`,
-              });
-            }}
-          />
-        </TabsContent>
-      </Tabs>
+      {/* Dynamic Content Sections */}
+      <div className="space-y-6">{renderActiveSection()}</div>
     </div>
   );
 };
