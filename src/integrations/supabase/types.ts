@@ -524,41 +524,56 @@ export type Database = {
       }
       commission_plans: {
         Row: {
-          commission_type: Database["public"]["Enums"]["commission_type"]
+          base_rate: number | null
+          commission_type: string
           created_at: string | null
           created_by: string | null
           id: string
           include_overhead: boolean | null
           is_active: boolean | null
           name: string
+          overhead_included: boolean | null
           payment_method: string | null
           plan_config: Json
+          structure_type:
+            | Database["public"]["Enums"]["commission_structure_type"]
+            | null
           tenant_id: string | null
           updated_at: string | null
         }
         Insert: {
-          commission_type: Database["public"]["Enums"]["commission_type"]
+          base_rate?: number | null
+          commission_type: string
           created_at?: string | null
           created_by?: string | null
           id?: string
           include_overhead?: boolean | null
           is_active?: boolean | null
           name: string
+          overhead_included?: boolean | null
           payment_method?: string | null
           plan_config: Json
+          structure_type?:
+            | Database["public"]["Enums"]["commission_structure_type"]
+            | null
           tenant_id?: string | null
           updated_at?: string | null
         }
         Update: {
-          commission_type?: Database["public"]["Enums"]["commission_type"]
+          base_rate?: number | null
+          commission_type?: string
           created_at?: string | null
           created_by?: string | null
           id?: string
           include_overhead?: boolean | null
           is_active?: boolean | null
           name?: string
+          overhead_included?: boolean | null
           payment_method?: string | null
           plan_config?: Json
+          structure_type?:
+            | Database["public"]["Enums"]["commission_structure_type"]
+            | null
           tenant_id?: string | null
           updated_at?: string | null
         }
@@ -4019,6 +4034,8 @@ export type Database = {
       profiles: {
         Row: {
           avatar_url: string | null
+          commission_rate: number | null
+          commission_structure: string | null
           company_name: string | null
           created_at: string | null
           created_by_master: string | null
@@ -4032,6 +4049,9 @@ export type Database = {
           last_name: string | null
           location_updated_at: string | null
           metadata: Json | null
+          overhead_rate: number | null
+          pay_structure_created_at: string | null
+          pay_structure_created_by: string | null
           pay_structure_display: Json | null
           personal_overhead_rate: number | null
           phone: string | null
@@ -4043,6 +4063,8 @@ export type Database = {
         }
         Insert: {
           avatar_url?: string | null
+          commission_rate?: number | null
+          commission_structure?: string | null
           company_name?: string | null
           created_at?: string | null
           created_by_master?: string | null
@@ -4056,6 +4078,9 @@ export type Database = {
           last_name?: string | null
           location_updated_at?: string | null
           metadata?: Json | null
+          overhead_rate?: number | null
+          pay_structure_created_at?: string | null
+          pay_structure_created_by?: string | null
           pay_structure_display?: Json | null
           personal_overhead_rate?: number | null
           phone?: string | null
@@ -4067,6 +4092,8 @@ export type Database = {
         }
         Update: {
           avatar_url?: string | null
+          commission_rate?: number | null
+          commission_structure?: string | null
           company_name?: string | null
           created_at?: string | null
           created_by_master?: string | null
@@ -4080,6 +4107,9 @@ export type Database = {
           last_name?: string | null
           location_updated_at?: string | null
           metadata?: Json | null
+          overhead_rate?: number | null
+          pay_structure_created_at?: string | null
+          pay_structure_created_by?: string | null
           pay_structure_display?: Json | null
           personal_overhead_rate?: number | null
           phone?: string | null
@@ -5939,6 +5969,60 @@ export type Database = {
         }
         Relationships: []
       }
+      user_commission_assignments: {
+        Row: {
+          assigned_at: string | null
+          assigned_by: string | null
+          commission_plan_id: string
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          notes: string | null
+          tenant_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          assigned_at?: string | null
+          assigned_by?: string | null
+          commission_plan_id: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          notes?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          assigned_at?: string | null
+          assigned_by?: string | null
+          commission_plan_id?: string
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          notes?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_commission_assignments_commission_plan_id_fkey"
+            columns: ["commission_plan_id"]
+            isOneToOne: false
+            referencedRelation: "commission_plans"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_commission_assignments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_commission_plans: {
         Row: {
           commission_plan_id: string | null
@@ -6313,6 +6397,10 @@ export type Database = {
         Args: { estimate_id_param: string }
         Returns: Json
       }
+      calculate_enhanced_rep_commission: {
+        Args: { project_id_param: string; sales_rep_id_param: string }
+        Returns: Json
+      }
       calculate_lead_score: {
         Args: { contact_data: Json; tenant_id_param: string }
         Returns: number
@@ -6393,6 +6481,11 @@ export type Database = {
     }
     Enums: {
       app_role: "master" | "admin" | "manager" | "rep" | "user"
+      commission_structure_type:
+        | "profit_split"
+        | "sales_percentage"
+        | "tiered"
+        | "flat_rate"
       commission_type:
         | "gross_percent"
         | "net_percent"
@@ -6591,6 +6684,12 @@ export const Constants = {
   public: {
     Enums: {
       app_role: ["master", "admin", "manager", "rep", "user"],
+      commission_structure_type: [
+        "profit_split",
+        "sales_percentage",
+        "tiered",
+        "flat_rate",
+      ],
       commission_type: [
         "gross_percent",
         "net_percent",

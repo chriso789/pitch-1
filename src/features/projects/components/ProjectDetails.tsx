@@ -97,10 +97,10 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
       setProject(projectResult.data);
       setBudgetItems(budgetItemsResult.data || []);
 
-      // Calculate commission if there's a sales rep
+      // Calculate commission if there's a sales rep using enhanced function
       const salesRep = projectResult.data?.pipeline_entries?.profiles;
       if (salesRep) {
-        const { data: commissionData } = await supabase.rpc('calculate_rep_commission', {
+        const { data: commissionData } = await supabase.rpc('calculate_enhanced_rep_commission', {
           project_id_param: projectId,
           sales_rep_id_param: salesRep.id
         });
@@ -137,7 +137,9 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
   const totalActualCosts = budgetItems.reduce((sum: number, item: BudgetItem) => sum + Number(item.actual_total_cost), 0);
   const budgetVariance = totalActualCosts - totalBudgetedCosts;
   const budgetVariancePercent = totalBudgetedCosts > 0 ? (budgetVariance / totalBudgetedCosts) * 100 : 0;
-  const profitLoss = estimate ? Number(estimate.selling_price) - totalCosts - totalActualCosts : 0;
+  const grossProfit = estimate ? Number(estimate.selling_price) - totalCosts - totalActualCosts : 0;
+  const netProfit = commission ? commission.net_profit || 0 : grossProfit;
+  const companyProfit = commission ? commission.company_profit || 0 : grossProfit;
 
   return (
     <div className="space-y-6">
@@ -159,7 +161,7 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
       </div>
 
       {/* Quick Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-6 gap-4">
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
@@ -189,12 +191,27 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
         <Card>
           <CardContent className="p-4">
             <div className="flex items-center gap-2">
-              <DollarSign className={`h-4 w-4 ${profitLoss >= 0 ? 'text-success' : 'text-destructive'}`} />
+              <DollarSign className={`h-4 w-4 ${grossProfit >= 0 ? 'text-success' : 'text-destructive'}`} />
               <div>
-                <p className="text-sm text-muted-foreground">Profit/Loss</p>
-                <p className={`text-lg font-bold ${profitLoss >= 0 ? 'text-success' : 'text-destructive'}`}>
-                  ${profitLoss.toLocaleString()}
+                <p className="text-sm text-muted-foreground">Gross Profit</p>
+                <p className={`text-lg font-bold ${grossProfit >= 0 ? 'text-success' : 'text-destructive'}`}>
+                  ${grossProfit.toLocaleString()}
                 </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
+        <Card>
+          <CardContent className="p-4">
+            <div className="flex items-center gap-2">
+              <DollarSign className={`h-4 w-4 ${netProfit >= 0 ? 'text-success' : 'text-destructive'}`} />
+              <div>
+                <p className="text-sm text-muted-foreground">Net Profit</p>
+                <p className={`text-lg font-bold ${netProfit >= 0 ? 'text-success' : 'text-destructive'}`}>
+                  ${netProfit.toLocaleString()}
+                </p>
+                <p className="text-xs text-muted-foreground">After overhead</p>
               </div>
             </div>
           </CardContent>
@@ -402,7 +419,11 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
                           <span>${commission.total_costs?.toLocaleString() || 0}</span>
                         </div>
                         <div className="flex justify-between">
-                          <span className="text-muted-foreground">Rep Overhead:</span>
+                          <span className="text-muted-foreground">Gross Profit:</span>
+                          <span>${commission.gross_profit?.toLocaleString() || 0}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Rep Overhead ({commission.rep_overhead_rate}%):</span>
                           <span>${commission.rep_overhead?.toLocaleString() || 0}</span>
                         </div>
                         <div className="flex justify-between">
@@ -411,9 +432,15 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
                         </div>
                         <hr />
                         <div className="flex justify-between font-semibold">
-                          <span>Commission ({commission.commission_rate}%):</span>
-                          <span className="text-success">
+                          <span>Rep Commission ({commission.commission_rate}%):</span>
+                          <span className="text-success text-lg">
                             ${commission.commission_amount?.toLocaleString() || 0}
+                          </span>
+                        </div>
+                        <div className="flex justify-between font-semibold">
+                          <span>Company Profit:</span>
+                          <span className="text-primary">
+                            ${commission.company_profit?.toLocaleString() || 0}
                           </span>
                         </div>
                       </div>
@@ -422,10 +449,13 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
                   
                   <div className="mt-6 p-4 bg-muted/30 rounded-lg">
                     <h4 className="font-medium mb-2">Commission Summary</h4>
-                    <p className="text-sm text-muted-foreground">
-                      Based on the {commission.payment_method === 'commission_after_costs' ? 'commission after costs' : 'percentage of selling price'} method,
-                      the representative will earn <strong>${commission.commission_amount?.toLocaleString() || 0}</strong> in commission for this project.
+                    <p className="text-sm text-muted-foreground mb-2">
+                      {commission.calculation_details?.structure_explanation}
                     </p>
+                    <div className="flex justify-between items-center text-sm">
+                      <span>Profit Margin:</span>
+                      <span className="font-medium">{commission.profit_margin_percent?.toFixed(1)}%</span>
+                    </div>
                   </div>
                 </div>
               ) : (

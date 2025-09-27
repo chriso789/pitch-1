@@ -14,6 +14,7 @@ import { useToast } from "@/hooks/use-toast";
 import FeaturePermissions from './FeaturePermissions';
 import { EnhancedUserProfile } from './EnhancedUserProfile';
 import { UserLocationAssignments } from './UserLocationAssignments';
+import { RepPayStructureConfig } from './RepPayStructureConfig';
 
 interface User {
   id: string;
@@ -42,6 +43,12 @@ export const UserManagement = () => {
     company_name: "",
     title: "",
     is_developer: false
+  });
+
+  const [payStructure, setPayStructure] = useState({
+    overhead_rate: 5,
+    commission_structure: 'profit_split' as 'profit_split' | 'sales_percentage',
+    commission_rate: 50
   });
   const { toast } = useToast();
 
@@ -110,20 +117,31 @@ export const UserManagement = () => {
       }
 
       if (data.user) {
-        // Create the user profile
+        // Create the user profile with pay structure for sales reps
+        const profileData: any = {
+          id: data.user.id,
+          email: newUser.email,
+          first_name: newUser.first_name,
+          last_name: newUser.last_name,
+          role: newUser.role as any,
+          company_name: newUser.company_name,
+          title: newUser.title,
+          is_developer: newUser.is_developer,
+          tenant_id: currentUser?.tenant_id
+        };
+
+        // Add pay structure for sales reps/managers
+        if (['admin', 'manager'].includes(newUser.role)) {
+          profileData.overhead_rate = payStructure.overhead_rate;
+          profileData.commission_structure = payStructure.commission_structure;
+          profileData.commission_rate = payStructure.commission_rate;
+          profileData.pay_structure_created_by = currentUser?.id;
+          profileData.pay_structure_created_at = new Date().toISOString();
+        }
+
         const { error: profileError } = await supabase
           .from('profiles')
-          .insert({
-            id: data.user.id,
-            email: newUser.email,
-            first_name: newUser.first_name,
-            last_name: newUser.last_name,
-            role: newUser.role as any,
-            company_name: newUser.company_name,
-            title: newUser.title,
-            is_developer: newUser.is_developer,
-            tenant_id: currentUser?.tenant_id
-          });
+          .insert(profileData);
 
         if (profileError) throw profileError;
 
@@ -171,6 +189,12 @@ export const UserManagement = () => {
           company_name: "",
           title: "",
           is_developer: false
+        });
+        
+        setPayStructure({
+          overhead_rate: 5,
+          commission_structure: 'profit_split',
+          commission_rate: 50
         });
         loadUsers();
       }
@@ -273,7 +297,7 @@ export const UserManagement = () => {
                     Add User
                   </Button>
                 </DialogTrigger>
-                <DialogContent className="sm:max-w-md">
+                <DialogContent className="sm:max-w-2xl max-h-[90vh] overflow-y-auto">
                   <DialogHeader>
                     <DialogTitle>Add New User</DialogTitle>
                   </DialogHeader>
@@ -317,7 +341,7 @@ export const UserManagement = () => {
                           <SelectContent>
                             <SelectItem value="user">User</SelectItem>
                             <SelectItem value="manager">Manager</SelectItem>
-                            <SelectItem value="admin">Admin</SelectItem>
+                            <SelectItem value="admin">Sales Rep</SelectItem>
                             {currentUser?.role === 'master' && <SelectItem value="master">Master</SelectItem>}
                           </SelectContent>
                         </Select>
@@ -355,6 +379,15 @@ export const UserManagement = () => {
                           Developer Access
                         </Label>
                       </div>
+                    )}
+
+                    {/* Pay Structure Configuration for Sales Reps */}
+                    {['admin', 'manager'].includes(newUser.role) && (
+                      <RepPayStructureConfig
+                        role={newUser.role}
+                        onChange={setPayStructure}
+                        currentUser={currentUser}
+                      />
                     )}
 
                     <Button onClick={createUser} className="w-full">

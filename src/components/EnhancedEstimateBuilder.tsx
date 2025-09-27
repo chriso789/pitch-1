@@ -9,6 +9,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Calculator, Plus, Trash2, FileText, DollarSign } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import { ProfitBreakdownDisplay } from './ProfitBreakdownDisplay';
 
 interface LineItem {
   item_category: string;
@@ -36,6 +37,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const [calculating, setCalculating] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [salesReps, setSalesReps] = useState([]);
+  const [selectedSalesRep, setSelectedSalesRep] = useState<any>(null);
   
   const [propertyDetails, setPropertyDetails] = useState({
     roof_area_sq_ft: 0,
@@ -94,8 +96,8 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, first_name, last_name')
-        .eq('role', 'admin')  // Fix: use 'admin' instead of 'sales_rep'
+        .select('id, first_name, last_name, overhead_rate, commission_structure, commission_rate')
+        .in('role', ['admin', 'manager'])  // Include both sales reps and managers
         .eq('is_active', true)
         .order('first_name');
 
@@ -476,7 +478,11 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 
               <div className="space-y-2">
                 <Label htmlFor="sales_rep">Sales Representative</Label>
-                <Select value={salesRepId} onValueChange={setSalesRepId}>
+                <Select value={salesRepId} onValueChange={(value) => {
+                  setSalesRepId(value);
+                  const rep = salesReps.find((r: any) => r.id === value);
+                  setSelectedSalesRep(rep);
+                }}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select sales rep (optional)" />
                   </SelectTrigger>
@@ -484,6 +490,11 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                     {salesReps.map((rep: any) => (
                       <SelectItem key={rep.id} value={rep.id}>
                         {rep.first_name} {rep.last_name}
+                        {rep.commission_structure && (
+                          <span className="text-xs text-muted-foreground ml-2">
+                            ({rep.commission_structure === 'profit_split' ? 'Profit Split' : 'Sales %'} - {rep.commission_rate}%)
+                          </span>
+                        )}
                       </SelectItem>
                     ))}
                   </SelectContent>
