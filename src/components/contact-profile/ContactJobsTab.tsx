@@ -130,35 +130,31 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
       // Fetch actual jobs for this contact
       const { data: actualJobs, error: jobsError } = await supabase
         .from('jobs')
-        .select(`
-          *,
-          projects (
-            name,
-            status,
-            estimated_completion_date
-          )
-        `)
+        .select('*')
         .eq('contact_id', contact.id);
 
       if (jobsError) throw jobsError;
 
       // Transform pipeline entries to unified job items
-      const pipelineJobItems: UnifiedJobItem[] = (allPipelineEntries || []).map(entry => ({
-        id: entry.id,
-        type: 'pipeline' as const,
-        name: `${entry.contacts?.first_name || 'Unknown'} ${entry.contacts?.last_name || 'Customer'} - ${entry.roof_type || 'Roofing'} Lead`,
-        status: mapPipelineStatusToJobStatus(entry.status),
-        description: `${entry.roof_type || 'Roofing'} project${entry.estimated_value ? ` - Est. $${entry.estimated_value.toLocaleString()}` : ''}`,
-        created_at: entry.created_at,
-        updated_at: entry.updated_at,
-        estimated_value: entry.estimated_value,
-        probability_percent: entry.probability_percent,
-        roof_type: entry.roof_type,
-        pipeline_entry_id: entry.id,
-        projectId: entry.projects?.[0]?.id || null,
-        projectNumber: entry.projects?.[0]?.project_number || null,
-        originalStatus: entry.status
-      }));
+      const pipelineJobItems: UnifiedJobItem[] = (allPipelineEntries || []).map(entry => {
+        console.log('Pipeline entry:', entry.id, 'Status:', entry.status, 'Projects:', entry.projects);
+        return {
+          id: entry.id,
+          type: 'pipeline' as const,
+          name: `${entry.contacts?.first_name || 'Unknown'} ${entry.contacts?.last_name || 'Customer'} - ${entry.roof_type || 'Roofing'} Lead`,
+          status: mapPipelineStatusToJobStatus(entry.status),
+          description: `${entry.roof_type || 'Roofing'} project${entry.estimated_value ? ` - Est. $${entry.estimated_value.toLocaleString()}` : ''}`,
+          created_at: entry.created_at,
+          updated_at: entry.updated_at,
+          estimated_value: entry.estimated_value,
+          probability_percent: entry.probability_percent,
+          roof_type: entry.roof_type,
+          pipeline_entry_id: entry.id,
+          projectId: entry.projects?.[0]?.id || null,
+          projectNumber: entry.projects?.[0]?.project_number || null,
+          originalStatus: entry.status
+        };
+      });
 
       // Transform actual jobs to unified job items
       const actualJobItems: UnifiedJobItem[] = (actualJobs || []).map(job => ({
@@ -170,7 +166,7 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
         created_at: job.created_at,
         updated_at: job.updated_at,
         job_number: job.job_number,
-        project: job.projects
+        project: null // Remove projects reference for now
       }));
 
       // Combine both arrays with pipeline entries first (most recent first)
@@ -495,15 +491,19 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
                           variant="outline" 
                           className={job.type === 'pipeline' && nextAction ? "px-3" : "flex-1"}
                           onClick={() => {
+                            console.log('View button clicked for job:', job.type, 'projectId:', job.projectId, 'originalStatus:', job.originalStatus);
                             if (job.type === 'pipeline') {
-                              // If pipeline entry has associated project and status indicates it's a project
-                              if (job.projectId && (job.originalStatus === 'project' || job.originalStatus === 'active_project')) {
+                              // If pipeline entry has associated project, go to project details
+                              if (job.projectId) {
+                                console.log('Navigating to project:', job.projectId);
                                 navigate(`/project/${job.projectId}`);
                               } else {
+                                console.log('Navigating to lead:', job.pipeline_entry_id);
                                 navigate(`/lead/${job.pipeline_entry_id}`);
                               }
                             } else {
                               // For actual jobs, navigate to job details for now
+                              console.log('Navigating to job:', job.id);
                               navigate(`/job/${job.id}`);
                             }
                           }}
