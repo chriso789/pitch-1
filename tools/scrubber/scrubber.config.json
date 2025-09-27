@@ -1,0 +1,18 @@
+{
+  "startUrl": "http://localhost:8080",
+  "allowedHostPattern": "^http://localhost:8080",
+  "maxDepth": 2,
+  "dryRun": true,
+  "blockMethods": ["POST", "PUT", "PATCH", "DELETE"],
+  "clickTimeoutMs": 1500,
+  "serviceWorkers": "block",
+  "globRoots": ["../.."],
+  "sourceGlobs": [
+    "**/*.{ts,tsx,js,jsx}",
+    "!node_modules/**",
+    "!**/*.d.ts"
+  ],
+  "nextAppApiRoots": ["../../supabase/functions"],
+  "nextPagesApiRoots": [],
+  "reportOutDir": "./out"
+}
