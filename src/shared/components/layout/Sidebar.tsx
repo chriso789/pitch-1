@@ -142,18 +142,6 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
       description: "Contacts & jobs unified"
     },
     {
-      name: "Estimates",
-      href: "estimates",
-      icon: FileText,
-      description: "Pricing & proposals"
-    },
-    {
-      name: "Projects",
-      href: "projects",
-      icon: Wrench,
-      description: "Project management"
-    },
-    {
       name: "Production",
       href: "production",
       icon: Wrench,
