@@ -14,6 +14,156 @@ export type Database = {
   }
   public: {
     Tables: {
+      agreement_instances: {
+        Row: {
+          completed_at: string | null
+          contact_id: string | null
+          created_at: string | null
+          crm_object_id: string | null
+          crm_object_type: string | null
+          email_subject: string | null
+          envelope_custom_fields: Json | null
+          envelope_id: string | null
+          id: string
+          metadata: Json | null
+          pipeline_entry_id: string | null
+          project_id: string | null
+          sender_user_id: string | null
+          sent_at: string | null
+          status: string
+          template_slug: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          crm_object_id?: string | null
+          crm_object_type?: string | null
+          email_subject?: string | null
+          envelope_custom_fields?: Json | null
+          envelope_id?: string | null
+          id?: string
+          metadata?: Json | null
+          pipeline_entry_id?: string | null
+          project_id?: string | null
+          sender_user_id?: string | null
+          sent_at?: string | null
+          status?: string
+          template_slug: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          crm_object_id?: string | null
+          crm_object_type?: string | null
+          email_subject?: string | null
+          envelope_custom_fields?: Json | null
+          envelope_id?: string | null
+          id?: string
+          metadata?: Json | null
+          pipeline_entry_id?: string | null
+          project_id?: string | null
+          sender_user_id?: string | null
+          sent_at?: string | null
+          status?: string
+          template_slug?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agreement_instances_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agreement_instances_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "agreement_instances_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      agreement_templates: {
+        Row: {
+          anchor_tag_strategy: Json | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          docgen_enabled: boolean | null
+          docusign_template_id: string
+          id: string
+          is_active: boolean | null
+          metadata: Json | null
+          name: string
+          recipient_roles: Json | null
+          routing_order: number | null
+          slug: string
+          smart_doc_id: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          anchor_tag_strategy?: Json | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          docgen_enabled?: boolean | null
+          docusign_template_id: string
+          id?: string
+          is_active?: boolean | null
+          metadata?: Json | null
+          name: string
+          recipient_roles?: Json | null
+          routing_order?: number | null
+          slug: string
+          smart_doc_id?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          anchor_tag_strategy?: Json | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          docgen_enabled?: boolean | null
+          docusign_template_id?: string
+          id?: string
+          is_active?: boolean | null
+          metadata?: Json | null
+          name?: string
+          recipient_roles?: Json | null
+          routing_order?: number | null
+          slug?: string
+          smart_doc_id?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agreement_templates_smart_doc_id_fkey"
+            columns: ["smart_doc_id"]
+            isOneToOne: false
+            referencedRelation: "smart_docs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_insights: {
         Row: {
           action_taken: Json | null
@@ -1276,59 +1426,116 @@ export type Database = {
         }
         Relationships: []
       }
+      docgen_fields: {
+        Row: {
+          agreement_instance_id: string
+          created_at: string | null
+          field_key: string
+          id: string
+          tenant_id: string
+          updated_at: string | null
+          value: string | null
+        }
+        Insert: {
+          agreement_instance_id: string
+          created_at?: string | null
+          field_key: string
+          id?: string
+          tenant_id: string
+          updated_at?: string | null
+          value?: string | null
+        }
+        Update: {
+          agreement_instance_id?: string
+          created_at?: string | null
+          field_key?: string
+          id?: string
+          tenant_id?: string
+          updated_at?: string | null
+          value?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "docgen_fields_agreement_instance_id_fkey"
+            columns: ["agreement_instance_id"]
+            isOneToOne: false
+            referencedRelation: "agreement_instances"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
+          agreement_instance_id: string | null
           contact_id: string | null
           created_at: string | null
           description: string | null
           document_type: string | null
+          docusign_document_id: string | null
           file_path: string
           file_size: number | null
           filename: string
           id: string
+          is_signed_pdf: boolean | null
           is_visible_to_homeowner: boolean | null
           mime_type: string | null
           pipeline_entry_id: string | null
           project_id: string | null
+          sha256_hash: string | null
           tenant_id: string | null
           updated_at: string | null
           uploaded_by: string | null
         }
         Insert: {
+          agreement_instance_id?: string | null
           contact_id?: string | null
           created_at?: string | null
           description?: string | null
           document_type?: string | null
+          docusign_document_id?: string | null
           file_path: string
           file_size?: number | null
           filename: string
           id?: string
+          is_signed_pdf?: boolean | null
           is_visible_to_homeowner?: boolean | null
           mime_type?: string | null
           pipeline_entry_id?: string | null
           project_id?: string | null
+          sha256_hash?: string | null
           tenant_id?: string | null
           updated_at?: string | null
           uploaded_by?: string | null
         }
         Update: {
+          agreement_instance_id?: string | null
           contact_id?: string | null
           created_at?: string | null
           description?: string | null
           document_type?: string | null
+          docusign_document_id?: string | null
           file_path?: string
           file_size?: number | null
           filename?: string
           id?: string
+          is_signed_pdf?: boolean | null
           is_visible_to_homeowner?: boolean | null
           mime_type?: string | null
           pipeline_entry_id?: string | null
           project_id?: string | null
+          sha256_hash?: string | null
           tenant_id?: string | null
           updated_at?: string | null
           uploaded_by?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "documents_agreement_instance_id_fkey"
+            columns: ["agreement_instance_id"]
+            isOneToOne: false
+            referencedRelation: "agreement_instances"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "documents_contact_id_fkey"
             columns: ["contact_id"]
@@ -1362,6 +1569,95 @@ export type Database = {
             columns: ["uploaded_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      docusign_accounts: {
+        Row: {
+          account_id: string | null
+          base_uri: string | null
+          brand_id: string | null
+          created_at: string | null
+          hmac_secret_id: string | null
+          id: string
+          integration_key: string
+          is_active: boolean | null
+          is_demo: boolean | null
+          rsa_private_key_id: string
+          tenant_id: string
+          updated_at: string | null
+          user_guid: string
+        }
+        Insert: {
+          account_id?: string | null
+          base_uri?: string | null
+          brand_id?: string | null
+          created_at?: string | null
+          hmac_secret_id?: string | null
+          id?: string
+          integration_key: string
+          is_active?: boolean | null
+          is_demo?: boolean | null
+          rsa_private_key_id: string
+          tenant_id: string
+          updated_at?: string | null
+          user_guid: string
+        }
+        Update: {
+          account_id?: string | null
+          base_uri?: string | null
+          brand_id?: string | null
+          created_at?: string | null
+          hmac_secret_id?: string | null
+          id?: string
+          integration_key?: string
+          is_active?: boolean | null
+          is_demo?: boolean | null
+          rsa_private_key_id?: string
+          tenant_id?: string
+          updated_at?: string | null
+          user_guid?: string
+        }
+        Relationships: []
+      }
+      docusign_events: {
+        Row: {
+          agreement_instance_id: string | null
+          created_at: string | null
+          envelope_id: string | null
+          event_type: string
+          id: string
+          payload_json: Json
+          processed_at: string | null
+          tenant_id: string
+        }
+        Insert: {
+          agreement_instance_id?: string | null
+          created_at?: string | null
+          envelope_id?: string | null
+          event_type: string
+          id?: string
+          payload_json: Json
+          processed_at?: string | null
+          tenant_id: string
+        }
+        Update: {
+          agreement_instance_id?: string | null
+          created_at?: string | null
+          envelope_id?: string | null
+          event_type?: string
+          id?: string
+          payload_json?: Json
+          processed_at?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "docusign_events_agreement_instance_id_fkey"
+            columns: ["agreement_instance_id"]
+            isOneToOne: false
+            referencedRelation: "agreement_instances"
             referencedColumns: ["id"]
           },
         ]
@@ -5221,6 +5517,65 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      recipients: {
+        Row: {
+          agreement_instance_id: string
+          auth_type: string | null
+          client_user_id: string | null
+          created_at: string | null
+          email: string
+          id: string
+          name: string
+          recipient_id: string | null
+          role: string
+          routing_order: number | null
+          signed_at: string | null
+          status: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          agreement_instance_id: string
+          auth_type?: string | null
+          client_user_id?: string | null
+          created_at?: string | null
+          email: string
+          id?: string
+          name: string
+          recipient_id?: string | null
+          role: string
+          routing_order?: number | null
+          signed_at?: string | null
+          status?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          agreement_instance_id?: string
+          auth_type?: string | null
+          client_user_id?: string | null
+          created_at?: string | null
+          email?: string
+          id?: string
+          name?: string
+          recipient_id?: string | null
+          role?: string
+          routing_order?: number | null
+          signed_at?: string | null
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "recipients_agreement_instance_id_fkey"
+            columns: ["agreement_instance_id"]
+            isOneToOne: false
+            referencedRelation: "agreement_instances"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       rep_overhead_rules: {
         Row: {
