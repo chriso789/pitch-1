@@ -132,10 +132,19 @@ Deno.serve(async (req) => {
         // Call vendor APIs to refresh pricing
         const refreshPromises = []
 
-        // Refresh QXO pricing if available
-        if (!vendors || vendors.includes('QXO')) {
+        // Refresh ABC pricing if available
+        if (!vendors || vendors.includes('ABC')) {
           refreshPromises.push(
-            supabase.functions.invoke('qxo-pricing', {
+            supabase.functions.invoke('abc-pricing', {
+              body: { skus: targetSkus, branch, refresh: true }
+            })
+          )
+        }
+
+        // Refresh SRS pricing if available
+        if (!vendors || vendors.includes('SRS')) {
+          refreshPromises.push(
+            supabase.functions.invoke('srs-pricing', {
               body: { skus: targetSkus, branch, refresh: true }
             })
           )
