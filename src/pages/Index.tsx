@@ -35,15 +35,45 @@ const Index = () => {
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState("dashboard");
+  const [dialerContact, setDialerContact] = useState<any>(null);
+  const [loadingContact, setLoadingContact] = useState(false);
 
   // Handle URL parameters for section and contact routing
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
     const section = urlParams.get('section');
+    const contactId = urlParams.get('contact');
+    
     if (section) {
       setActiveSection(section);
     }
+    
+    if (contactId && section === 'dialer') {
+      fetchContactForDialer(contactId);
+    }
   }, []);
+
+  // Fetch contact data for dialer
+  const fetchContactForDialer = async (contactId: string) => {
+    setLoadingContact(true);
+    try {
+      const { data, error } = await supabase
+        .from('contacts')
+        .select('*')
+        .eq('id', contactId)
+        .single();
+        
+      if (!error && data) {
+        setDialerContact(data);
+      } else {
+        console.error('Error fetching contact:', error);
+      }
+    } catch (error) {
+      console.error('Error fetching contact:', error);
+    } finally {
+      setLoadingContact(false);
+    }
+  };
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showWalkthrough, setShowWalkthrough] = useState(false);
   const { requestLocationPermission } = useLocationPermission();
@@ -225,7 +255,7 @@ const Index = () => {
       case "calendar":
         return <JobCalendar />;
       case "dialer":
-        return <Dialer />;
+        return <Dialer preloadedContact={dialerContact} isLoadingContact={loadingContact} />;
       case "smartdocs":
         return <SmartDocs />;
       case "settings":
