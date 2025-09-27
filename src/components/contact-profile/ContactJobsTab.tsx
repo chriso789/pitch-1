@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { LeadCreationDialog } from "@/components/LeadCreationDialog";
 import { PipelineToJobConverter } from "@/components/PipelineToJobConverter";
 import { 
@@ -16,7 +17,8 @@ import {
   TrendingUp,
   FileText,
   CheckCircle,
-  ArrowRight
+  ArrowRight,
+  Trash2
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -190,6 +192,33 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
     fetchUnifiedJobs(); // Refresh jobs list
   };
 
+  const handleDeleteJob = async (job: UnifiedJobItem) => {
+    if (job.type !== 'pipeline') return;
+    
+    try {
+      const { error } = await supabase
+        .from('pipeline_entries')
+        .delete()
+        .eq('id', job.pipeline_entry_id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Lead Deleted",
+        description: "Lead has been successfully deleted.",
+      });
+      
+      fetchUnifiedJobs(); // Refresh jobs list
+    } catch (error) {
+      console.error('Error deleting lead:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete lead. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
   const getStatusColor = (status: string, type: 'pipeline' | 'job') => {
     if (type === 'pipeline') {
       // Pipeline entry status colors
@@ -347,12 +376,12 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
               {unifiedJobs.map((job) => {
                 const nextAction = getNextStageAction(job);
                 return (
-                  <div key={job.id} className="border rounded-lg p-4 hover:shadow-soft transition-smooth">
+                  <div key={job.id} className="border rounded-lg p-4 hover:shadow-soft transition-smooth relative">
                     <div className="space-y-3">
                       <div className="flex items-start justify-between gap-2">
-                        <div className="flex-1">
-                          <h3 className="font-semibold text-sm leading-tight">{job.name}</h3>
-                          <div className="flex items-center gap-2 mt-1">
+                        <div className="flex-1 min-w-0 pr-2">
+                          <h3 className="font-semibold text-sm leading-tight truncate max-w-full">{job.name}</h3>
+                          <div className="flex items-center gap-2 mt-1 flex-wrap">
                             <Badge 
                               variant={job.type === 'pipeline' ? 'secondary' : 'outline'} 
                               className="text-xs"
@@ -366,6 +395,36 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
                             )}
                           </div>
                         </div>
+                        {job.type === 'pipeline' && (
+                          <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-8 w-8 p-0 hover:bg-destructive/10 hover:text-destructive absolute top-2 right-2"
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                              <AlertDialogHeader>
+                                <AlertDialogTitle>Delete Lead</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                  Are you sure you want to delete this lead? This action cannot be undone.
+                                </AlertDialogDescription>
+                              </AlertDialogHeader>
+                              <AlertDialogFooter>
+                                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                                  onClick={() => handleDeleteJob(job)}
+                                >
+                                  Delete
+                                </AlertDialogAction>
+                              </AlertDialogFooter>
+                            </AlertDialogContent>
+                          </AlertDialog>
+                        )}
                       </div>
                       
                       <Badge className={`text-xs ${getStatusColor(job.status, job.type)} w-fit`}>
@@ -373,7 +432,7 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
                       </Badge>
                       
                       {job.description && (
-                        <p className="text-sm text-muted-foreground line-clamp-2">{job.description}</p>
+                        <p className="text-sm text-muted-foreground line-clamp-2 break-words pr-8">{job.description}</p>
                       )}
 
                       {job.type === 'pipeline' && (
@@ -393,15 +452,15 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
                         </div>
                       )}
                       
-                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                      <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-4 text-xs text-muted-foreground pr-8">
                         <div className="flex items-center gap-1">
-                          <Calendar className="h-3 w-3" />
-                          Created: {new Date(job.created_at).toLocaleDateString()}
+                          <Calendar className="h-3 w-3 flex-shrink-0" />
+                          <span className="truncate">Created: {new Date(job.created_at).toLocaleDateString()}</span>
                         </div>
                         {job.updated_at !== job.created_at && (
                           <div className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" />
-                            Updated: {new Date(job.updated_at).toLocaleDateString()}
+                            <Clock className="h-3 w-3 flex-shrink-0" />
+                            <span className="truncate">Updated: {new Date(job.updated_at).toLocaleDateString()}</span>
                           </div>
                         )}
                       </div>
