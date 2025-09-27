@@ -1,0 +1,127 @@
+openapi: 3.0.3
+info:
+  title: Estimate API
+  description: API endpoints for estimate and template management
+  version: 1.0.0
+  
+servers:
+  - url: https://alxelfrbjzkmtnsulcei.supabase.co
+    description: Production Supabase instance
+
+paths:
+  /templates/{template_id}/items:
+    get:
+      summary: List template items (formula-driven)
+      description: Returns the active items for a template (manager-maintained mapping).
+      tags: [Templates]
+      x-supabase-rpc: api_template_items_get    # vendor extension to document backing RPC
+      parameters:
+        - in: path
+          name: template_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/TemplateItem" }
+
+  /estimates/{estimate_id}/items:
+    get:
+      summary: List computed estimate line items
+      description: Returns the latest computed materials line items for the estimate.
+      tags: [Pricing]
+      x-supabase-rpc: api_estimate_items_get
+      parameters:
+        - in: path
+          name: estimate_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/PricingLineItem" }
+
+  /estimates/{estimate_id}/hyperlink-bar:
+    get:
+      summary: Hyperlink Bar totals + gating flags
+      description: Returns section-by-section amounts for the hyperlink bar (Measurements, Materials, Labor, Overhead, Profit label, Total) plus readiness flags.
+      tags: [Pricing, Estimates]
+      x-supabase-rpc: api_estimate_hyperlink_bar
+      parameters:
+        - in: path
+          name: estimate_id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HyperlinkBarResponse" }
+
+components:
+  schemas:
+    TemplateItem:
+      type: object
+      properties:
+        id:           { type: string, format: uuid }
+        item_name:    { type: string }
+        unit:         { type: string }
+        waste_pct:    { type: number, format: double }
+        unit_cost:    { type: number, format: double }
+        qty_formula:  { type: string }
+        sort_order:   { type: integer }
+        active:       { type: boolean }
+
+    PricingLineItem:
+      type: object
+      properties:
+        template_item_id: { type: string, format: uuid }
+        item_name:        { type: string }
+        qty:              { type: number, format: double }
+        unit_cost:        { type: number, format: double }
+        line_total:       { type: number, format: double }
+
+    HyperlinkBarSection:
+      type: object
+      properties:
+        key:
+          type: string
+          enum: [measurements, materials, labor, overhead, profit, total]
+        label:      { type: string }
+        amount:     { type: number, format: double, nullable: true }
+        pending:    { type: boolean }
+        extra:
+          type: object
+          additionalProperties: true
+          description: Optional extras (e.g., squares, margin_pct, markup_pct, slider_disabled)
+
+    HyperlinkBarResponse:
+      type: object
+      properties:
+        estimate_id:           { type: string, format: uuid }
+        currency:              { type: string, example: USD }
+        ready:                 { type: boolean, description: "template AND measurements present" }
+        template_bound:        { type: boolean }
+        measurements_present:  { type: boolean }
+        squares:               { type: number, format: double, nullable: true }
+        materials:             { type: number, format: double }
+        labor:                 { type: number, format: double }
+        overhead:              { type: number, format: double }
+        cost_pre_profit:       { type: number, format: double }
+        mode:                  { type: string, enum: [margin, markup] }
+        margin_pct:            { type: number, format: double, nullable: true }
+        markup_pct:            { type: number, format: double, nullable: true }
+        sale_price:            { type: number, format: double }
+        profit:                { type: number, format: double }
+        sections:
+          type: array
+          items: { $ref: "#/components/schemas/HyperlinkBarSection" }

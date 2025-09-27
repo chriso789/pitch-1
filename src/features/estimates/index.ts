@@ -5,3 +5,4 @@ export { default as EstimatePreview } from './components/EstimatePreview';
 export { default as EstimateVersionControl } from './components/EstimateVersionControl';
 export { default as EstimateVersionHistory } from './components/EstimateVersionHistory';
 export { default as EstimateVersionDiff } from './components/EstimateVersionDiff';
+export { EstimateLineItems } from '../../components/estimates/EstimateLineItems';

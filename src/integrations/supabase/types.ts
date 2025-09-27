@@ -6694,9 +6694,36 @@ export type Database = {
           sale_price: number
         }[]
       }
+      api_estimate_hyperlink_bar: {
+        Args: { p_estimate_id: string }
+        Returns: Json
+      }
+      api_estimate_items_get: {
+        Args: { p_estimate_id: string }
+        Returns: {
+          item_name: string
+          line_total: number
+          qty: number
+          template_item_id: string
+          unit_cost: number
+        }[]
+      }
       api_estimate_measurements_upsert: {
         Args: { p_estimate_id: string; p_payload: Json }
         Returns: undefined
+      }
+      api_template_items_get: {
+        Args: { p_template_id: string }
+        Returns: {
+          active: boolean
+          id: string
+          item_name: string
+          qty_formula: string
+          sort_order: number
+          unit: string
+          unit_cost: number
+          waste_pct: number
+        }[]
       }
       api_template_items_upsert: {
         Args: { p_items: Json; p_template_id: string }

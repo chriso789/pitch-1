@@ -11,6 +11,30 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
+interface HyperlinkBarData {
+  estimate_id: string;
+  currency: string;
+  ready: boolean;
+  template_bound: boolean;
+  measurements_present: boolean;
+  squares: number;
+  materials: number;
+  labor: number;
+  overhead: number;
+  cost_pre_profit: number;
+  mode: string;
+  margin_pct: number;
+  sale_price: number;
+  profit: number;
+  sections: Array<{
+    key: string;
+    label: string;
+    amount: number;
+    pending: boolean;
+    extra?: any;
+  }>;
+}
+
 interface EstimateCalculations {
   measurements?: {
     roof_area_sq_ft: number;
@@ -41,39 +65,34 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
   calculations,
   className
 }) => {
-  const [costData, setCostData] = useState<any>(null);
+  const [hyperlinkData, setHyperlinkData] = useState<HyperlinkBarData | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  // Fetch current cost calculations from the new database system
+  // Fetch hyperlink bar data using the new RPC function
   useEffect(() => {
-    const fetchCostData = async () => {
-      if (!pipelineEntryId) return;
+    const fetchHyperlinkData = async () => {
+      if (!pipelineEntryId) {
+        setLoading(false);
+        return;
+      }
       
       try {
-        // Get estimate ID from pipeline entry
-        const { data: estimates } = await supabase
-          .from('estimates')
-          .select('id')
-          .eq('pipeline_entry_id', pipelineEntryId)
-          .maybeSingle();
+        const { data, error } = await supabase
+          .rpc('api_estimate_hyperlink_bar', { p_estimate_id: pipelineEntryId });
 
-        if (estimates?.id) {
-          // Fetch computed costs
-          const { data: costs } = await supabase
-            .from('estimate_costs')
-            .select('*')
-            .eq('estimate_id', estimates.id)
-            .maybeSingle();
+        if (error) throw error;
 
-          if (costs) {
-            setCostData(costs);
-          }
+        if (data) {
+          setHyperlinkData(data as unknown as HyperlinkBarData);
         }
       } catch (error) {
-        console.error('Error fetching cost data:', error);
+        console.error('Error fetching hyperlink data:', error);
+      } finally {
+        setLoading(false);
       }
     };
 
-    fetchCostData();
+    fetchHyperlinkData();
   }, [pipelineEntryId]);
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -89,34 +108,68 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     return `${squares.toFixed(1)} sq`;
   };
 
-  // Use either new cost data or fallback to passed calculations
-  const currentData = costData || calculations;
-  const isReady = !!(currentData?.materials && currentData?.labor);
+  // Use RPC data if available, otherwise fallback to passed calculations
+  const isReady = hyperlinkData?.ready || !!(calculations?.materials_cost && calculations?.labor_cost);
 
-  const links = [
+  const getIconForSection = (key: string) => {
+    switch (key) {
+      case 'overview': return FileText;
+      case 'measurements': return MapPin;
+      case 'materials': return Package;
+      case 'labor': return Hammer;
+      case 'overhead': return Settings;
+      case 'profit': return TrendingUp;
+      case 'total': return DollarSign;
+      default: return FileText;
+    }
+  };
+
+  // Use sections from RPC if available, otherwise build fallback
+  const links = hyperlinkData ? [
     {
       id: 'overview',
       label: 'Overview',
       icon: FileText,
-      value: currentData?.measurements?.roof_area_sq_ft 
-        ? formatSquares(currentData.measurements.roof_area_sq_ft)
+      value: formatSquares(hyperlinkData.squares),
+      hint: !hyperlinkData.measurements_present ? 'Set measurements' : null,
+      description: 'Project overview and details'
+    },
+    ...hyperlinkData.sections.map(section => ({
+      id: section.key,
+      label: section.label,
+      icon: getIconForSection(section.key),
+      value: section.key === 'measurements' 
+        ? (section.extra?.squares ? formatSquares(section.extra.squares) : '—')
+        : section.key === 'profit'
+          ? `${Math.round(hyperlinkData.margin_pct || 30)}%`
+          : formatCurrency(section.amount),
+      hint: section.pending ? 'Pending' : null,
+      description: getDescriptionForSection(section.key)
+    }))
+  ] : [
+    {
+      id: 'overview',
+      label: 'Overview',
+      icon: FileText,
+      value: calculations?.measurements?.roof_area_sq_ft 
+        ? formatSquares(calculations.measurements.roof_area_sq_ft)
         : '—',
-      hint: currentData?.measurements?.roof_area_sq_ft ? null : 'Set measurements',
+      hint: calculations?.measurements?.roof_area_sq_ft ? null : 'Set measurements',
       description: 'Project overview and details'
     },
     {
       id: 'measurements',
       label: 'Measurements',
       icon: MapPin,
-      value: currentData?.measurements?.has_template ? '✓ Mapped' : '—',
-      hint: !currentData?.measurements?.has_template ? 'Bind to template' : null,
+      value: calculations?.measurements?.has_template ? '✓ Mapped' : '—',
+      hint: !calculations?.measurements?.has_template ? 'Bind to template' : null,
       description: 'Roof measurements and template mapping'
     },
     {
       id: 'materials',
       label: 'Materials',
       icon: Package,
-      value: formatCurrency(currentData?.materials || 0),
+      value: formatCurrency(calculations?.materials_cost || 0),
       hint: !isReady ? 'Pending template' : null,
       description: 'Material costs and specifications'
     },
@@ -124,7 +177,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       id: 'labor',
       label: 'Labor',
       icon: Hammer,
-      value: formatCurrency(currentData?.labor || 0),
+      value: formatCurrency(calculations?.labor_cost || 0),
       hint: !isReady ? 'Pending template' : null,
       description: 'Labor costs per square'
     },
@@ -132,7 +185,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       id: 'overhead',
       label: 'Overhead',
       icon: Settings,
-      value: formatCurrency(currentData?.overhead || 0),
+      value: formatCurrency(calculations?.overhead_amount || 0),
       hint: !isReady ? 'Pending calculations' : null,
       description: 'Overhead and administrative costs'
     },
@@ -140,8 +193,8 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       id: 'profit',
       label: 'Profit',
       icon: TrendingUp,
-      value: currentData?.margin_pct 
-        ? `${Math.round(currentData.margin_pct * 100)}%` 
+      value: calculations?.margin_percent 
+        ? `${Math.round(calculations.margin_percent)}%` 
         : '30%',
       hint: !isReady ? 'Set after costs ready' : null,
       description: 'Target gross margin percentage'
@@ -150,11 +203,24 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       id: 'total',
       label: 'Total',
       icon: DollarSign,
-      value: formatCurrency(currentData?.sale_price || 0),
+      value: formatCurrency(calculations?.selling_price || 0),
       hint: !isReady ? 'Final price pending' : null,
       description: 'Final selling price with guaranteed margin'
     }
   ];
+
+  function getDescriptionForSection(key: string) {
+    switch (key) {
+      case 'overview': return 'Project overview and details';
+      case 'measurements': return 'Roof measurements and template mapping';
+      case 'materials': return 'Material costs and specifications';
+      case 'labor': return 'Labor costs per square';
+      case 'overhead': return 'Overhead and administrative costs';
+      case 'profit': return 'Target gross margin percentage';
+      case 'total': return 'Final selling price with guaranteed margin';
+      default: return '';
+    }
+  }
 
   return (
     <nav 
