@@ -156,6 +156,20 @@ function toast({ ...props }: Toast) {
     },
   });
 
+  // Track error toasts for error monitoring
+  if (props.variant === "destructive" && typeof window !== 'undefined') {
+    try {
+      const { errorTracker } = require('@/services/errorTrackingService');
+      errorTracker.trackToastError(
+        typeof props.title === 'string' ? props.title : 
+        typeof props.description === 'string' ? props.description : 
+        'Error toast displayed'
+      );
+    } catch (e) {
+      // Silently fail if error tracking is not available
+    }
+  }
+
   return {
     id: id,
     dismiss,

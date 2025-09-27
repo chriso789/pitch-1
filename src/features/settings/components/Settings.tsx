@@ -12,6 +12,7 @@ import { CommissionManagement } from "@/components/settings/CommissionManagement
 import SupplierManagement from "./SupplierManagement";
 import { default as VoiceInterface } from "@/features/communication/components/VoiceInterface";
 import ErrorReportsManager from "./ErrorReportsManager";
+import EnhancedErrorReportsManager from "./EnhancedErrorReportsManager";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Settings = () => {
@@ -142,7 +143,7 @@ export const Settings = () => {
 
 
         <TabsContent value="reports" className="space-y-6">
-          <ErrorReportsManager />
+          <EnhancedErrorReportsManager />
         </TabsContent>
 
         <TabsContent value="automations" className="space-y-6">

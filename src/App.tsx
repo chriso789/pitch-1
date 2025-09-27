@@ -4,6 +4,7 @@ import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { ErrorTrackingProvider } from "@/hooks/useErrorTracking";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
@@ -27,24 +28,26 @@ const queryClient = new QueryClient({
 const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <Toaster />
-        <Sonner />
-        <BrowserRouter>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/reset-password" element={<ResetPassword />} />
-            <Route path="/demo-request" element={<DemoRequest />} />
-            <Route path="/pipeline" element={<KanbanPipeline />} />
-            <Route path="/contact/:id" element={<ContactProfile />} />
-            <Route path="/lead/:id" element={<LeadDetails />} />
-            <Route path="/job/:id" element={<JobDetails />} />
-            <Route path="/" element={<Index />} />
-            {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-            <Route path="*" element={<NotFound />} />
-          </Routes>
-        </BrowserRouter>
-      </TooltipProvider>
+      <ErrorTrackingProvider>
+        <TooltipProvider>
+          <Toaster />
+          <Sonner />
+          <BrowserRouter>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/demo-request" element={<DemoRequest />} />
+              <Route path="/pipeline" element={<KanbanPipeline />} />
+              <Route path="/contact/:id" element={<ContactProfile />} />
+              <Route path="/lead/:id" element={<LeadDetails />} />
+              <Route path="/job/:id" element={<JobDetails />} />
+              <Route path="/" element={<Index />} />
+              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>
+          </BrowserRouter>
+        </TooltipProvider>
+      </ErrorTrackingProvider>
     </QueryClientProvider>
   );
 };
