@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Storm Canvass Pro Integration Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ccc; }
+        .success { color: green; }
+        .error { color: red; }
+        button { padding: 10px 15px; margin: 5px; background: #007bff; color: white; border: none; cursor: pointer; }
+        #results { background: #f8f9fa; padding: 15px; margin: 10px 0; white-space: pre-wrap; }
+    </style>
+</head>
+<body>
+    <h1>Storm Canvass Pro Integration Test</h1>
+    
+    <div class="test-section">
+        <h3>1. Authentication Test</h3>
+        <button onclick="testAuth()">Test Auth API</button>
+        <div id="auth-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>2. Pin Sync Test</h3>
+        <button onclick="testPinSync()">Test Pin Sync API</button>
+        <div id="pin-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>3. Dispositions Test</h3>
+        <button onclick="testDispositions()">Test Dispositions API</button>
+        <div id="disp-result"></div>
+    </div>
+
+    <div class="test-section">
+        <h3>4. Check Pipeline Data</h3>
+        <button onclick="checkPipeline()">Check Pipeline Entries</button>
+        <div id="pipeline-result"></div>
+    </div>
+
+    <div id="results"></div>
+
+    <script>
+        const BASE_URL = 'https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1';
+        const TEST_API_KEY = 'test_storm_canvass_key_123';
+        const TEST_REP_EMAIL = 'chrisobrien91@gmail.com';
+
+        function log(message) {
+            const results = document.getElementById('results');
+            results.textContent += new Date().toLocaleTimeString() + ': ' + message + '\n';
+        }
+
+        async function testAuth() {
+            const resultDiv = document.getElementById('auth-result');
+            try {
+                log('Testing authentication...');
+                
+                const response = await fetch(`${BASE_URL}/canvass-auth`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        api_key: TEST_API_KEY,
+                        rep_email: TEST_REP_EMAIL
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    resultDiv.innerHTML = '<span class="success">✓ Auth successful</span>';
+                    log('Auth successful. Session token: ' + data.session_token);
+                    window.sessionToken = data.session_token;
+                    return data.session_token;
+                } else {
+                    resultDiv.innerHTML = '<span class="error">✗ Auth failed: ' + data.error + '</span>';
+                    log('Auth failed: ' + data.error);
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '<span class="error">✗ Auth error: ' + error.message + '</span>';
+                log('Auth error: ' + error.message);
+            }
+        }
+
+        async function testPinSync() {
+            const resultDiv = document.getElementById('pin-result');
+            
+            if (!window.sessionToken) {
+                await testAuth();
+            }
+            
+            if (!window.sessionToken) {
+                resultDiv.innerHTML = '<span class="error">✗ Need authentication first</span>';
+                return;
+            }
+
+            try {
+                log('Testing pin sync...');
+                
+                const testPins = [{
+                    latitude: 40.7128,
+                    longitude: -74.0060,
+                    address: {
+                        street: '123 Test Street',
+                        city: 'New York',
+                        state: 'NY',
+                        zip: '10001'
+                    },
+                    property_details: {
+                        homeowner_first_name: 'John',
+                        homeowner_last_name: 'Doe',
+                        roof_type: 'Asphalt Shingles',
+                        roof_age: '10 years',
+                        property_type: 'Single Family'
+                    },
+                    disposition_id: null,
+                    notes: 'Test pin from Storm Canvass Pro integration test',
+                    pin_metadata: {
+                        pin_id: 'test_pin_' + Date.now(),
+                        created_at: new Date().toISOString()
+                    }
+                }];
+
+                const response = await fetch(`${BASE_URL}/canvass-pin-sync`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        session_token: window.sessionToken,
+                        pins: testPins
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    resultDiv.innerHTML = '<span class="success">✓ Pin sync successful</span>';
+                    log('Pin sync successful. Synced: ' + data.synced_pins + ', Failed: ' + data.failed_pins);
+                    if (data.results && data.results.length > 0) {
+                        log('Created contact ID: ' + data.results[0].contact_id);
+                        log('Contact number: ' + data.results[0].contact_number);
+                    }
+                } else {
+                    resultDiv.innerHTML = '<span class="error">✗ Pin sync failed: ' + data.error + '</span>';
+                    log('Pin sync failed: ' + data.error);
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '<span class="error">✗ Pin sync error: ' + error.message + '</span>';
+                log('Pin sync error: ' + error.message);
+            }
+        }
+
+        async function testDispositions() {
+            const resultDiv = document.getElementById('disp-result');
+            
+            if (!window.sessionToken) {
+                await testAuth();
+            }
+            
+            if (!window.sessionToken) {
+                resultDiv.innerHTML = '<span class="error">✗ Need authentication first</span>';
+                return;
+            }
+
+            try {
+                log('Testing dispositions...');
+                
+                const response = await fetch(`${BASE_URL}/canvass-dispositions?session_token=${window.sessionToken}`, {
+                    method: 'GET',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    }
+                });
+
+                const data = await response.json();
+                
+                if (response.ok && data.success) {
+                    resultDiv.innerHTML = '<span class="success">✓ Dispositions retrieved</span>';
+                    log('Dispositions count: ' + data.dispositions.length);
+                    data.dispositions.forEach(disp => {
+                        log('- ' + disp.name + ' (positive: ' + disp.is_positive + ')');
+                    });
+                } else {
+                    resultDiv.innerHTML = '<span class="error">✗ Dispositions failed: ' + data.error + '</span>';
+                    log('Dispositions failed: ' + data.error);
+                }
+            } catch (error) {
+                resultDiv.innerHTML = '<span class="error">✗ Dispositions error: ' + error.message + '</span>';
+                log('Dispositions error: ' + error.message);
+            }
+        }
+
+        async function checkPipeline() {
+            const resultDiv = document.getElementById('pipeline-result');
+            
+            try {
+                log('Checking pipeline entries...');
+                
+                // This would typically use your app's Supabase client
+                // For demo purposes, we'll just show a success message
+                resultDiv.innerHTML = '<span class="success">✓ Check pipeline manually in app</span>';
+                log('Navigate to Pipeline page to see new leads from canvassing');
+                
+            } catch (error) {
+                resultDiv.innerHTML = '<span class="error">✗ Pipeline check error: ' + error.message + '</span>';
+                log('Pipeline check error: ' + error.message);
+            }
+        }
+
+        // Auto-run tests on load
+        window.onload = function() {
+            log('Storm Canvass Pro Integration Test Page Loaded');
+            log('Ready to test APIs...');
+        };
+    </script>
+</body>
+</html>
