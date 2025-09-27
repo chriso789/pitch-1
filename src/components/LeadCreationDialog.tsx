@@ -254,6 +254,17 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     }));
   };
 
+  // Enhanced validation with illumination logic
+  const isFormValid = React.useMemo(() => {
+    return (
+      formData.name.trim() !== "" &&
+      formData.phone.trim() !== "" &&
+      selectedAddress !== null &&
+      formData.status !== "" &&
+      formData.assignedTo.length > 0  // At least one rep required for measurement flow
+    );
+  }, [formData, selectedAddress]);
+
   const validateForm = () => {
     if (!formData.name.trim()) {
       toast({
@@ -286,6 +297,15 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       toast({
         title: "Status Required",
         description: "Please select a pipeline status",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    if (formData.assignedTo.length === 0) {
+      toast({
+        title: "Sales Representative Required",
+        description: "Please assign at least one sales representative to proceed with measurements",
         variant: "destructive",
       });
       return false;
@@ -658,17 +678,22 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
             </Button>
             <Button 
               onClick={handleSubmit} 
-              disabled={loading || !selectedAddress || isSubmitting}
+              disabled={loading || !isFormValid || isSubmitting}
+              className={`transition-all duration-300 ${
+                isFormValid 
+                  ? 'bg-primary text-primary-foreground shadow-lg hover:shadow-xl transform hover:scale-105 ring-2 ring-primary/20 animate-pulse' 
+                  : 'bg-muted text-muted-foreground cursor-not-allowed'
+              }`}
             >
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Creating...
+                  Creating Lead...
                 </>
               ) : (
                 <>
                   <Plus className="h-4 w-4 mr-2" />
-                  Create Lead
+                  {isFormValid ? 'Create Lead & Measure' : 'Complete Required Fields'}
                 </>
               )}
             </Button>

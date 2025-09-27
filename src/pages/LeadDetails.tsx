@@ -12,6 +12,7 @@ import {
   DollarSign, Hammer, Package
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
+import SatelliteMeasurement from '@/components/SatelliteMeasurement';
 
 interface LeadDetailsData {
   id: string;
@@ -21,6 +22,15 @@ interface LeadDetailsData {
   estimated_value?: number;
   notes?: string;
   metadata?: any;
+  verified_address?: {
+    formatted_address: string;
+    geometry?: {
+      location?: {
+        lat: number;
+        lng: number;
+      };
+    };
+  };
   contact?: {
     id: string;
     first_name: string;
@@ -31,6 +41,8 @@ interface LeadDetailsData {
     address_city?: string;
     address_state?: string;
     address_zip?: string;
+    latitude?: number;
+    longitude?: number;
   };
   assigned_rep?: {
     id: string;
@@ -84,7 +96,13 @@ const LeadDetails = () => {
 
       if (error) throw error;
       if (data) {
-        setLead(data as any);
+        // Extract verified address from metadata
+        const metadata = data.metadata as any;
+        const leadData = {
+          ...data,
+          verified_address: metadata?.verified_address || null
+        };
+        setLead(leadData as any);
       }
     } catch (error) {
       console.error('Error fetching lead details:', error);
@@ -516,18 +534,18 @@ const LeadDetails = () => {
         </TabsContent>
 
         <TabsContent value="measurement">
-          <Card>
-            <CardHeader>
-              <CardTitle>Google Maps Measurement</CardTitle>
-            </CardHeader>
-            <CardContent className="text-center py-12">
-              <MapPin className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-              <p className="text-muted-foreground mb-4">Satellite measurement integration coming soon</p>
-              <Button variant="outline" disabled>
-                Measure Property
-              </Button>
-            </CardContent>
-          </Card>
+          <SatelliteMeasurement
+            address={lead.verified_address?.formatted_address || `${lead.contact?.address_street}, ${lead.contact?.address_city}, ${lead.contact?.address_state}`}
+            latitude={lead.verified_address?.geometry?.location?.lat || lead.contact?.latitude}
+            longitude={lead.verified_address?.geometry?.location?.lng || lead.contact?.longitude}
+            pipelineEntryId={id!}
+            onMeasurementsSaved={(measurements) => {
+              toast({
+                title: "Measurements Saved",
+                description: `Property measurements saved successfully. Area: ${measurements.adjustedArea} sq ft`,
+              });
+            }}
+          />
         </TabsContent>
       </Tabs>
     </div>

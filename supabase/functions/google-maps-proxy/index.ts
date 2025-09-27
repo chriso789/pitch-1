@@ -31,6 +31,14 @@ serve(async (req) => {
       case 'geocode':
         url = `https://maps.googleapis.com/maps/api/geocode/json?key=${apiKey}&${new URLSearchParams(params)}`;
         break;
+      case 'satellite':
+        // Google Maps Static API for satellite imagery
+        url = `https://maps.googleapis.com/maps/api/staticmap?key=${apiKey}&${new URLSearchParams(params)}`;
+        break;
+      case 'elevation':
+        // Elevation API for roof pitch calculation
+        url = `https://maps.googleapis.com/maps/api/elevation/json?key=${apiKey}&${new URLSearchParams(params)}`;
+        break;
       default:
         throw new Error('Invalid endpoint');
     }
