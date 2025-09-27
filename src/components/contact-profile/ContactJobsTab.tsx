@@ -12,7 +12,11 @@ import {
   Eye, 
   Edit3,
   Loader2,
-  Clock
+  Clock,
+  TrendingUp,
+  FileText,
+  CheckCircle,
+  ArrowRight
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -24,40 +28,76 @@ interface ContactJobsTabProps {
   onJobsUpdate: (jobs: any[]) => void;
 }
 
+// Define unified job item type
+interface UnifiedJobItem {
+  id: string;
+  type: 'pipeline' | 'job';
+  name: string;
+  status: string;
+  description?: string;
+  created_at: string;
+  updated_at: string;
+  estimated_value?: number;
+  probability_percent?: number;
+  roof_type?: string;
+  job_number?: string;
+  // Pipeline entry specific
+  pipeline_entry_id?: string;
+  // Job specific
+  project?: any;
+}
+
 export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabProps) => {
   const [showLeadDialog, setShowLeadDialog] = useState(false);
-  const [allJobs, setAllJobs] = useState<any[]>([]);
+  const [unifiedJobs, setUnifiedJobs] = useState<UnifiedJobItem[]>([]);
   const [pipelineEntries, setPipelineEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
   useEffect(() => {
-    fetchAllJobs();
+    fetchUnifiedJobs();
   }, [contact.id, jobs]);
 
-  const fetchAllJobs = async () => {
+  // Helper function to map pipeline status to job-friendly status
+  const mapPipelineStatusToJobStatus = (status: string) => {
+    switch (status?.toLowerCase()) {
+      case 'lead':
+        return 'Lead Generated';
+      case 'hot_lead':
+        return 'Hot Lead';
+      case 'warm_lead':
+        return 'Warm Lead';
+      case 'cold_lead':
+        return 'Cold Lead';
+      case 'estimate':
+        return 'Estimate Pending';
+      case 'estimate_sent':
+        return 'Estimate Sent';
+      case 'contract':
+        return 'Contract Review';
+      case 'contract_signed':
+        return 'Contract Signed';
+      case 'project':
+        return 'Active Project';
+      case 'hold_manager_review':
+        return 'Manager Review';
+      case 'closed_won':
+        return 'Won';
+      case 'closed_lost':
+        return 'Lost';
+      default:
+        return status?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Unknown';
+    }
+  };
+
+  const fetchUnifiedJobs = async () => {
     if (!contact.id) return;
     
     setLoading(true);
     try {
-      // Fetch direct jobs
-      const { data: directJobs, error: jobsError } = await supabase
-        .from('jobs')
-        .select(`
-          *,
-          projects (
-            name,
-            status,
-            estimated_completion_date
-          )
-        `)
-        .eq('contact_id', contact.id);
-
-      if (jobsError) throw jobsError;
-
-      // Fetch all pipeline entries for this contact
-      const { data: allPipelineEntries, error: allPipelineError } = await supabase
+      // Fetch pipeline entries for this contact
+      const { data: allPipelineEntries, error: pipelineError } = await supabase
         .from('pipeline_entries')
         .select(`
           id,
@@ -75,45 +115,61 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
         `)
         .eq('contact_id', contact.id);
 
-      if (allPipelineError) throw allPipelineError;
+      if (pipelineError) throw pipelineError;
 
-      // Set pipeline entries for conversion
+      // Set pipeline entries for conversion component
       setPipelineEntries(allPipelineEntries || []);
 
-      // Fetch jobs that are linked to these pipeline entries
-      const pipelineEntryIds = (allPipelineEntries || []).map(pe => pe.id);
-      let jobsFromPipeline: any[] = [];
-      
-      if (pipelineEntryIds.length > 0) {
-        const { data: linkedJobs, error: linkedJobsError } = await supabase
-          .from('jobs')
-          .select(`
-            *,
-            projects (
-              name,
-              status,
-              estimated_completion_date
-            )
-          `)
-          .in('pipeline_entry_id', pipelineEntryIds);
-          
-        if (!linkedJobsError && linkedJobs) {
-          jobsFromPipeline = linkedJobs;
-        }
-      }
+      // Fetch actual jobs for this contact
+      const { data: actualJobs, error: jobsError } = await supabase
+        .from('jobs')
+        .select(`
+          *,
+          projects (
+            name,
+            status,
+            estimated_completion_date
+          )
+        `)
+        .eq('contact_id', contact.id);
 
-      // Combine and deduplicate jobs
-      const combinedJobs = [
-        ...(directJobs || []),
-        ...jobsFromPipeline
+      if (jobsError) throw jobsError;
+
+      // Transform pipeline entries to unified job items
+      const pipelineJobItems: UnifiedJobItem[] = (allPipelineEntries || []).map(entry => ({
+        id: entry.id,
+        type: 'pipeline' as const,
+        name: `${entry.contacts?.first_name || 'Unknown'} ${entry.contacts?.last_name || 'Customer'} - ${entry.roof_type || 'Roofing'} Lead`,
+        status: mapPipelineStatusToJobStatus(entry.status),
+        description: `${entry.roof_type || 'Roofing'} project${entry.estimated_value ? ` - Est. $${entry.estimated_value.toLocaleString()}` : ''}`,
+        created_at: entry.created_at,
+        updated_at: entry.updated_at,
+        estimated_value: entry.estimated_value,
+        probability_percent: entry.probability_percent,
+        roof_type: entry.roof_type,
+        pipeline_entry_id: entry.id
+      }));
+
+      // Transform actual jobs to unified job items
+      const actualJobItems: UnifiedJobItem[] = (actualJobs || []).map(job => ({
+        id: job.id,
+        type: 'job' as const,
+        name: job.name || `Job #${job.job_number}`,
+        status: job.status?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Unknown',
+        description: job.description,
+        created_at: job.created_at,
+        updated_at: job.updated_at,
+        job_number: job.job_number,
+        project: job.projects
+      }));
+
+      // Combine both arrays with pipeline entries first (most recent first)
+      const unified = [
+        ...pipelineJobItems.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()),
+        ...actualJobItems.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
       ];
 
-      // Remove duplicates by ID
-      const uniqueJobs = combinedJobs.filter((job, index, arr) => 
-        arr.findIndex(j => j.id === job.id) === index
-      );
-
-      setAllJobs(uniqueJobs);
+      setUnifiedJobs(unified);
     } catch (error) {
       console.error('Error fetching jobs:', error);
       toast({
@@ -131,36 +187,96 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
       title: "Lead Created",
       description: "Lead created successfully. It will appear in the pipeline for approval.",
     });
-    fetchAllJobs(); // Refresh jobs list
+    fetchUnifiedJobs(); // Refresh jobs list
   };
 
-  const getStatusColor = (status: string) => {
-    switch (status?.toLowerCase()) {
-      case 'completed':
-        return 'bg-green-500 text-white';
-      case 'in_progress':
-        return 'bg-orange-500 text-white';
-      case 'scheduled':
-        return 'bg-blue-500 text-white';
-      case 'materials_ordered':
-        return 'bg-yellow-500 text-white';
-      case 'quality_check':
-        return 'bg-purple-500 text-white';
-      case 'invoiced':
-        return 'bg-emerald-600 text-white';
-      case 'closed':
-        return 'bg-gray-500 text-white';
-      default:
-        return 'bg-muted text-muted-foreground';
+  const getStatusColor = (status: string, type: 'pipeline' | 'job') => {
+    if (type === 'pipeline') {
+      // Pipeline entry status colors
+      switch (status?.toLowerCase()) {
+        case 'lead generated':
+        case 'hot lead':
+        case 'warm lead':
+          return 'bg-gradient-to-r from-orange-500 to-red-500 text-white';
+        case 'cold lead':
+          return 'bg-gradient-to-r from-blue-400 to-blue-600 text-white';
+        case 'estimate pending':
+        case 'estimate sent':
+          return 'bg-gradient-to-r from-purple-500 to-indigo-500 text-white';
+        case 'contract review':
+        case 'contract signed':
+          return 'bg-gradient-to-r from-emerald-500 to-green-500 text-white';
+        case 'active project':
+          return 'bg-gradient-to-r from-amber-500 to-orange-500 text-white';
+        case 'won':
+          return 'bg-gradient-to-r from-green-500 to-emerald-600 text-white';
+        case 'lost':
+          return 'bg-gradient-to-r from-red-500 to-rose-600 text-white';
+        default:
+          return 'bg-gradient-to-r from-slate-400 to-slate-500 text-white';
+      }
+    } else {
+      // Actual job status colors
+      switch (status?.toLowerCase()) {
+        case 'completed':
+          return 'bg-success text-success-foreground';
+        case 'in progress':
+          return 'bg-warning text-warning-foreground';
+        case 'scheduled':
+          return 'bg-info text-info-foreground';
+        case 'materials ordered':
+          return 'bg-primary text-primary-foreground';
+        case 'quality check':
+          return 'bg-secondary text-secondary-foreground';
+        case 'invoiced':
+          return 'bg-accent text-accent-foreground';
+        case 'closed':
+          return 'bg-muted text-muted-foreground';
+        default:
+          return 'bg-muted text-muted-foreground';
+      }
     }
   };
+
+  const getNextStageAction = (job: UnifiedJobItem) => {
+    if (job.type !== 'pipeline') return null;
+    
+    const status = job.status.toLowerCase();
+    if (status.includes('lead')) {
+      return { label: 'Create Estimate', icon: FileText, action: 'estimate' };
+    } else if (status.includes('estimate')) {
+      return { label: 'Send Contract', icon: Edit3, action: 'contract' };
+    } else if (status.includes('contract')) {
+      return { label: 'Convert to Job', icon: CheckCircle, action: 'convert' };
+    }
+    return null;
+  };
+
+  // Calculate statistics based on unified jobs
+  const totalJobs = unifiedJobs.length;
+  const activeJobs = unifiedJobs.filter(job => {
+    if (job.type === 'pipeline') {
+      return !job.status.toLowerCase().includes('lost') && !job.status.toLowerCase().includes('won');
+    } else {
+      return ['scheduled', 'in progress', 'materials ordered', 'quality check'].some(s => 
+        job.status.toLowerCase().includes(s.toLowerCase())
+      );
+    }
+  }).length;
+  const completedJobs = unifiedJobs.filter(job => {
+    if (job.type === 'pipeline') {
+      return job.status.toLowerCase().includes('won');
+    } else {
+      return job.status.toLowerCase().includes('completed');
+    }
+  }).length;
 
   return (
     <div className="space-y-6">
       {/* Pipeline to Job Converter */}
       <PipelineToJobConverter 
         pipelineEntries={pipelineEntries}
-        onJobCreated={fetchAllJobs}
+        onJobCreated={fetchUnifiedJobs}
       />
 
       {/* Jobs Overview */}
@@ -171,7 +287,7 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
               <Briefcase className="h-4 w-4 text-primary" />
               <div className="space-y-1">
                 <p className="text-sm font-medium leading-none">Total Jobs</p>
-                <p className="text-2xl font-bold">{allJobs.length}</p>
+                <p className="text-2xl font-bold">{totalJobs}</p>
               </div>
             </div>
           </CardContent>
@@ -183,9 +299,7 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
               <Clock className="h-4 w-4 text-warning" />
               <div className="space-y-1">
                 <p className="text-sm font-medium leading-none">Active Jobs</p>
-                <p className="text-2xl font-bold">
-                  {allJobs.filter(job => ['scheduled', 'in_progress', 'materials_ordered', 'quality_check'].includes(job.status)).length}
-                </p>
+                <p className="text-2xl font-bold">{activeJobs}</p>
               </div>
             </div>
           </CardContent>
@@ -197,9 +311,7 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
               <DollarSign className="h-4 w-4 text-success" />
               <div className="space-y-1">
                 <p className="text-sm font-medium leading-none">Completed</p>
-                <p className="text-2xl font-bold">
-                  {allJobs.filter(job => job.status === 'completed').length}
-                </p>
+                <p className="text-2xl font-bold">{completedJobs}</p>
               </div>
             </div>
           </CardContent>
@@ -211,7 +323,7 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
         <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-4">
           <CardTitle className="text-lg font-semibold flex items-center gap-2">
             <Briefcase className="h-5 w-5" />
-            Jobs ({allJobs.length})
+            Jobs & Leads ({totalJobs})
           </CardTitle>
           <LeadCreationDialog 
             contact={contact}
@@ -232,55 +344,110 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {allJobs.map((job) => (
-                <div key={job.id} className="border rounded-lg p-4 hover:shadow-soft transition-smooth">
-                  <div className="space-y-2">
-                    <div className="flex items-center gap-3">
-                      <h3 className="font-semibold text-lg">{job.name}</h3>
-                      <Badge variant="outline" className="text-xs">
-                        {job.job_number}
-                      </Badge>
-                    </div>
-                    <Badge className={`text-xs ${getStatusColor(job.status)} w-fit`}>
-                      {job.status?.replace('_', ' ').toUpperCase()}
-                    </Badge>
-                    
-                    {job.description && (
-                      <p className="text-sm text-muted-foreground line-clamp-2">{job.description}</p>
-                    )}
-                    
-                    <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        Created: {new Date(job.created_at).toLocaleDateString()}
+              {unifiedJobs.map((job) => {
+                const nextAction = getNextStageAction(job);
+                return (
+                  <div key={job.id} className="border rounded-lg p-4 hover:shadow-soft transition-smooth">
+                    <div className="space-y-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1">
+                          <h3 className="font-semibold text-sm leading-tight">{job.name}</h3>
+                          <div className="flex items-center gap-2 mt-1">
+                            <Badge 
+                              variant={job.type === 'pipeline' ? 'secondary' : 'outline'} 
+                              className="text-xs"
+                            >
+                              {job.type === 'pipeline' ? 'Lead' : 'Job'}
+                            </Badge>
+                            {job.job_number && (
+                              <Badge variant="outline" className="text-xs">
+                                {job.job_number}
+                              </Badge>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      {job.updated_at !== job.created_at && (
-                        <div className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          Updated: {new Date(job.updated_at).toLocaleDateString()}
+                      
+                      <Badge className={`text-xs ${getStatusColor(job.status, job.type)} w-fit`}>
+                        {job.status}
+                      </Badge>
+                      
+                      {job.description && (
+                        <p className="text-sm text-muted-foreground line-clamp-2">{job.description}</p>
+                      )}
+
+                      {job.type === 'pipeline' && (
+                        <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                          {job.estimated_value && (
+                            <div className="flex items-center gap-1">
+                              <DollarSign className="h-3 w-3" />
+                              ${job.estimated_value.toLocaleString()}
+                            </div>
+                          )}
+                          {job.probability_percent && (
+                            <div className="flex items-center gap-1">
+                              <TrendingUp className="h-3 w-3" />
+                              {job.probability_percent}%
+                            </div>
+                          )}
                         </div>
                       )}
-                    </div>
+                      
+                      <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                        <div className="flex items-center gap-1">
+                          <Calendar className="h-3 w-3" />
+                          Created: {new Date(job.created_at).toLocaleDateString()}
+                        </div>
+                        {job.updated_at !== job.created_at && (
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            Updated: {new Date(job.updated_at).toLocaleDateString()}
+                          </div>
+                        )}
+                      </div>
 
-                    <div className="flex gap-2 mt-4">
-                      <Button 
-                        size="sm" 
-                        variant="outline" 
-                        className="flex-1"
-                        onClick={() => navigate(`/job/${job.id}`)}
-                      >
-                        <Eye className="h-4 w-4 mr-1" />
-                        View Details
-                      </Button>
+                      <div className="flex gap-2 mt-4">
+                        {job.type === 'pipeline' && nextAction && (
+                          <Button 
+                            size="sm" 
+                            variant="outline" 
+                            className="flex-1 text-xs"
+                            onClick={() => {
+                              toast({
+                                title: "Feature Coming Soon",
+                                description: `${nextAction.label} functionality will be available soon.`,
+                              });
+                            }}
+                          >
+                            <nextAction.icon className="h-3 w-3 mr-1" />
+                            {nextAction.label}
+                          </Button>
+                        )}
+                        <Button 
+                          size="sm" 
+                          variant="outline" 
+                          className={job.type === 'pipeline' && nextAction ? "px-3" : "flex-1"}
+                          onClick={() => {
+                            if (job.type === 'job') {
+                              navigate(`/job/${job.id}`);
+                            } else {
+                              navigate(`/lead/${job.pipeline_entry_id}`);
+                            }
+                          }}
+                        >
+                          <Eye className="h-3 w-3 mr-1" />
+                          {job.type === 'pipeline' && nextAction ? '' : 'View'}
+                        </Button>
+                      </div>
                     </div>
                   </div>
-                </div>
-              ))}
-              {allJobs.length === 0 && (
+                );
+              })}
+              {unifiedJobs.length === 0 && (
                 <Card className="border-dashed border-2 col-span-full">
                   <CardContent className="flex flex-col items-center justify-center py-12">
                     <Briefcase className="h-12 w-12 text-muted-foreground mb-4" />
-                    <h3 className="text-lg font-semibold mb-2">No jobs yet</h3>
+                    <h3 className="text-lg font-semibold mb-2">No jobs or leads yet</h3>
                     <p className="text-muted-foreground mb-4 text-center">
                       Create the first lead for this contact to get started.
                     </p>
