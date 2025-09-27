@@ -229,6 +229,47 @@ export type Database = {
           },
         ]
       }
+      automation_logs: {
+        Row: {
+          automation_id: string
+          error_message: string | null
+          execution_result: Json | null
+          id: string
+          status: string | null
+          tenant_id: string
+          trigger_data: Json | null
+          triggered_at: string | null
+        }
+        Insert: {
+          automation_id: string
+          error_message?: string | null
+          execution_result?: Json | null
+          id?: string
+          status?: string | null
+          tenant_id?: string
+          trigger_data?: Json | null
+          triggered_at?: string | null
+        }
+        Update: {
+          automation_id?: string
+          error_message?: string | null
+          execution_result?: Json | null
+          id?: string
+          status?: string | null
+          tenant_id?: string
+          trigger_data?: Json | null
+          triggered_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "automation_logs_automation_id_fkey"
+            columns: ["automation_id"]
+            isOneToOne: false
+            referencedRelation: "automations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       automation_rules: {
         Row: {
           created_at: string | null
@@ -290,6 +331,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      automations: {
+        Row: {
+          actions: Json | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          tenant_id: string
+          trigger_conditions: Json | null
+          trigger_type: string
+          updated_at: string | null
+        }
+        Insert: {
+          actions?: Json | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          tenant_id?: string
+          trigger_conditions?: Json | null
+          trigger_type: string
+          updated_at?: string | null
+        }
+        Update: {
+          actions?: Json | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          tenant_id?: string
+          trigger_conditions?: Json | null
+          trigger_type?: string
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       calendar_sync_events: {
         Row: {
@@ -1430,6 +1513,45 @@ export type Database = {
           rule_type?: string
           tenant_id?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      dynamic_tags: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_frequently_used: boolean | null
+          json_path: string
+          label: string
+          sample_value: string | null
+          tenant_id: string
+          token: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_frequently_used?: boolean | null
+          json_path: string
+          label: string
+          sample_value?: string | null
+          tenant_id?: string
+          token: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_frequently_used?: boolean | null
+          json_path?: string
+          label?: string
+          sample_value?: string | null
+          tenant_id?: string
+          token?: string
+          updated_at?: string | null
         }
         Relationships: []
       }
@@ -5161,6 +5283,83 @@ export type Database = {
           },
         ]
       }
+      smart_doc_renders: {
+        Row: {
+          context: Json | null
+          id: string
+          rendered_at: string | null
+          rendered_text: string | null
+          resolved_count: number | null
+          smart_doc_id: string
+          tenant_id: string
+          unresolved_tokens: string[] | null
+        }
+        Insert: {
+          context?: Json | null
+          id?: string
+          rendered_at?: string | null
+          rendered_text?: string | null
+          resolved_count?: number | null
+          smart_doc_id: string
+          tenant_id?: string
+          unresolved_tokens?: string[] | null
+        }
+        Update: {
+          context?: Json | null
+          id?: string
+          rendered_at?: string | null
+          rendered_text?: string | null
+          resolved_count?: number | null
+          smart_doc_id?: string
+          tenant_id?: string
+          unresolved_tokens?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "smart_doc_renders_smart_doc_id_fkey"
+            columns: ["smart_doc_id"]
+            isOneToOne: false
+            referencedRelation: "smart_docs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      smart_docs: {
+        Row: {
+          body: string
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          engine: string | null
+          id: string
+          name: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          body: string
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          engine?: string | null
+          id?: string
+          name: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Update: {
+          body?: string
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          engine?: string | null
+          id?: string
+          name?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       smart_word_definitions: {
         Row: {
           category: string | null
@@ -6679,6 +6878,37 @@ export type Database = {
         Args: { approval_notes?: string; pipeline_entry_id_param: string }
         Returns: Json
       }
+      api_automations_create: {
+        Args: {
+          p_actions?: Json
+          p_description?: string
+          p_name: string
+          p_trigger_conditions?: Json
+          p_trigger_type?: string
+        }
+        Returns: string
+      }
+      api_automations_update: {
+        Args: {
+          p_actions?: Json
+          p_description?: string
+          p_id: string
+          p_name?: string
+          p_trigger_conditions?: Json
+        }
+        Returns: boolean
+      }
+      api_dynamic_tags_frequently_used: {
+        Args: { p_limit?: number }
+        Returns: {
+          description: string
+          id: string
+          json_path: string
+          label: string
+          sample_value: string
+          token: string
+        }[]
+      }
       api_estimate_bind_template: {
         Args: { p_estimate_id: string; p_template_id: string }
         Returns: undefined
@@ -6838,6 +7068,10 @@ export type Database = {
         Args: { expr: string }
         Returns: string
       }
+      extract_tokens: {
+        Args: { t: string }
+        Returns: string[]
+      }
       generate_contact_number: {
         Args: Record<PropertyKey, never>
         Returns: string
@@ -6877,6 +7111,10 @@ export type Database = {
       has_role: {
         Args: { required_role: Database["public"]["Enums"]["app_role"] }
         Returns: boolean
+      }
+      jsonb_get_path: {
+        Args: { obj: Json; path: string }
+        Returns: string
       }
       normalize_email: {
         Args: { email_text: string }
