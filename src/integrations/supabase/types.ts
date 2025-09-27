@@ -1645,6 +1645,45 @@ export type Database = {
         }
         Relationships: []
       }
+      estimate_bindings: {
+        Row: {
+          bound_at: string
+          bound_by: string | null
+          estimate_id: string
+          template_id: string
+          tenant_id: string
+        }
+        Insert: {
+          bound_at?: string
+          bound_by?: string | null
+          estimate_id: string
+          template_id: string
+          tenant_id: string
+        }
+        Update: {
+          bound_at?: string
+          bound_by?: string | null
+          estimate_id?: string
+          template_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_bindings_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: true
+            referencedRelation: "estimates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "estimate_bindings_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       estimate_calculation_templates: {
         Row: {
           base_labor_hours_per_sq: number
@@ -1773,6 +1812,110 @@ export type Database = {
           },
         ]
       }
+      estimate_cost_items: {
+        Row: {
+          computed_at: string
+          estimate_id: string
+          id: string
+          item_name: string
+          line_total: number
+          qty: number
+          template_item_id: string | null
+          unit_cost: number
+        }
+        Insert: {
+          computed_at?: string
+          estimate_id: string
+          id?: string
+          item_name: string
+          line_total?: number
+          qty?: number
+          template_item_id?: string | null
+          unit_cost?: number
+        }
+        Update: {
+          computed_at?: string
+          estimate_id?: string
+          id?: string
+          item_name?: string
+          line_total?: number
+          qty?: number
+          template_item_id?: string | null
+          unit_cost?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_cost_items_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "estimates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "estimate_cost_items_template_item_id_fkey"
+            columns: ["template_item_id"]
+            isOneToOne: false
+            referencedRelation: "template_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      estimate_costs: {
+        Row: {
+          computed_at: string
+          cost_pre_profit: number
+          currency: string
+          estimate_id: string
+          labor: number
+          margin_pct: number | null
+          markup_pct: number | null
+          materials: number
+          mode: string
+          overhead: number
+          profit: number
+          sale_price: number
+          tenant_id: string
+        }
+        Insert: {
+          computed_at?: string
+          cost_pre_profit?: number
+          currency?: string
+          estimate_id: string
+          labor?: number
+          margin_pct?: number | null
+          markup_pct?: number | null
+          materials?: number
+          mode?: string
+          overhead?: number
+          profit?: number
+          sale_price?: number
+          tenant_id: string
+        }
+        Update: {
+          computed_at?: string
+          cost_pre_profit?: number
+          currency?: string
+          estimate_id?: string
+          labor?: number
+          margin_pct?: number | null
+          markup_pct?: number | null
+          materials?: number
+          mode?: string
+          overhead?: number
+          profit?: number
+          sale_price?: number
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_costs_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: true
+            referencedRelation: "estimates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       estimate_line_items: {
         Row: {
           created_at: string
@@ -1863,6 +2006,38 @@ export type Database = {
             columns: ["material_id"]
             isOneToOne: false
             referencedRelation: "material_costs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      estimate_measurements: {
+        Row: {
+          estimate_id: string
+          payload: Json
+          squares: number | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          estimate_id: string
+          payload: Json
+          squares?: number | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          estimate_id?: string
+          payload?: Json
+          squares?: number | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_measurements_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: true
+            referencedRelation: "estimates"
             referencedColumns: ["id"]
           },
         ]
@@ -5892,6 +6067,92 @@ export type Database = {
           },
         ]
       }
+      template_items: {
+        Row: {
+          active: boolean
+          created_at: string
+          id: string
+          item_name: string
+          qty_formula: string
+          sort_order: number
+          template_id: string
+          unit: string
+          unit_cost: number
+          updated_at: string
+          waste_pct: number
+        }
+        Insert: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          item_name: string
+          qty_formula: string
+          sort_order?: number
+          template_id: string
+          unit: string
+          unit_cost?: number
+          updated_at?: string
+          waste_pct?: number
+        }
+        Update: {
+          active?: boolean
+          created_at?: string
+          id?: string
+          item_name?: string
+          qty_formula?: string
+          sort_order?: number
+          template_id?: string
+          unit?: string
+          unit_cost?: number
+          updated_at?: string
+          waste_pct?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "template_items_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      templates: {
+        Row: {
+          created_at: string
+          currency: string
+          id: string
+          labor: Json
+          name: string
+          overhead: Json
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          currency?: string
+          id?: string
+          labor?: Json
+          name: string
+          overhead?: Json
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          currency?: string
+          id?: string
+          labor?: Json
+          name?: string
+          overhead?: Json
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       tenant_settings: {
         Row: {
           created_at: string | null
@@ -6393,6 +6654,48 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      api_estimate_bind_template: {
+        Args: { p_estimate_id: string; p_template_id: string }
+        Returns: undefined
+      }
+      api_estimate_compute_pricing: {
+        Args: {
+          p_currency?: string
+          p_estimate_id: string
+          p_mode?: string
+          p_pct?: number
+        }
+        Returns: {
+          cost_pre_profit: number
+          currency: string
+          estimate_id: string
+          labor: number
+          margin_pct: number
+          markup_pct: number
+          materials: number
+          mode: string
+          overhead: number
+          profit: number
+          sale_price: number
+        }[]
+      }
+      api_estimate_measurements_upsert: {
+        Args: { p_estimate_id: string; p_payload: Json }
+        Returns: undefined
+      }
+      api_template_items_upsert: {
+        Args: { p_items: Json; p_template_id: string }
+        Returns: undefined
+      }
+      api_templates_create: {
+        Args: {
+          p_currency?: string
+          p_labor: Json
+          p_name: string
+          p_overhead: Json
+        }
+        Returns: string
+      }
       calculate_enhanced_estimate: {
         Args: { estimate_id_param: string }
         Returns: Json
@@ -6430,6 +6733,43 @@ export type Database = {
         Args: { check_date: string; sub_id: string; tenant_id_param: string }
         Returns: boolean
       }
+      est_bind_template: {
+        Args: { p_estimate_id: string; p_template_id: string }
+        Returns: undefined
+      }
+      est_compute_pricing: {
+        Args: {
+          p_currency?: string
+          p_estimate_id: string
+          p_mode?: string
+          p_pct?: number
+        }
+        Returns: {
+          cost_pre_profit: number
+          currency: string
+          estimate_id: string
+          labor: number
+          margin_pct: number
+          markup_pct: number
+          materials: number
+          mode: string
+          overhead: number
+          profit: number
+          sale_price: number
+        }[]
+      }
+      est_eval_qty: {
+        Args: { expr: string; vars: Json }
+        Returns: number
+      }
+      est_ingest_measurements: {
+        Args: { p_estimate_id: string; p_payload: Json }
+        Returns: undefined
+      }
+      est_sanitize_formula: {
+        Args: { expr: string }
+        Returns: string
+      }
       generate_contact_number: {
         Args: Record<PropertyKey, never>
         Returns: string
@@ -6441,6 +6781,26 @@ export type Database = {
       get_user_tenant_id: {
         Args: Record<PropertyKey, never>
         Returns: string
+      }
+      gtrgm_compress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_decompress: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_in: {
+        Args: { "": unknown }
+        Returns: unknown
+      }
+      gtrgm_options: {
+        Args: { "": unknown }
+        Returns: undefined
+      }
+      gtrgm_out: {
+        Args: { "": unknown }
+        Returns: unknown
       }
       has_any_role: {
         Args: { required_roles: Database["public"]["Enums"]["app_role"][] }
@@ -6469,6 +6829,18 @@ export type Database = {
       rollback_estimate_to_version: {
         Args: { estimate_id_param: string; version_id_param: string }
         Returns: boolean
+      }
+      set_limit: {
+        Args: { "": number }
+        Returns: number
+      }
+      show_limit: {
+        Args: Record<PropertyKey, never>
+        Returns: number
+      }
+      show_trgm: {
+        Args: { "": string }
+        Returns: string[]
       }
       soft_delete_contact: {
         Args: { contact_id_param: string }

@@ -331,6 +331,7 @@ const LeadDetails = () => {
             <ProfitSlider
               value={30}
               onChange={(value) => console.log('Profit margin changed:', value)}
+              estimateId={id}
               disabled={!measurementReadiness.isReady}
               sellingPrice={measurementReadiness.isReady ? 34000 : 0}
               costPreProfit={measurementReadiness.isReady ? 23800 : 0}
@@ -634,6 +635,7 @@ const LeadDetails = () => {
       <EstimateHyperlinkBar
         activeSection={activeTab}
         onSectionChange={setActiveTab}
+        pipelineEntryId={id}
         calculations={{
           measurements: lead.metadata?.roof_area_sq_ft ? {
             roof_area_sq_ft: lead.metadata.roof_area_sq_ft,

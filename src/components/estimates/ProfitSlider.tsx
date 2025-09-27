@@ -7,10 +7,12 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { Target, TrendingUp, Info } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { supabase } from '@/integrations/supabase/client';
 
 interface ProfitSliderProps {
   value: number;
   onChange: (value: number) => void;
+  estimateId?: string;
   disabled?: boolean;
   sellingPrice?: number;
   costPreProfit?: number;
@@ -20,6 +22,7 @@ interface ProfitSliderProps {
 const ProfitSlider: React.FC<ProfitSliderProps> = ({
   value,
   onChange,
+  estimateId,
   disabled = false,
   sellingPrice = 0,
   costPreProfit = 0,
@@ -39,14 +42,23 @@ const ProfitSlider: React.FC<ProfitSliderProps> = ({
   const currentMarkup = marginToMarkup(value);
   const profitDollarAmount = sellingPrice - costPreProfit;
 
-  const handleSliderChange = (newValues: number[]) => {
+  const handleSliderChange = async (newValues: number[]) => {
     const newValue = newValues[0];
-    if (isMarkupMode) {
-      // Convert markup to margin
-      const margin = markupToMargin(newValue);
-      onChange(margin);
-    } else {
-      onChange(newValue);
+    const finalValue = isMarkupMode ? markupToMargin(newValue) : newValue;
+    
+    onChange(finalValue);
+
+    // If we have an estimate ID, trigger real-time calculation
+    if (estimateId && !disabled) {
+      try {
+        await supabase.rpc('api_estimate_compute_pricing', {
+          p_estimate_id: estimateId,
+          p_mode: isMarkupMode ? 'markup' : 'margin',
+          p_pct: finalValue / 100
+        });
+      } catch (error) {
+        console.error('Error updating pricing:', error);
+      }
     }
   };
 
