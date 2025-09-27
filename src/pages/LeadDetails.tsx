@@ -104,7 +104,7 @@ const LeadDetails = () => {
       const { data: contracts, error: contractError } = await supabase
         .from('documents')
         .select('id')
-        .eq('project_id', id)
+        .eq('pipeline_entry_id', id)
         .eq('document_type', 'contract')
         .limit(1);
 

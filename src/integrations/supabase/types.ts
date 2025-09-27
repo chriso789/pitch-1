@@ -1064,6 +1064,7 @@ export type Database = {
           id: string
           is_visible_to_homeowner: boolean | null
           mime_type: string | null
+          pipeline_entry_id: string | null
           project_id: string | null
           tenant_id: string | null
           updated_at: string | null
@@ -1080,6 +1081,7 @@ export type Database = {
           id?: string
           is_visible_to_homeowner?: boolean | null
           mime_type?: string | null
+          pipeline_entry_id?: string | null
           project_id?: string | null
           tenant_id?: string | null
           updated_at?: string | null
@@ -1096,6 +1098,7 @@ export type Database = {
           id?: string
           is_visible_to_homeowner?: boolean | null
           mime_type?: string | null
+          pipeline_entry_id?: string | null
           project_id?: string | null
           tenant_id?: string | null
           updated_at?: string | null
@@ -1107,6 +1110,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
             referencedColumns: ["id"]
           },
           {
