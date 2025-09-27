@@ -473,7 +473,11 @@ export const EnhancedClientList = () => {
         id: contact.id,
         name: `${contact.first_name} ${contact.last_name}`,
         phone: contact.phone,
-        email: contact.email
+        email: contact.email,
+        address: contact.address_street ? `${contact.address_street}, ${contact.address_city}, ${contact.address_state}` : '',
+        leadScore: contact.lead_score || 0,
+        status: contact.qualification_status || 'unknown',
+        type: 'contact'
       };
     } else {
       // It's a Job
@@ -481,12 +485,18 @@ export const EnhancedClientList = () => {
         id: contact.id,
         name: contact.name || 'Unknown Job',
         phone: contact.contact?.phone,
-        email: contact.contact?.email
+        email: contact.contact?.email,
+        address: '',
+        leadScore: 0,
+        status: contact.status || 'unknown',
+        type: 'job'
       };
     }
     
-    // Navigate to Dialer with pre-populated contact info
-    navigate('/dialer', { state: { preloadedContact: contactData } });
+    // Navigate to main page with dialer section and contact
+    navigate(`/?section=dialer&contact=${contactData.id}`, { 
+      state: { preloadedContact: contactData } 
+    });
   };
 
   const handleText = (phone: string) => {

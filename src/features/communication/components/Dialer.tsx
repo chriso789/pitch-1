@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Phone, Play, Pause, Square, PhoneOff, Clock, Users, List, Settings, Plus, Building } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { ContactHeader } from "@/components/ContactHeader";
 
 interface DialerList {
   id: string;
@@ -39,6 +40,17 @@ interface ListItem {
   status: string;
 }
 
+interface ContactData {
+  id: string;
+  name: string;
+  phone?: string;
+  email?: string;
+  address?: string;
+  leadScore?: number;
+  status?: string;
+  type?: string;
+}
+
 interface CallDisposition {
   id: string;
   name: string;
@@ -58,20 +70,22 @@ export const Dialer = () => {
   const [showDispositionDialog, setShowDispositionDialog] = useState(false);
   const [loading, setLoading] = useState(true);
   const [callerIdSettings] = useState({ name: "O'Brien Contracting", number: "+1-555-OBRIEN" });
+  const [preloadedContact, setPreloadedContact] = useState<ContactData | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     loadData();
     
     // Check if we have a preloaded contact from navigation state
-    const preloadedContact = location.state?.preloadedContact;
-    if (preloadedContact) {
+    const contactFromState = location.state?.preloadedContact;
+    if (contactFromState) {
+      setPreloadedContact(contactFromState);
       setCurrentCall({
-        id: preloadedContact.id,
-        first_name: preloadedContact.name?.split(' ')[0] || '',
-        last_name: preloadedContact.name?.split(' ').slice(1).join(' ') || '',
-        phone: preloadedContact.phone,
-        email: preloadedContact.email,
+        id: contactFromState.id,
+        first_name: contactFromState.name?.split(' ')[0] || '',
+        last_name: contactFromState.name?.split(' ').slice(1).join(' ') || '',
+        phone: contactFromState.phone,
+        email: contactFromState.email,
         status: 'ready'
       });
       
@@ -79,7 +93,7 @@ export const Dialer = () => {
       setActiveCampaign({
         id: 'direct-call',
         name: 'Direct Call',
-        description: `Calling ${preloadedContact.name}`,
+        description: `Calling ${contactFromState.name}`,
         status: 'active',
         list_id: 'direct',
         created_at: new Date().toISOString()
@@ -232,13 +246,23 @@ export const Dialer = () => {
 
   return (
     <div className="space-y-6">
+      {/* Contact Header - GoHighLevel Style */}
+      {preloadedContact && (
+        <ContactHeader 
+          contact={preloadedContact}
+          onCall={() => currentCall && initiateCall()}
+          onText={() => preloadedContact.phone && window.open(`sms:${preloadedContact.phone}`)}
+          onEmail={() => preloadedContact.email && window.open(`mailto:${preloadedContact.email}`)}
+        />
+      )}
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold gradient-primary bg-clip-text text-transparent">
             Power Dialer
           </h1>
           <p className="text-muted-foreground">
-            Manage campaigns and make calls efficiently
+            {preloadedContact ? `Ready to call ${preloadedContact.name}` : 'Manage campaigns and make calls efficiently'}
           </p>
         </div>
         <div className="flex items-center gap-4">

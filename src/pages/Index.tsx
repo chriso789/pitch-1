@@ -35,6 +35,15 @@ const Index = () => {
   const [profile, setProfile] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [activeSection, setActiveSection] = useState("dashboard");
+
+  // Handle URL parameters for section and contact routing
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const section = urlParams.get('section');
+    if (section) {
+      setActiveSection(section);
+    }
+  }, []);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showWalkthrough, setShowWalkthrough] = useState(false);
   const { requestLocationPermission } = useLocationPermission();
