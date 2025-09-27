@@ -4,6 +4,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { Session, User } from '@supabase/supabase-js';
 import Sidebar from "@/shared/components/layout/Sidebar";
 import KanbanPipeline from "@/features/pipeline/components/KanbanPipeline";
+import Pipeline from "@/features/pipeline/components/Pipeline";
+import { DeveloperSnippetTool } from "@/components/DeveloperSnippetTool";
 import { Production } from "@/features/production";
 import EstimatePreview from "@/features/estimates/components/EstimatePreview";
 import Estimates from "@/features/estimates/components/Estimates";
@@ -37,6 +39,7 @@ const Index = () => {
   const [activeSection, setActiveSection] = useState("dashboard");
   const [dialerContact, setDialerContact] = useState<any>(null);
   const [loadingContact, setLoadingContact] = useState(false);
+  const [showDeveloperTool, setShowDeveloperTool] = useState(false);
 
   // Handle URL parameters for section and contact routing
   useEffect(() => {
@@ -202,10 +205,21 @@ const Index = () => {
 
     window.addEventListener('start-walkthrough-test', handleStartTest);
 
+    // Add developer tool shortcut listener (Ctrl + Alt + E)
+    const handleKeyboardShortcut = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.altKey && e.key === 'E' && profile?.role === 'master') {
+        e.preventDefault();
+        setShowDeveloperTool(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyboardShortcut);
+
     return () => {
       mounted = false;
       subscription.unsubscribe();
       window.removeEventListener('start-walkthrough-test', handleStartTest);
+      window.removeEventListener('keydown', handleKeyboardShortcut);
     };
   }, [navigate]);
 
@@ -233,7 +247,7 @@ const Index = () => {
       case "dashboard":
         return <Dashboard />;
       case "pipeline":
-        return <KanbanPipeline />;
+        return <Pipeline />;
       case "production":
         return <Production />;
       case "estimates":
@@ -321,6 +335,14 @@ const Index = () => {
       
       {/* Developer Toolbar - Only shows in developer mode */}
       <DeveloperToolbar />
+      
+      {/* Developer Snippet Tool - Only for master users */}
+      {profile?.role === 'master' && (
+        <DeveloperSnippetTool
+          isOpen={showDeveloperTool}
+          onClose={() => setShowDeveloperTool(false)}
+        />
+      )}
     </div>
   );
 };
