@@ -108,7 +108,7 @@ export function EnhancedPipeline() {
       if (activitiesError) throw activitiesError;
 
       setStages(stagesData || []);
-      setEntries(entriesData || []);
+      setEntries(entriesData as any || []);
       setActivities(activitiesData || []);
     } catch (error) {
       console.error('Error loading pipeline data:', error);

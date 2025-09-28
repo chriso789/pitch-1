@@ -4,7 +4,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { AutomationManager } from "@/components/AutomationManager";
 import { SmartDocumentEditor } from "@/components/SmartDocumentEditor";
 import { DynamicTagManager } from "@/components/DynamicTagManager";
-import { Settings as SettingsIcon, FileText, Calculator, Users, Building, Shield, Code, Mic, Bell, Package, DollarSign, AlertTriangle } from "lucide-react";
+import { ApprovalManager } from "@/components/ApprovalManager";
+import { Settings as SettingsIcon, FileText, Calculator, Users, Building, Shield, Code, Mic, Bell, Package, DollarSign, AlertTriangle, CheckSquare } from "lucide-react";
 import { EstimateBuilder } from "@/features/estimates/components/EstimateBuilder";
 import { GeneralSettings } from "@/components/settings/GeneralSettings";
 import { UserManagement } from "@/components/settings/UserManagement";
@@ -78,7 +79,7 @@ export const Settings = () => {
       </div>
 
       <Tabs defaultValue="general" className="space-y-6">
-        <TabsList className={`grid w-full ${showDeveloperTab ? 'grid-cols-9' : 'grid-cols-8'}`}>
+        <TabsList className={`grid w-full ${showDeveloperTab ? 'grid-cols-10' : 'grid-cols-9'}`}>
           <TabsTrigger value="general" className="flex items-center gap-2">
             <SettingsIcon className="h-4 w-4" />
             General
@@ -110,6 +111,10 @@ export const Settings = () => {
           <TabsTrigger value="automations" className="flex items-center gap-2">
             <Bell className="h-4 w-4" />
             Automations
+          </TabsTrigger>
+          <TabsTrigger value="approvals" className="flex items-center gap-2">
+            <CheckSquare className="h-4 w-4" />
+            Approvals
           </TabsTrigger>
           {showDeveloperTab && (
             <TabsTrigger value="developer" className="flex items-center gap-2">
@@ -168,6 +173,10 @@ export const Settings = () => {
               <DynamicTagManager />
             </TabsContent>
           </Tabs>
+        </TabsContent>
+
+        <TabsContent value="approvals" className="space-y-6">
+          <ApprovalManager />
         </TabsContent>
 
         {showDeveloperTab && (

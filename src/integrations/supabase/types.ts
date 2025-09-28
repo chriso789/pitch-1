@@ -3363,6 +3363,96 @@ export type Database = {
         }
         Relationships: []
       }
+      manager_approval_history: {
+        Row: {
+          action: string
+          approval_queue_id: string
+          created_at: string
+          id: string
+          new_status: string | null
+          notes: string | null
+          performed_by: string | null
+          previous_status: string | null
+          tenant_id: string
+        }
+        Insert: {
+          action: string
+          approval_queue_id: string
+          created_at?: string
+          id?: string
+          new_status?: string | null
+          notes?: string | null
+          performed_by?: string | null
+          previous_status?: string | null
+          tenant_id: string
+        }
+        Update: {
+          action?: string
+          approval_queue_id?: string
+          created_at?: string
+          id?: string
+          new_status?: string | null
+          notes?: string | null
+          performed_by?: string | null
+          previous_status?: string | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      manager_approval_queue: {
+        Row: {
+          approval_type: string | null
+          approved_at: string | null
+          approved_by: string | null
+          business_justification: string | null
+          contact_id: string | null
+          created_at: string
+          estimated_value: number | null
+          id: string
+          manager_notes: string | null
+          pipeline_entry_id: string
+          priority: string
+          requested_by: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          approval_type?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          business_justification?: string | null
+          contact_id?: string | null
+          created_at?: string
+          estimated_value?: number | null
+          id?: string
+          manager_notes?: string | null
+          pipeline_entry_id: string
+          priority?: string
+          requested_by?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          approval_type?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          business_justification?: string | null
+          contact_id?: string | null
+          created_at?: string
+          estimated_value?: number | null
+          id?: string
+          manager_notes?: string | null
+          pipeline_entry_id?: string
+          priority?: string
+          requested_by?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       material_costs: {
         Row: {
           brand: string | null
@@ -4120,7 +4210,7 @@ export type Database = {
           requires_manager_approval: boolean | null
           roof_type: Database["public"]["Enums"]["roof_type"] | null
           source: Database["public"]["Enums"]["lead_source"] | null
-          status: Database["public"]["Enums"]["pipeline_status"] | null
+          status: string | null
           tenant_id: string | null
           updated_at: string | null
         }
@@ -4147,7 +4237,7 @@ export type Database = {
           requires_manager_approval?: boolean | null
           roof_type?: Database["public"]["Enums"]["roof_type"] | null
           source?: Database["public"]["Enums"]["lead_source"] | null
-          status?: Database["public"]["Enums"]["pipeline_status"] | null
+          status?: string | null
           tenant_id?: string | null
           updated_at?: string | null
         }
@@ -4174,7 +4264,7 @@ export type Database = {
           requires_manager_approval?: boolean | null
           roof_type?: Database["public"]["Enums"]["roof_type"] | null
           source?: Database["public"]["Enums"]["lead_source"] | null
-          status?: Database["public"]["Enums"]["pipeline_status"] | null
+          status?: string | null
           tenant_id?: string | null
           updated_at?: string | null
         }
