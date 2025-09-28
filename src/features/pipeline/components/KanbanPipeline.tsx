@@ -281,8 +281,8 @@ const KanbanPipeline = () => {
 
   const handleDeleteJob = async (jobId: string) => {
     try {
-      const { data, error } = await supabase.functions.invoke('delete-job', {
-        body: { jobId }
+      const { data, error } = await supabase.functions.invoke('delete-pipeline-entry', {
+        body: { entryId: jobId }
       });
 
       if (error) {

@@ -2,7 +2,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { corsHeaders } from "../_shared/cors.ts";
 
-console.log("Delete job function started");
+console.log("Delete pipeline entry function started");
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -81,11 +81,11 @@ serve(async (req) => {
       );
     }
 
-    const { jobId } = await req.json();
+    const { entryId } = await req.json();
 
-    if (!jobId) {
+    if (!entryId) {
       return new Response(
-        JSON.stringify({ error: 'Job ID is required' }),
+        JSON.stringify({ error: 'Pipeline entry ID is required' }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -93,18 +93,18 @@ serve(async (req) => {
       );
     }
 
-    // Get the job to verify it exists and belongs to the tenant
-    const { data: job, error: jobError } = await supabase
-      .from('jobs')
-      .select('id, job_number, name, contact_id, tenant_id')
-      .eq('id', jobId)
+    // Get the pipeline entry to verify it exists and belongs to the tenant
+    const { data: entry, error: entryError } = await supabase
+      .from('pipeline_entries')
+      .select('id, contact_id, tenant_id, status, estimated_value')
+      .eq('id', entryId)
       .eq('tenant_id', profile.tenant_id)
       .single();
 
-    if (jobError || !job) {
-      console.error('Job fetch error:', jobError);
+    if (entryError || !entry) {
+      console.error('Pipeline entry fetch error:', entryError);
       return new Response(
-        JSON.stringify({ error: 'Job not found or access denied' }),
+        JSON.stringify({ error: 'Pipeline entry not found or access denied' }),
         { 
           status: 404, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -112,20 +112,17 @@ serve(async (req) => {
       );
     }
 
-    // Soft delete the job by updating status to 'deleted'
+    // Delete the pipeline entry
     const { error: deleteError } = await supabase
-      .from('jobs')
-      .update({ 
-        status: 'deleted',
-        updated_at: new Date().toISOString()
-      })
-      .eq('id', jobId)
+      .from('pipeline_entries')
+      .delete()
+      .eq('id', entryId)
       .eq('tenant_id', profile.tenant_id);
 
     if (deleteError) {
       console.error('Delete error:', deleteError);
       return new Response(
-        JSON.stringify({ error: 'Failed to delete job' }),
+        JSON.stringify({ error: 'Failed to delete pipeline entry' }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -138,15 +135,16 @@ serve(async (req) => {
       .from('communication_history')
       .insert({
         tenant_id: profile.tenant_id,
-        contact_id: job.contact_id,
+        contact_id: entry.contact_id,
         communication_type: 'system',
         direction: 'internal',
-        content: `Job ${job.job_number} (${job.name}) was deleted by ${user.email}`,
+        content: `Pipeline entry (${entry.status}) was deleted by ${user.email}`,
         rep_id: user.id,
         metadata: {
-          action: 'job_deleted',
-          job_id: jobId,
-          job_number: job.job_number,
+          action: 'pipeline_entry_deleted',
+          entry_id: entryId,
+          status: entry.status,
+          estimated_value: entry.estimated_value,
           deleted_by: user.id,
           deleted_at: new Date().toISOString()
         }
@@ -160,9 +158,8 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true,
-        message: `Job ${job.job_number} has been deleted successfully`,
-        jobId: jobId,
-        jobNumber: job.job_number
+        message: `Pipeline entry has been deleted successfully`,
+        entryId: entryId
       }),
       { 
         status: 200, 

@@ -4,8 +4,8 @@
 // - Accepts optional IDs (contact_id, lead_id, job_id, project_id, estimate_id) to build context.
 // - Also calls `api_dynamic_tags_frequently_used` to return the curated tag list.
 
-import { createClient } from 'npm:@supabase/supabase-js@2'
-import { Liquid } from 'npm:liquidjs@10'
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { Liquid } from 'https://esm.sh/liquidjs@10'
 import { corsHeaders } from '../_shared/cors.ts'
 
 type RenderPayload = {
