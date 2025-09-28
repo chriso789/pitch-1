@@ -58,6 +58,8 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
   const [unifiedJobs, setUnifiedJobs] = useState<UnifiedJobItem[]>([]);
   const [pipelineEntries, setPipelineEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
+  const [showBulkDelete, setShowBulkDelete] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -223,6 +225,55 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
     }
   };
 
+  const handleBulkDelete = async () => {
+    if (selectedJobs.length === 0) return;
+    
+    try {
+      const { error } = await supabase
+        .from('pipeline_entries')
+        .delete()
+        .in('id', selectedJobs);
+
+      if (error) throw error;
+
+      toast({
+        title: "Bulk Delete Complete",
+        description: `Successfully deleted ${selectedJobs.length} leads.`,
+      });
+      
+      setSelectedJobs([]);
+      setShowBulkDelete(false);
+      fetchUnifiedJobs(); // Refresh jobs list
+    } catch (error) {
+      console.error('Error bulk deleting leads:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete leads. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleJobSelection = (jobId: string, checked: boolean) => {
+    setSelectedJobs(prev => 
+      checked 
+        ? [...prev, jobId]
+        : prev.filter(id => id !== jobId)
+    );
+  };
+
+  const selectAllJobs = () => {
+    const pipelineJobIds = unifiedJobs
+      .filter(job => job.type === 'pipeline')
+      .map(job => job.pipeline_entry_id!)
+      .filter(id => id);
+    setSelectedJobs(pipelineJobIds);
+  };
+
+  const clearSelection = () => {
+    setSelectedJobs([]);
+  };
+
   const getStatusColor = (status: string, type: 'pipeline' | 'job') => {
     if (type === 'pipeline') {
       // Pipeline entry status colors
@@ -357,17 +408,74 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
           <CardTitle className="text-lg font-semibold flex items-center gap-2">
             <Briefcase className="h-5 w-5" />
             Jobs & Leads ({totalJobs})
+            {selectedJobs.length > 0 && (
+              <Badge variant="secondary" className="ml-2">
+                {selectedJobs.length} selected
+              </Badge>
+            )}
           </CardTitle>
-          <LeadCreationDialog 
-            contact={contact}
-            onLeadCreated={handleLeadCreated}
-            trigger={
-              <Button className="gradient-primary">
-                <Plus className="h-4 w-4 mr-2" />
-                Create Lead
+          <div className="flex gap-2">
+            {selectedJobs.length > 0 && (
+              <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={clearSelection}
+                >
+                  Clear Selection
+                </Button>
+                <AlertDialog open={showBulkDelete} onOpenChange={setShowBulkDelete}>
+                  <AlertDialogTrigger asChild>
+                    <Button
+                      variant="destructive"
+                      size="sm"
+                      onClick={() => setShowBulkDelete(true)}
+                    >
+                      <Trash2 className="h-4 w-4 mr-2" />
+                      Delete Selected ({selectedJobs.length})
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle>Bulk Delete Leads</AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Are you sure you want to delete {selectedJobs.length} selected leads? This action cannot be undone.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Cancel</AlertDialogCancel>
+                      <AlertDialogAction
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                        onClick={handleBulkDelete}
+                      >
+                        Delete {selectedJobs.length} Leads
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </>
+            )}
+            {unifiedJobs.filter(job => job.type === 'pipeline').length > 1 && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={selectAllJobs}
+                disabled={selectedJobs.length === unifiedJobs.filter(job => job.type === 'pipeline').length}
+              >
+                Select All Leads
               </Button>
-            }
-          />
+            )}
+            <LeadCreationDialog 
+              contact={contact}
+              onLeadCreated={handleLeadCreated}
+              trigger={
+                <Button className="gradient-primary">
+                  <Plus className="h-4 w-4 mr-2" />
+                  Create Lead
+                </Button>
+              }
+            />
+          </div>
         </CardHeader>
         <CardContent>
           {loading ? (
@@ -383,6 +491,14 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
                   <div key={job.id} className="border rounded-lg p-4 hover:shadow-soft transition-smooth relative">
                     <div className="space-y-3">
                       <div className="flex items-start justify-between gap-2">
+                        {job.type === 'pipeline' && (
+                          <input
+                            type="checkbox"
+                            checked={selectedJobs.includes(job.pipeline_entry_id!)}
+                            onChange={(e) => handleJobSelection(job.pipeline_entry_id!, e.target.checked)}
+                            className="mt-1 mr-2"
+                          />
+                        )}
                         <div className="flex-1 min-w-0 pr-2">
                           <h3 className="font-semibold text-sm leading-tight truncate max-w-full">{job.name}</h3>
                           <div className="flex items-center gap-2 mt-1 flex-wrap">

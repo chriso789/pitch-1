@@ -76,6 +76,9 @@ serve(async (req) => {
       case 'auto_stage_progression':
         result = await autoStageProgression(supabase, tenantId, data);
         break;
+      case 'auto_generate_measurements':
+        result = await autoGenerateMeasurements(supabase, tenantId, data);
+        break;
       default:
         throw new Error(`Unknown action: ${action}`);
     }
@@ -277,4 +280,26 @@ async function autoStageProgression(supabase: any, tenantId: string, data: { ent
     progression_needed: suggestedStage !== entry.status,
     reasoning: 'Based on lead score and recent activity'
   };
+}
+
+async function autoGenerateMeasurements(supabase: any, tenantId: string, data: { pipeline_entry_id: string }) {
+  const { pipeline_entry_id } = data;
+
+  // Call the auto-generate-measurements function
+  try {
+    const response = await fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/auto-generate-measurements`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+      },
+      body: JSON.stringify({ pipeline_entry_id })
+    });
+
+    const result = await response.json();
+    return result;
+  } catch (error) {
+    console.error('Error calling auto-generate-measurements:', error);
+    throw error;
+  }
 }

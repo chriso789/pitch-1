@@ -19,6 +19,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import AdvancedMeasurementCanvas from "./AdvancedMeasurementCanvas";
 import RoofGeometryCalculator from "./RoofGeometryCalculator";
+import { PinDropMeasurementTool } from "./PinDropMeasurementTool";
 
 interface EnhancedSatelliteMeasurementProps {
   address: string;
@@ -301,14 +302,33 @@ export const EnhancedSatelliteMeasurement: React.FC<EnhancedSatelliteMeasurement
               <span className="ml-2">Loading satellite imagery and elevation data...</span>
             </div>
           ) : satelliteImageUrl ? (
-            <Tabs defaultValue="measurement" className="w-full">
-              <TabsList className="grid w-full grid-cols-3">
-                <TabsTrigger value="measurement">Measurement</TabsTrigger>
+            <Tabs defaultValue="pindrop" className="w-full">
+              <TabsList className="grid w-full grid-cols-4">
+                <TabsTrigger value="pindrop">Pin Drop</TabsTrigger>
+                <TabsTrigger value="measurement">Advanced</TabsTrigger>
                 <TabsTrigger value="analysis">Analysis</TabsTrigger>
                 <TabsTrigger value="settings">Settings</TabsTrigger>
               </TabsList>
               
-              <TabsContent value="measurement" className="space-y-4">
+              <TabsContent value="pindrop" className="space-y-4">
+                <PinDropMeasurementTool
+                  satelliteImageUrl={satelliteImageUrl}
+                  onMeasurementsChange={handleMeasurementsChange}
+                  pixelToFeetRatio={pixelToFeetRatio}
+                  initialMeasurements={measurement}
+                />
+              </TabsContent>
+              
+          <TabsContent value="pindrop" className="space-y-4">
+            <PinDropMeasurementTool
+              satelliteImageUrl={satelliteImageUrl}
+              onMeasurementsChange={handleMeasurementsChange}
+              pixelToFeetRatio={pixelToFeetRatio}
+              initialMeasurements={measurement}
+            />
+          </TabsContent>
+
+          <TabsContent value="measurement" className="space-y-4">
                 <AdvancedMeasurementCanvas
                   satelliteImageUrl={satelliteImageUrl}
                   onMeasurementsChange={handleMeasurementsChange}
