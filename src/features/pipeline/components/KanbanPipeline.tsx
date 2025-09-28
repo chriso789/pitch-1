@@ -59,6 +59,7 @@ const KanbanPipeline = () => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [showJobForm, setShowJobForm] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [userCanDelete, setUserCanDelete] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -86,6 +87,10 @@ const KanbanPipeline = () => {
         .eq('id', user.id)
         .single();
       setCurrentUser(profile);
+      
+      // Check if user can delete jobs (managers and admins only)
+      const canDelete = profile?.role && ['admin', 'manager', 'master'].includes(profile.role);
+      setUserCanDelete(canDelete);
     }
   };
 
@@ -166,10 +171,10 @@ const KanbanPipeline = () => {
         })
         .filter(Boolean) as JobEntry[];
 
-      // Group data by status
+      // Group data by status (exclude deleted jobs)
       const groupedData: Record<string, JobEntry[]> = {};
       jobStages.forEach(stage => {
-        groupedData[stage.key] = combinedJobs.filter(job => job.status === stage.key) || [];
+        groupedData[stage.key] = combinedJobs.filter(job => job.status === stage.key && job.status !== 'deleted') || [];
       });
 
       setPipelineData(groupedData);
@@ -274,6 +279,50 @@ const KanbanPipeline = () => {
     }
   };
 
+  const handleDeleteJob = async (jobId: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('delete-job', {
+        body: { jobId }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data.error) {
+        toast({
+          title: "Error",
+          description: data.message || data.error,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Success",
+        description: data.message || "Job deleted successfully",
+      });
+
+      // Remove the job from local state immediately
+      const newPipelineData = { ...pipelineData };
+      for (const [status, jobs] of Object.entries(newPipelineData)) {
+        newPipelineData[status] = jobs.filter(job => job.id !== jobId);
+      }
+      setPipelineData(newPipelineData);
+
+      // Refresh data to ensure consistency
+      await fetchJobsData();
+
+    } catch (error) {
+      console.error('Error deleting job:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete job",
+        variant: "destructive",
+      });
+    }
+  };
+
   const formatCurrency = (amount: number) => {
     if (!amount) return '$0';
     return new Intl.NumberFormat('en-US', {
@@ -345,6 +394,8 @@ const KanbanPipeline = () => {
                           id={job.id}
                           entry={job}
                           onView={(contactId) => navigate(`/contact/${contactId}`)}
+                          onDelete={handleDeleteJob}
+                          canDelete={userCanDelete}
                         />
                       ))}
                     </SortableContext>

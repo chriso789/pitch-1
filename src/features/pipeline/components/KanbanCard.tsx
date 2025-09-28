@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { GripVertical } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { GripVertical, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface KanbanCardProps {
@@ -33,6 +35,8 @@ interface KanbanCardProps {
     };
   };
   onView: (contactId: string) => void;
+  onDelete?: (jobId: string) => void;
+  canDelete?: boolean;
   isDragging?: boolean;
 }
 
@@ -40,8 +44,11 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   id, 
   entry, 
   onView, 
+  onDelete,
+  canDelete = false,
   isDragging = false 
 }) => {
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const {
     attributes,
     listeners,
@@ -105,6 +112,18 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
     if (daysInStatus <= 7) return "bg-success/10 text-success border-success/20";
     if (daysInStatus <= 21) return "bg-warning/10 text-warning border-warning/20"; 
     return "bg-destructive/10 text-destructive border-destructive/20";
+  };
+
+  const handleDeleteClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowDeleteDialog(true);
+  };
+
+  const handleConfirmDelete = () => {
+    if (onDelete) {
+      onDelete(entry.id);
+    }
+    setShowDeleteDialog(false);
   };
 
   return (
@@ -181,6 +200,40 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
             </span>
           </div>
         </div>
+
+        {/* Delete Button (only visible to authorized users on hover) */}
+        {canDelete && (
+          <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="absolute top-0.5 left-0.5 h-4 w-4 p-0 text-destructive/70 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                onClick={handleDeleteClick}
+                aria-label={`Delete job ${jobNumber}`}
+              >
+                <X className="h-3 w-3" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Delete Job</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Are you sure you want to delete job {jobNumber} for {lastName}? This action cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleConfirmDelete}
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                >
+                  Delete Job
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
 
         {/* Drag Handle (hidden, accessible via keyboard/screen reader) */}
         <GripVertical 
