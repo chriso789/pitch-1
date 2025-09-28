@@ -4189,6 +4189,7 @@ export type Database = {
       pipeline_entries: {
         Row: {
           assigned_to: string | null
+          clj_formatted_number: string | null
           contact_id: string | null
           conversion_probability: number | null
           created_at: string | null
@@ -4216,6 +4217,7 @@ export type Database = {
         }
         Insert: {
           assigned_to?: string | null
+          clj_formatted_number?: string | null
           contact_id?: string | null
           conversion_probability?: number | null
           created_at?: string | null
@@ -4243,6 +4245,7 @@ export type Database = {
         }
         Update: {
           assigned_to?: string | null
+          clj_formatted_number?: string | null
           contact_id?: string | null
           conversion_probability?: number | null
           created_at?: string | null
@@ -7871,6 +7874,10 @@ export type Database = {
       extract_tokens: {
         Args: { t: string }
         Returns: string[]
+      }
+      generate_clj_number: {
+        Args: Record<PropertyKey, never>
+        Returns: string
       }
       generate_contact_number: {
         Args: Record<PropertyKey, never>
