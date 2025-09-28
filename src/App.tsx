@@ -12,6 +12,7 @@ import ContactProfile from "./pages/ContactProfile";
 import JobDetails from "./pages/JobDetails";
 import LeadDetails from "./pages/LeadDetails";
 import ProjectDetails from "./pages/ProjectDetails";
+import EnhancedMeasurement from "./pages/EnhancedMeasurement";
 import DemoRequest from "./pages/DemoRequest";
 import NotFound from "./pages/NotFound";
 import KanbanPipeline from "./features/pipeline/components/KanbanPipeline";
@@ -42,7 +43,8 @@ const App = () => {
               <Route path="/contact/:id" element={<ContactProfile />} />
               <Route path="/lead/:id" element={<LeadDetails />} />
               <Route path="/job/:id" element={<JobDetails />} />
-              <Route path="/project/:id" element={<ProjectDetails />} />
+        <Route path="/project/:id" element={<ProjectDetails />} />
+        <Route path="/enhanced-measurement/:id" element={<EnhancedMeasurement />} />
               <Route path="/" element={<Index />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />

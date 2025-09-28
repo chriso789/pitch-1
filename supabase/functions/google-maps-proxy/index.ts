@@ -39,6 +39,14 @@ serve(async (req) => {
         // Elevation API for roof pitch calculation
         url = `https://maps.googleapis.com/maps/api/elevation/json?key=${apiKey}&${new URLSearchParams(params)}`;
         break;
+      case 'streetview':
+        // Street View Static API for roof angle analysis
+        url = `https://maps.googleapis.com/maps/api/streetview?key=${apiKey}&${new URLSearchParams(params)}`;
+        break;
+      case 'places':
+        // Places API for property boundary detection
+        url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?key=${apiKey}&${new URLSearchParams(params)}`;
+        break;
       default:
         throw new Error('Invalid endpoint');
     }
