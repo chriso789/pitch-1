@@ -49,7 +49,7 @@ const MeasurementGating: React.FC<MeasurementGatingProps> = ({
       const isReady = measurements.roof_area_sq_ft > 0 && measurements.has_template;
       onReadinessChange(isReady, measurements);
     }
-  }, [measurements, onReadinessChange]);
+  }, [measurements]);
 
   const checkMeasurementReadiness = async () => {
     try {

@@ -245,9 +245,9 @@ const LeadDetails = () => {
           <div className="space-y-6">
             <MeasurementGating
               pipelineEntryId={id!}
-              onReadinessChange={(isReady, data) => 
+              onReadinessChange={React.useCallback((isReady, data) => 
                 setMeasurementReadiness({ isReady, data })
-              }
+              , [])}
             />
             <SatelliteMeasurement
               address={lead?.verified_address?.formatted_address || `${lead?.contact?.address_street}, ${lead?.contact?.address_city}, ${lead?.contact?.address_state}`}

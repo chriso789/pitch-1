@@ -81,6 +81,13 @@ class ScrubberReportService {
         return null;
       }
       
+      // Check if response is JSON
+      const contentType = response.headers.get('content-type');
+      if (!contentType || !contentType.includes('application/json')) {
+        console.warn('Scrubber report is not JSON, skipping...');
+        return null;
+      }
+      
       const report: ScrubberReport = await response.json();
       this.processScrubberReport(report);
       return report;
