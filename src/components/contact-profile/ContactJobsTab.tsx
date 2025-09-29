@@ -464,7 +464,7 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
               {unifiedJobs
-                .filter(job => job.originalStatus !== 'ready_for_approval')
+                .filter(job => job.originalStatus !== 'contingency_signed')
                 .map((job) => {
                 const nextAction = getNextStageAction(job);
                 return (
