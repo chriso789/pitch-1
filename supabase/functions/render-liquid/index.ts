@@ -90,7 +90,7 @@ Deno.serve(async (req: Request) => {
       referenced = (await engine.fullVariables(parsed)) as string[]
     } catch {
       // fallback: naive regex for {{ ... }}
-      referenced = [...new Set(Array.from(doc.body.matchAll(/\{\{\s*([^}]+?)\s*\}\}/g)).map(m => m[1].trim()))]
+      referenced = [...new Set(Array.from(doc.body.matchAll(/\{\{\s*([^}]+?)\s*\}\}/g) as Iterable<RegExpMatchArray>).map(m => m[1].trim()))]
     }
 
     const unresolved = referenced.filter(path => getByPath(ctx, path) === undefined)

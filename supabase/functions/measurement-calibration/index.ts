@@ -89,7 +89,7 @@ serve(async (req) => {
       return { zoom, ratio: ratio * elevationAdjustment };
     });
     
-    calibrationResult.verification = {
+    (calibrationResult as any).verification = {
       multiZoomRatios: verificationRatios,
       consistencyScore: calculateConsistencyScore(verificationRatios),
       timestamp: new Date().toISOString()
