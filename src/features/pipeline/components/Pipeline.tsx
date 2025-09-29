@@ -27,7 +27,8 @@ import {
   Filter,
   CalendarDays,
   TrendingUp,
-  Plus
+  Plus,
+  XCircle
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -53,13 +54,11 @@ const Pipeline = () => {
   const navigate = useNavigate();
 
   const jobStages = [
-    { name: "Scheduled", key: "scheduled", color: "bg-blue-500", icon: Clock },
-    { name: "Materials Ordered", key: "materials_ordered", color: "bg-yellow-500", icon: FileText },
-    { name: "In Progress", key: "in_progress", color: "bg-orange-500", icon: Loader2 },
-    { name: "Quality Check", key: "quality_check", color: "bg-purple-500", icon: AlertCircle },
+    { name: "Pending Jobs", key: "pending", color: "bg-yellow-500", icon: Clock },
+    { name: "In Progress", key: "in_progress", color: "bg-blue-500", icon: Loader2 },
     { name: "Completed", key: "completed", color: "bg-green-500", icon: CheckCircle },
-    { name: "Invoiced", key: "invoiced", color: "bg-emerald-600", icon: FileText },
-    { name: "Closed", key: "closed", color: "bg-gray-500", icon: CheckCircle }
+    { name: "On Hold", key: "on_hold", color: "bg-orange-500", icon: AlertCircle },
+    { name: "Cancelled", key: "cancelled", color: "bg-red-500", icon: XCircle }
   ];
 
   // Fetch pipeline data from Supabase
