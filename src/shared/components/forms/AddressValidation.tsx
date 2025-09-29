@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useRef } from 'react';
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -7,12 +7,6 @@ import { Card, CardContent } from "@/components/ui/card";
 import { MapPin, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-
-declare global {
-  interface Window {
-    google: any;
-  }
-}
 
 interface AddressValidationProps {
   onAddressSelected: (address: StructuredAddress) => void;
@@ -50,34 +44,7 @@ export const AddressValidation: React.FC<AddressValidationProps> = ({
   const [validated, setValidated] = useState(false);
   const [validationStatus, setValidationStatus] = useState<'valid' | 'partial' | 'invalid' | 'unverified'>('unverified');
   const inputRef = useRef<HTMLInputElement>(null);
-  const autocompleteService = useRef<any>(null);
-  const placesService = useRef<any>(null);
   const { toast } = useToast();
-
-  useEffect(() => {
-    // Initialize Google Places API
-    if (window.google?.maps?.places) {
-      autocompleteService.current = new window.google.maps.places.AutocompleteService();
-      placesService.current = new window.google.maps.places.PlacesService(document.createElement('div'));
-    } else {
-      // Load Google Maps API if not already loaded
-      loadGoogleMapsAPI();
-    }
-  }, []);
-
-  const loadGoogleMapsAPI = () => {
-    if (!window.google) {
-      const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY}&libraries=places`;
-      script.async = true;
-      script.defer = true;
-      script.onload = () => {
-        autocompleteService.current = new window.google.maps.places.AutocompleteService();
-        placesService.current = new window.google.maps.places.PlacesService(document.createElement('div'));
-      };
-      document.head.appendChild(script);
-    }
-  };
 
   const handleInputChange = async (value: string) => {
     setInputValue(value);
@@ -89,49 +56,83 @@ export const AddressValidation: React.FC<AddressValidationProps> = ({
       return;
     }
 
-    if (autocompleteService.current) {
-      autocompleteService.current.getPlacePredictions(
-        {
-          input: value,
-          types: ['address'],
-          componentRestrictions: { country: 'us' }
-        },
-        (predictions: any[], status: any) => {
-          if (status === window.google.maps.places.PlacesServiceStatus.OK && predictions) {
-            setSuggestions(predictions.slice(0, 5));
-          } else {
-            setSuggestions([]);
+    try {
+      setLoading(true);
+      const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
+        body: {
+          endpoint: 'autocomplete',
+          params: {
+            input: value,
+            types: 'address',
+            components: 'country:us'
           }
         }
-      );
+      });
+
+      if (error) {
+        console.warn('Autocomplete failed:', error);
+        setSuggestions([]);
+        return;
+      }
+
+      if (data?.predictions) {
+        setSuggestions(data.predictions.slice(0, 5));
+      } else {
+        setSuggestions([]);
+      }
+    } catch (error) {
+      console.warn('Autocomplete error:', error);
+      setSuggestions([]);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const selectAddress = (prediction: any) => {
+  const selectAddress = async (prediction: any) => {
     setLoading(true);
     setSuggestions([]);
 
-    if (placesService.current) {
-      placesService.current.getDetails(
-        {
-          placeId: prediction.place_id,
-          fields: ['address_components', 'formatted_address', 'geometry', 'place_id']
-        },
-        async (place: any, status: any) => {
-          if (status === window.google.maps.places.PlacesServiceStatus.OK && place) {
-            const structuredAddress = await parseGooglePlace(place);
-            
-            // Validate with Google Address Validation API
-            const validatedAddress = await validateWithGoogleAPI(structuredAddress);
-            
-            setInputValue(validatedAddress.formatted_address);
-            setValidated(true);
-            setValidationStatus(validatedAddress.validation_status);
-            onAddressSelected(validatedAddress);
+    try {
+      const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
+        body: {
+          endpoint: 'details',
+          params: {
+            place_id: prediction.place_id,
+            fields: 'address_components,formatted_address,geometry,place_id'
           }
-          setLoading(false);
         }
-      );
+      });
+
+      if (error) {
+        console.warn('Place details failed:', error);
+        toast({
+          title: "Error",
+          description: "Failed to get address details",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (data?.result) {
+        const structuredAddress = await parseGooglePlace(data.result);
+        
+        // Validate with Google Address Validation API
+        const validatedAddress = await validateWithGoogleAPI(structuredAddress);
+        
+        setInputValue(validatedAddress.formatted_address);
+        setValidated(true);
+        setValidationStatus(validatedAddress.validation_status);
+        onAddressSelected(validatedAddress);
+      }
+    } catch (error) {
+      console.warn('Place details error:', error);
+      toast({
+        title: "Error",
+        description: "Failed to get address details",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -168,8 +169,8 @@ export const AddressValidation: React.FC<AddressValidationProps> = ({
       postal_code: components.postal_code || '',
       country: components.country || 'US',
       formatted_address: place.formatted_address || '',
-      latitude: place.geometry?.location?.lat() || 0,
-      longitude: place.geometry?.location?.lng() || 0,
+      latitude: place.geometry?.location?.lat || 0,
+      longitude: place.geometry?.location?.lng || 0,
       place_id: place.place_id || '',
       validated: false,
       validation_status: 'unverified'
