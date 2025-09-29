@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Card, CardContent } from "@/components/ui/card";
@@ -55,6 +55,11 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
 }) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [daysSinceLastComm, setDaysSinceLastComm] = useState<number>(0);
+  
+  // Drag detection refs
+  const dragStartPos = useRef<{ x: number; y: number } | null>(null);
+  const hasDragged = useRef(false);
+  const DRAG_THRESHOLD = 5; // pixels
 
   useEffect(() => {
     if (entry.contact_id) {
@@ -157,6 +162,32 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
     setShowDeleteDialog(false);
   };
 
+  // Pointer event handlers to detect click vs drag
+  const handlePointerDown = (e: React.PointerEvent) => {
+    dragStartPos.current = { x: e.clientX, y: e.clientY };
+    hasDragged.current = false;
+  };
+
+  const handlePointerMove = (e: React.PointerEvent) => {
+    if (dragStartPos.current) {
+      const deltaX = Math.abs(e.clientX - dragStartPos.current.x);
+      const deltaY = Math.abs(e.clientY - dragStartPos.current.y);
+      if (deltaX > DRAG_THRESHOLD || deltaY > DRAG_THRESHOLD) {
+        hasDragged.current = true;
+      }
+    }
+  };
+
+  const handlePointerUp = (e: React.PointerEvent) => {
+    // Only trigger view if it was a click (not a drag)
+    if (!hasDragged.current && dragStartPos.current) {
+      e.stopPropagation();
+      onView(entry.contact_id);
+    }
+    dragStartPos.current = null;
+    hasDragged.current = false;
+  };
+
   return (
     <Card 
       ref={setNodeRef} 
@@ -170,10 +201,9 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
       )}
       {...attributes}
       {...listeners}
-      onClick={(e) => {
-        e.stopPropagation();
-        onView(entry.contact_id);
-      }}
+      onPointerDown={handlePointerDown}
+      onPointerMove={handlePointerMove}
+      onPointerUp={handlePointerUp}
       role="button"
       tabIndex={0}
       aria-label={`Job ${jobNumber}, ${lastName}, ${daysInStatus} days in status, last contact ${daysSinceLastComm} days ago`}
