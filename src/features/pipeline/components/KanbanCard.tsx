@@ -1,12 +1,15 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { GripVertical, X } from "lucide-react";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { GripVertical, X, UserCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface KanbanCardProps {
   id: string;
@@ -17,6 +20,7 @@ interface KanbanCardProps {
     status: string;
     created_at: string;
     contact_id: string;
+    assigned_to?: string;
     contacts: {
       id: string;
       contact_number: string;
@@ -38,6 +42,13 @@ interface KanbanCardProps {
   onDelete?: (jobId: string) => void;
   canDelete?: boolean;
   isDragging?: boolean;
+  onAssignmentChange?: () => void;
+}
+
+interface SalesRep {
+  id: string;
+  first_name: string;
+  last_name: string;
 }
 
 export const KanbanCard: React.FC<KanbanCardProps> = ({ 
@@ -46,9 +57,64 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   onView, 
   onDelete,
   canDelete = false,
-  isDragging = false 
+  isDragging = false,
+  onAssignmentChange
 }) => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [salesReps, setSalesReps] = useState<SalesRep[]>([]);
+  const [showAssignment, setShowAssignment] = useState(false);
+
+  useEffect(() => {
+    loadSalesReps();
+  }, []);
+
+  const loadSalesReps = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (!profile) return;
+
+      const { data: reps } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name')
+        .eq('tenant_id', profile.tenant_id)
+        .in('role', ['admin', 'manager', 'rep', 'master'])
+        .eq('is_active', true)
+        .order('first_name');
+
+      setSalesReps(reps || []);
+    } catch (error) {
+      console.error('Error loading sales reps:', error);
+    }
+  };
+
+  const handleAssignmentChange = async (assignedTo: string) => {
+    try {
+      const updateData: any = { 
+        created_by: assignedTo === 'unassigned' ? null : assignedTo
+      };
+      
+      const { error } = await supabase
+        .from('jobs')
+        .update(updateData)
+        .eq('id', entry.id);
+
+      if (error) throw error;
+
+      toast.success("Assignment updated");
+      onAssignmentChange?.();
+    } catch (error) {
+      console.error('Error updating assignment:', error);
+      toast.error("Failed to update assignment");
+    }
+  };
   const {
     attributes,
     listeners,
@@ -126,6 +192,8 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
     setShowDeleteDialog(false);
   };
 
+  const assignedRep = salesReps.find(rep => rep.id === entry.assigned_to);
+
   return (
     <Card 
       ref={setNodeRef} 
@@ -141,8 +209,12 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
       {...listeners}
       onClick={(e) => {
         e.stopPropagation();
-        onView(entry.contact_id);
+        if (!showAssignment) {
+          onView(entry.contact_id);
+        }
       }}
+      onMouseEnter={() => setShowAssignment(true)}
+      onMouseLeave={() => setShowAssignment(false)}
       role="button"
       tabIndex={0}
       aria-label={`Job ${jobNumber}, ${lastName}, ${daysInStatus} days in status, last contact ${daysSinceComm} days ago`}
@@ -183,22 +255,55 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
           </Badge>
         </div>
 
-        {/* Row 2: Last Name */}
+        {/* Row 2: Last Name or Assignment Selector */}
         <div className="flex-1 flex items-center justify-center min-h-0">
-          <div 
-            className="text-center w-full min-w-0"
-            title={lastName}
-          >
-            <span 
-              className={cn(
-                "font-medium text-foreground block truncate px-1",
-                lastName.length > 15 ? "group-hover:text-clip" : ""
-              )}
-              style={{ fontSize: 'clamp(10px, 2.5vw, 13px)' }}
+          {showAssignment ? (
+            <div className="w-full px-1" onClick={(e) => e.stopPropagation()}>
+              <Select
+                value={entry.assigned_to || 'unassigned'}
+                onValueChange={handleAssignmentChange}
+              >
+                <SelectTrigger className="h-6 text-xs border-0 bg-muted/50 hover:bg-muted">
+                  <SelectValue>
+                    {assignedRep ? (
+                      <span className="flex items-center gap-1">
+                        <UserCircle className="h-3 w-3" />
+                        {assignedRep.first_name[0]}{assignedRep.last_name[0]}
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-1 text-muted-foreground">
+                        <UserCircle className="h-3 w-3" />
+                        Unassigned
+                      </span>
+                    )}
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="unassigned">Unassigned</SelectItem>
+                  {salesReps.map(rep => (
+                    <SelectItem key={rep.id} value={rep.id}>
+                      {rep.first_name} {rep.last_name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          ) : (
+            <div 
+              className="text-center w-full min-w-0"
+              title={lastName}
             >
-              {lastName}
-            </span>
-          </div>
+              <span 
+                className={cn(
+                  "font-medium text-foreground block truncate px-1",
+                  lastName.length > 15 ? "group-hover:text-clip" : ""
+                )}
+                style={{ fontSize: 'clamp(10px, 2.5vw, 13px)' }}
+              >
+                {lastName}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Delete Button (only visible to authorized users on hover) */}

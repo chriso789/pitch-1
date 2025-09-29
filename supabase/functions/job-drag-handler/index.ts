@@ -42,6 +42,28 @@ serve(async (req) => {
 
     const { jobId, newStatus, fromStatus } = await req.json();
 
+    // Validate status transition
+    const validTransitions: Record<string, string[]> = {
+      'pending': ['in_progress', 'on_hold', 'cancelled'],
+      'in_progress': ['completed', 'on_hold', 'cancelled'],
+      'on_hold': ['pending', 'in_progress', 'cancelled'],
+      'completed': [], // Completed jobs cannot be moved
+      'cancelled': [] // Cancelled jobs cannot be moved
+    };
+
+    const allowedTransitions = validTransitions[fromStatus] || [];
+    
+    if (!allowedTransitions.includes(newStatus)) {
+      console.log(`Invalid status transition: ${fromStatus} -> ${newStatus}`);
+      return new Response(JSON.stringify({ 
+        error: 'Invalid status transition',
+        message: `Cannot move from ${fromStatus} to ${newStatus}. Allowed: ${allowedTransitions.join(', ')}`
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Update job status
     const { error: updateError } = await supabase
       .from('jobs')

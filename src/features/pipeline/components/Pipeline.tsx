@@ -34,6 +34,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import { EnhancedJobCreationDialog } from "@/components/EnhancedJobCreationDialog";
 
 const Pipeline = () => {
   const [pipelineData, setPipelineData] = useState({});
@@ -502,14 +503,15 @@ const Pipeline = () => {
     
     return {
       id: pipelineEntry.id,
-      job_number: pipelineEntry.clj_formatted_number || estimate?.estimate_number || `PIPE-${pipelineEntry.id.slice(-4)}`,
+      job_number: pipelineEntry.job_number || `JOB-${pipelineEntry.id.slice(-4)}`,
       name: formatName(contact),
       status: pipelineEntry.status,
       created_at: pipelineEntry.created_at || new Date().toISOString(),
       contact_id: pipelineEntry.contact_id,
+      assigned_to: pipelineEntry.assigned_to,
       contacts: {
         id: contact?.id || pipelineEntry.contact_id,
-        contact_number: pipelineEntry.clj_formatted_number || estimate?.estimate_number || `PIPE-${pipelineEntry.id.slice(-4)}`,
+        contact_number: pipelineEntry.contact_number || `JOB-${pipelineEntry.id.slice(-4)}`,
         first_name: contact?.first_name || '',
         last_name: contact?.last_name || '',
         email: contact?.email || '',
@@ -528,16 +530,21 @@ const Pipeline = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold gradient-primary bg-clip-text text-transparent">
-            Sales Pipeline
+            Job Pipeline
           </h1>
           <p className="text-muted-foreground">
-            Track leads through the complete roofing sales process
+            Track and manage jobs through their lifecycle
           </p>
         </div>
-        <Button className="gradient-primary" onClick={() => setShowLeadForm(true)}>
-          <Plus className="h-4 w-4 mr-2" />
-          Add New Lead
-        </Button>
+        <EnhancedJobCreationDialog 
+          onJobCreated={() => {
+            fetchPipelineData();
+            toast({
+              title: "Success",
+              description: "Job created successfully"
+            });
+          }}
+        />
       </div>
 
       {/* Filters */}
@@ -652,6 +659,7 @@ const Pipeline = () => {
                             onDelete={() => {}}
                             canDelete={false}
                             isDragging={activeId === entry.id}
+                            onAssignmentChange={fetchPipelineData}
                           />
                         ))}
                       </KanbanColumn>
