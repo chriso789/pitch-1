@@ -13,7 +13,7 @@ serve(async (req) => {
 
   try {
     const { endpoint, params } = await req.json();
-    const apiKey = Deno.env.get('GOOGLE_PLACES_API_KEY');
+    const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
     
     if (!apiKey) {
       throw new Error('Google Places API key not configured');
