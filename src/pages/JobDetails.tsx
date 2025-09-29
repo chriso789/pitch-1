@@ -9,6 +9,7 @@ import { BudgetTracker } from "@/features/projects";
 import { JobInvoiceTracker, JobPhotoGallery, JobDocumentManager, JobTimelineTracker } from "@/features/jobs";
 import PaymentForm from "@/features/payments/components/PaymentForm";
 import { ContactCommunicationTab } from "@/components/contact-profile/ContactCommunicationTab";
+import { JobActivityTimeline } from "@/components/JobActivityTimeline";
 import { CollapsibleDeveloperToolbar } from "@/shared/components/CollapsibleDeveloperToolbar";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 import { 
@@ -463,10 +464,14 @@ const JobDetails = () => {
 
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-8">
+        <TabsList className="grid w-full grid-cols-9">
           <TabsTrigger value="overview" className="flex items-center space-x-1">
             <FileText className="h-4 w-4" />
             <span className="hidden sm:inline">Overview</span>
+          </TabsTrigger>
+          <TabsTrigger value="activity" className="flex items-center space-x-1">
+            <Clock className="h-4 w-4" />
+            <span className="hidden sm:inline">Activity</span>
           </TabsTrigger>
           <TabsTrigger value="budget" className="flex items-center space-x-1">
             <DollarSign className="h-4 w-4" />
@@ -531,6 +536,10 @@ const JobDetails = () => {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="activity">
+          <JobActivityTimeline jobId={job.id} />
         </TabsContent>
 
         <TabsContent value="budget">

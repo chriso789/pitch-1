@@ -10,6 +10,7 @@ import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import ContactProfile from "./pages/ContactProfile";
 import JobDetails from "./pages/JobDetails";
+import JobAnalytics from "./pages/JobAnalytics";
 import LeadDetails from "./pages/LeadDetails";
 import ProjectDetails from "./pages/ProjectDetails";
 import EnhancedMeasurement from "./pages/EnhancedMeasurement";
@@ -43,6 +44,7 @@ const App = () => {
               <Route path="/contact/:id" element={<ContactProfile />} />
               <Route path="/lead/:id" element={<LeadDetails />} />
               <Route path="/job/:id" element={<JobDetails />} />
+              <Route path="/job-analytics" element={<JobAnalytics />} />
         <Route path="/project/:id" element={<ProjectDetails />} />
         <Route path="/enhanced-measurement/:id" element={<EnhancedMeasurement />} />
               <Route path="/" element={<Index />} />

@@ -645,15 +645,24 @@ const Pipeline = () => {
             Track and manage jobs through their lifecycle
           </p>
         </div>
-        <EnhancedJobCreationDialog 
-          onJobCreated={() => {
-            fetchPipelineData();
-            toast({
-              title: "Success",
-              description: "Job created successfully"
-            });
-          }}
-        />
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            onClick={() => navigate('/job-analytics')}
+          >
+            <TrendingUp className="h-4 w-4 mr-2" />
+            View Analytics
+          </Button>
+          <EnhancedJobCreationDialog 
+            onJobCreated={() => {
+              fetchPipelineData();
+              toast({
+                title: "Success",
+                description: "Job created successfully"
+              });
+            }}
+          />
+        </div>
       </div>
 
       {/* Filters */}
