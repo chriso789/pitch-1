@@ -1,10 +1,11 @@
-import React, { useState, useRef, useEffect } from "react";
+import React, { useState, useRef } from "react";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle, AlertCircle, MapPin, Loader2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface AddressData {
   street: string;
@@ -45,71 +46,39 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
   const [showSuggestions, setShowSuggestions] = useState(false);
   
   const streetInputRef = useRef<HTMLInputElement>(null);
-  const autocompleteService = useRef<any>(null);
-  const placesService = useRef<any>(null);
   const { toast } = useToast();
-
-  useEffect(() => {
-    // Initialize Google Places services
-    if (window.google?.maps?.places) {
-      // @ts-ignore - Google Maps API will be loaded dynamically
-      autocompleteService.current = new window.google.maps.places.AutocompleteService();
-      const mapDiv = document.createElement("div");
-      // @ts-ignore - Google Maps API will be loaded dynamically
-      const map = new window.google.maps.Map(mapDiv);
-      // @ts-ignore - Google Maps API will be loaded dynamically
-      placesService.current = new window.google.maps.places.PlacesService(map);
-    } else {
-      // Load Google Maps API
-      loadGoogleMapsAPI();
-    }
-  }, []);
-
-  const loadGoogleMapsAPI = () => {
-    if (window.google?.maps) return;
-    
-    const script = document.createElement("script");
-    // Use direct API key from environment since VITE_ vars aren't supported
-    const apiKey = "YOUR_API_KEY_HERE"; // This will be replaced by edge function
-    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
-    script.async = true;
-    script.onload = () => {
-      // @ts-ignore - Google Maps API loaded dynamically
-      autocompleteService.current = new window.google.maps.places.AutocompleteService();
-      const mapDiv = document.createElement("div");
-      // @ts-ignore - Google Maps API loaded dynamically
-      const map = new window.google.maps.Map(mapDiv);
-      // @ts-ignore - Google Maps API loaded dynamically
-      placesService.current = new window.google.maps.places.PlacesService(map);
-    };
-    document.head.appendChild(script);
-  };
 
   const handleAddressChange = async (field: keyof AddressData, value: string) => {
     setAddress(prev => ({ ...prev, [field]: value }));
     setVerificationStatus("none");
 
-    // Trigger autocomplete for street address
-    if (field === "street" && value.length > 3 && autocompleteService.current) {
+    // Trigger autocomplete for street address using edge function
+    if (field === "street" && value.length > 3) {
       try {
-        const request = {
-          input: value,
-          types: ["address"],
-          componentRestrictions: { country: "US" },
-        };
-
-        autocompleteService.current.getPlacePredictions(request, (predictions, status) => {
-          // @ts-ignore - Google Maps API status comparison
-          if (status === window.google?.maps?.places?.PlacesServiceStatus?.OK && predictions) {
-            setSuggestions(predictions.slice(0, 5));
-            setShowSuggestions(true);
-          } else {
-            setSuggestions([]);
-            setShowSuggestions(false);
+        const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
+          body: {
+            endpoint: 'autocomplete',
+            params: {
+              input: value,
+              types: 'address',
+              components: 'country:us'
+            }
           }
         });
+
+        if (error) throw error;
+
+        if (data?.predictions && data.predictions.length > 0) {
+          setSuggestions(data.predictions.slice(0, 5));
+          setShowSuggestions(true);
+        } else {
+          setSuggestions([]);
+          setShowSuggestions(false);
+        }
       } catch (error) {
         console.error("Autocomplete error:", error);
+        setSuggestions([]);
+        setShowSuggestions(false);
       }
     } else if (field === "street") {
       setShowSuggestions(false);
@@ -117,79 +86,80 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
   };
 
   const selectSuggestion = async (prediction: any) => {
-    if (!placesService.current) return;
-
     setShowSuggestions(false);
     setIsVerifying(true);
 
     try {
-      placesService.current.getDetails(
-        {
-          placeId: prediction.place_id,
-          fields: ["address_components", "formatted_address", "geometry"],
-        },
-        (place, status) => {
-          // @ts-ignore - Google Maps API status comparison
-          if (status === window.google?.maps?.places?.PlacesServiceStatus?.OK && place) {
-            const addressComponents = place.address_components || [];
-            const newAddress: AddressData = {
-              street: "",
-              city: "",
-              state: "",
-              zip: "",
-              lat: place.geometry?.location?.lat(),
-              lng: place.geometry?.location?.lng(),
-              place_id: prediction.place_id,
-              formatted_address: place.formatted_address,
-            };
-
-            // Parse address components
-            addressComponents.forEach((component) => {
-              const types = component.types;
-              if (types.includes("street_number") || types.includes("route")) {
-                newAddress.street += (newAddress.street ? " " : "") + component.long_name;
-              } else if (types.includes("locality")) {
-                newAddress.city = component.long_name;
-              } else if (types.includes("administrative_area_level_1")) {
-                newAddress.state = component.short_name;
-              } else if (types.includes("postal_code")) {
-                newAddress.zip = component.long_name;
-              }
-            });
-
-            setAddress(newAddress);
-            setVerificationStatus("verified");
-            
-            const verificationData = {
-              place_id: prediction.place_id,
-              formatted_address: place.formatted_address,
-              geometry: place.geometry,
-              verification_timestamp: new Date().toISOString(),
-              verification_status: "verified",
-            };
-
-            onAddressVerified(newAddress, verificationData);
-            setIsVerifying(false);
-            
-            toast({
-              title: "Address Verified",
-              description: "Address has been verified with Google Places.",
-            });
-          } else {
-            setIsVerifying(false);
-            setVerificationStatus("failed");
-            toast({
-              title: "Verification Failed",
-              description: "Could not verify address details.",
-              variant: "destructive",
-            });
+      const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
+        body: {
+          endpoint: 'details',
+          params: {
+            place_id: prediction.place_id,
+            fields: 'address_components,formatted_address,geometry'
           }
         }
-      );
+      });
+
+      if (error) throw error;
+
+      if (data?.result) {
+        const place = data.result;
+        const addressComponents = place.address_components || [];
+        const newAddress: AddressData = {
+          street: "",
+          city: "",
+          state: "",
+          zip: "",
+          lat: place.geometry?.location?.lat,
+          lng: place.geometry?.location?.lng,
+          place_id: prediction.place_id,
+          formatted_address: place.formatted_address,
+        };
+
+        // Parse address components
+        addressComponents.forEach((component: any) => {
+          const types = component.types;
+          if (types.includes("street_number") || types.includes("route")) {
+            newAddress.street += (newAddress.street ? " " : "") + component.long_name;
+          } else if (types.includes("locality")) {
+            newAddress.city = component.long_name;
+          } else if (types.includes("administrative_area_level_1")) {
+            newAddress.state = component.short_name;
+          } else if (types.includes("postal_code")) {
+            newAddress.zip = component.long_name;
+          }
+        });
+
+        setAddress(newAddress);
+        setVerificationStatus("verified");
+        
+        const verificationData = {
+          place_id: prediction.place_id,
+          formatted_address: place.formatted_address,
+          geometry: place.geometry,
+          verification_timestamp: new Date().toISOString(),
+          verification_status: "verified",
+        };
+
+        onAddressVerified(newAddress, verificationData);
+        setIsVerifying(false);
+        
+        toast({
+          title: "Address Verified",
+          description: "Address has been verified with Google Places.",
+        });
+      } else {
+        throw new Error("No place details returned");
+      }
     } catch (error) {
       setIsVerifying(false);
       setVerificationStatus("failed");
       console.error("Places details error:", error);
+      toast({
+        title: "Verification Failed",
+        description: "Could not verify address details.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -206,62 +176,67 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
     setIsVerifying(true);
     
     try {
-      // Try to verify using geocoding
-      // @ts-ignore - Google Maps API
-      const geocoder = new window.google.maps.Geocoder();
       const fullAddress = `${address.street}, ${address.city}, ${address.state} ${address.zip}`;
       
-      geocoder.geocode({ address: fullAddress }, (results, status) => {
-        if (status === "OK" && results && results[0]) {
-          const result = results[0];
-          const location = result.geometry.location;
-          
-          const verifiedAddress: AddressData = {
-            ...address,
-            lat: location.lat(),
-            lng: location.lng(),
-            formatted_address: result.formatted_address,
-            place_id: result.place_id,
-          };
-          
-          setAddress(verifiedAddress);
-          setVerificationStatus("verified");
-          
-          const verificationData = {
-            place_id: result.place_id,
-            formatted_address: result.formatted_address,
-            geometry: result.geometry,
-            verification_timestamp: new Date().toISOString(),
-            verification_status: "verified",
-          };
-          
-          onAddressVerified(verifiedAddress, verificationData);
-          setIsVerifying(false);
-          
-          toast({
-            title: "Address Verified",
-            description: "Address has been verified successfully.",
-          });
-        } else {
-          setIsVerifying(false);
-          setVerificationStatus("partial");
-          
-          // Still call onAddressVerified with partial data
-          const verificationData = {
-            verification_timestamp: new Date().toISOString(),
-            verification_status: "partial",
-            error: status,
-          };
-          
-          onAddressVerified(address, verificationData);
-          
-          toast({
-            title: "Partial Verification",
-            description: "Address could not be fully verified but has been saved.",
-            variant: "destructive",
-          });
+      const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
+        body: {
+          endpoint: 'geocode',
+          params: {
+            address: fullAddress
+          }
         }
       });
+
+      if (error) throw error;
+
+      if (data?.results && data.results.length > 0) {
+        const result = data.results[0];
+        const location = result.geometry.location;
+        
+        const verifiedAddress: AddressData = {
+          ...address,
+          lat: location.lat,
+          lng: location.lng,
+          formatted_address: result.formatted_address,
+          place_id: result.place_id,
+        };
+        
+        setAddress(verifiedAddress);
+        setVerificationStatus("verified");
+        
+        const verificationData = {
+          place_id: result.place_id,
+          formatted_address: result.formatted_address,
+          geometry: result.geometry,
+          verification_timestamp: new Date().toISOString(),
+          verification_status: "verified",
+        };
+        
+        onAddressVerified(verifiedAddress, verificationData);
+        setIsVerifying(false);
+        
+        toast({
+          title: "Address Verified",
+          description: "Address has been verified successfully.",
+        });
+      } else {
+        setIsVerifying(false);
+        setVerificationStatus("partial");
+        
+        const verificationData = {
+          verification_timestamp: new Date().toISOString(),
+          verification_status: "partial",
+          error: "No results found",
+        };
+        
+        onAddressVerified(address, verificationData);
+        
+        toast({
+          title: "Partial Verification",
+          description: "Address could not be fully verified but has been saved.",
+          variant: "destructive",
+        });
+      }
     } catch (error) {
       setIsVerifying(false);
       setVerificationStatus("failed");

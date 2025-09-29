@@ -109,9 +109,10 @@ export const EnhancedSatelliteMeasurement: React.FC<EnhancedSatelliteMeasurement
 
       if (imageError) throw imageError;
 
-      if (imageData && !imageData.error) {
-        const imageUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${latitude},${longitude}&zoom=20&size=640x640&maptype=satellite&format=png`;
-        setSatelliteImageUrl(imageUrl);
+      if (imageData?.url) {
+        setSatelliteImageUrl(imageData.url);
+      } else if (imageData?.image) {
+        setSatelliteImageUrl(`data:image/png;base64,${imageData.image}`);
       } else {
         throw new Error('Failed to load satellite image');
       }
@@ -121,8 +122,7 @@ export const EnhancedSatelliteMeasurement: React.FC<EnhancedSatelliteMeasurement
         body: {
           endpoint: 'elevation',
           params: {
-            locations: `${latitude},${longitude}`,
-            key: 'API_KEY'
+            locations: `${latitude},${longitude}`
           }
         }
       });

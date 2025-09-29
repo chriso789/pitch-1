@@ -32,8 +32,24 @@ serve(async (req) => {
         url = `https://maps.googleapis.com/maps/api/geocode/json?key=${apiKey}&${new URLSearchParams(params)}`;
         break;
       case 'satellite':
-        // Google Maps Static API for satellite imagery
+        // Google Maps Static API for satellite imagery - return secure URL
         url = `https://maps.googleapis.com/maps/api/staticmap?key=${apiKey}&${new URLSearchParams(params)}`;
+        
+        // Fetch the image and return it as base64 to avoid exposing the API key
+        const imageResponse = await fetch(url);
+        if (!imageResponse.ok) {
+          throw new Error('Failed to fetch satellite image');
+        }
+        
+        const imageBuffer = await imageResponse.arrayBuffer();
+        const base64Image = btoa(String.fromCharCode(...new Uint8Array(imageBuffer)));
+        
+        return new Response(JSON.stringify({ 
+          image: base64Image,
+          status: 'success'
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
         break;
       case 'elevation':
         // Elevation API for roof pitch calculation

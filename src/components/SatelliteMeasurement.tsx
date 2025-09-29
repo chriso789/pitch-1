@@ -77,9 +77,15 @@ export const SatelliteMeasurement: React.FC<SatelliteMeasurementProps> = ({
 
       if (error) throw error;
 
-      // For satellite images, Google returns the image URL directly
-      const imageUrl = `https://maps.googleapis.com/maps/api/staticmap?center=${latitude},${longitude}&zoom=20&size=640x640&maptype=satellite&format=png&key=${data.key || 'API_KEY'}`;
-      setSatelliteImageUrl(imageUrl);
+      // Edge function returns the image URL or base64 data
+      if (data?.url) {
+        setSatelliteImageUrl(data.url);
+      } else if (data?.image) {
+        // If base64 data is returned
+        setSatelliteImageUrl(`data:image/png;base64,${data.image}`);
+      } else {
+        throw new Error('No image data returned from edge function');
+      }
       
     } catch (error) {
       console.error('Error loading satellite image:', error);
