@@ -160,18 +160,17 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
       
       const { data: newJob, error: jobError } = await supabase
         .from('jobs')
-        .insert({
+        .insert([{
           tenant_id: profile?.tenant_id,
-          job_number: jobNumber,
           name: formData.name,
           description: formData.description,
           contact_id: contact?.id,
-          status: 'scheduled',
+          status: 'lead',
           priority: 'medium',
           created_by: userData.user?.id,
           address_street: selectedAddress.formatted_address,
           estimated_value: 0
-        })
+        }])
         .select()
         .single();
 

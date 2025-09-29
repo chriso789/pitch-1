@@ -2978,7 +2978,7 @@ export type Database = {
           priority: string | null
           project_id: string | null
           roof_type: string | null
-          status: string
+          status: Database["public"]["Enums"]["job_status"]
           tenant_id: string
           updated_at: string
         }
@@ -2996,7 +2996,7 @@ export type Database = {
           priority?: string | null
           project_id?: string | null
           roof_type?: string | null
-          status?: string
+          status?: Database["public"]["Enums"]["job_status"]
           tenant_id: string
           updated_at?: string
         }
@@ -3014,7 +3014,7 @@ export type Database = {
           priority?: string | null
           project_id?: string | null
           roof_type?: string | null
-          status?: string
+          status?: Database["public"]["Enums"]["job_status"]
           tenant_id?: string
           updated_at?: string
         }
@@ -8026,6 +8026,14 @@ export type Database = {
         | "approved"
         | "rejected"
         | "expired"
+      job_status:
+        | "lead"
+        | "legal"
+        | "contingency"
+        | "ready_for_approval"
+        | "production"
+        | "final_payment"
+        | "closed"
       lead_source:
         | "referral"
         | "canvassing"
@@ -8057,6 +8065,11 @@ export type Database = {
         | "canceled"
         | "duplicate"
         | "hold_mgr_review"
+        | "legal"
+        | "contingency"
+        | "ready_for_approval"
+        | "production"
+        | "final_payment"
       roof_type:
         | "shingle"
         | "metal"
@@ -8233,6 +8246,15 @@ export const Constants = {
         "rejected",
         "expired",
       ],
+      job_status: [
+        "lead",
+        "legal",
+        "contingency",
+        "ready_for_approval",
+        "production",
+        "final_payment",
+        "closed",
+      ],
       lead_source: [
         "referral",
         "canvassing",
@@ -8267,6 +8289,11 @@ export const Constants = {
         "canceled",
         "duplicate",
         "hold_mgr_review",
+        "legal",
+        "contingency",
+        "ready_for_approval",
+        "production",
+        "final_payment",
       ],
       roof_type: [
         "shingle",

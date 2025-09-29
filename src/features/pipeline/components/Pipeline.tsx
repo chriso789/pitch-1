@@ -62,11 +62,13 @@ const Pipeline = () => {
   const navigate = useNavigate();
 
   const jobStages = [
-    { name: "Pending Jobs", key: "pending", color: "bg-yellow-500", icon: Clock },
-    { name: "In Progress", key: "in_progress", color: "bg-blue-500", icon: Loader2 },
-    { name: "Completed", key: "completed", color: "bg-green-500", icon: CheckCircle },
-    { name: "On Hold", key: "on_hold", color: "bg-orange-500", icon: AlertCircle },
-    { name: "Cancelled", key: "cancelled", color: "bg-red-500", icon: XCircle }
+    { name: "Leads", key: "lead", color: "bg-amber-500", icon: User },
+    { name: "Legal", key: "legal", color: "bg-blue-500", icon: FileText },
+    { name: "Contingency", key: "contingency", color: "bg-purple-500", icon: AlertCircle },
+    { name: "Ready For Approval", key: "ready_for_approval", color: "bg-orange-500", icon: CheckCircle },
+    { name: "Production", key: "production", color: "bg-green-500", icon: CalendarDays },
+    { name: "Final Payment", key: "final_payment", color: "bg-teal-500", icon: DollarSign },
+    { name: "Closed", key: "closed", color: "bg-gray-500", icon: CheckSquare }
   ];
 
   // Fetch pipeline data from Supabase
@@ -584,7 +586,7 @@ const Pipeline = () => {
     try {
       const { error } = await supabase
         .from('jobs')
-        .update({ status: newStatus })
+        .update({ status: newStatus as any })
         .in('id', selectedJobs);
 
       if (error) throw error;

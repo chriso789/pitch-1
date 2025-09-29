@@ -360,7 +360,7 @@ export const EnhancedJobCreationDialog: React.FC<EnhancedJobCreationDialogProps>
         pipeline_entry_id: pipelineEntry.id,
         name: formData.name,
         description: formData.description,
-        status: 'active',
+        status: 'lead' as const,
         priority: formData.priority,
         estimated_value: formData.estimatedValue ? parseFloat(formData.estimatedValue) : null,
         roof_type: formData.roofType || null,

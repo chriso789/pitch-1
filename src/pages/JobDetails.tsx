@@ -173,15 +173,14 @@ const JobDetails = () => {
 
         const { data: newJob, error: createError } = await supabase
           .from('jobs')
-          .insert({
-            id: job.id,
+          .insert([{
             tenant_id: profile.tenant_id,
             contact_id: job.contact?.id,
             name: job.name,
             description: job.description,
-            status: job.status,
+            status: job.status as any,
             created_by: user.id
-          })
+          }])
           .select()
           .single();
 

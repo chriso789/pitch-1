@@ -15,11 +15,13 @@ import { supabase } from "@/integrations/supabase/client";
 
 interface JobMetrics {
   total_jobs: number;
-  pending_jobs: number;
-  in_progress_jobs: number;
-  completed_jobs: number;
-  on_hold_jobs: number;
-  cancelled_jobs: number;
+  lead_jobs: number;
+  legal_jobs: number;
+  contingency_jobs: number;
+  ready_for_approval_jobs: number;
+  production_jobs: number;
+  final_payment_jobs: number;
+  closed_jobs: number;
   avg_completion_days: number;
   completion_rate: number;
   jobs_by_priority: {
@@ -32,11 +34,13 @@ interface JobMetrics {
 export const JobAnalyticsDashboard = () => {
   const [metrics, setMetrics] = useState<JobMetrics>({
     total_jobs: 0,
-    pending_jobs: 0,
-    in_progress_jobs: 0,
-    completed_jobs: 0,
-    on_hold_jobs: 0,
-    cancelled_jobs: 0,
+    lead_jobs: 0,
+    legal_jobs: 0,
+    contingency_jobs: 0,
+    ready_for_approval_jobs: 0,
+    production_jobs: 0,
+    final_payment_jobs: 0,
+    closed_jobs: 0,
     avg_completion_days: 0,
     completion_rate: 0,
     jobs_by_priority: { high: 0, medium: 0, low: 0 }
@@ -62,14 +66,16 @@ export const JobAnalyticsDashboard = () => {
 
       // Calculate metrics
       const total = jobs.length;
-      const pending = jobs.filter(j => j.status === 'pending').length;
-      const inProgress = jobs.filter(j => j.status === 'in_progress').length;
-      const completed = jobs.filter(j => j.status === 'completed').length;
-      const onHold = jobs.filter(j => j.status === 'on_hold').length;
-      const cancelled = jobs.filter(j => j.status === 'cancelled').length;
+      const leads = jobs.filter(j => j.status === 'lead').length;
+      const legal = jobs.filter(j => j.status === 'legal').length;
+      const contingency = jobs.filter(j => j.status === 'contingency').length;
+      const readyForApproval = jobs.filter(j => j.status === 'ready_for_approval').length;
+      const production = jobs.filter(j => j.status === 'production').length;
+      const finalPayment = jobs.filter(j => j.status === 'final_payment').length;
+      const closed = jobs.filter(j => j.status === 'closed').length;
 
       // Calculate average completion time
-      const completedJobs = jobs.filter(j => j.status === 'completed' && j.updated_at);
+      const completedJobs = jobs.filter(j => j.status === 'closed' && j.updated_at);
       const avgDays = completedJobs.length > 0
         ? completedJobs.reduce((sum, job) => {
             const start = new Date(job.created_at);
@@ -80,7 +86,7 @@ export const JobAnalyticsDashboard = () => {
         : 0;
 
       // Calculate completion rate
-      const rate = total > 0 ? (completed / total) * 100 : 0;
+      const rate = total > 0 ? (closed / total) * 100 : 0;
 
       // Count by priority
       const high = jobs.filter(j => j.priority === 'high').length;
@@ -89,11 +95,13 @@ export const JobAnalyticsDashboard = () => {
 
       setMetrics({
         total_jobs: total,
-        pending_jobs: pending,
-        in_progress_jobs: inProgress,
-        completed_jobs: completed,
-        on_hold_jobs: onHold,
-        cancelled_jobs: cancelled,
+        lead_jobs: leads,
+        legal_jobs: legal,
+        contingency_jobs: contingency,
+        ready_for_approval_jobs: readyForApproval,
+        production_jobs: production,
+        final_payment_jobs: finalPayment,
+        closed_jobs: closed,
         avg_completion_days: Math.round(avgDays),
         completion_rate: Math.round(rate),
         jobs_by_priority: { high, medium, low }
@@ -161,27 +169,27 @@ export const JobAnalyticsDashboard = () => {
         />
         
         <MetricCard
-          title="Pending"
-          value={metrics.pending_jobs}
-          subtitle={`${Math.round((metrics.pending_jobs / metrics.total_jobs) * 100)}% of total`}
-          icon={Clock}
-          color="bg-yellow-100 text-yellow-600"
+          title="Leads"
+          value={metrics.lead_jobs}
+          subtitle={`${Math.round((metrics.lead_jobs / metrics.total_jobs) * 100)}% of total`}
+          icon={Users}
+          color="bg-amber-100 text-amber-600"
         />
         
         <MetricCard
-          title="In Progress"
-          value={metrics.in_progress_jobs}
-          subtitle={`${Math.round((metrics.in_progress_jobs / metrics.total_jobs) * 100)}% of total`}
+          title="Production"
+          value={metrics.production_jobs}
+          subtitle={`${Math.round((metrics.production_jobs / metrics.total_jobs) * 100)}% of total`}
           icon={TrendingUp}
-          color="bg-blue-100 text-blue-600"
+          color="bg-green-100 text-green-600"
         />
         
         <MetricCard
-          title="Completed"
-          value={metrics.completed_jobs}
+          title="Closed"
+          value={metrics.closed_jobs}
           subtitle={`${metrics.completion_rate}% completion rate`}
           icon={CheckCircle}
-          color="bg-green-100 text-green-600"
+          color="bg-gray-100 text-gray-600"
         />
       </div>
 
@@ -249,21 +257,37 @@ export const JobAnalyticsDashboard = () => {
         </Card>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <MetricCard
-          title="On Hold"
-          value={metrics.on_hold_jobs}
-          subtitle="Requires attention"
+          title="Legal"
+          value={metrics.legal_jobs}
+          subtitle="In legal review"
           icon={AlertCircle}
+          color="bg-blue-100 text-blue-600"
+        />
+        
+        <MetricCard
+          title="Contingency"
+          value={metrics.contingency_jobs}
+          subtitle="Contingency phase"
+          icon={Clock}
+          color="bg-purple-100 text-purple-600"
+        />
+        
+        <MetricCard
+          title="Ready For Approval"
+          value={metrics.ready_for_approval_jobs}
+          subtitle="Awaiting approval"
+          icon={CheckCircle}
           color="bg-orange-100 text-orange-600"
         />
         
         <MetricCard
-          title="Cancelled"
-          value={metrics.cancelled_jobs}
-          subtitle={`${Math.round((metrics.cancelled_jobs / metrics.total_jobs) * 100)}% of total`}
-          icon={AlertCircle}
-          color="bg-red-100 text-red-600"
+          title="Final Payment"
+          value={metrics.final_payment_jobs}
+          subtitle="Payment pending"
+          icon={DollarSign}
+          color="bg-teal-100 text-teal-600"
         />
       </div>
     </div>
