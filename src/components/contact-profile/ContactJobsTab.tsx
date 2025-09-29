@@ -27,6 +27,7 @@ import { supabase } from "@/integrations/supabase/client";
 interface ContactJobsTabProps {
   contact: any;
   jobs: any[];
+  pipelineEntries?: any[];
   onJobsUpdate: (jobs: any[]) => void;
 }
 
@@ -53,10 +54,9 @@ interface UnifiedJobItem {
   originalStatus?: string;
 }
 
-export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabProps) => {
+export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpdate }: ContactJobsTabProps) => {
   const [showLeadDialog, setShowLeadDialog] = useState(false);
   const [unifiedJobs, setUnifiedJobs] = useState<UnifiedJobItem[]>([]);
-  const [pipelineEntries, setPipelineEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
   const [showBulkDelete, setShowBulkDelete] = useState(false);
@@ -65,7 +65,7 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
 
   useEffect(() => {
     fetchUnifiedJobs();
-  }, [contact.id, jobs]);
+  }, [contact.id, jobs, pipelineEntries]);
 
   // Helper function to map pipeline status to job-friendly status
   const mapPipelineStatusToJobStatus = (status: string) => {
@@ -104,30 +104,8 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
     
     setLoading(true);
     try {
-      // Fetch pipeline entries for this contact
-      const { data: allPipelineEntries, error: pipelineError } = await supabase
-        .from('pipeline_entries')
-        .select(`
-          id,
-          status,
-          created_at,
-          updated_at,
-          estimated_value,
-          roof_type,
-          probability_percent,
-          contacts (
-            first_name,
-            last_name,
-            address_street
-          ),
-          projects(id, project_number, name)
-        `)
-        .eq('contact_id', contact.id);
-
-      if (pipelineError) throw pipelineError;
-
-      // Set pipeline entries for conversion component
-      setPipelineEntries(allPipelineEntries || []);
+      // Use pipeline entries passed as prop instead of fetching them
+      // This eliminates duplicate fetching and ensures consistency
 
       // Fetch actual jobs for this contact
       const { data: actualJobs, error: jobsError } = await supabase
@@ -138,7 +116,7 @@ export const ContactJobsTab = ({ contact, jobs, onJobsUpdate }: ContactJobsTabPr
       if (jobsError) throw jobsError;
 
       // Transform pipeline entries to unified job items
-      const pipelineJobItems: UnifiedJobItem[] = (allPipelineEntries || []).map(entry => {
+      const pipelineJobItems: UnifiedJobItem[] = (pipelineEntries || []).map(entry => {
         console.log('Pipeline entry:', entry.id, 'Status:', entry.status, 'Projects:', entry.projects);
         return {
           id: entry.id,

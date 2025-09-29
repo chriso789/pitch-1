@@ -34,6 +34,7 @@ const ContactProfile = () => {
   const { toast } = useToast();
   const [contact, setContact] = useState<any>(null);
   const [pipelineEntry, setPipelineEntry] = useState<any>(null);
+  const [pipelineEntries, setPipelineEntries] = useState<any[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("details");
@@ -67,15 +68,16 @@ const ContactProfile = () => {
 
       setContact(contactData);
 
-      // Fetch pipeline entry
+      // Fetch pipeline entries
       const { data: pipelineData } = await supabase
         .from('pipeline_entries')
         .select('*')
         .eq('contact_id', id)
-        .limit(1);
+        .order('created_at', { ascending: false });
 
       if (pipelineData && pipelineData.length > 0) {
-        setPipelineEntry(pipelineData[0]);
+        setPipelineEntry(pipelineData[0]); // Most recent for display
+        setPipelineEntries(pipelineData); // All entries for count
       }
 
       // Fetch jobs for this contact
@@ -220,7 +222,7 @@ const ContactProfile = () => {
             </TabsTrigger>
             <TabsTrigger value="jobs" className="flex items-center gap-2">
               <Briefcase className="h-4 w-4" />
-              Jobs ({jobs.length})
+              Jobs ({jobs.length + pipelineEntries.length})
             </TabsTrigger>
             <TabsTrigger value="communication" className="flex items-center gap-2">
               <MessageSquare className="h-4 w-4" />
@@ -243,6 +245,7 @@ const ContactProfile = () => {
             <ContactJobsTab 
               contact={contact}
               jobs={jobs}
+              pipelineEntries={pipelineEntries}
               onJobsUpdate={handleJobsUpdate}
             />
           </TabsContent>

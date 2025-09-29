@@ -15,7 +15,7 @@ import ProjectDetails from "./pages/ProjectDetails";
 import EnhancedMeasurement from "./pages/EnhancedMeasurement";
 import DemoRequest from "./pages/DemoRequest";
 import NotFound from "./pages/NotFound";
-import KanbanPipeline from "./features/pipeline/components/KanbanPipeline";
+import Pipeline from "./features/pipeline/components/Pipeline";
 
 
 const queryClient = new QueryClient({
@@ -39,7 +39,7 @@ const App = () => {
               <Route path="/login" element={<Login />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/demo-request" element={<DemoRequest />} />
-              <Route path="/pipeline" element={<KanbanPipeline />} />
+              <Route path="/pipeline" element={<Pipeline />} />
               <Route path="/contact/:id" element={<ContactProfile />} />
               <Route path="/lead/:id" element={<LeadDetails />} />
               <Route path="/job/:id" element={<JobDetails />} />
