@@ -98,10 +98,11 @@ const KanbanPipeline = () => {
     try {
       setLoading(true);
       
-      // Fetch jobs first
+      // Fetch jobs first (exclude soft-deleted jobs)
       const { data: jobsData, error: jobsError } = await supabase
         .from('jobs')
         .select('*')
+        .eq('is_deleted', false)
         .order('created_at', { ascending: false });
 
       if (jobsError) {
@@ -171,10 +172,10 @@ const KanbanPipeline = () => {
         })
         .filter(Boolean) as JobEntry[];
 
-      // Group data by status (exclude deleted jobs)
+      // Group data by status
       const groupedData: Record<string, JobEntry[]> = {};
       jobStages.forEach(stage => {
-        groupedData[stage.key] = combinedJobs.filter(job => job.status === stage.key && job.status !== 'deleted') || [];
+        groupedData[stage.key] = combinedJobs.filter(job => job.status === stage.key) || [];
       });
 
       setPipelineData(groupedData);

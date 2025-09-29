@@ -2969,9 +2969,12 @@ export type Database = {
           contact_id: string
           created_at: string
           created_by: string | null
+          deleted_at: string | null
+          deleted_by: string | null
           description: string | null
           estimated_value: number | null
           id: string
+          is_deleted: boolean | null
           job_number: string | null
           name: string
           pipeline_entry_id: string | null
@@ -2987,9 +2990,12 @@ export type Database = {
           contact_id: string
           created_at?: string
           created_by?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           description?: string | null
           estimated_value?: number | null
           id?: string
+          is_deleted?: boolean | null
           job_number?: string | null
           name: string
           pipeline_entry_id?: string | null
@@ -3005,9 +3011,12 @@ export type Database = {
           contact_id?: string
           created_at?: string
           created_by?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           description?: string | null
           estimated_value?: number | null
           id?: string
+          is_deleted?: boolean | null
           job_number?: string | null
           name?: string
           pipeline_entry_id?: string | null

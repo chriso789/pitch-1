@@ -85,7 +85,7 @@ serve(async (req) => {
 
     if (!entryId) {
       return new Response(
-        JSON.stringify({ error: 'Pipeline entry ID is required' }),
+        JSON.stringify({ error: 'Job ID is required' }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -93,18 +93,18 @@ serve(async (req) => {
       );
     }
 
-    // Get the pipeline entry to verify it exists and belongs to the tenant
-    const { data: entry, error: entryError } = await supabase
-      .from('pipeline_entries')
-      .select('id, contact_id, tenant_id, status, estimated_value')
+    // Get the job to verify it exists and belongs to the tenant
+    const { data: job, error: jobError } = await supabase
+      .from('jobs')
+      .select('id, contact_id, tenant_id, status, name')
       .eq('id', entryId)
       .eq('tenant_id', profile.tenant_id)
       .single();
 
-    if (entryError || !entry) {
-      console.error('Pipeline entry fetch error:', entryError);
+    if (jobError || !job) {
+      console.error('Job fetch error:', jobError);
       return new Response(
-        JSON.stringify({ error: 'Pipeline entry not found or access denied' }),
+        JSON.stringify({ error: 'Job not found or access denied' }),
         { 
           status: 404, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -112,17 +112,21 @@ serve(async (req) => {
       );
     }
 
-    // Delete the pipeline entry
+    // Soft delete the job (set is_deleted flag instead of permanent delete)
     const { error: deleteError } = await supabase
-      .from('pipeline_entries')
-      .delete()
+      .from('jobs')
+      .update({
+        is_deleted: true,
+        deleted_at: new Date().toISOString(),
+        deleted_by: user.id
+      })
       .eq('id', entryId)
       .eq('tenant_id', profile.tenant_id);
 
     if (deleteError) {
       console.error('Delete error:', deleteError);
       return new Response(
-        JSON.stringify({ error: 'Failed to delete pipeline entry' }),
+        JSON.stringify({ error: 'Failed to delete job' }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -135,16 +139,15 @@ serve(async (req) => {
       .from('communication_history')
       .insert({
         tenant_id: profile.tenant_id,
-        contact_id: entry.contact_id,
+        contact_id: job.contact_id,
         communication_type: 'system',
         direction: 'internal',
-        content: `Pipeline entry (${entry.status}) was deleted by ${user.email}`,
+        content: `Job "${job.name}" (${job.status}) was deleted by ${user.email}`,
         rep_id: user.id,
         metadata: {
-          action: 'pipeline_entry_deleted',
-          entry_id: entryId,
-          status: entry.status,
-          estimated_value: entry.estimated_value,
+          action: 'job_deleted',
+          job_id: entryId,
+          status: job.status,
           deleted_by: user.id,
           deleted_at: new Date().toISOString()
         }
@@ -158,7 +161,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true,
-        message: `Pipeline entry has been deleted successfully`,
+        message: `Job has been deleted successfully`,
         entryId: entryId
       }),
       { 
