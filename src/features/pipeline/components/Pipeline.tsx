@@ -52,14 +52,14 @@ const Pipeline = () => {
   const { toast } = useToast();
   const navigate = useNavigate();
 
-  const pipelineStages = [
-    { name: "Lead", key: "lead", color: "bg-status-lead", icon: User },
-    { name: "Legal", key: "legal", color: "bg-status-legal", icon: FileText },
-    { name: "Contingency", key: "contingency_signed", color: "bg-status-contingency", icon: AlertCircle },
-    { name: "On Hold (Mgr Review)", key: "hold_manager_review", color: "bg-orange-500", icon: Clock },
-    { name: "Project", key: "project", color: "bg-status-project", icon: Home },
-    { name: "Completed", key: "completed", color: "bg-status-completed", icon: CheckCircle },
-    { name: "Closed", key: "closed", color: "bg-status-closed", icon: Clock }
+  const jobStages = [
+    { name: "Scheduled", key: "scheduled", color: "bg-blue-500", icon: Clock },
+    { name: "Materials Ordered", key: "materials_ordered", color: "bg-yellow-500", icon: FileText },
+    { name: "In Progress", key: "in_progress", color: "bg-orange-500", icon: Loader2 },
+    { name: "Quality Check", key: "quality_check", color: "bg-purple-500", icon: AlertCircle },
+    { name: "Completed", key: "completed", color: "bg-green-500", icon: CheckCircle },
+    { name: "Invoiced", key: "invoiced", color: "bg-emerald-600", icon: FileText },
+    { name: "Closed", key: "closed", color: "bg-gray-500", icon: CheckCircle }
   ];
 
   // Fetch pipeline data from Supabase
@@ -73,10 +73,9 @@ const Pipeline = () => {
       
       // Build query with filters
       let query = supabase
-        .from('pipeline_entries')
+        .from('jobs')
         .select(`
           *,
-          clj_formatted_number,
           contacts (
             first_name,
             last_name,
@@ -87,17 +86,10 @@ const Pipeline = () => {
             address_state,
             address_zip
           ),
-          estimates (
+          projects (
             id,
-            estimate_number,
-            selling_price,
-            status,
-            actual_margin_percent,
-            created_at
-          ),
-          profiles!pipeline_entries_assigned_to_fkey (
-            first_name,
-            last_name
+            name,
+            clj_formatted_number
           )
         `);
 
@@ -124,26 +116,22 @@ const Pipeline = () => {
       // Filter data based on sales rep and location
       let filteredData = data || [];
       
+      // For jobs, we don't have profiles relation, so disable sales rep filtering for now
       if (filters.salesRep && filters.salesRep !== 'all') {
-        filteredData = filteredData.filter(entry => 
-          entry.profiles?.first_name + ' ' + entry.profiles?.last_name === filters.salesRep
-        );
+        // Jobs don't have assigned sales reps in the same way, skip for now
       }
       
+      // For jobs, filtering by location would require joining through contacts
+      // For now, we'll skip location filtering
       if (filters.location && filters.location !== 'all') {
-        filteredData = filteredData.filter(entry => 
-          entry.contacts?.address_city?.toLowerCase().includes(filters.location.toLowerCase())
-        );
+        // Skip location filtering for jobs for now
       }
 
-      // Extract unique sales reps and locations for filter options
-      const uniqueReps = [...new Set(data?.map(entry => 
-        entry.profiles ? `${entry.profiles.first_name} ${entry.profiles.last_name}` : null
-      ).filter(Boolean))];
+      // Extract unique locations for filter options (no sales reps for jobs)
+      const uniqueReps = [];
       
-      const uniqueLocations = [...new Set(data?.map(entry => 
-        entry.contacts?.address_city
-      ).filter(Boolean))];
+      // Skip location extraction for jobs for now
+      const uniqueLocations = [];
       
       setSalesReps(uniqueReps);
       setLocations(uniqueLocations);
@@ -153,14 +141,13 @@ const Pipeline = () => {
       const totals = {};
       
       // Initialize all stages with empty arrays to ensure they always show
-      pipelineStages.forEach(stage => {
+      jobStages.forEach(stage => {
         const stageEntries = filteredData.filter(entry => entry.status === stage.key);
         groupedData[stage.key] = stageEntries;
         
-        // Calculate total estimate value for this stage
+        // Calculate total estimate value for this stage - for jobs, we'll use 0 for now
         const stageTotal = stageEntries.reduce((sum, entry) => {
-          const estimate = entry.estimates?.[0];
-          return sum + (estimate?.selling_price || entry.estimated_value || 0);
+          return sum + 0; // Jobs don't have direct selling_price, can be enhanced later
         }, 0);
         
         totals[stage.key] = stageTotal;
@@ -218,9 +205,9 @@ const Pipeline = () => {
     setPipelineData(newPipelineData);
 
     try {
-      const { data, error } = await supabase.functions.invoke('pipeline-drag-handler', {
+      const { data, error } = await supabase.functions.invoke('job-drag-handler', {
         body: {
-          pipelineEntryId: entryId,
+          jobId: entryId,
           newStatus: newStatus,
           fromStatus: fromStatus
         }
@@ -249,7 +236,7 @@ const Pipeline = () => {
 
       toast({
         title: "Success",
-        description: data.message || "Lead moved successfully",
+        description: data.message || "Job moved successfully",
       });
 
       // Refresh data to ensure consistency
@@ -268,7 +255,7 @@ const Pipeline = () => {
 
       toast({
         title: "Error",
-        description: "Failed to move lead",
+        description: "Failed to move job",
         variant: "destructive",
       });
     }
@@ -278,8 +265,12 @@ const Pipeline = () => {
     try {
       setUpdatingEntry(entryId);
       
-      const { data, error } = await supabase.functions.invoke('pipeline-status', {
-        body: { pipeline_id: entryId, new_status: newStatus }
+      const { data, error } = await supabase.functions.invoke('job-drag-handler', {
+        body: { 
+          jobId: entryId, 
+          newStatus: newStatus,
+          fromStatus: null // Will be determined by the function
+        }
       });
 
       if (error) {
@@ -332,12 +323,13 @@ const Pipeline = () => {
 
   const getNextStatus = (currentStatus) => {
     const statusFlow = {
-      'lead': 'legal',
-      'legal': 'contingency_signed', 
-      'contingency_signed': 'hold_manager_review',
-      'hold_manager_review': null, // No automatic advancement - requires manager approval
-      'project': 'completed',
-      'completed': 'closed'
+      'scheduled': 'materials_ordered',
+      'materials_ordered': 'in_progress', 
+      'in_progress': 'quality_check',
+      'quality_check': 'completed',
+      'completed': 'invoiced',
+      'invoiced': 'closed',
+      'closed': null
     };
     return statusFlow[currentStatus];
   };
@@ -353,31 +345,12 @@ const Pipeline = () => {
 
   const renderStageCard = (item: any, stage: string) => {
     const contact = item.contacts;
-    const estimate = item.estimates?.[0]; // Get the latest estimate
+    const project = item.projects;
     const nextStatus = getNextStatus(item.status);
     
-    // Check if this pipeline entry has an associated job
-    const handleViewClick = async () => {
-      try {
-        // Check if there's a job for this pipeline entry
-        const { data: job } = await supabase
-          .from('jobs')
-          .select('id')
-          .eq('pipeline_entry_id', item.id)
-          .maybeSingle();
-        
-        if (job) {
-          // Navigate to job details
-          navigate(`/job/${job.id}`);
-        } else {
-          // Navigate to contact profile
-          navigate(`/contact/${contact?.id || item.contact_id}`);
-        }
-      } catch (error) {
-        console.error('Error checking for job:', error);
-        // Fallback to contact profile
-        navigate(`/contact/${contact?.id || item.contact_id}`);
-      }
+    // Navigate to job details since these are jobs
+    const handleViewClick = () => {
+      navigate(`/job/${item.id}`);
     };
     
     return (
@@ -386,7 +359,7 @@ const Pipeline = () => {
           <div className="flex items-start justify-between mb-3">
             <div>
               <span className="font-mono text-sm text-muted-foreground">
-                {item.clj_formatted_number || estimate?.estimate_number || `PIPE-${item.id.slice(-4)}`}
+                {item.job_number || project?.clj_formatted_number || `JOB-${item.id.slice(-4)}`}
               </span>
               <h3 className="font-semibold">{formatName(contact)}</h3>
             </div>
@@ -412,55 +385,71 @@ const Pipeline = () => {
             
             <div className="flex items-center gap-2 text-primary font-medium">
               <Home className="h-4 w-4" />
-              <span>{item.roof_type || 'Roofing Project'}</span>
+              <span>{item.name || 'Job'}</span>
             </div>
             
-            <div className="flex items-center gap-2 font-semibold">
-              <DollarSign className="h-4 w-4 text-success" />
-              <span>{formatCurrency(estimate?.selling_price || item.estimated_value)}</span>
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <FileText className="h-4 w-4" />
+              <span>{item.description || 'No description'}</span>
             </div>
 
             {/* Stage-specific information */}
-            {stage === "project" && (
-              <div className="mt-3 pt-3 border-t">
-                <div className="flex justify-between items-center mb-2">
-                  <span className="text-xs text-muted-foreground">Budget vs Actual</span>
-                  <span className="text-xs font-medium">
-                    {estimate?.actual_margin_percent ? `${estimate.actual_margin_percent.toFixed(1)}%` : 'N/A'}
-                  </span>
-                </div>
-                <div className="flex justify-between text-xs text-muted-foreground mt-2">
-                  <span>Status: Active</span>
-                  <span>Value: {formatCurrency(estimate?.selling_price)}</span>
-                </div>
-              </div>
-            )}
-
-            {stage === "lead" && (
+            {stage === "scheduled" && (
               <div className="mt-3 pt-3 border-t">
                 <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Source: {item.source || 'Unknown'}</span>
-                  <span>Probability: {item.probability_percent || 50}%</span>
+                  <span>Ready to start</span>
+                  <span>Created: {new Date(item.created_at).toLocaleDateString()}</span>
                 </div>
               </div>
             )}
 
-            {(stage === "legal" || stage === "contingency_signed") && (
+            {stage === "materials_ordered" && (
               <div className="mt-3 pt-3 border-t">
-                <div className="text-xs text-muted-foreground">
-                  Expected Close: {item.expected_close_date ? new Date(item.expected_close_date).toLocaleDateString() : 'TBD'}
+                <div className="flex justify-between text-xs text-muted-foreground">
+                  <span>Materials on order</span>
+                  <span>Waiting for delivery</span>
                 </div>
               </div>
             )}
 
-            {stage === "hold_manager_review" && (
+            {stage === "in_progress" && (
               <div className="mt-3 pt-3 border-t">
                 <div className="flex items-center gap-2 text-xs">
                   <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
-                  <span className="text-orange-700 font-medium">Awaiting Manager Approval</span>
+                  <span className="text-orange-700 font-medium">Work in Progress</span>
                 </div>
-                <div className="text-xs text-muted-foreground mt-1">
-                  Status: {item.manager_approval_status || 'Pending Review'}
+              </div>
+            )}
+
+            {stage === "quality_check" && (
+              <div className="mt-3 pt-3 border-t">
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="w-2 h-2 bg-purple-500 rounded-full animate-pulse"></div>
+                  <span className="text-purple-700 font-medium">Quality Review</span>
+                </div>
+              </div>
+            )}
+
+            {stage === "completed" && (
+              <div className="mt-3 pt-3 border-t">
+                <div className="text-xs text-green-700 font-medium">
+                  Work Completed - Ready for Invoicing
+                </div>
+              </div>
+            )}
+
+            {stage === "invoiced" && (
+              <div className="mt-3 pt-3 border-t">
+                <div className="text-xs text-emerald-700 font-medium">
+                  Invoice Sent - Awaiting Payment
+                </div>
+              </div>
+            )}
+
+            {stage === "closed" && (
+              <div className="mt-3 pt-3 border-t">
+                <div className="text-xs text-gray-700 font-medium">
+                  Job Complete
                 </div>
               </div>
             )}
@@ -633,7 +622,7 @@ const Pipeline = () => {
         >
           <ScrollArea className="w-full">
             <div className="flex gap-6 pb-4 min-w-max">
-              {pipelineStages.map((stage) => {
+              {jobStages.map((stage) => {
                 const stageEntries = (pipelineData[stage.key] || []).map(transformToKanbanEntry);
                 
                 return (
@@ -705,14 +694,7 @@ const Pipeline = () => {
         </DndContext>
       )}
 
-      {/* Lead Form Dialog */}
-      <LeadForm 
-        open={showLeadForm} 
-        onOpenChange={setShowLeadForm}
-        onLeadCreated={() => {
-          fetchPipelineData(); // Refresh pipeline data
-        }}
-      />
+      {/* Remove Lead Form since this is now for Jobs */}
     </div>
   );
 };
