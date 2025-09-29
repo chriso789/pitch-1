@@ -4218,10 +4218,13 @@ export type Database = {
           conversion_probability: number | null
           created_at: string | null
           created_by: string | null
+          deleted_at: string | null
+          deleted_by: string | null
           disqualification_reason: string | null
           estimated_value: number | null
           expected_close_date: string | null
           id: string
+          is_deleted: boolean | null
           lead_quality_score: number | null
           lead_temperature: string | null
           location_id: string | null
@@ -4246,10 +4249,13 @@ export type Database = {
           conversion_probability?: number | null
           created_at?: string | null
           created_by?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           disqualification_reason?: string | null
           estimated_value?: number | null
           expected_close_date?: string | null
           id?: string
+          is_deleted?: boolean | null
           lead_quality_score?: number | null
           lead_temperature?: string | null
           location_id?: string | null
@@ -4274,10 +4280,13 @@ export type Database = {
           conversion_probability?: number | null
           created_at?: string | null
           created_by?: string | null
+          deleted_at?: string | null
+          deleted_by?: string | null
           disqualification_reason?: string | null
           estimated_value?: number | null
           expected_close_date?: string | null
           id?: string
+          is_deleted?: boolean | null
           lead_quality_score?: number | null
           lead_temperature?: string | null
           location_id?: string | null

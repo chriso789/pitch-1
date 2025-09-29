@@ -157,7 +157,8 @@ const Pipeline = () => {
             first_name,
             last_name
           )
-        `);
+        `)
+        .eq('is_deleted', false);
 
       // Apply date filters
       if (filters.dateFrom) {
@@ -329,7 +330,10 @@ const Pipeline = () => {
   const handleDeleteEntry = async (entryId: string) => {
     try {
       const { error } = await supabase.functions.invoke('delete-pipeline-entry', {
-        body: { entryId }
+        body: { 
+          entryId,
+          entryType: 'pipeline_entry'
+        }
       });
 
       if (error) throw error;

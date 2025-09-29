@@ -81,11 +81,11 @@ serve(async (req) => {
       );
     }
 
-    const { entryId } = await req.json();
+    const { entryId, entryType = 'pipeline_entry' } = await req.json();
 
     if (!entryId) {
       return new Response(
-        JSON.stringify({ error: 'Job ID is required' }),
+        JSON.stringify({ error: 'Entry ID is required' }),
         { 
           status: 400, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -93,18 +93,22 @@ serve(async (req) => {
       );
     }
 
-    // Get the job to verify it exists and belongs to the tenant
-    const { data: job, error: jobError } = await supabase
-      .from('jobs')
+    // Determine which table to query based on entryType
+    const tableName = entryType === 'job' ? 'jobs' : 'pipeline_entries';
+    const entryLabel = entryType === 'job' ? 'Job' : 'Pipeline entry';
+
+    // Get the entry to verify it exists and belongs to the tenant
+    const { data: entry, error: fetchError } = await supabase
+      .from(tableName)
       .select('id, contact_id, tenant_id, status, name')
       .eq('id', entryId)
       .eq('tenant_id', profile.tenant_id)
       .single();
 
-    if (jobError || !job) {
-      console.error('Job fetch error:', jobError);
+    if (fetchError || !entry) {
+      console.error(`${entryLabel} fetch error:`, fetchError);
       return new Response(
-        JSON.stringify({ error: 'Job not found or access denied' }),
+        JSON.stringify({ error: `${entryLabel} not found or access denied` }),
         { 
           status: 404, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -112,9 +116,9 @@ serve(async (req) => {
       );
     }
 
-    // Soft delete the job (set is_deleted flag instead of permanent delete)
+    // Soft delete the entry (set is_deleted flag instead of permanent delete)
     const { error: deleteError } = await supabase
-      .from('jobs')
+      .from(tableName)
       .update({
         is_deleted: true,
         deleted_at: new Date().toISOString(),
@@ -126,7 +130,7 @@ serve(async (req) => {
     if (deleteError) {
       console.error('Delete error:', deleteError);
       return new Response(
-        JSON.stringify({ error: 'Failed to delete job' }),
+        JSON.stringify({ error: `Failed to delete ${entryLabel.toLowerCase()}` }),
         { 
           status: 500, 
           headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
@@ -139,15 +143,16 @@ serve(async (req) => {
       .from('communication_history')
       .insert({
         tenant_id: profile.tenant_id,
-        contact_id: job.contact_id,
+        contact_id: entry.contact_id,
         communication_type: 'system',
         direction: 'internal',
-        content: `Job "${job.name}" (${job.status}) was deleted by ${user.email}`,
+        content: `${entryLabel} "${entry.name}" (${entry.status}) was deleted by ${user.email}`,
         rep_id: user.id,
         metadata: {
-          action: 'job_deleted',
-          job_id: entryId,
-          status: job.status,
+          action: `${entryType}_deleted`,
+          entry_id: entryId,
+          entry_type: entryType,
+          status: entry.status,
           deleted_by: user.id,
           deleted_at: new Date().toISOString()
         }
@@ -161,7 +166,7 @@ serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: true,
-        message: `Job has been deleted successfully`,
+        message: `${entryLabel} has been deleted successfully`,
         entryId: entryId
       }),
       { 
