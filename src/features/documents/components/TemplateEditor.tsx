@@ -92,7 +92,7 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
         type: formData.type as "DOCUMENT" | "EMAIL" | "PRINT", 
         description: formData.description.trim() || null,
         default_context: formData.default_context as "CONTACT" | "LEAD" | "PROJECT" | "ESTIMATE" | "INVOICE",
-        folder_id: formData.folder_id || null,
+        folder_id: formData.folder_id === "no-folder" ? null : formData.folder_id || null,
         status: formData.status.toUpperCase() as "DRAFT" | "PUBLISHED" | "ARCHIVED",
         is_homeowner_visible: formData.is_homeowner_visible,
         tenant_id: "14de934e-7964-4afd-940a-620d2ace125d", // Fixed tenant ID from the network requests
@@ -231,12 +231,12 @@ export const TemplateEditor: React.FC<TemplateEditorProps> = ({
 
             <div>
               <Label htmlFor="folder">Folder</Label>
-              <Select value={formData.folder_id} onValueChange={(value) => setFormData(prev => ({ ...prev, folder_id: value }))}>
+              <Select value={formData.folder_id || "no-folder"} onValueChange={(value) => setFormData(prev => ({ ...prev, folder_id: value === "no-folder" ? null : value }))}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select folder" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">No Folder</SelectItem>
+                  <SelectItem value="no-folder">No Folder</SelectItem>
                   {folders.map(folder => (
                     <SelectItem key={folder.id} value={folder.id}>
                       {folder.name}
