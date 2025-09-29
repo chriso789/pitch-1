@@ -57,7 +57,9 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   const [daysSinceLastComm, setDaysSinceLastComm] = useState<number>(0);
 
   useEffect(() => {
-    fetchLastCommunication();
+    if (entry.contact_id) {
+      fetchLastCommunication();
+    }
   }, [entry.contact_id]);
 
   const fetchLastCommunication = async () => {
