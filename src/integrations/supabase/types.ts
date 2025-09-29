@@ -7928,6 +7928,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      generate_simple_job_number: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       get_user_tenant_id: {
         Args: Record<PropertyKey, never>
         Returns: string
