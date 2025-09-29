@@ -507,6 +507,33 @@ const Pipeline = () => {
     );
   };
 
+  // Transform pipeline entry to match KanbanCard interface
+  const transformToKanbanEntry = (pipelineEntry: any) => {
+    const contact = pipelineEntry.contacts;
+    const estimate = pipelineEntry.estimates?.[0];
+    
+    return {
+      id: pipelineEntry.id,
+      job_number: pipelineEntry.clj_formatted_number || estimate?.estimate_number || `PIPE-${pipelineEntry.id.slice(-4)}`,
+      name: formatName(contact),
+      status: pipelineEntry.status,
+      created_at: pipelineEntry.created_at || new Date().toISOString(),
+      contact_id: pipelineEntry.contact_id,
+      contacts: {
+        id: contact?.id || pipelineEntry.contact_id,
+        contact_number: pipelineEntry.clj_formatted_number || estimate?.estimate_number || `PIPE-${pipelineEntry.id.slice(-4)}`,
+        first_name: contact?.first_name || '',
+        last_name: contact?.last_name || '',
+        email: contact?.email || '',
+        phone: contact?.phone || '',
+        address_street: contact?.address_street || '',
+        address_city: contact?.address_city || '',
+        address_state: contact?.address_state || '',
+        address_zip: contact?.address_zip || ''
+      }
+    };
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -599,46 +626,83 @@ const Pipeline = () => {
           <span className="ml-2">Loading pipeline data...</span>
         </div>
       ) : (
-        /* Pipeline Stages */
-        <div className="grid grid-cols-1 lg:grid-cols-6 gap-6">
-          {pipelineStages.map((stage, index) => (
-            <div key={stage.key} className="space-y-4">
-            {/* Stage Header */}
-            <Card className="shadow-soft border-0">
-              <CardHeader className="pb-3">
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <div className={cn("w-8 h-8 rounded-full flex items-center justify-center", stage.color)}>
-                    <stage.icon className="h-4 w-4 text-white" />
+        <DndContext
+          collisionDetection={closestCorners}
+          onDragStart={handleDragStart}
+          onDragEnd={handleDragEnd}
+        >
+          <ScrollArea className="w-full">
+            <div className="flex gap-6 pb-4 min-w-max">
+              {pipelineStages.map((stage) => {
+                const stageEntries = (pipelineData[stage.key] || []).map(transformToKanbanEntry);
+                
+                return (
+                  <div key={stage.key} className="min-w-[320px]">
+                    <SortableContext 
+                      items={stageEntries.map(entry => entry.id)}
+                      strategy={verticalListSortingStrategy}
+                    >
+                      <KanbanColumn
+                        id={stage.key}
+                        title={stage.name}
+                        color={stage.color}
+                        icon={stage.icon}
+                        count={(pipelineData[stage.key] || []).length}
+                        total={formatCurrency(stageTotals[stage.key] || 0)}
+                      >
+                        {stageEntries.map((entry) => (
+                          <KanbanCard
+                            key={entry.id}
+                            id={entry.id}
+                            entry={entry}
+                            onView={(entryId) => {
+                              const originalEntry = (pipelineData[stage.key] || []).find(e => e.id === entryId);
+                              if (originalEntry) {
+                                navigate(`/contact/${originalEntry.contact_id}`);
+                              }
+                            }}
+                            onDelete={() => {}}
+                            canDelete={false}
+                            isDragging={activeId === entry.id}
+                          />
+                        ))}
+                      </KanbanColumn>
+                    </SortableContext>
                   </div>
-                  <div className="flex-1">
-                    <div>{stage.name}</div>
-                    <div className="font-normal text-muted-foreground">
-                      {(pipelineData[stage.key] || []).length} items
-                      {stage.key === 'hold_manager_review' && (pipelineData[stage.key] || []).length > 0 && (
-                        <span className="ml-1 text-orange-600">• Needs Approval</span>
-                      )}
-                    </div>
-                    {/* Dollar Amount Ticker */}
-                    <div className="flex items-center gap-1 mt-1">
-                      <TrendingUp className="h-3 w-3 text-success" />
-                      <span className="text-xs font-semibold text-success">
-                        {formatCurrency(stageTotals[stage.key] || 0)}
-                      </span>
-                    </div>
-                  </div>
-                </CardTitle>                
-              </CardHeader>
-            </Card>
-
-              {/* Stage Items */}
-              <div className="space-y-3">
-                {(pipelineData[stage.key] || []).map((item) => 
-                  renderStageCard(item, stage.key)
-                )}
-              </div>
+                );
+              })}
             </div>
-          ))}
-        </div>
+            <ScrollBar orientation="horizontal" />
+          </ScrollArea>
+          
+          <DragOverlay>
+            {activeId ? (
+              <div className="transform rotate-3 opacity-90">
+                {(() => {
+                  // Find the active entry
+                  for (const [status, entries] of Object.entries(pipelineData)) {
+                    const entryArray = Array.isArray(entries) ? entries : [];
+                    const entry = entryArray.find((e: any) => e.id === activeId);
+                    if (entry) {
+                      const transformedEntry = transformToKanbanEntry(entry);
+                      return (
+                        <KanbanCard
+                          id={transformedEntry.id}
+                          entry={transformedEntry}
+                          onView={() => {}}
+                          onDelete={() => {}}
+                          canDelete={false}
+                          isDragging={true}
+                        />
+                      );
+                    }
+                  }
+                  return null;
+                })()}
+              </div>
+            ) : null}
+          </DragOverlay>
+        </DndContext>
       )}
 
       {/* Lead Form Dialog */}
