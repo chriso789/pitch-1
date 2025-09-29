@@ -63,11 +63,10 @@ const Pipeline = () => {
 
   const jobStages = [
     { name: "Leads", key: "lead", color: "bg-amber-500", icon: User },
-    { name: "Legal", key: "legal", color: "bg-blue-500", icon: FileText },
-    { name: "Contingency", key: "contingency", color: "bg-purple-500", icon: AlertCircle },
-    { name: "Ready For Approval", key: "ready_for_approval", color: "bg-orange-500", icon: CheckCircle },
-    { name: "Production", key: "production", color: "bg-green-500", icon: CalendarDays },
-    { name: "Final Payment", key: "final_payment", color: "bg-teal-500", icon: DollarSign },
+    { name: "Legal Review", key: "legal_review", color: "bg-blue-500", icon: FileText },
+    { name: "Contingency Signed", key: "contingency_signed", color: "bg-purple-500", icon: CheckCircle },
+    { name: "Project", key: "project", color: "bg-green-500", icon: CalendarDays },
+    { name: "Completed", key: "completed", color: "bg-teal-500", icon: CheckSquare },
     { name: "Closed", key: "closed", color: "bg-gray-500", icon: CheckSquare }
   ];
 
@@ -112,7 +111,7 @@ const Pipeline = () => {
       
       // Build query with filters
       let query = supabase
-        .from('jobs')
+        .from('pipeline_entries')
         .select(`
           *,
           contacts (
@@ -125,10 +124,10 @@ const Pipeline = () => {
             address_state,
             address_zip
           ),
-          projects (
+          profiles!pipeline_entries_assigned_to_fkey (
             id,
-            name,
-            project_number
+            first_name,
+            last_name
           )
         `);
 
@@ -152,28 +151,27 @@ const Pipeline = () => {
         return;
       }
 
-      // Filter data based on sales rep and location
+      // Filter data based on sales rep
       let filteredData = data || [];
       
-      // For jobs, we don't have profiles relation, so disable sales rep filtering for now
       if (filters.salesRep && filters.salesRep !== 'all') {
-        // Jobs don't have assigned sales reps in the same way, skip for now
-      }
-      
-      // For jobs, filtering by location would require joining through contacts
-      // For now, we'll skip location filtering
-      if (filters.location && filters.location !== 'all') {
-        // Skip location filtering for jobs for now
+        filteredData = filteredData.filter(entry => entry.assigned_to === filters.salesRep);
       }
 
-      // Extract unique locations for filter options (no sales reps for jobs)
-      const uniqueReps = [];
+      // Extract unique sales reps for filter options
+      const uniqueRepsMap = new Map();
       
-      // Skip location extraction for jobs for now
-      const uniqueLocations = [];
+      filteredData.forEach(entry => {
+        if (entry.profiles) {
+          uniqueRepsMap.set(entry.profiles.id, {
+            id: entry.profiles.id,
+            name: `${entry.profiles.first_name} ${entry.profiles.last_name}`
+          });
+        }
+      });
       
-      setSalesReps(uniqueReps);
-      setLocations(uniqueLocations);
+      setSalesReps(Array.from(uniqueRepsMap.values()));
+      setLocations([]);
 
       // Group data by status and calculate stage totals
       const groupedData = {};
@@ -184,9 +182,9 @@ const Pipeline = () => {
         const stageEntries = filterBySearch(filteredData.filter(entry => entry.status === stage.key));
         groupedData[stage.key] = stageEntries;
         
-        // Calculate total estimate value for this stage - for jobs, we'll use 0 for now
+        // Calculate total estimate value for this stage
         const stageTotal = stageEntries.reduce((sum, entry) => {
-          return sum + 0; // Jobs don't have direct selling_price, can be enhanced later
+          return sum + (parseFloat(entry.selling_price) || 0);
         }, 0);
         
         totals[stage.key] = stageTotal;
@@ -244,9 +242,9 @@ const Pipeline = () => {
     setPipelineData(newPipelineData);
 
     try {
-      const { data, error } = await supabase.functions.invoke('job-drag-handler', {
+      const { data, error } = await supabase.functions.invoke('pipeline-drag-handler', {
         body: {
-          jobId: entryId,
+          pipelineEntryId: entryId,
           newStatus: newStatus,
           fromStatus: fromStatus
         }
@@ -304,9 +302,9 @@ const Pipeline = () => {
     try {
       setUpdatingEntry(entryId);
       
-      const { data, error } = await supabase.functions.invoke('job-drag-handler', {
+      const { data, error } = await supabase.functions.invoke('pipeline-drag-handler', {
         body: { 
-          jobId: entryId, 
+          pipelineEntryId: entryId, 
           newStatus: newStatus,
           fromStatus: null // Will be determined by the function
         }
@@ -559,8 +557,8 @@ const Pipeline = () => {
   const handleBulkAssign = async (userId: string) => {
     try {
       const { error } = await supabase
-        .from('jobs')
-        .update({ created_by: userId })
+        .from('pipeline_entries')
+        .update({ assigned_to: userId })
         .in('id', selectedJobs);
 
       if (error) throw error;
@@ -585,7 +583,7 @@ const Pipeline = () => {
   const handleBulkStatusChange = async (newStatus: string) => {
     try {
       const { error } = await supabase
-        .from('jobs')
+        .from('pipeline_entries')
         .update({ status: newStatus as any })
         .in('id', selectedJobs);
 
