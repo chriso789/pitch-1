@@ -58,6 +58,8 @@ const Pipeline = () => {
   const [stageTotals, setStageTotals] = useState({});
   const [salesReps, setSalesReps] = useState([]);
   const [locations, setLocations] = useState([]);
+  const [userRole, setUserRole] = useState<string>('');
+  const [isManager, setIsManager] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -71,10 +73,35 @@ const Pipeline = () => {
     { name: "Closed", key: "closed", color: "bg-gray-500", icon: CheckSquare }
   ];
 
+  // Fetch user role
+  useEffect(() => {
+    fetchUserRole();
+  }, []);
+
   // Fetch pipeline data from Supabase
   useEffect(() => {
     fetchPipelineData();
   }, [filters]);
+
+  const fetchUserRole = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (profile) {
+        setUserRole(profile.role);
+        setIsManager(['admin', 'manager', 'master'].includes(profile.role));
+      }
+    } catch (error) {
+      console.error('Error fetching user role:', error);
+    }
+  };
 
   // Filter data based on search query
   const filterBySearch = (data: any[]) => {
@@ -294,6 +321,31 @@ const Pipeline = () => {
       toast({
         title: "Error",
         description: "Failed to move job",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleDeleteEntry = async (entryId: string) => {
+    try {
+      const { error } = await supabase.functions.invoke('delete-pipeline-entry', {
+        body: { entryId }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: "Pipeline entry deleted successfully",
+      });
+
+      // Refresh pipeline data
+      fetchPipelineData();
+    } catch (error) {
+      console.error('Error deleting pipeline entry:', error);
+      toast({
+        title: "Error",
+        description: "Failed to delete pipeline entry",
         variant: "destructive",
       });
     }
@@ -890,8 +942,8 @@ const Pipeline = () => {
                                   }
                                 }
                               }}
-                              onDelete={() => {}}
-                              canDelete={false}
+                              onDelete={handleDeleteEntry}
+                              canDelete={isManager}
                               isDragging={activeId === entry.id}
                               onAssignmentChange={fetchPipelineData}
                             />
