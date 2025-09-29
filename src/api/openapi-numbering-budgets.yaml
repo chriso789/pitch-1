@@ -1,0 +1,86 @@
+openapi: 3.0.3
+info:
+  title: PITCH Roofing CRM — Numbering & Budgets
+  version: "1.0.0"
+tags:
+  - name: Numbering
+  - name: Approvals
+  - name: Budgets
+  - name: Orders
+paths:
+  /leads/{id}/approve:
+    post:
+      summary: Manager approval → assign job number, move to Production, snapshot PRE_CAP & CAP_OUT
+      description: |
+        Approves a lead, creates/ensures a Job, assigns **job_number** (`LOC-CCCC-LL-JJ`),
+        sets lead status to `Production`, and snapshots PRE_CAP + CAP_OUT estimates.
+      tags: [Approvals]
+      parameters:
+        - in: path
+          name: id
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_number: { type: string, example: "TPA-0123-04-01" }
+  /numbers/jobs/{id}:
+    get:
+      summary: Resolve job number + lineage
+      tags: [Numbering]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_number: { type: string }
+                  lead_number: { type: string }
+                  contact_number: { type: string }
+                  location_code: { type: string }
+  /orders/materials:
+    post:
+      summary: Create material order (invoice required on confirmation)
+      tags: [Orders]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [job_id]
+              properties:
+                job_id: { type: string, format: uuid }
+                supplier_name: { type: string }
+                po_number: { type: string }
+                confirmed: { type: boolean, default: false }
+                invoice_url: { type: string, nullable: true }
+      responses:
+        "201": { description: Created }
+  /orders/labor:
+    post:
+      summary: Create labor order (invoice required on confirmation)
+      tags: [Orders]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [job_id]
+              properties:
+                job_id: { type: string, format: uuid }
+                crew_name: { type: string }
+                work_order_no: { type: string }
+                confirmed: { type: boolean, default: false }
+                invoice_url: { type: string, nullable: true }
+      responses:
+        "201": { description: Created }
+components: {}
