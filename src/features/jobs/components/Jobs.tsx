@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { ActionsSelector } from "@/components/ui/actions-selector";
 import { 
   Search, 
   Plus, 
@@ -12,10 +13,17 @@ import {
   DollarSign, 
   User,
   Filter,
-  Eye
+  Eye,
+  Phone,
+  Mail,
+  MessageSquare,
+  Trash2
 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
+import { FloatingChatWidget } from "@/components/messaging/FloatingChatWidget";
+import { FloatingEmailComposer } from "@/components/messaging/FloatingEmailComposer";
+import { SimpleJobMap } from "@/components/maps/SimpleJobMap";
 
 interface Job {
   id: string;
@@ -53,6 +61,9 @@ export const Jobs = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [activeChatContact, setActiveChatContact] = useState<any>(null);
+  const [activeEmailContact, setActiveEmailContact] = useState<any>(null);
+  const [mapCenter, setMapCenter] = useState<any>(null);
 
   useEffect(() => {
     fetchJobs();
@@ -196,6 +207,100 @@ export const Jobs = () => {
 
   const formatStatus = (status: string) => {
     return status.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  };
+
+  const handleCall = (job: Job) => {
+    if (job.contacts?.phone) {
+      const contactData = {
+        id: job.contact_id,
+        name: `${job.contacts.first_name} ${job.contacts.last_name}`,
+        phone: job.contacts.phone,
+        email: job.contacts.email,
+        address: job.contacts.address_street ? `${job.contacts.address_street}, ${job.contacts.address_city}, ${job.contacts.address_state}` : '',
+        leadScore: 0,
+        status: job.status,
+        type: 'job'
+      };
+      
+      navigate(`/?section=dialer&contact=${contactData.id}`, { 
+        state: { preloadedContact: contactData } 
+      });
+    } else {
+      toast.error('No phone number available');
+    }
+  };
+
+  const handleDeleteJob = async (jobId: string, jobName: string) => {
+    if (!confirm(`Are you sure you want to delete job "${jobName}"? This action cannot be undone.`)) {
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('jobs')
+        .delete()
+        .eq('id', jobId);
+
+      if (error) throw error;
+
+      toast.success(`Job "${jobName}" deleted successfully`);
+      fetchJobs();
+    } catch (error) {
+      console.error('Error deleting job:', error);
+      toast.error('Failed to delete job');
+    }
+  };
+
+  const JobActionsDropdown = ({ job }: { job: Job }) => {
+    const actions = [
+      {
+        label: "View Details Page",
+        icon: Eye,
+        onClick: () => navigate(`/job/${job.id}`)
+      },
+      ...(job.contacts?.phone ? [{
+        label: "Call Contact", 
+        icon: Phone,
+        onClick: () => handleCall(job)
+      }] : []),
+      ...(job.contacts?.phone ? [{
+        label: "Text Contact",
+        icon: MessageSquare,
+        onClick: () => setActiveChatContact({ 
+          id: job.contact_id, 
+          name: `${job.contacts.first_name} ${job.contacts.last_name}`, 
+          phone: job.contacts.phone 
+        })
+      }] : []),
+      ...(job.contacts?.email ? [{
+        label: "Email Contact",
+        icon: Mail,
+        onClick: () => setActiveEmailContact({ 
+          id: job.contact_id, 
+          name: `${job.contacts.first_name} ${job.contacts.last_name}`, 
+          email: job.contacts.email 
+        })
+      }] : []),
+      {
+        label: "Map Surrounding Jobs",
+        icon: MapPin,
+        onClick: () => setMapCenter({
+          lat: 27.0820246, // Default lat
+          lng: -82.19621560000002, // Default lng
+          address: job.contacts?.address_street ? `${job.contacts.address_street}, ${job.contacts.address_city}, ${job.contacts.address_state}` : ''
+        }),
+        separator: true
+      },
+      {
+        label: "Delete",
+        icon: Trash2,
+        onClick: () => handleDeleteJob(job.id, job.name),
+        variant: 'destructive' as const,
+        separator: true
+      }
+    ];
+
+    return <ActionsSelector actions={actions} />;
   };
 
   if (loading) {
@@ -403,14 +508,7 @@ export const Jobs = () => {
                   </div>
 
                   <div className="flex items-center gap-2 ml-4">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => navigate(`/job/${job.id}`)}
-                    >
-                      <Eye className="h-4 w-4 mr-2" />
-                      View Details
-                    </Button>
+                    <JobActionsDropdown job={job} />
                   </div>
                 </div>
               </CardContent>
@@ -418,6 +516,38 @@ export const Jobs = () => {
           ))
         )}
       </div>
+
+      {/* Floating Components */}
+      {activeChatContact && (
+        <FloatingChatWidget
+          isOpen={!!activeChatContact}
+          onClose={() => setActiveChatContact(null)}
+          contactName={activeChatContact.name}
+          contactPhone={activeChatContact.phone}
+          messages={[]}
+          onSendMessage={() => {}}
+        />
+      )}
+
+      {activeEmailContact && (
+        <FloatingEmailComposer
+          isOpen={!!activeEmailContact}
+          onClose={() => setActiveEmailContact(null)}
+          recipients={[]}
+          defaultRecipient={activeEmailContact}
+          onSendEmail={() => {}}
+        />
+      )}
+
+      {mapCenter && (
+        <SimpleJobMap
+          isOpen={!!mapCenter}
+          onClose={() => setMapCenter(null)}
+          centerLocation={mapCenter}
+          radiusMiles={5}
+          locations={[]}
+        />
+      )}
     </div>
   );
 };
