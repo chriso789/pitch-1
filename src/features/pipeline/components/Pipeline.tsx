@@ -1,10 +1,15 @@
 import React, { useState, useEffect } from 'react';
+import { DndContext, DragEndEvent, DragOverlay, DragStartEvent, closestCorners } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { LeadForm } from "@/features/contacts/components/LeadForm";
+import { KanbanCard } from './KanbanCard';
+import { KanbanColumn } from './KanbanColumn';
 import { 
   ArrowRight, 
   DollarSign, 
@@ -34,6 +39,7 @@ const Pipeline = () => {
   const [loading, setLoading] = useState(true);
   const [updatingEntry, setUpdatingEntry] = useState(null);
   const [showLeadForm, setShowLeadForm] = useState(false);
+  const [activeId, setActiveId] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     salesRep: 'all',
     location: 'all',
@@ -171,6 +177,100 @@ const Pipeline = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDragStart = (event: DragStartEvent) => {
+    setActiveId(event.active.id as string);
+  };
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    setActiveId(null);
+
+    if (!over || active.id === over.id) return;
+
+    const entryId = active.id as string;
+    const newStatus = over.id as string;
+
+    // Find the entry being moved
+    let movedEntry: any = null;
+    let fromStatus = '';
+
+    for (const [status, entries] of Object.entries(pipelineData)) {
+      const entryArray = Array.isArray(entries) ? entries : [];
+      const entry = entryArray.find((e: any) => e.id === entryId);
+      if (entry) {
+        movedEntry = entry;
+        fromStatus = status;
+        break;
+      }
+    }
+
+    if (!movedEntry) return;
+
+    // Optimistically update UI
+    const newPipelineData = { ...pipelineData };
+    const fromArray = Array.isArray(newPipelineData[fromStatus]) ? newPipelineData[fromStatus] : [];
+    const toArray = Array.isArray(newPipelineData[newStatus]) ? newPipelineData[newStatus] : [];
+    newPipelineData[fromStatus] = fromArray.filter((e: any) => e.id !== entryId);
+    newPipelineData[newStatus] = [...toArray, { ...movedEntry, status: newStatus }];
+    setPipelineData(newPipelineData);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('pipeline-drag-handler', {
+        body: {
+          pipelineEntryId: entryId,
+          newStatus: newStatus,
+          fromStatus: fromStatus
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data.error) {
+        // Revert optimistic update
+        const revertedData = { ...pipelineData };
+        const revertFromArray = Array.isArray(revertedData[newStatus]) ? revertedData[newStatus] : [];
+        const revertToArray = Array.isArray(revertedData[fromStatus]) ? revertedData[fromStatus] : [];
+        revertedData[newStatus] = revertFromArray.filter((e: any) => e.id !== entryId);
+        revertedData[fromStatus] = [...revertToArray, movedEntry];
+        setPipelineData(revertedData);
+
+        toast({
+          title: "Access Denied",
+          description: data.message || data.error,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Success",
+        description: data.message || "Lead moved successfully",
+      });
+
+      // Refresh data to ensure consistency
+      await fetchPipelineData();
+
+    } catch (error) {
+      console.error('Error moving pipeline entry:', error);
+      
+      // Revert optimistic update
+      const revertedData = { ...pipelineData };
+      const revertFromArray = Array.isArray(revertedData[newStatus]) ? revertedData[newStatus] : [];
+      const revertToArray = Array.isArray(revertedData[fromStatus]) ? revertedData[fromStatus] : [];
+      revertedData[newStatus] = revertFromArray.filter((e: any) => e.id !== entryId);
+      revertedData[fromStatus] = [...revertToArray, movedEntry];
+      setPipelineData(revertedData);
+
+      toast({
+        title: "Error",
+        description: "Failed to move lead",
+        variant: "destructive",
+      });
     }
   };
 

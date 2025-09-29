@@ -39,7 +39,7 @@ const App = () => {
               <Route path="/login" element={<Login />} />
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/demo-request" element={<DemoRequest />} />
-              <Route path="/pipeline" element={<Pipeline />} />
+              
               <Route path="/contact/:id" element={<ContactProfile />} />
               <Route path="/lead/:id" element={<LeadDetails />} />
               <Route path="/job/:id" element={<JobDetails />} />
