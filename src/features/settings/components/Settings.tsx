@@ -16,6 +16,7 @@ import SupplierManagement from "./SupplierManagement";
 import { default as VoiceInterface } from "@/features/communication/components/VoiceInterface";
 import ErrorReportsManager from "./ErrorReportsManager";
 import EnhancedErrorReportsManager from "./EnhancedErrorReportsManager";
+import ManagerApprovalQueue from "@/components/ManagerApprovalQueue";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Settings = () => {
@@ -148,7 +149,6 @@ export const Settings = () => {
           <UserManagement />
         </TabsContent>
 
-
         <TabsContent value="reports" className="space-y-6">
           <EnhancedErrorReportsManager />
         </TabsContent>
@@ -176,7 +176,7 @@ export const Settings = () => {
         </TabsContent>
 
         <TabsContent value="approvals" className="space-y-6">
-          <ApprovalManager />
+          <ManagerApprovalQueue />
         </TabsContent>
 
         {showDeveloperTab && (

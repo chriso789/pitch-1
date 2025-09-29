@@ -70,6 +70,7 @@ const Pipeline = () => {
         .from('pipeline_entries')
         .select(`
           *,
+          clj_formatted_number,
           contacts (
             first_name,
             last_name,
@@ -285,7 +286,7 @@ const Pipeline = () => {
           <div className="flex items-start justify-between mb-3">
             <div>
               <span className="font-mono text-sm text-muted-foreground">
-                {estimate?.estimate_number || `PIPE-${item.id.slice(-4)}`}
+                {item.clj_formatted_number || estimate?.estimate_number || `PIPE-${item.id.slice(-4)}`}
               </span>
               <h3 className="font-semibold">{formatName(contact)}</h3>
             </div>
