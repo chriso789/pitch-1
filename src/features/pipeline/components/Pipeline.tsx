@@ -678,7 +678,7 @@ const Pipeline = () => {
                 <SelectContent>
                   <SelectItem value="all">All Reps</SelectItem>
                   {salesReps.map(rep => (
-                    <SelectItem key={rep} value={rep}>{rep}</SelectItem>
+                    <SelectItem key={rep.id} value={rep.id}>{rep.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -693,7 +693,7 @@ const Pipeline = () => {
                 <SelectContent>
                   <SelectItem value="all">All Locations</SelectItem>
                   {locations.map(location => (
-                    <SelectItem key={location} value={location}>{location}</SelectItem>
+                    <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
