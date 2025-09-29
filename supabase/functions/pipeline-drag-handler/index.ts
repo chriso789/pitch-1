@@ -45,6 +45,17 @@ serve(async (req) => {
     // Check if user has permission to make this move
     const isManager = ['manager', 'admin', 'master'].includes(profile.role);
     
+    // Prevent non-managers from moving OUT of 'ready_for_approval' status
+    if (fromStatus === 'ready_for_approval' && !isManager) {
+      return new Response(JSON.stringify({ 
+        error: 'Manager approval required',
+        message: 'Only managers can move jobs from Ready for Approval status'
+      }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Prevent non-managers from moving directly to 'project'
     if (newStatus === 'project' && !isManager) {
       return new Response(JSON.stringify({ 

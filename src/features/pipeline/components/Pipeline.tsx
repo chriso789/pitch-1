@@ -65,6 +65,7 @@ const Pipeline = () => {
     { name: "Leads", key: "lead", color: "bg-amber-500", icon: User },
     { name: "Legal Review", key: "legal_review", color: "bg-blue-500", icon: FileText },
     { name: "Contingency Signed", key: "contingency_signed", color: "bg-purple-500", icon: CheckCircle },
+    { name: "Ready for Approval", key: "ready_for_approval", color: "bg-orange-500", icon: AlertCircle },
     { name: "Project", key: "project", color: "bg-green-500", icon: CalendarDays },
     { name: "Completed", key: "completed", color: "bg-teal-500", icon: CheckSquare },
     { name: "Closed", key: "closed", color: "bg-gray-500", icon: CheckSquare }

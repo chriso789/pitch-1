@@ -39,7 +39,7 @@ export const PipelineToJobConverter: React.FC<PipelineToJobConverterProps> = ({
   const { toast } = useToast();
 
   const convertibleEntries = pipelineEntries.filter(entry => 
-    entry.status === 'contingency_signed'
+    entry.status === 'ready_for_approval'
   );
 
   useEffect(() => {
