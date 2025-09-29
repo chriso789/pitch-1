@@ -28,7 +28,11 @@ import {
   CalendarDays,
   TrendingUp,
   Plus,
-  XCircle
+  XCircle,
+  Search,
+  X,
+  CheckSquare,
+  Square
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -48,6 +52,9 @@ const Pipeline = () => {
     dateFrom: '',
     dateTo: ''
   });
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedJobs, setSelectedJobs] = useState<string[]>([]);
+  const [bulkActionMode, setBulkActionMode] = useState(false);
   const [stageTotals, setStageTotals] = useState({});
   const [salesReps, setSalesReps] = useState([]);
   const [locations, setLocations] = useState([]);
@@ -67,9 +74,39 @@ const Pipeline = () => {
     fetchPipelineData();
   }, [filters]);
 
+  // Filter data based on search query
+  const filterBySearch = (data: any[]) => {
+    if (!searchQuery) return data;
+    
+    const query = searchQuery.toLowerCase();
+    return data.filter(job => {
+      const contact = job.contacts;
+      const fullName = `${contact?.first_name || ''} ${contact?.last_name || ''}`.toLowerCase();
+      const jobNumber = (job.job_number || '').toLowerCase();
+      const address = `${contact?.address_street || ''} ${contact?.address_city || ''}`.toLowerCase();
+      
+      return fullName.includes(query) || 
+             jobNumber.includes(query) || 
+             address.includes(query);
+    });
+  };
+
   const fetchPipelineData = async () => {
     try {
       setLoading(true);
+      
+      // Load sales reps for assignment
+      const { data: repsData } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name')
+        .in('role', ['admin', 'manager', 'rep', 'master']);
+      
+      if (repsData) {
+        setSalesReps(repsData.map(rep => ({
+          id: rep.id,
+          name: `${rep.first_name} ${rep.last_name}`
+        })));
+      }
       
       // Build query with filters
       let query = supabase
@@ -142,7 +179,7 @@ const Pipeline = () => {
       
       // Initialize all stages with empty arrays to ensure they always show
       jobStages.forEach(stage => {
-        const stageEntries = filteredData.filter(entry => entry.status === stage.key);
+        const stageEntries = filterBySearch(filteredData.filter(entry => entry.status === stage.key));
         groupedData[stage.key] = stageEntries;
         
         // Calculate total estimate value for this stage - for jobs, we'll use 0 for now
@@ -497,6 +534,78 @@ const Pipeline = () => {
   };
 
   // Transform pipeline entry to match KanbanCard interface
+  // Bulk action handlers
+  const toggleJobSelection = (jobId: string) => {
+    setSelectedJobs(prev => 
+      prev.includes(jobId) 
+        ? prev.filter(id => id !== jobId)
+        : [...prev, jobId]
+    );
+  };
+
+  const selectAllInStage = (stage: string) => {
+    const stageJobs = pipelineData[stage] || [];
+    const stageIds = stageJobs.map((job: any) => job.id);
+    setSelectedJobs(prev => [...new Set([...prev, ...stageIds])]);
+  };
+
+  const clearSelection = () => {
+    setSelectedJobs([]);
+    setBulkActionMode(false);
+  };
+
+  const handleBulkAssign = async (userId: string) => {
+    try {
+      const { error } = await supabase
+        .from('jobs')
+        .update({ created_by: userId })
+        .in('id', selectedJobs);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `${selectedJobs.length} jobs assigned successfully`,
+      });
+
+      clearSelection();
+      fetchPipelineData();
+    } catch (error) {
+      console.error('Error in bulk assign:', error);
+      toast({
+        title: "Error",
+        description: "Failed to assign jobs",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleBulkStatusChange = async (newStatus: string) => {
+    try {
+      const { error } = await supabase
+        .from('jobs')
+        .update({ status: newStatus })
+        .in('id', selectedJobs);
+
+      if (error) throw error;
+
+      toast({
+        title: "Success",
+        description: `${selectedJobs.length} jobs moved to ${newStatus}`,
+      });
+
+      clearSelection();
+      fetchPipelineData();
+    } catch (error) {
+      console.error('Error in bulk status change:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update job statuses",
+        variant: "destructive",
+      });
+    }
+  };
+
   const transformToKanbanEntry = (pipelineEntry: any) => {
     const contact = pipelineEntry.contacts;
     const estimate = pipelineEntry.estimates?.[0];
@@ -615,6 +724,84 @@ const Pipeline = () => {
         </CardContent>
       </Card>
 
+      {/* Search and Bulk Actions */}
+      <Card className="shadow-soft border-0">
+        <CardContent className="p-4">
+          <div className="flex flex-col sm:flex-row gap-4 items-center justify-between">
+            <div className="relative flex-1 w-full">
+              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search jobs by name, job number, or address..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+              {searchQuery && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="absolute right-2 top-1/2 transform -translate-y-1/2 h-6 w-6 p-0"
+                  onClick={() => setSearchQuery('')}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            
+            <div className="flex gap-2 w-full sm:w-auto">
+              <Button
+                variant={bulkActionMode ? "default" : "outline"}
+                size="sm"
+                onClick={() => {
+                  setBulkActionMode(!bulkActionMode);
+                  if (bulkActionMode) clearSelection();
+                }}
+              >
+                {bulkActionMode ? <CheckSquare className="h-4 w-4 mr-2" /> : <Square className="h-4 w-4 mr-2" />}
+                Select Jobs
+              </Button>
+            </div>
+          </div>
+
+          {/* Bulk Actions Bar */}
+          {bulkActionMode && selectedJobs.length > 0 && (
+            <div className="mt-4 p-3 bg-primary/10 rounded-lg flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary">{selectedJobs.length} selected</Badge>
+                <Button variant="ghost" size="sm" onClick={clearSelection}>
+                  <X className="h-4 w-4 mr-1" />
+                  Clear
+                </Button>
+              </div>
+              
+              <div className="flex gap-2">
+                <Select onValueChange={handleBulkAssign}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Assign to..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {salesReps.map(rep => (
+                      <SelectItem key={rep.id} value={rep.id}>{rep.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                
+                <Select onValueChange={handleBulkStatusChange}>
+                  <SelectTrigger className="w-[180px]">
+                    <SelectValue placeholder="Move to..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {jobStages.map(stage => (
+                      <SelectItem key={stage.key} value={stage.key}>{stage.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       {loading ? (
         <div className="flex items-center justify-center h-64">
           <Loader2 className="h-8 w-8 animate-spin" />
@@ -645,22 +832,60 @@ const Pipeline = () => {
                         count={(pipelineData[stage.key] || []).length}
                         total={formatCurrency(stageTotals[stage.key] || 0)}
                       >
+                        {/* Bulk selection checkbox for stage */}
+                        {bulkActionMode && stageEntries.length > 0 && (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="w-full mb-2"
+                            onClick={() => selectAllInStage(stage.key)}
+                          >
+                            <CheckSquare className="h-4 w-4 mr-2" />
+                            Select All in {stage.name}
+                          </Button>
+                        )}
+                        
                         {stageEntries.map((entry) => (
-                          <KanbanCard
-                            key={entry.id}
-                            id={entry.id}
-                            entry={entry}
-                            onView={(entryId) => {
-                              const originalEntry = (pipelineData[stage.key] || []).find(e => e.id === entryId);
-                              if (originalEntry) {
-                                navigate(`/contact/${originalEntry.contact_id}`);
-                              }
-                            }}
-                            onDelete={() => {}}
-                            canDelete={false}
-                            isDragging={activeId === entry.id}
-                            onAssignmentChange={fetchPipelineData}
-                          />
+                          <div key={entry.id} className="relative">
+                            {bulkActionMode && (
+                              <div className="absolute top-2 left-2 z-10">
+                                <Button
+                                  variant={selectedJobs.includes(entry.id) ? "default" : "outline"}
+                                  size="sm"
+                                  className="h-6 w-6 p-0"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    toggleJobSelection(entry.id);
+                                  }}
+                                >
+                                  {selectedJobs.includes(entry.id) ? (
+                                    <CheckSquare className="h-4 w-4" />
+                                  ) : (
+                                    <Square className="h-4 w-4" />
+                                  )}
+                                </Button>
+                              </div>
+                            )}
+                            <KanbanCard
+                              key={entry.id}
+                              id={entry.id}
+                              entry={entry}
+                              onView={(entryId) => {
+                                if (bulkActionMode) {
+                                  toggleJobSelection(entryId);
+                                } else {
+                                  const originalEntry = (pipelineData[stage.key] || []).find(e => e.id === entryId);
+                                  if (originalEntry) {
+                                    navigate(`/contact/${originalEntry.contact_id}`);
+                                  }
+                                }
+                              }}
+                              onDelete={() => {}}
+                              canDelete={false}
+                              isDragging={activeId === entry.id}
+                              onAssignmentChange={fetchPipelineData}
+                            />
+                          </div>
                         ))}
                       </KanbanColumn>
                     </SortableContext>
