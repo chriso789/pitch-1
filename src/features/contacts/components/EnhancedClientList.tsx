@@ -651,7 +651,11 @@ export const EnhancedClientList = () => {
 
   // Calculate statistics
   const totalContacts = contacts.length;
-  const qualifiedContacts = contacts.filter(c => c.qualification_status === 'qualified').length;
+  
+  // Count contacts created within last 2 weeks
+  const twoWeeksAgo = new Date();
+  twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+  const recentContacts = contacts.filter(c => new Date(c.created_at) >= twoWeeksAgo).length;
   
   // Count active leads: pipeline entries created by this rep that haven't progressed past "ready_for_approval"
   const statusesBeforeApproval = ['lead', 'qualified', 'measurement', 'estimate', 'negotiation', 'proposal'];
@@ -736,10 +740,10 @@ export const EnhancedClientList = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">
-                  {activeView === 'contacts' ? 'Qualified' : 'Active'}
+                  {activeView === 'contacts' ? 'New (2 Weeks)' : 'Active'}
                 </p>
                 <p className="text-2xl font-bold text-success">
-                  {activeView === 'contacts' ? qualifiedContacts : activeJobs}
+                  {activeView === 'contacts' ? recentContacts : activeJobs}
                 </p>
               </div>
               <div className="h-12 w-12 rounded-lg bg-success/10 flex items-center justify-center">
