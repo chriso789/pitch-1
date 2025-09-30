@@ -127,36 +127,39 @@ const LeadDetails = () => {
   const checkApprovalRequirements = async () => {
     try {
       // Check for contract
-      const { data: contracts, error: contractError } = await supabase
+      const { data: contracts } = await supabase
         .from('documents')
         .select('id')
         .eq('pipeline_entry_id', id)
         .eq('document_type', 'contract')
         .limit(1);
 
-      // Check for estimate
-      const { data: estimates, error: estimateError } = await supabase
-        .from('enhanced_estimates')
-        .select('id')
-        .eq('pipeline_entry_id', id)
-        .limit(1);
+      // Check if a selected estimate exists in metadata
+      const { data: pipelineEntry } = await supabase
+        .from('pipeline_entries')
+        .select('metadata')
+        .eq('id', id)
+        .maybeSingle();
 
-      // Check for materials and labor if estimate exists
+      const metadata = pipelineEntry?.metadata as Record<string, any> | null;
+      const selectedEstimateId = metadata?.selected_estimate_id;
+
+      // Check for materials and labor if estimate is selected
       let materials: any[] = [];
       let labor: any[] = [];
       
-      if (estimates && estimates.length > 0) {
+      if (selectedEstimateId) {
         const { data: materialData } = await supabase
           .from('estimate_line_items')
           .select('id')
-          .eq('estimate_id', estimates[0].id)
+          .eq('estimate_id', selectedEstimateId)
           .eq('item_category', 'material')
           .limit(1);
           
         const { data: laborData } = await supabase
           .from('estimate_line_items')
           .select('id')
-          .eq('estimate_id', estimates[0].id)
+          .eq('estimate_id', selectedEstimateId)
           .eq('item_category', 'labor')
           .limit(1);
           
@@ -165,7 +168,7 @@ const LeadDetails = () => {
       }
 
       const hasContract = (contracts?.length || 0) > 0;
-      const hasEstimate = (estimates?.length || 0) > 0;
+      const hasEstimate = !!selectedEstimateId;
       const hasMaterials = (materials?.length || 0) > 0;
       const hasLabor = (labor?.length || 0) > 0;
       const allComplete = hasContract && hasEstimate && hasMaterials && hasLabor;
