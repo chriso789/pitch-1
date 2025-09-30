@@ -92,3 +92,6 @@ verify_jwt = true
 
 [functions.weather-risk-analyzer]
 verify_jwt = true
+
+[functions.skip-trace-lookup]
+verify_jwt = true

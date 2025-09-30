@@ -9,6 +9,7 @@ import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 import { ContactDetailsTab } from "@/components/contact-profile/ContactDetailsTab";
 import { ContactJobsTab } from "@/components/contact-profile/ContactJobsTab";
 import { ContactCommunicationTab } from "@/components/contact-profile/ContactCommunicationTab";
+import { SkipTraceButton } from "@/components/skip-trace/SkipTraceButton";
 import { LeadCreationDialog } from "@/components/LeadCreationDialog";
 import {
   User,
@@ -169,18 +170,24 @@ const ContactProfile = () => {
                 </div>
               </div>
             </div>
-            <LeadCreationDialog 
-              contact={contact}
-              onLeadCreated={() => {
-                fetchContactData(); // Refresh to get updated pipeline data
-              }}
-              trigger={
-                <Button className="shadow-soft">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Create Lead
-                </Button>
-              }
-            />
+            <div className="flex items-center gap-2">
+              <SkipTraceButton 
+                contactId={id!} 
+                onComplete={fetchContactData}
+              />
+              <LeadCreationDialog 
+                contact={contact}
+                onLeadCreated={() => {
+                  fetchContactData(); // Refresh to get updated pipeline data
+                }}
+                trigger={
+                  <Button className="shadow-soft">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Create Lead
+                  </Button>
+                }
+              />
+            </div>
           </div>
         </div>
 

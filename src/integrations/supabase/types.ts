@@ -6119,6 +6119,62 @@ export type Database = {
         }
         Relationships: []
       }
+      skip_trace_results: {
+        Row: {
+          confidence_score: number | null
+          contact_id: string
+          cost: number | null
+          created_at: string | null
+          enriched_data: Json | null
+          id: string
+          provider: string
+          raw_results: Json | null
+          requested_by: string | null
+          search_parameters: Json | null
+          status: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          confidence_score?: number | null
+          contact_id: string
+          cost?: number | null
+          created_at?: string | null
+          enriched_data?: Json | null
+          id?: string
+          provider?: string
+          raw_results?: Json | null
+          requested_by?: string | null
+          search_parameters?: Json | null
+          status?: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          confidence_score?: number | null
+          contact_id?: string
+          cost?: number | null
+          created_at?: string | null
+          enriched_data?: Json | null
+          id?: string
+          provider?: string
+          raw_results?: Json | null
+          requested_by?: string | null
+          search_parameters?: Json | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "skip_trace_results_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       smart_doc_renders: {
         Row: {
           context: Json | null
