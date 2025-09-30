@@ -298,6 +298,7 @@ export const EnhancedClientList = () => {
         .select(`
           *,
           contacts:contact_id (
+            contact_number,
             first_name,
             last_name,
             address_street,
@@ -985,11 +986,11 @@ export const EnhancedClientList = () => {
                       return (
                         <Card key={lead.id} className="p-4 hover:shadow-md transition-shadow">
                           <div className="space-y-2">
-                            {/* Top row: Lead number, Last name, Status */}
+                            {/* Top row: Contact number, Last name, Status */}
                             <div className="flex items-center justify-between gap-3">
                               <div className="flex items-center gap-3 flex-wrap">
                                 <span className="text-sm font-mono text-muted-foreground">
-                                  {lead.clj_formatted_number || 'N/A'}
+                                  {lead.contacts?.contact_number || 'N/A'}
                                 </span>
                                 <h4 className="font-medium">{lastName}</h4>
                                 <Badge variant="secondary" className="text-xs">
