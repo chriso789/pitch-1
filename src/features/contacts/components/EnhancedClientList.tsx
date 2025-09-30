@@ -141,8 +141,19 @@ export const EnhancedClientList = () => {
   }, [preferredView]);
 
   useEffect(() => {
+    // Set default sort field based on active view
+    if (activeView === 'jobs') {
+      setSortField('job_number');
+      setSortDirection('asc');
+    } else {
+      setSortField('created_at');
+      setSortDirection('desc');
+    }
+  }, [activeView]);
+
+  useEffect(() => {
     filterData();
-  }, [contacts, jobs, activeView, searchTerm, statusFilter]);
+  }, [contacts, jobs, activeView, searchTerm, statusFilter, sortField, sortDirection]);
 
   const loadUserPreferences = async () => {
     try {
@@ -379,6 +390,11 @@ export const EnhancedClientList = () => {
         }
       } else {
         switch (sortField) {
+          case 'job_number':
+            // Extract numeric part for proper sorting
+            aValue = parseInt(a.job_number?.replace(/\D/g, '') || '0');
+            bValue = parseInt(b.job_number?.replace(/\D/g, '') || '0');
+            break;
           case 'name':
             aValue = a.name?.toLowerCase() || '';
             bValue = b.name?.toLowerCase() || '';
@@ -392,9 +408,12 @@ export const EnhancedClientList = () => {
             bValue = b.status?.toLowerCase() || '';
             break;
           case 'created_at':
-          default:
             aValue = new Date(a.created_at);
             bValue = new Date(b.created_at);
+            break;
+          default:
+            aValue = parseInt(a.job_number?.replace(/\D/g, '') || '0');
+            bValue = parseInt(b.job_number?.replace(/\D/g, '') || '0');
             break;
         }
       }
@@ -925,7 +944,11 @@ export const EnhancedClientList = () => {
                       </>
                     ) : (
                       <>
-                        <TableHead className="w-[50px]">#</TableHead>
+                        <TableHead>
+                          <Button variant="ghost" onClick={() => handleSort('job_number')} className="p-0 h-auto font-medium">
+                            Job # <ArrowUpDown className="ml-2 h-4 w-4" />
+                          </Button>
+                        </TableHead>
                         <TableHead>
                           <Button variant="ghost" onClick={() => handleSort('name')} className="p-0 h-auto font-medium">
                             Job Name <ArrowUpDown className="ml-2 h-4 w-4" />
@@ -943,7 +966,7 @@ export const EnhancedClientList = () => {
                         </TableHead>
                         <TableHead>Location</TableHead>
                         <TableHead>Created</TableHead>
-                        <TableHead>Actions</TableHead>
+                        <TableHead className="text-right">Actions</TableHead>
                       </>
                     )}
                   </TableRow>
@@ -1003,7 +1026,7 @@ export const EnhancedClientList = () => {
                         </>
                       ) : (
                         <>
-                          <TableCell className="font-mono text-xs text-muted-foreground">
+                          <TableCell className="font-mono text-sm font-medium">
                             {item.job_number || `J-${String(index + 1).padStart(3, '0')}`}
                           </TableCell>
                           <TableCell>
@@ -1039,7 +1062,7 @@ export const EnhancedClientList = () => {
                               {new Date(item.created_at).toLocaleDateString()}
                             </div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="text-right">
                             <ActionsDropdown item={item} type="job" />
                           </TableCell>
                         </>
