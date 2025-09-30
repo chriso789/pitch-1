@@ -7,9 +7,11 @@ import {
   Hammer, 
   Settings, 
   TrendingUp, 
-  DollarSign 
+  DollarSign,
+  RefreshCw
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface HyperlinkBarData {
   estimate_id: string;
@@ -67,6 +69,8 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
 }) => {
   const [hyperlinkData, setHyperlinkData] = useState<HyperlinkBarData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [measuringRoof, setMeasuringRoof] = useState(false);
+  const { toast } = useToast();
 
   // Fetch hyperlink bar data using the new RPC function
   useEffect(() => {
@@ -94,6 +98,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
 
     fetchHyperlinkData();
   }, [pipelineEntryId]);
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -106,6 +111,53 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
   const formatSquares = (sqft: number) => {
     const squares = sqft / 100;
     return `${squares.toFixed(1)} sq`;
+  };
+
+  const handleRefreshMeasurements = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!pipelineEntryId || measuringRoof) return;
+
+    setMeasuringRoof(true);
+    toast({
+      title: "Updating Measurements",
+      description: "Fetching latest roof measurements from satellite data...",
+    });
+
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) throw new Error('No session');
+
+      const response = await supabase.functions.invoke('enhanced-roof-measurement', {
+        body: { 
+          pipeline_entry_id: pipelineEntryId,
+          pitch: "8/12" // Default pitch, can be made configurable
+        }
+      });
+
+      if (response.error) throw response.error;
+
+      toast({
+        title: "Measurements Updated",
+        description: `Source: ${response.data.data_source} (${Math.round(response.data.confidence_score * 100)}% confidence)`,
+      });
+
+      // Refresh the hyperlink data
+      const { data } = await supabase
+        .rpc('api_estimate_hyperlink_bar', { p_estimate_id: pipelineEntryId });
+      if (data) setHyperlinkData(data as unknown as HyperlinkBarData);
+
+    } catch (error) {
+      console.error('Measurement update error:', error);
+      toast({
+        title: "Measurement Update Failed",
+        description: error instanceof Error ? error.message : "Please try again",
+        variant: "destructive"
+      });
+    } finally {
+      setMeasuringRoof(false);
+    }
   };
 
   // Use RPC data if available, otherwise fallback to passed calculations
@@ -257,6 +309,19 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
             <div className="flex items-center space-x-1 mb-1">
               <IconComponent className="h-4 w-4" />
               <span className="text-sm font-medium truncate">{link.label}</span>
+              {link.id === 'measurements' && pipelineEntryId && (
+                <button
+                  onClick={handleRefreshMeasurements}
+                  disabled={measuringRoof}
+                  className={cn(
+                    "ml-1 p-0.5 rounded hover:bg-primary/10 transition-colors",
+                    measuringRoof && "animate-spin"
+                  )}
+                  title="Refresh measurements from satellite data"
+                >
+                  <RefreshCw className="h-3 w-3" />
+                </button>
+              )}
             </div>
             
             <div className="flex items-center space-x-1">

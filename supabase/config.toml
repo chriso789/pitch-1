@@ -95,3 +95,6 @@ verify_jwt = true
 
 [functions.skip-trace-lookup]
 verify_jwt = true
+
+[functions.enhanced-roof-measurement]
+verify_jwt = true
