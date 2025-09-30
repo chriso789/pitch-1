@@ -589,6 +589,8 @@ const LeadDetails = () => {
           <ApprovalRequirementsBubbles 
             requirements={requirements}
             onApprove={handleApproveToProject}
+            pipelineEntryId={id}
+            onUploadComplete={checkApprovalRequirements}
           />
         </CardContent>
       </Card>

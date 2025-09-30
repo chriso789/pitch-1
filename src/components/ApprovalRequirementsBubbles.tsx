@@ -1,7 +1,10 @@
-import React from 'react';
-import { FileText, DollarSign, Package, Hammer, CheckCircle, ArrowRight } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { FileText, DollarSign, Package, Hammer, CheckCircle, ArrowRight, Camera, Upload } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 
 interface ApprovalRequirements {
@@ -16,6 +19,8 @@ interface ApprovalRequirementsBubblesProps {
   requirements: ApprovalRequirements;
   onApprove: () => void;
   disabled?: boolean;
+  pipelineEntryId?: string;
+  onUploadComplete?: () => void;
 }
 
 const bubbleSteps = [
@@ -29,12 +34,86 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
   requirements,
   onApprove,
   disabled = false,
+  pipelineEntryId,
+  onUploadComplete,
 }) => {
+  const { toast } = useToast();
+  const [uploadingContract, setUploadingContract] = useState(false);
+  const [openPopover, setOpenPopover] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
+  
   const completedCount = Object.entries(requirements)
     .filter(([key, value]) => key !== 'allComplete' && value === true)
     .length;
   
   const progressPercentage = (completedCount / 4) * 100;
+
+  const handleFileUpload = async (file: File, source: 'camera' | 'file') => {
+    if (!pipelineEntryId) {
+      toast({
+        title: "Error",
+        description: "Pipeline entry ID is required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setUploadingContract(true);
+    try {
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${pipelineEntryId}/${Date.now()}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const { error: dbError } = await supabase
+        .from('documents')
+        .insert({
+          pipeline_entry_id: pipelineEntryId,
+          document_type: 'contract',
+          filename: file.name,
+          file_path: fileName,
+          file_size: file.size,
+        });
+
+      if (dbError) throw dbError;
+
+      toast({
+        title: "Success",
+        description: `Contract uploaded successfully via ${source}`,
+      });
+      
+      setOpenPopover(false);
+      onUploadComplete?.();
+    } catch (error) {
+      console.error('Upload error:', error);
+      toast({
+        title: "Upload Failed",
+        description: "Failed to upload contract. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingContract(false);
+    }
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleFileUpload(file, 'file');
+    }
+  };
+
+  const handleCameraCapture = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      handleFileUpload(file, 'camera');
+    }
+  };
 
   return (
     <div className="space-y-6">
@@ -77,29 +156,69 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
                 {/* Bubble */}
                 <div className="flex flex-col items-center space-y-2 relative">
                   {/* Circular Bubble */}
-                  <div
-                    className={cn(
-                      "relative w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300",
-                      "border-4 cursor-pointer",
-                      isComplete
-                        ? `bg-gradient-to-br ${step.color} border-white shadow-lg animate-scale-in hover:scale-110 hover:-translate-y-1 hover:shadow-xl`
-                        : "bg-muted border-border opacity-50 hover:opacity-60"
-                    )}
-                  >
-                    <Icon 
+                  {step.key === 'hasContract' && !isComplete ? (
+                    <Popover open={openPopover} onOpenChange={setOpenPopover}>
+                      <PopoverTrigger asChild>
+                        <div
+                          className={cn(
+                            "relative w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300",
+                            "border-4 cursor-pointer",
+                            "bg-muted border-border opacity-50 hover:opacity-100 hover:border-primary hover:scale-105"
+                          )}
+                        >
+                          <Icon 
+                            className="h-8 w-8 text-muted-foreground" 
+                          />
+                        </div>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-56 p-2">
+                        <div className="space-y-1">
+                          <Button
+                            variant="ghost"
+                            className="w-full justify-start"
+                            onClick={() => cameraInputRef.current?.click()}
+                            disabled={uploadingContract}
+                          >
+                            <Camera className="h-4 w-4 mr-2" />
+                            Scan with Camera
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            className="w-full justify-start"
+                            onClick={() => fileInputRef.current?.click()}
+                            disabled={uploadingContract}
+                          >
+                            <Upload className="h-4 w-4 mr-2" />
+                            Upload from Device
+                          </Button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
+                  ) : (
+                    <div
                       className={cn(
-                        "h-8 w-8 transition-colors",
-                        isComplete ? "text-white" : "text-muted-foreground"
-                      )} 
-                    />
-                    
-                    {/* Checkmark Badge */}
-                    {isComplete && (
-                      <div className="absolute -top-1 -right-1 w-6 h-6 bg-success rounded-full flex items-center justify-center border-2 border-background shadow-md animate-fade-in">
-                        <CheckCircle className="h-4 w-4 text-success-foreground" />
-                      </div>
-                    )}
-                  </div>
+                        "relative w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300",
+                        "border-4",
+                        isComplete
+                          ? `bg-gradient-to-br ${step.color} border-white shadow-lg animate-scale-in hover:scale-110 hover:-translate-y-1 hover:shadow-xl cursor-pointer`
+                          : "bg-muted border-border opacity-50"
+                      )}
+                    >
+                      <Icon 
+                        className={cn(
+                          "h-8 w-8 transition-colors",
+                          isComplete ? "text-white" : "text-muted-foreground"
+                        )} 
+                      />
+                      
+                      {/* Checkmark Badge */}
+                      {isComplete && (
+                        <div className="absolute -top-1 -right-1 w-6 h-6 bg-success rounded-full flex items-center justify-center border-2 border-background shadow-md animate-fade-in">
+                          <CheckCircle className="h-4 w-4 text-success-foreground" />
+                        </div>
+                      )}
+                    </div>
+                  )}
                   
                   {/* Label */}
                   <span className={cn(
@@ -136,6 +255,23 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
           })}
         </div>
       </div>
+
+      {/* Hidden file inputs */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="application/pdf,image/*,.doc,.docx"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={handleCameraCapture}
+        className="hidden"
+      />
     </div>
   );
 };
