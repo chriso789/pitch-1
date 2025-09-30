@@ -373,13 +373,13 @@ const KanbanPipeline = () => {
         onDragEnd={handleDragEnd}
       >
         <ScrollArea className="w-full">
-          <div className="flex gap-3 min-h-[600px] pb-4" style={{ minWidth: `${jobStages.length * 160}px` }}>
+          <div className="flex gap-2 min-h-[600px] pb-4" style={{ minWidth: `${jobStages.length * 120}px` }}>
             {jobStages.map((stage) => {
               const stageJobs = pipelineData[stage.key] || [];
               const stageTotal = getStageTotal(stage.key);
 
               return (
-                <div key={stage.key} className="flex-shrink-0 w-[150px]">
+                <div key={stage.key} className="flex-shrink-0 w-[112px]">
                   <KanbanColumn
                     id={stage.key}
                     title={stage.name}

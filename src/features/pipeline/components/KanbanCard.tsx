@@ -200,7 +200,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
       ref={setNodeRef} 
       style={style}
       className={cn(
-        "w-full min-w-0 max-w-full min-h-[80px] max-h-[100px]",
+        "w-full min-w-0 max-w-full min-h-[70px] max-h-[90px]",
         "shadow-soft border-0 hover:shadow-medium transition-smooth",
         "cursor-grab active:cursor-grabbing",
         "relative group overflow-hidden",
@@ -215,13 +215,13 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
       tabIndex={0}
       aria-label={`Job ${jobNumber}, ${lastName}, ${daysInStatus} days in status, last contact ${daysSinceLastComm} days ago`}
     >
-      <CardContent className="p-2 h-full flex flex-col justify-between">
+      <CardContent className="p-1.5 h-full flex flex-col justify-between">
         {/* Row 1: Days Badge + Job Number + Comm Badge */}
         <div className="flex items-center justify-between w-full mb-0.5">
           {/* Days in Status Badge */}
           <Badge 
             className={cn(
-              "text-[10px] px-1.5 py-0.5 border font-medium leading-none",
+              "text-[8px] px-1 py-0.5 border font-medium leading-none",
               getStatusBadgeColor()
             )}
           >
@@ -230,12 +230,11 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
 
           {/* Job Number - Centered */}
           <div 
-            className="flex-1 text-center px-1 min-w-0"
+            className="flex-1 text-center px-0.5 min-w-0"
             title={jobNumber}
           >
             <span 
-              className="font-mono font-semibold text-foreground block truncate"
-              style={{ fontSize: 'clamp(10px, 2.5vw, 12px)' }}
+              className="font-mono font-semibold text-foreground block truncate text-[9px]"
             >
               {jobNumber}
             </span>
@@ -243,10 +242,10 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
 
           {/* Communication Recency Badge */}
           <Badge 
-            className="text-[10px] px-1.5 py-0.5 bg-muted/10 text-muted-foreground border-muted/20 flex items-center gap-0.5 leading-none"
+            className="text-[8px] px-1 py-0.5 bg-muted/10 text-muted-foreground border-muted/20 flex items-center gap-0.5 leading-none"
             title={`Last contact ${daysSinceLastComm} days ago`}
           >
-            <span role="img" aria-label="communication status" className="text-[8px]">{commEmoji}</span>
+            <span role="img" aria-label="communication status" className="text-[7px]">{commEmoji}</span>
             <span>{daysSinceLastComm > 99 ? '99+' : `${daysSinceLastComm}`}d</span>
           </Badge>
         </div>
@@ -259,10 +258,9 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
           >
             <span 
               className={cn(
-                "font-medium text-foreground block truncate px-1",
+                "font-medium text-foreground block truncate px-0.5 text-[10px]",
                 lastName.length > 15 ? "group-hover:text-clip" : ""
               )}
-              style={{ fontSize: 'clamp(10px, 2.5vw, 13px)' }}
             >
               {lastName}
             </span>
@@ -273,11 +271,11 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
         <Button
           variant="ghost"
           size="sm"
-          className="absolute bottom-0.5 left-0.5 h-4 w-4 p-0 text-primary/70 hover:text-primary hover:bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="absolute bottom-0 left-0 h-3.5 w-3.5 p-0 text-primary/70 hover:text-primary hover:bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={handleLeadDetailsClick}
           aria-label={`View lead details for ${jobNumber}`}
         >
-          <ArrowRight className="h-3 w-3" />
+          <ArrowRight className="h-2.5 w-2.5" />
         </Button>
 
         {/* Delete Button (only visible to authorized users on hover) */}
@@ -287,11 +285,11 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
               <Button
                 variant="ghost"
                 size="sm"
-                className="absolute bottom-0.5 right-0.5 h-4 w-4 p-0 text-destructive/70 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute bottom-0 right-0 h-3.5 w-3.5 p-0 text-destructive/70 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
                 onClick={handleDeleteClick}
                 aria-label={`Delete job ${jobNumber}`}
               >
-                <X className="h-3 w-3" />
+                <X className="h-2.5 w-2.5" />
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
@@ -316,7 +314,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
 
         {/* Drag Handle (hidden, accessible via keyboard/screen reader) */}
         <GripVertical 
-          className="absolute top-0.5 right-0.5 h-2.5 w-2.5 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity"
+          className="absolute top-0 right-0 h-2 w-2 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity"
           aria-hidden="true"
         />
       </CardContent>

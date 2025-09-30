@@ -28,28 +28,23 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
   });
 
   return (
-    <div className="space-y-4">
-      {/* Column Header - Compact horizontal layout */}
+    <div className="space-y-2">
+      {/* Column Header - Ultra compact for narrow columns */}
       <Card className="shadow-soft border-0">
-        <CardHeader className="pb-2 pt-3">
-          <CardTitle className="flex items-center justify-between text-sm">
-            <div className="flex items-center gap-2">
-              <div className={cn("w-6 h-6 rounded-full flex items-center justify-center", color)}>
-                <Icon className="h-3 w-3 text-white" />
+        <CardHeader className="p-2">
+          <CardTitle className="flex flex-col items-center gap-1 text-xs">
+            <div className="flex items-center gap-1.5 w-full justify-center">
+              <div className={cn("w-4 h-4 rounded-full flex items-center justify-center", color)}>
+                <Icon className="h-2.5 w-2.5 text-white" />
               </div>
-              <div>
-                <div className="font-medium">{title}</div>
-                <div className="text-xs font-normal text-muted-foreground">
-                  {count} items
-                </div>
-              </div>
+              <div className="text-[10px] font-medium text-center truncate">{title}</div>
             </div>
-            {/* Dollar Amount - Right aligned */}
-            <div className="flex items-center gap-1">
-              <TrendingUp className="h-3 w-3 text-success" />
-              <span className="text-xs font-semibold text-success">
-                {total}
-              </span>
+            <div className="flex items-center justify-between w-full text-[9px]">
+              <span className="text-muted-foreground">{count}</span>
+              <div className="flex items-center gap-0.5">
+                <TrendingUp className="h-2.5 w-2.5 text-success" />
+                <span className="font-semibold text-success text-[9px]">{total}</span>
+              </div>
             </div>
           </CardTitle>                
         </CardHeader>
@@ -59,12 +54,12 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
       <div
         ref={setNodeRef}
         className={cn(
-          "min-h-[400px] p-2 rounded-lg transition-colors overflow-hidden",
+          "min-h-[400px] p-1.5 rounded-lg transition-colors overflow-hidden",
           "max-w-full", // Constrain to column width
           isOver ? "bg-primary/10 border-2 border-primary border-dashed" : "bg-muted/20 border-2 border-transparent"
         )}
       >
-        <div className="space-y-3 w-full">
+        <div className="space-y-2 w-full">
           {children}
         </div>
       </div>
