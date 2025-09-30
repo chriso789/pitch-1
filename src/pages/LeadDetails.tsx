@@ -9,7 +9,8 @@ import { Progress } from '@/components/ui/progress';
 import { 
   Loader2, ArrowLeft, MapPin, User, Phone, Mail, 
   FileText, CheckCircle, AlertCircle, ExternalLink,
-  DollarSign, Hammer, Package, Settings
+  DollarSign, Hammer, Package, Settings, ChevronLeft,
+  ChevronRight, X, Camera, Image as ImageIcon
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import SatelliteMeasurement from '@/components/SatelliteMeasurement';
@@ -82,6 +83,9 @@ const LeadDetails = () => {
     hasLabor: false,
     allComplete: false
   });
+  const [photos, setPhotos] = useState<any[]>([]);
+  const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
+  const [showFullScreenPhoto, setShowFullScreenPhoto] = useState(false);
 
   // Define callback at component top level (not inside render function)
   const handleReadinessChange = React.useCallback((isReady: boolean, data: any) => {
@@ -92,6 +96,7 @@ const LeadDetails = () => {
     if (id) {
       fetchLeadDetails();
       checkApprovalRequirements();
+      fetchPhotos();
     }
   }, [id]);
 
@@ -126,6 +131,22 @@ const LeadDetails = () => {
       });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchPhotos = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('documents')
+        .select('*')
+        .eq('pipeline_entry_id', id)
+        .eq('document_type', 'inspection_photo')
+        .order('created_at', { ascending: false });
+
+      if (error) throw error;
+      setPhotos(data || []);
+    } catch (error) {
+      console.error('Error fetching photos:', error);
     }
   };
 
@@ -541,47 +562,159 @@ const LeadDetails = () => {
         )}
       </div>
 
-      {/* Communication Hub */}
-      <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
-
+      {/* Communication Hub - Split View */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        {/* Left: Communication Actions */}
         <Card>
-          <CardHeader>
-            <CardTitle>Communication Hub</CardTitle>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Communication Hub</CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="space-y-3">
             {lead.assigned_rep ? (
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                  <User className="h-5 w-5 text-primary" />
+              <div className="flex items-center space-x-2">
+                <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                  <User className="h-4 w-4 text-primary" />
                 </div>
                 <div>
-                  <p className="font-medium">
+                  <p className="text-sm font-medium">
                     {lead.assigned_rep.first_name} {lead.assigned_rep.last_name}
                   </p>
-                  <p className="text-sm text-muted-foreground">Sales Representative</p>
+                  <p className="text-xs text-muted-foreground">Sales Rep</p>
                 </div>
               </div>
             ) : (
-              <p className="text-muted-foreground mb-4">No representative assigned</p>
+              <p className="text-sm text-muted-foreground">No rep assigned</p>
             )}
             
-            <div className="grid grid-cols-3 gap-2">
-              <Button size="sm" variant="outline" className="flex items-center space-x-1">
-                <Phone className="h-3 w-3" />
-                <span>Call</span>
+            <div className="flex gap-2">
+              <Button size="sm" variant="outline" className="flex-1">
+                <Phone className="h-3 w-3 mr-1" />
+                Call
               </Button>
-              <Button size="sm" variant="outline" className="flex items-center space-x-1">
-                <Mail className="h-3 w-3" />
-                <span>Email</span>
+              <Button size="sm" variant="outline" className="flex-1">
+                <Mail className="h-3 w-3 mr-1" />
+                Email
               </Button>
-              <Button size="sm" variant="outline" className="flex items-center space-x-1">
-                <Phone className="h-3 w-3" />
-                <span>SMS</span>
+              <Button size="sm" variant="outline" className="flex-1">
+                <Phone className="h-3 w-3 mr-1" />
+                SMS
               </Button>
             </div>
           </CardContent>
         </Card>
+
+        {/* Right: Photo Display */}
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base flex items-center justify-between">
+              <span className="flex items-center gap-2">
+                <Camera className="h-4 w-4" />
+                Photos
+              </span>
+              {photos.length > 0 && (
+                <span className="text-xs font-normal text-muted-foreground">
+                  {currentPhotoIndex + 1} of {photos.length}
+                </span>
+              )}
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {photos.length > 0 ? (
+              <div className="space-y-3">
+                {/* Photo Display */}
+                <div 
+                  className="relative aspect-video bg-muted rounded-lg flex items-center justify-center cursor-pointer overflow-hidden group"
+                  onClick={() => setShowFullScreenPhoto(true)}
+                >
+                  <ImageIcon className="h-12 w-12 text-muted-foreground" />
+                  <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                    <span className="text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                      Click to expand
+                    </span>
+                  </div>
+                </div>
+
+                {/* Navigation Controls */}
+                <div className="flex items-center justify-between">
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setCurrentPhotoIndex(Math.max(0, currentPhotoIndex - 1))}
+                    disabled={currentPhotoIndex === 0}
+                  >
+                    <ChevronLeft className="h-3 w-3" />
+                  </Button>
+                  <span className="text-xs text-muted-foreground">
+                    {photos[currentPhotoIndex]?.filename || 'Photo'}
+                  </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setCurrentPhotoIndex(Math.min(photos.length - 1, currentPhotoIndex + 1))}
+                    disabled={currentPhotoIndex === photos.length - 1}
+                  >
+                    <ChevronRight className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="aspect-video bg-muted rounded-lg flex flex-col items-center justify-center text-center p-4">
+                <Camera className="h-8 w-8 text-muted-foreground mb-2" />
+                <p className="text-xs text-muted-foreground">No photos uploaded yet</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
+
+      {/* Full-Screen Photo Modal */}
+      {showFullScreenPhoto && photos.length > 0 && (
+        <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center">
+          {/* Close Button */}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="absolute top-4 right-4 text-white hover:bg-white/20"
+            onClick={() => setShowFullScreenPhoto(false)}
+          >
+            <X className="h-5 w-5" />
+          </Button>
+
+          {/* Previous Button */}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="absolute left-4 text-white hover:bg-white/20"
+            onClick={() => setCurrentPhotoIndex(Math.max(0, currentPhotoIndex - 1))}
+            disabled={currentPhotoIndex === 0}
+          >
+            <ChevronLeft className="h-6 w-6" />
+          </Button>
+
+          {/* Photo Display */}
+          <div className="max-w-5xl max-h-[90vh] flex items-center justify-center">
+            <div className="bg-muted rounded-lg p-8 flex items-center justify-center min-h-[400px]">
+              <ImageIcon className="h-32 w-32 text-muted-foreground" />
+            </div>
+          </div>
+
+          {/* Next Button */}
+          <Button
+            size="sm"
+            variant="ghost"
+            className="absolute right-4 text-white hover:bg-white/20"
+            onClick={() => setCurrentPhotoIndex(Math.min(photos.length - 1, currentPhotoIndex + 1))}
+            disabled={currentPhotoIndex === photos.length - 1}
+          >
+            <ChevronRight className="h-6 w-6" />
+          </Button>
+
+          {/* Photo Info */}
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white text-sm">
+            {currentPhotoIndex + 1} / {photos.length} - {photos[currentPhotoIndex]?.filename}
+          </div>
+        </div>
+      )}
 
       {/* Approval Requirements Progress */}
       <Card className="border-primary/20">
