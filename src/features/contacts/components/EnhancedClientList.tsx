@@ -261,23 +261,34 @@ export const EnhancedClientList = () => {
       }
 
       console.log("Jobs fetched:", jobsData?.length || 0);
+      console.log("Raw jobs data:", jobsData);
 
       // Enhance jobs with contact information
       const enhancedJobs = await Promise.all(
         (jobsData || []).map(async (job) => {
-          const { data: contactData } = await supabase
+          console.log(`Fetching contact for job ${job.job_number}, contact_id:`, job.contact_id);
+          const { data: contactData, error: contactError } = await supabase
             .from("contacts")
             .select("first_name, last_name, email, phone, address_street, address_city, address_state, location_id")
             .eq("id", job.contact_id)
             .eq('tenant_id', profile.tenant_id)
             .maybeSingle();
 
+          if (contactError) {
+            console.error(`Error fetching contact for job ${job.job_number}:`, contactError);
+          }
+
+          console.log(`Contact data for job ${job.job_number}:`, contactData);
+
           return {
             ...job,
-            contact: contactData
+            contact: contactData || null,
+            name: job.name || (contactData ? `${contactData.first_name || ''} ${contactData.last_name || ''}`.trim() : 'Unnamed Job')
           };
         })
       );
+
+      console.log("Enhanced jobs:", enhancedJobs);
 
       // Fetch pipeline entries created by this user
       console.log("Fetching pipeline entries...");
@@ -306,8 +317,14 @@ export const EnhancedClientList = () => {
   };
 
   const filterData = () => {
+    console.log(`=== FilterData called ===`);
+    console.log(`Active view: ${activeView}`);
+    console.log(`Search term: "${searchTerm}"`);
+    console.log(`Status filter: "${statusFilter}"`);
+    
     if (activeView === 'contacts') {
       let filtered = contacts as Contact[];
+      console.log(`Total contacts: ${filtered.length}`);
 
       if (searchTerm) {
         filtered = filtered.filter(contact => {
@@ -328,11 +345,15 @@ export const EnhancedClientList = () => {
       }
 
       filtered = sortData(filtered, activeView);
+      console.log(`Filtered contacts: ${filtered.length}`);
       setFilteredData(filtered);
     } else {
       let filtered = jobs as Job[];
+      console.log(`Total jobs: ${filtered.length}`);
+      console.log(`Job statuses:`, filtered.map(j => ({ job_number: j.job_number, status: j.status })));
 
       if (searchTerm) {
+        const beforeSearch = filtered.length;
         filtered = filtered.filter(job => {
           return (
             job.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -341,13 +362,21 @@ export const EnhancedClientList = () => {
             job.contact?.address_street?.toLowerCase().includes(searchTerm.toLowerCase())
           );
         });
+        console.log(`After search filter: ${filtered.length} (from ${beforeSearch})`);
       }
 
       if (statusFilter !== "all") {
-        filtered = filtered.filter(job => job.status === statusFilter);
+        const beforeStatus = filtered.length;
+        console.log(`Filtering by status: "${statusFilter}"`);
+        filtered = filtered.filter(job => {
+          console.log(`Job ${job.job_number} status: "${job.status}" === "${statusFilter}"?`, job.status === statusFilter);
+          return job.status === statusFilter;
+        });
+        console.log(`After status filter: ${filtered.length} (from ${beforeStatus})`);
       }
 
       filtered = sortData(filtered, activeView);
+      console.log(`Final filtered jobs: ${filtered.length}`);
       setFilteredData(filtered);
     }
   };
