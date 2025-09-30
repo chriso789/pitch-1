@@ -305,6 +305,58 @@ const Dashboard = () => {
         </div>
       </div>
 
+      {/* Pipeline Overview */}
+      <Card className="shadow-soft border-0">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-primary" />
+            Pipeline Status
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {dashboardPipelineData.map((stage, index) => (
+              <div key={index} className="text-center">
+                <div className={`${stage.color} rounded-lg p-4 mb-2`}>
+                  <div className="text-3xl font-bold text-white">{stage.count}</div>
+                </div>
+                <div className="text-sm font-medium text-foreground">{stage.status}</div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Quick Actions */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <Card 
+          className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-primary"
+          onClick={() => setShowLeadForm(true)}
+        >
+          <CardContent className="p-6 text-center text-white">
+            <Plus className="h-8 w-8 mx-auto mb-2" />
+            <h3 className="font-semibold mb-1">New Lead</h3>
+            <p className="text-sm opacity-90">Add a new customer lead</p>
+          </CardContent>
+        </Card>
+        
+        <Card className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-secondary">
+          <CardContent className="p-6 text-center text-white">
+            <DollarSign className="h-8 w-8 mx-auto mb-2" />
+            <h3 className="font-semibold mb-1">Create Estimate</h3>
+            <p className="text-sm opacity-90">Build a new roof estimate</p>
+          </CardContent>
+        </Card>
+        
+        <Card className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-success">
+          <CardContent className="p-6 text-center text-white">
+            <Wrench className="h-8 w-8 mx-auto mb-2" />
+            <h3 className="font-semibold mb-1">Schedule Work</h3>
+            <p className="text-sm opacity-90">Manage project schedules</p>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Job Action Items */}
       <div className="space-y-6">
         <h2 className="text-2xl font-bold">Job Action Items</h2>
@@ -429,28 +481,6 @@ const Dashboard = () => {
         ))}
       </div>
 
-      {/* Pipeline Overview */}
-      <Card className="shadow-soft border-0">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-primary" />
-            Pipeline Status
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {dashboardPipelineData.map((stage, index) => (
-              <div key={index} className="text-center">
-                <div className={`${stage.color} rounded-lg p-4 mb-2`}>
-                  <div className="text-3xl font-bold text-white">{stage.count}</div>
-                </div>
-                <div className="text-sm font-medium text-foreground">{stage.status}</div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Recent Projects */}
       <Card className="shadow-soft border-0">
         <CardHeader>
@@ -485,36 +515,6 @@ const Dashboard = () => {
           </div>
         </CardContent>
       </Card>
-
-      {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card 
-          className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-primary"
-          onClick={() => setShowLeadForm(true)}
-        >
-          <CardContent className="p-6 text-center text-white">
-            <Plus className="h-8 w-8 mx-auto mb-2" />
-            <h3 className="font-semibold mb-1">New Lead</h3>
-            <p className="text-sm opacity-90">Add a new customer lead</p>
-          </CardContent>
-        </Card>
-        
-        <Card className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-secondary">
-          <CardContent className="p-6 text-center text-white">
-            <DollarSign className="h-8 w-8 mx-auto mb-2" />
-            <h3 className="font-semibold mb-1">Create Estimate</h3>
-            <p className="text-sm opacity-90">Build a new roof estimate</p>
-          </CardContent>
-        </Card>
-        
-        <Card className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-success">
-          <CardContent className="p-6 text-center text-white">
-            <Wrench className="h-8 w-8 mx-auto mb-2" />
-            <h3 className="font-semibold mb-1">Schedule Work</h3>
-            <p className="text-sm opacity-90">Manage project schedules</p>
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Lead Form Dialog */}
       <LeadForm 
