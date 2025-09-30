@@ -114,6 +114,7 @@ export const EnhancedClientList = () => {
   const [preferredView, setPreferredView] = useState<ViewType>('contacts');
   const [contacts, setContacts] = useState<Contact[]>([]);
   const [jobs, setJobs] = useState<Job[]>([]);
+  const [pipelineEntries, setPipelineEntries] = useState<any[]>([]);
   
   const [filteredData, setFilteredData] = useState<Contact[] | Job[]>([]);
   const [loading, setLoading] = useState(true);
@@ -267,8 +268,24 @@ export const EnhancedClientList = () => {
         })
       );
 
+      // Fetch pipeline entries created by this user
+      console.log("Fetching pipeline entries...");
+      const { data: pipelineData, error: pipelineError } = await supabase
+        .from("pipeline_entries")
+        .select("*")
+        .eq('tenant_id', profile.tenant_id)
+        .eq('created_by', user.id)
+        .order("created_at", { ascending: false });
+
+      if (pipelineError) {
+        console.error("Pipeline query error:", pipelineError);
+      }
+
+      console.log("Pipeline entries fetched:", pipelineData?.length || 0);
+
       setContacts(contactsData || []);
       setJobs(enhancedJobs || []);
+      setPipelineEntries(pipelineData || []);
     } catch (error) {
       console.error("Error fetching data:", error);
       toast.error("Failed to load client data");
@@ -635,7 +652,11 @@ export const EnhancedClientList = () => {
   // Calculate statistics
   const totalContacts = contacts.length;
   const qualifiedContacts = contacts.filter(c => c.qualification_status === 'qualified').length;
-  const hotContacts = contacts.filter(c => c.qualification_status === 'hot').length;
+  
+  // Count active leads: pipeline entries created by this rep that haven't progressed past "ready_for_approval"
+  const statusesBeforeApproval = ['lead', 'qualified', 'measurement', 'estimate', 'negotiation', 'proposal'];
+  const activeLeads = pipelineEntries.filter(pe => statusesBeforeApproval.includes(pe.status)).length;
+  
   const avgScore = contacts.length > 0 ? Math.round(contacts.reduce((sum, c) => sum + (c.lead_score || 0), 0) / contacts.length) : 0;
 
   const totalJobs = jobs.length;
@@ -733,10 +754,10 @@ export const EnhancedClientList = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">
-                  {activeView === 'contacts' ? 'Hot Leads' : 'Pending'}
+                  {activeView === 'contacts' ? 'Leads' : 'Pending'}
                 </p>
                 <p className="text-2xl font-bold text-secondary">
-                  {activeView === 'contacts' ? hotContacts : pendingJobs}
+                  {activeView === 'contacts' ? activeLeads : pendingJobs}
                 </p>
               </div>
               <div className="h-12 w-12 rounded-lg bg-secondary/10 flex items-center justify-center">
