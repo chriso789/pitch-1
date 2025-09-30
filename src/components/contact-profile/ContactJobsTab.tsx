@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { LeadCreationDialog } from "@/components/LeadCreationDialog";
 import { PipelineToJobConverter } from "@/components/PipelineToJobConverter";
+import { JobNumberBreakdown } from "@/components/JobNumberBreakdown";
 import { 
   Plus, 
   Briefcase, 
@@ -107,10 +108,18 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
       // Use pipeline entries passed as prop instead of fetching them
       // This eliminates duplicate fetching and ensures consistency
 
-      // Fetch actual jobs for this contact
+      // Fetch actual jobs for this contact with project data
       const { data: actualJobs, error: jobsError } = await supabase
         .from('jobs')
-        .select('*')
+        .select(`
+          *,
+          projects!left (
+            id,
+            clj_formatted_number,
+            project_number,
+            status
+          )
+        `)
         .eq('contact_id', contact.id);
 
       if (jobsError) throw jobsError;
@@ -137,17 +146,24 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
       });
 
       // Transform actual jobs to unified job items
-      const actualJobItems: UnifiedJobItem[] = (actualJobs || []).map(job => ({
-        id: job.id,
-        type: 'job' as const,
-        name: job.name || `Job #${job.job_number}`,
-        status: job.status?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Unknown',
-        description: job.description,
-        created_at: job.created_at,
-        updated_at: job.updated_at,
-        job_number: job.job_number,
-        project: null // Remove projects reference for now
-      }));
+      const actualJobItems: UnifiedJobItem[] = (actualJobs || []).map(job => {
+        const projects = Array.isArray(job.projects) ? job.projects : [];
+        const project = projects[0] || null;
+        
+        return {
+          id: job.id,
+          type: 'job' as const,
+          name: job.name || `Job #${job.job_number}`,
+          status: job.status?.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase()) || 'Unknown',
+          description: job.description,
+          created_at: job.created_at,
+          updated_at: job.updated_at,
+          job_number: job.job_number,
+          project: project,
+          projectId: project?.id || null,
+          projectNumber: project?.clj_formatted_number || project?.project_number || null
+        };
+      });
 
       // Combine both arrays with pipeline entries first (most recent first)
       const unified = [
@@ -470,6 +486,21 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
                 return (
                   <div key={job.id} className="border rounded-lg p-4 hover:shadow-soft transition-smooth relative">
                     <div className="space-y-3">
+                      {/* Job Number Breakdown */}
+                      {(job.projectNumber || job.pipeline_entry_id) && (
+                        <JobNumberBreakdown
+                          contactNumber={contact.contact_number}
+                          contactName={`${contact.first_name} ${contact.last_name}`}
+                          pipelineNumber={job.pipeline_entry_id?.slice(-4)}
+                          pipelineStatus={job.type === 'pipeline' ? job.status : undefined}
+                          jobNumber={job.job_number}
+                          projectNumber={job.projectNumber}
+                          cljNumber={job.projectNumber}
+                          compact
+                          className="mb-3"
+                        />
+                      )}
+                      
                       <div className="flex items-start justify-between gap-2">
                         {job.type === 'pipeline' && (
                           <input
@@ -483,7 +514,7 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
                           <h3 className="font-semibold text-sm leading-tight truncate max-w-full">{job.name}</h3>
                           <div className="flex items-center gap-2 mt-1 flex-wrap">
                             <Badge 
-                              variant={job.type === 'pipeline' ? 'secondary' : 'outline'} 
+                              variant={job.type === 'pipeline' ? 'secondary' : 'outline'}
                               className="text-xs"
                             >
                               {job.type === 'pipeline' ? 'Lead' : 'Job'}

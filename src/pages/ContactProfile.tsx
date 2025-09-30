@@ -11,6 +11,7 @@ import { ContactJobsTab } from "@/components/contact-profile/ContactJobsTab";
 import { ContactCommunicationTab } from "@/components/contact-profile/ContactCommunicationTab";
 import { SkipTraceButton } from "@/components/skip-trace/SkipTraceButton";
 import { LeadCreationDialog } from "@/components/LeadCreationDialog";
+import { JobNumberBreakdown } from "@/components/JobNumberBreakdown";
 import {
   User,
   Phone,
@@ -191,33 +192,54 @@ const ContactProfile = () => {
           </div>
         </div>
 
-        {/* Pipeline Status Card */}
-        {pipelineEntry && (
-          <Card className="shadow-soft border-l-4 border-l-primary">
-            <CardContent className="pt-6">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="flex items-center gap-2">
-                    <Activity className="h-5 w-5 text-primary" />
-                    <span className="font-semibold">Pipeline Status:</span>
-                    <Badge className="bg-primary text-primary-foreground">{pipelineEntry.status}</Badge>
-                  </div>
-                </div>
-                <div className="flex items-center gap-6 text-sm">
-                  <div>
-                    <span className="text-muted-foreground">Estimated Value:</span>
-                    <span className="font-semibold ml-1">${pipelineEntry.estimated_value || 0}</span>
-                  </div>
-                  {pipelineEntry.probability_percent && (
-                    <div>
-                      <span className="text-muted-foreground">Win Probability:</span>
-                      <span className="font-semibold ml-1">{pipelineEntry.probability_percent}%</span>
+        {/* Pipeline Status Cards */}
+        {pipelineEntries.length > 0 && (
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {pipelineEntries.slice(0, 2).map((entry) => (
+              <Card key={entry.id} className="shadow-soft border-l-4 border-l-primary">
+                <CardContent className="pt-6">
+                  <div className="space-y-4">
+                    {/* Pipeline Bubble Header */}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-gradient-to-br from-warning to-warning/70 flex items-center justify-center shadow-soft">
+                          <Activity className="h-5 w-5 text-warning-foreground" />
+                        </div>
+                        <div>
+                          <div className="text-sm text-muted-foreground">Pipeline Lead</div>
+                          <Badge className="bg-primary text-primary-foreground mt-1">
+                            {entry.status}
+                          </Badge>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <div className="text-sm text-muted-foreground">Estimated Value</div>
+                        <div className="font-semibold text-lg">${entry.estimated_value?.toLocaleString() || 0}</div>
+                      </div>
                     </div>
-                  )}
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+                    
+                    {/* Job Number Breakdown */}
+                    <JobNumberBreakdown
+                      contactNumber={contact.contact_number}
+                      contactName={`${contact.first_name} ${contact.last_name}`}
+                      pipelineNumber={entry.id.slice(-4)}
+                      pipelineStatus={entry.status}
+                      compact
+                    />
+                    
+                    {entry.probability_percent && (
+                      <div className="pt-2 border-t">
+                        <div className="flex items-center justify-between text-sm">
+                          <span className="text-muted-foreground">Win Probability:</span>
+                          <span className="font-semibold">{entry.probability_percent}%</span>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
         )}
 
         {/* Tabbed Interface */}
