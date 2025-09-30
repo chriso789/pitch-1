@@ -76,6 +76,17 @@ const Dashboard = () => {
     }
   });
 
+  const { data: leadsCount = 0 } = useQuery({
+    queryKey: ['dashboard-leads-count'],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('pipeline_entries')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'lead');
+      return count || 0;
+    }
+  });
+
   const metrics = [
     {
       title: "Total Revenue",
@@ -108,7 +119,7 @@ const Dashboard = () => {
   ];
 
   const dashboardPipelineData = [
-    { status: "Lead", count: 45, color: "bg-status-lead" },
+    { status: "Lead", count: leadsCount, color: "bg-status-lead" },
     { status: "Legal", count: 12, color: "bg-status-legal" },
     { status: "Contingency", count: 8, color: "bg-status-contingency" },
     { status: "Project", count: 23, color: "bg-status-project" },
