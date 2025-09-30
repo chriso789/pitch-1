@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { GripVertical, X } from "lucide-react";
+import { GripVertical, X, ArrowRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -53,6 +54,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   isDragging = false,
   onAssignmentChange
 }) => {
+  const navigate = useNavigate();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [daysSinceLastComm, setDaysSinceLastComm] = useState<number>(0);
   
@@ -162,6 +164,11 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
     setShowDeleteDialog(false);
   };
 
+  const handleLeadDetailsClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    navigate(`/lead/${entry.id}`);
+  };
+
   // Pointer event handlers to detect click vs drag
   const handlePointerDown = (e: React.PointerEvent) => {
     dragStartPos.current = { x: e.clientX, y: e.clientY };
@@ -261,6 +268,17 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
             </span>
           </div>
         </div>
+
+        {/* Lead Details Button (bottom left) */}
+        <Button
+          variant="ghost"
+          size="sm"
+          className="absolute bottom-0.5 left-0.5 h-4 w-4 p-0 text-primary/70 hover:text-primary hover:bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity"
+          onClick={handleLeadDetailsClick}
+          aria-label={`View lead details for ${jobNumber}`}
+        >
+          <ArrowRight className="h-3 w-3" />
+        </Button>
 
         {/* Delete Button (only visible to authorized users on hover) */}
         {canDelete && (
