@@ -83,6 +83,11 @@ const LeadDetails = () => {
     allComplete: false
   });
 
+  // Define callback at component top level (not inside render function)
+  const handleReadinessChange = React.useCallback((isReady: boolean, data: any) => {
+    setMeasurementReadiness({ isReady, data });
+  }, []);
+
   useEffect(() => {
     if (id) {
       fetchLeadDetails();
@@ -249,9 +254,7 @@ const LeadDetails = () => {
           <div className="space-y-6">
             <MeasurementGating
               pipelineEntryId={id!}
-              onReadinessChange={React.useCallback((isReady, data) => 
-                setMeasurementReadiness({ isReady, data })
-              , [])}
+              onReadinessChange={handleReadinessChange}
             />
             <SatelliteMeasurement
               address={lead?.verified_address?.formatted_address || `${lead?.contact?.address_street}, ${lead?.contact?.address_city}, ${lead?.contact?.address_state}`}
