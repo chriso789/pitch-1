@@ -424,9 +424,27 @@ const LeadDetails = () => {
                 {lead.status.replace('_', ' ')}
               </Badge>
             </div>
-            <div className="flex items-center space-x-4 text-sm text-muted-foreground mt-1">
-              {lead.roof_type && <span>Roof: {lead.roof_type.replace('_', ' ')}</span>}
-              {lead.estimated_value && <span>Est. Value: ${lead.estimated_value.toLocaleString()}</span>}
+            
+            {/* Lead Information directly under name */}
+            <div className="flex items-center gap-4 text-sm mt-2">
+              {lead.priority && (
+                <div className="flex items-center gap-1">
+                  <span className="text-muted-foreground">Priority:</span>
+                  <span className="capitalize font-medium">{lead.priority}</span>
+                </div>
+              )}
+              {lead.roof_type && (
+                <div className="flex items-center gap-1">
+                  <span className="text-muted-foreground">Roof:</span>
+                  <span className="capitalize font-medium">{lead.roof_type.replace('_', ' ')}</span>
+                </div>
+              )}
+              {lead.estimated_value && (
+                <div className="flex items-center gap-1">
+                  <span className="text-muted-foreground">Est. Value:</span>
+                  <span className="font-medium">${lead.estimated_value.toLocaleString()}</span>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -480,37 +498,8 @@ const LeadDetails = () => {
         )}
       </div>
 
-      {/* Lead Information */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Lead Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-muted-foreground">Priority</label>
-              <p className="capitalize">{lead.priority}</p>
-            </div>
-            {lead.roof_type && (
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">Roof Type</label>
-                <p className="capitalize">{lead.roof_type.replace('_', ' ')}</p>
-              </div>
-            )}
-            {lead.estimated_value && (
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">Estimated Value</label>
-                <p>${lead.estimated_value.toLocaleString()}</p>
-              </div>
-            )}
-            {lead.notes && (
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">Notes</label>
-                <p className="text-muted-foreground">{lead.notes}</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {/* Communication Hub */}
+      <div className="grid grid-cols-1 lg:grid-cols-1 gap-6">
 
         <Card>
           <CardHeader>
