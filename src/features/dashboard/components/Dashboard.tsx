@@ -2,7 +2,6 @@ import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { LeadForm } from "@/features/contacts/components/LeadForm";
-import Pipeline from "@/features/pipeline/components/Pipeline";
 import { 
   DollarSign, 
   TrendingUp, 
@@ -141,8 +140,27 @@ const Dashboard = () => {
         ))}
       </div>
 
-      {/* Interactive Pipeline Board */}
-      <Pipeline />
+      {/* Pipeline Overview */}
+      <Card className="shadow-soft border-0">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-primary" />
+            Pipeline Status
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {dashboardPipelineData.map((stage, index) => (
+              <div key={index} className="text-center">
+                <div className={`${stage.color} rounded-lg p-4 mb-2`}>
+                  <div className="text-3xl font-bold text-white">{stage.count}</div>
+                </div>
+                <div className="text-sm font-medium text-foreground">{stage.status}</div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Recent Projects */}
       <Card className="shadow-soft border-0">
