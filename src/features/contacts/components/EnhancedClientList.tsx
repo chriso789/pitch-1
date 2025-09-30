@@ -333,7 +333,8 @@ export const EnhancedClientList = () => {
             ? Math.floor((Date.now() - new Date(lastComm.created_at).getTime()) / (1000 * 60 * 60 * 24))
             : null;
 
-          const daysInStatus = Math.floor((Date.now() - new Date(pe.updated_at).getTime()) / (1000 * 60 * 60 * 24));
+          // Calculate days since lead was created (this shows how long the lead has been active)
+          const daysInStatus = Math.floor((Date.now() - new Date(pe.created_at).getTime()) / (1000 * 60 * 60 * 24));
 
           return {
             ...pe,
@@ -1010,7 +1011,7 @@ export const EnhancedClientList = () => {
                               <div className="flex items-center gap-4 text-xs text-muted-foreground">
                                 <span className="flex items-center gap-1">
                                   <Calendar className="h-3 w-3" />
-                                  {lead.days_in_status} days in status
+                                  {lead.days_in_status} {lead.days_in_status === 1 ? 'day' : 'days'} old
                                 </span>
                                 <span className="flex items-center gap-1">
                                   <Activity className="h-3 w-3" />
