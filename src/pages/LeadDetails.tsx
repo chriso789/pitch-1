@@ -618,12 +618,12 @@ const LeadDetails = () => {
               )}
             </CardTitle>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-3">
             {photos.length > 0 ? (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {/* Photo Display */}
                 <div 
-                  className="relative aspect-video bg-muted rounded-lg flex items-center justify-center cursor-pointer overflow-hidden group"
+                  className="relative aspect-[4/3] bg-muted rounded-lg flex items-center justify-center cursor-pointer overflow-hidden group"
                   onClick={() => setShowFullScreenPhoto(true)}
                 >
                   <ImageIcon className="h-12 w-12 text-muted-foreground" />
@@ -637,29 +637,31 @@ const LeadDetails = () => {
                 {/* Navigation Controls */}
                 <div className="flex items-center justify-between">
                   <Button
-                    size="sm"
+                    size="icon"
                     variant="outline"
                     onClick={() => setCurrentPhotoIndex(Math.max(0, currentPhotoIndex - 1))}
                     disabled={currentPhotoIndex === 0}
+                    className="h-7 w-7"
                   >
                     <ChevronLeft className="h-3 w-3" />
                   </Button>
-                  <span className="text-xs text-muted-foreground">
+                  <span className="text-xs text-muted-foreground truncate max-w-[150px]">
                     {photos[currentPhotoIndex]?.filename || 'Photo'}
                   </span>
                   <Button
-                    size="sm"
+                    size="icon"
                     variant="outline"
                     onClick={() => setCurrentPhotoIndex(Math.min(photos.length - 1, currentPhotoIndex + 1))}
                     disabled={currentPhotoIndex === photos.length - 1}
+                    className="h-7 w-7"
                   >
                     <ChevronRight className="h-3 w-3" />
                   </Button>
                 </div>
               </div>
             ) : (
-              <div className="aspect-video bg-muted rounded-lg flex flex-col items-center justify-center text-center p-4">
-                <Camera className="h-8 w-8 text-muted-foreground mb-2" />
+              <div className="aspect-[4/3] bg-muted rounded-lg flex flex-col items-center justify-center text-center p-3">
+                <Camera className="h-6 w-6 text-muted-foreground mb-1.5" />
                 <p className="text-xs text-muted-foreground">No photos uploaded yet</p>
               </div>
             )}
