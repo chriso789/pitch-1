@@ -10,6 +10,9 @@ import { JobInvoiceTracker, JobPhotoGallery, JobDocumentManager, JobTimelineTrac
 import PaymentForm from "@/features/payments/components/PaymentForm";
 import { ContactCommunicationTab } from "@/components/contact-profile/ContactCommunicationTab";
 import { JobActivityTimeline } from "@/components/JobActivityTimeline";
+import { ProductionTimeline } from "@/components/job-details/ProductionTimeline";
+import { JobActivitySection } from "@/components/job-details/JobActivitySection";
+import { AuditTrailViewer } from "@/components/audit/AuditTrailViewer";
 import { CollapsibleDeveloperToolbar } from "@/shared/components/CollapsibleDeveloperToolbar";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 import { 
@@ -463,7 +466,7 @@ const JobDetails = () => {
 
       {/* Main Content Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList className="grid w-full grid-cols-9">
+        <TabsList className="grid w-full grid-cols-10">
           <TabsTrigger value="overview" className="flex items-center space-x-1">
             <FileText className="h-4 w-4" />
             <span className="hidden sm:inline">Overview</span>
@@ -500,9 +503,25 @@ const JobDetails = () => {
             <Clock className="h-4 w-4" />
             <span className="hidden sm:inline">Timeline</span>
           </TabsTrigger>
+          <TabsTrigger value="audit" className="flex items-center space-x-1">
+            <FileText className="h-4 w-4" />
+            <span className="hidden sm:inline">Audit</span>
+          </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="overview" className="space-y-4">
+        <TabsContent value="overview" className="space-y-6">
+          {/* Production Timeline */}
+          {job.project?.id && (
+            <ProductionTimeline projectId={job.project.id} />
+          )}
+
+          {/* Job Activity Metrics */}
+          <JobActivitySection 
+            projectId={job.project?.id || job.id}
+            contactId={job.contact?.id}
+          />
+
+          {/* Description and Quick Actions */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <Card>
               <CardHeader>
@@ -592,6 +611,10 @@ const JobDetails = () => {
 
         <TabsContent value="timeline">
           <JobTimelineTracker jobId={job.id} />
+        </TabsContent>
+
+        <TabsContent value="audit">
+          <AuditTrailViewer recordId={job.id} tableName="jobs" />
         </TabsContent>
       </Tabs>
       </div>

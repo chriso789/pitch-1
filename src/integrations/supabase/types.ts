@@ -329,12 +329,15 @@ export type Database = {
           changed_by: string | null
           id: string
           ip_address: unknown | null
+          location_data: Json | null
           new_values: Json | null
           old_values: Json | null
           record_id: string
+          session_id: string | null
           table_name: string
           tenant_id: string | null
           user_agent: string | null
+          user_location: Json | null
         }
         Insert: {
           action: string
@@ -342,12 +345,15 @@ export type Database = {
           changed_by?: string | null
           id?: string
           ip_address?: unknown | null
+          location_data?: Json | null
           new_values?: Json | null
           old_values?: Json | null
           record_id: string
+          session_id?: string | null
           table_name: string
           tenant_id?: string | null
           user_agent?: string | null
+          user_location?: Json | null
         }
         Update: {
           action?: string
@@ -355,12 +361,15 @@ export type Database = {
           changed_by?: string | null
           id?: string
           ip_address?: unknown | null
+          location_data?: Json | null
           new_values?: Json | null
           old_values?: Json | null
           record_id?: string
+          session_id?: string | null
           table_name?: string
           tenant_id?: string | null
           user_agent?: string | null
+          user_location?: Json | null
         }
         Relationships: [
           {

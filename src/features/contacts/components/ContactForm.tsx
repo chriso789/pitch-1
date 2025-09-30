@@ -9,6 +9,7 @@ import { UserPlus, Save, MapPin } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { default as AddressVerification } from "@/shared/components/forms/AddressVerification";
+import { auditService } from "@/services/auditService";
 
 interface ContactFormData {
   first_name: string;
@@ -95,6 +96,9 @@ const ContactForm: React.FC<ContactFormProps> = ({
     setIsSubmitting(true);
 
     try {
+      // Capture audit context before creating contact
+      await auditService.captureAuditContext();
+
       // Get current user and their profile to get tenant_id
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
@@ -143,6 +147,15 @@ const ContactForm: React.FC<ContactFormProps> = ({
         .single();
 
       if (error) throw error;
+
+      // Log the contact creation
+      await auditService.logChange(
+        'contacts',
+        'INSERT',
+        data.id,
+        undefined,
+        contactData
+      );
 
       toast({
         title: "Contact Created",

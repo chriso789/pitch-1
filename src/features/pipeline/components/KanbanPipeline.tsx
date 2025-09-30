@@ -24,6 +24,7 @@ import {
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import { auditService } from "@/services/auditService";
 
 interface JobEntry {
   id: string;
@@ -221,11 +222,23 @@ const KanbanPipeline = () => {
 
     if (!movedJob) return;
 
+    // Capture audit context before change
+    await auditService.captureAuditContext();
+
     // Optimistically update UI
     const newPipelineData = { ...pipelineData };
     newPipelineData[fromStatus] = newPipelineData[fromStatus].filter(j => j.id !== entryId);
     newPipelineData[newStatus] = [...newPipelineData[newStatus], { ...movedJob, status: newStatus }];
     setPipelineData(newPipelineData);
+
+    // Log the change
+    await auditService.logChange(
+      'jobs',
+      'UPDATE',
+      entryId,
+      { status: fromStatus },
+      { status: newStatus }
+    );
 
     try {
       const { data, error } = await supabase.functions.invoke('job-drag-handler', {
