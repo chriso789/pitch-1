@@ -123,6 +123,7 @@ export const EnhancedClientList = () => {
   const [userProfile, setUserProfile] = useState<any>(null);
   const [sortField, setSortField] = useState<string>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
+  const [pipelineLeads, setPipelineLeads] = useState<any[]>([]);
   const [selectedContactForJob, setSelectedContactForJob] = useState<Contact | null>(null);
   const [showJobDialog, setShowJobDialog] = useState(false);
   
@@ -305,9 +306,17 @@ export const EnhancedClientList = () => {
 
       console.log("Pipeline entries fetched:", pipelineData?.length || 0);
 
+      // Filter active leads for the sales rep (lead, contingency, legal, ready_for_approval)
+      const leadStatuses = ['lead', 'contingency', 'legal', 'ready_for_approval'];
+      const userPipelineLeads = (pipelineData || []).filter(pe => 
+        leadStatuses.includes(pe.status)
+      );
+      console.log("Active pipeline leads:", userPipelineLeads.length);
+
       setContacts(contactsData || []);
       setJobs(enhancedJobs || []);
       setPipelineEntries(pipelineData || []);
+      setPipelineLeads(userPipelineLeads);
     } catch (error) {
       console.error("Error fetching data:", error);
       toast.error("Failed to load client data");
@@ -920,23 +929,62 @@ export const EnhancedClientList = () => {
         </CardHeader>
         <CardContent className="p-0">
           {filteredData.length === 0 ? (
-            <div className="text-center py-12">
-              <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
-                {activeView === 'contacts' ? <Users className="h-8 w-8 text-muted-foreground" /> : <Briefcase className="h-8 w-8 text-muted-foreground" />}
-              </div>
-              <h3 className="text-lg font-semibold mb-2">No {activeView} found</h3>
-              <p className="text-muted-foreground mb-4">
-                {searchTerm || statusFilter !== "all" 
-                  ? `No ${activeView} match your current filters.`
-                  : `Get started by creating your first ${activeView === 'contacts' ? 'contact' : 'job'}.`
-                }
-              </p>
-              {!searchTerm && statusFilter === "all" && (
-                <ContactFormDialog 
-                  onContactCreated={handleContactCreated}
-                  buttonText={`Create First ${activeView === 'contacts' ? 'Contact' : 'Job'}`}
-                  buttonVariant="outline"
-                />
+            <div className="py-8">
+              {activeView === 'jobs' && pipelineLeads.length > 0 ? (
+                <div className="px-6">
+                  <div className="text-center mb-6">
+                    <h3 className="text-lg font-semibold">Your Active Leads ({pipelineLeads.length})</h3>
+                    <p className="text-sm text-muted-foreground">Leads in your pipeline that need attention</p>
+                  </div>
+                  <div className="grid gap-4 max-w-4xl mx-auto">
+                    {pipelineLeads.map((lead) => (
+                      <Card key={lead.id} className="p-4 hover:shadow-md transition-shadow">
+                        <div className="flex items-center justify-between gap-4">
+                          <div className="flex-1 min-w-0">
+                            <h4 className="font-medium truncate">{lead.name || 'Unnamed Lead'}</h4>
+                            <div className="flex items-center gap-3 mt-1 flex-wrap">
+                              <Badge variant="secondary" className="text-xs">
+                                {lead.status.replace('_', ' ')}
+                              </Badge>
+                              {lead.estimated_value && (
+                                <span className="text-sm font-medium text-muted-foreground">
+                                  ${lead.estimated_value.toLocaleString()}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => navigate(`/lead/${lead.id}`)}
+                          >
+                            View Details
+                          </Button>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              ) : (
+                <div className="text-center py-12">
+                  <div className="h-16 w-16 rounded-full bg-muted flex items-center justify-center mx-auto mb-4">
+                    {activeView === 'contacts' ? <Users className="h-8 w-8 text-muted-foreground" /> : <Briefcase className="h-8 w-8 text-muted-foreground" />}
+                  </div>
+                  <h3 className="text-lg font-semibold mb-2">No {activeView} found</h3>
+                  <p className="text-muted-foreground mb-4">
+                    {searchTerm || statusFilter !== "all" 
+                      ? `No ${activeView} match your current filters.`
+                      : `Get started by creating your first ${activeView === 'contacts' ? 'contact' : 'job'}.`
+                    }
+                  </p>
+                  {!searchTerm && statusFilter === "all" && (
+                    <ContactFormDialog 
+                      onContactCreated={handleContactCreated}
+                      buttonText={`Create First ${activeView === 'contacts' ? 'Contact' : 'Job'}`}
+                      buttonVariant="outline"
+                    />
+                  )}
+                </div>
               )}
             </div>
           ) : (
