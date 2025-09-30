@@ -29,7 +29,7 @@ interface ApprovalRequirementsBubblesProps {
 const bubbleSteps = [
   { key: 'hasContract', label: 'Contract', icon: FileText, color: 'from-blue-500 to-blue-400' },
   { key: 'hasEstimate', label: 'Estimate', icon: DollarSign, color: 'from-yellow-500 to-yellow-400' },
-  { key: 'hasMaterials', label: 'Materials', icon: Package, color: 'from-purple-500 to-purple-400' },
+  { key: 'hasMaterials', label: 'Notice of Commencement', icon: Package, color: 'from-purple-500 to-purple-400' },
   { key: 'hasLabor', label: 'Labor', icon: Hammer, color: 'from-orange-500 to-orange-400' },
 ] as const;
 
