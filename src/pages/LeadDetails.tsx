@@ -18,6 +18,7 @@ import ProfitSlider from '@/components/estimates/ProfitSlider';
 import CommunicationHub from '@/components/communication/CommunicationHub';
 import MeasurementGating from '@/components/estimates/MeasurementGating';
 import { EnhancedEstimateBuilder } from '@/components/EnhancedEstimateBuilder';
+import { ApprovalRequirementsBubbles } from '@/components/ApprovalRequirementsBubbles';
 
 interface LeadDetailsData {
   id: string;
@@ -543,80 +544,16 @@ const LeadDetails = () => {
       {/* Approval Requirements Progress */}
       <Card className="border-primary/20">
         <CardHeader>
-          <div className="flex items-center justify-between">
-            <CardTitle className="flex items-center space-x-2">
-              <CheckCircle className="h-5 w-5 text-primary" />
-              <span>Approval Requirements</span>
-            </CardTitle>
-            {requirements.allComplete ? (
-              <Button onClick={handleApproveToProject} className="gradient-primary">
-                Approve to Project
-              </Button>
-            ) : (
-              <Button disabled variant="outline">
-                Complete Requirements to Approve
-              </Button>
-            )}
-          </div>
+          <CardTitle className="flex items-center space-x-2">
+            <CheckCircle className="h-5 w-5 text-primary" />
+            <span>Approval Requirements</span>
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-sm font-medium">Progress</span>
-                <span className="text-sm text-muted-foreground">
-                  {Object.values(requirements).filter(Boolean).length - 1} / 4 complete
-                </span>
-              </div>
-              <Progress value={getProgressPercentage()} className="h-2" />
-            </div>
-            
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="flex items-center space-x-2">
-                {requirements.hasContract ? 
-                  <CheckCircle className="h-4 w-4 text-success" /> :
-                  <AlertCircle className="h-4 w-4 text-muted-foreground" />
-                }
-                <div className="flex items-center space-x-1">
-                  <FileText className="h-4 w-4" />
-                  <span className="text-sm">Contract</span>
-                </div>
-              </div>
-              
-              <div className="flex items-center space-x-2">
-                {requirements.hasEstimate ? 
-                  <CheckCircle className="h-4 w-4 text-success" /> :
-                  <AlertCircle className="h-4 w-4 text-muted-foreground" />
-                }
-                <div className="flex items-center space-x-1">
-                  <DollarSign className="h-4 w-4" />
-                  <span className="text-sm">Estimate</span>
-                </div>
-              </div>
-              
-              <div className="flex items-center space-x-2">
-                {requirements.hasMaterials ? 
-                  <CheckCircle className="h-4 w-4 text-success" /> :
-                  <AlertCircle className="h-4 w-4 text-muted-foreground" />
-                }
-                <div className="flex items-center space-x-1">
-                  <Package className="h-4 w-4" />
-                  <span className="text-sm">Materials</span>
-                </div>
-              </div>
-              
-              <div className="flex items-center space-x-2">
-                {requirements.hasLabor ? 
-                  <CheckCircle className="h-4 w-4 text-success" /> :
-                  <AlertCircle className="h-4 w-4 text-muted-foreground" />
-                }
-                <div className="flex items-center space-x-1">
-                  <Hammer className="h-4 w-4" />
-                  <span className="text-sm">Labor</span>
-                </div>
-              </div>
-            </div>
-          </div>
+          <ApprovalRequirementsBubbles 
+            requirements={requirements}
+            onApprove={handleApproveToProject}
+          />
         </CardContent>
       </Card>
 
