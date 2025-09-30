@@ -269,7 +269,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
               <Button
                 variant="ghost"
                 size="sm"
-                className="absolute top-0.5 left-0.5 h-4 w-4 p-0 text-destructive/70 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute bottom-0.5 right-0.5 h-4 w-4 p-0 text-destructive/70 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
                 onClick={handleDeleteClick}
                 aria-label={`Delete job ${jobNumber}`}
               >
