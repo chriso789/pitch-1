@@ -426,6 +426,42 @@ const LeadDetails = () => {
               </Badge>
             </div>
             
+            {/* Lead Property Address */}
+            {(lead.verified_address?.formatted_address || lead.contact?.address_street) && (
+              <div className="flex items-start gap-2 mt-3 text-sm">
+                <MapPin className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
+                <div>
+                  <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Lead Property</span>
+                  <p className="text-foreground font-medium">
+                    {lead.verified_address?.formatted_address || 
+                     `${lead.contact?.address_street}, ${lead.contact?.address_city}, ${lead.contact?.address_state} ${lead.contact?.address_zip}`}
+                  </p>
+                </div>
+              </div>
+            )}
+
+            {/* Contact Information */}
+            {lead.contact && (lead.contact.phone || lead.contact.email) && (
+              <div className="flex items-center gap-4 mt-2 text-sm">
+                {lead.contact.phone && (
+                  <div className="flex items-center gap-1.5">
+                    <Phone className="h-3.5 w-3.5 text-muted-foreground" />
+                    <a href={`tel:${lead.contact.phone}`} className="text-foreground hover:text-primary transition-colors">
+                      {lead.contact.phone}
+                    </a>
+                  </div>
+                )}
+                {lead.contact.email && (
+                  <div className="flex items-center gap-1.5">
+                    <Mail className="h-3.5 w-3.5 text-muted-foreground" />
+                    <a href={`mailto:${lead.contact.email}`} className="text-foreground hover:text-primary transition-colors">
+                      {lead.contact.email}
+                    </a>
+                  </div>
+                )}
+              </div>
+            )}
+            
             {/* Lead Information directly under name */}
             <div className="flex items-center gap-4 text-sm mt-2">
               {lead.priority && (
