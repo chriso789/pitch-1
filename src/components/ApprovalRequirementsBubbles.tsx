@@ -66,8 +66,8 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
       </div>
 
       {/* Floating Bubbles Timeline */}
-      <div className="relative">
-        <div className="flex items-center justify-between md:justify-around flex-wrap gap-4 md:gap-0">
+      <div className="relative max-w-3xl mx-auto">
+        <div className="flex items-center justify-center gap-6 md:gap-8 flex-wrap">
           {bubbleSteps.map((step, index) => {
             const isComplete = requirements[step.key as keyof ApprovalRequirements];
             const Icon = step.icon;
@@ -80,10 +80,10 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
                   <div
                     className={cn(
                       "relative w-20 h-20 rounded-full flex items-center justify-center transition-all duration-300",
-                      "border-4",
+                      "border-4 cursor-pointer",
                       isComplete
-                        ? `bg-gradient-to-br ${step.color} border-white shadow-lg animate-scale-in`
-                        : "bg-muted border-border opacity-50"
+                        ? `bg-gradient-to-br ${step.color} border-white shadow-lg animate-scale-in hover:scale-110 hover:-translate-y-1 hover:shadow-xl`
+                        : "bg-muted border-border opacity-50 hover:opacity-60"
                     )}
                   >
                     <Icon 
@@ -122,11 +122,11 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
                 
                 {/* Arrow Connector */}
                 {index < bubbleSteps.length - 1 && (
-                  <div className="hidden md:flex items-center">
+                  <div className="flex items-center">
                     <ArrowRight 
                       className={cn(
-                        "h-6 w-6 transition-colors",
-                        isComplete ? "text-primary" : "text-muted-foreground/30"
+                        "h-5 w-5 transition-all duration-300",
+                        isComplete ? "text-primary opacity-100" : "text-muted-foreground/20"
                       )}
                     />
                   </div>
