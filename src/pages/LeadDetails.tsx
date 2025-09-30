@@ -480,6 +480,77 @@ const LeadDetails = () => {
         )}
       </div>
 
+      {/* Lead Information */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+        <Card>
+          <CardHeader>
+            <CardTitle>Lead Information</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div>
+              <label className="text-sm font-medium text-muted-foreground">Priority</label>
+              <p className="capitalize">{lead.priority}</p>
+            </div>
+            {lead.roof_type && (
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Roof Type</label>
+                <p className="capitalize">{lead.roof_type.replace('_', ' ')}</p>
+              </div>
+            )}
+            {lead.estimated_value && (
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Estimated Value</label>
+                <p>${lead.estimated_value.toLocaleString()}</p>
+              </div>
+            )}
+            {lead.notes && (
+              <div>
+                <label className="text-sm font-medium text-muted-foreground">Notes</label>
+                <p className="text-muted-foreground">{lead.notes}</p>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Communication Hub</CardTitle>
+          </CardHeader>
+          <CardContent>
+            {lead.assigned_rep ? (
+              <div className="flex items-center space-x-3 mb-4">
+                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
+                  <User className="h-5 w-5 text-primary" />
+                </div>
+                <div>
+                  <p className="font-medium">
+                    {lead.assigned_rep.first_name} {lead.assigned_rep.last_name}
+                  </p>
+                  <p className="text-sm text-muted-foreground">Sales Representative</p>
+                </div>
+              </div>
+            ) : (
+              <p className="text-muted-foreground mb-4">No representative assigned</p>
+            )}
+            
+            <div className="grid grid-cols-3 gap-2">
+              <Button size="sm" variant="outline" className="flex items-center space-x-1">
+                <Phone className="h-3 w-3" />
+                <span>Call</span>
+              </Button>
+              <Button size="sm" variant="outline" className="flex items-center space-x-1">
+                <Mail className="h-3 w-3" />
+                <span>Email</span>
+              </Button>
+              <Button size="sm" variant="outline" className="flex items-center space-x-1">
+                <Phone className="h-3 w-3" />
+                <span>SMS</span>
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
       {/* Approval Requirements Progress */}
       <Card className="border-primary/20">
         <CardHeader>
@@ -559,77 +630,6 @@ const LeadDetails = () => {
           </div>
         </CardContent>
       </Card>
-
-      {/* Lead Information */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Lead Information</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div>
-              <label className="text-sm font-medium text-muted-foreground">Priority</label>
-              <p className="capitalize">{lead.priority}</p>
-            </div>
-            {lead.roof_type && (
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">Roof Type</label>
-                <p className="capitalize">{lead.roof_type.replace('_', ' ')}</p>
-              </div>
-            )}
-            {lead.estimated_value && (
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">Estimated Value</label>
-                <p>${lead.estimated_value.toLocaleString()}</p>
-              </div>
-            )}
-            {lead.notes && (
-              <div>
-                <label className="text-sm font-medium text-muted-foreground">Notes</label>
-                <p className="text-muted-foreground">{lead.notes}</p>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Communication Hub</CardTitle>
-          </CardHeader>
-          <CardContent>
-            {lead.assigned_rep ? (
-              <div className="flex items-center space-x-3 mb-4">
-                <div className="h-10 w-10 rounded-full bg-primary/10 flex items-center justify-center">
-                  <User className="h-5 w-5 text-primary" />
-                </div>
-                <div>
-                  <p className="font-medium">
-                    {lead.assigned_rep.first_name} {lead.assigned_rep.last_name}
-                  </p>
-                  <p className="text-sm text-muted-foreground">Sales Representative</p>
-                </div>
-              </div>
-            ) : (
-              <p className="text-muted-foreground mb-4">No representative assigned</p>
-            )}
-            
-            <div className="grid grid-cols-3 gap-2">
-              <Button size="sm" variant="outline" className="flex items-center space-x-1">
-                <Phone className="h-3 w-3" />
-                <span>Call</span>
-              </Button>
-              <Button size="sm" variant="outline" className="flex items-center space-x-1">
-                <Mail className="h-3 w-3" />
-                <span>Email</span>
-              </Button>
-              <Button size="sm" variant="outline" className="flex items-center space-x-1">
-                <Phone className="h-3 w-3" />
-                <span>SMS</span>
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
 
       {/* Hyperlink Bar Estimate System */}
       <EstimateHyperlinkBar
