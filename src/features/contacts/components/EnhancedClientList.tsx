@@ -291,11 +291,21 @@ export const EnhancedClientList = () => {
 
       console.log("Enhanced jobs:", enhancedJobs);
 
-      // Fetch pipeline entries created by this user
+      // Fetch pipeline entries with contact and communication data
       console.log("Fetching pipeline entries...");
       const { data: pipelineData, error: pipelineError } = await supabase
         .from("pipeline_entries")
-        .select("*")
+        .select(`
+          *,
+          contacts:contact_id (
+            first_name,
+            last_name,
+            address_street,
+            address_city,
+            address_state,
+            address_zip
+          )
+        `)
         .eq('tenant_id', profile.tenant_id)
         .eq('created_by', user.id)
         .order("created_at", { ascending: false });
@@ -306,16 +316,42 @@ export const EnhancedClientList = () => {
 
       console.log("Pipeline entries fetched:", pipelineData?.length || 0);
 
+      // Enhance pipeline entries with communication data and calculations
+      const enhancedPipelineData = await Promise.all(
+        (pipelineData || []).map(async (pe) => {
+          // Get last communication date
+          const { data: lastComm } = await supabase
+            .from('communication_history')
+            .select('created_at')
+            .eq('contact_id', pe.contact_id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          const daysSinceComm = lastComm 
+            ? Math.floor((Date.now() - new Date(lastComm.created_at).getTime()) / (1000 * 60 * 60 * 24))
+            : null;
+
+          const daysInStatus = Math.floor((Date.now() - new Date(pe.updated_at).getTime()) / (1000 * 60 * 60 * 24));
+
+          return {
+            ...pe,
+            days_since_communication: daysSinceComm,
+            days_in_status: daysInStatus
+          };
+        })
+      );
+
       // Filter active leads for the sales rep (lead, contingency, legal, ready_for_approval)
       const leadStatuses = ['lead', 'contingency', 'legal', 'ready_for_approval'];
-      const userPipelineLeads = (pipelineData || []).filter(pe => 
+      const userPipelineLeads = enhancedPipelineData.filter(pe => 
         leadStatuses.includes(pe.status)
       );
       console.log("Active pipeline leads:", userPipelineLeads.length);
 
       setContacts(contactsData || []);
       setJobs(enhancedJobs || []);
-      setPipelineEntries(pipelineData || []);
+      setPipelineEntries(enhancedPipelineData || []);
       setPipelineLeads(userPipelineLeads);
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -937,32 +973,68 @@ export const EnhancedClientList = () => {
                     <p className="text-sm text-muted-foreground">Leads in your pipeline that need attention</p>
                   </div>
                   <div className="grid gap-4 max-w-4xl mx-auto">
-                    {pipelineLeads.map((lead) => (
-                      <Card key={lead.id} className="p-4 hover:shadow-md transition-shadow">
-                        <div className="flex items-center justify-between gap-4">
-                          <div className="flex-1 min-w-0">
-                            <h4 className="font-medium truncate">{lead.name || 'Unnamed Lead'}</h4>
-                            <div className="flex items-center gap-3 mt-1 flex-wrap">
-                              <Badge variant="secondary" className="text-xs">
-                                {lead.status.replace('_', ' ')}
-                              </Badge>
-                              {lead.estimated_value && (
-                                <span className="text-sm font-medium text-muted-foreground">
-                                  ${lead.estimated_value.toLocaleString()}
+                    {pipelineLeads.map((lead) => {
+                      const lastName = lead.contacts?.last_name || 'Unknown';
+                      const address = [
+                        lead.contacts?.address_street,
+                        lead.contacts?.address_city,
+                        lead.contacts?.address_state,
+                        lead.contacts?.address_zip
+                      ].filter(Boolean).join(', ') || 'No address';
+
+                      return (
+                        <Card key={lead.id} className="p-4 hover:shadow-md transition-shadow">
+                          <div className="space-y-2">
+                            {/* Top row: Lead number, Last name, Status */}
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex items-center gap-3 flex-wrap">
+                                <span className="text-sm font-mono text-muted-foreground">
+                                  {lead.clj_formatted_number || 'N/A'}
                                 </span>
-                              )}
+                                <h4 className="font-medium">{lastName}</h4>
+                                <Badge variant="secondary" className="text-xs">
+                                  {lead.status.replace('_', ' ')}
+                                </Badge>
+                              </div>
+                            </div>
+                            
+                            {/* Address row */}
+                            <div className="text-sm text-muted-foreground">
+                              <MapPin className="h-3 w-3 inline mr-1" />
+                              {address}
+                            </div>
+                            
+                            {/* Bottom row: Metrics and actions */}
+                            <div className="flex items-center justify-between gap-3 flex-wrap">
+                              <div className="flex items-center gap-4 text-xs text-muted-foreground">
+                                <span className="flex items-center gap-1">
+                                  <Calendar className="h-3 w-3" />
+                                  {lead.days_in_status} days in status
+                                </span>
+                                <span className="flex items-center gap-1">
+                                  <Activity className="h-3 w-3" />
+                                  {lead.days_since_communication !== null 
+                                    ? `${lead.days_since_communication} days since contact`
+                                    : 'Never contacted'}
+                                </span>
+                                {lead.estimated_value && (
+                                  <span className="font-medium">
+                                    ${lead.estimated_value.toLocaleString()}
+                                  </span>
+                                )}
+                              </div>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                onClick={() => navigate(`/lead/${lead.id}`)}
+                              >
+                                View Details
+                              </Button>
                             </div>
                           </div>
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => navigate(`/lead/${lead.id}`)}
-                          >
-                            View Details
-                          </Button>
-                        </div>
-                      </Card>
-                    ))}
+                        </Card>
+                      );
+                    })}
                   </div>
                 </div>
               ) : (
