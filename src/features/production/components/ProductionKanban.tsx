@@ -16,11 +16,18 @@ import {
   Search,
   Archive,
   Loader2,
-  Home
+  Home,
+  Receipt,
+  AlertCircle,
+  Ruler,
+  PenTool,
+  Camera
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
+import { MetricCard } from "@/components/dashboard/MetricCard";
+import { useQuery } from "@tanstack/react-query";
 
 interface ProductionProject {
   id: string;
@@ -57,6 +64,129 @@ const ProductionKanban = () => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  // Fetch FINANCIAL metrics
+  const { data: financialWorksheetsNeeded = 0 } = useQuery({
+    queryKey: ['production-financial-worksheets'],
+    queryFn: async () => {
+      const { data: entries } = await supabase
+        .from('pipeline_entries')
+        .select('id')
+        .in('status', ['project', 'production']);
+      
+      if (!entries?.length) return 0;
+      
+      const { data: documents } = await supabase
+        .from('documents')
+        .select('pipeline_entry_id')
+        .in('pipeline_entry_id', entries.map(e => e.id))
+        .ilike('document_type', '%financial%');
+      
+      const entriesWithWorksheets = new Set(documents?.map(d => d.pipeline_entry_id) || []);
+      return entries.length - entriesWithWorksheets.size;
+    }
+  });
+
+  const { data: pendingInvoices = 0 } = useQuery({
+    queryKey: ['production-pending-invoices'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('pipeline_entries')
+        .select('metadata')
+        .in('status', ['project', 'production', 'completed']);
+      const pending = data?.filter(entry => {
+        const metadata = entry.metadata as any;
+        return metadata?.invoice_status === 'pending' || 
+          (metadata?.invoice_sent === true && !metadata?.invoice_paid);
+      }) || [];
+      return pending.length;
+    }
+  });
+
+  const { data: overdueInvoices = 0 } = useQuery({
+    queryKey: ['production-overdue-invoices'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('pipeline_entries')
+        .select('metadata')
+        .in('status', ['project', 'production', 'completed']);
+      const now = new Date();
+      const overdue = data?.filter(entry => {
+        const metadata = entry.metadata as any;
+        const dueDate = metadata?.invoice_due_date;
+        return dueDate && new Date(dueDate) < now && !metadata?.invoice_paid;
+      }) || [];
+      return overdue.length;
+    }
+  });
+
+  const { data: canceledJobs = 0 } = useQuery({
+    queryKey: ['production-canceled-jobs'],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('pipeline_entries')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'cancelled');
+      return count || 0;
+    }
+  });
+
+  // Fetch MANAGEMENT metrics
+  const { data: materialOrders = 0 } = useQuery({
+    queryKey: ['production-material-orders'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('pipeline_entries')
+        .select('metadata')
+        .in('status', ['project', 'production']);
+      const needsOrders = data?.filter(entry => {
+        const metadata = entry.metadata as any;
+        return metadata?.materials_ordered !== true;
+      }) || [];
+      return needsOrders.length;
+    }
+  });
+
+  const { data: measurementRequests = 0 } = useQuery({
+    queryKey: ['production-measurement-requests'],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('pipeline_entries')
+        .select('metadata')
+        .in('status', ['estimate', 'negotiating']);
+      const needsMeasurement = data?.filter(entry => {
+        const metadata = entry.metadata as any;
+        return metadata?.measurement_requested === true || metadata?.needs_measurement === true;
+      }) || [];
+      return needsMeasurement.length;
+    }
+  });
+
+  const { data: pendingSignatures = 0 } = useQuery({
+    queryKey: ['production-pending-signatures'],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('agreement_instances')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'sent')
+        .is('completed_at', null);
+      return count || 0;
+    }
+  });
+
+  const { data: photosToday = 0 } = useQuery({
+    queryKey: ['production-photos-today'],
+    queryFn: async () => {
+      const today = new Date().toISOString().split('T')[0];
+      const { count } = await supabase
+        .from('documents')
+        .select('*', { count: 'exact', head: true })
+        .gte('created_at', `${today}T00:00:00`)
+        .lte('created_at', `${today}T23:59:59`)
+        .ilike('mime_type', 'image%');
+      return count || 0;
+    }
+  });
 
   const defaultStages = [
     { stage_key: "submit_documents", name: "Submit Documents", color: "#ef4444", icon: FileText, sort_order: 1 },
@@ -338,6 +468,75 @@ const ProductionKanban = () => {
           <span className="text-sm text-muted-foreground">
             {Object.values(productionData).flat().length} active projects
           </span>
+        </div>
+      </div>
+
+      {/* Job Action Items */}
+      <div className="space-y-6">
+        {/* FINANCIAL Section */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-muted-foreground tracking-wide">FINANCIAL</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricCard
+              title="Financial Worksheets Needed"
+              count={financialWorksheetsNeeded}
+              icon={FileText}
+              onClick={() => navigate('/pipeline')}
+            />
+            <MetricCard
+              title="Pending Invoices"
+              count={pendingInvoices}
+              icon={Receipt}
+              variant="warning"
+              onClick={() => navigate('/pipeline')}
+            />
+            <MetricCard
+              title="Overdue Invoices"
+              count={overdueInvoices}
+              icon={Clock}
+              variant="danger"
+              onClick={() => navigate('/pipeline')}
+            />
+            <MetricCard
+              title="Canceled Jobs w/ Outstanding Balance"
+              count={canceledJobs}
+              icon={AlertCircle}
+              variant="danger"
+              onClick={() => navigate('/pipeline')}
+            />
+          </div>
+        </div>
+
+        {/* MANAGEMENT Section */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-muted-foreground tracking-wide">MANAGEMENT</h3>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricCard
+              title="Material Orders to Place"
+              count={materialOrders}
+              icon={Package}
+              onClick={() => navigate('/pipeline')}
+            />
+            <MetricCard
+              title="Measurement Requests"
+              count={measurementRequests}
+              icon={Ruler}
+              onClick={() => navigate('/pipeline')}
+            />
+            <MetricCard
+              title="Pending Signatures"
+              count={pendingSignatures}
+              icon={PenTool}
+              variant="warning"
+              onClick={() => navigate('/pipeline')}
+            />
+            <MetricCard
+              title="Photos Today"
+              count={photosToday}
+              icon={Camera}
+              onClick={() => navigate('/pipeline')}
+            />
+          </div>
         </div>
       </div>
 

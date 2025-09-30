@@ -19,14 +19,7 @@ import {
   Plus,
   UserCircle,
   FileCheck,
-  Eye,
-  FileText,
-  Receipt,
-  AlertCircle,
-  Package,
-  Ruler,
-  PenTool,
-  Camera
+  Eye
 } from "lucide-react";
 
 const Dashboard = () => {
@@ -83,126 +76,6 @@ const Dashboard = () => {
     }
   });
 
-  const { data: financialWorksheetsNeeded = 0 } = useQuery({
-    queryKey: ['dashboard-financial-worksheets'],
-    queryFn: async () => {
-      const { data: entries } = await supabase
-        .from('pipeline_entries')
-        .select('id')
-        .in('status', ['project', 'production']);
-      
-      if (!entries?.length) return 0;
-      
-      const { data: documents } = await supabase
-        .from('documents')
-        .select('pipeline_entry_id')
-        .in('pipeline_entry_id', entries.map(e => e.id))
-        .ilike('document_type', '%financial%');
-      
-      const entriesWithWorksheets = new Set(documents?.map(d => d.pipeline_entry_id) || []);
-      return entries.length - entriesWithWorksheets.size;
-    }
-  });
-
-  const { data: pendingInvoices = 0 } = useQuery({
-    queryKey: ['dashboard-pending-invoices'],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('pipeline_entries')
-        .select('metadata')
-        .in('status', ['project', 'production', 'completed']);
-      const pending = data?.filter(entry => {
-        const metadata = entry.metadata as any;
-        return metadata?.invoice_status === 'pending' || 
-          (metadata?.invoice_sent === true && !metadata?.invoice_paid);
-      }) || [];
-      return pending.length;
-    }
-  });
-
-  const { data: overdueInvoices = 0 } = useQuery({
-    queryKey: ['dashboard-overdue-invoices'],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('pipeline_entries')
-        .select('metadata')
-        .in('status', ['project', 'production', 'completed']);
-      const now = new Date();
-      const overdue = data?.filter(entry => {
-        const metadata = entry.metadata as any;
-        const dueDate = metadata?.invoice_due_date;
-        return dueDate && new Date(dueDate) < now && !metadata?.invoice_paid;
-      }) || [];
-      return overdue.length;
-    }
-  });
-
-  const { data: canceledJobs = 0 } = useQuery({
-    queryKey: ['dashboard-canceled-jobs'],
-    queryFn: async () => {
-      const { count } = await supabase
-        .from('pipeline_entries')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'cancelled');
-      return count || 0;
-    }
-  });
-
-  const { data: materialOrders = 0 } = useQuery({
-    queryKey: ['dashboard-material-orders'],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('pipeline_entries')
-        .select('metadata')
-        .in('status', ['project', 'production']);
-      const needsOrders = data?.filter(entry => {
-        const metadata = entry.metadata as any;
-        return metadata?.materials_ordered !== true;
-      }) || [];
-      return needsOrders.length;
-    }
-  });
-
-  const { data: measurementRequests = 0 } = useQuery({
-    queryKey: ['dashboard-measurement-requests'],
-    queryFn: async () => {
-      const { data } = await supabase
-        .from('pipeline_entries')
-        .select('metadata')
-        .in('status', ['estimate', 'negotiating']);
-      const needsMeasurement = data?.filter(entry => {
-        const metadata = entry.metadata as any;
-        return metadata?.measurement_requested === true || metadata?.needs_measurement === true;
-      }) || [];
-      return needsMeasurement.length;
-    }
-  });
-
-  const { data: pendingSignatures = 0 } = useQuery({
-    queryKey: ['dashboard-pending-signatures'],
-    queryFn: async () => {
-      const { count } = await supabase
-        .from('agreement_instances')
-        .select('*', { count: 'exact', head: true })
-        .eq('status', 'sent')
-        .is('completed_at', null);
-      return count || 0;
-    }
-  });
-
-  const { data: photosToday = 0 } = useQuery({
-    queryKey: ['dashboard-photos-today'],
-    queryFn: async () => {
-      const today = new Date().toISOString().split('T')[0];
-      const { count } = await supabase
-        .from('documents')
-        .select('*', { count: 'exact', head: true })
-        .gte('created_at', `${today}T00:00:00`)
-        .lte('created_at', `${today}T23:59:59`)
-        .ilike('mime_type', 'image%');
-      return count || 0;
-    }
-  });
   const metrics = [
     {
       title: "Total Revenue",
@@ -305,28 +178,6 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* Pipeline Overview */}
-      <Card className="shadow-soft border-0">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-primary" />
-            Pipeline Status
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-            {dashboardPipelineData.map((stage, index) => (
-              <div key={index} className="text-center">
-                <div className={`${stage.color} rounded-lg p-4 mb-2`}>
-                  <div className="text-3xl font-bold text-white">{stage.count}</div>
-                </div>
-                <div className="text-sm font-medium text-foreground">{stage.status}</div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <Card 
@@ -357,11 +208,31 @@ const Dashboard = () => {
         </Card>
       </div>
 
-      {/* Job Action Items */}
-      <div className="space-y-6">
-        <h2 className="text-2xl font-bold">Job Action Items</h2>
-        
-        {/* PROGRESS Section */}
+      {/* Pipeline Overview */}
+      <Card className="shadow-soft border-0">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <TrendingUp className="h-5 w-5 text-primary" />
+            Pipeline Status
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {dashboardPipelineData.map((stage, index) => (
+              <div key={index} className="text-center">
+                <div className={`${stage.color} rounded-lg p-4 mb-2`}>
+                  <div className="text-3xl font-bold text-white">{stage.count}</div>
+                </div>
+                <div className="text-sm font-medium text-foreground">{stage.status}</div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Progress Section */}
+      <div className="space-y-3">
+        <h2 className="text-2xl font-bold">Progress</h2>
         <div className="space-y-3">
           <h3 className="text-sm font-semibold text-muted-foreground tracking-wide">PROGRESS</h3>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -388,72 +259,6 @@ const Dashboard = () => {
               title="Watch List"
               count={watchListCount}
               icon={Eye}
-              onClick={() => navigate('/pipeline')}
-            />
-          </div>
-        </div>
-
-        {/* FINANCIAL Section */}
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-muted-foreground tracking-wide">FINANCIAL</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <MetricCard
-              title="Financial Worksheets Needed"
-              count={financialWorksheetsNeeded}
-              icon={FileText}
-              onClick={() => navigate('/pipeline')}
-            />
-            <MetricCard
-              title="Pending Invoices"
-              count={pendingInvoices}
-              icon={Receipt}
-              variant="warning"
-              onClick={() => navigate('/pipeline')}
-            />
-            <MetricCard
-              title="Overdue Invoices"
-              count={overdueInvoices}
-              icon={Clock}
-              variant="danger"
-              onClick={() => navigate('/pipeline')}
-            />
-            <MetricCard
-              title="Canceled Jobs w/ Outstanding Balance"
-              count={canceledJobs}
-              icon={AlertCircle}
-              variant="danger"
-              onClick={() => navigate('/pipeline')}
-            />
-          </div>
-        </div>
-
-        {/* MANAGEMENT Section */}
-        <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-muted-foreground tracking-wide">MANAGEMENT</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            <MetricCard
-              title="Material Orders to Place"
-              count={materialOrders}
-              icon={Package}
-              onClick={() => navigate('/pipeline')}
-            />
-            <MetricCard
-              title="Measurement Requests"
-              count={measurementRequests}
-              icon={Ruler}
-              onClick={() => navigate('/pipeline')}
-            />
-            <MetricCard
-              title="Pending Signatures"
-              count={pendingSignatures}
-              icon={PenTool}
-              variant="warning"
-              onClick={() => navigate('/pipeline')}
-            />
-            <MetricCard
-              title="Photos Today"
-              count={photosToday}
-              icon={Camera}
               onClick={() => navigate('/pipeline')}
             />
           </div>
