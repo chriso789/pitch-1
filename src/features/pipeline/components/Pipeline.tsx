@@ -886,18 +886,15 @@ const Pipeline = () => {
                 
                 return (
                   <div key={stage.key} className="min-w-[320px]">
-                    <SortableContext 
+                    <KanbanColumn
+                      id={stage.key}
+                      title={stage.name}
+                      color={stage.color}
+                      icon={stage.icon}
+                      count={(pipelineData[stage.key] || []).length}
+                      total={formatCurrency(stageTotals[stage.key] || 0)}
                       items={stageEntries.map(entry => entry.id)}
-                      strategy={verticalListSortingStrategy}
                     >
-                      <KanbanColumn
-                        id={stage.key}
-                        title={stage.name}
-                        color={stage.color}
-                        icon={stage.icon}
-                        count={(pipelineData[stage.key] || []).length}
-                        total={formatCurrency(stageTotals[stage.key] || 0)}
-                      >
                         {/* Bulk selection checkbox for stage */}
                         {bulkActionMode && stageEntries.length > 0 && (
                           <Button
@@ -954,7 +951,6 @@ const Pipeline = () => {
                           </div>
                         ))}
                       </KanbanColumn>
-                    </SortableContext>
                   </div>
                 );
               })}

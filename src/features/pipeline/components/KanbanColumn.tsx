@@ -1,5 +1,6 @@
 import React from 'react';
 import { useDroppable } from '@dnd-kit/core';
+import { SortableContext, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -12,6 +13,7 @@ interface KanbanColumnProps {
   count: number;
   total: string;
   children: React.ReactNode;
+  items?: string[]; // Array of item IDs for SortableContext
 }
 
 export const KanbanColumn: React.FC<KanbanColumnProps> = ({
@@ -22,6 +24,7 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
   count,
   total,
   children,
+  items = [],
 }) => {
   const { isOver, setNodeRef } = useDroppable({
     id,
@@ -50,19 +53,21 @@ export const KanbanColumn: React.FC<KanbanColumnProps> = ({
         </CardHeader>
       </Card>
 
-      {/* Drop Zone */}
-      <div
-        ref={setNodeRef}
-        className={cn(
-          "min-h-[400px] p-1.5 rounded-lg transition-colors overflow-hidden",
-          "max-w-full", // Constrain to column width
-          isOver ? "bg-primary/10 border-2 border-primary border-dashed" : "bg-muted/20 border-2 border-transparent"
-        )}
-      >
-        <div className="space-y-2 w-full">
-          {children}
+      {/* Drop Zone with SortableContext */}
+      <SortableContext items={items} strategy={verticalListSortingStrategy}>
+        <div
+          ref={setNodeRef}
+          className={cn(
+            "min-h-[400px] p-1.5 rounded-lg transition-colors overflow-hidden",
+            "max-w-full", // Constrain to column width
+            isOver ? "bg-primary/10 border-2 border-primary border-dashed" : "bg-muted/20 border-2 border-transparent"
+          )}
+        >
+          <div className="space-y-2 w-full">
+            {children}
+          </div>
         </div>
-      </div>
+      </SortableContext>
     </div>
   );
 };

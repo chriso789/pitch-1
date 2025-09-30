@@ -387,22 +387,18 @@ const KanbanPipeline = () => {
                     icon={stage.icon}
                     count={stageJobs.length}
                     total={formatCurrency(stageTotal)}
+                    items={stageJobs.map(job => job.id)}
                   >
-                    <SortableContext 
-                      items={stageJobs.map(job => job.id)}
-                      strategy={verticalListSortingStrategy}
-                    >
-                      {stageJobs.map((job) => (
-                        <KanbanCard
-                          key={job.id}
-                          id={job.id}
-                          entry={job}
-                          onView={(contactId) => navigate(`/contact/${contactId}`)}
-                          onDelete={handleDeleteJob}
-                          canDelete={userCanDelete}
-                        />
-                      ))}
-                    </SortableContext>
+                    {stageJobs.map((job) => (
+                      <KanbanCard
+                        key={job.id}
+                        id={job.id}
+                        entry={job}
+                        onView={(contactId) => navigate(`/contact/${contactId}`)}
+                        onDelete={handleDeleteJob}
+                        canDelete={userCanDelete}
+                      />
+                    ))}
                   </KanbanColumn>
                 </div>
               );
