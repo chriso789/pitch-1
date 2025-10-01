@@ -110,3 +110,9 @@ verify_jwt = true
 
 [functions.enhanced-roof-measurement]
 verify_jwt = true
+
+[functions.qbo-oauth-connect]
+verify_jwt = true
+
+[functions.qbo-webhook-handler]
+verify_jwt = false

@@ -17,6 +17,7 @@ import { default as VoiceInterface } from "@/features/communication/components/V
 import ErrorReportsManager from "./ErrorReportsManager";
 import EnhancedErrorReportsManager from "./EnhancedErrorReportsManager";
 import ManagerApprovalQueue from "@/components/ManagerApprovalQueue";
+import QuickBooksSettings from "@/components/settings/QuickBooksSettings";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Settings = () => {
@@ -80,7 +81,7 @@ export const Settings = () => {
       </div>
 
       <Tabs defaultValue="general" className="space-y-6">
-        <TabsList className={`grid w-full ${showDeveloperTab ? 'grid-cols-10' : 'grid-cols-9'}`}>
+        <TabsList className={`grid w-full ${showDeveloperTab ? 'grid-cols-11' : 'grid-cols-10'}`}>
           <TabsTrigger value="general" className="flex items-center gap-2">
             <SettingsIcon className="h-4 w-4" />
             General
@@ -104,6 +105,10 @@ export const Settings = () => {
           <TabsTrigger value="users" className="flex items-center gap-2">
             <Users className="h-4 w-4" />
             Users
+          </TabsTrigger>
+          <TabsTrigger value="quickbooks" className="flex items-center gap-2">
+            <Building className="h-4 w-4" />
+            QuickBooks
           </TabsTrigger>
           <TabsTrigger value="reports" className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4" />
@@ -147,6 +152,10 @@ export const Settings = () => {
 
         <TabsContent value="users" className="space-y-6">
           <UserManagement />
+        </TabsContent>
+
+        <TabsContent value="quickbooks" className="space-y-6">
+          <QuickBooksSettings />
         </TabsContent>
 
         <TabsContent value="reports" className="space-y-6">
