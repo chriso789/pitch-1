@@ -1,5 +1,17 @@
 project_id = "alxelfrbjzkmtnsulcei"
 
+[functions.stripe-create-payment-link]
+verify_jwt = true
+
+[functions.stripe-customer-portal]
+verify_jwt = true
+
+[functions.stripe-webhook-handler]
+verify_jwt = false
+
+[functions.stripe-sync-payment-status]
+verify_jwt = true
+
 [functions.canvass-auth]
 verify_jwt = false
 
