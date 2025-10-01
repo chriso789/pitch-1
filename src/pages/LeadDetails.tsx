@@ -6,6 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import { ResizablePanelGroup, ResizablePanel, ResizableHandle } from '@/components/ui/resizable';
 import { 
   Loader2, ArrowLeft, MapPin, User, Phone, Mail, 
   FileText, CheckCircle, AlertCircle, ExternalLink,
@@ -566,109 +567,119 @@ const LeadDetails = () => {
         )}
       </div>
 
-      {/* Communication Hub - Full Width */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base">Communication Hub</CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-3">
-          {lead.assigned_rep ? (
-            <div className="flex items-center space-x-2">
-              <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                <User className="h-4 w-4 text-primary" />
-              </div>
-              <div>
-                <p className="text-sm font-medium">
-                  {lead.assigned_rep.first_name} {lead.assigned_rep.last_name}
-                </p>
-                <p className="text-xs text-muted-foreground">Sales Rep</p>
-              </div>
-            </div>
-          ) : (
-            <p className="text-sm text-muted-foreground">No rep assigned</p>
-          )}
-          
-          <div className="flex gap-2">
-            <Button size="sm" variant="outline" className="flex-1">
-              <Phone className="h-3 w-3 mr-1" />
-              Call
-            </Button>
-            <Button size="sm" variant="outline" className="flex-1">
-              <Mail className="h-3 w-3 mr-1" />
-              Email
-            </Button>
-            <Button size="sm" variant="outline" className="flex-1">
-              <Phone className="h-3 w-3 mr-1" />
-              SMS
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Photo Display - Full Width */}
-      <Card>
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base flex items-center justify-between">
-            <span className="flex items-center gap-2">
-              <Camera className="h-4 w-4" />
-              Photos
-            </span>
-            {photos.length > 0 && (
-              <span className="text-xs font-normal text-muted-foreground">
-                {currentPhotoIndex + 1} of {photos.length}
-              </span>
-            )}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-3">
-          {photos.length > 0 ? (
-            <div className="space-y-2">
-              {/* Photo Display */}
-              <div 
-                className="relative aspect-[4/3] bg-muted rounded-lg flex items-center justify-center cursor-pointer overflow-hidden group"
-                onClick={() => setShowFullScreenPhoto(true)}
-              >
-                <ImageIcon className="h-12 w-12 text-muted-foreground" />
-                <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                  <span className="text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity">
-                    Click to expand
-                  </span>
+      {/* Communication Hub & Photos - Side by Side */}
+      <ResizablePanelGroup direction="horizontal" className="min-h-[400px] rounded-lg border">
+        {/* Communication Hub Panel */}
+        <ResizablePanel defaultSize={60} minSize={40}>
+          <Card className="h-full border-0 shadow-none">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Communication Hub</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {lead.assigned_rep ? (
+                <div className="flex items-center space-x-2">
+                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
+                    <User className="h-4 w-4 text-primary" />
+                  </div>
+                  <div>
+                    <p className="text-sm font-medium">
+                      {lead.assigned_rep.first_name} {lead.assigned_rep.last_name}
+                    </p>
+                    <p className="text-xs text-muted-foreground">Sales Rep</p>
+                  </div>
                 </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No rep assigned</p>
+              )}
+              
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="flex-1">
+                  <Phone className="h-3 w-3 mr-1" />
+                  Call
+                </Button>
+                <Button size="sm" variant="outline" className="flex-1">
+                  <Mail className="h-3 w-3 mr-1" />
+                  Email
+                </Button>
+                <Button size="sm" variant="outline" className="flex-1">
+                  <Phone className="h-3 w-3 mr-1" />
+                  SMS
+                </Button>
               </div>
+            </CardContent>
+          </Card>
+        </ResizablePanel>
 
-              {/* Navigation Controls */}
-              <div className="flex items-center justify-between">
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={() => setCurrentPhotoIndex(Math.max(0, currentPhotoIndex - 1))}
-                  disabled={currentPhotoIndex === 0}
-                  className="h-7 w-7"
-                >
-                  <ChevronLeft className="h-3 w-3" />
-                </Button>
-                <span className="text-xs text-muted-foreground truncate max-w-[150px]">
-                  {photos[currentPhotoIndex]?.filename || 'Photo'}
+        {/* Vertical Divider */}
+        <ResizableHandle withHandle />
+
+        {/* Photos Panel */}
+        <ResizablePanel defaultSize={40} minSize={30}>
+          <Card className="h-full border-0 shadow-none">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base flex items-center justify-between">
+                <span className="flex items-center gap-2">
+                  <Camera className="h-4 w-4" />
+                  Photos
                 </span>
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={() => setCurrentPhotoIndex(Math.min(photos.length - 1, currentPhotoIndex + 1))}
-                  disabled={currentPhotoIndex === photos.length - 1}
-                  className="h-7 w-7"
-                >
-                  <ChevronRight className="h-3 w-3" />
-                </Button>
-              </div>
-            </div>
-          ) : (
-            <div className="aspect-[4/3] bg-muted rounded-lg flex flex-col items-center justify-center text-center p-3">
-              <Camera className="h-6 w-6 text-muted-foreground mb-1.5" />
-              <p className="text-xs text-muted-foreground">No photos uploaded yet</p>
-            </div>
-          )}
-        </CardContent>
-      </Card>
+                {photos.length > 0 && (
+                  <span className="text-xs font-normal text-muted-foreground">
+                    {currentPhotoIndex + 1} of {photos.length}
+                  </span>
+                )}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-3">
+              {photos.length > 0 ? (
+                <div className="space-y-2">
+                  {/* Photo Display */}
+                  <div 
+                    className="relative aspect-square bg-muted rounded-lg flex items-center justify-center cursor-pointer overflow-hidden group"
+                    onClick={() => setShowFullScreenPhoto(true)}
+                  >
+                    <ImageIcon className="h-12 w-12 text-muted-foreground" />
+                    <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
+                      <span className="text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                        Click to expand
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Navigation Controls */}
+                  <div className="flex items-center justify-between">
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={() => setCurrentPhotoIndex(Math.max(0, currentPhotoIndex - 1))}
+                      disabled={currentPhotoIndex === 0}
+                      className="h-7 w-7"
+                    >
+                      <ChevronLeft className="h-3 w-3" />
+                    </Button>
+                    <span className="text-xs text-muted-foreground truncate max-w-[100px]">
+                      {photos[currentPhotoIndex]?.filename || 'Photo'}
+                    </span>
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={() => setCurrentPhotoIndex(Math.min(photos.length - 1, currentPhotoIndex + 1))}
+                      disabled={currentPhotoIndex === photos.length - 1}
+                      className="h-7 w-7"
+                    >
+                      <ChevronRight className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="aspect-square bg-muted rounded-lg flex flex-col items-center justify-center text-center p-3">
+                  <Camera className="h-6 w-6 text-muted-foreground mb-1.5" />
+                  <p className="text-xs text-muted-foreground">No photos uploaded yet</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </ResizablePanel>
+      </ResizablePanelGroup>
 
       {/* Full-Screen Photo Modal */}
       {showFullScreenPhoto && photos.length > 0 && (
