@@ -87,18 +87,18 @@ serve(async (req) => {
       job_number: jobNumber,
       name: jobDetails?.name || `${pipelineEntry.contacts?.first_name} ${pipelineEntry.contacts?.last_name} - ${pipelineEntry.contacts?.address_street}`,
       description: jobDetails?.description || `Job created from pipeline entry for ${pipelineEntry.roof_type} project`,
-      status: 'scheduled',
+      status: 'production',
       priority: jobDetails?.priority || 'medium',
-      estimated_start_date: jobDetails?.estimated_start_date || null,
-      estimated_completion_date: jobDetails?.estimated_completion_date || null,
-      assigned_to: jobDetails?.assigned_to || null,
       created_by: user.id,
       metadata: {
         ...jobDetails?.metadata,
         roof_type: pipelineEntry.roof_type,
         probability_percent: pipelineEntry.probability_percent,
         converted_from_pipeline: true,
-        conversion_date: new Date().toISOString()
+        conversion_date: new Date().toISOString(),
+        estimated_start_date: jobDetails?.estimated_start_date || null,
+        estimated_completion_date: jobDetails?.estimated_completion_date || null,
+        assigned_to: jobDetails?.assigned_to || null
       }
     };
 
