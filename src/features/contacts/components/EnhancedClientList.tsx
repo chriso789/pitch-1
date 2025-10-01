@@ -762,6 +762,9 @@ export const EnhancedClientList = () => {
   const activeJobs = jobs.filter(j => j.status === 'in_progress').length;
   const pendingJobs = jobs.filter(j => j.status === 'pending').length;
   const completedJobs = jobs.filter(j => j.status === 'completed').length;
+  
+  // Calculate leads converted to jobs (pipeline entries with status 'project')
+  const leadsConvertedToJobs = pipelineEntries.filter(pe => pe.status === 'project').length;
 
   if (loading) {
     return (
@@ -813,18 +816,14 @@ export const EnhancedClientList = () => {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">
-                  Total {activeView === 'contacts' ? 'Contacts' : 'Jobs'}
+                  Leads Converted to Jobs
                 </p>
-                <p className="text-2xl font-bold text-foreground">
-                  {activeView === 'contacts' ? totalContacts : totalJobs}
+                <p className="text-2xl font-bold text-success">
+                  {leadsConvertedToJobs}
                 </p>
               </div>
-              <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                {activeView === 'contacts' ? (
-                  <Users className="h-6 w-6 text-primary" />
-                ) : (
-                  <Briefcase className="h-6 w-6 text-primary" />
-                )}
+              <div className="h-12 w-12 rounded-lg bg-success/10 flex items-center justify-center">
+                <Target className="h-6 w-6 text-success" />
               </div>
             </div>
           </CardContent>
