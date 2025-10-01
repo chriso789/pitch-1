@@ -50,11 +50,6 @@ export const useLocationPermission = () => {
 
       setLocation(locationData);
       setPermissionStatus('granted');
-      
-      toast({
-        title: "Location access granted",
-        description: "Your location will be used for project mapping and nearby features.",
-      });
 
       return true;
     } catch (error: any) {
