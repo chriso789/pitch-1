@@ -70,6 +70,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
   const [hyperlinkData, setHyperlinkData] = useState<HyperlinkBarData | null>(null);
   const [loading, setLoading] = useState(true);
   const [measuringRoof, setMeasuringRoof] = useState(false);
+  const [salesRepOverheadRate, setSalesRepOverheadRate] = useState<number>(0);
   const { toast } = useToast();
 
   // Fetch hyperlink bar data using the new RPC function
@@ -97,6 +98,32 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     };
 
     fetchHyperlinkData();
+  }, [pipelineEntryId]);
+
+  // Fetch sales rep's overhead rate
+  useEffect(() => {
+    const fetchSalesRepOverhead = async () => {
+      if (!pipelineEntryId) return;
+      
+      try {
+        // Get pipeline entry with assigned sales rep
+        const { data: pipelineEntry, error: pipelineError } = await supabase
+          .from('pipeline_entries')
+          .select('assigned_to, profiles!pipeline_entries_assigned_to_fkey(personal_overhead_rate)')
+          .eq('id', pipelineEntryId)
+          .single();
+
+        if (pipelineError) throw pipelineError;
+
+        if (pipelineEntry?.profiles?.personal_overhead_rate) {
+          setSalesRepOverheadRate(pipelineEntry.profiles.personal_overhead_rate);
+        }
+      } catch (error) {
+        console.error('Error fetching sales rep overhead:', error);
+      }
+    };
+
+    fetchSalesRepOverhead();
   }, [pipelineEntryId]);
 
   const formatCurrency = (amount: number) => {
@@ -176,6 +203,13 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     }
   };
 
+  // Calculate overhead based on sales rep's personal overhead rate
+  const calculateRepOverhead = () => {
+    if (!salesRepOverheadRate) return 0;
+    const salePrice = hyperlinkData?.sale_price || calculations?.selling_price || 0;
+    return salePrice * (salesRepOverheadRate / 100);
+  };
+
   // Use sections from RPC if available, otherwise build fallback
   const links = hyperlinkData ? [
     ...hyperlinkData.sections
@@ -206,8 +240,14 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       icon: getIconForSection(section.key),
       value: section.key === 'profit'
         ? `${Math.round(hyperlinkData.margin_pct || 30)}%`
+        : section.key === 'overhead'
+        ? formatCurrency(calculateRepOverhead())
         : formatCurrency(section.amount),
-      hint: section.pending ? 'Pending' : null,
+      hint: section.pending 
+        ? 'Pending' 
+        : section.key === 'overhead' && salesRepOverheadRate 
+        ? `Rep: ${salesRepOverheadRate}%` 
+        : null,
       description: getDescriptionForSection(section.key)
     }))
   ] : [
@@ -249,8 +289,12 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       id: 'overhead',
       label: 'Overhead',
       icon: Settings,
-      value: formatCurrency(calculations?.overhead_amount || 0),
-      hint: !isReady ? 'Pending calculations' : null,
+      value: formatCurrency(calculateRepOverhead() || calculations?.overhead_amount || 0),
+      hint: !isReady 
+        ? 'Pending calculations' 
+        : salesRepOverheadRate 
+        ? `Rep: ${salesRepOverheadRate}%` 
+        : null,
       description: 'Overhead and administrative costs'
     },
     {
