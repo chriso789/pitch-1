@@ -548,12 +548,14 @@ const ProductionKanban = () => {
       >
         <ScrollArea className="w-full">
           <div className="flex gap-6 min-h-[600px] pb-4" style={{ minWidth: `${stages.length * 280}px` }}>
-            {stages.map((stage, index) => {
+            {stages.filter((stage, index, self) => 
+              index === self.findIndex(s => s.stage_key === stage.stage_key)
+            ).map((stage) => {
               const stageProjects = productionData[stage.stage_key] || [];
               const stageTotal = getStageTotal(stage.stage_key);
 
               return (
-                <div key={`stage-${stage.stage_key}-${index}`} className="flex-shrink-0 w-[260px]">
+                <div key={stage.stage_key} className="flex-shrink-0 w-[260px]">
                   <ProductionColumn
                     id={stage.stage_key}
                     title={stage.name}
