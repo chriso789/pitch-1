@@ -7,6 +7,7 @@ import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Building2, CheckCircle2, XCircle, RefreshCw, Unplug } from "lucide-react";
+import { QuickBooksSyncErrors } from "./QuickBooksSyncErrors";
 
 const JOB_TYPES = [
   { key: 'roof_repair', label: 'Roof Repair' },
@@ -19,6 +20,7 @@ const JOB_TYPES = [
 
 interface QBOConnection {
   id: string;
+  tenant_id: string;
   realm_id: string;
   qbo_company_name: string;
   is_active: boolean;
@@ -280,6 +282,11 @@ export default function QuickBooksSettings() {
 
   return (
     <div className="space-y-6">
+      {/* Sync Errors */}
+      {connection && (
+        <QuickBooksSyncErrors tenantId={connection.tenant_id} />
+      )}
+      
       {/* Connection Status */}
       <Card>
         <CardHeader>

@@ -5692,6 +5692,107 @@ export type Database = {
           },
         ]
       }
+      qbo_payment_history: {
+        Row: {
+          created_at: string | null
+          id: string
+          metadata: Json | null
+          payment_amount: number
+          payment_date: string
+          payment_method: string | null
+          project_id: string | null
+          qbo_customer_id: string | null
+          qbo_invoice_id: string
+          qbo_payment_id: string
+          synced_at: string | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          metadata?: Json | null
+          payment_amount?: number
+          payment_date: string
+          payment_method?: string | null
+          project_id?: string | null
+          qbo_customer_id?: string | null
+          qbo_invoice_id: string
+          qbo_payment_id: string
+          synced_at?: string | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          metadata?: Json | null
+          payment_amount?: number
+          payment_date?: string
+          payment_method?: string | null
+          project_id?: string | null
+          qbo_customer_id?: string | null
+          qbo_invoice_id?: string
+          qbo_payment_id?: string
+          synced_at?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "qbo_payment_history_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      qbo_sync_errors: {
+        Row: {
+          created_at: string | null
+          entity_id: string
+          entity_type: string
+          error_details: Json | null
+          error_message: string
+          error_type: string
+          id: string
+          last_retry_at: string | null
+          qbo_entity_id: string | null
+          resolved_at: string | null
+          resolved_by: string | null
+          retry_count: number | null
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          entity_id: string
+          entity_type: string
+          error_details?: Json | null
+          error_message: string
+          error_type: string
+          id?: string
+          last_retry_at?: string | null
+          qbo_entity_id?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          retry_count?: number | null
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string | null
+          entity_id?: string
+          entity_type?: string
+          error_details?: Json | null
+          error_message?: string
+          error_type?: string
+          id?: string
+          last_retry_at?: string | null
+          qbo_entity_id?: string | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          retry_count?: number | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       qc_inspections: {
         Row: {
           completed_at: string | null

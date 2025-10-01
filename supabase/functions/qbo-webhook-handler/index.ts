@@ -98,7 +98,8 @@ Deno.serve(async (req) => {
         }
 
         // Process immediately for critical events
-        if (entity.name === 'Payment' && entity.operation === 'Create') {
+        if (entity.name === 'Payment' && (entity.operation === 'Create' || entity.operation === 'Update')) {
+          console.log('Processing payment event:', entity);
           await processPaymentEvent(supabase, connection.tenant_id, realmId, entity.id);
         }
       }

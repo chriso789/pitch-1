@@ -13,6 +13,7 @@ import { JobActivityTimeline } from "@/components/JobActivityTimeline";
 import { ProductionTimeline } from "@/components/job-details/ProductionTimeline";
 import { JobActivitySection } from "@/components/job-details/JobActivitySection";
 import { QuickBooksInvoiceCard } from "@/components/jobs/QuickBooksInvoiceCard";
+import { QuickBooksPaymentHistory } from "@/components/jobs/QuickBooksPaymentHistory";
 import { AuditTrailViewer } from "@/components/audit/AuditTrailViewer";
 import { CollapsibleDeveloperToolbar } from "@/shared/components/CollapsibleDeveloperToolbar";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
@@ -514,10 +515,16 @@ const JobDetails = () => {
         <TabsContent value="overview" className="space-y-6">
           {/* QuickBooks Invoice Card */}
           {job.project?.id && job.tenant_id && (
-            <QuickBooksInvoiceCard 
-              projectId={job.project.id} 
-              tenantId={job.tenant_id} 
-            />
+            <>
+              <QuickBooksInvoiceCard 
+                projectId={job.project.id} 
+                tenantId={job.tenant_id} 
+              />
+              <QuickBooksPaymentHistory 
+                projectId={job.project.id} 
+                tenantId={job.tenant_id} 
+              />
+            </>
           )}
 
           {/* Production Timeline */}
