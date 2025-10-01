@@ -40,42 +40,151 @@ serve(async (req) => {
       });
     }
 
-    const { pipelineEntryId, newStatus, fromStatus } = await req.json();
+    const { pipelineEntryId, newStatus, fromStatus, reason } = await req.json();
 
-    // Check if user has permission to make this move
+    // Get pipeline entry details
+    const { data: pipelineEntry } = await supabase
+      .from('pipeline_entries')
+      .select('*, status_entered_at')
+      .eq('id', pipelineEntryId)
+      .single();
+
+    if (!pipelineEntry) {
+      return new Response(JSON.stringify({ error: 'Pipeline entry not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Check transition rules
+    const { data: transitionRules } = await supabase
+      .from('transition_rules')
+      .select('*')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('from_status', fromStatus)
+      .eq('to_status', newStatus)
+      .eq('is_active', true);
+
+    // If no specific rule found, use default permissions
     const isManager = ['manager', 'admin', 'master'].includes(profile.role);
+    const isBackward = isStatusBackward(fromStatus, newStatus);
     
-    // Prevent non-managers from moving OUT of 'ready_for_approval' status
-    if (fromStatus === 'ready_for_approval' && !isManager) {
-      return new Response(JSON.stringify({ 
-        error: 'Manager approval required',
-        message: 'Only managers can move jobs from Ready for Approval status'
-      }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    if (transitionRules && transitionRules.length > 0) {
+      const rule = transitionRules[0];
+      
+      // Check role permissions
+      if (rule.required_role && !rule.required_role.includes(profile.role)) {
+        return new Response(JSON.stringify({ 
+          error: 'Insufficient permissions',
+          message: `This transition requires one of the following roles: ${rule.required_role.join(', ')}`
+        }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Check if reason is required
+      if (rule.requires_reason && !reason) {
+        return new Response(JSON.stringify({ 
+          error: 'Reason required',
+          message: 'Please provide a reason for this status change',
+          requiresReason: true
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Check minimum time in stage
+      if (rule.min_time_in_stage_hours > 0 && pipelineEntry.status_entered_at) {
+        const hoursInStage = (Date.now() - new Date(pipelineEntry.status_entered_at).getTime()) / (1000 * 60 * 60);
+        if (hoursInStage < rule.min_time_in_stage_hours) {
+          return new Response(JSON.stringify({ 
+            error: 'Minimum time not met',
+            message: `Job must remain in ${fromStatus} for at least ${rule.min_time_in_stage_hours} hours`
+          }), {
+            status: 400,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+      }
+
+      // Check if approval is required
+      if (rule.requires_approval && !isManager) {
+        return new Response(JSON.stringify({ 
+          error: 'Manager approval required',
+          message: 'This transition requires manager approval',
+          requiresApproval: true
+        }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+    } else {
+      // Fallback to original permission logic if no rule found
+
+      // Prevent non-managers from moving OUT of 'ready_for_approval' status
+      if (fromStatus === 'ready_for_approval' && !isManager) {
+        return new Response(JSON.stringify({ 
+          error: 'Manager approval required',
+          message: 'Only managers can move jobs from Ready for Approval status'
+        }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Prevent non-managers from moving directly to 'project'
+      if (newStatus === 'project' && !isManager) {
+        return new Response(JSON.stringify({ 
+          error: 'Manager approval required',
+          message: 'Only managers can approve projects. Please move to "Hold (Mgr Review)" first.'
+        }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      // Check if moving from hold to project requires approval
+      if (fromStatus === 'hold_mgr_review' && newStatus === 'project' && !isManager) {
+        return new Response(JSON.stringify({ 
+          error: 'Manager approval required',
+          message: 'Only managers can approve projects from hold status.'
+        }), {
+          status: 403,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
     }
 
-    // Prevent non-managers from moving directly to 'project'
-    if (newStatus === 'project' && !isManager) {
-      return new Response(JSON.stringify({ 
-        error: 'Manager approval required',
-        message: 'Only managers can approve projects. Please move to "Hold (Mgr Review)" first.'
-      }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    // Check validation rules
+    const { data: validations } = await supabase
+      .from('transition_validations')
+      .select('*')
+      .eq('tenant_id', profile.tenant_id)
+      .eq('applies_to_status', newStatus)
+      .eq('is_active', true);
 
-    // Check if moving from hold to project requires approval
-    if (fromStatus === 'hold_mgr_review' && newStatus === 'project' && !isManager) {
-      return new Response(JSON.stringify({ 
-        error: 'Manager approval required',
-        message: 'Only managers can approve projects from hold status.'
-      }), {
-        status: 403,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    if (validations && validations.length > 0) {
+      for (const validation of validations) {
+        if (validation.validation_type === 'document_required') {
+          const { data: docs } = await supabase
+            .from('documents')
+            .select('id')
+            .eq('pipeline_entry_id', pipelineEntryId)
+            .eq('document_type', validation.validation_config.document_type);
+          
+          if (!docs || docs.length === 0) {
+            return new Response(JSON.stringify({ 
+              error: 'Validation failed',
+              message: validation.error_message
+            }), {
+              status: 400,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
+        }
+      }
     }
 
     // Update pipeline entry status
@@ -83,6 +192,8 @@ serve(async (req) => {
       .from('pipeline_entries')
       .update({ 
         status: newStatus,
+        status_entered_at: new Date().toISOString(),
+        last_status_change_reason: reason || null,
         updated_at: new Date().toISOString()
       })
       .eq('id', pipelineEntryId)
@@ -114,6 +225,23 @@ serve(async (req) => {
         .eq('tenant_id', profile.tenant_id);
     }
 
+    // Log status transition history
+    await supabase
+      .from('status_transition_history')
+      .insert({
+        tenant_id: profile.tenant_id,
+        pipeline_entry_id: pipelineEntryId,
+        from_status: fromStatus,
+        to_status: newStatus,
+        transitioned_by: user.id,
+        transition_reason: reason || null,
+        is_backward: isBackward,
+        metadata: {
+          user_name: `${profile.first_name} ${profile.last_name}`,
+          timestamp: new Date().toISOString()
+        }
+      });
+
     // Log the pipeline activity
     await supabase
       .from('pipeline_activities')
@@ -123,7 +251,9 @@ serve(async (req) => {
         contact_id: pipelineEntry?.contact_id,
         activity_type: 'status_change',
         title: `Stage changed from ${fromStatus} to ${newStatus}`,
-        description: `Pipeline entry moved from ${fromStatus} to ${newStatus} by ${profile.first_name} ${profile.last_name}`,
+        description: reason 
+          ? `Pipeline entry moved from ${fromStatus} to ${newStatus} by ${profile.first_name} ${profile.last_name}. Reason: ${reason}`
+          : `Pipeline entry moved from ${fromStatus} to ${newStatus} by ${profile.first_name} ${profile.last_name}`,
         status: 'completed'
       });
 
@@ -144,6 +274,7 @@ serve(async (req) => {
       success: true,
       message: `Pipeline entry moved to ${newStatus}`,
       newStatus: newStatus,
+      isBackward: isBackward,
       autoApprovalCreated: newStatus === 'hold_mgr_review' && !isManager
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -151,9 +282,42 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in pipeline drag handler:', error);
-    return new Response(JSON.stringify({ error: 'Internal server error' }), {
+    return new Response(JSON.stringify({ error: 'Internal server error', details: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }
 });
+
+// Helper function to determine if a status change is backward
+function isStatusBackward(fromStatus: string, toStatus: string): boolean {
+  const statusOrder = [
+    'lead',
+    'legal_review',
+    'legal',
+    'contingency',
+    'contingency_signed',
+    'ready_for_approval',
+    'project',
+    'production',
+    'final_payment',
+    'completed',
+    'closed'
+  ];
+  
+  const fromIndex = statusOrder.indexOf(fromStatus);
+  const toIndex = statusOrder.indexOf(toStatus);
+  
+  // If either status is not in the main flow, check special cases
+  if (fromIndex === -1 || toIndex === -1) {
+    const holdStatuses = ['hold_mgr_review', 'hold_customer', 'hold_materials'];
+    const endStatuses = ['lost', 'canceled', 'duplicate'];
+    
+    // Moving to hold or end status is not considered backward
+    if (holdStatuses.includes(toStatus) || endStatuses.includes(toStatus)) {
+      return false;
+    }
+  }
+  
+  return fromIndex !== -1 && toIndex !== -1 && toIndex < fromIndex;
+}

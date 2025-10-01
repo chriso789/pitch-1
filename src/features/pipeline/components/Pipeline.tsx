@@ -10,6 +10,7 @@ import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area";
 import { LeadForm } from "@/features/contacts/components/LeadForm";
 import { KanbanCard } from './KanbanCard';
 import { KanbanColumn } from './KanbanColumn';
+import { TransitionReasonDialog } from '@/components/pipeline/TransitionReasonDialog';
 import { 
   ArrowRight, 
   DollarSign, 
@@ -60,6 +61,12 @@ const Pipeline = () => {
   const [locations, setLocations] = useState([]);
   const [userRole, setUserRole] = useState<string>('');
   const [isManager, setIsManager] = useState(false);
+  const [reasonDialogOpen, setReasonDialogOpen] = useState(false);
+  const [pendingTransition, setPendingTransition] = useState<{
+    entryId: string;
+    fromStatus: string;
+    toStatus: string;
+  } | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -283,6 +290,26 @@ const Pipeline = () => {
         throw error;
       }
 
+      // Check if reason is required
+      if (data?.requiresReason) {
+        // Revert optimistic update
+        const revertedData = { ...pipelineData };
+        const revertFromArray = Array.isArray(revertedData[newStatus]) ? revertedData[newStatus] : [];
+        const revertToArray = Array.isArray(revertedData[fromStatus]) ? revertedData[fromStatus] : [];
+        revertedData[newStatus] = revertFromArray.filter((e: any) => e.id !== entryId);
+        revertedData[fromStatus] = [...revertToArray, movedEntry];
+        setPipelineData(revertedData);
+
+        // Open reason dialog
+        setPendingTransition({
+          entryId: entryId,
+          fromStatus: fromStatus,
+          toStatus: newStatus,
+        });
+        setReasonDialogOpen(true);
+        return;
+      }
+
       if (data.error) {
         // Revert optimistic update
         const revertedData = { ...pipelineData };
@@ -304,6 +331,14 @@ const Pipeline = () => {
         title: "Success",
         description: data.message || "Job moved successfully",
       });
+
+      if (data.isBackward) {
+        toast({
+          title: "Backward Transition",
+          description: "This backward transition has been logged for review",
+          variant: "default",
+        });
+      }
 
       // Refresh data to ensure consistency
       await fetchPipelineData();

@@ -4234,6 +4234,7 @@ export type Database = {
           expected_close_date: string | null
           id: string
           is_deleted: boolean | null
+          last_status_change_reason: string | null
           lead_quality_score: number | null
           lead_temperature: string | null
           location_id: string | null
@@ -4248,8 +4249,10 @@ export type Database = {
           roof_type: Database["public"]["Enums"]["roof_type"] | null
           source: Database["public"]["Enums"]["lead_source"] | null
           status: string | null
+          status_entered_at: string | null
           tenant_id: string | null
           updated_at: string | null
+          workflow_metadata: Json | null
         }
         Insert: {
           assigned_to?: string | null
@@ -4265,6 +4268,7 @@ export type Database = {
           expected_close_date?: string | null
           id?: string
           is_deleted?: boolean | null
+          last_status_change_reason?: string | null
           lead_quality_score?: number | null
           lead_temperature?: string | null
           location_id?: string | null
@@ -4279,8 +4283,10 @@ export type Database = {
           roof_type?: Database["public"]["Enums"]["roof_type"] | null
           source?: Database["public"]["Enums"]["lead_source"] | null
           status?: string | null
+          status_entered_at?: string | null
           tenant_id?: string | null
           updated_at?: string | null
+          workflow_metadata?: Json | null
         }
         Update: {
           assigned_to?: string | null
@@ -4296,6 +4302,7 @@ export type Database = {
           expected_close_date?: string | null
           id?: string
           is_deleted?: boolean | null
+          last_status_change_reason?: string | null
           lead_quality_score?: number | null
           lead_temperature?: string | null
           location_id?: string | null
@@ -4310,8 +4317,10 @@ export type Database = {
           roof_type?: Database["public"]["Enums"]["roof_type"] | null
           source?: Database["public"]["Enums"]["lead_source"] | null
           status?: string | null
+          status_entered_at?: string | null
           tenant_id?: string | null
           updated_at?: string | null
+          workflow_metadata?: Json | null
         }
         Relationships: [
           {
@@ -6734,6 +6743,62 @@ export type Database = {
           },
         ]
       }
+      status_transition_history: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string | null
+          from_status: string
+          id: string
+          is_backward: boolean | null
+          metadata: Json | null
+          pipeline_entry_id: string
+          requires_approval: boolean | null
+          tenant_id: string
+          to_status: string
+          transition_reason: string | null
+          transitioned_by: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
+          from_status: string
+          id?: string
+          is_backward?: boolean | null
+          metadata?: Json | null
+          pipeline_entry_id: string
+          requires_approval?: boolean | null
+          tenant_id: string
+          to_status: string
+          transition_reason?: string | null
+          transitioned_by?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
+          from_status?: string
+          id?: string
+          is_backward?: boolean | null
+          metadata?: Json | null
+          pipeline_entry_id?: string
+          requires_approval?: boolean | null
+          tenant_id?: string
+          to_status?: string
+          transition_reason?: string | null
+          transitioned_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "status_transition_history_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subcontractor_capacity: {
         Row: {
           available_slots: number
@@ -7348,6 +7413,105 @@ export type Database = {
           settings?: Json | null
           subdomain?: string | null
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      transition_rules: {
+        Row: {
+          conditions: Json | null
+          created_at: string | null
+          created_by: string | null
+          from_status: string
+          id: string
+          is_active: boolean | null
+          job_type_filter: string[] | null
+          max_value_threshold: number | null
+          min_time_in_stage_hours: number | null
+          min_value_threshold: number | null
+          name: string
+          required_role: string[] | null
+          requires_approval: boolean | null
+          requires_reason: boolean | null
+          tenant_id: string
+          to_status: string
+          updated_at: string | null
+        }
+        Insert: {
+          conditions?: Json | null
+          created_at?: string | null
+          created_by?: string | null
+          from_status: string
+          id?: string
+          is_active?: boolean | null
+          job_type_filter?: string[] | null
+          max_value_threshold?: number | null
+          min_time_in_stage_hours?: number | null
+          min_value_threshold?: number | null
+          name: string
+          required_role?: string[] | null
+          requires_approval?: boolean | null
+          requires_reason?: boolean | null
+          tenant_id: string
+          to_status: string
+          updated_at?: string | null
+        }
+        Update: {
+          conditions?: Json | null
+          created_at?: string | null
+          created_by?: string | null
+          from_status?: string
+          id?: string
+          is_active?: boolean | null
+          job_type_filter?: string[] | null
+          max_value_threshold?: number | null
+          min_time_in_stage_hours?: number | null
+          min_value_threshold?: number | null
+          name?: string
+          required_role?: string[] | null
+          requires_approval?: boolean | null
+          requires_reason?: boolean | null
+          tenant_id?: string
+          to_status?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      transition_validations: {
+        Row: {
+          applies_to_status: string
+          created_at: string | null
+          created_by: string | null
+          error_message: string
+          id: string
+          is_active: boolean | null
+          name: string
+          tenant_id: string
+          validation_config: Json
+          validation_type: string
+        }
+        Insert: {
+          applies_to_status: string
+          created_at?: string | null
+          created_by?: string | null
+          error_message: string
+          id?: string
+          is_active?: boolean | null
+          name: string
+          tenant_id: string
+          validation_config: Json
+          validation_type: string
+        }
+        Update: {
+          applies_to_status?: string
+          created_at?: string | null
+          created_by?: string | null
+          error_message?: string
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          tenant_id?: string
+          validation_config?: Json
+          validation_type?: string
         }
         Relationships: []
       }
