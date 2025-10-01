@@ -5,6 +5,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ErrorTrackingProvider } from "@/hooks/useErrorTracking";
+import { LocationSelectionDialog } from "@/components/auth/LocationSelectionDialog";
+import { supabase } from "@/integrations/supabase/client";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
@@ -30,12 +32,33 @@ const queryClient = new QueryClient({
 });
 
 const App = () => {
+  const [userId, setUserId] = useState<string | null>(null);
+  const [activeLocationId, setActiveLocationId] = useState<string | null>(null);
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setUserId(session?.user?.id || null);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUserId(session?.user?.id || null);
+    });
+
+    return () => subscription.unsubscribe();
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
       <ErrorTrackingProvider>
         <TooltipProvider>
           <Toaster />
           <Sonner />
+          {userId && (
+            <LocationSelectionDialog 
+              userId={userId} 
+              onLocationSelected={setActiveLocationId}
+            />
+          )}
           <BrowserRouter>
             <Routes>
               <Route path="/login" element={<Login />} />

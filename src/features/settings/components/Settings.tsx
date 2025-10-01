@@ -18,6 +18,7 @@ import ErrorReportsManager from "./ErrorReportsManager";
 import EnhancedErrorReportsManager from "./EnhancedErrorReportsManager";
 import ManagerApprovalQueue from "@/components/ManagerApprovalQueue";
 import QuickBooksSettings from "@/components/settings/QuickBooksSettings";
+import { JobTypeQBOMapping } from "@/components/settings/JobTypeQBOMapping";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Settings = () => {
@@ -154,9 +155,10 @@ export const Settings = () => {
           <UserManagement />
         </TabsContent>
 
-        <TabsContent value="quickbooks" className="space-y-6">
-          <QuickBooksSettings />
-        </TabsContent>
+          <TabsContent value="quickbooks" className="space-y-6">
+            <QuickBooksSettings />
+            <JobTypeQBOMapping />
+          </TabsContent>
 
         <TabsContent value="reports" className="space-y-6">
           <EnhancedErrorReportsManager />
