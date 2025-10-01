@@ -12,6 +12,7 @@ import { ContactCommunicationTab } from "@/components/contact-profile/ContactCom
 import { JobActivityTimeline } from "@/components/JobActivityTimeline";
 import { ProductionTimeline } from "@/components/job-details/ProductionTimeline";
 import { JobActivitySection } from "@/components/job-details/JobActivitySection";
+import { QuickBooksInvoiceCard } from "@/components/jobs/QuickBooksInvoiceCard";
 import { AuditTrailViewer } from "@/components/audit/AuditTrailViewer";
 import { CollapsibleDeveloperToolbar } from "@/shared/components/CollapsibleDeveloperToolbar";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
@@ -28,6 +29,7 @@ interface JobDetailsData {
   name: string;
   description?: string;
   status: string;
+  tenant_id?: string;
   contact?: {
     id: string;
     first_name: string;
@@ -510,6 +512,14 @@ const JobDetails = () => {
         </TabsList>
 
         <TabsContent value="overview" className="space-y-6">
+          {/* QuickBooks Invoice Card */}
+          {job.project?.id && job.tenant_id && (
+            <QuickBooksInvoiceCard 
+              projectId={job.project.id} 
+              tenantId={job.tenant_id} 
+            />
+          )}
+
           {/* Production Timeline */}
           {job.project?.id && (
             <ProductionTimeline projectId={job.project.id} />

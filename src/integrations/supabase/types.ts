@@ -2972,6 +2972,56 @@ export type Database = {
           },
         ]
       }
+      invoice_ar_mirror: {
+        Row: {
+          balance: number
+          created_at: string
+          doc_number: string
+          id: string
+          last_qbo_pull_at: string
+          project_id: string
+          qbo_invoice_id: string
+          qbo_status: string
+          tenant_id: string
+          total_amount: number
+          updated_at: string
+        }
+        Insert: {
+          balance?: number
+          created_at?: string
+          doc_number: string
+          id?: string
+          last_qbo_pull_at?: string
+          project_id: string
+          qbo_invoice_id: string
+          qbo_status?: string
+          tenant_id: string
+          total_amount?: number
+          updated_at?: string
+        }
+        Update: {
+          balance?: number
+          created_at?: string
+          doc_number?: string
+          id?: string
+          last_qbo_pull_at?: string
+          project_id?: string
+          qbo_invoice_id?: string
+          qbo_status?: string
+          tenant_id?: string
+          total_amount?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "invoice_ar_mirror_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       jobs: {
         Row: {
           address_street: string | null
@@ -3359,6 +3409,7 @@ export type Database = {
           manager_id: string | null
           name: string
           phone: string | null
+          qbo_location_ref: string | null
           tenant_id: string
           updated_at: string
         }
@@ -3375,6 +3426,7 @@ export type Database = {
           manager_id?: string | null
           name: string
           phone?: string | null
+          qbo_location_ref?: string | null
           tenant_id: string
           updated_at?: string
         }
@@ -3391,6 +3443,7 @@ export type Database = {
           manager_id?: string | null
           name?: string
           phone?: string | null
+          qbo_location_ref?: string | null
           tenant_id?: string
           updated_at?: string
         }

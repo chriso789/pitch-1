@@ -116,3 +116,7 @@ verify_jwt = true
 
 [functions.qbo-webhook-handler]
 verify_jwt = false
+
+[functions.qbo-customer-sync]
+
+[functions.qbo-invoice-create]
