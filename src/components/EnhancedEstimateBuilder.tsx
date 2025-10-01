@@ -6,10 +6,11 @@ import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
-import { useToast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Calculator, Plus, Trash2, FileText, DollarSign, Target, TrendingUp } from 'lucide-react';
+import { Calculator, Plus, Trash2, FileText, DollarSign, Target, TrendingUp, MapPin } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
+import { Badge } from '@/components/ui/badge';
 import { ProfitBreakdownDisplay } from './ProfitBreakdownDisplay';
 
 interface LineItem {
@@ -75,11 +76,81 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const [templateId, setTemplateId] = useState('');
   const [salesRepId, setSalesRepId] = useState('');
   const [calculationResults, setCalculationResults] = useState<any>(null);
+  const [measurementData, setMeasurementData] = useState<any>(null);
+  const [hasMeasurements, setHasMeasurements] = useState(false);
 
   useEffect(() => {
     loadTemplates();
     loadSalesReps();
   }, []);
+
+  // Load measurement data from pipeline entry
+  useEffect(() => {
+    if (!pipelineEntryId) return;
+
+    const loadMeasurementData = async () => {
+      try {
+        const { data: pipelineEntry, error } = await supabase
+          .from('pipeline_entries')
+          .select(`
+            roof_type,
+            metadata,
+            contacts (
+              first_name,
+              last_name,
+              address_street,
+              address_city,
+              address_state,
+              address_zip
+            )
+          `)
+          .eq('id', pipelineEntryId)
+          .single();
+
+        if (error) throw error;
+
+        if (pipelineEntry) {
+          const metadata = (pipelineEntry.metadata as any) || {};
+          const roofAreaSqFt = metadata.roof_area_sq_ft || metadata.comprehensive_measurements?.adjustedArea || 0;
+          const comprehensiveMeasurements = metadata.comprehensive_measurements;
+          const hasValidMeasurements = roofAreaSqFt > 0;
+          
+          setHasMeasurements(hasValidMeasurements);
+          setMeasurementData(comprehensiveMeasurements);
+
+          // Update property details with measurement data
+          setPropertyDetails(prev => ({
+            ...prev,
+            roof_area_sq_ft: roofAreaSqFt || prev.roof_area_sq_ft,
+            roof_type: pipelineEntry.roof_type || prev.roof_type,
+            customer_name: pipelineEntry.contacts 
+              ? `${pipelineEntry.contacts.first_name || ''} ${pipelineEntry.contacts.last_name || ''}`.trim()
+              : prev.customer_name,
+            customer_address: pipelineEntry.contacts
+              ? [
+                  pipelineEntry.contacts.address_street,
+                  pipelineEntry.contacts.address_city,
+                  `${pipelineEntry.contacts.address_state || ''} ${pipelineEntry.contacts.address_zip || ''}`.trim()
+                ].filter(Boolean).join(', ')
+              : prev.customer_address,
+            roof_pitch: comprehensiveMeasurements?.pitch || prev.roof_pitch,
+            complexity_level: comprehensiveMeasurements?.complexity || prev.complexity_level
+          }));
+
+          if (hasValidMeasurements) {
+            toast({
+              title: "Measurements Loaded",
+              description: `${roofAreaSqFt.toFixed(0)} sq ft loaded from satellite measurements`,
+            });
+          }
+        }
+      } catch (error: any) {
+        console.error('Error loading measurement data:', error);
+      }
+    };
+
+    loadMeasurementData();
+  }, [pipelineEntryId]);
 
   const loadTemplates = async () => {
     try {
@@ -237,13 +308,29 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="roof_area">Roof Area (sq ft)</Label>
+                  <div className="flex items-center justify-between">
+                    <Label htmlFor="roof_area">Roof Area (sq ft)</Label>
+                    {hasMeasurements && (
+                      <Badge variant="secondary" className="text-xs">
+                        <MapPin className="h-3 w-3 mr-1" />
+                        Satellite Measured
+                      </Badge>
+                    )}
+                  </div>
                   <Input
                     id="roof_area"
                     type="number"
                     value={propertyDetails.roof_area_sq_ft}
                     onChange={(e) => setPropertyDetails(prev => ({ ...prev, roof_area_sq_ft: parseFloat(e.target.value) || 0 }))}
+                    readOnly={hasMeasurements}
+                    className={hasMeasurements ? 'bg-muted' : ''}
                   />
+                  {hasMeasurements && measurementData && (
+                    <p className="text-xs text-muted-foreground">
+                      Confidence: {Math.round((measurementData.accuracyScore || 0.85) * 100)}%
+                      {measurementData.perimeter && ` • Perimeter: ${measurementData.perimeter.toFixed(0)} ft`}
+                    </p>
+                  )}
                 </div>
               </div>
 
