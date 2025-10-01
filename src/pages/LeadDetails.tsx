@@ -20,6 +20,7 @@ import CommunicationHub from '@/components/communication/CommunicationHub';
 import MeasurementGating from '@/components/estimates/MeasurementGating';
 import { EnhancedEstimateBuilder } from '@/components/EnhancedEstimateBuilder';
 import { ApprovalRequirementsBubbles } from '@/components/ApprovalRequirementsBubbles';
+import { MultiTemplateSelector } from '@/components/estimates/MultiTemplateSelector';
 
 interface LeadDetailsData {
   id: string;
@@ -263,12 +264,15 @@ const LeadDetails = () => {
 
   const renderActiveSection = () => {
     switch (activeTab) {
-      case 'overview':
+      case 'estimate':
         return (
-          <div className="text-center py-12">
-            <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-            <p className="text-muted-foreground">Lead overview and communication hub displayed above</p>
-          </div>
+          <MultiTemplateSelector
+            pipelineEntryId={id!}
+            onCalculationsUpdate={(calculations) => {
+              console.log('Template calculations updated:', calculations);
+              checkApprovalRequirements();
+            }}
+          />
         );
       case 'measurements':
         return (

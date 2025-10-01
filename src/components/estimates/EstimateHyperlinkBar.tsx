@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { 
-  FileText, 
+  Calculator, 
   MapPin, 
   Package, 
   Hammer, 
@@ -165,52 +165,52 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
 
   const getIconForSection = (key: string) => {
     switch (key) {
-      case 'overview': return FileText;
+      case 'estimate': return Calculator;
       case 'measurements': return MapPin;
       case 'materials': return Package;
       case 'labor': return Hammer;
       case 'overhead': return Settings;
       case 'profit': return TrendingUp;
       case 'total': return DollarSign;
-      default: return FileText;
+      default: return Calculator;
     }
   };
 
   // Use sections from RPC if available, otherwise build fallback
   const links = hyperlinkData ? [
+    ...hyperlinkData.sections
+      .filter(section => section.key === 'measurements')
+      .map(section => ({
+        id: section.key,
+        label: section.label,
+        icon: getIconForSection(section.key),
+        value: section.extra?.squares ? formatSquares(section.extra.squares) : '—',
+        hint: section.pending ? 'Pending' : null,
+        description: getDescriptionForSection(section.key)
+      })),
     {
-      id: 'overview',
-      label: 'Overview',
-      icon: FileText,
+      id: 'estimate',
+      label: 'Estimate',
+      icon: Calculator,
       value: formatSquares(hyperlinkData.squares),
-      hint: !hyperlinkData.measurements_present ? 'Set measurements' : null,
-      description: 'Project overview and details'
+      hint: !hyperlinkData.template_bound ? 'Select template' : null,
+      description: 'Estimate templates and calculations'
     },
-    ...hyperlinkData.sections.map(section => ({
+    ...hyperlinkData.sections
+      .filter(section => section.key !== 'measurements')
+      .map(section => ({
       id: section.key,
       label: section.key === 'materials' 
         ? `Materials: ${formatCurrency(section.amount)}`
         : section.label,
       icon: getIconForSection(section.key),
-      value: section.key === 'measurements' 
-        ? (section.extra?.squares ? formatSquares(section.extra.squares) : '—')
-        : section.key === 'profit'
-          ? `${Math.round(hyperlinkData.margin_pct || 30)}%`
-          : formatCurrency(section.amount),
+      value: section.key === 'profit'
+        ? `${Math.round(hyperlinkData.margin_pct || 30)}%`
+        : formatCurrency(section.amount),
       hint: section.pending ? 'Pending' : null,
       description: getDescriptionForSection(section.key)
     }))
   ] : [
-    {
-      id: 'overview',
-      label: 'Overview',
-      icon: FileText,
-      value: calculations?.measurements?.roof_area_sq_ft 
-        ? formatSquares(calculations.measurements.roof_area_sq_ft)
-        : '—',
-      hint: calculations?.measurements?.roof_area_sq_ft ? null : 'Set measurements',
-      description: 'Project overview and details'
-    },
     {
       id: 'measurements',
       label: 'Measurements',
@@ -218,6 +218,16 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       value: calculations?.measurements?.has_template ? '✓ Mapped' : '—',
       hint: !calculations?.measurements?.has_template ? 'Bind to template' : null,
       description: 'Roof measurements and template mapping'
+    },
+    {
+      id: 'estimate',
+      label: 'Estimate',
+      icon: Calculator,
+      value: calculations?.measurements?.roof_area_sq_ft 
+        ? formatSquares(calculations.measurements.roof_area_sq_ft)
+        : '—',
+      hint: calculations?.measurements?.has_template ? null : 'Select template',
+      description: 'Estimate templates and calculations'
     },
     {
       id: 'materials',
@@ -265,7 +275,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
 
   function getDescriptionForSection(key: string) {
     switch (key) {
-      case 'overview': return 'Project overview and details';
+      case 'estimate': return 'Estimate templates and calculations';
       case 'measurements': return 'Roof measurements and template mapping';
       case 'materials': return 'Material costs and specifications';
       case 'labor': return 'Labor costs per square';
