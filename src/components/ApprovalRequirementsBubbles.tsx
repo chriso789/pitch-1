@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { FileText, DollarSign, Package, Hammer, CheckCircle, ArrowRight, Camera, Upload } from 'lucide-react';
+import { FileText, DollarSign, Package, Camera, CheckCircle, ArrowRight, Upload } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
@@ -30,7 +30,7 @@ const bubbleSteps = [
   { key: 'hasContract', label: 'Contract', icon: FileText, color: 'from-blue-500 to-blue-400' },
   { key: 'hasEstimate', label: 'Estimate', icon: DollarSign, color: 'from-yellow-500 to-yellow-400' },
   { key: 'hasMaterials', label: 'Notice of Commencement', icon: Package, color: 'from-purple-500 to-purple-400' },
-  { key: 'hasLabor', label: 'Labor', icon: Hammer, color: 'from-orange-500 to-orange-400' },
+  { key: 'hasLabor', label: 'Required Photos', icon: Camera, color: 'from-orange-500 to-orange-400' },
 ] as const;
 
 export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesProps> = ({
