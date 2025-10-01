@@ -76,6 +76,7 @@ const LeadDetails = () => {
   const [lead, setLead] = useState<LeadDetailsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('overview');
+  const [productionStage, setProductionStage] = useState<string | null>(null);
   const [estimateCalculations, setEstimateCalculations] = useState<any>(null);
   const [measurementReadiness, setMeasurementReadiness] = useState({ isReady: false, data: null });
   const [requirements, setRequirements] = useState<ApprovalRequirements>({
@@ -99,8 +100,35 @@ const LeadDetails = () => {
       fetchLeadDetails();
       checkApprovalRequirements();
       fetchPhotos();
+      fetchProductionStage();
     }
   }, [id]);
+
+  const fetchProductionStage = async () => {
+    try {
+      // First check if there's a project for this pipeline entry
+      const { data: project } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('pipeline_entry_id', id)
+        .maybeSingle();
+
+      if (!project) return;
+
+      // Fetch production workflow for this project
+      const { data: workflow } = await supabase
+        .from('production_workflows')
+        .select('current_stage')
+        .eq('project_id', project.id)
+        .maybeSingle();
+
+      if (workflow) {
+        setProductionStage(workflow.current_stage);
+      }
+    } catch (error) {
+      console.error('Error fetching production stage:', error);
+    }
+  };
 
   const fetchLeadDetails = async () => {
     try {
@@ -456,6 +484,11 @@ const LeadDetails = () => {
               <Badge className={getStatusColor(lead.status)}>
                 {lead.status.replace('_', ' ')}
               </Badge>
+              {lead.status === 'project' && productionStage && (
+                <Badge variant="outline" className="border-primary text-primary">
+                  Production: {productionStage.replace('_', ' ')}
+                </Badge>
+              )}
             </div>
             
             {/* Lead Property Address */}

@@ -67,6 +67,7 @@ const JobDetails = () => {
   const [job, setJob] = useState<JobDetailsData | null>(null);
   const [loading, setLoading] = useState(true);
   const [budgetItems, setBudgetItems] = useState([]);
+  const [productionStage, setProductionStage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [activeSection, setActiveSection] = useState('jobs');
   const [financials, setFinancials] = useState<FinancialSummary>({
@@ -83,8 +84,52 @@ const JobDetails = () => {
       fetchJobDetails();
       fetchBudgetItems();
       fetchFinancialSummary();
+      fetchProductionStage();
     }
   }, [id]);
+
+  // Set up real-time listener for production workflow changes
+  useEffect(() => {
+    if (!id) return;
+
+    const channel = supabase
+      .channel(`job-production-${id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'production_workflows',
+          filter: `project_id=eq.${id}`
+        },
+        (payload) => {
+          if (payload.new && 'current_stage' in payload.new) {
+            setProductionStage(payload.new.current_stage as string);
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [id]);
+
+  const fetchProductionStage = async () => {
+    try {
+      const { data: workflow } = await supabase
+        .from('production_workflows')
+        .select('current_stage')
+        .eq('project_id', id)
+        .maybeSingle();
+
+      if (workflow) {
+        setProductionStage(workflow.current_stage);
+      }
+    } catch (error) {
+      console.error('Error fetching production stage:', error);
+    }
+  };
 
   const fetchJobDetails = async () => {
     try {
@@ -289,6 +334,11 @@ const JobDetails = () => {
               <Badge className={getStatusColor(job.status)}>
                 {job.status.replace('_', ' ')}
               </Badge>
+              {productionStage && (
+                <Badge variant="outline" className="border-primary text-primary">
+                  Production: {productionStage.replace('_', ' ')}
+                </Badge>
+              )}
             </div>
             <div className="flex items-center space-x-4 text-sm text-muted-foreground mt-1">
               <span className="font-mono">{job.job_number}</span>

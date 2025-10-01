@@ -204,6 +204,29 @@ const ProductionKanban = () => {
     fetchProductionData();
   }, []);
 
+  // Set up real-time listeners for production workflow changes
+  useEffect(() => {
+    const channel = supabase
+      .channel('production-workflow-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'production_workflows'
+        },
+        () => {
+          // Refetch data when any production workflow changes
+          fetchProductionData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
   const initializeStages = async () => {
     try {
       // Try to fetch existing stages
@@ -451,6 +474,19 @@ const ProductionKanban = () => {
         });
 
       if (error) throw error;
+
+      // Also update the job status to match the production stage
+      const { error: jobUpdateError } = await supabase
+        .from('jobs')
+        .update({ 
+          status: newStage === 'closed' ? 'closed' : 'production',
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', projectId);
+
+      if (jobUpdateError) {
+        console.error('Error updating job status:', jobUpdateError);
+      }
 
       toast({
         title: "Success",
