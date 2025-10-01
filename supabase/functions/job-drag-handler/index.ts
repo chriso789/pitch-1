@@ -42,12 +42,15 @@ serve(async (req) => {
 
     const { jobId, newStatus, fromStatus } = await req.json();
 
-    // Validate status transition
+    // Validate status transition for production workflow
     const validTransitions: Record<string, string[]> = {
-      'pending': ['in_progress', 'on_hold', 'cancelled'],
-      'in_progress': ['completed', 'on_hold', 'cancelled'],
-      'on_hold': ['pending', 'in_progress', 'cancelled'],
-      'completed': [], // Completed jobs cannot be moved
+      'scheduled': ['materials_ordered', 'in_progress', 'cancelled'],
+      'materials_ordered': ['in_progress', 'scheduled', 'cancelled'],
+      'in_progress': ['quality_check', 'materials_ordered', 'cancelled'],
+      'quality_check': ['completed', 'in_progress', 'cancelled'],
+      'completed': ['invoiced'],
+      'invoiced': ['closed'],
+      'closed': [], // Closed jobs cannot be moved
       'cancelled': [] // Cancelled jobs cannot be moved
     };
 

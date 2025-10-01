@@ -208,20 +208,20 @@ serve(async (req) => {
     }
 
     // Update contact's current_stage if contact exists
-    const { data: pipelineEntry } = await supabase
+    const { data: contactEntry } = await supabase
       .from('pipeline_entries')
       .select('contact_id')
       .eq('id', pipelineEntryId)
       .single();
 
-    if (pipelineEntry?.contact_id) {
+    if (contactEntry?.contact_id) {
       await supabase
         .from('contacts')
         .update({ 
           qualification_status: newStatus,
           updated_at: new Date().toISOString()
         })
-        .eq('id', pipelineEntry.contact_id)
+        .eq('id', contactEntry.contact_id)
         .eq('tenant_id', profile.tenant_id);
     }
 
@@ -248,7 +248,7 @@ serve(async (req) => {
       .insert({
         tenant_id: profile.tenant_id,
         pipeline_entry_id: pipelineEntryId,
-        contact_id: pipelineEntry?.contact_id,
+        contact_id: contactEntry?.contact_id,
         activity_type: 'status_change',
         title: `Stage changed from ${fromStatus} to ${newStatus}`,
         description: reason 
