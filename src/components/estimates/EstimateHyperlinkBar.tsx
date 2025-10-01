@@ -188,7 +188,9 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     },
     ...hyperlinkData.sections.map(section => ({
       id: section.key,
-      label: section.label,
+      label: section.key === 'materials' 
+        ? `Materials: ${formatCurrency(section.amount)}`
+        : section.label,
       icon: getIconForSection(section.key),
       value: section.key === 'measurements' 
         ? (section.extra?.squares ? formatSquares(section.extra.squares) : '—')
@@ -219,7 +221,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     },
     {
       id: 'materials',
-      label: 'Materials',
+      label: `Materials: ${formatCurrency(calculations?.materials_cost || 0)}`,
       icon: Package,
       value: formatCurrency(calculations?.materials_cost || 0),
       hint: !isReady ? 'Pending template' : null,
