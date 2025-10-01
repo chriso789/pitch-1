@@ -91,11 +91,10 @@ const DemoWalkthrough = () => {
       <DialogTrigger asChild>
         <Button 
           variant="outline" 
-          size="sm" 
-          className="fixed top-4 right-4 z-50 bg-background/80 backdrop-blur-sm border-primary/20 hover:bg-primary/10"
+          size="icon"
+          className="fixed bottom-4 right-4 z-40 h-10 w-10 rounded-full bg-background/80 backdrop-blur-sm border-primary/20 hover:bg-primary/10 shadow-lg"
         >
-          <Video className="h-4 w-4 mr-2" />
-          Demo Walkthrough
+          <Video className="h-5 w-5" />
         </Button>
       </DialogTrigger>
       <DialogContent className="max-w-6xl h-[90vh] p-0">
