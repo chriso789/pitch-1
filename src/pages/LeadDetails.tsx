@@ -567,6 +567,24 @@ const LeadDetails = () => {
         )}
       </div>
 
+      {/* Approval Requirements Progress */}
+      <Card className="border-primary/20">
+        <CardHeader>
+          <CardTitle className="flex items-center space-x-2">
+            <CheckCircle className="h-5 w-5 text-primary" />
+            <span>Approval Requirements</span>
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ApprovalRequirementsBubbles 
+            requirements={requirements}
+            onApprove={handleApproveToProject}
+            pipelineEntryId={id}
+            onUploadComplete={checkApprovalRequirements}
+          />
+        </CardContent>
+      </Card>
+
       {/* Communication Hub & Photos - Side by Side */}
       <ResizablePanelGroup direction="horizontal" className="min-h-[400px] rounded-lg border">
         {/* Communication Hub Panel */}
@@ -680,73 +698,6 @@ const LeadDetails = () => {
           </Card>
         </ResizablePanel>
       </ResizablePanelGroup>
-
-      {/* Full-Screen Photo Modal */}
-      {showFullScreenPhoto && photos.length > 0 && (
-        <div className="fixed inset-0 bg-black/95 z-50 flex items-center justify-center">
-          {/* Close Button */}
-          <Button
-            size="sm"
-            variant="ghost"
-            className="absolute top-4 right-4 text-white hover:bg-white/20"
-            onClick={() => setShowFullScreenPhoto(false)}
-          >
-            <X className="h-5 w-5" />
-          </Button>
-
-          {/* Previous Button */}
-          <Button
-            size="sm"
-            variant="ghost"
-            className="absolute left-4 text-white hover:bg-white/20"
-            onClick={() => setCurrentPhotoIndex(Math.max(0, currentPhotoIndex - 1))}
-            disabled={currentPhotoIndex === 0}
-          >
-            <ChevronLeft className="h-6 w-6" />
-          </Button>
-
-          {/* Photo Display */}
-          <div className="max-w-5xl max-h-[90vh] flex items-center justify-center">
-            <div className="bg-muted rounded-lg p-8 flex items-center justify-center min-h-[400px]">
-              <ImageIcon className="h-32 w-32 text-muted-foreground" />
-            </div>
-          </div>
-
-          {/* Next Button */}
-          <Button
-            size="sm"
-            variant="ghost"
-            className="absolute right-4 text-white hover:bg-white/20"
-            onClick={() => setCurrentPhotoIndex(Math.min(photos.length - 1, currentPhotoIndex + 1))}
-            disabled={currentPhotoIndex === photos.length - 1}
-          >
-            <ChevronRight className="h-6 w-6" />
-          </Button>
-
-          {/* Photo Info */}
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 text-white text-sm">
-            {currentPhotoIndex + 1} / {photos.length} - {photos[currentPhotoIndex]?.filename}
-          </div>
-        </div>
-      )}
-
-      {/* Approval Requirements Progress */}
-      <Card className="border-primary/20">
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <CheckCircle className="h-5 w-5 text-primary" />
-            <span>Approval Requirements</span>
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <ApprovalRequirementsBubbles 
-            requirements={requirements}
-            onApprove={handleApproveToProject}
-            pipelineEntryId={id}
-            onUploadComplete={checkApprovalRequirements}
-          />
-        </CardContent>
-      </Card>
 
       {/* Hyperlink Bar Estimate System */}
       <EstimateHyperlinkBar
