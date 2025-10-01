@@ -241,9 +241,9 @@ const KanbanPipeline = () => {
     );
 
     try {
-      const { data, error } = await supabase.functions.invoke('job-drag-handler', {
+      const { data, error } = await supabase.functions.invoke('pipeline-drag-handler', {
         body: {
-          jobId: entryId,
+          pipelineEntryId: entryId,
           newStatus: newStatus,
           fromStatus: fromStatus
         }
