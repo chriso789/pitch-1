@@ -362,6 +362,101 @@ const Pipeline = () => {
     }
   };
 
+  const handleReasonConfirm = async (reason: string) => {
+    if (!pendingTransition) return;
+
+    const { entryId, fromStatus, toStatus } = pendingTransition;
+
+    // Find the entry being moved
+    let movedEntry: any = null;
+    for (const [status, entries] of Object.entries(pipelineData)) {
+      const entryArray = Array.isArray(entries) ? entries : [];
+      const entry = entryArray.find((e: any) => e.id === entryId);
+      if (entry) {
+        movedEntry = entry;
+        break;
+      }
+    }
+
+    if (!movedEntry) return;
+
+    // Optimistically update UI
+    const newPipelineData = { ...pipelineData };
+    const fromArray = Array.isArray(newPipelineData[fromStatus]) ? newPipelineData[fromStatus] : [];
+    const toArray = Array.isArray(newPipelineData[toStatus]) ? newPipelineData[toStatus] : [];
+    newPipelineData[fromStatus] = fromArray.filter((e: any) => e.id !== entryId);
+    newPipelineData[toStatus] = [...toArray, { ...movedEntry, status: toStatus }];
+    setPipelineData(newPipelineData);
+
+    try {
+      const { data, error } = await supabase.functions.invoke('pipeline-drag-handler', {
+        body: {
+          pipelineEntryId: entryId,
+          newStatus: toStatus,
+          fromStatus: fromStatus,
+          reason: reason
+        }
+      });
+
+      if (error) {
+        throw error;
+      }
+
+      if (data.error) {
+        // Revert optimistic update
+        const revertedData = { ...pipelineData };
+        const revertFromArray = Array.isArray(revertedData[toStatus]) ? revertedData[toStatus] : [];
+        const revertToArray = Array.isArray(revertedData[fromStatus]) ? revertedData[fromStatus] : [];
+        revertedData[toStatus] = revertFromArray.filter((e: any) => e.id !== entryId);
+        revertedData[fromStatus] = [...revertToArray, movedEntry];
+        setPipelineData(revertedData);
+
+        toast({
+          title: "Error",
+          description: data.message || data.error,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      toast({
+        title: "Success",
+        description: data.message || "Status updated successfully with reason",
+      });
+
+      if (data.isBackward) {
+        toast({
+          title: "Backward Transition",
+          description: "This backward transition has been logged for review",
+          variant: "default",
+        });
+      }
+
+      // Refresh data to ensure consistency
+      await fetchPipelineData();
+
+    } catch (error) {
+      console.error('Error moving pipeline entry with reason:', error);
+      
+      // Revert optimistic update
+      const revertedData = { ...pipelineData };
+      const revertFromArray = Array.isArray(revertedData[toStatus]) ? revertedData[toStatus] : [];
+      const revertToArray = Array.isArray(revertedData[fromStatus]) ? revertedData[fromStatus] : [];
+      revertedData[toStatus] = revertFromArray.filter((e: any) => e.id !== entryId);
+      revertedData[fromStatus] = [...revertToArray, movedEntry];
+      setPipelineData(revertedData);
+
+      toast({
+        title: "Error",
+        description: "Failed to move job",
+        variant: "destructive",
+      });
+    } finally {
+      // Clear pending transition
+      setPendingTransition(null);
+    }
+  };
+
   const handleDeleteEntry = async (entryId: string) => {
     try {
       const { error } = await supabase.functions.invoke('delete-pipeline-entry', {
@@ -1024,6 +1119,16 @@ const Pipeline = () => {
       )}
 
       {/* Remove Lead Form since this is now for Jobs */}
+
+      {/* Transition Reason Dialog */}
+      <TransitionReasonDialog
+        open={reasonDialogOpen}
+        onOpenChange={setReasonDialogOpen}
+        onConfirm={handleReasonConfirm}
+        fromStatus={pendingTransition?.fromStatus || ''}
+        toStatus={pendingTransition?.toStatus || ''}
+        isBackward={false}
+      />
     </div>
   );
 };
