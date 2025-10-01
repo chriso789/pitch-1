@@ -200,8 +200,8 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       .filter(section => section.key !== 'measurements')
       .map(section => ({
       id: section.key,
-      label: section.key === 'materials' 
-        ? `Materials: ${formatCurrency(section.amount)}`
+      label: section.key === 'materials' || section.key === 'labor'
+        ? `${section.label}: ${formatCurrency(section.amount)}`
         : section.label,
       icon: getIconForSection(section.key),
       value: section.key === 'profit'
@@ -239,7 +239,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     },
     {
       id: 'labor',
-      label: 'Labor',
+      label: `Labor: ${formatCurrency(calculations?.labor_cost || 0)}`,
       icon: Hammer,
       value: formatCurrency(calculations?.labor_cost || 0),
       hint: !isReady ? 'Pending template' : null,
