@@ -118,7 +118,13 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.qbo-sync-payment]
+verify_jwt = true
 
 [functions.qbo-customer-sync]
+verify_jwt = true
 
 [functions.qbo-invoice-create]
+verify_jwt = true
+
+[functions.qbo-invoice-send]
+verify_jwt = true
