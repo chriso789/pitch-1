@@ -1,10 +1,12 @@
 import React, { useRef, useState } from 'react';
-import { FileText, DollarSign, Package, Camera, CheckCircle, ArrowRight, Upload } from 'lucide-react';
+import { FileText, DollarSign, Package, Camera, CheckCircle, ArrowRight, Upload, Shield, AlertCircle } from 'lucide-react';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@/components/ui/alert-dialog';
+import { Checkbox } from '@/components/ui/checkbox';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery } from '@tanstack/react-query';
@@ -45,8 +47,31 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
   const [openPopover, setOpenPopover] = useState(false);
   const [openEstimatePopover, setOpenEstimatePopover] = useState(false);
   const [selectedEstimateId, setSelectedEstimateId] = useState<string | null>(null);
+  const [showOverrideDialog, setShowOverrideDialog] = useState(false);
+  const [overrideAcknowledged, setOverrideAcknowledged] = useState(false);
+  const [approvingJob, setApprovingJob] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  // Check if user is manager/admin
+  const { data: userProfile } = useQuery({
+    queryKey: ['userProfile'],
+    queryFn: async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return null;
+      
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('role')
+        .eq('id', user.id)
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  const isManager = userProfile?.role === 'admin' || userProfile?.role === 'manager' || userProfile?.role === 'master';
 
   // Fetch available estimates for this pipeline entry
   const { data: availableEstimates, isLoading: estimatesLoading } = useQuery({
@@ -183,6 +208,62 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
     }
   };
 
+  const handleManagerApprove = async () => {
+    if (!requirements.allComplete) {
+      setShowOverrideDialog(true);
+      return;
+    }
+    await processApproval();
+  };
+
+  const processApproval = async () => {
+    if (!pipelineEntryId) return;
+
+    setApprovingJob(true);
+    try {
+      // Call edge function to approve job and generate job number
+      const { data, error } = await supabase.functions.invoke('api-approve-job-from-lead', {
+        body: { 
+          pipelineEntryId,
+          jobDetails: {
+            create_production_workflow: true,
+            override_incomplete_requirements: !requirements.allComplete
+          }
+        }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Job Approved",
+        description: `Job ${data.job_number || ''} has been created and moved to In Production.`,
+      });
+
+      setShowOverrideDialog(false);
+      setOverrideAcknowledged(false);
+      onApprove();
+    } catch (error: any) {
+      console.error('Approval error:', error);
+      toast({
+        title: "Approval Failed",
+        description: error.message || "Failed to approve job. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setApprovingJob(false);
+    }
+  };
+
+  const getMissingRequirements = () => {
+    const missing: string[] = [];
+    bubbleSteps.forEach(step => {
+      if (!requirements[step.key as keyof ApprovalRequirements]) {
+        missing.push(step.label);
+      }
+    });
+    return missing;
+  };
+
   return (
     <div className="space-y-6">
       {/* Header with Progress and Action Button */}
@@ -212,9 +293,12 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
         )}
       </div>
 
-      {/* Floating Bubbles Timeline */}
-      <div className="relative max-w-3xl mx-auto">
-        <div className="flex items-center justify-center gap-6 md:gap-8 flex-wrap">
+      {/* Floating Bubbles Timeline with Manager Approval */}
+      <div className="relative">
+        <div className="flex items-start justify-between gap-8">
+          {/* Bubbles Section - Left Side */}
+          <div className="flex-1">
+            <div className="flex items-center justify-start gap-6 md:gap-8 flex-wrap">
           {bubbleSteps.map((step, index) => {
             const isComplete = requirements[step.key as keyof ApprovalRequirements];
             const Icon = step.icon;
@@ -375,8 +459,75 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
               </React.Fragment>
             );
           })}
+            </div>
+          </div>
+
+          {/* Manager Approval Button - Right Side */}
+          {isManager && (
+            <div className="flex flex-col items-center gap-3 pt-4">
+              <Button
+                onClick={handleManagerApprove}
+                disabled={disabled || approvingJob}
+                size="lg"
+                className="gradient-primary whitespace-nowrap min-w-[160px]"
+              >
+                <Shield className="h-4 w-4 mr-2" />
+                {approvingJob ? 'Approving...' : 'Manager Approve'}
+              </Button>
+              {!requirements.allComplete && (
+                <div className="flex items-center gap-1 text-xs text-warning">
+                  <AlertCircle className="h-3 w-3" />
+                  <span>Override available</span>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
+
+      {/* Override Confirmation Dialog */}
+      <AlertDialog open={showOverrideDialog} onOpenChange={setShowOverrideDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Approve with Incomplete Requirements?</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-4">
+                <p>The following requirements are not yet complete:</p>
+                <ul className="list-disc list-inside space-y-1 text-sm">
+                  {getMissingRequirements().map((req) => (
+                    <li key={req}>{req}</li>
+                  ))}
+                </ul>
+                <div className="flex items-start space-x-2 pt-4 border-t">
+                  <Checkbox
+                    id="override-acknowledge"
+                    checked={overrideAcknowledged}
+                    onCheckedChange={(checked) => setOverrideAcknowledged(checked as boolean)}
+                  />
+                  <label
+                    htmlFor="override-acknowledge"
+                    className="text-sm leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                  >
+                    I acknowledge that not all requirements are complete and approve this job to proceed to In Production.
+                  </label>
+                </div>
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setOverrideAcknowledged(false)}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={processApproval}
+              disabled={!overrideAcknowledged || approvingJob}
+              className="gradient-primary"
+            >
+              {approvingJob ? 'Processing...' : 'Approve Job'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Hidden file inputs */}
       <input
