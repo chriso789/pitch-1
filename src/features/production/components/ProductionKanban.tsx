@@ -286,6 +286,55 @@ const ProductionKanban = () => {
 
       if (error) throw error;
 
+      // Create workflows for projects that don't have them
+      if (projectsData) {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('tenant_id')
+            .eq('id', user.id)
+            .single();
+
+          if (profile?.tenant_id) {
+            const projectsWithoutWorkflows = projectsData.filter(
+              (p: any) => !p.production_workflows || p.production_workflows.length === 0
+            );
+
+            for (const project of projectsWithoutWorkflows) {
+              try {
+                const { data: workflow } = await supabase
+                  .from('production_workflows')
+                  .insert({
+                    tenant_id: profile.tenant_id,
+                    project_id: project.id,
+                    pipeline_entry_id: project.pipeline_entry_id,
+                    current_stage: 'submit_documents',
+                  })
+                  .select()
+                  .single();
+
+                if (workflow) {
+                  // Add workflow to project (cast to any to avoid type issues)
+                  (project as any).production_workflows = [workflow];
+                  
+                  await supabase
+                    .from('production_stage_history')
+                    .insert({
+                      tenant_id: profile.tenant_id,
+                      production_workflow_id: workflow.id,
+                      to_stage: 'submit_documents',
+                      notes: 'Production workflow auto-created',
+                    });
+                }
+              } catch (err) {
+                console.error('Error creating workflow:', err);
+              }
+            }
+          }
+        }
+      }
+
       // Transform data into production format
       const productionProjects: ProductionProject[] = (projectsData || []).map((project: any) => {
         const contact = project.pipeline_entries?.contacts;
@@ -312,7 +361,7 @@ const ProductionKanban = () => {
           contract_value: contractValue,
           amount_paid: totalPaid,
           balance_owed: balanceOwed,
-          stage: workflow?.current_stage || 'submit_documents',
+          stage: workflow?.current_stage || 'submit_documents', // Default to submit_documents if no workflow
           days_in_stage: daysInStage,
           created_at: project.created_at,
           pipeline_entry_id: project.pipeline_entry_id,
