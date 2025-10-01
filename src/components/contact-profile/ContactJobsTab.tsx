@@ -115,7 +115,6 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
           *,
           projects!left (
             id,
-            clj_formatted_number,
             project_number,
             status
           )
@@ -161,7 +160,7 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
           job_number: job.job_number,
           project: project,
           projectId: project?.id || null,
-          projectNumber: project?.clj_formatted_number || project?.project_number || null
+          projectNumber: project?.project_number || null
         };
       });
 

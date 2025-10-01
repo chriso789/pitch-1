@@ -73,7 +73,7 @@ export const ApprovalManager: React.FC = () => {
               last_name,
               address_street,
               address_city,
-              clj_formatted_number
+              contact_number
             )
           ),
           profiles!manager_approval_queue_requested_by_fkey (
@@ -289,7 +289,7 @@ export const ApprovalManager: React.FC = () => {
                               {contact.address_street}, {contact.address_city}
                             </p>
                             <p className="text-sm font-mono text-muted-foreground">
-                              C-L-J: {contact.clj_formatted_number || request.pipeline_entries.clj_formatted_number || 'Not assigned'}
+                              C-L-J: {request.pipeline_entries.clj_formatted_number || 'Not assigned'}
                             </p>
                           </div>
                           <div className="flex items-center gap-2">
