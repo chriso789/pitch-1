@@ -175,7 +175,7 @@ export function QuickBooksInvoiceCard({ projectId, tenantId }: QuickBooksInvoice
           <div>
             <p className="text-sm text-muted-foreground">Balance Due</p>
             <p className={`text-lg font-semibold ${
-              invoiceMirror.balance > 0 ? 'text-destructive' : 'text-green-600'
+              invoiceMirror.balance > 0 ? 'text-destructive' : 'text-success'
             }`}>
               ${invoiceMirror.balance?.toFixed(2)}
             </p>
@@ -195,9 +195,13 @@ export function QuickBooksInvoiceCard({ projectId, tenantId }: QuickBooksInvoice
             onClick={() => window.open(qboUrl, '_blank')}
           >
             <ExternalLink className="mr-2 h-4 w-4" />
-            View in QuickBooks
+            View & Pay Online in QuickBooks
           </Button>
         </div>
+        
+        <p className="text-xs text-muted-foreground">
+          QBO Payments enabled • Customer can pay via credit card or ACH
+        </p>
       </div>
     </Card>
   );

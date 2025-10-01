@@ -45,7 +45,7 @@ Deno.serve(async (req) => {
       .from('projects')
       .select(`
         *,
-        pipeline_entries(contact_id, contacts(*, locations(qbo_location_ref))),
+        pipeline_entries(contact_id, contacts(*, locations(qbo_location_ref, id))),
         estimates(*)
       `)
       .eq('id', project_id)
@@ -77,29 +77,95 @@ Deno.serve(async (req) => {
 
     let qboCustomerId = customerMapping?.qbo_id;
 
-    // If no mapping, create customer first
+    // If no mapping, create customer first via edge function
     if (!qboCustomerId) {
-      const syncResponse = await fetch(
-        `${Deno.env.get('SUPABASE_URL')}/functions/v1/qbo-customer-sync`,
+      const { data: syncResult, error: syncError } = await supabase.functions.invoke(
+        'qbo-customer-sync',
         {
-          method: 'POST',
-          headers: {
-            'Authorization': req.headers.get('Authorization') ?? '',
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
+          body: {
             contact_id: contact.id,
             tenant_id,
-          }),
+          },
         }
       );
 
-      if (!syncResponse.ok) {
+      if (syncError) {
         throw new Error('Failed to sync customer to QBO');
       }
 
-      const syncResult = await syncResponse.json();
       qboCustomerId = syncResult.qbo_customer_id;
+    }
+
+    // Check for Projects API availability (try to detect if realm supports it)
+    // For now, we'll use a simple approach: try Projects first, fallback to sub-customer
+    let projectOrJobRef: any = null;
+    
+    try {
+      // Attempt to use Projects API (Gold/Platinum partners only)
+      // This would require GraphQL endpoint which isn't publicly available yet
+      // So we'll skip to sub-customer approach for now
+      throw new Error('Projects API not available - using sub-customer fallback');
+    } catch {
+      // Fallback: Create or get sub-customer (Customer:Job pattern)
+      const subCustomerName = `${contact.first_name || ''} ${contact.last_name || ''} - Job ${project.clj_formatted_number || project.id}`.trim();
+      
+      // Check if sub-customer exists
+      const { data: subCustomerMapping } = await supabase
+        .from('qbo_entity_mapping')
+        .select('qbo_id')
+        .eq('tenant_id', tenant_id)
+        .eq('local_entity_type', 'project')
+        .eq('local_entity_id', project_id)
+        .eq('qbo_entity_type', 'Customer')
+        .single();
+      
+      if (subCustomerMapping?.qbo_id) {
+        projectOrJobRef = subCustomerMapping.qbo_id;
+      } else {
+        // Create sub-customer under main customer
+        const subCustomerPayload = {
+          DisplayName: subCustomerName,
+          ParentRef: {
+            value: qboCustomerId
+          },
+          Job: true,
+          Active: true
+        };
+
+        const subCustomerResponse = await fetch(
+          `https://quickbooks.api.intuit.com/v3/company/${connection.realm_id}/customer?minorversion=75`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${connection.access_token}`,
+              'Content-Type': 'application/json',
+              'Accept': 'application/json',
+            },
+            body: JSON.stringify(subCustomerPayload),
+          }
+        );
+
+        if (!subCustomerResponse.ok) {
+          const errorText = await subCustomerResponse.text();
+          console.error('QBO sub-customer creation error:', errorText);
+          throw new Error(`Failed to create sub-customer: ${errorText}`);
+        }
+
+        const subCustomerData = await subCustomerResponse.json();
+        projectOrJobRef = subCustomerData.Customer.Id;
+
+        // Store mapping
+        await supabase
+          .from('qbo_entity_mapping')
+          .insert({
+            tenant_id,
+            local_entity_type: 'project',
+            local_entity_id: project_id,
+            qbo_entity_type: 'Customer',
+            qbo_id: projectOrJobRef,
+            last_synced_at: new Date().toISOString(),
+          });
+      }
     }
 
     // Get primary estimate for the project
@@ -167,17 +233,21 @@ Deno.serve(async (req) => {
     // Build invoice payload
     const invoicePayload: any = {
       CustomerRef: {
-        value: qboCustomerId,
+        value: projectOrJobRef || qboCustomerId, // Use sub-customer if available
       },
       Line: lines,
       TxnDate: new Date().toISOString().split('T')[0],
       DueDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0], // 30 days
       PrivateNote: `PITCH CRM Job: ${project.clj_formatted_number || project.id}`,
+      // Enable QBO Payments by default
+      AllowOnlineCreditCardPayment: true,
+      AllowOnlineACHPayment: true,
     };
 
-    // Add location if available
+    // Add location tracking via DepartmentRef (not TxnLocationRef)
+    // DepartmentRef is used when TrackDepartments=true in QBO company settings
     if (contact.locations?.qbo_location_ref) {
-      invoicePayload.TxnLocationRef = {
+      invoicePayload.DepartmentRef = {
         value: contact.locations.qbo_location_ref,
       };
     }
