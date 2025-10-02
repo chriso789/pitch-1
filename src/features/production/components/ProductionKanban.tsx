@@ -291,7 +291,7 @@ const ProductionKanban = () => {
     try {
       setLoading(true);
 
-      // Fetch projects with related data
+      // Fetch projects with related data using explicit foreign key relationships
       const { data: projectsData, error } = await supabase
         .from('projects')
         .select(`
@@ -301,13 +301,28 @@ const ProductionKanban = () => {
             contacts(*)
           ),
           estimates(*),
-          payments(*),
-          production_workflows(*)
+          payments(*)
         `)
         .eq('status', 'active')
         .order('created_at', { ascending: true });
 
       if (error) throw error;
+
+      // Fetch production workflows separately
+      let workflowsMap: Record<string, any> = {};
+      if (projectsData && projectsData.length > 0) {
+        const projectIds = projectsData.map((p: any) => p.id);
+        const { data: workflows } = await supabase
+          .from('production_workflows')
+          .select('*')
+          .in('project_id', projectIds);
+        
+        if (workflows) {
+          workflows.forEach((workflow: any) => {
+            workflowsMap[workflow.project_id] = workflow;
+          });
+        }
+      }
 
       // Create workflows for projects that don't have them
       if (projectsData) {
@@ -321,7 +336,7 @@ const ProductionKanban = () => {
 
           if (profile?.tenant_id) {
             const projectsWithoutWorkflows = projectsData.filter(
-              (p: any) => !p.production_workflows || p.production_workflows.length === 0
+              (p: any) => !workflowsMap[p.id]
             );
 
             for (const project of projectsWithoutWorkflows) {
@@ -338,8 +353,8 @@ const ProductionKanban = () => {
                   .single();
 
                 if (workflow) {
-                  // Add workflow to project (cast to any to avoid type issues)
-                  (project as any).production_workflows = [workflow];
+                  // Add workflow to map
+                  workflowsMap[project.id] = workflow;
                   
                   await supabase
                     .from('production_stage_history')
@@ -363,7 +378,7 @@ const ProductionKanban = () => {
         const contact = project.pipeline_entries?.contacts;
         const estimates = project.estimates || [];
         const payments = project.payments || [];
-        const workflow = project.production_workflows?.[0];
+        const workflow = workflowsMap[project.id];
         
         const totalPaid = payments.reduce((sum: number, payment: any) => 
           sum + Number(payment.amount), 0);
