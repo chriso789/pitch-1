@@ -29,6 +29,7 @@ import { Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import DemoWalkthrough from "@/shared/components/DemoWalkthrough";
 import ComprehensiveWalkthrough from "@/shared/components/ComprehensiveWalkthrough";
+import StormCanvassPro from "./StormCanvassPro";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -268,6 +269,8 @@ const Index = () => {
         return <Payments />;
       case "calendar":
         return <JobCalendar />;
+      case "storm-canvass":
+        return <StormCanvassPro />;
       case "dialer":
         return <Dialer preloadedContact={dialerContact} isLoadingContact={loadingContact} />;
       case "smartdocs":

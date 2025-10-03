@@ -18,7 +18,8 @@ import {
   User,
   BarChart,
   Target,
-  Mail
+  Mail,
+  CloudRain
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -152,6 +153,12 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
       href: "calendar",
       icon: Calendar,
       description: "Schedule & appointments"
+    },
+    {
+      name: "Storm Canvass Pro",
+      href: "storm-canvass",
+      icon: CloudRain,
+      description: "Lead generation & canvassing"
     },
     {
       name: "Dialer",
