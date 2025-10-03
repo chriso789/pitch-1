@@ -205,7 +205,34 @@ const KanbanPipeline = () => {
     if (!over || active.id === over.id) return;
 
     const entryId = active.id as string;
-    const newStatus = over.id as string;
+    let newStatus = over.id as string;
+
+    // VALIDATION: Check if over.id is a valid stage key
+    const validStageKeys = jobStages.map(s => s.key);
+    
+    if (!validStageKeys.includes(newStatus)) {
+      // over.id is not a stage key, it's a card ID - find which column it belongs to
+      let foundStageKey: string | null = null;
+      
+      for (const [stageKey, jobs] of Object.entries(pipelineData)) {
+        if (jobs.some(j => j.id === newStatus)) {
+          foundStageKey = stageKey;
+          break;
+        }
+      }
+      
+      if (!foundStageKey) {
+        console.error('Could not determine target column for drop');
+        toast({
+          title: "Error",
+          description: "Could not determine where to move the item",
+          variant: "destructive",
+        });
+        return;
+      }
+      
+      newStatus = foundStageKey;
+    }
 
     // Find the job being moved
     let movedJob: JobEntry | null = null;
