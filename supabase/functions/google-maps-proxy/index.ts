@@ -31,6 +31,9 @@ serve(async (req) => {
       case 'geocode':
         url = `https://maps.googleapis.com/maps/api/geocode/json?key=${apiKey}&${new URLSearchParams(params)}`;
         break;
+      case 'directions':
+        url = `https://maps.googleapis.com/maps/api/directions/json?key=${apiKey}&${new URLSearchParams(params)}`;
+        break;
       case 'satellite':
         // Google Maps Static API for satellite imagery - return secure URL
         url = `https://maps.googleapis.com/maps/api/staticmap?key=${apiKey}&${new URLSearchParams(params)}`;

@@ -282,7 +282,11 @@ export const AuthTabs: React.FC<AuthTabsProps> = ({
           <LogIn className="h-4 w-4 mr-2" />
           Sign In
         </TabsTrigger>
-        <TabsTrigger value="signup" className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground">
+        <TabsTrigger 
+          value="signup" 
+          data-testid="auth-toggle-mode"
+          className="data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+        >
           <UserPlus className="h-4 w-4 mr-2" />
           Sign Up
         </TabsTrigger>
@@ -299,6 +303,7 @@ export const AuthTabs: React.FC<AuthTabsProps> = ({
             <Label htmlFor="login-email">Email</Label>
             <Input
               id="login-email"
+              data-testid="auth-email-input"
               type="email"
               placeholder="Enter your email"
               value={loginForm.email}
@@ -313,6 +318,7 @@ export const AuthTabs: React.FC<AuthTabsProps> = ({
             <div className="relative">
               <Input
                 id="login-password"
+                data-testid="auth-password-input"
                 type={showPassword ? 'text' : 'password'}
                 placeholder="Enter your password"
                 value={loginForm.password}
@@ -332,7 +338,7 @@ export const AuthTabs: React.FC<AuthTabsProps> = ({
             {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
           </div>
 
-          <Button type="submit" className="w-full" disabled={loading}>
+          <Button type="submit" className="w-full" disabled={loading} data-testid="auth-submit-button">
             {loading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -353,6 +359,7 @@ export const AuthTabs: React.FC<AuthTabsProps> = ({
               <Label htmlFor="signup-firstName">First Name</Label>
               <Input
                 id="signup-firstName"
+                data-testid="auth-firstname-input"
                 type="text"
                 placeholder="First name"
                 value={signupForm.firstName}
@@ -366,6 +373,7 @@ export const AuthTabs: React.FC<AuthTabsProps> = ({
               <Label htmlFor="signup-lastName">Last Name</Label>
               <Input
                 id="signup-lastName"
+                data-testid="auth-lastname-input"
                 type="text"
                 placeholder="Last name"
                 value={signupForm.lastName}

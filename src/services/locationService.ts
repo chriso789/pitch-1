@@ -237,25 +237,28 @@ class LocationService {
    * Reverse geocode coordinates to address
    */
   private async reverseGeocode(lat: number, lng: number): Promise<string> {
-    return new Promise((resolve, reject) => {
-      if (!window.google?.maps) {
-        reject(new Error("Google Maps not loaded"));
-        return;
-      }
-
-      // @ts-ignore - Google Maps API
-      const geocoder = new window.google.maps.Geocoder();
-      // @ts-ignore - Google Maps API
-      const latlng = new window.google.maps.LatLng(lat, lng);
-
-      geocoder.geocode({ location: latlng }, (results, status) => {
-        if (status === "OK" && results && results[0]) {
-          resolve(results[0].formatted_address);
-        } else {
-          reject(new Error(`Geocoding failed: ${status}`));
+    // Use edge function proxy instead of direct Google Maps API
+    try {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data, error } = await supabase.functions.invoke("google-maps-proxy", {
+        body: {
+          endpoint: "geocode",
+          params: {
+            latlng: `${lat},${lng}`
+          }
         }
       });
-    });
+
+      if (error) throw error;
+      if (data.status === "OK" && data.results && data.results[0]) {
+        return data.results[0].formatted_address;
+      } else {
+        throw new Error(`Geocoding failed: ${data.status}`);
+      }
+    } catch (error) {
+      console.error("Reverse geocode error:", error);
+      throw new Error("Failed to reverse geocode address");
+    }
   }
 
   /**
@@ -276,44 +279,40 @@ class LocationService {
     duration: number;
     polyline?: string;
   }> {
-    return new Promise((resolve, reject) => {
-      if (!window.google?.maps) {
-        reject(new Error("Google Maps not loaded"));
-        return;
-      }
-
-      // @ts-ignore - Google Maps API
-      const directionsService = new window.google.maps.DirectionsService();
-
-      directionsService.route(
-        {
-          // @ts-ignore - Google Maps API
-          origin: new window.google.maps.LatLng(origin.lat, origin.lng),
-          // @ts-ignore - Google Maps API
-          destination: new window.google.maps.LatLng(destination.lat, destination.lng),
-          // @ts-ignore - Google Maps API
-          travelMode: window.google.maps.TravelMode.DRIVING,
-        },
-        (result, status) => {
-          // @ts-ignore - Google Maps API
-          if (status === window.google.maps.DirectionsStatus.OK && result) {
-            const route = result.routes[0];
-            const leg = route.legs[0];
-
-            resolve({
-              distance: {
-                distance: leg.distance?.value ? leg.distance.value * 0.000621371 : 0, // Convert meters to miles
-                unit: "miles" as const,
-              },
-              duration: leg.duration?.value || 0, // seconds
-              polyline: route.overview_polyline?.points,
-            });
-          } else {
-            reject(new Error(`Directions request failed: ${status}`));
+    // Use Google Distance Matrix API via edge function proxy
+    try {
+      const { supabase } = await import("@/integrations/supabase/client");
+      const { data, error } = await supabase.functions.invoke("google-maps-proxy", {
+        body: {
+          endpoint: "directions",
+          params: {
+            origin: `${origin.lat},${origin.lng}`,
+            destination: `${destination.lat},${destination.lng}`,
+            mode: "driving"
           }
         }
-      );
-    });
+      });
+
+      if (error) throw error;
+      if (data.status === "OK" && data.routes && data.routes[0]) {
+        const route = data.routes[0];
+        const leg = route.legs[0];
+
+        return {
+          distance: {
+            distance: leg.distance?.value ? leg.distance.value * 0.000621371 : 0, // Convert meters to miles
+            unit: "miles" as const,
+          },
+          duration: leg.duration?.value || 0, // seconds
+          polyline: route.overview_polyline?.points,
+        };
+      } else {
+        throw new Error(`Directions request failed: ${data.status}`);
+      }
+    } catch (error) {
+      console.error("Get route error:", error);
+      throw new Error("Failed to calculate route");
+    }
   }
 }
 
