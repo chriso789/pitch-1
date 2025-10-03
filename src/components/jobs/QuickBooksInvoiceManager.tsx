@@ -56,15 +56,25 @@ export function QuickBooksInvoiceManager({ jobId, tenantId, contactId }: QuickBo
       if (conn) {
         setQboConnection(conn);
 
-        // Load invoices
-        const { data: invs } = await supabase
+        // Load invoices - bypass type inference to avoid deep instantiation error
+        const invoiceQuery = await (supabase as any)
           .from("invoice_ar_mirror")
-          .select("*")
+          .select("id, qbo_invoice_id, doc_number, total_amount, balance, qbo_status, last_qbo_pull_at")
           .eq("tenant_id", tenantId)
           .eq("realm_id", conn.realm_id)
           .order("created_at", { ascending: false });
 
-        if (invs) setInvoices(invs);
+        if (invoiceQuery.data) {
+          setInvoices(invoiceQuery.data.map((inv: any) => ({
+            id: inv.id,
+            qbo_invoice_id: inv.qbo_invoice_id,
+            doc_number: inv.doc_number,
+            total_amount: Number(inv.total_amount),
+            balance: Number(inv.balance),
+            qbo_status: String(inv.qbo_status || ''),
+            last_qbo_pull_at: String(inv.last_qbo_pull_at || '')
+          })));
+        }
 
         // Get customer QBO ID from contact
         const { data: mapping } = await supabase
