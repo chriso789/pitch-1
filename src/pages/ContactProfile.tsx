@@ -12,6 +12,7 @@ import { ContactCommunicationTab } from "@/components/contact-profile/ContactCom
 import { SkipTraceButton } from "@/components/skip-trace/SkipTraceButton";
 import { LeadCreationDialog } from "@/components/LeadCreationDialog";
 import { JobNumberBreakdown } from "@/components/JobNumberBreakdown";
+import { JobApprovalDialog } from "@/components/JobApprovalDialog";
 import {
   User,
   Phone,
@@ -25,7 +26,8 @@ import {
   Plus,
   Briefcase,
   MessageSquare,
-  Activity
+  Activity,
+  CheckCircle
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -41,6 +43,7 @@ const ContactProfile = () => {
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("details");
   const [activeSection, setActiveSection] = useState('client-list');
+  const [selectedPipelineEntry, setSelectedPipelineEntry] = useState<any>(null);
 
   useEffect(() => {
     if (id) {
@@ -111,6 +114,15 @@ const ContactProfile = () => {
 
   const handleJobsUpdate = (updatedJobs: any[]) => {
     setJobs(updatedJobs);
+  };
+
+  const handleJobCreated = () => {
+    setSelectedPipelineEntry(null);
+    fetchContactData(); // Refresh all data
+    toast({
+      title: "Success",
+      description: "Job created successfully",
+    });
   };
 
   if (loading) {
@@ -233,6 +245,21 @@ const ContactProfile = () => {
                           <span className="text-muted-foreground">Win Probability:</span>
                           <span className="font-semibold">{entry.probability_percent}%</span>
                         </div>
+                      </div>
+                    )}
+                    
+                    {/* Quick Convert Button */}
+                    {entry.status === 'ready_for_approval' && (
+                      <div className="pt-3 border-t">
+                        <JobApprovalDialog
+                          pipelineEntry={entry}
+                          onJobCreated={handleJobCreated}
+                        >
+                          <Button className="w-full shadow-soft" variant="default">
+                            <CheckCircle className="h-4 w-4 mr-2" />
+                            Quick Convert to Job
+                          </Button>
+                        </JobApprovalDialog>
                       </div>
                     )}
                   </div>
