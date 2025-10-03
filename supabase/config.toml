@@ -12,6 +12,24 @@ verify_jwt = false
 [functions.stripe-sync-payment-status]
 verify_jwt = true
 
+[functions.stripe-connect-onboard]
+verify_jwt = true
+
+[functions.stripe-connect-account-status]
+verify_jwt = true
+
+[functions.stripe-distribute-prize]
+verify_jwt = true
+
+[functions.process-achievement-unlock]
+verify_jwt = true
+
+[functions.update-competition-scores]
+verify_jwt = true
+
+[functions.finalize-competition]
+verify_jwt = true
+
 [functions.canvass-auth]
 verify_jwt = false
 
