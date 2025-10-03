@@ -14,6 +14,87 @@ export type Database = {
   }
   public: {
     Tables: {
+      achievement_rewards: {
+        Row: {
+          achievement_id: string | null
+          claimed_at: string | null
+          competition_id: string | null
+          created_at: string
+          delivered_at: string | null
+          id: string
+          notes: string | null
+          processed_at: string | null
+          recipient_address: Json | null
+          recipient_email: string | null
+          reward_metadata: Json | null
+          reward_type: Database["public"]["Enums"]["reward_type"]
+          reward_value: number
+          sent_at: string | null
+          status: Database["public"]["Enums"]["reward_status"]
+          stripe_payment_intent_id: string | null
+          tenant_id: string
+          tracking_number: string | null
+          user_id: string
+        }
+        Insert: {
+          achievement_id?: string | null
+          claimed_at?: string | null
+          competition_id?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          id?: string
+          notes?: string | null
+          processed_at?: string | null
+          recipient_address?: Json | null
+          recipient_email?: string | null
+          reward_metadata?: Json | null
+          reward_type: Database["public"]["Enums"]["reward_type"]
+          reward_value?: number
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["reward_status"]
+          stripe_payment_intent_id?: string | null
+          tenant_id: string
+          tracking_number?: string | null
+          user_id: string
+        }
+        Update: {
+          achievement_id?: string | null
+          claimed_at?: string | null
+          competition_id?: string | null
+          created_at?: string
+          delivered_at?: string | null
+          id?: string
+          notes?: string | null
+          processed_at?: string | null
+          recipient_address?: Json | null
+          recipient_email?: string | null
+          reward_metadata?: Json | null
+          reward_type?: Database["public"]["Enums"]["reward_type"]
+          reward_value?: number
+          sent_at?: string | null
+          status?: Database["public"]["Enums"]["reward_status"]
+          stripe_payment_intent_id?: string | null
+          tenant_id?: string
+          tracking_number?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "achievement_rewards_achievement_id_fkey"
+            columns: ["achievement_id"]
+            isOneToOne: false
+            referencedRelation: "canvass_achievements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "achievement_rewards_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "canvass_competitions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agreement_instances: {
         Row: {
           completed_at: string | null
@@ -682,6 +763,171 @@ export type Database = {
           },
         ]
       }
+      canvass_achievements: {
+        Row: {
+          achievement_type: Database["public"]["Enums"]["achievement_type"]
+          category: string
+          created_at: string
+          created_by: string | null
+          criteria: Json
+          description: string | null
+          icon_url: string | null
+          id: string
+          is_active: boolean
+          name: string
+          reward_metadata: Json | null
+          reward_points: number
+          reward_type: Database["public"]["Enums"]["reward_type"] | null
+          reward_value: number | null
+          tenant_id: string
+          tier: Database["public"]["Enums"]["achievement_tier"]
+          updated_at: string
+        }
+        Insert: {
+          achievement_type?: Database["public"]["Enums"]["achievement_type"]
+          category: string
+          created_at?: string
+          created_by?: string | null
+          criteria?: Json
+          description?: string | null
+          icon_url?: string | null
+          id?: string
+          is_active?: boolean
+          name: string
+          reward_metadata?: Json | null
+          reward_points?: number
+          reward_type?: Database["public"]["Enums"]["reward_type"] | null
+          reward_value?: number | null
+          tenant_id: string
+          tier?: Database["public"]["Enums"]["achievement_tier"]
+          updated_at?: string
+        }
+        Update: {
+          achievement_type?: Database["public"]["Enums"]["achievement_type"]
+          category?: string
+          created_at?: string
+          created_by?: string | null
+          criteria?: Json
+          description?: string | null
+          icon_url?: string | null
+          id?: string
+          is_active?: boolean
+          name?: string
+          reward_metadata?: Json | null
+          reward_points?: number
+          reward_type?: Database["public"]["Enums"]["reward_type"] | null
+          reward_value?: number | null
+          tenant_id?: string
+          tier?: Database["public"]["Enums"]["achievement_tier"]
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      canvass_activity_log: {
+        Row: {
+          activity_data: Json
+          activity_type: string
+          contact_id: string | null
+          created_at: string
+          id: string
+          latitude: number | null
+          location_id: string | null
+          longitude: number | null
+          quality_score: number | null
+          tenant_id: string
+          user_id: string
+          verified: boolean
+        }
+        Insert: {
+          activity_data?: Json
+          activity_type: string
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          latitude?: number | null
+          location_id?: string | null
+          longitude?: number | null
+          quality_score?: number | null
+          tenant_id: string
+          user_id: string
+          verified?: boolean
+        }
+        Update: {
+          activity_data?: Json
+          activity_type?: string
+          contact_id?: string | null
+          created_at?: string
+          id?: string
+          latitude?: number | null
+          location_id?: string | null
+          longitude?: number | null
+          quality_score?: number | null
+          tenant_id?: string
+          user_id?: string
+          verified?: boolean
+        }
+        Relationships: []
+      }
+      canvass_competitions: {
+        Row: {
+          auto_enroll: boolean
+          competition_type: Database["public"]["Enums"]["competition_type"]
+          created_at: string
+          created_by: string | null
+          description: string | null
+          end_date: string
+          id: string
+          location_filter: string[] | null
+          name: string
+          prize_pool: Json
+          rules: Json
+          scoring_criteria: Json
+          start_date: string
+          status: Database["public"]["Enums"]["competition_status"]
+          team_based: boolean
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          auto_enroll?: boolean
+          competition_type?: Database["public"]["Enums"]["competition_type"]
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          end_date: string
+          id?: string
+          location_filter?: string[] | null
+          name: string
+          prize_pool?: Json
+          rules?: Json
+          scoring_criteria?: Json
+          start_date: string
+          status?: Database["public"]["Enums"]["competition_status"]
+          team_based?: boolean
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          auto_enroll?: boolean
+          competition_type?: Database["public"]["Enums"]["competition_type"]
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          end_date?: string
+          id?: string
+          location_filter?: string[] | null
+          name?: string
+          prize_pool?: Json
+          rules?: Json
+          scoring_criteria?: Json
+          start_date?: string
+          status?: Database["public"]["Enums"]["competition_status"]
+          team_based?: boolean
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       commission_calculations: {
         Row: {
           approved_at: string | null
@@ -918,6 +1164,97 @@ export type Database = {
             columns: ["rep_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      competition_leaderboards: {
+        Row: {
+          competition_id: string
+          id: string
+          is_final: boolean
+          metrics: Json | null
+          rank: number
+          score: number
+          snapshot_at: string
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          competition_id: string
+          id?: string
+          is_final?: boolean
+          metrics?: Json | null
+          rank: number
+          score: number
+          snapshot_at?: string
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          competition_id?: string
+          id?: string
+          is_final?: boolean
+          metrics?: Json | null
+          rank?: number
+          score?: number
+          snapshot_at?: string
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "competition_leaderboards_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "canvass_competitions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      competition_participants: {
+        Row: {
+          competition_id: string
+          current_rank: number | null
+          current_score: number
+          enrolled_at: string
+          id: string
+          last_activity_at: string | null
+          metrics: Json | null
+          team_name: string | null
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          competition_id: string
+          current_rank?: number | null
+          current_score?: number
+          enrolled_at?: string
+          id?: string
+          last_activity_at?: string | null
+          metrics?: Json | null
+          team_name?: string | null
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          competition_id?: string
+          current_rank?: number | null
+          current_score?: number
+          enrolled_at?: string
+          id?: string
+          last_activity_at?: string | null
+          metrics?: Json | null
+          team_name?: string | null
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "competition_participants_competition_id_fkey"
+            columns: ["competition_id"]
+            isOneToOne: false
+            referencedRelation: "canvass_competitions"
             referencedColumns: ["id"]
           },
         ]
@@ -7669,6 +8006,62 @@ export type Database = {
         }
         Relationships: []
       }
+      user_achievements: {
+        Row: {
+          achievement_id: string
+          created_at: string
+          id: string
+          progress: number | null
+          progress_data: Json | null
+          reward_claimed_at: string | null
+          reward_sent_at: string | null
+          reward_status: Database["public"]["Enums"]["reward_status"] | null
+          reward_tracking: Json | null
+          tenant_id: string
+          unlocked_at: string | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          achievement_id: string
+          created_at?: string
+          id?: string
+          progress?: number | null
+          progress_data?: Json | null
+          reward_claimed_at?: string | null
+          reward_sent_at?: string | null
+          reward_status?: Database["public"]["Enums"]["reward_status"] | null
+          reward_tracking?: Json | null
+          tenant_id: string
+          unlocked_at?: string | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          achievement_id?: string
+          created_at?: string
+          id?: string
+          progress?: number | null
+          progress_data?: Json | null
+          reward_claimed_at?: string | null
+          reward_sent_at?: string | null
+          reward_status?: Database["public"]["Enums"]["reward_status"] | null
+          reward_tracking?: Json | null
+          tenant_id?: string
+          unlocked_at?: string | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_achievements_achievement_id_fkey"
+            columns: ["achievement_id"]
+            isOneToOne: false
+            referencedRelation: "canvass_achievements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_commission_assignments: {
         Row: {
           assigned_at: string | null
@@ -8407,6 +8800,8 @@ export type Database = {
       }
     }
     Enums: {
+      achievement_tier: "bronze" | "silver" | "gold" | "platinum" | "diamond"
+      achievement_type: "milestone" | "skill" | "streak" | "special"
       app_role: "master" | "admin" | "manager" | "rep" | "user"
       commission_structure_type:
         | "profit_split"
@@ -8418,6 +8813,8 @@ export type Database = {
         | "net_percent"
         | "tiered_margin"
         | "flat_fee"
+      competition_status: "draft" | "active" | "completed" | "cancelled"
+      competition_type: "daily" | "weekly" | "monthly" | "custom"
       contact_type:
         | "homeowner"
         | "contractor"
@@ -8475,6 +8872,14 @@ export type Database = {
         | "ready_for_approval"
         | "production"
         | "final_payment"
+      reward_status:
+        | "pending"
+        | "processing"
+        | "sent"
+        | "delivered"
+        | "claimed"
+        | "failed"
+      reward_type: "cash" | "gift_card" | "physical" | "points" | "badge"
       roof_type:
         | "shingle"
         | "metal"
@@ -8623,6 +9028,8 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
+      achievement_tier: ["bronze", "silver", "gold", "platinum", "diamond"],
+      achievement_type: ["milestone", "skill", "streak", "special"],
       app_role: ["master", "admin", "manager", "rep", "user"],
       commission_structure_type: [
         "profit_split",
@@ -8636,6 +9043,8 @@ export const Constants = {
         "tiered_margin",
         "flat_fee",
       ],
+      competition_status: ["draft", "active", "completed", "cancelled"],
+      competition_type: ["daily", "weekly", "monthly", "custom"],
       contact_type: [
         "homeowner",
         "contractor",
@@ -8700,6 +9109,15 @@ export const Constants = {
         "production",
         "final_payment",
       ],
+      reward_status: [
+        "pending",
+        "processing",
+        "sent",
+        "delivered",
+        "claimed",
+        "failed",
+      ],
+      reward_type: ["cash", "gift_card", "physical", "points", "badge"],
       roof_type: [
         "shingle",
         "metal",
