@@ -4504,6 +4504,62 @@ export type Database = {
           },
         ]
       }
+      payout_transactions: {
+        Row: {
+          amount: number
+          completed_at: string | null
+          created_at: string | null
+          currency: string | null
+          failure_reason: string | null
+          id: string
+          reward_id: string | null
+          status: string | null
+          stripe_payout_id: string | null
+          stripe_transfer_id: string | null
+          tenant_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          amount: number
+          completed_at?: string | null
+          created_at?: string | null
+          currency?: string | null
+          failure_reason?: string | null
+          id?: string
+          reward_id?: string | null
+          status?: string | null
+          stripe_payout_id?: string | null
+          stripe_transfer_id?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          amount?: number
+          completed_at?: string | null
+          created_at?: string | null
+          currency?: string | null
+          failure_reason?: string | null
+          id?: string
+          reward_id?: string | null
+          status?: string | null
+          stripe_payout_id?: string | null
+          stripe_transfer_id?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "payout_transactions_reward_id_fkey"
+            columns: ["reward_id"]
+            isOneToOne: false
+            referencedRelation: "achievement_rewards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pipeline_activities: {
         Row: {
           activity_type: string
@@ -7289,6 +7345,51 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      stripe_connect_accounts: {
+        Row: {
+          account_type: string | null
+          charges_enabled: boolean | null
+          created_at: string | null
+          details_submitted: boolean | null
+          id: string
+          metadata: Json | null
+          onboarding_complete: boolean | null
+          payouts_enabled: boolean | null
+          stripe_account_id: string
+          tenant_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          account_type?: string | null
+          charges_enabled?: boolean | null
+          created_at?: string | null
+          details_submitted?: boolean | null
+          id?: string
+          metadata?: Json | null
+          onboarding_complete?: boolean | null
+          payouts_enabled?: boolean | null
+          stripe_account_id: string
+          tenant_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          account_type?: string | null
+          charges_enabled?: boolean | null
+          created_at?: string | null
+          details_submitted?: boolean | null
+          id?: string
+          metadata?: Json | null
+          onboarding_complete?: boolean | null
+          payouts_enabled?: boolean | null
+          stripe_account_id?: string
+          tenant_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
       }
       subcontractor_capacity: {
         Row: {
