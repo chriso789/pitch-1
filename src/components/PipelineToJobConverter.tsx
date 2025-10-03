@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { JobApprovalDialog } from '@/components/JobApprovalDialog';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { 
@@ -34,6 +34,7 @@ export const PipelineToJobConverter: React.FC<PipelineToJobConverterProps> = ({
   pipelineEntries,
   onJobCreated
 }) => {
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [estimates, setEstimates] = useState<Record<string, EstimateData>>({});
   const { toast } = useToast();
@@ -224,21 +225,14 @@ export const PipelineToJobConverter: React.FC<PipelineToJobConverterProps> = ({
                   )}
                 </div>
                 
-                <JobApprovalDialog
-                  pipelineEntry={entry}
-                  onJobCreated={() => {
-                    toast({
-                      title: "Job Created",
-                      description: `Pipeline entry converted to job successfully.`,
-                    });
-                    onJobCreated();
-                  }}
+                <Button 
+                  size="sm" 
+                  className="gradient-primary flex-shrink-0"
+                  onClick={() => navigate(`/pipeline-entry/${entry.id}/review`)}
                 >
-                  <Button size="sm" className="gradient-primary flex-shrink-0">
-                    <ArrowRight className="h-4 w-4 mr-2" />
-                    Convert to Job
-                  </Button>
-                </JobApprovalDialog>
+                  <ArrowRight className="h-4 w-4 mr-2" />
+                  Convert to Job
+                </Button>
               </div>
             );
           })}

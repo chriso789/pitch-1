@@ -602,10 +602,14 @@ export const ContactJobsTab = ({ contact, jobs, pipelineEntries = [], onJobsUpda
                             variant="outline" 
                             className="flex-1 text-xs"
                             onClick={() => {
-                              toast({
-                                title: "Feature Coming Soon",
-                                description: `${nextAction.label} functionality will be available soon.`,
-                              });
+                              if (nextAction.action === 'convert' || job.originalStatus === 'ready_for_approval') {
+                                navigate(`/pipeline-entry/${job.pipeline_entry_id}/review`);
+                              } else {
+                                toast({
+                                  title: "Feature Coming Soon",
+                                  description: `${nextAction.label} functionality will be available soon.`,
+                                });
+                              }
                             }}
                           >
                             <nextAction.icon className="h-3 w-3 mr-1" />

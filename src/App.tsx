@@ -20,6 +20,7 @@ import DemoRequest from "./pages/DemoRequest";
 import NotFound from "./pages/NotFound";
 import Pipeline from "./features/pipeline/components/Pipeline";
 import QuickBooksCallback from "./pages/QuickBooksCallback";
+import PipelineEntryReview from "./pages/PipelineEntryReview";
 
 
 const queryClient = new QueryClient({
@@ -70,6 +71,7 @@ const App = () => {
               <Route path="/lead/:id" element={<LeadDetails />} />
               <Route path="/job/:id" element={<JobDetails />} />
               <Route path="/job-analytics" element={<JobAnalytics />} />
+              <Route path="/pipeline-entry/:id/review" element={<PipelineEntryReview />} />
         <Route path="/project/:id" element={<ProjectDetails />} />
         <Route path="/enhanced-measurement/:id" element={<EnhancedMeasurement />} />
               <Route path="/" element={<Index />} />
