@@ -129,8 +129,8 @@ const Login: React.FC = () => {
   };
 
   const validatePassword = (password: string) => {
-    const passwordRegex = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/;
-    return passwordRegex.test(password);
+    // More lenient password validation - minimum 6 characters
+    return password.length >= 6;
   };
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -204,7 +204,7 @@ const Login: React.FC = () => {
 
     if (!validatePassword(signupForm.password)) {
       setErrors({ 
-        password: 'Password must be at least 8 characters with uppercase, lowercase, number, and special character' 
+        password: 'Password must be at least 6 characters' 
       });
       return;
     }
@@ -545,7 +545,7 @@ const Login: React.FC = () => {
                     />
                     {errors.confirmPassword && <p className="text-sm text-destructive">{errors.confirmPassword}</p>}
                     <p className="text-xs text-muted-foreground">
-                      Must be 8+ characters with uppercase, lowercase, number, and special character
+                      Password must be at least 6 characters
                     </p>
                   </div>
 
