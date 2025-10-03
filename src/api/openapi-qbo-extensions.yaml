@@ -1,0 +1,275 @@
+openapi: 3.0.0
+info:
+  title: QuickBooks Online Worker API
+  version: 1.0.0
+  description: Unified QBO worker for sync operations, invoice creation, and online payment toggles
+
+servers:
+  - url: https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1
+    description: Production
+
+paths:
+  /qbo-worker:
+    post:
+      summary: Execute QBO worker action
+      description: Unified endpoint for all outbound QBO operations with action routing
+      security:
+        - bearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              oneOf:
+                - $ref: '#/components/schemas/SyncProjectRequest'
+                - $ref: '#/components/schemas/CreateInvoiceRequest'
+                - $ref: '#/components/schemas/TogglePaymentsRequest'
+                - $ref: '#/components/schemas/SetLocationRequest'
+      responses:
+        '200':
+          description: Action completed successfully
+          content:
+            application/json:
+              schema:
+                oneOf:
+                  - $ref: '#/components/schemas/SyncProjectResponse'
+                  - $ref: '#/components/schemas/CreateInvoiceResponse'
+                  - $ref: '#/components/schemas/TogglePaymentsResponse'
+                  - $ref: '#/components/schemas/SetLocationResponse'
+        '400':
+          description: Invalid request
+        '401':
+          description: Unauthorized
+        '500':
+          description: Server error
+
+components:
+  schemas:
+    SyncProjectRequest:
+      type: object
+      required:
+        - op
+        - args
+      properties:
+        op:
+          type: string
+          enum: [syncProject]
+        args:
+          type: object
+          required:
+            - tenant_id
+            - realm_id
+            - customer_id
+            - job_id
+            - job_name
+          properties:
+            tenant_id:
+              type: string
+              format: uuid
+            realm_id:
+              type: string
+            customer_id:
+              type: string
+            job_id:
+              type: string
+              format: uuid
+            job_name:
+              type: string
+            mode:
+              type: string
+              enum: [auto, force-fallback]
+              default: auto
+      example:
+        op: syncProject
+        args:
+          tenant_id: "123e4567-e89b-12d3-a456-426614174000"
+          realm_id: "123456789"
+          customer_id: "42"
+          job_id: "987e6543-e21b-45d3-a456-426614174999"
+          job_name: "Smith Roof Repair"
+          mode: auto
+
+    SyncProjectResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        qbo_project_id:
+          type: string
+          nullable: true
+        qbo_customer_id:
+          type: string
+        mode_used:
+          type: string
+          enum: [projects-api, sub-customer]
+        message:
+          type: string
+
+    CreateInvoiceRequest:
+      type: object
+      required:
+        - op
+        - args
+      properties:
+        op:
+          type: string
+          enum: [createInvoiceFromEstimates]
+        args:
+          type: object
+          required:
+            - tenant_id
+            - realm_id
+            - job_id
+            - customer_ref
+          properties:
+            tenant_id:
+              type: string
+              format: uuid
+            realm_id:
+              type: string
+            job_id:
+              type: string
+              format: uuid
+            customer_ref:
+              type: string
+            department_id:
+              type: string
+              nullable: true
+            lines_override:
+              type: array
+              items:
+                type: object
+                properties:
+                  job_type_code:
+                    type: string
+                  description:
+                    type: string
+                  amount:
+                    type: number
+                  class_id:
+                    type: string
+                    nullable: true
+      example:
+        op: createInvoiceFromEstimates
+        args:
+          tenant_id: "123e4567-e89b-12d3-a456-426614174000"
+          realm_id: "123456789"
+          job_id: "987e6543-e21b-45d3-a456-426614174999"
+          customer_ref: "42"
+          department_id: "10"
+          lines_override:
+            - job_type_code: "ROOF_REPAIR"
+              description: "Asphalt shingle replacement"
+              amount: 5000
+              class_id: "1"
+
+    CreateInvoiceResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        qbo_invoice_id:
+          type: string
+        doc_number:
+          type: string
+        total_amount:
+          type: number
+        message:
+          type: string
+
+    TogglePaymentsRequest:
+      type: object
+      required:
+        - op
+        - args
+      properties:
+        op:
+          type: string
+          enum: [toggleOnlinePayments]
+        args:
+          type: object
+          required:
+            - tenant_id
+            - realm_id
+            - qbo_invoice_id
+          properties:
+            tenant_id:
+              type: string
+              format: uuid
+            realm_id:
+              type: string
+            qbo_invoice_id:
+              type: string
+            allow_credit_card:
+              type: boolean
+              default: true
+            allow_ach:
+              type: boolean
+              default: true
+            send_email:
+              type: boolean
+              default: false
+      example:
+        op: toggleOnlinePayments
+        args:
+          tenant_id: "123e4567-e89b-12d3-a456-426614174000"
+          realm_id: "123456789"
+          qbo_invoice_id: "155"
+          allow_credit_card: true
+          allow_ach: true
+          send_email: true
+
+    TogglePaymentsResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        doc_number:
+          type: string
+        allow_credit_card:
+          type: boolean
+        allow_ach:
+          type: boolean
+        email_sent:
+          type: boolean
+        message:
+          type: string
+
+    SetLocationRequest:
+      type: object
+      required:
+        - op
+        - args
+      properties:
+        op:
+          type: string
+          enum: [setLocation]
+        args:
+          type: object
+          required:
+            - location_id
+          properties:
+            location_id:
+              type: string
+              format: uuid
+      example:
+        op: setLocation
+        args:
+          location_id: "456e7890-e12b-34d5-a678-426614174111"
+
+    SetLocationResponse:
+      type: object
+      properties:
+        success:
+          type: boolean
+        active_location_id:
+          type: string
+          format: uuid
+        message:
+          type: string
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

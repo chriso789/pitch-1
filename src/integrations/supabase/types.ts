@@ -3359,6 +3359,48 @@ export type Database = {
           },
         ]
       }
+      job_type_item_map: {
+        Row: {
+          created_at: string
+          id: string
+          is_active: boolean
+          job_type_code: string
+          qbo_class_id: string | null
+          qbo_class_name: string | null
+          qbo_item_id: string
+          qbo_item_name: string | null
+          realm_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          job_type_code: string
+          qbo_class_id?: string | null
+          qbo_class_name?: string | null
+          qbo_item_id: string
+          qbo_item_name?: string | null
+          realm_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          job_type_code?: string
+          qbo_class_id?: string | null
+          qbo_class_name?: string | null
+          qbo_item_id?: string
+          qbo_item_name?: string | null
+          realm_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       jobs: {
         Row: {
           address_street: string | null
@@ -6085,6 +6127,129 @@ export type Database = {
           },
         ]
       }
+      qbo_connections: {
+        Row: {
+          access_token: string
+          connected_at: string
+          created_at: string
+          expires_at: string
+          id: string
+          is_active: boolean
+          last_synced_at: string | null
+          qbo_company_name: string | null
+          realm_id: string
+          refresh_token: string
+          scopes: string[]
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          access_token: string
+          connected_at?: string
+          created_at?: string
+          expires_at: string
+          id?: string
+          is_active?: boolean
+          last_synced_at?: string | null
+          qbo_company_name?: string | null
+          realm_id: string
+          refresh_token: string
+          scopes?: string[]
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          access_token?: string
+          connected_at?: string
+          created_at?: string
+          expires_at?: string
+          id?: string
+          is_active?: boolean
+          last_synced_at?: string | null
+          qbo_company_name?: string | null
+          realm_id?: string
+          refresh_token?: string
+          scopes?: string[]
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      qbo_entity_mapping: {
+        Row: {
+          created_at: string
+          entity_id: string
+          entity_type: string
+          id: string
+          metadata: Json | null
+          qbo_entity_id: string
+          qbo_entity_type: string
+          realm_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          entity_id: string
+          entity_type: string
+          id?: string
+          metadata?: Json | null
+          qbo_entity_id: string
+          qbo_entity_type: string
+          realm_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          entity_id?: string
+          entity_type?: string
+          id?: string
+          metadata?: Json | null
+          qbo_entity_id?: string
+          qbo_entity_type?: string
+          realm_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      qbo_location_map: {
+        Row: {
+          created_at: string
+          department_name: string | null
+          id: string
+          is_active: boolean
+          location_id: string
+          qbo_department_id: string
+          realm_id: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          department_name?: string | null
+          id?: string
+          is_active?: boolean
+          location_id: string
+          qbo_department_id: string
+          realm_id: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          department_name?: string | null
+          id?: string
+          is_active?: boolean
+          location_id?: string
+          qbo_department_id?: string
+          realm_id?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       qbo_payment_history: {
         Row: {
           created_at: string | null
@@ -6182,6 +6347,48 @@ export type Database = {
           resolved_at?: string | null
           resolved_by?: string | null
           retry_count?: number | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
+      qbo_webhook_journal: {
+        Row: {
+          created_at: string
+          entities: Json
+          error_message: string | null
+          event_id: string | null
+          event_name: string
+          event_time: string
+          id: string
+          processed_at: string | null
+          processing_status: string | null
+          realm_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          entities?: Json
+          error_message?: string | null
+          event_id?: string | null
+          event_name: string
+          event_time: string
+          id?: string
+          processed_at?: string | null
+          processing_status?: string | null
+          realm_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          entities?: Json
+          error_message?: string | null
+          event_id?: string | null
+          event_name?: string
+          event_time?: string
+          id?: string
+          processed_at?: string | null
+          processing_status?: string | null
+          realm_id?: string
           tenant_id?: string
         }
         Relationships: []
@@ -8668,6 +8875,37 @@ export type Database = {
       api_estimate_status_get: {
         Args: { p_estimate_id: string }
         Returns: Json
+      }
+      api_qbo_map_job_invoice: {
+        Args: {
+          p_doc_number: string
+          p_job_id: string
+          p_qbo_invoice_id: string
+          p_realm_id: string
+        }
+        Returns: string
+      }
+      api_qbo_set_connection: {
+        Args: {
+          p_access_token: string
+          p_company_name?: string
+          p_expires_at: string
+          p_realm_id: string
+          p_refresh_token: string
+          p_scopes: string[]
+        }
+        Returns: string
+      }
+      api_qbo_update_invoice_mirror: {
+        Args: {
+          p_balance: number
+          p_doc_number: string
+          p_qbo_invoice_id: string
+          p_realm_id: string
+          p_status?: string
+          p_total: number
+        }
+        Returns: string
       }
       api_request_manager_approval: {
         Args: {

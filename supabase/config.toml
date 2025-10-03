@@ -1,5 +1,8 @@
 project_id = "alxelfrbjzkmtnsulcei"
 
+[functions.qbo-worker]
+verify_jwt = false
+
 [functions.stripe-create-payment-link]
 verify_jwt = true
 

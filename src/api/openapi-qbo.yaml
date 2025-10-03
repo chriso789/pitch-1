@@ -1,0 +1,146 @@
+openapi: 3.0.0
+info:
+  title: QuickBooks Online Integration API
+  version: 1.0.0
+  description: Core QBO integration endpoints for webhook processing, entity mapping, and AR mirroring
+
+servers:
+  - url: https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1
+    description: Production
+
+paths:
+  /qbo-webhook-handler:
+    post:
+      summary: Receive QBO webhook events
+      description: Processes incoming webhooks from QuickBooks Online with HMAC-SHA256 signature verification
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                eventNotifications:
+                  type: array
+                  items:
+                    $ref: '#/components/schemas/WebhookEvent'
+      responses:
+        '200':
+          description: Webhook received and queued for processing
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  success:
+                    type: boolean
+                  message:
+                    type: string
+        '401':
+          description: Invalid HMAC signature
+        '500':
+          description: Server error
+
+components:
+  schemas:
+    WebhookEvent:
+      type: object
+      properties:
+        realmId:
+          type: string
+          example: "123456789"
+        name:
+          type: string
+          enum: [CREATE, UPDATE, DELETE, MERGE]
+        id:
+          type: string
+        operation:
+          type: string
+        lastUpdated:
+          type: string
+          format: date-time
+        deletedId:
+          type: string
+        dataChangeEvent:
+          type: object
+          properties:
+            entities:
+              type: array
+              items:
+                type: object
+                properties:
+                  name:
+                    type: string
+                    example: "Payment"
+                  id:
+                    type: string
+                  operation:
+                    type: string
+                  lastUpdated:
+                    type: string
+
+    QBOEntityMapping:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        realm_id:
+          type: string
+        entity_type:
+          type: string
+          enum: [contact, project, job, estimate, invoice]
+        entity_id:
+          type: string
+          format: uuid
+        qbo_entity_id:
+          type: string
+        qbo_entity_type:
+          type: string
+          enum: [Customer, Project, Sub-Customer, Invoice, Estimate]
+        metadata:
+          type: object
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    InvoiceARMirror:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        realm_id:
+          type: string
+        qbo_invoice_id:
+          type: string
+        doc_number:
+          type: string
+        total_amount:
+          type: number
+          format: decimal
+        balance:
+          type: number
+          format: decimal
+        status:
+          type: string
+          enum: [Draft, Unpaid, Paid, Partial]
+        last_pulled_at:
+          type: string
+          format: date-time
+
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
