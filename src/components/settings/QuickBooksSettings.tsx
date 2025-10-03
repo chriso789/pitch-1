@@ -358,6 +358,18 @@ export default function QuickBooksSettings() {
         </CardContent>
       </Card>
 
+      {/* Invoice Creation Notice */}
+      {connection && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="pt-6">
+            <p className="text-sm text-muted-foreground">
+              <strong>Note:</strong> Invoice creation is now available directly on job detail pages. 
+              Navigate to any job and click the "QuickBooks" tab to create invoices from estimates.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Job Type Mappings */}
       {connection && (
         <Card>

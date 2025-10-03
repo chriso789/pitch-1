@@ -14,6 +14,7 @@ import { ProductionTimeline } from "@/components/job-details/ProductionTimeline"
 import { JobActivitySection } from "@/components/job-details/JobActivitySection";
 import { QuickBooksInvoiceCard } from "@/components/jobs/QuickBooksInvoiceCard";
 import { QuickBooksPaymentHistory } from "@/components/jobs/QuickBooksPaymentHistory";
+import { QuickBooksInvoiceManager } from "@/components/jobs/QuickBooksInvoiceManager";
 import { AuditTrailViewer } from "@/components/audit/AuditTrailViewer";
 import { CollapsibleDeveloperToolbar } from "@/shared/components/CollapsibleDeveloperToolbar";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
@@ -544,6 +545,10 @@ const JobDetails = () => {
             <FileText className="h-4 w-4" />
             <span className="hidden sm:inline">Invoices</span>
           </TabsTrigger>
+          <TabsTrigger value="quickbooks" className="flex items-center space-x-1">
+            <DollarSign className="h-4 w-4" />
+            <span className="hidden sm:inline">QBO</span>
+          </TabsTrigger>
           <TabsTrigger value="photos" className="flex items-center space-x-1">
             <Camera className="h-4 w-4" />
             <span className="hidden sm:inline">Photos</span>
@@ -649,6 +654,14 @@ const JobDetails = () => {
               remainingBalance: financials.remainingBalance,
               projectType: job.name
             }}
+          />
+        </TabsContent>
+
+        <TabsContent value="quickbooks">
+          <QuickBooksInvoiceManager 
+            jobId={id!} 
+            tenantId={job.tenant_id!}
+            contactId={job.contact?.id || ''}
           />
         </TabsContent>
 

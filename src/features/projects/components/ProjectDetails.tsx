@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { BudgetTracker } from "./BudgetTracker";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
 import { 
   DollarSign, 
   FileText, 
@@ -24,9 +25,9 @@ import {
   Calculator,
   Upload,
   Target,
-  BarChart3
+  BarChart3,
+  RefreshCw
 } from "lucide-react";
-import { toast } from "@/components/ui/use-toast";
 
 interface ProjectDetailsProps {
   projectId: string;
@@ -51,14 +52,91 @@ interface BudgetItem {
 }
 
 const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
+  const { toast } = useToast();
   const [project, setProject] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [budgetItems, setBudgetItems] = useState<BudgetItem[]>([]);
   const [commission, setCommission] = useState<any>(null);
+  const [syncingToQBO, setSyncingToQBO] = useState(false);
+  const [qboConnection, setQboConnection] = useState<any>(null);
 
   useEffect(() => {
     fetchProjectDetails();
+    checkQBOConnection();
   }, [projectId]);
+
+  const checkQBOConnection = async () => {
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', (await supabase.auth.getUser()).data.user?.id)
+        .single();
+
+      if (!profile) return;
+
+      const { data } = await supabase
+        .from('qbo_connections' as any)
+        .select('*')
+        .eq('tenant_id', profile.tenant_id)
+        .eq('is_active', true)
+        .maybeSingle();
+
+      setQboConnection(data);
+    } catch (error) {
+      console.error('Error checking QBO connection:', error);
+    }
+  };
+
+  const handleSyncToQBO = async () => {
+    if (!qboConnection) {
+      toast({
+        title: "QuickBooks Not Connected",
+        description: "Please connect QuickBooks in Settings first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSyncingToQBO(true);
+    try {
+      const contact = project.pipeline_entries?.contacts;
+      
+      const { data, error } = await supabase.functions.invoke('qbo-worker', {
+        body: {
+          op: 'syncProject',
+          args: {
+            tenant_id: project.tenant_id,
+            realm_id: qboConnection.realm_id,
+            customer_id: contact?.id,
+            job_id: projectId,
+            job_name: project.name,
+            mode: 'auto'
+          }
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast({
+          title: "Project Synced",
+          description: "Project has been synced to QuickBooks successfully",
+        });
+        await fetchProjectDetails();
+      } else {
+        throw new Error(data?.message || "Failed to sync project");
+      }
+    } catch (error: any) {
+      toast({
+        title: "Sync Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setSyncingToQBO(false);
+    }
+  };
 
   const fetchProjectDetails = async () => {
     try {
@@ -155,9 +233,28 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
             Project #{project.project_number}
           </p>
         </div>
-        <Badge variant="outline" className="bg-status-project text-white">
-          {project.status}
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Badge variant="outline" className="bg-status-project text-white">
+            {project.status}
+          </Badge>
+          {qboConnection && (
+            <Button 
+              onClick={handleSyncToQBO}
+              disabled={syncingToQBO}
+              variant="outline"
+              size="sm"
+            >
+              {syncingToQBO ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Syncing...
+                </>
+              ) : (
+                "Sync to QBO"
+              )}
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Quick Stats */}
