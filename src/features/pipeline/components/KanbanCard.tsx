@@ -125,7 +125,12 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   // Get last name only
   const getLastName = () => {
     if (!contact) return 'Unknown';
-    return contact.last_name || contact.first_name || 'Unknown';
+    const lastName = contact.last_name || contact.first_name || 'Unknown';
+    // Show assignment status for entries without assigned_to
+    if (!entry.assigned_to) {
+      return `${lastName}`;
+    }
+    return lastName;
   };
 
   // Get communication emoji based on recency

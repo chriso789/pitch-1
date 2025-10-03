@@ -191,11 +191,19 @@ const Pipeline = () => {
       let filteredData = data || [];
       
       if (filters.salesRep && filters.salesRep !== 'all') {
-        filteredData = filteredData.filter(entry => entry.assigned_to === filters.salesRep);
+        if (filters.salesRep === 'unassigned') {
+          // Show only unassigned entries
+          filteredData = filteredData.filter(entry => !entry.assigned_to);
+        } else {
+          // Show entries assigned to specific rep
+          filteredData = filteredData.filter(entry => entry.assigned_to === filters.salesRep);
+        }
       }
+      // If 'all' is selected, include both assigned and unassigned entries (no filter)
 
       // Extract unique sales reps for filter options
       const uniqueRepsMap = new Map();
+      let hasUnassigned = false;
       
       filteredData.forEach(entry => {
         if (entry.profiles) {
@@ -203,10 +211,16 @@ const Pipeline = () => {
             id: entry.profiles.id,
             name: `${entry.profiles.first_name} ${entry.profiles.last_name}`
           });
+        } else if (!entry.assigned_to) {
+          hasUnassigned = true;
         }
       });
       
-      setSalesReps(Array.from(uniqueRepsMap.values()));
+      const repsArray = Array.from(uniqueRepsMap.values());
+      if (hasUnassigned) {
+        repsArray.push({ id: 'unassigned', name: 'Unassigned' });
+      }
+      setSalesReps(repsArray);
       setLocations([]);
 
       // Group data by status and calculate stage totals
