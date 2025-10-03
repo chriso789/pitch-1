@@ -82,6 +82,37 @@ Deno.serve(async (req) => {
         break;
       }
 
+      // Prize distribution events
+      case 'transfer.created': {
+        const transfer = event.data.object as Stripe.Transfer;
+        await handleTransferCreated(supabase, transfer, tenantId);
+        break;
+      }
+
+      case 'transfer.paid': {
+        const transfer = event.data.object as Stripe.Transfer;
+        await handleTransferPaid(supabase, transfer, tenantId);
+        break;
+      }
+
+      case 'transfer.failed': {
+        const transfer = event.data.object as Stripe.Transfer;
+        await handleTransferFailed(supabase, transfer, tenantId);
+        break;
+      }
+
+      case 'payout.paid': {
+        const payout = event.data.object as Stripe.Payout;
+        await handlePayoutPaid(supabase, payout);
+        break;
+      }
+
+      case 'account.updated': {
+        const account = event.data.object as Stripe.Account;
+        await handleAccountUpdated(supabase, account);
+        break;
+      }
+
       default:
         console.log('Unhandled event type:', event.type);
     }
@@ -225,4 +256,113 @@ async function handleDisputeCreated(
 
     console.log('Payment disputed:', payment.id);
   }
+}
+
+async function handleTransferCreated(
+  supabase: any,
+  transfer: Stripe.Transfer,
+  tenantId: string
+) {
+  console.log('Transfer created:', transfer.id);
+
+  await supabase
+    .from('payout_transactions')
+    .update({
+      status: 'processing',
+    })
+    .eq('stripe_transfer_id', transfer.id);
+}
+
+async function handleTransferPaid(
+  supabase: any,
+  transfer: Stripe.Transfer,
+  tenantId: string
+) {
+  console.log('Transfer paid:', transfer.id);
+
+  const { data: payoutTransaction } = await supabase
+    .from('payout_transactions')
+    .update({
+      status: 'completed',
+      completed_at: new Date().toISOString(),
+    })
+    .eq('stripe_transfer_id', transfer.id)
+    .select()
+    .single();
+
+  if (payoutTransaction) {
+    await supabase
+      .from('achievement_rewards')
+      .update({
+        status: 'completed',
+        delivered_at: new Date().toISOString(),
+      })
+      .eq('id', payoutTransaction.reward_id);
+
+    console.log('Updated reward status to completed:', payoutTransaction.reward_id);
+  }
+}
+
+async function handleTransferFailed(
+  supabase: any,
+  transfer: Stripe.Transfer,
+  tenantId: string
+) {
+  console.log('Transfer failed:', transfer.id, transfer.failure_message);
+
+  const { data: payoutTransaction } = await supabase
+    .from('payout_transactions')
+    .update({
+      status: 'failed',
+      failure_reason: transfer.failure_message || 'Transfer failed',
+    })
+    .eq('stripe_transfer_id', transfer.id)
+    .select()
+    .single();
+
+  if (payoutTransaction) {
+    await supabase
+      .from('achievement_rewards')
+      .update({
+        status: 'pending',
+        notes: `Transfer failed: ${transfer.failure_message}`,
+      })
+      .eq('id', payoutTransaction.reward_id);
+  }
+}
+
+async function handlePayoutPaid(
+  supabase: any,
+  payout: Stripe.Payout
+) {
+  console.log('Payout paid to bank account:', payout.id);
+
+  await supabase
+    .from('payout_transactions')
+    .update({
+      stripe_payout_id: payout.id,
+    })
+    .eq('stripe_transfer_id', payout.id);
+}
+
+async function handleAccountUpdated(
+  supabase: any,
+  account: Stripe.Account
+) {
+  console.log('Stripe account updated:', account.id);
+
+  await supabase
+    .from('stripe_connect_accounts')
+    .update({
+      onboarding_complete: account.details_submitted || false,
+      payouts_enabled: account.payouts_enabled || false,
+      charges_enabled: account.charges_enabled || false,
+      details_submitted: account.details_submitted || false,
+      metadata: {
+        capabilities: account.capabilities,
+        requirements: account.requirements,
+      },
+      updated_at: new Date().toISOString(),
+    })
+    .eq('stripe_account_id', account.id);
 }

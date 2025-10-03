@@ -140,3 +140,6 @@ verify_jwt = true
 
 [functions.stripe-connect-account-status]
 verify_jwt = true
+
+[functions.stripe-distribute-prize]
+verify_jwt = true
