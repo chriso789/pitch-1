@@ -53,7 +53,6 @@ const PipelineEntryReview = () => {
   const [entry, setEntry] = useState<PipelineEntryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [converting, setConverting] = useState(false);
-  const [activeSection, setActiveSection] = useState('pipeline');
   const [eligibility, setEligibility] = useState<EligibilityChecks>({
     hasEstimate: false,
     hasDocuments: false,
@@ -219,10 +218,7 @@ const PipelineEntryReview = () => {
   }
 
   return (
-    <GlobalLayout 
-      activeSection={activeSection} 
-      onSectionChange={setActiveSection}
-    >
+    <GlobalLayout>
       <div className="max-w-7xl mx-auto space-y-6">
         {/* Header */}
         <div className="flex items-start justify-between">

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { Link, useLocation } from "react-router-dom";
 import { 
   Home, 
   Users, 
@@ -28,15 +29,32 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 
 interface SidebarProps {
-  activeSection: string;
-  onSectionChange: (section: string) => void;
   isCollapsed?: boolean;
 }
 
-const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: SidebarProps) => {
+const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
   const { toast } = useToast();
+  const location = useLocation();
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [currentTenant, setCurrentTenant] = useState<any>(null);
+  
+  // Derive active section from current route
+  const getActiveSection = () => {
+    const path = location.pathname;
+    if (path === '/' || path.startsWith('/dashboard')) return 'dashboard';
+    if (path.startsWith('/pipeline')) return 'pipeline';
+    if (path.startsWith('/contact') || path.startsWith('/lead') || path.startsWith('/client')) return 'client-list';
+    if (path.startsWith('/production')) return 'production';
+    if (path.startsWith('/calendar')) return 'calendar';
+    if (path.startsWith('/storm-canvass')) return 'storm-canvass';
+    if (path.startsWith('/dialer')) return 'dialer';
+    if (path.startsWith('/smartdocs')) return 'smartdocs';
+    if (path.startsWith('/settings')) return 'settings';
+    if (path.startsWith('/help')) return 'help';
+    return 'dashboard';
+  };
+  
+  const activeSection = getActiveSection();
 
   useEffect(() => {
     loadUserInfo();
@@ -127,48 +145,56 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
     {
       name: "Dashboard",
       href: "dashboard",
+      path: "/",
       icon: Home,
       description: "Overview & metrics"
     },
     {
       name: "Pipeline",
-      href: "pipeline", 
+      href: "pipeline",
+      path: "/pipeline",
       icon: TrendingUp,
       description: "Drag & drop sales pipeline"
     },
     {
       name: "CLIENT LIST",
       href: "client-list",
+      path: "/client-list",
       icon: Users,
       description: "Contacts & jobs unified"
     },
     {
       name: "Production",
       href: "production",
+      path: "/production",
       icon: Wrench,
       description: "Job tracking"
     },
     {
       name: "Calendar",
       href: "calendar",
+      path: "/calendar",
       icon: Calendar,
       description: "Schedule & appointments"
     },
     {
       name: "Storm Canvass Pro",
       href: "storm-canvass",
+      path: "/storm-canvass",
       icon: CloudRain,
       description: "Lead generation & canvassing"
     },
     {
       name: "Dialer",
       href: "dialer",
+      path: "/dialer",
       icon: Phone,
       description: "AI calling system"
     },
     {
       name: "Smart Docs",
       href: "smartdocs",
+      path: "/smartdocs",
       icon: BookOpen,
       description: "Document templates & library"
     }
@@ -178,12 +204,14 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
     {
       name: "Settings",
       href: "settings",
+      path: "/settings",
       icon: Settings,
       description: "System configuration"
     },
     {
       name: "Help",
       href: "help",
+      path: "/help",
       icon: HelpCircle,
       description: "Support & documentation"
     }
@@ -215,9 +243,9 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
       <div className="flex-1 p-4">
         <nav className="space-y-2">
           {navigation.map((item) => (
-            <button
+            <Link
               key={item.href}
-              onClick={() => onSectionChange(item.href)}
+              to={item.path}
               className={cn(
                 "w-full flex items-center rounded-lg text-left transition-smooth group",
                 isCollapsed ? "px-2 py-2.5 justify-center" : "gap-3 px-3 py-2.5",
@@ -246,7 +274,7 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
                   </div>
                 </div>
               )}
-            </button>
+            </Link>
           ))}
         </nav>
       </div>
@@ -255,9 +283,9 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
       <div className="p-4 border-t border-border">
         <nav className="space-y-2">
           {bottomNavigation.map((item) => (
-            <button
+            <Link
               key={item.href}
-              onClick={() => onSectionChange(item.href)}
+              to={item.path}
               className={cn(
                 "w-full flex items-center rounded-lg text-left transition-smooth group",
                 isCollapsed ? "px-2 py-2.5 justify-center" : "gap-3 px-3 py-2.5",
@@ -286,7 +314,7 @@ const Sidebar = ({ activeSection, onSectionChange, isCollapsed = false }: Sideba
                   </div>
                 </div>
               )}
-            </button>
+            </Link>
           ))}
         </nav>
       </div>

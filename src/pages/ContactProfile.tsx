@@ -42,7 +42,6 @@ const ContactProfile = () => {
   const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState("details");
-  const [activeSection, setActiveSection] = useState('client-list');
   const [selectedPipelineEntry, setSelectedPipelineEntry] = useState<any>(null);
 
   useEffect(() => {
@@ -127,10 +126,7 @@ const ContactProfile = () => {
 
   if (loading) {
     return (
-      <GlobalLayout 
-        activeSection={activeSection} 
-        onSectionChange={setActiveSection}
-      >
+      <GlobalLayout>
         <div className="flex items-center justify-center h-64">
           <Loader2 className="h-8 w-8 animate-spin" />
           <span className="ml-2">Loading contact profile...</span>
@@ -141,10 +137,7 @@ const ContactProfile = () => {
 
   if (!contact) {
     return (
-      <GlobalLayout 
-        activeSection={activeSection} 
-        onSectionChange={setActiveSection}
-      >
+      <GlobalLayout>
         <div className="flex flex-col items-center justify-center h-64">
           <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
           <h2 className="text-xl font-semibold mb-2">Contact Not Found</h2>
@@ -155,10 +148,7 @@ const ContactProfile = () => {
   }
 
   return (
-    <GlobalLayout 
-      activeSection={activeSection} 
-      onSectionChange={setActiveSection}
-    >
+    <GlobalLayout>
       <div className="container mx-auto p-6 space-y-6">
         {/* Header Section */}
         <div className="flex items-center gap-4 mb-8">

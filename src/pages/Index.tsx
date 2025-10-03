@@ -311,8 +311,6 @@ const Index = () => {
       {/* Collapsible Sidebar */}
       <div className="relative">
         <Sidebar 
-          activeSection={activeSection} 
-          onSectionChange={setActiveSection}
           isCollapsed={sidebarCollapsed}
         />
         {/* Sidebar Toggle Button */}

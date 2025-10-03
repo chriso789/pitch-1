@@ -7,10 +7,9 @@ import { JobAnalyticsDashboard } from "@/components/JobAnalyticsDashboard";
 
 const JobAnalytics = () => {
   const navigate = useNavigate();
-  const [activeSection, setActiveSection] = React.useState('jobs');
 
   return (
-    <GlobalLayout activeSection={activeSection} onSectionChange={setActiveSection}>
+    <GlobalLayout>
       <div className="space-y-6">
         <div className="flex items-center gap-4">
           <Button

@@ -70,7 +70,6 @@ const JobDetails = () => {
   const [budgetItems, setBudgetItems] = useState([]);
   const [productionStage, setProductionStage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
-  const [activeSection, setActiveSection] = useState('jobs');
   const [financials, setFinancials] = useState<FinancialSummary>({
     totalBudget: 0,
     actualCosts: 0,
@@ -306,10 +305,7 @@ const JobDetails = () => {
   }
 
   return (
-    <GlobalLayout 
-      activeSection={activeSection} 
-      onSectionChange={setActiveSection}
-    >
+    <GlobalLayout>
       <div className="max-w-7xl mx-auto space-y-6">
       {/* Header with Contact Card */}
       <div className="flex items-start justify-between">

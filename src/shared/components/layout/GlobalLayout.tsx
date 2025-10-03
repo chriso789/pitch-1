@@ -4,18 +4,13 @@ import Sidebar from "./Sidebar";
 
 interface GlobalLayoutProps {
   children: React.ReactNode;
-  activeSection: string;
-  onSectionChange: (section: string) => void;
 }
 
-export const GlobalLayout = ({ children, activeSection, onSectionChange }: GlobalLayoutProps) => {
+export const GlobalLayout = ({ children }: GlobalLayoutProps) => {
   return (
     <div className="flex min-h-screen w-full">
       <CollapsibleSidebar>
-        <Sidebar 
-          activeSection={activeSection} 
-          onSectionChange={onSectionChange}
-        />
+        <Sidebar />
       </CollapsibleSidebar>
       <main className="flex-1 overflow-auto">
         <div className="p-6">
