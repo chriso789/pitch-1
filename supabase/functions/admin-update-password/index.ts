@@ -83,15 +83,32 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error("Could not find target user profile");
     }
 
+    // Define role hierarchy
+    const roleHierarchy: Record<string, number> = {
+      'master': 5,
+      'admin': 4,
+      'manager': 3,
+      'sales_rep': 2,
+      'technician': 2,
+      'user': 1
+    };
+
+    const requestingRoleLevel = roleHierarchy[requestingProfile.role] || 0;
+    const targetRoleLevel = roleHierarchy[targetProfile.role] || 0;
+
     // Check permissions - allow if:
     // 1. User is updating their own password
-    // 2. User is master role
-    // 3. User is Chris O'Brien variation with manager+ role updating another Chris O'Brien variation with manager+ role
+    // 2. User is master role (can update anyone)
+    // 3. User is admin role (can update manager, sales_rep, technician, user)
+    // 4. User is manager role (can update sales_rep, technician, user)
+    // 5. User is Chris O'Brien variation with manager+ role updating another Chris O'Brien variation
     const canUpdate = (
       requestingUser.id === userId || // Own password
-      requestingProfile.role === 'master' || // Master role
+      requestingProfile.role === 'master' || // Master can update anyone
+      (requestingProfile.role === 'admin' && targetRoleLevel < 4) || // Admin can update below admin
+      (requestingProfile.role === 'manager' && targetRoleLevel <= 2) || // Manager can update reps/techs
       (
-        // Chris O'Brien variations with manager+ role
+        // Chris O'Brien variations with manager+ role (special case)
         (
           requestingProfile.first_name?.toLowerCase().includes('chris') && 
           requestingProfile.last_name?.toLowerCase().includes('brien') &&
