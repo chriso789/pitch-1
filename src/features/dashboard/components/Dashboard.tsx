@@ -210,7 +210,10 @@ const Dashboard = () => {
           </CardContent>
         </Card>
         
-        <Card className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-success">
+        <Card 
+          className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-success"
+          onClick={() => navigate('/production')}
+        >
           <CardContent className="p-6 text-center text-white">
             <Wrench className="h-8 w-8 mx-auto mb-2" />
             <h3 className="font-semibold mb-1">Schedule Work</h3>
