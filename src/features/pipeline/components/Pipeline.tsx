@@ -1029,7 +1029,7 @@ const Pipeline = () => {
                 const stageEntries = (pipelineData[stage.key] || []).map(transformToKanbanEntry);
                 
                 return (
-                  <div key={stage.key} className="min-w-[320px]">
+                  <div key={stage.key} className="min-w-[160px]">
                     <KanbanColumn
                       id={stage.key}
                       title={stage.name}
