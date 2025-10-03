@@ -184,12 +184,10 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
       className={cn(
         "w-full min-w-0 max-w-full min-h-[70px] max-h-[90px]",
         "shadow-soft border-0 hover:shadow-medium transition-smooth",
-        "cursor-grab active:cursor-grabbing",
+        "cursor-pointer",
         "relative group overflow-hidden",
         isDragging || isSortableDragging ? 'shadow-lg border-primary' : ''
       )}
-      {...attributes}
-      {...listeners}
       onClick={handleCardClick}
       role="button"
       tabIndex={0}
@@ -292,11 +290,17 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
           </AlertDialog>
         )}
 
-        {/* Drag Handle (hidden, accessible via keyboard/screen reader) */}
-        <GripVertical 
-          className="absolute top-0 right-0 h-2 w-2 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity"
-          aria-hidden="true"
-        />
+        {/* Drag Handle */}
+        <div
+          {...attributes}
+          {...listeners}
+          className="absolute top-0 right-0 h-5 w-5 flex items-center justify-center cursor-grab active:cursor-grabbing opacity-0 group-hover:opacity-100 transition-opacity hover:bg-muted/20 rounded"
+          aria-label="Drag to move card"
+        >
+          <GripVertical 
+            className="h-3 w-3 text-muted-foreground"
+          />
+        </div>
       </CardContent>
     </Card>
   );

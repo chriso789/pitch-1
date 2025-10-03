@@ -311,6 +311,11 @@ const Pipeline = () => {
 
     if (!movedEntry) return;
 
+    // Store original state for potential revert
+    const originalPipelineData = { ...pipelineData };
+    const originalFromArray = Array.isArray(pipelineData[fromStatus]) ? [...pipelineData[fromStatus]] : [];
+    const originalToArray = Array.isArray(pipelineData[newStatus]) ? [...pipelineData[newStatus]] : [];
+
     // Optimistically update UI
     const newPipelineData = { ...pipelineData };
     const fromArray = Array.isArray(newPipelineData[fromStatus]) ? newPipelineData[fromStatus] : [];
@@ -334,12 +339,10 @@ const Pipeline = () => {
 
       // Check if reason is required
       if (data?.requiresReason) {
-        // Revert optimistic update
-        const revertedData = { ...pipelineData };
-        const revertFromArray = Array.isArray(revertedData[newStatus]) ? revertedData[newStatus] : [];
-        const revertToArray = Array.isArray(revertedData[fromStatus]) ? revertedData[fromStatus] : [];
-        revertedData[newStatus] = revertFromArray.filter((e: any) => e.id !== entryId);
-        revertedData[fromStatus] = [...revertToArray, movedEntry];
+        // Revert optimistic update using original state
+        const revertedData = { ...originalPipelineData };
+        revertedData[fromStatus] = originalFromArray;
+        revertedData[newStatus] = originalToArray;
         setPipelineData(revertedData);
 
         // Open reason dialog
@@ -353,12 +356,10 @@ const Pipeline = () => {
       }
 
       if (data.error) {
-        // Revert optimistic update
-        const revertedData = { ...pipelineData };
-        const revertFromArray = Array.isArray(revertedData[newStatus]) ? revertedData[newStatus] : [];
-        const revertToArray = Array.isArray(revertedData[fromStatus]) ? revertedData[fromStatus] : [];
-        revertedData[newStatus] = revertFromArray.filter((e: any) => e.id !== entryId);
-        revertedData[fromStatus] = [...revertToArray, movedEntry];
+        // Revert optimistic update using original state
+        const revertedData = { ...originalPipelineData };
+        revertedData[fromStatus] = originalFromArray;
+        revertedData[newStatus] = originalToArray;
         setPipelineData(revertedData);
 
         toast({
@@ -388,12 +389,10 @@ const Pipeline = () => {
     } catch (error) {
       console.error('Error moving pipeline entry:', error);
       
-      // Revert optimistic update
-      const revertedData = { ...pipelineData };
-      const revertFromArray = Array.isArray(revertedData[newStatus]) ? revertedData[newStatus] : [];
-      const revertToArray = Array.isArray(revertedData[fromStatus]) ? revertedData[fromStatus] : [];
-      revertedData[newStatus] = revertFromArray.filter((e: any) => e.id !== entryId);
-      revertedData[fromStatus] = [...revertToArray, movedEntry];
+      // Revert optimistic update using original state
+      const revertedData = { ...originalPipelineData };
+      revertedData[fromStatus] = originalFromArray;
+      revertedData[newStatus] = originalToArray;
       setPipelineData(revertedData);
 
       toast({

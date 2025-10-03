@@ -252,6 +252,11 @@ const KanbanPipeline = () => {
     // Capture audit context before change
     await auditService.captureAuditContext();
 
+    // Store original state for potential revert
+    const originalPipelineData = { ...pipelineData };
+    const originalFromJobs = [...pipelineData[fromStatus]];
+    const originalToJobs = [...pipelineData[newStatus]];
+
     // Optimistically update UI
     const newPipelineData = { ...pipelineData };
     newPipelineData[fromStatus] = newPipelineData[fromStatus].filter(j => j.id !== entryId);
@@ -260,7 +265,7 @@ const KanbanPipeline = () => {
 
     // Log the change
     await auditService.logChange(
-      'jobs',
+      'pipeline_entries',
       'UPDATE',
       entryId,
       { status: fromStatus },
@@ -268,9 +273,9 @@ const KanbanPipeline = () => {
     );
 
     try {
-      const { data, error } = await supabase.functions.invoke('job-drag-handler', {
+      const { data, error } = await supabase.functions.invoke('pipeline-drag-handler', {
         body: {
-          jobId: entryId,
+          pipelineEntryId: entryId,
           newStatus: newStatus,
           fromStatus: fromStatus
         }
@@ -281,10 +286,10 @@ const KanbanPipeline = () => {
       }
 
       if (data.error) {
-        // Revert optimistic update
-        const revertedData = { ...pipelineData };
-        revertedData[newStatus] = revertedData[newStatus].filter(j => j.id !== entryId);
-        revertedData[fromStatus] = [...revertedData[fromStatus], movedJob];
+        // Revert optimistic update using original state
+        const revertedData = { ...originalPipelineData };
+        revertedData[fromStatus] = originalFromJobs;
+        revertedData[newStatus] = originalToJobs;
         setPipelineData(revertedData);
 
         toast({
@@ -297,7 +302,7 @@ const KanbanPipeline = () => {
 
       toast({
         title: "Success",
-        description: data.message || "Job moved successfully",
+        description: data.message || "Pipeline entry moved successfully",
       });
 
       // Refresh data to ensure consistency
@@ -306,15 +311,15 @@ const KanbanPipeline = () => {
     } catch (error) {
       console.error('Error moving pipeline entry:', error);
       
-      // Revert optimistic update
-      const revertedData = { ...pipelineData };
-      revertedData[newStatus] = revertedData[newStatus].filter(j => j.id !== entryId);
-      revertedData[fromStatus] = [...revertedData[fromStatus], movedJob];
+      // Revert optimistic update using original state
+      const revertedData = { ...originalPipelineData };
+      revertedData[fromStatus] = originalFromJobs;
+      revertedData[newStatus] = originalToJobs;
       setPipelineData(revertedData);
 
       toast({
         title: "Error",
-        description: "Failed to move job",
+        description: "Failed to move pipeline entry",
         variant: "destructive",
       });
     }
