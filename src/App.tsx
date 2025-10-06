@@ -18,9 +18,18 @@ import ProjectDetails from "./pages/ProjectDetails";
 import EnhancedMeasurement from "./pages/EnhancedMeasurement";
 import DemoRequest from "./pages/DemoRequest";
 import NotFound from "./pages/NotFound";
-import Pipeline from "./features/pipeline/components/Pipeline";
 import QuickBooksCallback from "./pages/QuickBooksCallback";
 import PipelineEntryReview from "./pages/PipelineEntryReview";
+import Dashboard from "./pages/Dashboard";
+import Pipeline from "./pages/Pipeline";
+import Production from "./pages/Production";
+import ClientList from "./pages/ClientList";
+import Calendar from "./pages/Calendar";
+import StormCanvass from "./pages/StormCanvass";
+import Dialer from "./pages/Dialer";
+import SmartDocs from "./pages/SmartDocs";
+import Settings from "./pages/Settings";
+import Help from "./pages/Help";
 
 
 const queryClient = new QueryClient({
@@ -67,13 +76,27 @@ const App = () => {
               <Route path="/demo-request" element={<DemoRequest />} />
               <Route path="/quickbooks/callback" element={<QuickBooksCallback />} />
               
+              {/* Main application routes */}
+              <Route path="/dashboard" element={<Dashboard />} />
+              <Route path="/pipeline" element={<Pipeline />} />
+              <Route path="/production" element={<Production />} />
+              <Route path="/client-list" element={<ClientList />} />
+              <Route path="/calendar" element={<Calendar />} />
+              <Route path="/storm-canvass" element={<StormCanvass />} />
+              <Route path="/dialer" element={<Dialer />} />
+              <Route path="/smartdocs" element={<SmartDocs />} />
+              <Route path="/settings" element={<Settings />} />
+              <Route path="/help" element={<Help />} />
+              
+              {/* Detail pages */}
               <Route path="/contact/:id" element={<ContactProfile />} />
               <Route path="/lead/:id" element={<LeadDetails />} />
               <Route path="/job/:id" element={<JobDetails />} />
               <Route path="/job-analytics" element={<JobAnalytics />} />
               <Route path="/pipeline-entry/:id/review" element={<PipelineEntryReview />} />
-        <Route path="/project/:id" element={<ProjectDetails />} />
-        <Route path="/enhanced-measurement/:id" element={<EnhancedMeasurement />} />
+              <Route path="/project/:id" element={<ProjectDetails />} />
+              <Route path="/enhanced-measurement/:id" element={<EnhancedMeasurement />} />
+              
               <Route path="/" element={<Index />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
