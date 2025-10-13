@@ -20,7 +20,8 @@ import {
   BarChart,
   Target,
   Mail,
-  CloudRain
+  CloudRain,
+  Presentation
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -197,6 +198,13 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
       path: "/smartdocs",
       icon: BookOpen,
       description: "Document templates & library"
+    },
+    {
+      name: "Presentations",
+      href: "presentations",
+      path: "/presentations",
+      icon: Presentation,
+      description: "Sales presentation builder"
     }
   ];
 
