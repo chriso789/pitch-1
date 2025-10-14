@@ -75,42 +75,25 @@ serve(async (req) => {
       });
     }
 
-    // Generate job number
-    const { data: jobNumberResult } = await supabase.rpc('generate_job_number');
-    const jobNumber = jobNumberResult || `JOB-${Date.now()}`;
-
-    // Create job record
-    const jobData = {
+    // Create project record (for Production board)
+    const projectData = {
       tenant_id: profile.tenant_id,
-      contact_id: pipelineEntry.contact_id,
       pipeline_entry_id: pipelineEntryId,
-      job_number: jobNumber,
       name: jobDetails?.name || `${pipelineEntry.contacts?.first_name} ${pipelineEntry.contacts?.last_name} - ${pipelineEntry.contacts?.address_street}`,
-      description: jobDetails?.description || `Job created from pipeline entry for ${pipelineEntry.roof_type} project`,
-      status: 'production',
-      priority: jobDetails?.priority || 'medium',
-      created_by: user.id,
-      metadata: {
-        ...jobDetails?.metadata,
-        roof_type: pipelineEntry.roof_type,
-        probability_percent: pipelineEntry.probability_percent,
-        converted_from_pipeline: true,
-        conversion_date: new Date().toISOString(),
-        estimated_start_date: jobDetails?.estimated_start_date || null,
-        estimated_completion_date: jobDetails?.estimated_completion_date || null,
-        assigned_to: jobDetails?.assigned_to || null
-      }
+      description: jobDetails?.description || `Project created from pipeline entry for ${pipelineEntry.roof_type}`,
+      status: 'active',
+      created_by: user.id
     };
 
-    const { data: newJob, error: jobError } = await supabase
-      .from('jobs')
-      .insert(jobData)
+    const { data: newProject, error: projectError } = await supabase
+      .from('projects')
+      .insert(projectData)
       .select()
       .single();
 
-    if (jobError) {
-      console.error('Error creating job:', jobError);
-      return new Response(JSON.stringify({ error: 'Failed to create job' }), {
+    if (projectError) {
+      console.error('Error creating project:', projectError);
+      return new Response(JSON.stringify({ error: 'Failed to create project' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -137,39 +120,53 @@ serve(async (req) => {
         .insert({
           tenant_id: profile.tenant_id,
           contact_id: pipelineEntry.contact_id,
-          project_id: null,
+          project_id: newProject.id,
           pipeline_entry_id: pipelineEntryId,
           communication_type: 'system',
           direction: 'internal',
-          subject: 'Lead Converted to Job',
-          content: `Pipeline entry converted to job ${jobNumber} by ${profile.first_name} ${profile.last_name}`,
+          subject: 'Lead Converted to Project',
+          content: `Pipeline entry converted to project by ${profile.first_name} ${profile.last_name}`,
           rep_id: user.id,
           metadata: {
-            job_id: newJob.id,
-            job_number: jobNumber,
-            conversion_type: 'pipeline_to_job',
+            project_id: newProject.id,
+            conversion_type: 'pipeline_to_project',
             converted_by: `${profile.first_name} ${profile.last_name}`
           }
         });
     }
 
-    // Create initial production workflow if enabled
-    if (jobDetails?.create_production_workflow) {
+    // Create initial production workflow
+    const { data: workflow, error: workflowError } = await supabase
+      .from('production_workflows')
+      .insert({
+        tenant_id: profile.tenant_id,
+        project_id: newProject.id,
+        pipeline_entry_id: pipelineEntryId,
+        current_stage: 'submit_documents',
+        created_by: user.id
+      })
+      .select()
+      .single();
+
+    if (!workflowError && workflow) {
+      // Log the initial production stage
       await supabase
-        .from('production_workflows')
+        .from('production_stage_history')
         .insert({
           tenant_id: profile.tenant_id,
-          job_id: newJob.id,
-          pipeline_entry_id: pipelineEntryId,
-          current_stage: 'submit_documents',
-          created_by: user.id
+          production_workflow_id: workflow.id,
+          to_stage: 'submit_documents',
+          changed_by: user.id,
+          notes: 'Production workflow started from approved lead'
         });
     }
 
     return new Response(JSON.stringify({ 
       success: true,
-      job: newJob,
-      message: `Successfully converted lead to job ${jobNumber}`
+      project: newProject,
+      project_id: newProject.id,
+      project_clj_number: newProject.clj_formatted_number,
+      message: `Successfully converted lead to project`
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
