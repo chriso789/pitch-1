@@ -453,14 +453,16 @@ export const Jobs = () => {
             <Card key={job.id} className="hover:shadow-md transition-shadow">
               <CardContent className="p-6">
                 <div className="flex items-start justify-between">
-                  <div className="flex-1 space-y-3">
-                    <div className="flex items-center gap-3">
-                      <h3 className="text-lg font-semibold">
-                        {job.name}
-                      </h3>
-                      <Badge variant="outline" className="text-xs">
-                        {job.job_number}
-                      </Badge>
+                <div className="flex-1 space-y-3">
+                    <div className="flex items-start gap-3">
+                      <div className="flex-1">
+                        <h3 className="text-xl font-bold text-foreground">
+                          {job.job_number || 'No Job Number'}
+                        </h3>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {job.contacts?.first_name} {job.contacts?.last_name}
+                        </p>
+                      </div>
                       <Badge className={`text-xs ${getStatusColor(job.status)}`}>
                         {formatStatus(job.status)}
                       </Badge>

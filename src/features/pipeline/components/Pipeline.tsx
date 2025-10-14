@@ -863,15 +863,14 @@ const Pipeline = () => {
     
     return {
       id: pipelineEntry.id,
-      job_number: pipelineEntry.job_number || `JOB-${pipelineEntry.id.slice(-4)}`,
-      name: formatName(contact),
+      clj_formatted_number: pipelineEntry.clj_formatted_number || `CLJ-${pipelineEntry.id.slice(-4)}`,
       status: pipelineEntry.status,
       created_at: pipelineEntry.created_at || new Date().toISOString(),
       contact_id: pipelineEntry.contact_id,
       assigned_to: pipelineEntry.assigned_to,
       contacts: {
         id: contact?.id || pipelineEntry.contact_id,
-        contact_number: pipelineEntry.contact_number || `JOB-${pipelineEntry.id.slice(-4)}`,
+        contact_number: pipelineEntry.contact_number || `C-${pipelineEntry.id.slice(-4)}`,
         first_name: contact?.first_name || '',
         last_name: contact?.last_name || '',
         email: contact?.email || '',
@@ -880,7 +879,11 @@ const Pipeline = () => {
         address_city: contact?.address_city || '',
         address_state: contact?.address_state || '',
         address_zip: contact?.address_zip || ''
-      }
+      },
+      project: pipelineEntry.status === 'project' && pipelineEntry.project ? {
+        id: pipelineEntry.project.id,
+        project_number: pipelineEntry.project.project_number
+      } : undefined
     };
   };
 

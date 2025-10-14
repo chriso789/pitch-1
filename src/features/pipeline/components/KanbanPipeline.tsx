@@ -26,13 +26,10 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { auditService } from "@/services/auditService";
 
-interface JobEntry {
+interface PipelineEntry {
   id: string;
-  job_number: string;
+  clj_formatted_number: string;
   contact_id: string;
-  project_id: string;
-  name: string;
-  description: string;
   status: string;
   created_at: string;
   contacts: {
@@ -47,14 +44,14 @@ interface JobEntry {
     address_state: string;
     address_zip: string;
   };
-  projects?: {
+  project?: {
     id: string;
-    name: string;
+    project_number: string;
   };
 }
 
 const KanbanPipeline = () => {
-  const [pipelineData, setPipelineData] = useState<Record<string, JobEntry[]>>({});
+  const [pipelineData, setPipelineData] = useState<Record<string, PipelineEntry[]>>({});
   const [loading, setLoading] = useState(true);
   const [dragging, setDragging] = useState(false);
   const [activeId, setActiveId] = useState<string | null>(null);
@@ -79,14 +76,13 @@ const KanbanPipeline = () => {
     })
   );
 
-  const jobStages = [
-    { name: "Scheduled", key: "scheduled", color: "bg-blue-500", icon: Clock },
-    { name: "Materials Ordered", key: "materials_ordered", color: "bg-yellow-500", icon: FileText },
-    { name: "In Progress", key: "in_progress", color: "bg-orange-500", icon: Loader2 },
-    { name: "Quality Check", key: "quality_check", color: "bg-purple-500", icon: AlertCircle },
-    { name: "Completed", key: "completed", color: "bg-green-500", icon: CheckCircle },
-    { name: "Invoiced", key: "invoiced", color: "bg-emerald-600", icon: FileText },
-    { name: "Closed", key: "closed", color: "bg-gray-500", icon: CheckCircle }
+  const leadStages = [
+    { name: "New Lead", key: "lead", color: "bg-blue-500", icon: User },
+    { name: "Qualified", key: "qualified", color: "bg-green-500", icon: CheckCircle },
+    { name: "Contingency Signed", key: "contingency_signed", color: "bg-yellow-500", icon: FileText },
+    { name: "Legal Review", key: "legal_review", color: "bg-purple-500", icon: AlertCircle },
+    { name: "Ready for Approval", key: "ready_for_approval", color: "bg-orange-500", icon: HourglassIcon },
+    { name: "Approved/Project", key: "project", color: "bg-emerald-600", icon: CheckCircle }
   ];
 
   useEffect(() => {
@@ -114,35 +110,41 @@ const KanbanPipeline = () => {
     try {
       setLoading(true);
       
-      // Fetch jobs first (exclude soft-deleted jobs)
-      const { data: jobsData, error: jobsError } = await supabase
-        .from('jobs')
-        .select('*')
+      // Fetch pipeline entries (exclude soft-deleted entries)
+      const { data: pipelineData, error: pipelineError } = await supabase
+        .from('pipeline_entries')
+        .select(`
+          id,
+          clj_formatted_number,
+          contact_id,
+          status,
+          created_at
+        `)
         .eq('is_deleted', false)
         .order('created_at', { ascending: false });
 
-      if (jobsError) {
-        console.error('Error fetching jobs data:', jobsError);
+      if (pipelineError) {
+        console.error('Error fetching pipeline data:', pipelineError);
         toast({
           title: "Error",
-          description: "Failed to load jobs data",
+          description: "Failed to load pipeline data",
           variant: "destructive",
         });
         return;
       }
 
-      // If no jobs, set empty state
-      if (!jobsData || jobsData.length === 0) {
-        const emptyData: Record<string, JobEntry[]> = {};
-        jobStages.forEach(stage => {
+      // If no pipeline entries, set empty state
+      if (!pipelineData || pipelineData.length === 0) {
+        const emptyData: Record<string, PipelineEntry[]> = {};
+        leadStages.forEach(stage => {
           emptyData[stage.key] = [];
         });
         setPipelineData(emptyData);
         return;
       }
 
-      // Fetch contacts for all jobs
-      const contactIds = [...new Set(jobsData.map(job => job.contact_id).filter(Boolean))];
+      // Fetch contacts for all pipeline entries
+      const contactIds = [...new Set(pipelineData.map(entry => entry.contact_id).filter(Boolean))];
       const { data: contactsData, error: contactsError } = await supabase
         .from('contacts')
         .select('id, contact_number, first_name, last_name, email, phone, address_street, address_city, address_state, address_zip')
@@ -152,12 +154,12 @@ const KanbanPipeline = () => {
         console.error('Error fetching contacts:', contactsError);
       }
 
-      // Fetch projects for all jobs
-      const projectIds = [...new Set(jobsData.map(job => job.project_id).filter(Boolean))];
+      // Fetch projects for approved entries (status='project')
+      const approvedEntries = pipelineData.filter(entry => entry.status === 'project');
       const { data: projectsData, error: projectsError } = await supabase
         .from('projects')
-        .select('id, name')
-        .in('id', projectIds);
+        .select('id, project_number, pipeline_entry_id')
+        .in('pipeline_entry_id', approvedEntries.map(e => e.id));
 
       if (projectsError) {
         console.error('Error fetching projects:', projectsError);
@@ -165,33 +167,30 @@ const KanbanPipeline = () => {
 
       // Create lookup maps
       const contactsMap = new Map(contactsData?.map(c => [c.id, c]) || []);
-      const projectsMap = new Map(projectsData?.map(p => [p.id, p]) || []);
+      const projectsMap = new Map(projectsData?.map(p => [p.pipeline_entry_id, p]) || []);
 
       // Combine the data
-      const combinedJobs: JobEntry[] = jobsData
-        .map(job => {
-          const contact = contactsMap.get(job.contact_id);
-          if (!contact) return null; // Skip jobs without valid contacts
+      const combinedEntries: PipelineEntry[] = pipelineData
+        .map(entry => {
+          const contact = contactsMap.get(entry.contact_id);
+          if (!contact) return null; // Skip entries without valid contacts
           
           return {
-            id: job.id,
-            job_number: job.job_number,
-            contact_id: job.contact_id,
-            project_id: job.project_id,
-            name: job.name,
-            description: job.description,
-            status: job.status,
-            created_at: job.created_at,
+            id: entry.id,
+            clj_formatted_number: entry.clj_formatted_number,
+            contact_id: entry.contact_id,
+            status: entry.status,
+            created_at: entry.created_at,
             contacts: contact,
-            projects: job.project_id ? projectsMap.get(job.project_id) : undefined
+            project: entry.status === 'project' ? projectsMap.get(entry.id) : undefined
           };
         })
-        .filter(Boolean) as JobEntry[];
+        .filter(Boolean) as PipelineEntry[];
 
       // Group data by status
-      const groupedData: Record<string, JobEntry[]> = {};
-      jobStages.forEach(stage => {
-        groupedData[stage.key] = combinedJobs.filter(job => job.status === stage.key) || [];
+      const groupedData: Record<string, PipelineEntry[]> = {};
+      leadStages.forEach(stage => {
+        groupedData[stage.key] = combinedEntries.filter(entry => entry.status === stage.key) || [];
       });
 
       setPipelineData(groupedData);
@@ -223,7 +222,7 @@ const KanbanPipeline = () => {
     let newStatus = over.id as string;
 
     // VALIDATION: Check if over.id is a valid stage key
-    const validStageKeys = jobStages.map(s => s.key);
+    const validStageKeys = leadStages.map(s => s.key);
     
     if (!validStageKeys.includes(newStatus)) {
       // over.id is not a stage key, it's a card ID - find which column it belongs to
@@ -249,20 +248,20 @@ const KanbanPipeline = () => {
       newStatus = foundStageKey;
     }
 
-    // Find the job being moved
-    let movedJob: JobEntry | null = null;
+    // Find the entry being moved
+    let movedEntry: PipelineEntry | null = null;
     let fromStatus = '';
 
-    for (const [status, jobs] of Object.entries(pipelineData)) {
-      const job = jobs.find(j => j.id === entryId);
-      if (job) {
-        movedJob = job;
+    for (const [status, entries] of Object.entries(pipelineData)) {
+      const entry = entries.find(e => e.id === entryId);
+      if (entry) {
+        movedEntry = entry;
         fromStatus = status;
         break;
       }
     }
 
-    if (!movedJob) return;
+    if (!movedEntry) return;
 
     // Capture audit context before change
     await auditService.captureAuditContext();
@@ -274,8 +273,8 @@ const KanbanPipeline = () => {
 
     // Optimistically update UI
     const newPipelineData = { ...pipelineData };
-    newPipelineData[fromStatus] = newPipelineData[fromStatus].filter(j => j.id !== entryId);
-    newPipelineData[newStatus] = [...newPipelineData[newStatus], { ...movedJob, status: newStatus }];
+    newPipelineData[fromStatus] = newPipelineData[fromStatus].filter(e => e.id !== entryId);
+    newPipelineData[newStatus] = [...newPipelineData[newStatus], { ...movedEntry, status: newStatus }];
     setPipelineData(newPipelineData);
 
     // Log the change
@@ -367,10 +366,10 @@ const KanbanPipeline = () => {
         description: data.message || "Job deleted successfully",
       });
 
-      // Remove the job from local state immediately
+      // Remove the entry from local state immediately
       const newPipelineData = { ...pipelineData };
-      for (const [status, jobs] of Object.entries(newPipelineData)) {
-        newPipelineData[status] = jobs.filter(job => job.id !== jobId);
+      for (const [status, entries] of Object.entries(newPipelineData)) {
+        newPipelineData[status] = entries.filter(entry => entry.id !== jobId);
       }
       setPipelineData(newPipelineData);
 
@@ -398,7 +397,7 @@ const KanbanPipeline = () => {
   };
 
   const getStageTotal = (stageKey: string) => {
-    const jobs = pipelineData[stageKey] || [];
+    const entries = pipelineData[stageKey] || [];
     // For now, we don't have project values, so return 0
     return 0;
   };
@@ -418,10 +417,10 @@ const KanbanPipeline = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold gradient-primary bg-clip-text text-transparent">
-            Jobs Pipeline
+            Leads Pipeline
           </h1>
           <p className="text-muted-foreground">
-            Manage jobs through the roofing production workflow
+            Manage leads through the sales pipeline. Once approved, leads become jobs.
           </p>
         </div>
       </div>
@@ -434,9 +433,9 @@ const KanbanPipeline = () => {
         onDragEnd={handleDragEnd}
       >
         <ScrollArea className="w-full">
-          <div className="flex gap-2 min-h-[600px] pb-4" style={{ minWidth: `${jobStages.length * 60}px` }}>
-            {jobStages.map((stage) => {
-              const stageJobs = pipelineData[stage.key] || [];
+          <div className="flex gap-2 min-h-[600px] pb-4" style={{ minWidth: `${leadStages.length * 60}px` }}>
+            {leadStages.map((stage) => {
+              const stageEntries = pipelineData[stage.key] || [];
               const stageTotal = getStageTotal(stage.key);
 
               return (
@@ -446,15 +445,15 @@ const KanbanPipeline = () => {
                     title={stage.name}
                     color={stage.color}
                     icon={stage.icon}
-                    count={stageJobs.length}
+                    count={stageEntries.length}
                     total={formatCurrency(stageTotal)}
-                    items={stageJobs.map(job => job.id)}
+                    items={stageEntries.map(entry => entry.id)}
                   >
-                    {stageJobs.map((job) => (
+                    {stageEntries.map((entry) => (
                       <KanbanCard
-                        key={job.id}
-                        id={job.id}
-                        entry={job}
+                        key={entry.id}
+                        id={entry.id}
+                        entry={entry}
                         onView={(contactId) => navigate(`/contact/${contactId}`)}
                         onDelete={handleDeleteJob}
                         canDelete={userCanDelete}
@@ -494,9 +493,9 @@ const KanbanPipeline = () => {
       {Object.values(pipelineData).flat().length === 0 && (
         <div className="text-center p-8 bg-card rounded-lg border-2 border-dashed border-border mt-6">
           <Home className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">No Jobs Yet</h3>
+          <h3 className="text-lg font-semibold mb-2">No Leads Yet</h3>
           <p className="text-muted-foreground mb-4">
-            Jobs are created from contacts. Visit the contacts page to create your first job.
+            Leads are created from contacts. Visit the contacts page to create your first lead.
           </p>
           <Button onClick={() => navigate('/contacts')}>
             <User className="h-4 w-4 mr-2" />

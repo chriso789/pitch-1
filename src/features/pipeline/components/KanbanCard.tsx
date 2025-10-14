@@ -16,8 +16,7 @@ interface KanbanCardProps {
   id: string;
   entry: {
     id: string;
-    job_number: string;
-    name: string;
+    clj_formatted_number: string;
     status: string;
     created_at: string;
     contact_id: string;
@@ -34,9 +33,9 @@ interface KanbanCardProps {
       address_state: string;
       address_zip: string;
     };
-    projects?: {
+    project?: {
       id: string;
-      name: string;
+      project_number: string;
     };
   };
   onView: (contactId: string) => void;
@@ -120,9 +119,14 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
     return 1; // Default to 1 day
   };
 
-  // Get job number - use the job_number field directly
-  const getJobNumber = () => {
-    return entry.job_number || entry.name || 'New Job';
+  // Get display number - show job number for approved projects, lead number otherwise
+  const getDisplayNumber = () => {
+    // If this is an approved project, show the job number
+    if (entry.status === 'project' && entry.project?.project_number) {
+      return entry.project.project_number; // e.g., "JOB-0001"
+    }
+    // Otherwise, show the lead number
+    return entry.clj_formatted_number || 'No Number'; // e.g., "C010-L010-J010"
   };
 
   // Get last name only
@@ -144,7 +148,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   };
 
   const daysInStatus = getDaysInStatus();
-  const jobNumber = getJobNumber();
+  const displayNumber = getDisplayNumber();
   const lastName = getLastName();
   const commEmoji = getCommEmoji(daysSinceLastComm);
 
@@ -201,7 +205,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
           body: {
             instance_id: renderData.instance_id,
             upload: 'signed',
-            filename: `${entry.job_number || 'report'}-${new Date().toISOString().split('T')[0]}.pdf`
+            filename: `${displayNumber || 'report'}-${new Date().toISOString().split('T')[0]}.pdf`
           }
         });
 
@@ -243,14 +247,14 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
       if (renderError) throw renderError;
 
       if (renderData?.instance_id) {
-        const { data: pdfData, error: pdfError } = await supabase.functions.invoke('smart-docs-pdf', {
-          body: {
-            instance_id: renderData.instance_id,
-            upload: 'signed',
-            filename: `${entry.job_number || 'report'}-${new Date().toISOString().split('T')[0]}.pdf`,
-            to_email: contact.email,
-            subject: `Your Roofing Report - ${entry.job_number}`,
-            message: `Dear ${contact.first_name},\n\nPlease find your roofing report attached.\n\nBest regards`
+          const { data: pdfData, error: pdfError } = await supabase.functions.invoke('smart-docs-pdf', {
+            body: {
+              instance_id: renderData.instance_id,
+              upload: 'signed',
+              filename: `${displayNumber || 'report'}-${new Date().toISOString().split('T')[0]}.pdf`,
+              to_email: contact.email,
+              subject: `Your Roofing Report - ${displayNumber}`,
+              message: `Dear ${contact.first_name},\n\nPlease find your roofing report attached.\n\nBest regards`
           }
         });
 
@@ -283,7 +287,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
       onClick={handleCardClick}
       role="button"
       tabIndex={0}
-      aria-label={`Job ${jobNumber}, ${lastName}, ${daysInStatus} days in status, last contact ${daysSinceLastComm} days ago`}
+      aria-label={`${displayNumber}, ${lastName}, ${daysInStatus} days in status, last contact ${daysSinceLastComm} days ago`}
     >
       <CardContent className="p-1.5 h-full flex flex-col justify-between">
         {/* Row 1: Days Badge + Job Number + Comm Badge */}
@@ -298,15 +302,15 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
             {daysInStatus}d
           </Badge>
 
-          {/* Job Number - Centered */}
+          {/* Display Number - Centered */}
           <div 
             className="flex-1 text-center px-0.5 min-w-0"
-            title={jobNumber}
+            title={displayNumber}
           >
             <span 
               className="font-mono font-semibold text-foreground block truncate text-[9px]"
             >
-              {jobNumber}
+              {displayNumber}
             </span>
           </div>
 
@@ -344,7 +348,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
           className="absolute bottom-0 left-0 h-3.5 w-3.5 p-0 text-primary/70 hover:text-primary hover:bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity"
           onClick={handleLeadDetailsClick}
           onPointerDown={(e) => e.stopPropagation()}
-          aria-label={`View lead details for ${jobNumber}`}
+          aria-label={`View lead details for ${displayNumber}`}
         >
           <ArrowRight className="h-2.5 w-2.5" />
         </Button>
@@ -358,7 +362,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
               className="absolute top-0 left-0 h-3.5 w-3.5 p-0 text-muted-foreground/70 hover:text-foreground hover:bg-muted/20 opacity-0 group-hover:opacity-100 transition-opacity z-10"
               onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => e.stopPropagation()}
-              aria-label={`Quick actions for ${jobNumber}`}
+              aria-label={`Quick actions for ${displayNumber}`}
               disabled={generating}
             >
               <MoreVertical className="h-2.5 w-2.5" />
@@ -391,16 +395,16 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                 className="absolute bottom-0 right-0 h-3.5 w-3.5 p-0 text-destructive/70 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
                 onClick={handleDeleteClick}
                 onPointerDown={(e) => e.stopPropagation()}
-                aria-label={`Delete job ${jobNumber}`}
+                aria-label={`Delete ${displayNumber}`}
               >
                 <X className="h-2.5 w-2.5" />
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Delete Job</AlertDialogTitle>
+                <AlertDialogTitle>Delete {entry.status === 'project' ? 'Job' : 'Lead'}</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Are you sure you want to delete job {jobNumber} for {lastName}? This action cannot be undone.
+                  Are you sure you want to delete {displayNumber} for {lastName}? This action cannot be undone.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
@@ -409,7 +413,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                   onClick={handleConfirmDelete}
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 >
-                  Delete Job
+                  Delete {entry.status === 'project' ? 'Job' : 'Lead'}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
