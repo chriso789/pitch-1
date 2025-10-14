@@ -201,8 +201,13 @@ const ProductionKanban = () => {
 
   useEffect(() => {
     initializeStages();
-    fetchProductionData();
   }, []);
+
+  useEffect(() => {
+    if (stages.length > 0) {
+      fetchProductionData();
+    }
+  }, [stages]);
 
   // Set up real-time listeners for production workflow changes
   useEffect(() => {
@@ -563,11 +568,22 @@ const ProductionKanban = () => {
             Monitor and manage active construction projects
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <Clock className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm text-muted-foreground">
-            {Object.values(productionData).flat().length} active projects
-          </span>
+        <div className="flex items-center gap-4">
+          <Button 
+            onClick={fetchProductionData} 
+            disabled={loading}
+            variant="outline"
+            size="sm"
+          >
+            {loading ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
+            Refresh
+          </Button>
+          <div className="flex items-center gap-2">
+            <Clock className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">
+              {Object.values(productionData).flat().length} active projects
+            </span>
+          </div>
         </div>
       </div>
 
