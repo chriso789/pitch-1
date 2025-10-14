@@ -424,8 +424,6 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                     step="0.1"
                     value={(propertyDetails.roof_area_sq_ft / 100).toFixed(2)}
                     onChange={(e) => setPropertyDetails(prev => ({ ...prev, roof_area_sq_ft: (parseFloat(e.target.value) || 0) * 100 }))}
-                    readOnly={hasMeasurements}
-                    className={hasMeasurements ? 'bg-muted' : ''}
                   />
                   {hasMeasurements && measurementData && (
                     <p className="text-xs text-muted-foreground">
