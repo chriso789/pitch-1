@@ -464,16 +464,18 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                   </Select>
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="complexity">Complexity Level</Label>
+                  <Label htmlFor="waste">Waste Percentage</Label>
                   <Select
-                    value={propertyDetails.complexity_level}
-                    onValueChange={(value) => setPropertyDetails(prev => ({ ...prev, complexity_level: value }))}
+                    value={excelConfig.waste_factor_percent.toString()}
+                    onValueChange={(value) => setExcelConfig(prev => ({ ...prev, waste_factor_percent: parseFloat(value) }))}
                   >
                     <SelectTrigger>
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="simple">Simple</SelectItem>
+                      <SelectItem value="10">10%</SelectItem>
+                      <SelectItem value="15">15%</SelectItem>
+                      <SelectItem value="20">20%</SelectItem>
                       <SelectItem value="moderate">Moderate</SelectItem>
                       <SelectItem value="complex">Complex</SelectItem>
                       <SelectItem value="extreme">Extreme</SelectItem>
