@@ -101,8 +101,9 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
 
   const style = {
     transform: CSS.Transform.toString(transform),
-    transition,
-    opacity: isSortableDragging ? 0.5 : 1,
+    transition: isSortableDragging ? 'none' : transition,
+    opacity: isSortableDragging ? 0.3 : 1,
+    zIndex: isSortableDragging ? 50 : 1,
   };
 
   const contact = entry.contacts;
@@ -273,7 +274,9 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
         "shadow-soft border-0 hover:shadow-medium transition-smooth",
         "cursor-pointer",
         "relative group overflow-hidden",
-        isDragging || isSortableDragging ? 'shadow-lg border-primary' : ''
+        "bg-card",
+        isDragging || isSortableDragging ? 'shadow-2xl scale-105 border-2 border-primary rotate-2 animate-pulse z-50' : '',
+        isSortableDragging ? 'cursor-grabbing' : 'cursor-grab'
       )}
       onClick={handleCardClick}
       role="button"

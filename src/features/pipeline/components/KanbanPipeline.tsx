@@ -452,19 +452,21 @@ const KanbanPipeline = () => {
           <ScrollBar orientation="horizontal" />
         </ScrollArea>
 
-        <DragOverlay>
+        <DragOverlay dropAnimation={null}>
           {activeId ? (
-            <div className="transform rotate-3 opacity-90">
+            <div className="transform rotate-6 scale-110 shadow-2xl animate-fade-in">
               {/* Find the active entry and render it */}
               {Object.values(pipelineData).flat().map(entry => 
                 entry.id === activeId ? (
-                  <KanbanCard
-                    key={entry.id}
-                    id={entry.id}
-                    entry={entry}
-                    onView={() => {}}
-                    isDragging={true}
-                  />
+                  <div className="bg-card border-2 border-primary rounded-lg shadow-2xl">
+                    <KanbanCard
+                      key={entry.id}
+                      id={entry.id}
+                      entry={entry}
+                      onView={() => {}}
+                      isDragging={true}
+                    />
+                  </div>
                 ) : null
               )}
             </div>
