@@ -614,6 +614,51 @@ export type Database = {
         }
         Relationships: []
       }
+      button_audit_results: {
+        Row: {
+          button_name: string | null
+          button_type: string | null
+          created_at: string
+          file_path: string
+          has_error_handling: boolean
+          has_onclick: boolean
+          id: string
+          issues: Json | null
+          last_audited_at: string
+          pathway_validated: boolean
+          recommendations: Json | null
+          tenant_id: string
+        }
+        Insert: {
+          button_name?: string | null
+          button_type?: string | null
+          created_at?: string
+          file_path: string
+          has_error_handling?: boolean
+          has_onclick?: boolean
+          id?: string
+          issues?: Json | null
+          last_audited_at?: string
+          pathway_validated?: boolean
+          recommendations?: Json | null
+          tenant_id: string
+        }
+        Update: {
+          button_name?: string | null
+          button_type?: string | null
+          created_at?: string
+          file_path?: string
+          has_error_handling?: boolean
+          has_onclick?: boolean
+          id?: string
+          issues?: Json | null
+          last_audited_at?: string
+          pathway_validated?: boolean
+          recommendations?: Json | null
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       calendar_sync_events: {
         Row: {
           created_at: string
@@ -9111,6 +9156,92 @@ export type Database = {
         }
         Relationships: []
       }
+      workflow_phase_history: {
+        Row: {
+          actions_taken: Json | null
+          ai_reasoning: string | null
+          created_at: string
+          created_by: string | null
+          from_phase: Database["public"]["Enums"]["workflow_phase"] | null
+          id: string
+          task_id: string
+          tenant_id: string
+          to_phase: Database["public"]["Enums"]["workflow_phase"]
+        }
+        Insert: {
+          actions_taken?: Json | null
+          ai_reasoning?: string | null
+          created_at?: string
+          created_by?: string | null
+          from_phase?: Database["public"]["Enums"]["workflow_phase"] | null
+          id?: string
+          task_id: string
+          tenant_id: string
+          to_phase: Database["public"]["Enums"]["workflow_phase"]
+        }
+        Update: {
+          actions_taken?: Json | null
+          ai_reasoning?: string | null
+          created_at?: string
+          created_by?: string | null
+          from_phase?: Database["public"]["Enums"]["workflow_phase"] | null
+          id?: string
+          task_id?: string
+          tenant_id?: string
+          to_phase?: Database["public"]["Enums"]["workflow_phase"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_phase_history_task_id_fkey"
+            columns: ["task_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workflow_tasks: {
+        Row: {
+          ai_context: Json | null
+          completion_criteria: Json | null
+          created_at: string
+          created_by: string | null
+          current_phase: Database["public"]["Enums"]["workflow_phase"]
+          description: string | null
+          id: string
+          is_active: boolean
+          task_name: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          ai_context?: Json | null
+          completion_criteria?: Json | null
+          created_at?: string
+          created_by?: string | null
+          current_phase?: Database["public"]["Enums"]["workflow_phase"]
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          task_name: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          ai_context?: Json | null
+          completion_criteria?: Json | null
+          created_at?: string
+          created_by?: string | null
+          current_phase?: Database["public"]["Enums"]["workflow_phase"]
+          description?: string | null
+          id?: string
+          is_active?: boolean
+          task_name?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
@@ -9639,6 +9770,13 @@ export type Database = {
       smartdoc_sign_status: "PENDING" | "COMPLETED" | "DECLINED" | "VOID"
       smartdoc_status: "DRAFT" | "PUBLISHED" | "ARCHIVED"
       smartdoc_template_type: "DOCUMENT" | "EMAIL" | "PRINT"
+      workflow_phase:
+        | "planning"
+        | "implementation"
+        | "testing"
+        | "deployment"
+        | "monitoring"
+        | "optimization"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -9879,6 +10017,14 @@ export const Constants = {
       smartdoc_sign_status: ["PENDING", "COMPLETED", "DECLINED", "VOID"],
       smartdoc_status: ["DRAFT", "PUBLISHED", "ARCHIVED"],
       smartdoc_template_type: ["DOCUMENT", "EMAIL", "PRINT"],
+      workflow_phase: [
+        "planning",
+        "implementation",
+        "testing",
+        "deployment",
+        "monitoring",
+        "optimization",
+      ],
     },
   },
 } as const
