@@ -15,7 +15,7 @@ import { Database } from '@/integrations/supabase/types';
 type WorkflowTask = Database['public']['Tables']['workflow_tasks']['Row'];
 type PhaseHistory = Database['public']['Tables']['workflow_phase_history']['Row'];
 
-export const AutomationDashboard = () => {
+const AutomationDashboard = () => {
   const [tasks, setTasks] = useState<WorkflowTask[]>([]);
   const [history, setHistory] = useState<PhaseHistory[]>([]);
   const [loading, setLoading] = useState(false);
@@ -188,6 +188,13 @@ export const AutomationDashboard = () => {
 
   return (
     <div className="space-y-6">
+      <div>
+        <h1 className="text-3xl font-bold">Automation Dashboard</h1>
+        <p className="text-muted-foreground">
+          AI-powered workflow automation and button pathway validation
+        </p>
+      </div>
+
       {/* Control Panel */}
       <Card>
         <CardHeader>
@@ -359,3 +366,6 @@ export const AutomationDashboard = () => {
     </div>
   );
 };
+
+export { AutomationDashboard };
+export default AutomationDashboard;

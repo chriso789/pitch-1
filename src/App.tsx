@@ -30,6 +30,7 @@ import Dialer from "./pages/Dialer";
 import SmartDocs from "./pages/SmartDocs";
 import Settings from "./pages/Settings";
 import Help from "./pages/Help";
+import AutomationDashboard from "./pages/AutomationDashboard";
 import PresentationsPage from "./pages/PresentationsPage";
 import PresentationBuilderPage from "./pages/PresentationBuilderPage";
 import PresentationModePage from "./pages/PresentationModePage";
@@ -89,6 +90,7 @@ const App = () => {
               <Route path="/storm-canvass" element={<StormCanvass />} />
               <Route path="/dialer" element={<Dialer />} />
               <Route path="/smartdocs" element={<SmartDocs />} />
+              <Route path="/automation" element={<AutomationDashboard />} />
               <Route path="/presentations" element={<PresentationsPage />} />
               <Route path="/presentations/:id/edit" element={<PresentationBuilderPage />} />
               <Route path="/presentations/:id/present" element={<PresentationModePage />} />
