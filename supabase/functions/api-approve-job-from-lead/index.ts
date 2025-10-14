@@ -213,8 +213,8 @@ serve(async (req) => {
       success: true,
       project: newProject,
       project_id: newProject.id,
-      project_clj_number: newProject.clj_formatted_number,
-      message: `Successfully converted lead to project`
+      project_job_number: newProject.project_number,
+      message: `Successfully converted lead to project ${newProject.project_number}`
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

@@ -9755,6 +9755,10 @@ export type Database = {
         }
         Returns: string
       }
+      generate_project_job_number: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
       generate_signature_access_token: {
         Args: Record<PropertyKey, never>
         Returns: string

@@ -249,12 +249,12 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
       if (data.already_existed) {
         toast({
           title: "Project Already Exists",
-          description: `This lead has already been converted to project ${data.project_clj_number}.`,
+          description: `This lead has already been converted to project ${data.project_job_number}.`,
         });
       } else {
         toast({
           title: "Project Approved",
-          description: `Project ${data.project_clj_number || ''} has been created and added to production.`,
+          description: `Project ${data.project_job_number || ''} has been created and added to production.`,
         });
       }
 

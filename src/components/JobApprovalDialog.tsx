@@ -63,7 +63,7 @@ export const JobApprovalDialog: React.FC<JobApprovalDialogProps> = ({
       if (data.already_existed) {
         toast({
           title: "Project Already Exists",
-          description: `This lead has already been converted to project ${data.project_clj_number}.`,
+          description: `This lead has already been converted to project ${data.project_job_number}.`,
           variant: "default",
         });
         setOpen(false);
@@ -73,7 +73,7 @@ export const JobApprovalDialog: React.FC<JobApprovalDialogProps> = ({
 
       toast({
         title: "Project Created Successfully",
-        description: `Project ${data.project_clj_number} has been created and added to production.`,
+        description: `Project ${data.project_job_number} has been created and added to production.`,
       });
 
       onJobCreated?.(data);
