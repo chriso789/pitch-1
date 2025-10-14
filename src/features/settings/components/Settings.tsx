@@ -5,7 +5,8 @@ import { AutomationManager } from "@/components/AutomationManager";
 import { SmartDocumentEditor } from "@/components/SmartDocumentEditor";
 import { DynamicTagManager } from "@/components/DynamicTagManager";
 import { ApprovalManager } from "@/components/ApprovalManager";
-import { Settings as SettingsIcon, FileText, Calculator, Users, Building, Shield, Code, Mic, Bell, Package, DollarSign, AlertTriangle, CheckSquare, Activity, Box } from "lucide-react";
+import { Settings as SettingsIcon, FileText, Calculator, Users, Building, Shield, Code, Mic, Bell, Package, DollarSign, AlertTriangle, CheckSquare, Activity, Box, Database } from "lucide-react";
+import { MaterialCatalogManager } from "@/components/MaterialCatalogManager";
 import { EstimateBuilder } from "@/features/estimates/components/EstimateBuilder";
 import { GeneralSettings } from "@/components/settings/GeneralSettings";
 import { UserManagement } from "@/components/settings/UserManagement";
@@ -84,10 +85,14 @@ export const Settings = () => {
       </div>
 
       <Tabs defaultValue="general" className="space-y-6">
-        <TabsList className={`grid w-full ${showDeveloperTab ? 'grid-cols-13' : 'grid-cols-12'}`}>
+        <TabsList className={`grid w-full ${showDeveloperTab ? 'grid-cols-14' : 'grid-cols-13'}`}>
           <TabsTrigger value="general" className="flex items-center gap-2">
             <SettingsIcon className="h-4 w-4" />
             General
+          </TabsTrigger>
+          <TabsTrigger value="materials" className="flex items-center gap-2">
+            <Database className="h-4 w-4" />
+            Materials
           </TabsTrigger>
           <TabsTrigger value="estimates" className="flex items-center gap-2">
             <Calculator className="h-4 w-4" />
@@ -143,6 +148,10 @@ export const Settings = () => {
 
         <TabsContent value="general" className="space-y-6">
           <GeneralSettings />
+        </TabsContent>
+
+        <TabsContent value="materials" className="space-y-6">
+          <MaterialCatalogManager />
         </TabsContent>
 
         <TabsContent value="estimates" className="space-y-6">

@@ -170,3 +170,9 @@ verify_jwt = true
 
 [functions.twilio-call-status]
 verify_jwt = false
+
+[functions.sunniland-importer]
+verify_jwt = false
+
+[functions.sunniland-importer]
+verify_jwt = false
