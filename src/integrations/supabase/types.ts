@@ -3230,6 +3230,45 @@ export type Database = {
           },
         ]
       }
+      function_logs: {
+        Row: {
+          context: Json | null
+          created_at: string
+          duration_ms: number | null
+          error_message: string | null
+          error_stack: string | null
+          execution_id: string | null
+          function_name: string
+          id: string
+          status: string
+          tenant_id: string
+        }
+        Insert: {
+          context?: Json | null
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          error_stack?: string | null
+          execution_id?: string | null
+          function_name: string
+          id?: string
+          status: string
+          tenant_id: string
+        }
+        Update: {
+          context?: Json | null
+          created_at?: string
+          duration_ms?: number | null
+          error_message?: string | null
+          error_stack?: string | null
+          execution_id?: string | null
+          function_name?: string
+          id?: string
+          status?: string
+          tenant_id?: string
+        }
+        Relationships: []
+      }
       ghost_account_reports: {
         Row: {
           activity_data: Json | null
@@ -9412,6 +9451,15 @@ export type Database = {
       }
       jsonb_get_path: {
         Args: { obj: Json; path: string }
+        Returns: string
+      }
+      log_function_error: {
+        Args: {
+          p_context?: Json
+          p_error_message: string
+          p_error_stack?: string
+          p_function_name: string
+        }
         Returns: string
       }
       log_signature_event: {

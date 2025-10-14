@@ -17,9 +17,14 @@ interface PDFRequest {
 }
 
 const handler = async (req: Request): Promise<Response> => {
+  const startTime = Date.now();
+  
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
+
+  let tenantId: string | null = null;
+  let instanceId: string | undefined;
 
   try {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
@@ -40,6 +45,8 @@ const handler = async (req: Request): Promise<Response> => {
       message = 'Please find your report attached.',
       attach = false
     }: PDFRequest = await req.json();
+
+    instanceId = instance_id;
 
     let html = providedHtml;
     let tenantId: string | null = null;
@@ -184,13 +191,30 @@ const handler = async (req: Request): Promise<Response> => {
       console.log('Email sent successfully');
     }
 
+    // Log success to database
+    const duration = Date.now() - startTime;
+    if (tenantId) {
+      await supabase.rpc('log_function_error', {
+        p_function_name: 'smart-docs-pdf',
+        p_error_message: 'PDF generated successfully',
+        p_context: {
+          instance_id: instanceId,
+          filename,
+          size_kb: Math.round(pdfBuffer.byteLength / 1024),
+          emailed,
+          upload_mode: upload
+        }
+      }).catch(e => console.error('Failed to log success:', e));
+    }
+
     return new Response(
       JSON.stringify({
         ok: true,
         pdf_url: pdfUrl,
         storage_path: storagePath,
         emailed,
-        size_kb: Math.round(pdfBuffer.byteLength / 1024)
+        size_kb: Math.round(pdfBuffer.byteLength / 1024),
+        duration_ms: duration
       }),
       {
         status: 200,
@@ -200,6 +224,24 @@ const handler = async (req: Request): Promise<Response> => {
 
   } catch (error: any) {
     console.error('PDF generation error:', error);
+    
+    // Log error to database
+    const duration = Date.now() - startTime;
+    const supabase = createClient(
+      Deno.env.get("SUPABASE_URL")!,
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
+    );
+    
+    await supabase.rpc('log_function_error', {
+      p_function_name: 'smart-docs-pdf',
+      p_error_message: error.message,
+      p_context: {
+        instance_id: instanceId,
+        tenant_id: tenantId,
+        duration_ms: duration
+      },
+      p_error_stack: error.stack
+    }).catch(e => console.error('Failed to log error:', e));
     
     return new Response(
       JSON.stringify({ 
