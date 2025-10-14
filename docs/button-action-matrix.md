@@ -21,14 +21,14 @@ This document maps every interactive element (buttons, links, inputs) to their c
 
 | Test ID | Component | Action | Service/Function | Side Effects | Test File | Status |
 |---------|-----------|--------|------------------|--------------|-----------|--------|
-| `sidebar-dashboard` | Sidebar | Navigate to dashboard | React Router | Route change | ❌ TODO | ❌ |
-| `sidebar-contacts` | Sidebar | Navigate to contacts | React Router | Route change | ❌ TODO | ❌ |
-| `sidebar-pipeline` | Sidebar | Navigate to pipeline | React Router | Route change | ❌ TODO | ❌ |
-| `sidebar-jobs` | Sidebar | Navigate to jobs | React Router | Route change | ❌ TODO | ❌ |
-| `sidebar-estimates` | Sidebar | Navigate to estimates | React Router | Route change | ❌ TODO | ❌ |
-| `sidebar-calendar` | Sidebar | Navigate to calendar | React Router | Route change | ❌ TODO | ❌ |
-| `sidebar-settings` | Sidebar | Navigate to settings | React Router | Route change | ❌ TODO | ❌ |
-| `sidebar-user-menu` | Sidebar | Open user menu | n/a | Shows dropdown | ❌ TODO | ❌ |
+| `sidebar-dashboard` | Sidebar | Navigate to dashboard | React Router | Route change | ❌ TODO | ✅ |
+| `sidebar-contacts` | Sidebar | Navigate to contacts | React Router | Route change | ❌ TODO | ✅ |
+| `sidebar-pipeline` | Sidebar | Navigate to pipeline | React Router | Route change | ❌ TODO | ✅ |
+| `sidebar-jobs` | Sidebar | Navigate to jobs | React Router | Route change | ❌ TODO | ✅ |
+| `sidebar-estimates` | Sidebar | Navigate to estimates | React Router | Route change | ❌ TODO | ✅ |
+| `sidebar-calendar` | Sidebar | Navigate to calendar | React Router | Route change | ❌ TODO | ✅ |
+| `sidebar-settings` | Sidebar | Navigate to settings | React Router | Route change | ❌ TODO | ✅ |
+| `sidebar-user-menu` | Sidebar | Open user menu | n/a | Shows dropdown | ❌ TODO | ✅ |
 
 ## User Menu Module
 
@@ -91,12 +91,12 @@ This document maps every interactive element (buttons, links, inputs) to their c
 
 **Phase 1 - Week 1-2 (Current)**
 - Auth Module: 67% (6/9 test IDs implemented)
-- Navigation: 0% (0/8)
+- Navigation: 100% (8/8)
 - Contacts: 0% (0/13)
 - Pipeline: 0% (0/8)
 - Settings: 0% (0/6)
 
-**Overall: 14% (6/44 test IDs implemented)**
+**Overall: 32% (14/44 test IDs implemented)**
 
 ## Next Steps
 

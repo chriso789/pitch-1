@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
+import { TEST_IDS } from "@/../tests/utils/test-ids";
 
 interface SidebarProps {
   isCollapsed?: boolean;
@@ -45,11 +46,14 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
     if (path === '/' || path.startsWith('/dashboard')) return 'dashboard';
     if (path.startsWith('/pipeline')) return 'pipeline';
     if (path.startsWith('/contact') || path.startsWith('/lead') || path.startsWith('/client')) return 'client-list';
+    if (path.startsWith('/jobs')) return 'jobs';
+    if (path.startsWith('/estimates')) return 'estimates';
     if (path.startsWith('/production')) return 'production';
     if (path.startsWith('/calendar')) return 'calendar';
     if (path.startsWith('/storm-canvass')) return 'storm-canvass';
     if (path.startsWith('/dialer')) return 'dialer';
     if (path.startsWith('/smartdocs')) return 'smartdocs';
+    if (path.startsWith('/presentations')) return 'presentations';
     if (path.startsWith('/settings')) return 'settings';
     if (path.startsWith('/help')) return 'help';
     return 'dashboard';
@@ -146,37 +150,57 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
     {
       name: "Dashboard",
       href: "dashboard",
-      path: "/",
+      path: "/dashboard",
       icon: Home,
-      description: "Overview & metrics"
+      description: "Overview & metrics",
+      testId: TEST_IDS.sidebar.dashboard
     },
     {
       name: "Pipeline",
       href: "pipeline",
       path: "/pipeline",
       icon: TrendingUp,
-      description: "Drag & drop sales pipeline"
+      description: "Drag & drop sales pipeline",
+      testId: TEST_IDS.sidebar.pipeline
     },
     {
-      name: "CLIENT LIST",
+      name: "Contacts",
       href: "client-list",
       path: "/client-list",
       icon: Users,
-      description: "Contacts & jobs unified"
+      description: "Contacts & jobs unified",
+      testId: TEST_IDS.sidebar.contacts
+    },
+    {
+      name: "Jobs",
+      href: "jobs",
+      path: "/jobs",
+      icon: Wrench,
+      description: "Job management",
+      testId: TEST_IDS.sidebar.jobs
+    },
+    {
+      name: "Estimates",
+      href: "estimates",
+      path: "/estimates",
+      icon: FileText,
+      description: "Estimate builder & tracking",
+      testId: TEST_IDS.sidebar.estimates
     },
     {
       name: "Production",
       href: "production",
       path: "/production",
-      icon: Wrench,
-      description: "Job tracking"
+      icon: Target,
+      description: "Production workflow"
     },
     {
       name: "Calendar",
       href: "calendar",
       path: "/calendar",
       icon: Calendar,
-      description: "Schedule & appointments"
+      description: "Schedule & appointments",
+      testId: TEST_IDS.sidebar.calendar
     },
     {
       name: "Storm Canvass Pro",
@@ -214,7 +238,8 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
       href: "settings",
       path: "/settings",
       icon: Settings,
-      description: "System configuration"
+      description: "System configuration",
+      testId: TEST_IDS.sidebar.settings
     },
     {
       name: "Help",
@@ -254,6 +279,7 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
             <Link
               key={item.href}
               to={item.path}
+              data-testid={item.testId}
               className={cn(
                 "w-full flex items-center rounded-lg text-left transition-smooth group",
                 isCollapsed ? "px-2 py-2.5 justify-center" : "gap-3 px-3 py-2.5",
@@ -294,6 +320,7 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
             <Link
               key={item.href}
               to={item.path}
+              data-testid={item.testId}
               className={cn(
                 "w-full flex items-center rounded-lg text-left transition-smooth group",
                 isCollapsed ? "px-2 py-2.5 justify-center" : "gap-3 px-3 py-2.5",
@@ -329,7 +356,10 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
 
       {/* User Info */}
       <div className="p-4 border-t border-border bg-muted/30">
-        <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3")}>
+        <div 
+          className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3")}
+          data-testid={TEST_IDS.sidebar.userMenu}
+        >
           <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
             <span className="text-sm font-bold text-primary-foreground">
               {currentUser?.first_name?.[0] || 'U'}{currentUser?.last_name?.[0] || ''}
