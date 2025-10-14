@@ -1,11 +1,38 @@
 import { Card } from "@/components/ui/card";
+import { SignatureCapture } from "./SignatureCapture";
+import { useToast } from "@/components/ui/use-toast";
+import { supabase } from "@/integrations/supabase/client";
 
 interface SlideRendererProps {
   slide: any;
   sessionId: string | null;
 }
 
-export const SlideRenderer = ({ slide }: SlideRendererProps) => {
+export const SlideRenderer = ({ slide, sessionId }: SlideRendererProps) => {
+  const { toast } = useToast();
+
+  const handleSignatureSave = async (signatureData: string) => {
+    if (!sessionId) return;
+
+    try {
+      await supabase.rpc("complete_presentation_session", {
+        p_session_id: sessionId,
+        p_signature_data: { signature: signatureData, captured_at: new Date().toISOString() },
+      });
+
+      toast({
+        title: "Signature saved",
+        description: "Your signature has been captured successfully",
+      });
+    } catch (error: any) {
+      toast({
+        title: "Failed to save signature",
+        description: error.message,
+        variant: "destructive",
+      });
+    }
+  };
+
   const renderSlideContent = () => {
     switch (slide.slide_type) {
       case "title":
@@ -103,13 +130,11 @@ export const SlideRenderer = ({ slide }: SlideRendererProps) => {
 
       case "signature":
         return (
-          <div className="space-y-6 text-center">
-            <h2 className="text-4xl font-bold">{slide.content.title || "Agreement & Signature"}</h2>
-            <div className="max-w-3xl mx-auto text-left">
-              <p className="text-xl leading-relaxed mb-8">{slide.content.legalText || "Please review and sign below to accept this estimate."}</p>
-              <Card className="p-8 bg-muted/30">
-                <p className="text-lg text-muted-foreground text-center">Signature capture available in customer view mode</p>
-              </Card>
+          <div className="flex flex-col items-center justify-center h-full p-8">
+            <h2 className="text-3xl font-bold mb-4">{slide.content?.title || "Signature Required"}</h2>
+            <p className="text-muted-foreground mb-8">{slide.content?.description}</p>
+            <div className="w-full max-w-2xl">
+              <SignatureCapture onSave={handleSignatureSave} />
             </div>
           </div>
         );

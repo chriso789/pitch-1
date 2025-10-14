@@ -5,6 +5,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { SlideRenderer } from "@/components/presentations/SlideRenderer";
 import { PresentationControls } from "@/components/presentations/PresentationControls";
+import { SlideTransition } from "@/components/presentations/SlideTransition";
 
 const PresentationModePage = () => {
   const { id } = useParams<{ id: string }>();
@@ -162,10 +163,12 @@ const PresentationModePage = () => {
     <div className="h-screen flex flex-col bg-background">
       {/* Main slide area */}
       <div className="flex-1 flex items-center justify-center p-8">
-        <SlideRenderer
-          slide={currentSlide}
-          sessionId={sessionId}
-        />
+        <SlideTransition slideId={currentSlide.id} transitionType="fade">
+          <SlideRenderer
+            slide={currentSlide}
+            sessionId={sessionId}
+          />
+        </SlideTransition>
       </div>
 
       {/* Controls */}

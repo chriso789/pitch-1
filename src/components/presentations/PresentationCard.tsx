@@ -1,10 +1,11 @@
-import { Edit, Copy, Trash2, Eye, Play } from "lucide-react";
+import { Edit, Copy, Trash2, Eye, Play, Share2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
+import { SharePresentationDialog } from "./SharePresentationDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -179,6 +180,7 @@ export const PresentationCard = ({
         <Button variant="outline" size="sm" onClick={handlePreview}>
           <Play className="h-3 w-3" />
         </Button>
+        <SharePresentationDialog presentationId={presentation.id} />
         <Button variant="outline" size="sm" onClick={handleDuplicate}>
           <Copy className="h-3 w-3" />
         </Button>
