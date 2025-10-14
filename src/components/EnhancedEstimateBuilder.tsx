@@ -37,6 +37,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
+  const [savingEstimate, setSavingEstimate] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [salesReps, setSalesReps] = useState([]);
   const [selectedSalesRep, setSelectedSalesRep] = useState<any>(null);
@@ -263,6 +264,106 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       });
     } finally {
       setCalculating(false);
+    }
+  };
+
+  const handleSaveEstimate = async () => {
+    if (!pipelineEntryId) {
+      toast({
+        title: "Error",
+        description: "Pipeline entry ID is required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    if (!calculationResults || calculationResults.selling_price === 0) {
+      toast({
+        title: "Error",
+        description: "Please calculate the estimate first",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setSavingEstimate(true);
+    try {
+      // Get user and tenant info
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not authenticated');
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', user.id)
+        .single();
+
+      if (!profile?.tenant_id) throw new Error('Tenant ID not found');
+
+      // Generate estimate number
+      const { count } = await supabase
+        .from('enhanced_estimates')
+        .select('*', { count: 'exact', head: true });
+      
+      const estimateNumber = `EST-${String((count || 0) + 1).padStart(5, '0')}`;
+
+      // Save estimate (tenant_id will be set by RLS/trigger)
+      const { data: newEstimate, error } = await (supabase
+        .from('enhanced_estimates') as any)
+        .insert({
+          pipeline_entry_id: pipelineEntryId,
+          estimate_number: estimateNumber,
+          customer_name: propertyDetails.customer_name || 'Unknown',
+          customer_address: propertyDetails.customer_address || '',
+          roof_area_sq_ft: calculationResults.roof_area_sq_ft || propertyDetails.roof_area_sq_ft || 0,
+          roof_pitch: propertyDetails.roof_pitch || '4/12',
+          complexity_level: propertyDetails.complexity_level || 'moderate',
+          season: propertyDetails.season || 'spring',
+          location_zone: propertyDetails.location_zone,
+          material_cost: calculationResults.material_cost || 0,
+          material_markup_percent: 0,
+          material_total: calculationResults.material_cost || 0,
+          labor_hours: calculationResults.labor_hours || 0,
+          labor_rate_per_hour: calculationResults.labor_rate_per_hour || 50,
+          labor_cost: calculationResults.labor_cost || 0,
+          labor_markup_percent: 0,
+          labor_total: calculationResults.labor_cost || 0,
+          overhead_percent: excelConfig.overhead_percent || 20,
+          overhead_amount: calculationResults.overhead_amount || 0,
+          subtotal: calculationResults.cost_pre_profit || 0,
+          target_profit_percent: excelConfig.target_margin_percent || 30,
+          target_profit_amount: calculationResults.profit_amount || 0,
+          actual_profit_amount: calculationResults.profit_amount || 0,
+          actual_profit_percent: calculationResults.actual_margin_percent || 0,
+          selling_price: calculationResults.selling_price || 0,
+          price_per_sq_ft: calculationResults.roof_area_sq_ft > 0 ? (calculationResults.selling_price / calculationResults.roof_area_sq_ft) : 0,
+          permit_costs: 0,
+          waste_factor_percent: excelConfig.waste_factor_percent || 10,
+          contingency_percent: excelConfig.contingency_percent || 5,
+          line_items: lineItems as any || [],
+          status: 'draft',
+          created_by: user.id
+        })
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      toast({
+        title: "Estimate Saved",
+        description: `Estimate ${estimateNumber} saved successfully`,
+      });
+
+      onEstimateCreated?.(newEstimate);
+    } catch (error: any) {
+      console.error('Error saving estimate:', error);
+      toast({
+        title: "Save Failed",
+        description: error.message || "Failed to save estimate",
+        variant: "destructive",
+      });
+    } finally {
+      setSavingEstimate(false);
     }
   };
 
@@ -756,6 +857,27 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                   <p><span className="font-medium">Waste Factor:</span> {calculationResults.waste_factor_percent || 10}%</p>
                   <p><span className="font-medium">Overhead on Selling Price:</span> {calculationResults.overhead_percent?.toFixed(1)}%</p>
                 </div>
+
+                <Separator />
+
+                <Button
+                  onClick={handleSaveEstimate}
+                  disabled={!calculationResults || savingEstimate || calculationResults.selling_price === 0}
+                  size="lg"
+                  className="w-full gradient-primary"
+                >
+                  {savingEstimate ? (
+                    <>
+                      <Calculator className="h-5 w-5 mr-2 animate-spin" />
+                      Saving Estimate...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="h-5 w-5 mr-2" />
+                      Save Estimate with Budget
+                    </>
+                  )}
+                </Button>
               </CardContent>
             </Card>
           )}

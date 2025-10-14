@@ -190,6 +190,14 @@ const LeadDetails = () => {
         .eq('document_type', 'contract')
         .limit(1);
 
+      // Check for enhanced estimates
+      const { data: estimateData } = await supabase
+        .from('enhanced_estimates')
+        .select('id, selling_price, material_cost, labor_cost')
+        .eq('pipeline_entry_id', id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
       // Check if a selected estimate exists in metadata
       const { data: pipelineEntry } = await supabase
         .from('pipeline_entries')
@@ -198,7 +206,7 @@ const LeadDetails = () => {
         .maybeSingle();
 
       const metadata = pipelineEntry?.metadata as Record<string, any> | null;
-      const selectedEstimateId = metadata?.selected_estimate_id;
+      const selectedEstimateId = metadata?.selected_estimate_id || estimateData?.[0]?.id;
 
       // Check for materials and labor if estimate is selected
       let materials: any[] = [];
