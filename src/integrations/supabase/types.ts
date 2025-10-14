@@ -755,6 +755,93 @@ export type Database = {
         }
         Relationships: []
       }
+      call_logs: {
+        Row: {
+          answered_at: string | null
+          call_sid: string | null
+          callee_number: string
+          caller_id: string
+          contact_id: string | null
+          created_at: string | null
+          created_by: string | null
+          direction: string
+          disposition: string | null
+          disposition_notes: string | null
+          duration_seconds: number | null
+          ended_at: string | null
+          id: string
+          metadata: Json | null
+          pipeline_entry_id: string | null
+          recording_url: string | null
+          started_at: string | null
+          status: string
+          tenant_id: string
+          transcription: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          answered_at?: string | null
+          call_sid?: string | null
+          callee_number: string
+          caller_id: string
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          direction: string
+          disposition?: string | null
+          disposition_notes?: string | null
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          metadata?: Json | null
+          pipeline_entry_id?: string | null
+          recording_url?: string | null
+          started_at?: string | null
+          status?: string
+          tenant_id: string
+          transcription?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          answered_at?: string | null
+          call_sid?: string | null
+          callee_number?: string
+          caller_id?: string
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          direction?: string
+          disposition?: string | null
+          disposition_notes?: string | null
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          metadata?: Json | null
+          pipeline_entry_id?: string | null
+          recording_url?: string | null
+          started_at?: string | null
+          status?: string
+          tenant_id?: string
+          transcription?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_logs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_logs_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       calls: {
         Row: {
           contact_id: string | null
