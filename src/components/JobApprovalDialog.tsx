@@ -8,7 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Switch } from '@/components/ui/switch';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { CheckCircle, Clock, AlertCircle } from 'lucide-react';
+import { CheckCircle, Clock, AlertCircle, Loader2 } from 'lucide-react';
 
 interface JobApprovalDialogProps {
   pipelineEntry: any;
@@ -59,12 +59,24 @@ export const JobApprovalDialog: React.FC<JobApprovalDialogProps> = ({
 
       if (error) throw error;
 
+      // Check if project already existed
+      if (data.already_existed) {
+        toast({
+          title: "Project Already Exists",
+          description: `This lead has already been converted to project ${data.project_clj_number}.`,
+          variant: "default",
+        });
+        setOpen(false);
+        onJobCreated?.(data);
+        return;
+      }
+
       toast({
-        title: "Job Created Successfully",
-        description: `Job ${data.job.job_number} has been created from the pipeline entry.`,
+        title: "Project Created Successfully",
+        description: `Project ${data.project_clj_number} has been created and added to production.`,
       });
 
-      onJobCreated?.(data.job);
+      onJobCreated?.(data);
       setOpen(false);
       
       // Reset form
@@ -80,10 +92,10 @@ export const JobApprovalDialog: React.FC<JobApprovalDialogProps> = ({
       });
 
     } catch (error: any) {
-      console.error('Error creating job:', error);
+      console.error('Error creating project:', error);
       toast({
-        title: "Error Creating Job",
-        description: error.message || 'Failed to create job from pipeline entry',
+        title: "Error Creating Project",
+        description: error.message || 'Failed to create project from pipeline entry',
         variant: "destructive",
       });
     } finally {
@@ -126,7 +138,7 @@ export const JobApprovalDialog: React.FC<JobApprovalDialogProps> = ({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             {getStatusIcon(pipelineEntry.status)}
-            Convert Lead to Job
+            Convert Lead to Project
           </DialogTitle>
         </DialogHeader>
 
@@ -246,7 +258,14 @@ export const JobApprovalDialog: React.FC<JobApprovalDialogProps> = ({
               disabled={loading}
               className="bg-primary hover:bg-primary/90"
             >
-              {loading ? 'Creating Job...' : 'Create Job'}
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Creating Project...
+                </>
+              ) : (
+                'Create Project'
+              )}
             </Button>
           </div>
         </div>

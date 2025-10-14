@@ -232,7 +232,7 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
 
     setApprovingJob(true);
     try {
-      // Call edge function to approve job and generate job number
+      // Call edge function to approve job and create project
       const { data, error } = await supabase.functions.invoke('api-approve-job-from-lead', {
         body: { 
           pipelineEntryId,
@@ -245,10 +245,18 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
 
       if (error) throw error;
 
-      toast({
-        title: "Job Approved",
-        description: `Job ${data.job_number || ''} has been created and moved to In Production.`,
-      });
+      // Check if project already existed
+      if (data.already_existed) {
+        toast({
+          title: "Project Already Exists",
+          description: `This lead has already been converted to project ${data.project_clj_number}.`,
+        });
+      } else {
+        toast({
+          title: "Project Approved",
+          description: `Project ${data.project_clj_number || ''} has been created and added to production.`,
+        });
+      }
 
       setShowOverrideDialog(false);
       setOverrideAcknowledged(false);
@@ -257,7 +265,7 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
       console.error('Approval error:', error);
       toast({
         title: "Approval Failed",
-        description: error.message || "Failed to approve job. Please try again.",
+        description: error.message || "Failed to approve project. Please try again.",
         variant: "destructive",
       });
     } finally {
