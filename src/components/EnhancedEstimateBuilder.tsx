@@ -410,7 +410,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                 </div>
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <Label htmlFor="roof_area">Roof Area (sq ft)</Label>
+                    <Label htmlFor="roof_area">Squares (1 square = 100 sq ft)</Label>
                     {hasMeasurements && (
                       <Badge variant="secondary" className="text-xs">
                         <MapPin className="h-3 w-3 mr-1" />
@@ -421,8 +421,9 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                   <Input
                     id="roof_area"
                     type="number"
-                    value={propertyDetails.roof_area_sq_ft}
-                    onChange={(e) => setPropertyDetails(prev => ({ ...prev, roof_area_sq_ft: parseFloat(e.target.value) || 0 }))}
+                    step="0.1"
+                    value={(propertyDetails.roof_area_sq_ft / 100).toFixed(2)}
+                    onChange={(e) => setPropertyDetails(prev => ({ ...prev, roof_area_sq_ft: (parseFloat(e.target.value) || 0) * 100 }))}
                     readOnly={hasMeasurements}
                     className={hasMeasurements ? 'bg-muted' : ''}
                   />
