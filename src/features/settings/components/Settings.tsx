@@ -5,7 +5,7 @@ import { AutomationManager } from "@/components/AutomationManager";
 import { SmartDocumentEditor } from "@/components/SmartDocumentEditor";
 import { DynamicTagManager } from "@/components/DynamicTagManager";
 import { ApprovalManager } from "@/components/ApprovalManager";
-import { Settings as SettingsIcon, FileText, Calculator, Users, Building, Shield, Code, Mic, Bell, Package, DollarSign, AlertTriangle, CheckSquare } from "lucide-react";
+import { Settings as SettingsIcon, FileText, Calculator, Users, Building, Shield, Code, Mic, Bell, Package, DollarSign, AlertTriangle, CheckSquare, Activity } from "lucide-react";
 import { EstimateBuilder } from "@/features/estimates/components/EstimateBuilder";
 import { GeneralSettings } from "@/components/settings/GeneralSettings";
 import { UserManagement } from "@/components/settings/UserManagement";
@@ -19,6 +19,7 @@ import EnhancedErrorReportsManager from "./EnhancedErrorReportsManager";
 import ManagerApprovalQueue from "@/components/ManagerApprovalQueue";
 import QuickBooksSettings from "@/components/settings/QuickBooksSettings";
 import { JobTypeQBOMapping } from "@/components/settings/JobTypeQBOMapping";
+import { SystemHealthCheck } from "@/components/settings/SystemHealthCheck";
 import { supabase } from "@/integrations/supabase/client";
 
 export const Settings = () => {
@@ -82,7 +83,7 @@ export const Settings = () => {
       </div>
 
       <Tabs defaultValue="general" className="space-y-6">
-        <TabsList className={`grid w-full ${showDeveloperTab ? 'grid-cols-11' : 'grid-cols-10'}`}>
+        <TabsList className={`grid w-full ${showDeveloperTab ? 'grid-cols-12' : 'grid-cols-11'}`}>
           <TabsTrigger value="general" className="flex items-center gap-2">
             <SettingsIcon className="h-4 w-4" />
             General
@@ -122,6 +123,10 @@ export const Settings = () => {
           <TabsTrigger value="approvals" className="flex items-center gap-2">
             <CheckSquare className="h-4 w-4" />
             Approvals
+          </TabsTrigger>
+          <TabsTrigger value="health" className="flex items-center gap-2">
+            <Activity className="h-4 w-4" />
+            Health
           </TabsTrigger>
           {showDeveloperTab && (
             <TabsTrigger value="developer" className="flex items-center gap-2">
@@ -188,6 +193,10 @@ export const Settings = () => {
 
         <TabsContent value="approvals" className="space-y-6">
           <ManagerApprovalQueue />
+        </TabsContent>
+
+        <TabsContent value="health" className="space-y-6">
+          <SystemHealthCheck />
         </TabsContent>
 
         {showDeveloperTab && (
