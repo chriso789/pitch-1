@@ -173,12 +173,12 @@ const PipelineEntryReview = () => {
       if (error) throw error;
 
       toast({
-        title: 'Job Created Successfully',
-        description: `Job ${data.project_clj_number} has been created and moved to production.`,
+        title: 'Project Created Successfully',
+        description: `Project ${data.project_clj_number} has been created and moved to production.`,
       });
 
-      // Navigate to the new job details page
-      navigate(`/job/${data.project_id}`);
+      // Navigate back to pipeline to see the updated status
+      navigate('/pipeline');
     } catch (error: any) {
       console.error('Error converting to job:', error);
       toast({

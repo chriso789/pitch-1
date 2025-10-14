@@ -90,6 +90,29 @@ const Pipeline = () => {
     fetchPipelineData();
   }, [filters]);
 
+  // Set up real-time listener for pipeline_entries changes
+  useEffect(() => {
+    const channel = supabase
+      .channel('pipeline-entries-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'pipeline_entries'
+        },
+        () => {
+          // Refetch data when any pipeline entry changes
+          fetchPipelineData();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [filters]);
+
   const fetchUserRole = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
