@@ -21,7 +21,7 @@ import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 import { 
   Loader2, ArrowLeft, MapPin, Calendar, User, Phone, Mail, 
   DollarSign, FileText, Camera, Clock, Settings, CreditCard,
-  TrendingUp, TrendingDown, Target, AlertTriangle, ExternalLink, Sparkles
+  TrendingUp, TrendingDown, Target, AlertTriangle, ExternalLink, Sparkles, Download
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { ProfessionalTemplatesDialog } from '@/components/documents/ProfessionalTemplatesDialog';
@@ -402,6 +402,7 @@ const JobDetails = () => {
           <Button 
             onClick={() => setShowSmartDocs(true)}
             variant="outline"
+            title="Generate and manage photo reports"
           >
             <Sparkles className="h-4 w-4 mr-2" />
             Generate Report

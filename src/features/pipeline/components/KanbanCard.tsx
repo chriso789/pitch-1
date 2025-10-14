@@ -6,7 +6,8 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { GripVertical, X, ArrowRight } from "lucide-react";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { GripVertical, X, ArrowRight, MoreVertical, FileText, Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -57,6 +58,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   const navigate = useNavigate();
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [daysSinceLastComm, setDaysSinceLastComm] = useState<number>(0);
+  const [generating, setGenerating] = useState(false);
 
   useEffect(() => {
     if (entry.contact_id) {
@@ -177,6 +179,91 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
     onView(entry.contact_id);
   };
 
+  const handleGeneratePDF = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setGenerating(true);
+    
+    try {
+      // Generate PDF by calling smart-docs-renderer first, then PDF function
+      const { data: renderData, error: renderError } = await supabase.functions.invoke('smart-docs-renderer', {
+        body: {
+          slug: 'asphalt-shingle-photo-report',
+          lead_id: entry.id,
+          save_instance: true
+        }
+      });
+
+      if (renderError) throw renderError;
+
+      if (renderData?.instance_id) {
+        const { data: pdfData, error: pdfError } = await supabase.functions.invoke('smart-docs-pdf', {
+          body: {
+            instance_id: renderData.instance_id,
+            upload: 'signed',
+            filename: `${entry.job_number || 'report'}-${new Date().toISOString().split('T')[0]}.pdf`
+          }
+        });
+
+        if (pdfError) throw pdfError;
+
+        // Open PDF in new tab
+        if (pdfData?.pdf_url) {
+          window.open(pdfData.pdf_url, '_blank');
+          toast.success('PDF generated successfully');
+        }
+      }
+    } catch (error) {
+      console.error('PDF generation error:', error);
+      toast.error('Failed to generate PDF');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
+  const handleEmailPDF = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    
+    if (!contact?.email) {
+      toast.error('No email address found for this contact');
+      return;
+    }
+
+    setGenerating(true);
+    
+    try {
+      const { data: renderData, error: renderError } = await supabase.functions.invoke('smart-docs-renderer', {
+        body: {
+          slug: 'asphalt-shingle-photo-report',
+          lead_id: entry.id,
+          save_instance: true
+        }
+      });
+
+      if (renderError) throw renderError;
+
+      if (renderData?.instance_id) {
+        const { data: pdfData, error: pdfError } = await supabase.functions.invoke('smart-docs-pdf', {
+          body: {
+            instance_id: renderData.instance_id,
+            upload: 'signed',
+            filename: `${entry.job_number || 'report'}-${new Date().toISOString().split('T')[0]}.pdf`,
+            to_email: contact.email,
+            subject: `Your Roofing Report - ${entry.job_number}`,
+            message: `Dear ${contact.first_name},\n\nPlease find your roofing report attached.\n\nBest regards`
+          }
+        });
+
+        if (pdfError) throw pdfError;
+        toast.success(`PDF sent to ${contact.email}`);
+      }
+    } catch (error) {
+      console.error('Email PDF error:', error);
+      toast.error('Failed to send PDF');
+    } finally {
+      setGenerating(false);
+    }
+  };
+
   return (
     <Card 
       ref={setNodeRef} 
@@ -255,6 +342,37 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
         >
           <ArrowRight className="h-2.5 w-2.5" />
         </Button>
+
+        {/* Quick Actions Menu (top right, next to drag handle) */}
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute top-0 left-0 h-3.5 w-3.5 p-0 text-muted-foreground/70 hover:text-foreground hover:bg-muted/20 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+              onClick={(e) => e.stopPropagation()}
+              aria-label={`Quick actions for ${jobNumber}`}
+              disabled={generating}
+            >
+              <MoreVertical className="h-2.5 w-2.5" />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-48">
+            <DropdownMenuItem onClick={handleGeneratePDF} disabled={generating}>
+              <FileText className="h-3.5 w-3.5 mr-2" />
+              {generating ? 'Generating...' : 'Download PDF Report'}
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleEmailPDF} disabled={generating || !contact?.email}>
+              <Mail className="h-3.5 w-3.5 mr-2" />
+              Email PDF Report
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem onClick={handleLeadDetailsClick}>
+              <ArrowRight className="h-3.5 w-3.5 mr-2" />
+              View Lead Details
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
 
         {/* Delete Button (only visible to authorized users on hover) */}
         {canDelete && (
