@@ -22,6 +22,7 @@ import MeasurementGating from '@/components/estimates/MeasurementGating';
 import { EnhancedEstimateBuilder } from '@/components/EnhancedEstimateBuilder';
 import { ApprovalRequirementsBubbles } from '@/components/ApprovalRequirementsBubbles';
 import { MultiTemplateSelector } from '@/components/estimates/MultiTemplateSelector';
+import { DocumentsTab } from '@/components/DocumentsTab';
 
 interface LeadDetailsData {
   id: string;
@@ -301,6 +302,13 @@ const LeadDetails = () => {
 
   const renderActiveSection = () => {
     switch (activeTab) {
+      case 'documents':
+        return (
+          <DocumentsTab 
+            pipelineEntryId={id!}
+            onUploadComplete={checkApprovalRequirements}
+          />
+        );
       case 'estimate':
         return (
           <MultiTemplateSelector

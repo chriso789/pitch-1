@@ -8,7 +8,8 @@ import {
   Settings, 
   TrendingUp, 
   DollarSign,
-  RefreshCw
+  RefreshCw,
+  FileText
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -199,6 +200,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       case 'overhead': return Settings;
       case 'profit': return TrendingUp;
       case 'total': return DollarSign;
+      case 'documents': return FileText;
       default: return Calculator;
     }
   };
@@ -212,6 +214,14 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
 
   // Use sections from RPC if available, otherwise build fallback
   const links = hyperlinkData ? [
+    {
+      id: 'documents',
+      label: 'Documents',
+      icon: FileText,
+      value: '—',
+      hint: null,
+      description: 'Project documents and files'
+    },
     ...hyperlinkData.sections
       .filter(section => section.key === 'measurements')
       .map(section => ({
@@ -251,6 +261,14 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       description: getDescriptionForSection(section.key)
     }))
   ] : [
+    {
+      id: 'documents',
+      label: 'Documents',
+      icon: FileText,
+      value: '—',
+      hint: null,
+      description: 'Project documents and files'
+    },
     {
       id: 'measurements',
       label: 'Measurements',
@@ -319,6 +337,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
 
   function getDescriptionForSection(key: string) {
     switch (key) {
+      case 'documents': return 'Project documents and files';
       case 'estimate': return 'Estimate templates and calculations';
       case 'measurements': return 'Roof measurements and template mapping';
       case 'materials': return 'Material costs and specifications';

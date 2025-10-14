@@ -109,6 +109,14 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
 
     setUploadingContract(true);
     try {
+      // Get user and tenant info
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', user?.id)
+        .single();
+
       const fileExt = file.name.split('.').pop();
       const fileName = `${pipelineEntryId}/${Date.now()}.${fileExt}`;
       
@@ -121,11 +129,14 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
       const { error: dbError } = await supabase
         .from('documents')
         .insert({
+          tenant_id: profile?.tenant_id,
           pipeline_entry_id: pipelineEntryId,
           document_type: 'contract',
           filename: file.name,
           file_path: fileName,
           file_size: file.size,
+          mime_type: file.type,
+          uploaded_by: user?.id,
         });
 
       if (dbError) throw dbError;
