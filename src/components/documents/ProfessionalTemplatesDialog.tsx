@@ -1,10 +1,12 @@
 import React, { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
 import { Loader2, FileText, Package, Download, Mail, X } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
@@ -56,6 +58,9 @@ export function ProfessionalTemplatesDialog({ open, onClose, jobId, leadId }: Pr
   const [previewHtml, setPreviewHtml] = useState<string | null>(null);
   const [selectedRoofType, setSelectedRoofType] = useState('asphalt_shingle');
   const [instanceId, setInstanceId] = useState<string | null>(null);
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [emailRecipient, setEmailRecipient] = useState("");
+  const [emailMessage, setEmailMessage] = useState("Thank you for meeting with us. Please find your report attached.");
 
   const handleGenerate = async (slug: string) => {
     setLoading(true);
@@ -130,12 +135,74 @@ export function ProfessionalTemplatesDialog({ open, onClose, jobId, leadId }: Pr
     }
   };
 
-  const handleDownloadPDF = () => {
-    toast.info('PDF export coming soon');
+  const handleDownloadPDF = async () => {
+    if (!previewHtml || !instanceId) {
+      toast.error('No document to download');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      const { data, error } = await supabase.functions.invoke('smart-docs-pdf', {
+        body: {
+          instance_id: instanceId,
+          upload: 'signed',
+          filename: `report-${new Date().toISOString().split('T')[0]}.pdf`
+        }
+      });
+
+      if (error) throw error;
+
+      // Open PDF in new tab
+      window.open(data.pdf_url, '_blank');
+      
+      toast.success('PDF generated successfully');
+    } catch (error) {
+      console.error('PDF generation error:', error);
+      toast.error('Failed to generate PDF');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleEmail = () => {
-    toast.info('Email functionality coming soon');
+    setEmailDialogOpen(true);
+  };
+
+  const handleSendEmail = async () => {
+    if (!emailRecipient || !instanceId) {
+      toast.error('Please enter a valid email address');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      const { data, error } = await supabase.functions.invoke('smart-docs-pdf', {
+        body: {
+          instance_id: instanceId,
+          upload: 'signed',
+          filename: `report-${new Date().toISOString().split('T')[0]}.pdf`,
+          to_email: emailRecipient,
+          subject: 'Your Roofing Report',
+          message: emailMessage,
+          attach: false
+        }
+      });
+
+      if (error) throw error;
+      
+      toast.success(`PDF sent to ${emailRecipient}`);
+      
+      setEmailDialogOpen(false);
+      setEmailRecipient("");
+    } catch (error) {
+      console.error('Email error:', error);
+      toast.error('Failed to send email');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleClose = () => {
@@ -263,6 +330,52 @@ export function ProfessionalTemplatesDialog({ open, onClose, jobId, leadId }: Pr
           </TabsContent>
         </Tabs>
       </DialogContent>
+
+      {/* Email Dialog */}
+      <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Send PDF via Email</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div>
+              <label className="text-sm font-medium">Recipient Email</label>
+              <Input
+                type="email"
+                placeholder="customer@example.com"
+                value={emailRecipient}
+                onChange={(e) => setEmailRecipient(e.target.value)}
+                className="mt-2"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium">Message</label>
+              <Textarea
+                placeholder="Optional message..."
+                value={emailMessage}
+                onChange={(e) => setEmailMessage(e.target.value)}
+                rows={4}
+                className="mt-2"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmailDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSendEmail} disabled={loading}>
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Sending...
+                </>
+              ) : (
+                'Send Email'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }

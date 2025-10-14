@@ -5305,6 +5305,54 @@ export type Database = {
         }
         Relationships: []
       }
+      product_catalog: {
+        Row: {
+          brand: string
+          category: string
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          metadata: Json | null
+          model: string
+          price_per_square: number | null
+          tenant_id: string
+          tier: string
+          updated_at: string | null
+          warranty_years: number | null
+        }
+        Insert: {
+          brand: string
+          category: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          metadata?: Json | null
+          model: string
+          price_per_square?: number | null
+          tenant_id: string
+          tier: string
+          updated_at?: string | null
+          warranty_years?: number | null
+        }
+        Update: {
+          brand?: string
+          category?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          metadata?: Json | null
+          model?: string
+          price_per_square?: number | null
+          tenant_id?: string
+          tier?: string
+          updated_at?: string | null
+          warranty_years?: number | null
+        }
+        Relationships: []
+      }
       production_stage_history: {
         Row: {
           changed_at: string
@@ -7090,6 +7138,56 @@ export type Database = {
           },
         ]
       }
+      smart_doc_instances: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          id: string
+          job_id: string | null
+          lead_id: string | null
+          pdf_url: string | null
+          rendered_html: string
+          storage_path: string | null
+          template_id: string | null
+          tenant_id: string
+          title: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          job_id?: string | null
+          lead_id?: string | null
+          pdf_url?: string | null
+          rendered_html: string
+          storage_path?: string | null
+          template_id?: string | null
+          tenant_id: string
+          title: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          job_id?: string | null
+          lead_id?: string | null
+          pdf_url?: string | null
+          rendered_html?: string
+          storage_path?: string | null
+          template_id?: string | null
+          tenant_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "smart_doc_instances_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "smart_doc_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       smart_doc_renders: {
         Row: {
           context: Json | null
@@ -7130,6 +7228,48 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      smart_doc_templates: {
+        Row: {
+          category: string
+          content: string
+          created_at: string | null
+          description: string | null
+          id: string
+          is_system: boolean | null
+          slug: string
+          status: string | null
+          tenant_id: string
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          category: string
+          content: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_system?: boolean | null
+          slug: string
+          status?: string | null
+          tenant_id: string
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string
+          content?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_system?: boolean | null
+          slug?: string
+          status?: string | null
+          tenant_id?: string
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
       }
       smart_docs: {
         Row: {
@@ -9057,6 +9197,42 @@ export type Database = {
           pipeline_entry_id_param: string
         }
         Returns: Json
+      }
+      api_smartdoc_build_context: {
+        Args: { p_extra?: Json; p_job_id?: string; p_lead_id?: string }
+        Returns: Json
+      }
+      api_smartdoc_templates_get: {
+        Args: { p_id: string }
+        Returns: {
+          category: string
+          content: string
+          created_at: string | null
+          description: string | null
+          id: string
+          is_system: boolean | null
+          slug: string
+          status: string | null
+          tenant_id: string
+          title: string
+          updated_at: string | null
+        }
+      }
+      api_smartdoc_templates_list: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          category: string
+          content: string
+          created_at: string | null
+          description: string | null
+          id: string
+          is_system: boolean | null
+          slug: string
+          status: string | null
+          tenant_id: string
+          title: string
+          updated_at: string | null
+        }[]
       }
       api_template_get_full: {
         Args: { p_template_id: string }
