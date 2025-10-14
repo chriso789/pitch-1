@@ -161,6 +161,54 @@ serve(async (req) => {
         });
     }
 
+    // Create Pre-Cap and Cap-Out budget snapshots from estimate
+    try {
+      // Fetch the latest estimate for this pipeline entry
+      const { data: estimates } = await supabase
+        .from('enhanced_estimates')
+        .select('*')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .eq('tenant_id', profile.tenant_id)
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      const estimate = estimates?.[0];
+
+      if (estimate && estimate.line_items && Array.isArray(estimate.line_items)) {
+        // Transform estimate line items to budget format
+        const budgetLines = estimate.line_items.map((item: any) => ({
+          kind: item.category === 'labor' ? 'LABOR' : 'MATERIAL',
+          code: item.code || item.name,
+          name: item.name,
+          uom: item.unit || 'EA',
+          qty: item.quantity || 0,
+          unit_price: item.unit_price || 0,
+          unit_cost: item.unit_cost || (item.unit_price || 0) * 0.6, // Default 40% markup if no cost
+          markup_pct: item.markup_percent ? item.markup_percent / 100 : 0,
+        }));
+
+        // Call snapshot RPC to create Pre-Cap and Cap-Out
+        const { error: snapshotError } = await supabase.rpc('api_snapshot_precap_and_capout', {
+          p_job_id: newProject.id,
+          p_lines: budgetLines,
+          p_overhead_amount: estimate.overhead_amount || 0,
+          p_commission_amount: estimate.sales_rep_commission_amount || 0,
+          p_misc_amount: estimate.permit_costs || 0,
+          p_estimate_ref: estimate.id,
+        });
+
+        if (snapshotError) {
+          console.error('Error creating budget snapshots:', snapshotError);
+          // Don't fail the entire operation if budget snapshot fails
+        } else {
+          console.log('Budget snapshots created successfully for project:', newProject.id);
+        }
+      }
+    } catch (budgetError) {
+      console.error('Error in budget snapshot creation:', budgetError);
+      // Don't fail the entire operation
+    }
+
     return new Response(JSON.stringify({ 
       success: true,
       project: newProject,

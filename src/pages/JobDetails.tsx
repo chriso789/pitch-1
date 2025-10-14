@@ -21,10 +21,12 @@ import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 import { 
   Loader2, ArrowLeft, MapPin, Calendar, User, Phone, Mail, 
   DollarSign, FileText, Camera, Clock, Settings, CreditCard,
-  TrendingUp, TrendingDown, Target, AlertTriangle, ExternalLink, Sparkles, Download
+  TrendingUp, TrendingDown, Target, AlertTriangle, ExternalLink, Sparkles, Download, Receipt
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { ProfessionalTemplatesDialog } from '@/components/documents/ProfessionalTemplatesDialog';
+import { BudgetChips } from '@/components/production/BudgetChips';
+import { CostConfirmationDialog } from '@/components/production/CostConfirmationDialog';
 
 interface JobDetailsData {
   id: string;
@@ -72,6 +74,7 @@ const JobDetails = () => {
   const [productionStage, setProductionStage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
   const [showSmartDocs, setShowSmartDocs] = useState(false);
+  const [showCostConfirmation, setShowCostConfirmation] = useState(false);
   const [financials, setFinancials] = useState<FinancialSummary>({
     totalBudget: 0,
     actualCosts: 0,
@@ -400,6 +403,14 @@ const JobDetails = () => {
         {/* Action Buttons */}
         <div className="flex gap-2">
           <Button 
+            onClick={() => setShowCostConfirmation(true)}
+            variant="outline"
+            title="Record material/labor costs"
+          >
+            <Receipt className="h-4 w-4 mr-2" />
+            Confirm Cost
+          </Button>
+          <Button 
             onClick={() => setShowSmartDocs(true)}
             variant="outline"
             title="Generate and manage photo reports"
@@ -427,6 +438,22 @@ const JobDetails = () => {
         onClose={() => setShowSmartDocs(false)}
         jobId={id}
       />
+
+      <CostConfirmationDialog
+        open={showCostConfirmation}
+        onOpenChange={setShowCostConfirmation}
+        projectId={id!}
+        onSuccess={() => {
+          // Budgets will auto-refresh via their query refetch interval
+        }}
+      />
+
+      {/* Budget Tracking (Pre-Cap vs Cap-Out) */}
+      {id && (
+        <div className="mb-6">
+          <BudgetChips projectId={id} targetMarginPercent={30} />
+        </div>
+      )}
 
       {/* Financial Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">

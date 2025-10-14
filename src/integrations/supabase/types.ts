@@ -3530,6 +3530,87 @@ export type Database = {
           },
         ]
       }
+      job_budget_versions: {
+        Row: {
+          created_at: string
+          estimate_ref: string | null
+          id: string
+          job_id: string
+          kind: string
+          lines: Json
+          locked: boolean
+          summary: Json
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          estimate_ref?: string | null
+          id?: string
+          job_id: string
+          kind: string
+          lines: Json
+          locked?: boolean
+          summary: Json
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          estimate_ref?: string | null
+          id?: string
+          job_id?: string
+          kind?: string
+          lines?: Json
+          locked?: boolean
+          summary?: Json
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      job_cost_events: {
+        Row: {
+          amount: number
+          created_at: string
+          doc_url: string | null
+          external_ref: string | null
+          id: string
+          job_id: string
+          kind: string
+          note: string | null
+          occurred_at: string
+          tenant_id: string
+          vendor_name: string | null
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          doc_url?: string | null
+          external_ref?: string | null
+          id?: string
+          job_id: string
+          kind: string
+          note?: string | null
+          occurred_at?: string
+          tenant_id: string
+          vendor_name?: string | null
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          doc_url?: string | null
+          external_ref?: string | null
+          id?: string
+          job_id?: string
+          kind?: string
+          note?: string | null
+          occurred_at?: string
+          tenant_id?: string
+          vendor_name?: string | null
+        }
+        Relationships: []
+      }
       job_type_item_map: {
         Row: {
           created_at: string
@@ -9334,6 +9415,20 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      _compute_budget_rollup: {
+        Args: {
+          p_commission: number
+          p_lines: Json
+          p_misc: number
+          p_overhead: number
+          p_sell_override?: number
+        }
+        Returns: Json
+      }
+      _jsonb_num: {
+        Args: { default_val: number; key: string; v: Json }
+        Returns: number
+      }
       api_approve_job_from_lead: {
         Args: { approval_notes?: string; pipeline_entry_id_param: string }
         Returns: Json
@@ -9357,6 +9452,10 @@ export type Database = {
           p_trigger_conditions?: Json
         }
         Returns: boolean
+      }
+      api_capout_refresh: {
+        Args: { p_job_id: string }
+        Returns: Json
       }
       api_dynamic_tags_frequently_used: {
         Args: { p_limit?: number }
@@ -9415,6 +9514,21 @@ export type Database = {
       api_estimate_status_get: {
         Args: { p_estimate_id: string }
         Returns: Json
+      }
+      api_job_budgets_get: {
+        Args: { p_job_id: string }
+        Returns: {
+          created_at: string
+          estimate_ref: string | null
+          id: string
+          job_id: string
+          kind: string
+          lines: Json
+          locked: boolean
+          summary: Json
+          tenant_id: string
+          updated_at: string
+        }[]
       }
       api_qbo_map_job_invoice: {
         Args: {
@@ -9489,6 +9603,20 @@ export type Database = {
           tenant_id: string
           title: string
           updated_at: string | null
+        }[]
+      }
+      api_snapshot_precap_and_capout: {
+        Args: {
+          p_commission_amount?: number
+          p_estimate_ref?: string
+          p_job_id: string
+          p_lines: Json
+          p_misc_amount?: number
+          p_overhead_amount?: number
+        }
+        Returns: {
+          capout_id: string
+          precap_id: string
         }[]
       }
       api_template_get_full: {
