@@ -32,6 +32,8 @@ import Settings from "./pages/Settings";
 import Help from "./pages/Help";
 import PresentationsPage from "./pages/PresentationsPage";
 import PresentationBuilderPage from "./pages/PresentationBuilderPage";
+import PresentationModePage from "./pages/PresentationModePage";
+import CustomerPresentationView from "./pages/CustomerPresentationView";
 
 
 const queryClient = new QueryClient({
@@ -89,6 +91,8 @@ const App = () => {
               <Route path="/smartdocs" element={<SmartDocs />} />
               <Route path="/presentations" element={<PresentationsPage />} />
               <Route path="/presentations/:id/edit" element={<PresentationBuilderPage />} />
+              <Route path="/presentations/:id/present" element={<PresentationModePage />} />
+              <Route path="/presentations/:id/view" element={<CustomerPresentationView />} />
               <Route path="/settings" element={<Settings />} />
               <Route path="/help" element={<Help />} />
               

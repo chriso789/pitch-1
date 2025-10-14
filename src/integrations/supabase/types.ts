@@ -9125,6 +9125,10 @@ export type Database = {
         Args: { check_date: string; sub_id: string; tenant_id_param: string }
         Returns: boolean
       }
+      complete_presentation_session: {
+        Args: { p_session_id: string; p_signature_data?: Json }
+        Returns: undefined
+      }
       est_bind_template: {
         Args: { p_estimate_id: string; p_template_id: string }
         Returns: undefined
@@ -9180,6 +9184,14 @@ export type Database = {
       }
       generate_job_number: {
         Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      generate_presentation_token: {
+        Args: {
+          p_contact_id?: string
+          p_expires_in?: unknown
+          p_presentation_id: string
+        }
         Returns: string
       }
       generate_signature_access_token: {
@@ -9276,9 +9288,29 @@ export type Database = {
         Args: { contact_id_param: string }
         Returns: boolean
       }
+      start_presentation_session: {
+        Args: {
+          p_access_token?: string
+          p_contact_id?: string
+          p_presentation_id: string
+        }
+        Returns: string
+      }
       switch_developer_context: {
         Args: { target_tenant_id: string }
         Returns: boolean
+      }
+      track_slide_view: {
+        Args: {
+          p_session_id: string
+          p_slide_id: string
+          p_time_spent?: number
+        }
+        Returns: undefined
+      }
+      validate_presentation_token: {
+        Args: { p_presentation_id: string; p_token: string }
+        Returns: string
       }
     }
     Enums: {

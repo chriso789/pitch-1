@@ -1,4 +1,4 @@
-import { Edit, Copy, Trash2, Eye } from "lucide-react";
+import { Edit, Copy, Trash2, Eye, Play } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -177,7 +177,7 @@ export const PresentationCard = ({
           Edit
         </Button>
         <Button variant="outline" size="sm" onClick={handlePreview}>
-          <Eye className="h-3 w-3" />
+          <Play className="h-3 w-3" />
         </Button>
         <Button variant="outline" size="sm" onClick={handleDuplicate}>
           <Copy className="h-3 w-3" />
