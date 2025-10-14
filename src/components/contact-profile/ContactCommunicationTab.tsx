@@ -19,6 +19,10 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { PhoneNumberSelector } from "@/components/communication/PhoneNumberSelector";
+import { FloatingEmailComposer } from "@/components/messaging/FloatingEmailComposer";
+import { SMSComposerDialog } from "@/components/communication/SMSComposerDialog";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 interface ContactCommunicationTabProps {
   contact: any;
@@ -31,7 +35,11 @@ export const ContactCommunicationTab: React.FC<ContactCommunicationTabProps> = (
   const [loading, setLoading] = useState(true);
   const [newNote, setNewNote] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [phoneDialogOpen, setPhoneDialogOpen] = useState(false);
+  const [emailComposerOpen, setEmailComposerOpen] = useState(false);
+  const [smsDialogOpen, setSmsDialogOpen] = useState(false);
   const { toast } = useToast();
+  const { user: currentUser } = useCurrentUser();
 
   useEffect(() => {
     fetchCommunications();
@@ -104,12 +112,89 @@ export const ContactCommunicationTab: React.FC<ContactCommunicationTabProps> = (
     }
   };
 
+  const handleCallInitiated = (callLog: any) => {
+    toast({
+      title: "Call initiated",
+      description: `Calling ${contact.first_name} ${contact.last_name}`,
+    });
+    fetchCommunications();
+  };
+
+  const handleSendEmail = async (emailData: any) => {
+    try {
+      const { error } = await supabase.functions.invoke('send-email', {
+        body: {
+          to: emailData.to,
+          cc: emailData.cc,
+          bcc: emailData.bcc,
+          subject: emailData.subject,
+          body: emailData.body,
+          contactId: contact.id,
+        }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Email sent",
+        description: `Email sent to ${contact.first_name} ${contact.last_name}`,
+      });
+      
+      fetchCommunications();
+    } catch (error: any) {
+      console.error('Error sending email:', error);
+      toast({
+        title: "Failed to send email",
+        description: error.message || "An error occurred",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleSendSMS = async (message: string) => {
+    try {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', currentUser?.id)
+        .single();
+
+      // Log to communication history
+      const { error: historyError } = await supabase.from('communication_history').insert({
+        tenant_id: profile?.tenant_id,
+        contact_id: contact.id,
+        communication_type: 'sms',
+        direction: 'outbound',
+        content: message,
+        rep_id: currentUser?.id,
+      });
+
+      if (historyError) throw historyError;
+
+      toast({
+        title: "SMS logged",
+        description: `Message logged for ${contact.first_name} ${contact.last_name}`,
+      });
+      
+      fetchCommunications();
+    } catch (error: any) {
+      console.error('Error sending SMS:', error);
+      toast({
+        title: "Failed to log SMS",
+        description: error.message || "An error occurred",
+        variant: "destructive",
+      });
+    }
+  };
+
   const getCommunicationIcon = (type: string) => {
     switch (type) {
       case 'call':
         return <Phone className="h-4 w-4" />;
       case 'email':
         return <Mail className="h-4 w-4" />;
+      case 'sms':
+        return <MessageSquare className="h-4 w-4" />;
       case 'meeting':
         return <Calendar className="h-4 w-4" />;
       default:
@@ -123,6 +208,8 @@ export const ContactCommunicationTab: React.FC<ContactCommunicationTabProps> = (
         return 'bg-primary text-primary-foreground';
       case 'email':
         return 'bg-secondary text-secondary-foreground';
+      case 'sms':
+        return 'bg-accent text-accent-foreground';
       case 'meeting':
         return 'bg-success text-success-foreground';
       default:
@@ -134,12 +221,47 @@ export const ContactCommunicationTab: React.FC<ContactCommunicationTabProps> = (
     total: communications.length,
     calls: communications.filter(c => c.communication_type === 'call').length,
     emails: communications.filter(c => c.communication_type === 'email').length,
-    meetings: communications.filter(c => c.communication_type === 'meeting').length,
+    sms: communications.filter(c => c.communication_type === 'sms').length,
     notes: communications.filter(c => c.communication_type === 'note').length
   };
 
+  const phoneNumbers = [
+    ...(contact.phone ? [{ label: 'Primary', number: contact.phone }] : []),
+    ...(contact.phone_2 ? [{ label: 'Secondary', number: contact.phone_2 }] : []),
+  ];
+
   return (
     <div className="space-y-6">
+      {/* Quick Actions */}
+      <div className="flex gap-2 flex-wrap">
+        <Button 
+          onClick={() => setPhoneDialogOpen(true)}
+          disabled={phoneNumbers.length === 0}
+          className="gap-2"
+        >
+          <Phone className="h-4 w-4" />
+          Call Now
+        </Button>
+        <Button 
+          variant="outline"
+          onClick={() => setEmailComposerOpen(true)}
+          disabled={!contact.email}
+          className="gap-2"
+        >
+          <Mail className="h-4 w-4" />
+          Send Email
+        </Button>
+        <Button 
+          variant="outline"
+          onClick={() => setSmsDialogOpen(true)}
+          disabled={!contact.phone}
+          className="gap-2"
+        >
+          <MessageSquare className="h-4 w-4" />
+          Send SMS
+        </Button>
+      </div>
+
       {/* Communication Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         <Card className="shadow-soft">
@@ -183,8 +305,8 @@ export const ContactCommunicationTab: React.FC<ContactCommunicationTabProps> = (
             <div className="flex items-center space-x-2">
               <MessageSquare className="h-4 w-4 text-warning" />
               <div className="space-y-1">
-                <p className="text-sm font-medium leading-none">Notes</p>
-                <p className="text-2xl font-bold">{communicationStats.notes}</p>
+                <p className="text-sm font-medium leading-none">SMS</p>
+                <p className="text-2xl font-bold">{communicationStats.sms}</p>
               </div>
             </div>
           </CardContent>
@@ -304,6 +426,36 @@ export const ContactCommunicationTab: React.FC<ContactCommunicationTabProps> = (
           )}
         </CardContent>
       </Card>
+
+      {/* Dialogs */}
+      <PhoneNumberSelector
+        open={phoneDialogOpen}
+        onOpenChange={setPhoneDialogOpen}
+        contactId={contact.id}
+        contactName={`${contact.first_name} ${contact.last_name}`}
+        phoneNumbers={phoneNumbers}
+        onCallInitiated={handleCallInitiated}
+      />
+
+      <FloatingEmailComposer
+        isOpen={emailComposerOpen}
+        onClose={() => setEmailComposerOpen(false)}
+        defaultRecipient={{
+          id: contact.id,
+          name: `${contact.first_name} ${contact.last_name}`,
+          email: contact.email,
+          type: 'contact'
+        }}
+        onSendEmail={handleSendEmail}
+      />
+
+      <SMSComposerDialog
+        open={smsDialogOpen}
+        onOpenChange={setSmsDialogOpen}
+        phoneNumber={contact.phone}
+        contactName={`${contact.first_name} ${contact.last_name}`}
+        onSend={handleSendSMS}
+      />
     </div>
   );
 };

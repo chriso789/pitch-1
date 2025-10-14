@@ -338,6 +338,49 @@ export const AuthTabs: React.FC<AuthTabsProps> = ({
             {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
           </div>
 
+          <div className="flex justify-end">
+            <Button
+              type="button"
+              variant="link"
+              className="text-sm text-primary hover:underline p-0 h-auto"
+              data-testid="auth-forgot-password"
+              onClick={async () => {
+                if (!loginForm.email || !validateEmail(loginForm.email)) {
+                  toast({
+                    title: "Email required",
+                    description: "Please enter your email address first",
+                    variant: "destructive",
+                  });
+                  return;
+                }
+                
+                setLoading(true);
+                try {
+                  const { error } = await supabase.auth.resetPasswordForEmail(loginForm.email, {
+                    redirectTo: `${window.location.origin}/reset-password`,
+                  });
+                  
+                  if (error) throw error;
+                  
+                  toast({
+                    title: "Password reset email sent",
+                    description: "Check your email for the password reset link",
+                  });
+                } catch (error: any) {
+                  toast({
+                    title: "Error",
+                    description: error.message || "Failed to send reset email",
+                    variant: "destructive",
+                  });
+                } finally {
+                  setLoading(false);
+                }
+              }}
+            >
+              Forgot password?
+            </Button>
+          </div>
+
           <Button type="submit" className="w-full" disabled={loading} data-testid="auth-submit-button">
             {loading ? (
               <>

@@ -26,8 +26,17 @@ import {
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { 
+  DropdownMenu, 
+  DropdownMenuContent, 
+  DropdownMenuItem, 
+  DropdownMenuLabel, 
+  DropdownMenuSeparator, 
+  DropdownMenuTrigger 
+} from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
+import { useNavigate } from "react-router-dom";
 import { TEST_IDS } from "@/../tests/utils/test-ids";
 
 interface SidebarProps {
@@ -37,6 +46,7 @@ interface SidebarProps {
 const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
   const { toast } = useToast();
   const location = useLocation();
+  const navigate = useNavigate();
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [currentTenant, setCurrentTenant] = useState<any>(null);
   
@@ -354,62 +364,77 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
         </nav>
       </div>
 
-      {/* User Info */}
+      {/* User Info with Dropdown Menu */}
       <div className="p-4 border-t border-border bg-muted/30">
-        <div 
-          className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3")}
-          data-testid={TEST_IDS.sidebar.userMenu}
-        >
-          <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center">
-            <span className="text-sm font-bold text-primary-foreground">
-              {currentUser?.first_name?.[0] || 'U'}{currentUser?.last_name?.[0] || ''}
-            </span>
-          </div>
-          {!isCollapsed && (
-            <div className="flex-1 min-w-0">
-              <div className="text-sm font-medium truncate">
-                {currentUser?.first_name} {currentUser?.last_name}
-                {currentUser?.is_developer && (
-                  <Code className="inline h-3 w-3 ml-1 text-destructive" />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button 
+              className={cn(
+                "w-full flex items-center gap-3 p-2 rounded-lg hover:bg-accent transition-colors",
+                isCollapsed ? "justify-center" : ""
+              )}
+              data-testid={TEST_IDS.sidebar.userMenu}
+            >
+              <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
+                <span className="text-sm font-bold text-primary-foreground">
+                  {currentUser?.first_name?.[0] || 'U'}{currentUser?.last_name?.[0] || ''}
+                </span>
+              </div>
+              {!isCollapsed && (
+                <div className="flex-1 min-w-0 text-left">
+                  <div className="text-sm font-medium truncate">
+                    {currentUser?.first_name} {currentUser?.last_name}
+                    {currentUser?.is_developer && (
+                      <Code className="inline h-3 w-3 ml-1 text-destructive" />
+                    )}
+                  </div>
+                  <div className="text-xs text-muted-foreground truncate">
+                    {currentUser?.title || 'User'}
+                  </div>
+                </div>
+              )}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-56">
+            <DropdownMenuLabel>
+              <div className="flex flex-col space-y-1">
+                <p className="text-sm font-medium">
+                  {currentUser?.first_name} {currentUser?.last_name}
+                </p>
+                <p className="text-xs text-muted-foreground">{currentUser?.email}</p>
+                {currentUser?.role && (
+                  <Badge variant={getRoleBadgeVariant(currentUser.role)} className="text-xs w-fit">
+                    {currentUser.role}
+                  </Badge>
                 )}
               </div>
-              <div className="text-xs text-muted-foreground truncate">
-                {currentUser?.title || 'User'}
-              </div>
-              <div className="text-xs text-muted-foreground/80 truncate">
-                {currentUser?.company_name || 'Company'}
-              </div>
-            </div>
-          )}
-        </div>
-        
-        {/* User Role Display */}
-        {!isCollapsed && currentUser && (
-          <div className="mt-2 p-2 bg-muted/30 rounded-md">
-            <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <User className="h-3 w-3" />
-              <span>Role:</span>
-              <Badge variant={getRoleBadgeVariant(currentUser.role)} className="text-xs">
-                {currentUser.role}
-              </Badge>
-            </div>
-          </div>
-        )}
-        
-        {/* Sign Out Button */}
-        <Button
-          variant="ghost"
-          size="sm"
-          className={cn(
-            "w-full mt-2 text-red-600 hover:text-red-700 hover:bg-red-50",
-            isCollapsed ? "px-2" : "justify-start"
-          )}
-          onClick={handleSignOut}
-          title={isCollapsed ? "Sign Out" : undefined}
-        >
-          <LogOut className="h-4 w-4" />
-          {!isCollapsed && <span className="ml-2">Sign Out</span>}
-        </Button>
+            </DropdownMenuLabel>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem 
+              onClick={() => navigate('/settings')}
+              data-testid="user-menu-profile"
+            >
+              <User className="mr-2 h-4 w-4" />
+              Profile
+            </DropdownMenuItem>
+            <DropdownMenuItem 
+              onClick={() => navigate('/settings')}
+              data-testid="user-menu-settings"
+            >
+              <Settings className="mr-2 h-4 w-4" />
+              Settings
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem 
+              onClick={handleSignOut}
+              className="text-red-600 focus:text-red-600 focus:bg-red-50"
+              data-testid="user-menu-logout"
+            >
+              <LogOut className="mr-2 h-4 w-4" />
+              Logout
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
       </div>
     </div>
   );
