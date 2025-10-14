@@ -123,7 +123,7 @@ serve(async (req) => {
           project_id: newProject.id,
           pipeline_entry_id: pipelineEntryId,
           communication_type: 'system',
-          direction: 'internal',
+          direction: 'outbound',
           subject: 'Lead Converted to Project',
           content: `Pipeline entry converted to project by ${profile.first_name} ${profile.last_name}`,
           rep_id: user.id,
