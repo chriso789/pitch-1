@@ -66,7 +66,6 @@ export const PresentationCard = ({
 
       if (slides && slides.length > 0) {
         const newSlides = slides.map((slide) => ({
-          tenant_id: slide.tenant_id,
           presentation_id: newPresentation.id,
           slide_order: slide.slide_order,
           slide_type: slide.slide_type,

@@ -4996,6 +4996,149 @@ export type Database = {
         }
         Relationships: []
       }
+      presentation_sessions: {
+        Row: {
+          completed_at: string | null
+          contact_id: string | null
+          created_at: string
+          current_slide_index: number | null
+          id: string
+          presentation_id: string
+          signature_captured: boolean | null
+          signature_data: Json | null
+          started_at: string
+          status: string
+          tenant_id: string
+          updated_at: string
+          viewer_metadata: Json | null
+        }
+        Insert: {
+          completed_at?: string | null
+          contact_id?: string | null
+          created_at?: string
+          current_slide_index?: number | null
+          id?: string
+          presentation_id: string
+          signature_captured?: boolean | null
+          signature_data?: Json | null
+          started_at?: string
+          status?: string
+          tenant_id: string
+          updated_at?: string
+          viewer_metadata?: Json | null
+        }
+        Update: {
+          completed_at?: string | null
+          contact_id?: string | null
+          created_at?: string
+          current_slide_index?: number | null
+          id?: string
+          presentation_id?: string
+          signature_captured?: boolean | null
+          signature_data?: Json | null
+          started_at?: string
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+          viewer_metadata?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presentation_sessions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "presentation_sessions_presentation_id_fkey"
+            columns: ["presentation_id"]
+            isOneToOne: false
+            referencedRelation: "presentations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      presentation_slides: {
+        Row: {
+          content: Json
+          created_at: string
+          id: string
+          notes: string | null
+          presentation_id: string
+          slide_order: number
+          slide_type: string
+          transition_effect: string | null
+          updated_at: string
+        }
+        Insert: {
+          content?: Json
+          created_at?: string
+          id?: string
+          notes?: string | null
+          presentation_id: string
+          slide_order: number
+          slide_type: string
+          transition_effect?: string | null
+          updated_at?: string
+        }
+        Update: {
+          content?: Json
+          created_at?: string
+          id?: string
+          notes?: string | null
+          presentation_id?: string
+          slide_order?: number
+          slide_type?: string
+          transition_effect?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presentation_slides_presentation_id_fkey"
+            columns: ["presentation_id"]
+            isOneToOne: false
+            referencedRelation: "presentations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      presentations: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_template: boolean
+          name: string
+          template_type: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_template?: boolean
+          name: string
+          template_type?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_template?: boolean
+          name?: string
+          template_type?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       price_cache: {
         Row: {
           branch_code: string | null
