@@ -5,13 +5,14 @@ import { AutomationManager } from "@/components/AutomationManager";
 import { SmartDocumentEditor } from "@/components/SmartDocumentEditor";
 import { DynamicTagManager } from "@/components/DynamicTagManager";
 import { ApprovalManager } from "@/components/ApprovalManager";
-import { Settings as SettingsIcon, FileText, Calculator, Users, Building, Shield, Code, Mic, Bell, Package, DollarSign, AlertTriangle, CheckSquare, Activity } from "lucide-react";
+import { Settings as SettingsIcon, FileText, Calculator, Users, Building, Shield, Code, Mic, Bell, Package, DollarSign, AlertTriangle, CheckSquare, Activity, Box } from "lucide-react";
 import { EstimateBuilder } from "@/features/estimates/components/EstimateBuilder";
 import { GeneralSettings } from "@/components/settings/GeneralSettings";
 import { UserManagement } from "@/components/settings/UserManagement";
 import { DeveloperAccess } from "@/components/settings/DeveloperAccess";
 import { LocationManagement } from "@/components/settings/LocationManagement";
 import { CommissionManagement } from "@/components/settings/CommissionManagement";
+import { ProductCatalogManager } from "@/components/settings/ProductCatalogManager";
 import SupplierManagement from "./SupplierManagement";
 import { default as VoiceInterface } from "@/features/communication/components/VoiceInterface";
 import ErrorReportsManager from "./ErrorReportsManager";
@@ -83,7 +84,7 @@ export const Settings = () => {
       </div>
 
       <Tabs defaultValue="general" className="space-y-6">
-        <TabsList className={`grid w-full ${showDeveloperTab ? 'grid-cols-12' : 'grid-cols-11'}`}>
+        <TabsList className={`grid w-full ${showDeveloperTab ? 'grid-cols-13' : 'grid-cols-12'}`}>
           <TabsTrigger value="general" className="flex items-center gap-2">
             <SettingsIcon className="h-4 w-4" />
             General
@@ -99,6 +100,10 @@ export const Settings = () => {
           <TabsTrigger value="suppliers" className="flex items-center gap-2">
             <Package className="h-4 w-4" />
             Suppliers
+          </TabsTrigger>
+          <TabsTrigger value="products" className="flex items-center gap-2">
+            <Box className="h-4 w-4" />
+            Products
           </TabsTrigger>
           <TabsTrigger value="company" className="flex items-center gap-2">
             <Building className="h-4 w-4" />
@@ -150,6 +155,10 @@ export const Settings = () => {
 
         <TabsContent value="suppliers" className="space-y-6">
           <SupplierManagement />
+        </TabsContent>
+
+        <TabsContent value="products" className="space-y-6">
+          <ProductCatalogManager />
         </TabsContent>
 
         <TabsContent value="company" className="space-y-6">

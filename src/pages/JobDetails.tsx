@@ -21,9 +21,10 @@ import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 import { 
   Loader2, ArrowLeft, MapPin, Calendar, User, Phone, Mail, 
   DollarSign, FileText, Camera, Clock, Settings, CreditCard,
-  TrendingUp, TrendingDown, Target, AlertTriangle, ExternalLink
+  TrendingUp, TrendingDown, Target, AlertTriangle, ExternalLink, Sparkles
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
+import { ProfessionalTemplatesDialog } from '@/components/documents/ProfessionalTemplatesDialog';
 
 interface JobDetailsData {
   id: string;
@@ -70,6 +71,7 @@ const JobDetails = () => {
   const [budgetItems, setBudgetItems] = useState([]);
   const [productionStage, setProductionStage] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('overview');
+  const [showSmartDocs, setShowSmartDocs] = useState(false);
   const [financials, setFinancials] = useState<FinancialSummary>({
     totalBudget: 0,
     actualCosts: 0,
@@ -395,20 +397,35 @@ const JobDetails = () => {
           </Card>
         )}
         
-        {/* Save & Exit Button */}
-        <Button 
-          onClick={handleSaveAndExit}
-          className="bg-success hover:bg-success/90 text-success-foreground"
-          disabled={loading}
-        >
-          {loading ? (
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-          ) : (
-            <Settings className="h-4 w-4 mr-2" />
-          )}
-          Save & Exit
-        </Button>
+        {/* Action Buttons */}
+        <div className="flex gap-2">
+          <Button 
+            onClick={() => setShowSmartDocs(true)}
+            variant="outline"
+          >
+            <Sparkles className="h-4 w-4 mr-2" />
+            Generate Report
+          </Button>
+          <Button 
+            onClick={handleSaveAndExit}
+            className="bg-success hover:bg-success/90 text-success-foreground"
+            disabled={loading}
+          >
+            {loading ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Settings className="h-4 w-4 mr-2" />
+            )}
+            Save & Exit
+          </Button>
+        </div>
       </div>
+
+      <ProfessionalTemplatesDialog
+        open={showSmartDocs}
+        onClose={() => setShowSmartDocs(false)}
+        jobId={id}
+      />
 
       {/* Financial Dashboard */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4">

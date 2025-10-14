@@ -4,11 +4,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, FileText, Folder, Upload, Download, Mail } from "lucide-react";
+import { Plus, Search, FileText, Folder, Upload, Download, Mail, Sparkles } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { TemplateEditor } from "./TemplateEditor";
 import { TemplateLibrary } from "./TemplateLibrary";
+import { ProfessionalTemplatesDialog } from "@/components/documents/ProfessionalTemplatesDialog";
 
 interface SmartDocTemplate {
   id: string;
@@ -38,6 +39,7 @@ const SmartDocs = () => {
   const [showEditor, setShowEditor] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState<SmartDocTemplate | null>(null);
   const [loading, setLoading] = useState(true);
+  const [showProfessionalTemplates, setShowProfessionalTemplates] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -207,11 +209,22 @@ const SmartDocs = () => {
             Create and manage intelligent document templates with dynamic tags
           </p>
         </div>
-        <Button onClick={handleNewTemplate}>
-          <Plus className="mr-2 h-4 w-4" />
-          New Template
-        </Button>
+        <div className="flex gap-2">
+          <Button onClick={() => setShowProfessionalTemplates(true)} variant="outline">
+            <Sparkles className="mr-2 h-4 w-4" />
+            Professional Templates
+          </Button>
+          <Button onClick={handleNewTemplate}>
+            <Plus className="mr-2 h-4 w-4" />
+            New Template
+          </Button>
+        </div>
       </div>
+
+      <ProfessionalTemplatesDialog
+        open={showProfessionalTemplates}
+        onClose={() => setShowProfessionalTemplates(false)}
+      />
 
       <Tabs defaultValue="library" className="w-full">
         <TabsList className="grid w-full grid-cols-3">
