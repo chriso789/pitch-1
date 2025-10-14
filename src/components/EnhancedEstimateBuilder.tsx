@@ -12,6 +12,7 @@ import { Calculator, Plus, Trash2, FileText, DollarSign, Target, TrendingUp, Map
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { ProfitBreakdownDisplay } from './ProfitBreakdownDisplay';
+import { AddEstimateLineDialog } from './estimates/AddEstimateLineDialog';
 
 interface LineItem {
   item_category: string;
@@ -77,6 +78,8 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const [calculationResults, setCalculationResults] = useState<any>(null);
   const [measurementData, setMeasurementData] = useState<any>(null);
   const [hasMeasurements, setHasMeasurements] = useState(false);
+
+  const [showAddLineDialog, setShowAddLineDialog] = useState(false);
 
   useEffect(() => {
     loadTemplates();
@@ -183,18 +186,19 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   };
 
   const addLineItem = () => {
-    setLineItems(prev => [
-      ...prev,
-      {
-        item_category: 'material',
-        item_name: '',
-        description: '',
-        quantity: 1,
-        unit_cost: 0,
-        unit_type: 'each',
-        markup_percent: 25
-      }
-    ]);
+    setShowAddLineDialog(true);
+  };
+
+  const handleAddLineFromDialog = (line: any) => {
+    setLineItems(prev => [...prev, {
+      item_category: line.item_category || 'material',
+      item_name: line.item_name,
+      description: line.description,
+      quantity: line.quantity,
+      unit_cost: line.unit_cost,
+      unit_type: line.unit_type,
+      markup_percent: line.markup_percent
+    }]);
   };
 
   const removeLineItem = (index: number) => {
@@ -842,6 +846,22 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
           )}
         </div>
       </div>
+
+      <AddEstimateLineDialog
+        open={showAddLineDialog}
+        onOpenChange={setShowAddLineDialog}
+        onAddLine={handleAddLineFromDialog}
+        measurements={{
+          surface_area_sf: propertyDetails.roof_area_sq_ft || 0,
+          surface_squares: (propertyDetails.roof_area_sq_ft || 0) / 100,
+          perimeter_lf: measurementData?.perimeter || 0,
+          ridge_lf: measurementData?.ridge_length || 0,
+          valley_lf: measurementData?.valley_length || 0,
+          hip_lf: measurementData?.hip_length || 0,
+          rake_lf: measurementData?.rake_length || 0,
+          eave_lf: measurementData?.eave_length || 0
+        }}
+      />
     </div>
   );
 };
