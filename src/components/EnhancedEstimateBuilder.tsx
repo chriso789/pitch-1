@@ -48,9 +48,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     complexity_level: 'moderate',
     roof_pitch: '4/12',
     customer_name: '',
-    customer_address: '',
-    season: 'spring',
-    location_zone: 'standard'
+    customer_address: ''
   });
 
   const [lineItems, setLineItems] = useState<LineItem[]>([
@@ -318,8 +316,6 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
           roof_area_sq_ft: calculationResults.roof_area_sq_ft || propertyDetails.roof_area_sq_ft || 0,
           roof_pitch: propertyDetails.roof_pitch || '4/12',
           complexity_level: propertyDetails.complexity_level || 'moderate',
-          season: propertyDetails.season || 'spring',
-          location_zone: propertyDetails.location_zone,
           material_cost: calculationResults.material_cost || 0,
           material_markup_percent: 0,
           material_total: calculationResults.material_cost || 0,
@@ -476,67 +472,29 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                       <SelectItem value="10">10%</SelectItem>
                       <SelectItem value="15">15%</SelectItem>
                       <SelectItem value="20">20%</SelectItem>
-                      <SelectItem value="moderate">Moderate</SelectItem>
-                      <SelectItem value="complex">Complex</SelectItem>
-                      <SelectItem value="extreme">Extreme</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
               </div>
 
-              <div className="grid grid-cols-3 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="roof_pitch">Roof Pitch</Label>
-                  <Select
-                    value={propertyDetails.roof_pitch}
-                    onValueChange={(value) => setPropertyDetails(prev => ({ ...prev, roof_pitch: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="2/12">2/12</SelectItem>
-                      <SelectItem value="4/12">4/12</SelectItem>
-                      <SelectItem value="6/12">6/12</SelectItem>
-                      <SelectItem value="8/12">8/12</SelectItem>
-                      <SelectItem value="10/12">10/12</SelectItem>
-                      <SelectItem value="12/12">12/12</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="season">Season</Label>
-                  <Select
-                    value={propertyDetails.season}
-                    onValueChange={(value) => setPropertyDetails(prev => ({ ...prev, season: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="spring">Spring</SelectItem>
-                      <SelectItem value="summer">Summer</SelectItem>
-                      <SelectItem value="fall">Fall</SelectItem>
-                      <SelectItem value="winter">Winter</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="location_zone">Location Zone</Label>
-                  <Select
-                    value={propertyDetails.location_zone}
-                    onValueChange={(value) => setPropertyDetails(prev => ({ ...prev, location_zone: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="standard">Standard</SelectItem>
-                      <SelectItem value="premium">Premium</SelectItem>
-                      <SelectItem value="rural">Rural</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="roof_pitch">Roof Pitch</Label>
+                <Select
+                  value={propertyDetails.roof_pitch}
+                  onValueChange={(value) => setPropertyDetails(prev => ({ ...prev, roof_pitch: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="2/12">2/12</SelectItem>
+                    <SelectItem value="4/12">4/12</SelectItem>
+                    <SelectItem value="6/12">6/12</SelectItem>
+                    <SelectItem value="8/12">8/12</SelectItem>
+                    <SelectItem value="10/12">10/12</SelectItem>
+                    <SelectItem value="12/12">12/12</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
             </CardContent>
           </Card>

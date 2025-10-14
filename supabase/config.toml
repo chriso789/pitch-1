@@ -164,3 +164,9 @@ verify_jwt = true
 
 [functions.stripe-distribute-prize]
 verify_jwt = true
+
+[functions.twilio-voice-call]
+verify_jwt = true
+
+[functions.twilio-call-status]
+verify_jwt = false

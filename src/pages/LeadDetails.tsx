@@ -23,6 +23,9 @@ import { EnhancedEstimateBuilder } from '@/components/EnhancedEstimateBuilder';
 import { ApprovalRequirementsBubbles } from '@/components/ApprovalRequirementsBubbles';
 import { MultiTemplateSelector } from '@/components/estimates/MultiTemplateSelector';
 import { DocumentsTab } from '@/components/DocumentsTab';
+import { PhoneNumberSelector } from '@/components/communication/PhoneNumberSelector';
+import { CallStatusMonitor } from '@/components/communication/CallStatusMonitor';
+import { CallDispositionDialog } from '@/components/communication/CallDispositionDialog';
 
 interface LeadDetailsData {
   id: string;
@@ -90,6 +93,12 @@ const LeadDetails = () => {
   const [photos, setPhotos] = useState<any[]>([]);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [showFullScreenPhoto, setShowFullScreenPhoto] = useState(false);
+  
+  // Call states
+  const [showCallDialog, setShowCallDialog] = useState(false);
+  const [activeCall, setActiveCall] = useState<any>(null);
+  const [showDispositionDialog, setShowDispositionDialog] = useState(false);
+  const [availablePhoneNumbers, setAvailablePhoneNumbers] = useState<any[]>([]);
 
   // Define callback at component top level (not inside render function)
   const handleReadinessChange = React.useCallback((isReady: boolean, data: any) => {
@@ -660,7 +669,25 @@ const LeadDetails = () => {
               )}
               
               <div className="flex gap-2">
-                <Button size="sm" variant="outline" className="flex-1">
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="flex-1"
+                  onClick={() => {
+                    if (lead?.contact?.phone) {
+                      setAvailablePhoneNumbers([
+                        { label: 'Primary Phone', number: lead.contact.phone }
+                      ]);
+                      setShowCallDialog(true);
+                    } else {
+                      toast({
+                        title: "No phone number",
+                        description: "This contact doesn't have a phone number on file.",
+                        variant: "destructive"
+                      });
+                    }
+                  }}
+                >
                   <Phone className="h-3 w-3 mr-1" />
                   Call
                 </Button>
@@ -771,6 +798,44 @@ const LeadDetails = () => {
 
       {/* Dynamic Content Sections */}
       <div className="space-y-6">{renderActiveSection()}</div>
+
+      {/* Call Status Monitor */}
+      {activeCall && (
+        <div className="fixed bottom-4 right-4 w-96 z-50">
+          <CallStatusMonitor
+            callLog={activeCall}
+            onCallEnded={() => {
+              setShowDispositionDialog(true);
+            }}
+          />
+        </div>
+      )}
+
+      {/* Phone Number Selector Dialog */}
+      <PhoneNumberSelector
+        open={showCallDialog}
+        onOpenChange={setShowCallDialog}
+        contactId={lead?.contact?.id || ''}
+        contactName={`${lead?.contact?.first_name || ''} ${lead?.contact?.last_name || ''}`.trim()}
+        phoneNumbers={availablePhoneNumbers}
+        pipelineEntryId={id}
+        onCallInitiated={(callLog) => {
+          setActiveCall(callLog);
+        }}
+      />
+
+      {/* Call Disposition Dialog */}
+      {activeCall && (
+        <CallDispositionDialog
+          open={showDispositionDialog}
+          onOpenChange={setShowDispositionDialog}
+          callLog={activeCall}
+          onSaved={() => {
+            setActiveCall(null);
+            setShowDispositionDialog(false);
+          }}
+        />
+      )}
     </div>
   );
 };
