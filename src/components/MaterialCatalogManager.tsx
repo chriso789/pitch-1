@@ -45,15 +45,15 @@ export function MaterialCatalogManager() {
   const loadData = async () => {
     try {
       const [materialsRes, categoriesRes] = await Promise.all([
-        supabase.from("materials").select("*").eq("active", true).order("name"),
-        supabase.from("material_categories").select("*").order("name")
+        supabase.from("materials" as any).select("*").eq("active", true).order("name"),
+        supabase.from("material_categories" as any).select("*").order("name")
       ]);
 
       if (materialsRes.error) throw materialsRes.error;
       if (categoriesRes.error) throw categoriesRes.error;
 
-      setMaterials(materialsRes.data || []);
-      setCategories(categoriesRes.data || []);
+      setMaterials((materialsRes.data || []) as unknown as Material[]);
+      setCategories((categoriesRes.data || []) as unknown as Category[]);
     } catch (error: any) {
       toast({
         title: "Error loading catalog",
@@ -194,7 +194,7 @@ function MaterialForm({ categories, onSuccess }: { categories: Category[], onSuc
     e.preventDefault();
     
     try {
-      const { error } = await supabase.rpc("api_upsert_material", {
+      const { error } = await supabase.rpc("api_upsert_material" as any, {
         p: {
           code: formData.code,
           name: formData.name,
@@ -335,10 +335,10 @@ function SupplierCatalog() {
 
   const initCatalog = async () => {
     try {
-      const { data, error } = await supabase.rpc("api_sunniland_catalog_id");
+      const { data, error } = await supabase.rpc("api_sunniland_catalog_id" as any);
       if (error) throw error;
-      setCatalogId(data);
-      loadItems(data);
+      setCatalogId(data as string);
+      loadItems(data as string);
     } catch (error: any) {
       toast({
         title: "Error initializing supplier catalog",
@@ -350,7 +350,7 @@ function SupplierCatalog() {
 
   const loadItems = async (catId: string) => {
     const { data, error } = await supabase
-      .from("supplier_catalog_items")
+      .from("supplier_catalog_items" as any)
       .select("*")
       .eq("catalog_id", catId)
       .eq("active", true)
