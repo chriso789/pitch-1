@@ -153,35 +153,27 @@ export const ContactCommunicationTab: React.FC<ContactCommunicationTabProps> = (
 
   const handleSendSMS = async (message: string) => {
     try {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('tenant_id')
-        .eq('id', currentUser?.id)
-        .single();
-
-      // Log to communication history
-      const { error: historyError } = await supabase.from('communication_history').insert({
-        tenant_id: profile?.tenant_id,
-        contact_id: contact.id,
-        communication_type: 'sms',
-        direction: 'outbound',
-        content: message,
-        rep_id: currentUser?.id,
+      const { error } = await supabase.functions.invoke('send-sms', {
+        body: {
+          to: contact.phone,
+          message,
+          contactId: contact.id,
+        }
       });
 
-      if (historyError) throw historyError;
+      if (error) throw error;
 
       toast({
-        title: "SMS logged",
-        description: `Message logged for ${contact.first_name} ${contact.last_name}`,
+        title: "SMS sent",
+        description: `Message sent to ${contact.first_name} ${contact.last_name}`,
       });
       
       fetchCommunications();
     } catch (error: any) {
       console.error('Error sending SMS:', error);
       toast({
-        title: "Failed to log SMS",
-        description: error.message || "An error occurred",
+        title: "Failed to send SMS",
+        description: error.message || "SMS service not configured",
         variant: "destructive",
       });
     }

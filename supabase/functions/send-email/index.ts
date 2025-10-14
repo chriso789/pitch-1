@@ -56,12 +56,18 @@ const handler = async (req: Request): Promise<Response> => {
       .eq("id", user.id)
       .single();
 
-    const senderName = `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
-    const senderEmail = profile?.email || user.email || "noreply@resend.dev";
+    const repName = `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
+    const repEmail = profile?.email || user.email;
+    const companyName = profile?.company_name || "PITCH CRM";
+
+    // Use verified domain as From, rep email as Reply-To for deliverability
+    const fromAddress = `${repName} <onboarding@resend.dev>`;
+    const replyTo = repEmail;
 
     // Send email via Resend
     const emailResponse = await resend.emails.send({
-      from: `${senderName} <${senderEmail}>`,
+      from: fromAddress,
+      reply_to: replyTo,
       to,
       cc,
       bcc,
@@ -71,9 +77,9 @@ const handler = async (req: Request): Promise<Response> => {
           ${body.replace(/\n/g, "<br>")}
           
           <div style="margin-top: 30px; padding-top: 20px; border-top: 1px solid #eee;">
-            <p style="margin: 0;"><strong>${senderName}</strong></p>
-            ${profile?.company_name ? `<p style="margin: 5px 0 0 0; color: #666;">${profile.company_name}</p>` : ""}
-            <p style="margin: 5px 0 0 0; color: #666;">${senderEmail}</p>
+            <p style="margin: 0;"><strong>${repName}</strong></p>
+            ${companyName ? `<p style="margin: 5px 0 0 0; color: #666;">${companyName}</p>` : ""}
+            <p style="margin: 5px 0 0 0; color: #666;">${repEmail}</p>
           </div>
         </div>
       `,
