@@ -13,6 +13,8 @@ import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { ProfitBreakdownDisplay } from './ProfitBreakdownDisplay';
 import { AddEstimateLineDialog } from './estimates/AddEstimateLineDialog';
+import { PullMeasurementsButton } from './measurements/PullMeasurementsButton';
+import { useLatestMeasurement } from '@/hooks/useMeasurement';
 
 interface LineItem {
   item_category: string;
@@ -502,26 +504,22 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                   )}
                   
                   <div className="mt-2">
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={handlePullSolarMeasurements}
-                      disabled={pullingSolarMeasurements || !pipelineEntryId}
-                      className="w-full"
-                    >
-                      {pullingSolarMeasurements ? (
-                        <>
-                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          Pulling Measurements...
-                        </>
-                      ) : (
-                      <>
-                          <Satellite className="h-4 w-4 mr-2" />
-                          Pull Roof Report
-                        </>
-                      )}
-                    </Button>
+                    <PullMeasurementsButton
+                      propertyId={pipelineEntryId || ''}
+                      lat={0}
+                      lng={0}
+                      onSuccess={(measurement, tags) => {
+                        setPropertyDetails(prev => ({
+                          ...prev,
+                          roof_area_sq_ft: tags['roof.total_sqft'] || 0,
+                        }));
+                        setHasMeasurements(true);
+                        toast({
+                          title: "Smart Tags Ready",
+                          description: `${tags['roof.squares']?.toFixed(1)} squares available for templates`,
+                        });
+                      }}
+                    />
                   </div>
 
                   {solarMeasurementData && (
