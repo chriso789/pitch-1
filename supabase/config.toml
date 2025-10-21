@@ -176,3 +176,9 @@ verify_jwt = false
 
 [functions.admin-delete-user]
 verify_jwt = true
+
+[functions.google-solar-measurements]
+verify_jwt = true
+
+[functions.srs-pricelist-importer]
+verify_jwt = true

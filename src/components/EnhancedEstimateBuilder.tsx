@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Calculator, Plus, Trash2, FileText, DollarSign, Target, TrendingUp, MapPin } from 'lucide-react';
+import { Calculator, Plus, Trash2, FileText, DollarSign, Target, TrendingUp, MapPin, Satellite, Loader2 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { ProfitBreakdownDisplay } from './ProfitBreakdownDisplay';
@@ -80,6 +80,8 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const [hasMeasurements, setHasMeasurements] = useState(false);
 
   const [showAddLineDialog, setShowAddLineDialog] = useState(false);
+  const [pullingSolarMeasurements, setPullingSolarMeasurements] = useState(false);
+  const [solarMeasurementData, setSolarMeasurementData] = useState<any>(null);
 
   useEffect(() => {
     loadTemplates();
@@ -236,7 +238,17 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
         body: {
           pipeline_entry_id: pipelineEntryId,
           template_id: templateId || null,
-          property_details: propertyDetails,
+          property_details: {
+            ...propertyDetails,
+            linear_measurements: solarMeasurementData ? {
+              perimeter: solarMeasurementData.perimeter,
+              ridges: solarMeasurementData.ridges.totalLength,
+              hips: solarMeasurementData.hips.totalLength,
+              valleys: solarMeasurementData.valleys.totalLength,
+              eaves: solarMeasurementData.eaves,
+              rakes: solarMeasurementData.rakes
+            } : undefined
+          },
           line_items: lineItems.filter(item => item.item_name.trim()),
           sales_rep_id: salesRepId || null,
           target_margin_percent: excelConfig.target_margin_percent,
@@ -266,6 +278,63 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       });
     } finally {
       setCalculating(false);
+    }
+  };
+
+  const handlePullSolarMeasurements = async () => {
+    if (!pipelineEntryId) {
+      toast({
+        title: "No Pipeline Entry",
+        description: "Cannot pull measurements without a pipeline entry",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setPullingSolarMeasurements(true);
+    toast({
+      title: "Pulling Measurements",
+      description: "Fetching detailed roof geometry from Google Solar API...",
+    });
+
+    try {
+      const { data, error } = await supabase.functions.invoke('google-solar-measurements', {
+        body: { pipeline_entry_id: pipelineEntryId }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        const measurements = data.measurements;
+        
+        // Update property details with Solar API data
+        setPropertyDetails(prev => ({
+          ...prev,
+          roof_area_sq_ft: measurements.roofArea,
+          roof_pitch: measurements.averagePitch,
+          complexity_level: measurements.complexity
+        }));
+
+        setSolarMeasurementData(measurements);
+        setHasMeasurements(true);
+        setMeasurementData(measurements);
+
+        toast({
+          title: "Measurements Retrieved",
+          description: `${(measurements.roofArea / 100).toFixed(1)} squares from Google Solar API`,
+        });
+      } else {
+        throw new Error(data.error || 'Failed to retrieve measurements');
+      }
+    } catch (error) {
+      console.error('Solar measurement error:', error);
+      toast({
+        title: "Measurement Failed",
+        description: error instanceof Error ? error.message : "Please try manual measurement",
+        variant: "destructive"
+      });
+    } finally {
+      setPullingSolarMeasurements(false);
     }
   };
 
@@ -430,6 +499,69 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                       Confidence: {Math.round((measurementData.accuracyScore || 0.85) * 100)}%
                       {measurementData.perimeter && ` • Perimeter: ${measurementData.perimeter.toFixed(0)} ft`}
                     </p>
+                  )}
+                  
+                  <div className="mt-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={handlePullSolarMeasurements}
+                      disabled={pullingSolarMeasurements || !pipelineEntryId}
+                      className="w-full"
+                    >
+                      {pullingSolarMeasurements ? (
+                        <>
+                          <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                          Pulling Measurements...
+                        </>
+                      ) : (
+                        <>
+                          <Satellite className="h-4 w-4 mr-2" />
+                          Pull Google Solar Measurements
+                        </>
+                      )}
+                    </Button>
+                  </div>
+
+                  {solarMeasurementData && (
+                    <div className="border rounded-lg p-3 space-y-2 mt-3 bg-muted/50">
+                      <div className="text-sm font-medium">Roof Geometry Details:</div>
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        <div>
+                          <span className="text-muted-foreground">Perimeter:</span>{' '}
+                          <span className="font-medium">{solarMeasurementData.perimeter.toFixed(0)} ft</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Ridge:</span>{' '}
+                          <span className="font-medium">{solarMeasurementData.ridges.totalLength.toFixed(0)} ft</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Hips:</span>{' '}
+                          <span className="font-medium">{solarMeasurementData.hips.totalLength.toFixed(0)} ft</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Valleys:</span>{' '}
+                          <span className="font-medium">{solarMeasurementData.valleys.totalLength.toFixed(0)} ft</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Eaves:</span>{' '}
+                          <span className="font-medium">{solarMeasurementData.eaves.toFixed(0)} ft</span>
+                        </div>
+                        <div>
+                          <span className="text-muted-foreground">Rakes:</span>{' '}
+                          <span className="font-medium">{solarMeasurementData.rakes.toFixed(0)} ft</span>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2 pt-1">
+                        <Badge variant="secondary" className="text-xs">
+                          Google Solar API
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {solarMeasurementData.imageryDate}
+                        </span>
+                      </div>
+                    </div>
                   )}
                 </div>
               </div>
