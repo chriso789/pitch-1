@@ -9188,6 +9188,33 @@ export type Database = {
         }
         Relationships: []
       }
+      user_roles: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       vendor_order_items: {
         Row: {
           created_at: string | null
@@ -9912,6 +9939,10 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
+      get_user_role: {
+        Args: { _user_id: string }
+        Returns: Database["public"]["Enums"]["app_role"]
+      }
       get_user_tenant_id: {
         Args: Record<PropertyKey, never>
         Returns: string
@@ -9937,11 +9968,18 @@ export type Database = {
         Returns: unknown
       }
       has_any_role: {
-        Args: { required_roles: Database["public"]["Enums"]["app_role"][] }
+        Args:
+          | {
+              _roles: Database["public"]["Enums"]["app_role"][]
+              _user_id: string
+            }
+          | { required_roles: Database["public"]["Enums"]["app_role"][] }
         Returns: boolean
       }
       has_role: {
-        Args: { required_role: Database["public"]["Enums"]["app_role"] }
+        Args:
+          | { _role: Database["public"]["Enums"]["app_role"]; _user_id: string }
+          | { required_role: Database["public"]["Enums"]["app_role"] }
         Returns: boolean
       }
       jsonb_get_path: {

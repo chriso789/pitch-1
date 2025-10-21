@@ -73,12 +73,26 @@ export const UserManagement = () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
+        // Fetch profile data
         const { data: profile } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', user.id)
           .single();
-        setCurrentUser(profile);
+        
+        // Fetch user role from user_roles table (secure)
+        const { data: userRole } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id)
+          .order('role', { ascending: true })
+          .limit(1)
+          .single();
+        
+        setCurrentUser({
+          ...profile,
+          role: userRole?.role || profile?.role
+        });
       }
     } catch (error) {
       console.error('Error getting current user:', error);
@@ -87,13 +101,36 @@ export const UserManagement = () => {
 
   const loadUsers = async () => {
     try {
-      const { data, error } = await supabase
+      // Fetch profiles
+      const { data: profiles, error: profilesError } = await supabase
         .from('profiles')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
-      setUsers(data || []);
+      if (profilesError) throw profilesError;
+
+      // Fetch roles from user_roles table for all users
+      const { data: userRoles, error: rolesError } = await supabase
+        .from('user_roles')
+        .select('user_id, role')
+        .order('role', { ascending: true });
+
+      if (rolesError) {
+        console.warn('Error loading user roles, falling back to profiles.role:', rolesError);
+      }
+
+      // Create a map of user_id to role from user_roles table
+      const roleMap = new Map(
+        userRoles?.map(ur => [ur.user_id, ur.role]) || []
+      );
+
+      // Merge profiles with roles from user_roles table
+      const usersWithRoles = profiles?.map(profile => ({
+        ...profile,
+        role: roleMap.get(profile.id) || profile.role // Fallback to profile.role if not in user_roles
+      })) || [];
+
+      setUsers(usersWithRoles);
     } catch (error) {
       console.error('Error loading users:', error);
       toast({

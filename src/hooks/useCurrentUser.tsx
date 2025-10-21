@@ -30,6 +30,7 @@ export const useCurrentUser = () => {
         return;
       }
 
+      // Fetch profile data
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('*')
@@ -38,13 +39,30 @@ export const useCurrentUser = () => {
 
       if (profileError) throw profileError;
 
+      // Fetch user role from user_roles table (secure)
+      const { data: userRole, error: roleError } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', authUser.id)
+        .order('role', { ascending: true }) // Order by role priority (master > manager > admin > user)
+        .limit(1)
+        .single();
+
+      if (roleError) {
+        console.warn('Error fetching user role from user_roles table:', roleError);
+        // Fallback to profile.role for backward compatibility
+        console.warn('Falling back to profiles.role (deprecated)');
+      }
+
+      const role = userRole?.role || profile?.role || 'user';
+
       setUser({
         id: authUser.id,
         email: authUser.email || '',
         first_name: profile?.first_name || '',
         last_name: profile?.last_name || '',
         company_name: profile?.company_name,
-        role: profile?.role || 'user',
+        role: role,
         tenant_id: profile?.tenant_id,
         phone: profile?.phone
       });
