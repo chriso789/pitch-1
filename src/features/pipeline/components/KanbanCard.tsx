@@ -130,15 +130,19 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
     return entry.clj_formatted_number || 'No Number'; // e.g., "C010-L010-J010"
   };
 
-  // Get last name only
+  // Get display name with full name support
   const getLastName = () => {
-    if (!contact) return 'Unknown';
-    const lastName = contact.last_name || contact.first_name || 'Unknown';
-    // Show assignment status for entries without assigned_to
-    if (!entry.assigned_to) {
-      return `${lastName}`;
+    if (!contact) {
+      console.warn('No contact data for pipeline entry:', entry.id);
+      return 'Unknown';
     }
-    return lastName;
+    
+    // Show full name for better clarity
+    if (contact.first_name && contact.last_name) {
+      return `${contact.first_name} ${contact.last_name}`;
+    }
+    
+    return contact.last_name || contact.first_name || 'Unknown';
   };
 
   // Get communication emoji based on recency
@@ -287,7 +291,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
       {...attributes}
       {...listeners}
       className={cn(
-        "w-full min-w-0 max-w-full min-h-[70px] max-h-[90px]",
+        "w-full min-w-0 max-w-full min-h-[80px] max-h-[100px]",
         "shadow-soft border-0 hover:shadow-medium transition-smooth",
         "cursor-pointer",
         "relative group overflow-hidden",
@@ -403,12 +407,12 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
               <Button
                 variant="ghost"
                 size="sm"
-                className="absolute bottom-0 right-0 h-3.5 w-3.5 p-0 text-destructive/70 hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute bottom-0 right-0 h-5 w-5 p-0 text-destructive/70 hover:text-destructive hover:bg-destructive/10 opacity-40 group-hover:opacity-100 transition-opacity"
                 onClick={handleDeleteClick}
                 onPointerDown={(e) => e.stopPropagation()}
                 aria-label={`Delete ${displayNumber}`}
               >
-                <X className="h-2.5 w-2.5" />
+                <X className="h-3.5 w-3.5" />
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>

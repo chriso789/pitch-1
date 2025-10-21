@@ -110,7 +110,7 @@ const KanbanPipeline = () => {
     try {
       setLoading(true);
       
-      // Fetch pipeline entries (exclude soft-deleted entries)
+      // Fetch pipeline entries with contacts (exclude soft-deleted entries)
       const { data: pipelineData, error: pipelineError } = await supabase
         .from('pipeline_entries')
         .select(`
@@ -118,7 +118,24 @@ const KanbanPipeline = () => {
           clj_formatted_number,
           contact_id,
           status,
-          created_at
+          created_at,
+          contacts!inner (
+            id,
+            contact_number,
+            first_name,
+            last_name,
+            email,
+            phone,
+            address_street,
+            address_city,
+            address_state,
+            address_zip
+          ),
+          projects!left (
+            id,
+            project_number,
+            pipeline_entry_id
+          )
         `)
         .eq('is_deleted', false)
         .order('created_at', { ascending: false });
@@ -143,49 +160,16 @@ const KanbanPipeline = () => {
         return;
       }
 
-      // Fetch contacts for all pipeline entries
-      const contactIds = [...new Set(pipelineData.map(entry => entry.contact_id).filter(Boolean))];
-      const { data: contactsData, error: contactsError } = await supabase
-        .from('contacts')
-        .select('id, contact_number, first_name, last_name, email, phone, address_street, address_city, address_state, address_zip')
-        .in('id', contactIds);
-
-      if (contactsError) {
-        console.error('Error fetching contacts:', contactsError);
-      }
-
-      // Fetch projects for approved entries (status='project')
-      const approvedEntries = pipelineData.filter(entry => entry.status === 'project');
-      const { data: projectsData, error: projectsError } = await supabase
-        .from('projects')
-        .select('id, project_number, pipeline_entry_id')
-        .in('pipeline_entry_id', approvedEntries.map(e => e.id));
-
-      if (projectsError) {
-        console.error('Error fetching projects:', projectsError);
-      }
-
-      // Create lookup maps
-      const contactsMap = new Map(contactsData?.map(c => [c.id, c]) || []);
-      const projectsMap = new Map(projectsData?.map(p => [p.pipeline_entry_id, p]) || []);
-
-      // Combine the data
-      const combinedEntries: PipelineEntry[] = pipelineData
-        .map(entry => {
-          const contact = contactsMap.get(entry.contact_id);
-          if (!contact) return null; // Skip entries without valid contacts
-          
-          return {
-            id: entry.id,
-            clj_formatted_number: entry.clj_formatted_number,
-            contact_id: entry.contact_id,
-            status: entry.status,
-            created_at: entry.created_at,
-            contacts: contact,
-            project: entry.status === 'project' ? projectsMap.get(entry.id) : undefined
-          };
-        })
-        .filter(Boolean) as PipelineEntry[];
+      // Transform data - contacts are already joined via !inner
+      const combinedEntries: PipelineEntry[] = pipelineData.map(entry => ({
+        id: entry.id,
+        clj_formatted_number: entry.clj_formatted_number,
+        contact_id: entry.contact_id,
+        status: entry.status,
+        created_at: entry.created_at,
+        contacts: Array.isArray(entry.contacts) ? entry.contacts[0] : entry.contacts,
+        project: entry.projects ? (Array.isArray(entry.projects) ? entry.projects[0] : entry.projects) : undefined
+      }));
 
       // Group data by status
       const groupedData: Record<string, PipelineEntry[]> = {};
