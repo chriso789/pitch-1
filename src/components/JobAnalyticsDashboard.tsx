@@ -35,7 +35,7 @@ import {
   Mail
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useSearchParams } from "react-router-dom";
 import { DateRange } from "react-day-picker";
 import { subDays, format } from "date-fns";
 import { exportToCSV, exportDashboardToPDF, formatDateRangeForExport } from "@/lib/export-utils";
@@ -60,8 +60,13 @@ interface JobMetrics {
   };
 }
 
-export const JobAnalyticsDashboard = () => {
+interface JobAnalyticsDashboardProps {
+  printMode?: boolean;
+}
+
+export const JobAnalyticsDashboard = ({ printMode = false }: JobAnalyticsDashboardProps) => {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [metrics, setMetrics] = useState<JobMetrics>({
     total_jobs: 0,
     lead_jobs: 0,
@@ -78,9 +83,22 @@ export const JobAnalyticsDashboard = () => {
   const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
-  const [dateRange, setDateRange] = useState<DateRange>({
-    from: subDays(new Date(), 30),
-    to: new Date()
+  const [isEmailSending, setIsEmailSending] = useState(false);
+  
+  // Read date range from URL params if in print mode
+  const [dateRange, setDateRange] = useState<DateRange>(() => {
+    if (printMode) {
+      const from = searchParams.get('from');
+      const to = searchParams.get('to');
+      return {
+        from: from ? new Date(from) : subDays(new Date(), 30),
+        to: to ? new Date(to) : new Date()
+      };
+    }
+    return {
+      from: subDays(new Date(), 30),
+      to: new Date()
+    };
   });
   const [emailDialogOpen, setEmailDialogOpen] = useState(false);
   const [emailForm, setEmailForm] = useState({
@@ -219,43 +237,31 @@ export const JobAnalyticsDashboard = () => {
   };
 
   const handleEmailReport = async () => {
+    if (!emailForm.to || !dateRange.from || !dateRange.to) {
+      toast.error("Please fill in all required fields");
+      return;
+    }
+
     try {
-      // Generate PDF first
-      const timestamp = format(new Date(), 'yyyyMMdd_HHmm');
-      const filename = `job_analytics_${timestamp}.pdf`;
-      const pdfBlob = await exportDashboardToPDF('job-analytics-container', filename, {
-        title: 'Job Analytics Report',
-        dateRange: formatDateRangeForExport(dateRange.from, dateRange.to),
-        companyName: 'PITCH Roofing'
-      });
+      setIsEmailSending(true);
 
-      // Upload to Supabase Storage
-      const filePath = `analytics/${timestamp}.pdf`;
-      const { error: uploadError } = await supabase.storage
-        .from('reports')
-        .upload(filePath, pdfBlob);
-
-      if (uploadError) throw uploadError;
-
-      // Get signed URL
-      const { data: urlData } = await supabase.storage
-        .from('reports')
-        .createSignedUrl(filePath, 604800); // 7 days
-
-      if (!urlData) throw new Error('Failed to create signed URL');
-
-      // Send email
-      const { error: emailError } = await supabase.functions.invoke('send-email', {
+      // Use render URL mode - let the edge function fetch and render the page
+      const renderUrl = `${window.location.origin}/job-analytics?print=1&from=${format(dateRange.from, 'yyyy-MM-dd')}&to=${format(dateRange.to, 'yyyy-MM-dd')}`;
+      
+      const { data, error } = await supabase.functions.invoke('export-job-analytics', {
         body: {
-          to: [emailForm.to],
-          subject: emailForm.subject,
-          body: `${emailForm.message}\n\nView Report: ${urlData.signedUrl}`
+          from: format(dateRange.from, 'yyyy-MM-dd'),
+          to: format(dateRange.to, 'yyyy-MM-dd'),
+          recipients: [emailForm.to],
+          subject: emailForm.subject || `Job Analytics Report: ${formatDateRangeForExport(dateRange.from, dateRange.to)}`,
+          message: emailForm.message || 'Please find attached the Job Analytics report.',
+          render_url: renderUrl
         }
       });
 
-      if (emailError) throw emailError;
+      if (error) throw error;
 
-      toast.success('Report emailed successfully');
+      toast.success("Report sent successfully!");
       setEmailDialogOpen(false);
       setEmailForm({
         to: '',
@@ -263,8 +269,10 @@ export const JobAnalyticsDashboard = () => {
         message: 'Please find the attached job analytics report.'
       });
     } catch (error) {
-      console.error('Email report error:', error);
-      toast.error('Failed to email report');
+      console.error('Failed to send report:', error);
+      toast.error("Failed to send report. Please try again.");
+    } finally {
+      setIsEmailSending(false);
     }
   };
 
@@ -314,57 +322,68 @@ export const JobAnalyticsDashboard = () => {
 
   return (
     <div id="job-analytics-container" className="space-y-6">
-      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
-        <h2 className="text-2xl font-bold">Job Analytics</h2>
-        
-        <div className="flex items-center gap-2 flex-wrap">
-          <DateRangePicker
-            value={dateRange}
-            onChange={(range) => setDateRange(range || { from: subDays(new Date(), 30), to: new Date() })}
-            data-testid="job-analytics-date-filter"
-          />
+      {!printMode && (
+        <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+          <h2 className="text-2xl font-bold">Job Analytics</h2>
+          
+          <div className="flex items-center gap-2 flex-wrap">
+            <DateRangePicker
+              value={dateRange}
+              onChange={(range) => setDateRange(range || { from: subDays(new Date(), 30), to: new Date() })}
+              data-testid="job-analytics-date-filter"
+            />
 
-          <Button 
-            variant="ghost" 
-            size="sm"
-            onClick={handleRefresh}
-            disabled={isRefreshing}
-            data-testid="job-analytics-refresh"
-          >
-            <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
-          </Button>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={handleRefresh}
+              disabled={isRefreshing}
+              data-testid="job-analytics-refresh"
+            >
+              <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+            </Button>
 
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm" disabled={isExporting}>
-                <Download className="h-4 w-4 mr-2" />
-                Export
-                <ChevronDown className="h-4 w-4 ml-2" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent>
-              <DropdownMenuItem onClick={handleExportCSV} data-testid="job-analytics-export-csv">
-                <Download className="h-4 w-4 mr-2" />
-                Export CSV
-              </DropdownMenuItem>
-              <DropdownMenuItem onClick={handleExportPDF} data-testid="job-analytics-export-pdf">
-                <Download className="h-4 w-4 mr-2" />
-                Export PDF
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" disabled={isExporting}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Export
+                  <ChevronDown className="h-4 w-4 ml-2" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent>
+                <DropdownMenuItem onClick={handleExportCSV} data-testid="job-analytics-export-csv">
+                  <Download className="h-4 w-4 mr-2" />
+                  Export CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={handleExportPDF} data-testid="job-analytics-export-pdf">
+                  <Download className="h-4 w-4 mr-2" />
+                  Export PDF
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
 
-          <Button 
-            variant="outline" 
-            size="sm"
-            onClick={() => setEmailDialogOpen(true)}
-            data-testid="job-analytics-email-report"
-          >
-            <Mail className="h-4 w-4 mr-2" />
-            Email Report
-          </Button>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => setEmailDialogOpen(true)}
+              data-testid="job-analytics-email-report"
+            >
+              <Mail className="h-4 w-4 mr-2" />
+              Email Report
+            </Button>
+          </div>
         </div>
-      </div>
+      )}
+      
+      {printMode && (
+        <div className="mb-6">
+          <h1 className="text-3xl font-bold">Job Analytics Report</h1>
+          <p className="text-muted-foreground">
+            {formatDateRangeForExport(dateRange.from, dateRange.to)}
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
         <MetricCard

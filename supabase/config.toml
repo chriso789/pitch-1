@@ -1,5 +1,8 @@
 project_id = "alxelfrbjzkmtnsulcei"
 
+[functions.export-job-analytics]
+verify_jwt = false
+
 [functions.qbo-worker]
 verify_jwt = false
 
