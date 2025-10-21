@@ -7094,6 +7094,56 @@ export type Database = {
           },
         ]
       }
+      settings_tabs: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          icon_name: string
+          id: string
+          is_active: boolean | null
+          label: string
+          order_index: number
+          required_role: string[] | null
+          tab_key: string
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          icon_name?: string
+          id?: string
+          is_active?: boolean | null
+          label: string
+          order_index?: number
+          required_role?: string[] | null
+          tab_key: string
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          icon_name?: string
+          id?: string
+          is_active?: boolean | null
+          label?: string
+          order_index?: number
+          required_role?: string[] | null
+          tab_key?: string
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "settings_tabs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       signature_envelopes: {
         Row: {
           completed_at: string | null

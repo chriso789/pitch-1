@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { AutomationManager } from "@/components/AutomationManager";
 import { SmartDocumentEditor } from "@/components/SmartDocumentEditor";
 import { DynamicTagManager } from "@/components/DynamicTagManager";
 import { ApprovalManager } from "@/components/ApprovalManager";
-import { Settings as SettingsIcon, FileText, Calculator, Users, Building, Shield, Code, Mic, Bell, Package, DollarSign, AlertTriangle, CheckSquare, Activity, Box, Database } from "lucide-react";
+import * as LucideIcons from "lucide-react";
 import { MaterialCatalogManager } from "@/components/MaterialCatalogManager";
 import { EstimateBuilder } from "@/features/estimates/components/EstimateBuilder";
 import { GeneralSettings } from "@/components/settings/GeneralSettings";
@@ -22,14 +25,31 @@ import ManagerApprovalQueue from "@/components/ManagerApprovalQueue";
 import QuickBooksSettings from "@/components/settings/QuickBooksSettings";
 import { JobTypeQBOMapping } from "@/components/settings/JobTypeQBOMapping";
 import { SystemHealthCheck } from "@/components/settings/SystemHealthCheck";
+import { SettingsTabEditor } from "@/components/settings/SettingsTabEditor";
 import { supabase } from "@/integrations/supabase/client";
+import { useToast } from "@/hooks/use-toast";
+
+interface SettingsTab {
+  id: string;
+  tab_key: string;
+  label: string;
+  description: string | null;
+  icon_name: string;
+  order_index: number;
+  is_active: boolean;
+  required_role: string[] | null;
+}
 
 export const Settings = () => {
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [tabConfig, setTabConfig] = useState<SettingsTab[]>([]);
+  const [configDialogOpen, setConfigDialogOpen] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     loadCurrentUser();
+    loadTabConfiguration();
   }, []);
 
   const loadCurrentUser = async () => {
@@ -50,6 +70,28 @@ export const Settings = () => {
     }
   };
 
+  const loadTabConfiguration = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('settings_tabs')
+        .select('*')
+        .eq('is_active', true)
+        .order('order_index', { ascending: true });
+
+      if (error) throw error;
+
+      // Filter tabs based on user role
+      const filteredTabs = (data || []).filter(tab => {
+        if (!tab.required_role || tab.required_role.length === 0) return true;
+        return tab.required_role.includes(currentUser?.role);
+      });
+
+      setTabConfig(filteredTabs);
+    } catch (error) {
+      console.error('Error loading tab configuration:', error);
+    }
+  };
+
   if (loading) {
     return (
       <div className="space-y-6">
@@ -59,8 +101,6 @@ export const Settings = () => {
       </div>
     );
   }
-
-  const showDeveloperTab = currentUser?.is_developer || currentUser?.role === 'master';
 
   return (
     <div className="space-y-6">
@@ -74,76 +114,60 @@ export const Settings = () => {
           </p>
         </div>
         <div className="flex items-center gap-4">
+          {currentUser?.role === 'master' && (
+            <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
+              <DialogTrigger asChild>
+                <Button variant="outline" size="sm">
+                  <LucideIcons.Settings className="h-4 w-4 mr-2" />
+                  Configure Tabs
+                </Button>
+              </DialogTrigger>
+              <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
+                <DialogHeader>
+                  <DialogTitle>Settings Tab Configuration</DialogTitle>
+                </DialogHeader>
+                <SettingsTabEditor 
+                  onSave={() => {
+                    loadTabConfiguration();
+                    setConfigDialogOpen(false);
+                    toast({ title: "Tab configuration updated" });
+                  }}
+                />
+              </DialogContent>
+            </Dialog>
+          )}
           <VoiceInterface 
             onTranscription={(text) => {
               console.log('Voice transcription:', text);
-              // You can add logic here to handle voice commands in settings
             }} 
             className="flex items-center gap-2"
           />
         </div>
       </div>
 
-      <Tabs defaultValue="general" className="space-y-6">
+      <Tabs defaultValue={tabConfig[0]?.tab_key || "general"} className="space-y-6">
         <TabsList className="inline-flex h-auto w-full flex-wrap justify-start gap-1 bg-muted p-1">
-          <TabsTrigger value="general" className="flex items-center gap-2">
-            <SettingsIcon className="h-4 w-4" />
-            General
-          </TabsTrigger>
-          <TabsTrigger value="materials" className="flex items-center gap-2">
-            <Database className="h-4 w-4" />
-            Materials
-          </TabsTrigger>
-          <TabsTrigger value="estimates" className="flex items-center gap-2">
-            <Calculator className="h-4 w-4" />
-            Estimates
-          </TabsTrigger>
-          <TabsTrigger value="commissions" className="flex items-center gap-2">
-            <DollarSign className="h-4 w-4" />
-            Commissions
-          </TabsTrigger>
-          <TabsTrigger value="suppliers" className="flex items-center gap-2">
-            <Package className="h-4 w-4" />
-            Suppliers
-          </TabsTrigger>
-          <TabsTrigger value="products" className="flex items-center gap-2">
-            <Box className="h-4 w-4" />
-            Products
-          </TabsTrigger>
-          <TabsTrigger value="company" className="flex items-center gap-2">
-            <Building className="h-4 w-4" />
-            Company
-          </TabsTrigger>
-          <TabsTrigger value="users" className="flex items-center gap-2">
-            <Users className="h-4 w-4" />
-            Users
-          </TabsTrigger>
-          <TabsTrigger value="quickbooks" className="flex items-center gap-2">
-            <Building className="h-4 w-4" />
-            QuickBooks
-          </TabsTrigger>
-          <TabsTrigger value="reports" className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4" />
-            Reports
-          </TabsTrigger>
-          <TabsTrigger value="automations" className="flex items-center gap-2">
-            <Bell className="h-4 w-4" />
-            Automations
-          </TabsTrigger>
-          <TabsTrigger value="approvals" className="flex items-center gap-2">
-            <CheckSquare className="h-4 w-4" />
-            Approvals
-          </TabsTrigger>
-          <TabsTrigger value="health" className="flex items-center gap-2">
-            <Activity className="h-4 w-4" />
-            Health
-          </TabsTrigger>
-          {showDeveloperTab && (
-            <TabsTrigger value="developer" className="flex items-center gap-2">
-              <Code className="h-4 w-4" />
-              Developer
-            </TabsTrigger>
-          )}
+          <TooltipProvider>
+            {tabConfig.map(tab => {
+              const IconComponent = (LucideIcons[tab.icon_name as keyof typeof LucideIcons] || LucideIcons.Settings) as React.ComponentType<{ className?: string }>;
+              
+              return (
+                <Tooltip key={tab.tab_key}>
+                  <TooltipTrigger asChild>
+                    <TabsTrigger value={tab.tab_key} className="flex items-center gap-2">
+                      <IconComponent className="h-4 w-4" />
+                      {tab.label}
+                    </TabsTrigger>
+                  </TooltipTrigger>
+                  {tab.description && (
+                    <TooltipContent side="bottom" className="max-w-xs">
+                      <p>{tab.description}</p>
+                    </TooltipContent>
+                  )}
+                </Tooltip>
+              );
+            })}
+          </TooltipProvider>
         </TabsList>
 
         <TabsContent value="general" className="space-y-6">
@@ -217,11 +241,9 @@ export const Settings = () => {
           <SystemHealthCheck />
         </TabsContent>
 
-        {showDeveloperTab && (
-          <TabsContent value="developer" className="space-y-6">
-            <DeveloperAccess />
-          </TabsContent>
-        )}
+        <TabsContent value="developer" className="space-y-6">
+          <DeveloperAccess />
+        </TabsContent>
       </Tabs>
     </div>
   );
