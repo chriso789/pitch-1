@@ -17,6 +17,14 @@ interface ExcelStyleCalculationRequest {
     customer_address: string;
     season: string;
     location_zone?: string;
+    linear_measurements?: {
+      perimeter: number;
+      ridges: number;
+      hips: number;
+      valleys: number;
+      eaves: number;
+      rakes: number;
+    };
   };
   line_items?: Array<{
     item_category: string;
@@ -417,7 +425,8 @@ async function calculateExcelStyleEstimate(
       guaranteed_margin: true,
       total_percentages: totalPercentages * 100,
       overhead_on_selling_price: true,
-      commission_on_selling_price: true
+      commission_on_selling_price: true,
+      linear_measurements: propertyDetails.linear_measurements || null
     }
   };
 }
