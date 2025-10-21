@@ -1,8 +1,9 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-import { corsHeaders } from "../_shared/cors.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.7.1';
+import { corsHeaders } from '../_shared/cors.ts';
 
-console.log("Delete pipeline entry function started");
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 serve(async (req) => {
   // Handle CORS preflight requests
@@ -11,178 +12,136 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    
-    const supabase = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: {
-        autoRefreshToken: false,
-        persistSession: false
-      }
-    });
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-    const authorization = req.headers.get('Authorization');
-    if (!authorization) {
-      return new Response(
-        JSON.stringify({ error: 'No authorization header' }),
-        { 
-          status: 401, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
-    }
-
-    // Get the user from the auth token
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authorization.replace('Bearer ', '')
-    );
+    // Get user from request
+    const authHeader = req.headers.get('Authorization')!;
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
 
     if (authError || !user) {
       console.error('Auth error:', authError);
-      return new Response(
-        JSON.stringify({ error: 'Invalid authorization token' }),
-        { 
-          status: 401, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    // Get user profile and tenant
+    // Get user's profile and role
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('tenant_id, role')
+      .select('tenant_id, role, first_name, last_name')
       .eq('id', user.id)
       .single();
 
     if (profileError || !profile?.tenant_id) {
       console.error('Profile error:', profileError);
-      return new Response(
-        JSON.stringify({ error: 'User profile not found' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+      return new Response(JSON.stringify({ error: 'No tenant found' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    // Check if user has permission to delete jobs (managers and admins only)
-    const allowedRoles = ['admin', 'manager', 'master'];
-    if (!allowedRoles.includes(profile.role)) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'Insufficient permissions', 
-          message: 'Only managers and administrators can delete jobs' 
-        }),
-        { 
-          status: 403, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+    // Check if user has manager permissions (manager, admin, or master)
+    const isManager = ['manager', 'admin', 'master'].includes(profile.role);
+    
+    if (!isManager) {
+      console.warn(`Delete attempt by non-manager: ${user.id} (role: ${profile.role})`);
+      return new Response(JSON.stringify({ 
+        error: 'Insufficient permissions',
+        message: 'Only managers can delete jobs. Contact your administrator.'
+      }), {
+        status: 403,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    const { entryId, entryType = 'pipeline_entry' } = await req.json();
+    const { entryId } = await req.json();
 
     if (!entryId) {
-      return new Response(
-        JSON.stringify({ error: 'Entry ID is required' }),
-        { 
-          status: 400, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+      return new Response(JSON.stringify({ error: 'Entry ID is required' }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    // Determine which table to query based on entryType
-    const tableName = entryType === 'job' ? 'jobs' : 'pipeline_entries';
-    const entryLabel = entryType === 'job' ? 'Job' : 'Pipeline entry';
+    console.log(`Soft deleting pipeline entry: ${entryId} by user: ${user.id} (${profile.first_name} ${profile.last_name})`);
 
-    // Get the entry to verify it exists and belongs to the tenant
-    const { data: entry, error: fetchError } = await supabase
-      .from(tableName)
-      .select('id, contact_id, tenant_id, status, name')
+    // Verify the entry exists and belongs to the same tenant
+    const { data: existingEntry, error: checkError } = await supabase
+      .from('pipeline_entries')
+      .select('id, tenant_id, contact_id, status, clj_formatted_number')
       .eq('id', entryId)
       .eq('tenant_id', profile.tenant_id)
       .single();
 
-    if (fetchError || !entry) {
-      console.error(`${entryLabel} fetch error:`, fetchError);
-      return new Response(
-        JSON.stringify({ error: `${entryLabel} not found or access denied` }),
-        { 
-          status: 404, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+    if (checkError || !existingEntry) {
+      console.error('Entry not found or access denied:', checkError);
+      return new Response(JSON.stringify({ 
+        error: 'Pipeline entry not found or access denied' 
+      }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
-    // Soft delete the entry (set is_deleted flag instead of permanent delete)
+    // Soft delete the pipeline entry
     const { error: deleteError } = await supabase
-      .from(tableName)
+      .from('pipeline_entries')
       .update({
         is_deleted: true,
         deleted_at: new Date().toISOString(),
-        deleted_by: user.id
+        deleted_by: user.id,
       })
-      .eq('id', entryId)
-      .eq('tenant_id', profile.tenant_id);
+      .eq('id', entryId);
 
     if (deleteError) {
       console.error('Delete error:', deleteError);
-      return new Response(
-        JSON.stringify({ error: `Failed to delete ${entryLabel.toLowerCase()}` }),
-        { 
-          status: 500, 
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-        }
-      );
+      return new Response(JSON.stringify({ 
+        error: 'Failed to delete pipeline entry',
+        message: deleteError.message
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Log the deletion activity
-    const { error: logError } = await supabase
-      .from('communication_history')
+    await supabase
+      .from('pipeline_activities')
       .insert({
+        pipeline_entry_id: entryId,
+        activity_type: 'status_change',
+        description: `Job deleted by ${profile.first_name} ${profile.last_name}`,
+        performed_by: user.id,
         tenant_id: profile.tenant_id,
-        contact_id: entry.contact_id,
-        communication_type: 'system',
-        direction: 'internal',
-        content: `${entryLabel} "${entry.name}" (${entry.status}) was deleted by ${user.email}`,
-        rep_id: user.id,
         metadata: {
-          action: `${entryType}_deleted`,
-          entry_id: entryId,
-          entry_type: entryType,
-          status: entry.status,
-          deleted_by: user.id,
-          deleted_at: new Date().toISOString()
+          action: 'soft_delete',
+          previous_status: existingEntry.status,
+          contact_id: existingEntry.contact_id,
+          job_number: existingEntry.clj_formatted_number
         }
       });
 
-    if (logError) {
-      console.error('Failed to log deletion activity:', logError);
-      // Don't fail the request if logging fails
-    }
+    console.log(`Successfully deleted pipeline entry: ${entryId}`);
 
-    return new Response(
-      JSON.stringify({ 
-        success: true,
-        message: `${entryLabel} has been deleted successfully`,
-        entryId: entryId
-      }),
-      { 
-        status: 200, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+    return new Response(JSON.stringify({ 
+      success: true,
+      message: 'Pipeline entry deleted successfully',
+      entryId: entryId
+    }), {
+      status: 200,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
 
   } catch (error) {
     console.error('Unexpected error:', error);
-    return new Response(
-      JSON.stringify({ error: 'Internal server error' }),
-      { 
-        status: 500, 
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
-      }
-    );
+    return new Response(JSON.stringify({ 
+      error: 'Internal server error',
+      message: error.message 
+    }), {
+      status: 500,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
 });
