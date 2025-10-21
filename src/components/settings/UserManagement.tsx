@@ -292,11 +292,21 @@ export const UserManagement = () => {
   const getActionsForUser = (user: User) => {
     const actions = [];
 
+    // Early return with view-only if currentUser is not loaded
+    if (!currentUser) {
+      console.warn('⚠️ currentUser not loaded, showing view-only action');
+      return [{
+        label: 'View Profile',
+        icon: Eye,
+        onClick: () => setSelectedUserId(user.id)
+      }];
+    }
+
     console.log('🔍 Getting actions for user:', {
       userName: `${user.first_name} ${user.last_name}`,
       userRole: user.role,
-      currentUserRole: currentUser?.role,
-      currentUserId: currentUser?.id,
+      currentUserRole: currentUser.role,
+      currentUserId: currentUser.id,
       targetUserId: user.id
     });
 
@@ -309,9 +319,9 @@ export const UserManagement = () => {
 
     // Edit action - role-based permissions
     const canEdit =
-      currentUser?.role === 'master' || // Master can edit all
-      (currentUser?.role === 'manager' && user.role === 'admin') || // Manager can edit sales reps
-      currentUser?.id === user.id; // Users can edit themselves
+      currentUser.role === 'master' || // Master can edit all
+      (currentUser.role === 'manager' && user.role === 'admin') || // Manager can edit sales reps
+      currentUser.id === user.id; // Users can edit themselves
 
     if (canEdit) {
       actions.push({
@@ -334,30 +344,31 @@ export const UserManagement = () => {
 
     // Delete action - role-based permissions
     const canDelete =
-      currentUser?.role === 'master' || // Master can delete all
-      (currentUser?.role === 'manager' && user.role === 'admin'); // Manager can delete sales reps
+      currentUser.role === 'master' || // Master can delete all
+      (currentUser.role === 'manager' && user.role === 'admin'); // Manager can delete sales reps
 
     console.log('🗑️ Delete permission check:', {
       canDelete,
-      isMaster: currentUser?.role === 'master',
-      isManagerEditingAdmin: currentUser?.role === 'manager' && user.role === 'admin',
-      isSelf: user.id === currentUser?.id,
-      willShowDelete: canDelete && user.id !== currentUser?.id
+      isMaster: currentUser.role === 'master',
+      isManagerEditingAdmin: currentUser.role === 'manager' && user.role === 'admin',
+      isSelf: user.id === currentUser.id,
+      willShowDelete: canDelete && user.id !== currentUser.id
     });
 
-    if (canDelete && user.id !== currentUser?.id) { // Can't delete yourself
-      console.log('✅ Adding delete button for user:', user.first_name);
+    if (canDelete && user.id !== currentUser.id) { // Can't delete yourself
+      const deleteLabel = user.role === 'admin' ? 'Delete Rep' : 'Delete User';
+      console.log('✅ Adding delete button for user:', user.first_name, 'with label:', deleteLabel);
       actions.push({
-        label: 'Delete User',
+        label: deleteLabel,
         icon: Trash2,
         variant: 'destructive' as const,
         onClick: () => confirmDeleteUser(user),
-        disabled: user.id === currentUser?.id
+        disabled: user.id === currentUser.id
       });
     } else {
       console.log('❌ Not adding delete button - reason:', {
         canDelete,
-        isSelf: user.id === currentUser?.id
+        isSelf: user.id === currentUser.id
       });
     }
 
