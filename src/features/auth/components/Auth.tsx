@@ -64,7 +64,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
         email,
         password,
         options: {
-          emailRedirectTo: `${window.location.origin}/`,
+          emailRedirectTo: `${window.location.origin}/auth/confirm-email`,
           data: {
             first_name: firstName,
             last_name: lastName,
@@ -111,7 +111,7 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
           email: 'demo@acmeroofing.com',
           password: 'demo123456',
           options: {
-            emailRedirectTo: `${window.location.origin}/`,
+            emailRedirectTo: `${window.location.origin}/auth/confirm-email`,
             data: {
               first_name: 'Demo',
               last_name: 'User',

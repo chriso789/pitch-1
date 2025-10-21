@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
+import ConfirmEmail from "./pages/ConfirmEmail";
 import ContactProfile from "./pages/ContactProfile";
 import JobDetails from "./pages/JobDetails";
 import JobAnalytics from "./pages/JobAnalytics";
@@ -64,7 +65,7 @@ const AppContent = () => {
       
       // Redirect to login if signed out (except if already on public pages)
       if (event === 'SIGNED_OUT') {
-        const publicPaths = ['/login', '/demo-request', '/reset-password'];
+        const publicPaths = ['/login', '/demo-request', '/reset-password', '/auth/confirm-email'];
         if (!publicPaths.includes(window.location.pathname)) {
           navigate('/login');
         }
@@ -87,6 +88,7 @@ const AppContent = () => {
       <Routes>
         <Route path="/login" element={<Login />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/auth/confirm-email" element={<ConfirmEmail />} />
         <Route path="/demo-request" element={<DemoRequest />} />
         <Route path="/quickbooks/callback" element={<QuickBooksCallback />} />
         <Route path="/google-calendar/callback" element={<GoogleCalendarCallback />} />

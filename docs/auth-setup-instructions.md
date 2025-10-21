@@ -29,22 +29,55 @@ The login and registration system has been properly configured with:
    - Automatic redirect after login/signup
    - Session persistence across page refreshes
 
+## 📧 Email Confirmation Flow
+
+### How It Works:
+1. **User signs up** with email, first name, and temporary password
+2. **Supabase sends confirmation email** to the provided address
+3. **User clicks "Confirm Email" link** in the email
+4. **User is taken to password setup page** at `/auth/confirm-email`
+5. **User creates their own secure password**
+6. **Email is confirmed and password is set** in one step
+7. **User is redirected to login page** with success message
+8. **User logs in** with their email and new password
+
+### Password Setup Page Features:
+- Shows the confirmed email address
+- Allows custom password creation (minimum 6 characters)
+- Real-time password validation and strength indicators
+- Visual confirmation when passwords match
+- Secure token verification before allowing password setup
+- Handles expired or invalid tokens gracefully
+
+### Token Security:
+- Confirmation tokens expire after 24 hours
+- Tokens are one-time use only
+- Invalid or expired tokens show clear error messages
+- Users can request new confirmation emails if needed
+
+---
+
 ## 🚀 Testing the System
 
 ### To Register a New Account:
-1. Go to the login page
+1. Go to the login page at `/login`
 2. Click "Sign Up" tab
 3. Fill in:
    - First Name (required)
    - Last Name (optional)
    - Email (valid email required)
    - Company Name (optional)
-   - Password (minimum 6 characters)
+   - Password (minimum 6 characters - this is temporary)
    - Confirm Password (must match)
 4. Click "Create Account"
-5. Check your email for confirmation link (if email confirmation is enabled)
-6. Click confirmation link
-7. Return to login page and sign in
+5. **Check your email** for the confirmation link
+6. **Click the confirmation link** in the email
+7. You'll be redirected to `/auth/confirm-email` page
+8. **Create your secure password** (minimum 6 characters)
+9. Click "Set Password & Continue"
+10. You'll be redirected to login page with success message
+11. **Sign in** with your email and the password you just created
+12. Access the dashboard successfully
 
 ### To Sign In:
 1. Enter your registered email

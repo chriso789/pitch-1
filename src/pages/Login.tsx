@@ -103,6 +103,13 @@ const Login: React.FC = () => {
       });
     }
     
+    if (message === 'email-confirmed') {
+      toast({
+        title: "Email Confirmed!",
+        description: "Your email has been confirmed. You can now sign in with your password.",
+      });
+    }
+    
     if (tab === 'forgot') {
       setActiveTab('forgot');
     }
@@ -225,7 +232,7 @@ const Login: React.FC = () => {
         email: signupForm.email,
         password: signupForm.password,
         options: {
-          emailRedirectTo: `${window.location.origin}/`,
+          emailRedirectTo: `${window.location.origin}/auth/confirm-email`,
           data: {
             first_name: signupForm.firstName.trim(),
             last_name: signupForm.lastName.trim(),

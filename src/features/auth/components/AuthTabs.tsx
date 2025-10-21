@@ -157,7 +157,7 @@ export const AuthTabs: React.FC<AuthTabsProps> = ({
         email: signupForm.email,
         password: signupForm.password,
         options: {
-          emailRedirectTo: `${window.location.origin}/`,
+          emailRedirectTo: `${window.location.origin}/auth/confirm-email`,
           data: {
             first_name: signupForm.firstName.trim(),
             last_name: signupForm.lastName.trim(),
