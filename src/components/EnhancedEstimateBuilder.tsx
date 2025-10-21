@@ -320,8 +320,8 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
         setMeasurementData(measurements);
 
         toast({
-          title: "Measurements Retrieved",
-          description: `${(measurements.roofArea / 100).toFixed(1)} squares from Google Solar API`,
+          title: "Roof Report Retrieved",
+          description: `${(measurements.roofArea / 100).toFixed(1)} squares from satellite measurements`,
         });
       } else {
         throw new Error(data.error || 'Failed to retrieve measurements');
@@ -516,9 +516,9 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                           Pulling Measurements...
                         </>
                       ) : (
-                        <>
+                      <>
                           <Satellite className="h-4 w-4 mr-2" />
-                          Pull Google Solar Measurements
+                          Pull Roof Report
                         </>
                       )}
                     </Button>
@@ -555,7 +555,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                       </div>
                       <div className="flex items-center gap-2 pt-1">
                         <Badge variant="secondary" className="text-xs">
-                          Google Solar API
+                          Roof Report
                         </Badge>
                         <span className="text-xs text-muted-foreground">
                           {solarMeasurementData.imageryDate}
@@ -635,116 +635,118 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
             </CardContent>
           </Card>
 
-          {/* Line Items */}
-          <Card>
-            <CardHeader>
-              <div className="flex justify-between items-center">
-                <CardTitle className="text-lg">Line Items</CardTitle>
-                <Button onClick={addLineItem} size="sm" variant="outline">
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Item
-                </Button>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {lineItems.map((item, index) => (
-                <div key={index} className="border rounded-lg p-4 space-y-3">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm font-medium">Item {index + 1}</span>
-                    {lineItems.length > 1 && (
-                      <Button
-                        onClick={() => removeLineItem(index)}
-                        size="sm"
-                        variant="ghost"
-                        className="text-red-500 hover:text-red-700"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label>Category</Label>
-                      <Select
-                        value={item.item_category}
-                        onValueChange={(value) => updateLineItem(index, 'item_category', value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="material">Material</SelectItem>
-                          <SelectItem value="labor">Labor</SelectItem>
-                          <SelectItem value="equipment">Equipment</SelectItem>
-                          <SelectItem value="other">Other</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Item Name</Label>
-                      <Input
-                        value={item.item_name}
-                        onChange={(e) => updateLineItem(index, 'item_name', e.target.value)}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label>Description</Label>
-                    <Input
-                      value={item.description}
-                      onChange={(e) => updateLineItem(index, 'description', e.target.value)}
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-4 gap-3">
-                    <div className="space-y-2">
-                      <Label>Quantity</Label>
-                      <Input
-                        type="number"
-                        value={item.quantity}
-                        onChange={(e) => updateLineItem(index, 'quantity', parseFloat(e.target.value) || 0)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Unit Cost</Label>
-                      <Input
-                        type="number"
-                        value={item.unit_cost}
-                        onChange={(e) => updateLineItem(index, 'unit_cost', parseFloat(e.target.value) || 0)}
-                      />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Unit Type</Label>
-                      <Select
-                        value={item.unit_type}
-                        onValueChange={(value) => updateLineItem(index, 'unit_type', value)}
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="each">Each</SelectItem>
-                          <SelectItem value="square">Square</SelectItem>
-                          <SelectItem value="linear_ft">Linear Ft</SelectItem>
-                          <SelectItem value="hour">Hour</SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Markup %</Label>
-                      <Input
-                        type="number"
-                        value={item.markup_percent}
-                        onChange={(e) => updateLineItem(index, 'markup_percent', parseFloat(e.target.value) || 0)}
-                      />
-                    </div>
-                  </div>
+          {/* Line Items - Only show after template is selected */}
+          {templateId && (
+            <Card>
+              <CardHeader>
+                <div className="flex justify-between items-center">
+                  <CardTitle className="text-lg">Line Items</CardTitle>
+                  <Button onClick={addLineItem} size="sm" variant="outline">
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Item
+                  </Button>
                 </div>
-              ))}
-            </CardContent>
-          </Card>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                {lineItems.map((item, index) => (
+                  <div key={index} className="border rounded-lg p-4 space-y-3">
+                    <div className="flex justify-between items-center">
+                      <span className="text-sm font-medium">Item {index + 1}</span>
+                      {lineItems.length > 1 && (
+                        <Button
+                          onClick={() => removeLineItem(index)}
+                          size="sm"
+                          variant="ghost"
+                          className="text-red-500 hover:text-red-700"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      )}
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                      <div className="space-y-2">
+                        <Label>Category</Label>
+                        <Select
+                          value={item.item_category}
+                          onValueChange={(value) => updateLineItem(index, 'item_category', value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="material">Material</SelectItem>
+                            <SelectItem value="labor">Labor</SelectItem>
+                            <SelectItem value="equipment">Equipment</SelectItem>
+                            <SelectItem value="other">Other</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Item Name</Label>
+                        <Input
+                          value={item.item_name}
+                          onChange={(e) => updateLineItem(index, 'item_name', e.target.value)}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label>Description</Label>
+                      <Input
+                        value={item.description}
+                        onChange={(e) => updateLineItem(index, 'description', e.target.value)}
+                      />
+                    </div>
+
+                    <div className="grid grid-cols-4 gap-3">
+                      <div className="space-y-2">
+                        <Label>Quantity</Label>
+                        <Input
+                          type="number"
+                          value={item.quantity}
+                          onChange={(e) => updateLineItem(index, 'quantity', parseFloat(e.target.value) || 0)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Unit Cost</Label>
+                        <Input
+                          type="number"
+                          value={item.unit_cost}
+                          onChange={(e) => updateLineItem(index, 'unit_cost', parseFloat(e.target.value) || 0)}
+                        />
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Unit Type</Label>
+                        <Select
+                          value={item.unit_type}
+                          onValueChange={(value) => updateLineItem(index, 'unit_type', value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="each">Each</SelectItem>
+                            <SelectItem value="square">Square</SelectItem>
+                            <SelectItem value="linear_ft">Linear Ft</SelectItem>
+                            <SelectItem value="hour">Hour</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Markup %</Label>
+                        <Input
+                          type="number"
+                          value={item.markup_percent}
+                          onChange={(e) => updateLineItem(index, 'markup_percent', parseFloat(e.target.value) || 0)}
+                        />
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
         </div>
 
         {/* Right Column - Configuration & Results */}
@@ -775,23 +777,6 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                 <div className="text-xs text-muted-foreground">15% - 50%</div>
               </div>
 
-              {/* Overhead Slider */}
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <Label className="text-sm font-medium">Overhead (% of Selling Price)</Label>
-                  <span className="text-sm font-bold text-secondary">{excelConfig.overhead_percent}%</span>
-                </div>
-                <Slider
-                  value={[excelConfig.overhead_percent]}
-                  onValueChange={(value) => setExcelConfig(prev => ({ ...prev, overhead_percent: value[0] }))}
-                  min={10}
-                  max={25}
-                  step={0.5}
-                  className="w-full"
-                />
-                <div className="text-xs text-muted-foreground">10% - 25%</div>
-              </div>
-
               {/* Commission Slider */}
               <div className="space-y-3">
                 <div className="flex justify-between items-center">
@@ -807,40 +792,6 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                   className="w-full"
                 />
                 <div className="text-xs text-muted-foreground">2% - 10%</div>
-              </div>
-
-              {/* Waste Factor Slider */}
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <Label className="text-sm font-medium">Material Waste Factor</Label>
-                  <span className="text-sm font-bold">{excelConfig.waste_factor_percent}%</span>
-                </div>
-                <Slider
-                  value={[excelConfig.waste_factor_percent]}
-                  onValueChange={(value) => setExcelConfig(prev => ({ ...prev, waste_factor_percent: value[0] }))}
-                  min={5}
-                  max={20}
-                  step={1}
-                  className="w-full"
-                />
-                <div className="text-xs text-muted-foreground">5% - 20%</div>
-              </div>
-
-              {/* Contingency Slider */}
-              <div className="space-y-3">
-                <div className="flex justify-between items-center">
-                  <Label className="text-sm font-medium">Labor Contingency</Label>
-                  <span className="text-sm font-bold">{excelConfig.contingency_percent}%</span>
-                </div>
-                <Slider
-                  value={[excelConfig.contingency_percent]}
-                  onValueChange={(value) => setExcelConfig(prev => ({ ...prev, contingency_percent: value[0] }))}
-                  min={0}
-                  max={15}
-                  step={1}
-                  className="w-full"
-                />
-                <div className="text-xs text-muted-foreground">0% - 15%</div>
               </div>
 
               <Separator />
