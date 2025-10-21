@@ -7,7 +7,7 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 // Environment
-const REGRID_API_KEY = Deno.env.get("REGRID_API_KEY") || "";
+const GOOGLE_PLACES_API_KEY = Deno.env.get("GOOGLE_PLACES_API_KEY") || "";
 const OSM_ENABLED = true;
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
@@ -146,52 +146,217 @@ function round(n: number, p = 1) {
   return Math.round(n * (10 ** p)) / (10 ** p);
 }
 
-// Provider: Regrid (sync, US coverage)
-async function providerRegrid(lat: number, lng: number) {
-  if (!REGRID_API_KEY) throw new Error("REGRID_API_KEY not configured");
-  
-  const url = `https://app.regrid.com/api/v1/parcels/near?lat=${lat}&lng=${lng}&limit=1&include_buildings=true`;
-  const resp = await fetch(url, { 
-    headers: { Authorization: `Token ${REGRID_API_KEY}` }
+// Helper: Convert Google's bounding box to polygon coordinates
+function boundingBoxToPolygon(box: any): [number, number][] {
+  const { sw, ne } = box;
+  return [
+    [sw.longitude, sw.latitude],
+    [ne.longitude, sw.latitude],
+    [ne.longitude, ne.latitude],
+    [sw.longitude, ne.latitude],
+    [sw.longitude, sw.latitude], // Close the polygon
+  ];
+}
+
+// Helper: Convert degrees to roof pitch format (18.5° → "4/12")
+function degreesToRoofPitch(degrees: number): string {
+  if (degrees < 2) return 'flat';
+  const rise = Math.round(Math.tan(degrees * Math.PI / 180) * 12);
+  return `${rise}/12`;
+}
+
+// Helper: Estimate linear features from roof geometry
+function estimateLinearFeatures(faces: RoofFace[]): LinearFeature[] {
+  const features: LinearFeature[] = [];
+  let featureId = 1;
+
+  faces.forEach(face => {
+    // Parse WKT to get coordinates
+    const coords = face.wkt.match(/[\d.-]+/g)?.map(Number) || [];
+    if (coords.length < 8) return; // Need at least 4 points (8 numbers)
+
+    // Calculate perimeter edges
+    for (let i = 0; i < coords.length - 2; i += 2) {
+      const x1 = coords[i], y1 = coords[i + 1];
+      const x2 = coords[i + 2], y2 = coords[i + 3];
+      
+      const { metersPerDegLat, metersPerDegLng } = degToMeters(y1);
+      const dx = (x2 - x1) * metersPerDegLng;
+      const dy = (y2 - y1) * metersPerDegLat;
+      const length_m = Math.sqrt(dx * dx + dy * dy);
+      const length_ft = length_m * 3.28084;
+
+      if (length_ft > 5) { // Only add significant edges
+        features.push({
+          id: `LF${featureId++}`,
+          wkt: `LINESTRING(${x1} ${y1}, ${x2} ${y2})`,
+          length_ft,
+          type: face.pitch === 'flat' ? 'eave' : 'rake',
+          label: `Edge ${featureId - 1}`
+        });
+      }
+    }
   });
-  
-  if (!resp.ok) throw new Error(`Regrid HTTP ${resp.status}`);
-  const json = await resp.json();
-  const bldg = json?.results?.[0]?.buildings?.[0];
-  if (!bldg?.geometry?.coordinates?.[0]) throw new Error("No building polygon");
 
-  const coords: [number, number][] = bldg.geometry.coordinates[0].map((c: number[]) => [c[0], c[1]]);
-  if (coords[0][0] !== coords[coords.length-1][0] || coords[0][1] !== coords[coords.length-1][1]) {
-    coords.push(coords[0]);
+  return features;
+}
+
+// Provider: Google Solar API (sync, US coverage, actual pitch data)
+async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
+  if (!GOOGLE_PLACES_API_KEY) throw new Error("GOOGLE_PLACES_API_KEY not configured");
+
+  // Check cache first (within 10m, <90 days old)
+  const { data: cached } = await supabase.rpc('nearby_buildings', {
+    p_lat: lat,
+    p_lng: lng,
+    p_radius_m: 10,
+    p_max_age_days: 90
+  });
+
+  if (cached && cached.length > 0) {
+    console.log('Using cached building data from', cached[0].source);
+    const building = cached[0];
+    
+    // Convert cached data to MeasureResult
+    const polygon = building.building_polygon;
+    const coords: [number, number][] = polygon.coordinates[0];
+    const plan_sqft = polygonAreaSqftFromLngLat(coords);
+    
+    const faces: RoofFace[] = [];
+    if (building.roof_segments && building.roof_segments.length > 0) {
+      building.roof_segments.forEach((seg: any, idx: number) => {
+        const pitch = degreesToRoofPitch(seg.pitchDegrees || 18.5);
+        const pf = pitchFactor(pitch);
+        const segArea = seg.stats?.areaMeters2 * 10.7639 || (plan_sqft / building.roof_segments.length);
+        
+        faces.push({
+          id: String.fromCharCode(65 + idx),
+          wkt: toPolygonWKT(coords),
+          plan_area_sqft: segArea / pf,
+          pitch,
+          area_sqft: segArea
+        });
+      });
+    } else {
+      const defaultPitch = '4/12';
+      const pf = pitchFactor(defaultPitch);
+      faces.push({
+        id: 'A',
+        wkt: toPolygonWKT(coords),
+        plan_area_sqft: plan_sqft,
+        pitch: defaultPitch,
+        area_sqft: plan_sqft * pf
+      });
+    }
+
+    const wastePct = 12;
+    const totalArea = faces.reduce((s, f) => s + f.area_sqft, 0) * (1 + wastePct / 100);
+
+    return {
+      property_id: "",
+      source: building.source,
+      faces,
+      linear_features: estimateLinearFeatures(faces),
+      summary: {
+        total_area_sqft: totalArea,
+        total_squares: totalArea / 100,
+        waste_pct: wastePct,
+        pitch_method: building.roof_segments ? 'vendor' : 'assumed'
+      },
+      geom_wkt: unionFacesWKT(faces)
+    };
   }
-  
-  const plan_sqft = polygonAreaSqftFromLngLat(coords);
-  const defaultPitch = '4/12';
-  const pf = pitchFactor(defaultPitch);
-  const wastePct = 12;
-  const adjusted = plan_sqft * pf * (1 + wastePct/100);
 
-  const face: RoofFace = {
-    id: "A",
-    wkt: toPolygonWKT(coords),
-    plan_area_sqft: plan_sqft,
-    pitch: defaultPitch,
-    area_sqft: adjusted,
-  };
+  // Fetch fresh from Google Solar API
+  console.log('Fetching fresh data from Google Solar API');
+  const url = `https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${lat}&location.longitude=${lng}&key=${GOOGLE_PLACES_API_KEY}`;
+  
+  const resp = await fetch(url);
+  if (!resp.ok) {
+    const error = await resp.text();
+    throw new Error(`Google Solar HTTP ${resp.status}: ${error}`);
+  }
+
+  const json = await resp.json();
+  
+  if (!json.boundingBox) {
+    throw new Error("No building data from Google Solar");
+  }
+
+  // Extract building polygon
+  const coords = boundingBoxToPolygon(json.boundingBox);
+  const plan_sqft = polygonAreaSqftFromLngLat(coords);
+  
+  // Process roof segments
+  const faces: RoofFace[] = [];
+  const roofSegments = json.solarPotential?.roofSegmentStats || [];
+  
+  if (roofSegments.length > 0) {
+    roofSegments.forEach((segment: any, idx: number) => {
+      const pitchDeg = segment.pitchDegrees || 18.5;
+      const pitch = degreesToRoofPitch(pitchDeg);
+      const pf = pitchFactor(pitch);
+      const segmentArea = segment.stats?.areaMeters2 * 10.7639 || (plan_sqft / roofSegments.length);
+      
+      faces.push({
+        id: String.fromCharCode(65 + idx), // A, B, C...
+        wkt: toPolygonWKT(coords),
+        plan_area_sqft: segmentArea / pf,
+        pitch,
+        area_sqft: segmentArea
+      });
+    });
+  } else {
+    // No segment data, use building footprint with assumed pitch
+    const defaultPitch = '4/12';
+    const pf = pitchFactor(defaultPitch);
+    faces.push({
+      id: 'A',
+      wkt: toPolygonWKT(coords),
+      plan_area_sqft: plan_sqft,
+      pitch: defaultPitch,
+      area_sqft: plan_sqft * pf
+    });
+  }
+
+  const wastePct = 12;
+  const totalArea = faces.reduce((s, f) => s + f.area_sqft, 0) * (1 + wastePct / 100);
 
   const result: MeasureResult = {
     property_id: "",
-    source: 'regrid',
-    faces: [face],
+    source: 'google_solar',
+    faces,
+    linear_features: estimateLinearFeatures(faces),
     summary: {
-      total_area_sqft: adjusted,
-      total_squares: adjusted / 100,
+      total_area_sqft: totalArea,
+      total_squares: totalArea / 100,
       waste_pct: wastePct,
-      pitch_method: 'assumed'
+      pitch_method: roofSegments.length > 0 ? 'vendor' : 'assumed'
     },
-    geom_wkt: `MULTIPOLYGON((${toPolygonWKT(coords).replace(/^POLYGON/, '')}))`
+    geom_wkt: unionFacesWKT(faces)
   };
-  
+
+  // Cache for future use
+  try {
+    await supabase.from('building_footprints').insert({
+      lat,
+      lng,
+      geom_geog: `SRID=4326;POLYGON((${coords.map(c => `${c[0]} ${c[1]}`).join(', ')}))`,
+      source: 'google_solar',
+      building_polygon: {
+        type: 'Polygon',
+        coordinates: [coords]
+      },
+      roof_segments: roofSegments.length > 0 ? roofSegments : null,
+      imagery_date: json.imageryDate ? new Date(json.imageryDate) : null,
+      confidence_score: json.imageryQuality === 'HIGH' ? 0.95 : 0.80
+    });
+    console.log('Cached building data for future use');
+  } catch (cacheError) {
+    console.warn('Failed to cache building:', cacheError);
+    // Continue even if caching fails
+  }
+
   return result;
 }
 
@@ -351,10 +516,10 @@ serve(async (req) => {
       const { data: { user } } = await supabase.auth.getUser();
       const userId = user?.id;
 
-      // Provider chain (sync-capable today)
+      // Provider chain: Google Solar (primary) → OSM (fallback)
       let meas: MeasureResult | null = null;
       const tryOrder = [
-        async () => await providerRegrid(lat, lng),
+        async () => await providerGoogleSolar(supabase, lat, lng),
         async () => await providerOSM(lat, lng),
       ];
 

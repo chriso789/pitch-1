@@ -614,6 +614,51 @@ export type Database = {
         }
         Relationships: []
       }
+      building_footprints: {
+        Row: {
+          building_polygon: Json
+          confidence_score: number | null
+          created_at: string | null
+          geom_geog: unknown | null
+          id: string
+          imagery_date: string | null
+          last_verified_at: string | null
+          lat: number
+          lng: number
+          roof_segments: Json | null
+          source: string
+          updated_at: string | null
+        }
+        Insert: {
+          building_polygon: Json
+          confidence_score?: number | null
+          created_at?: string | null
+          geom_geog?: unknown | null
+          id?: string
+          imagery_date?: string | null
+          last_verified_at?: string | null
+          lat: number
+          lng: number
+          roof_segments?: Json | null
+          source: string
+          updated_at?: string | null
+        }
+        Update: {
+          building_polygon?: Json
+          confidence_score?: number | null
+          created_at?: string | null
+          geom_geog?: unknown | null
+          id?: string
+          imagery_date?: string | null
+          last_verified_at?: string | null
+          lat?: number
+          lng?: number
+          roof_segments?: Json | null
+          source?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       button_audit_results: {
         Row: {
           button_name: string | null
@@ -10700,6 +10745,28 @@ export type Database = {
       longtransactionsenabled: {
         Args: Record<PropertyKey, never>
         Returns: boolean
+      }
+      nearby_buildings: {
+        Args: {
+          p_lat: number
+          p_lng: number
+          p_max_age_days?: number
+          p_radius_m?: number
+        }
+        Returns: {
+          building_polygon: Json
+          confidence_score: number | null
+          created_at: string | null
+          geom_geog: unknown | null
+          id: string
+          imagery_date: string | null
+          last_verified_at: string | null
+          lat: number
+          lng: number
+          roof_segments: Json | null
+          source: string
+          updated_at: string | null
+        }[]
       }
       normalize_email: {
         Args: { email_text: string }
