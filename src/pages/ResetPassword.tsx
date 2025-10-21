@@ -37,8 +37,20 @@ const ResetPassword: React.FC = () => {
   }, [accessToken, refreshToken]);
 
   const validateResetToken = async () => {
+    console.log('🔐 Validating reset token:', {
+      hasAccessToken: !!accessToken,
+      hasRefreshToken: !!refreshToken,
+      type: tokenType,
+      timestamp: new Date().toISOString()
+    });
+
     // Check if we have the required tokens
     if (!accessToken || tokenType !== 'recovery') {
+      console.error('❌ Invalid token parameters:', {
+        access_token: accessToken ? '[present]' : '[missing]',
+        refresh_token: refreshToken ? '[present]' : '[missing]',
+        type: tokenType,
+      });
       setIsValidToken(false);
       setTokenValidated(true);
       return;
@@ -52,16 +64,23 @@ const ResetPassword: React.FC = () => {
       });
 
       if (error) {
-        console.error('Token validation error:', error);
+        console.error('❌ Token validation failed:', {
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
         setIsValidToken(false);
       } else if (session) {
+        console.log('✅ Token validated successfully:', {
+          userId: session.user?.id,
+          timestamp: new Date().toISOString()
+        });
         setIsValidToken(true);
-        console.log('Password reset token is valid');
       } else {
+        console.error('❌ No session returned from token validation');
         setIsValidToken(false);
       }
     } catch (error) {
-      console.error('Token validation error:', error);
+      console.error('❌ Exception during token validation:', error);
       setIsValidToken(false);
     } finally {
       setTokenValidated(true);
@@ -90,6 +109,7 @@ const ResetPassword: React.FC = () => {
     }
 
     setLoading(true);
+    console.log('🔄 Attempting password reset...');
 
     try {
       const { error } = await supabase.auth.updateUser({
@@ -97,10 +117,15 @@ const ResetPassword: React.FC = () => {
       });
 
       if (error) {
+        console.error('❌ Password update failed:', {
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
         setErrors({ general: error.message });
         return;
       }
 
+      console.log('✅ Password updated successfully');
       toast({
         title: "Password Reset Successful",
         description: "Your password has been updated successfully. You can now sign in with your new password.",
@@ -115,7 +140,7 @@ const ResetPassword: React.FC = () => {
       }, 2000);
 
     } catch (error: any) {
-      console.error('Password reset error:', error);
+      console.error('❌ Password reset exception:', error);
       setErrors({ general: 'An unexpected error occurred. Please try again.' });
     } finally {
       setLoading(false);
@@ -148,9 +173,12 @@ const ResetPassword: React.FC = () => {
 
           <Card className="shadow-strong border-0 bg-white/95 backdrop-blur-sm">
             <CardHeader className="text-center">
-              <CardTitle className="text-2xl font-semibold text-destructive">Invalid Reset Link</CardTitle>
+              <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
+                <AlertCircle className="h-6 w-6 text-destructive" />
+              </div>
+              <CardTitle className="text-2xl font-semibold text-destructive">Invalid or Expired Reset Link</CardTitle>
               <CardDescription>
-                This password reset link is invalid or has expired.
+                This password reset link cannot be used.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -158,24 +186,40 @@ const ResetPassword: React.FC = () => {
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
                   The password reset link is either invalid, expired, or has already been used.
-                  Password reset links expire after 1 hour for security reasons.
                 </AlertDescription>
               </Alert>
               
-              <div className="space-y-2">
+              <div className="space-y-2 text-sm text-muted-foreground">
+                <p className="font-semibold text-foreground">Common reasons:</p>
+                <ul className="list-disc pl-5 space-y-1">
+                  <li>The link is more than 1 hour old (links expire for security)</li>
+                  <li>The link has already been used to reset your password</li>
+                  <li>The link was not copied completely from your email</li>
+                  <li>The redirect URL is not configured in Supabase settings</li>
+                </ul>
+              </div>
+
+              <Alert className="border-primary/50 bg-primary/10">
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription className="text-sm">
+                  <strong>For administrators:</strong> Make sure <code className="text-xs bg-muted px-1 py-0.5 rounded">{window.location.origin}/reset-password</code> is added to "Redirect URLs" in your Supabase project under Authentication → URL Configuration.
+                </AlertDescription>
+              </Alert>
+              
+              <div className="space-y-2 pt-2">
                 <Button 
+                  onClick={() => navigate('/login?tab=forgot')} 
+                  className="w-full"
+                >
+                  Request New Reset Link
+                </Button>
+                <Button 
+                  variant="outline" 
                   onClick={() => navigate('/login')} 
                   className="w-full"
                 >
                   <ArrowLeft className="h-4 w-4 mr-2" />
                   Back to Login
-                </Button>
-                <Button 
-                  variant="outline" 
-                  onClick={() => navigate('/login?tab=forgot')} 
-                  className="w-full"
-                >
-                  Request New Reset Link
                 </Button>
               </div>
             </CardContent>
@@ -205,6 +249,13 @@ const ResetPassword: React.FC = () => {
           </CardHeader>
           
           <CardContent>
+            <Alert className="mb-4 border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+              <AlertCircle className="h-4 w-4 text-amber-600" />
+              <AlertDescription className="text-sm text-amber-800 dark:text-amber-200">
+                ⏰ <strong>Note:</strong> Password reset links expire after 1 hour for security. If your link has expired, request a new one from the login page.
+              </AlertDescription>
+            </Alert>
+
             {errors.general && (
               <Alert variant="destructive" className="mb-4">
                 <AlertCircle className="h-4 w-4" />

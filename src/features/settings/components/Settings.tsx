@@ -49,8 +49,13 @@ export const Settings = () => {
 
   useEffect(() => {
     loadCurrentUser();
-    loadTabConfiguration();
   }, []);
+
+  useEffect(() => {
+    if (currentUser) {
+      loadTabConfiguration();
+    }
+  }, [currentUser]);
 
   const loadCurrentUser = async () => {
     try {

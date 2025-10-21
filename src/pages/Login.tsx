@@ -290,27 +290,24 @@ const Login: React.FC = () => {
       });
 
       if (error) {
-        // Don't reveal if email exists or not for security
-        console.error('Password reset error:', error);
+        console.error('❌ Password reset error:', {
+          email: resetEmail,
+          error: error.message,
+          timestamp: new Date().toISOString()
+        });
+      } else {
+        console.log('✅ Password reset email requested:', {
+          email: resetEmail,
+          redirectTo: `${window.location.origin}/reset-password`,
+          timestamp: new Date().toISOString()
+        });
       }
 
       // Always show success message for security (don't reveal if email exists)
       toast({
         title: "Reset Link Sent",
-        description: "If an account with that email exists, we've sent a password reset link.",
+        description: "If an account with that email exists, we've sent a password reset link. Please check your email and spam folder.",
       });
-
-      // Also send via our custom email function for better styling
-      try {
-        await supabase.functions.invoke('send-password-reset', {
-          body: {
-            email: resetEmail,
-            resetUrl: `${window.location.origin}/reset-password`
-          }
-        });
-      } catch (emailError) {
-        console.warn('Custom email failed, but Supabase email should work:', emailError);
-      }
 
       setResetEmail('');
       setActiveTab('login');
