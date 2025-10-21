@@ -117,6 +117,9 @@ verify_jwt = true
 [functions.admin-create-user]
 verify_jwt = true
 
+[functions.google-calendar-oauth]
+verify_jwt = true
+
 [functions.smart-follow-up]
 verify_jwt = true
 

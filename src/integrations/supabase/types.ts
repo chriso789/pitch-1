@@ -3439,6 +3439,54 @@ export type Database = {
           },
         ]
       }
+      google_calendar_connections: {
+        Row: {
+          access_token_encrypted: string
+          calendar_id: string | null
+          calendar_name: string | null
+          connected_at: string | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          last_synced_at: string | null
+          refresh_token_encrypted: string
+          tenant_id: string
+          token_expires_at: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          access_token_encrypted: string
+          calendar_id?: string | null
+          calendar_name?: string | null
+          connected_at?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_synced_at?: string | null
+          refresh_token_encrypted: string
+          tenant_id: string
+          token_expires_at: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          access_token_encrypted?: string
+          calendar_id?: string | null
+          calendar_name?: string | null
+          connected_at?: string | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_synced_at?: string | null
+          refresh_token_encrypted?: string
+          tenant_id?: string
+          token_expires_at?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       idempotency_keys: {
         Row: {
           created_at: string | null

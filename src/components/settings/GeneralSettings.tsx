@@ -4,9 +4,18 @@ import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Settings, Moon, Sun, Bell, Calendar, Palette } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Settings, Moon, Sun, Bell, Calendar, Palette, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+
+interface GoogleCalendarConnection {
+  calendar_name: string;
+  calendar_id: string;
+  connected_at: string;
+  last_synced_at: string | null;
+  is_active: boolean;
+}
 
 export const GeneralSettings = () => {
   const [settings, setSettings] = useState({
@@ -20,10 +29,32 @@ export const GeneralSettings = () => {
     timezone: "UTC"
   });
   const [loading, setLoading] = useState(true);
+  const [googleCalendarConnection, setGoogleCalendarConnection] = useState<GoogleCalendarConnection | null>(null);
+  const [connectingGoogleCalendar, setConnectingGoogleCalendar] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
     loadSettings();
+    loadGoogleCalendarConnection();
+
+    // Listen for OAuth callback
+    const handleMessage = (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+      
+      if (event.data.type === 'google-calendar-oauth-success') {
+        handleOAuthCallback(event.data.code, event.data.state);
+      } else if (event.data.type === 'google-calendar-oauth-error') {
+        setConnectingGoogleCalendar(false);
+        toast({
+          title: "Connection Failed",
+          description: event.data.error || "Failed to connect to Google Calendar",
+          variant: "destructive",
+        });
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
   }, []);
 
   const loadSettings = async () => {
@@ -43,6 +74,107 @@ export const GeneralSettings = () => {
       console.error('Error loading settings:', error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  const loadGoogleCalendarConnection = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('google-calendar-oauth', {
+        body: { action: 'status' }
+      });
+
+      if (error) throw error;
+
+      if (data?.connected && data?.connection) {
+        setGoogleCalendarConnection(data.connection);
+      }
+    } catch (error) {
+      console.error('Error loading Google Calendar connection:', error);
+    }
+  };
+
+  const handleGoogleConnect = async () => {
+    try {
+      setConnectingGoogleCalendar(true);
+      
+      const { data, error } = await supabase.functions.invoke('google-calendar-oauth', {
+        body: { action: 'initiate' }
+      });
+
+      if (error) throw error;
+
+      if (data?.authUrl) {
+        // Open OAuth popup
+        const width = 600;
+        const height = 700;
+        const left = window.screen.width / 2 - width / 2;
+        const top = window.screen.height / 2 - height / 2;
+        
+        window.open(
+          data.authUrl,
+          'Google Calendar Authorization',
+          `width=${width},height=${height},top=${top},left=${left}`
+        );
+      }
+    } catch (error: any) {
+      console.error('Error initiating Google Calendar OAuth:', error);
+      setConnectingGoogleCalendar(false);
+      toast({
+        title: "Connection Failed",
+        description: error.message || "Failed to initiate Google Calendar connection",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleOAuthCallback = async (code: string, state: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('google-calendar-oauth', {
+        body: { action: 'callback', code, state }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Connected Successfully",
+        description: `Connected to ${data.calendarName}`,
+      });
+
+      await loadGoogleCalendarConnection();
+    } catch (error: any) {
+      console.error('Error completing OAuth:', error);
+      toast({
+        title: "Connection Failed",
+        description: error.message || "Failed to complete Google Calendar connection",
+        variant: "destructive",
+      });
+    } finally {
+      setConnectingGoogleCalendar(false);
+    }
+  };
+
+  const handleGoogleDisconnect = async () => {
+    try {
+      const { error } = await supabase.functions.invoke('google-calendar-oauth', {
+        body: { action: 'disconnect' }
+      });
+
+      if (error) throw error;
+
+      setGoogleCalendarConnection(null);
+      updateSetting('calendarSync', false);
+
+      toast({
+        title: "Disconnected",
+        description: "Google Calendar has been disconnected",
+      });
+    } catch (error: any) {
+      console.error('Error disconnecting Google Calendar:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to disconnect Google Calendar",
+        variant: "destructive",
+      });
     }
   };
 
@@ -202,17 +334,56 @@ export const GeneralSettings = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-6">
-          <div className="flex items-center justify-between">
-            <div className="space-y-0.5">
-              <Label className="text-base">Calendar Sync</Label>
-              <div className="text-sm text-muted-foreground">
-                Sync appointments with your calendar
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="space-y-0.5">
+                <Label className="text-base">Calendar Sync</Label>
+                <div className="text-sm text-muted-foreground">
+                  Sync appointments with Google Calendar
+                </div>
+                {googleCalendarConnection && (
+                  <div className="flex items-center gap-2 mt-2">
+                    <Badge variant="default" className="bg-green-500">
+                      <CheckCircle2 className="h-3 w-3 mr-1" />
+                      Connected
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {googleCalendarConnection.calendar_name}
+                    </span>
+                  </div>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {!googleCalendarConnection ? (
+                  <Button 
+                    onClick={handleGoogleConnect} 
+                    disabled={connectingGoogleCalendar}
+                    variant="outline"
+                  >
+                    {connectingGoogleCalendar ? "Connecting..." : "Sign in with Google"}
+                  </Button>
+                ) : (
+                  <>
+                    <Switch
+                      checked={settings.calendarSync}
+                      onCheckedChange={(checked) => updateSetting('calendarSync', checked)}
+                    />
+                    <Button 
+                      variant="ghost" 
+                      size="sm" 
+                      onClick={handleGoogleDisconnect}
+                    >
+                      Disconnect
+                    </Button>
+                  </>
+                )}
               </div>
             </div>
-            <Switch
-              checked={settings.calendarSync}
-              onCheckedChange={(checked) => updateSetting('calendarSync', checked)}
-            />
+            {!googleCalendarConnection && (
+              <div className="text-xs text-muted-foreground pl-1">
+                Connect your Google account to enable calendar sync
+              </div>
+            )}
           </div>
 
           <div className="space-y-2">

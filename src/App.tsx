@@ -19,6 +19,7 @@ import EnhancedMeasurement from "./pages/EnhancedMeasurement";
 import DemoRequest from "./pages/DemoRequest";
 import NotFound from "./pages/NotFound";
 import QuickBooksCallback from "./pages/QuickBooksCallback";
+import GoogleCalendarCallback from "./pages/GoogleCalendarCallback";
 import PipelineEntryReview from "./pages/PipelineEntryReview";
 import Dashboard from "./pages/Dashboard";
 import Pipeline from "./pages/Pipeline";
@@ -82,6 +83,7 @@ const App = () => {
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/demo-request" element={<DemoRequest />} />
               <Route path="/quickbooks/callback" element={<QuickBooksCallback />} />
+              <Route path="/google-calendar/callback" element={<GoogleCalendarCallback />} />
               
               {/* Main application routes */}
               <Route path="/dashboard" element={<Dashboard />} />
