@@ -85,7 +85,7 @@ export const Settings = () => {
       </div>
 
       <Tabs defaultValue="general" className="space-y-6">
-        <TabsList className={`grid w-full ${showDeveloperTab ? 'grid-cols-14' : 'grid-cols-13'}`}>
+        <TabsList className="inline-flex h-auto w-full flex-wrap justify-start gap-1 bg-muted p-1">
           <TabsTrigger value="general" className="flex items-center gap-2">
             <SettingsIcon className="h-4 w-4" />
             General
