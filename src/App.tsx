@@ -3,7 +3,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import { ErrorTrackingProvider } from "@/hooks/useErrorTracking";
 import { LocationSelectionDialog } from "@/components/auth/LocationSelectionDialog";
 import { supabase } from "@/integrations/supabase/client";
@@ -49,74 +49,91 @@ const queryClient = new QueryClient({
   },
 });
 
-const App = () => {
+const AppContent = () => {
   const [userId, setUserId] = useState<string | null>(null);
   const [activeLocationId, setActiveLocationId] = useState<string | null>(null);
+  const navigate = useNavigate();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setUserId(session?.user?.id || null);
     });
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUserId(session?.user?.id || null);
+      
+      // Redirect to login if signed out (except if already on public pages)
+      if (event === 'SIGNED_OUT') {
+        const publicPaths = ['/login', '/demo-request', '/reset-password'];
+        if (!publicPaths.includes(window.location.pathname)) {
+          navigate('/login');
+        }
+      }
     });
 
     return () => subscription.unsubscribe();
-  }, []);
+  }, [navigate]);
 
+  return (
+    <>
+      <Toaster />
+      <Sonner />
+      {userId && (
+        <LocationSelectionDialog 
+          userId={userId} 
+          onLocationSelected={setActiveLocationId}
+        />
+      )}
+      <Routes>
+        <Route path="/login" element={<Login />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/demo-request" element={<DemoRequest />} />
+        <Route path="/quickbooks/callback" element={<QuickBooksCallback />} />
+        <Route path="/google-calendar/callback" element={<GoogleCalendarCallback />} />
+        
+        {/* Main application routes */}
+        <Route path="/dashboard" element={<Dashboard />} />
+        <Route path="/pipeline" element={<Pipeline />} />
+        <Route path="/production" element={<Production />} />
+        <Route path="/client-list" element={<ClientList />} />
+        <Route path="/calendar" element={<Calendar />} />
+        <Route path="/storm-canvass" element={<StormCanvass />} />
+        <Route path="/dialer" element={<Dialer />} />
+        <Route path="/smartdocs" element={<SmartDocs />} />
+        <Route path="/jobs" element={<Jobs />} />
+        <Route path="/estimates" element={<Estimates />} />
+        <Route path="/automation" element={<AutomationDashboard />} />
+        <Route path="/presentations" element={<PresentationsPage />} />
+        <Route path="/presentations/:id/edit" element={<PresentationBuilderPage />} />
+        <Route path="/presentations/:id/present" element={<PresentationModePage />} />
+        <Route path="/presentations/:id/view" element={<CustomerPresentationView />} />
+        <Route path="/settings" element={<Settings />} />
+        <Route path="/help" element={<Help />} />
+        
+        {/* Detail pages */}
+        <Route path="/contact/:id" element={<ContactProfile />} />
+        <Route path="/lead/:id" element={<LeadDetails />} />
+        <Route path="/job/:id" element={<JobDetails />} />
+        <Route path="/job-analytics" element={<JobAnalytics />} />
+        <Route path="/pipeline-entry/:id/review" element={<PipelineEntryReview />} />
+        <Route path="/project/:id" element={<ProjectDetails />} />
+        <Route path="/enhanced-measurement/:id" element={<EnhancedMeasurement />} />
+        
+        <Route path="/" element={<Index />} />
+        {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
+        <Route path="*" element={<NotFound />} />
+      </Routes>
+    </>
+  );
+};
+
+const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <ErrorTrackingProvider>
         <TooltipProvider>
-          <Toaster />
-          <Sonner />
-          {userId && (
-            <LocationSelectionDialog 
-              userId={userId} 
-              onLocationSelected={setActiveLocationId}
-            />
-          )}
           <BrowserRouter>
-            <Routes>
-              <Route path="/login" element={<Login />} />
-              <Route path="/reset-password" element={<ResetPassword />} />
-              <Route path="/demo-request" element={<DemoRequest />} />
-              <Route path="/quickbooks/callback" element={<QuickBooksCallback />} />
-              <Route path="/google-calendar/callback" element={<GoogleCalendarCallback />} />
-              
-              {/* Main application routes */}
-              <Route path="/dashboard" element={<Dashboard />} />
-              <Route path="/pipeline" element={<Pipeline />} />
-              <Route path="/production" element={<Production />} />
-              <Route path="/client-list" element={<ClientList />} />
-              <Route path="/calendar" element={<Calendar />} />
-              <Route path="/storm-canvass" element={<StormCanvass />} />
-              <Route path="/dialer" element={<Dialer />} />
-              <Route path="/smartdocs" element={<SmartDocs />} />
-              <Route path="/jobs" element={<Jobs />} />
-              <Route path="/estimates" element={<Estimates />} />
-              <Route path="/automation" element={<AutomationDashboard />} />
-              <Route path="/presentations" element={<PresentationsPage />} />
-              <Route path="/presentations/:id/edit" element={<PresentationBuilderPage />} />
-              <Route path="/presentations/:id/present" element={<PresentationModePage />} />
-              <Route path="/presentations/:id/view" element={<CustomerPresentationView />} />
-              <Route path="/settings" element={<Settings />} />
-              <Route path="/help" element={<Help />} />
-              
-              {/* Detail pages */}
-              <Route path="/contact/:id" element={<ContactProfile />} />
-              <Route path="/lead/:id" element={<LeadDetails />} />
-              <Route path="/job/:id" element={<JobDetails />} />
-              <Route path="/job-analytics" element={<JobAnalytics />} />
-              <Route path="/pipeline-entry/:id/review" element={<PipelineEntryReview />} />
-              <Route path="/project/:id" element={<ProjectDetails />} />
-              <Route path="/enhanced-measurement/:id" element={<EnhancedMeasurement />} />
-              
-              <Route path="/" element={<Index />} />
-              {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
-              <Route path="*" element={<NotFound />} />
-            </Routes>
+            <AppContent />
           </BrowserRouter>
         </TooltipProvider>
       </ErrorTrackingProvider>

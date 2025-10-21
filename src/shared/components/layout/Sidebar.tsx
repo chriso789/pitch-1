@@ -101,6 +101,9 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
         title: "Signed out successfully",
         description: "You have been logged out of the system.",
       });
+      
+      // Navigate to login page
+      navigate('/login');
     } catch (error: any) {
       console.error('Sign out error:', error);
       toast({
