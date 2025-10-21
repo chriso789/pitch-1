@@ -7,14 +7,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Plus, Edit, Trash2, Shield, Settings, Eye, MapPin, EyeOff } from "lucide-react";
+import { Users, Plus, Edit2, Trash2, Shield, Settings, Eye, MapPin, EyeOff, Ban, CheckCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import FeaturePermissions from './FeaturePermissions';
 import { EnhancedUserProfile } from './EnhancedUserProfile';
 import { UserLocationAssignments } from './UserLocationAssignments';
 import { RepPayStructureConfig } from './RepPayStructureConfig';
+import { ActionsSelector } from "@/components/ui/actions-selector";
+import { auditService } from "@/services/auditService";
 
 interface User {
   id: string;
@@ -38,6 +41,9 @@ export const UserManagement = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [userToDelete, setUserToDelete] = useState<User | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [newUser, setNewUser] = useState({
     email: "",
     first_name: "",
@@ -225,6 +231,15 @@ export const UserManagement = () => {
         description: `User has been ${!isActive ? 'activated' : 'deactivated'}.`,
       });
 
+      // Log the audit
+      await auditService.logChange(
+        'profiles',
+        'UPDATE',
+        userId,
+        { is_active: isActive },
+        { is_active: !isActive }
+      );
+
       loadUsers();
     } catch (error) {
       console.error('Error updating user:', error);
@@ -234,6 +249,93 @@ export const UserManagement = () => {
         variant: "destructive",
       });
     }
+  };
+
+  const handleDeleteUser = async () => {
+    if (!userToDelete) return;
+
+    try {
+      setDeleting(true);
+
+      const { error } = await supabase.functions.invoke('admin-delete-user', {
+        body: { userId: userToDelete.id }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "User Deleted",
+        description: `${userToDelete.first_name} ${userToDelete.last_name} has been removed.`,
+      });
+
+      setShowDeleteDialog(false);
+      setUserToDelete(null);
+      loadUsers();
+    } catch (error: any) {
+      console.error('Error deleting user:', error);
+      toast({
+        title: "Error",
+        description: error.message || "Failed to delete user.",
+        variant: "destructive",
+      });
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  const confirmDeleteUser = (user: User) => {
+    setUserToDelete(user);
+    setShowDeleteDialog(true);
+  };
+
+  const getActionsForUser = (user: User) => {
+    const actions = [];
+
+    // View action - available to all
+    actions.push({
+      label: 'View Profile',
+      icon: Eye,
+      onClick: () => setSelectedUserId(user.id)
+    });
+
+    // Edit action - role-based permissions
+    const canEdit =
+      currentUser?.role === 'master' || // Master can edit all
+      (currentUser?.role === 'manager' && user.role === 'admin') || // Manager can edit sales reps
+      currentUser?.id === user.id; // Users can edit themselves
+
+    if (canEdit) {
+      actions.push({
+        label: 'Edit Profile',
+        icon: Edit2,
+        onClick: () => setSelectedUserId(user.id)
+      });
+    }
+
+    // Activate/Deactivate - with separator
+    actions.push({
+      label: user.is_active ? 'Deactivate' : 'Activate',
+      icon: user.is_active ? Ban : CheckCircle,
+      onClick: () => toggleUserStatus(user.id, user.is_active),
+      separator: true
+    });
+
+    // Delete action - role-based permissions
+    const canDelete =
+      currentUser?.role === 'master' || // Master can delete all
+      (currentUser?.role === 'manager' && user.role === 'admin'); // Manager can delete sales reps
+
+    if (canDelete && user.id !== currentUser?.id) { // Can't delete yourself
+      actions.push({
+        label: 'Delete User',
+        icon: Trash2,
+        variant: 'destructive' as const,
+        onClick: () => confirmDeleteUser(user),
+        disabled: user.id === currentUser?.id
+      });
+    }
+
+    return actions;
   };
 
   const getRoleBadgeVariant = (role: string) => {
@@ -269,6 +371,7 @@ export const UserManagement = () => {
   }
 
   return (
+    <>
     <Tabs defaultValue="users" className="space-y-6">
       <TabsList>
         <TabsTrigger value="users" className="flex items-center gap-2">
@@ -480,23 +583,8 @@ export const UserManagement = () => {
                         {user.is_active ? "Active" : "Inactive"}
                       </Badge>
                     </TableCell>
-                    <TableCell className="space-x-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => setSelectedUserId(user.id)}
-                        className="flex items-center gap-1"
-                      >
-                        <Eye className="h-3 w-3" />
-                        View
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => toggleUserStatus(user.id, user.is_active)}
-                      >
-                        {user.is_active ? "Deactivate" : "Activate"}
-                      </Button>
+                    <TableCell>
+                      <ActionsSelector actions={getActionsForUser(user)} />
                     </TableCell>
                   </TableRow>
                 ))}
@@ -514,5 +602,30 @@ export const UserManagement = () => {
         <FeaturePermissions />
       </TabsContent>
     </Tabs>
+
+    {/* Delete Confirmation Dialog */}
+    <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>Delete User</AlertDialogTitle>
+          <AlertDialogDescription>
+            Are you sure you want to delete <strong>{userToDelete?.first_name} {userToDelete?.last_name}</strong> ({userToDelete?.email})?
+            <br /><br />
+            This action will deactivate the user and they will no longer be able to access the system.
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+          <AlertDialogAction
+            onClick={handleDeleteUser}
+            disabled={deleting}
+            className="bg-destructive hover:bg-destructive/90"
+          >
+            {deleting ? "Deleting..." : "Delete User"}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+    </>
   );
 };

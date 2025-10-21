@@ -71,6 +71,22 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
     }
   };
 
+  // Check if current user has permission to edit this profile
+  const canEditProfile = () => {
+    if (!currentUser || !user) return false;
+
+    // Master can edit all
+    if (currentUser.role === 'master') return true;
+
+    // Manager can edit sales reps only
+    if (currentUser.role === 'manager' && user.role === 'admin') return true;
+
+    // Users can edit themselves
+    if (currentUser.id === user.id) return true;
+
+    return false;
+  };
+
   const loadUserProfile = async () => {
     try {
       setLoading(true);
@@ -344,10 +360,12 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
               </Button>
             </>
           ) : (
-            <Button onClick={() => setEditing(true)} className="flex items-center gap-2">
-              <Edit3 className="h-4 w-4" />
-              Edit Profile
-            </Button>
+            canEditProfile() && (
+              <Button onClick={() => setEditing(true)} className="flex items-center gap-2">
+                <Edit3 className="h-4 w-4" />
+                Edit Profile
+              </Button>
+            )
           )}
         </div>
       </div>
