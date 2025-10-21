@@ -9,6 +9,7 @@ import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { 
@@ -48,6 +49,7 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
   const [confirmPassword, setConfirmPassword] = useState('');
   const [updatingPassword, setUpdatingPassword] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [checkingPermissions, setCheckingPermissions] = useState(true);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -58,6 +60,7 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
 
   const getCurrentUser = async () => {
     try {
+      setCheckingPermissions(true);
       const { data: { user: authUser } } = await supabase.auth.getUser();
       if (authUser) {
         const { data: profile } = await supabase
@@ -66,25 +69,50 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
           .eq('id', authUser.id)
           .single();
         setCurrentUser(profile);
+        console.log('Current user loaded:', profile);
       }
     } catch (error) {
       console.error('Error getting current user:', error);
+    } finally {
+      setCheckingPermissions(false);
     }
   };
 
   // Check if current user has permission to edit this profile
   const canEditProfile = () => {
-    if (!currentUser || !user) return false;
+    console.log('Permission check:', {
+      hasCurrentUser: !!currentUser,
+      hasUser: !!user,
+      currentUserRole: currentUser?.role,
+      currentUserId: currentUser?.id,
+      targetUserRole: user?.role,
+      targetUserId: user?.id
+    });
+
+    if (!currentUser || !user) {
+      console.warn('Missing user data for permission check');
+      return false;
+    }
 
     // Master can edit all
-    if (currentUser.role === 'master') return true;
+    if (currentUser.role === 'master') {
+      console.log('✓ Permission granted: Master role');
+      return true;
+    }
 
     // Manager can edit sales reps only
-    if (currentUser.role === 'manager' && user.role === 'admin') return true;
+    if (currentUser.role === 'manager' && user.role === 'admin') {
+      console.log('✓ Permission granted: Manager editing sales rep');
+      return true;
+    }
 
     // Users can edit themselves
-    if (currentUser.id === user.id) return true;
+    if (currentUser.id === user.id) {
+      console.log('✓ Permission granted: Self-edit');
+      return true;
+    }
 
+    console.log('✗ Permission denied');
     return false;
   };
 
@@ -349,7 +377,12 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
           Back
         </Button>
         <div className="flex items-center gap-2">
-          {editing ? (
+          {checkingPermissions ? (
+            <Button disabled className="flex items-center gap-2">
+              <Edit3 className="h-4 w-4" />
+              Checking permissions...
+            </Button>
+          ) : editing ? (
             <>
               <Button onClick={updateUser} className="flex items-center gap-2">
                 <Save className="h-4 w-4" />
@@ -360,13 +393,27 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
                 Cancel
               </Button>
             </>
+          ) : canEditProfile() ? (
+            <Button onClick={() => setEditing(true)} className="flex items-center gap-2">
+              <Edit3 className="h-4 w-4" />
+              Edit Profile
+            </Button>
           ) : (
-            canEditProfile() && (
-              <Button onClick={() => setEditing(true)} className="flex items-center gap-2">
-                <Edit3 className="h-4 w-4" />
-                Edit Profile
-              </Button>
-            )
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span>
+                    <Button disabled className="flex items-center gap-2">
+                      <Edit3 className="h-4 w-4" />
+                      Edit Profile
+                    </Button>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>You don't have permission to edit this profile</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
           )}
         </div>
       </div>
