@@ -167,3 +167,45 @@
     transition: var(--transition-quick);
   }
 }
+
+/* Print styles - hide navigation and actions */
+@media print {
+  @page {
+    margin: 1cm;
+  }
+  
+  /* Hide non-essential elements */
+  nav,
+  aside,
+  button:not(.print-only),
+  .no-print,
+  [data-testid*="export"],
+  [data-testid*="print"],
+  .lucide-download,
+  .lucide-printer {
+    display: none !important;
+  }
+  
+  /* Ensure content is visible */
+  body {
+    background: white;
+    color: black;
+  }
+  
+  /* Remove shadows and effects for print */
+  * {
+    box-shadow: none !important;
+    text-shadow: none !important;
+  }
+  
+  /* Better page breaks */
+  .page-break {
+    page-break-before: always;
+  }
+  
+  /* Prevent breaking inside cards */
+  .card,
+  [class*="Card"] {
+    page-break-inside: avoid;
+  }
+}
