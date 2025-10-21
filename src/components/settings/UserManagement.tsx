@@ -292,6 +292,14 @@ export const UserManagement = () => {
   const getActionsForUser = (user: User) => {
     const actions = [];
 
+    console.log('🔍 Getting actions for user:', {
+      userName: `${user.first_name} ${user.last_name}`,
+      userRole: user.role,
+      currentUserRole: currentUser?.role,
+      currentUserId: currentUser?.id,
+      targetUserId: user.id
+    });
+
     // View action - available to all
     actions.push({
       label: 'View Profile',
@@ -329,7 +337,16 @@ export const UserManagement = () => {
       currentUser?.role === 'master' || // Master can delete all
       (currentUser?.role === 'manager' && user.role === 'admin'); // Manager can delete sales reps
 
+    console.log('🗑️ Delete permission check:', {
+      canDelete,
+      isMaster: currentUser?.role === 'master',
+      isManagerEditingAdmin: currentUser?.role === 'manager' && user.role === 'admin',
+      isSelf: user.id === currentUser?.id,
+      willShowDelete: canDelete && user.id !== currentUser?.id
+    });
+
     if (canDelete && user.id !== currentUser?.id) { // Can't delete yourself
+      console.log('✅ Adding delete button for user:', user.first_name);
       actions.push({
         label: 'Delete User',
         icon: Trash2,
@@ -337,8 +354,14 @@ export const UserManagement = () => {
         onClick: () => confirmDeleteUser(user),
         disabled: user.id === currentUser?.id
       });
+    } else {
+      console.log('❌ Not adding delete button - reason:', {
+        canDelete,
+        isSelf: user.id === currentUser?.id
+      });
     }
 
+    console.log('📋 Final actions:', actions.map(a => a.label));
     return actions;
   };
 
