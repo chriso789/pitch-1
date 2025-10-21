@@ -1,7 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2 } from 'lucide-react';
+import { Loader2, Package } from 'lucide-react';
+import { MaterialOrderDialog } from '@/components/orders/MaterialOrderDialog';
 
 interface EstimateLineItem {
   template_item_id: string;
@@ -14,15 +16,18 @@ interface EstimateLineItem {
 interface EstimateLineItemsProps {
   estimateId: string;
   className?: string;
+  showOrderButton?: boolean;
 }
 
 export const EstimateLineItems: React.FC<EstimateLineItemsProps> = ({
   estimateId,
-  className = ''
+  className = '',
+  showOrderButton = false
 }) => {
   const [loading, setLoading] = useState(true);
   const [lineItems, setLineItems] = useState<EstimateLineItem[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [showOrderDialog, setShowOrderDialog] = useState(false);
 
   useEffect(() => {
     if (estimateId) {
@@ -105,10 +110,19 @@ export const EstimateLineItems: React.FC<EstimateLineItemsProps> = ({
   const totalAmount = lineItems.reduce((sum, item) => sum + item.line_total, 0);
 
   return (
-    <Card className={className}>
-      <CardHeader>
-        <CardTitle>Estimate Line Items</CardTitle>
-      </CardHeader>
+    <>
+      <Card className={className}>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle>Estimate Line Items</CardTitle>
+            {showOrderButton && lineItems.length > 0 && (
+              <Button onClick={() => setShowOrderDialog(true)}>
+                <Package className="h-4 w-4 mr-2" />
+                Create Material Order
+              </Button>
+            )}
+          </div>
+        </CardHeader>
       <CardContent>
         <div className="space-y-4">
           <div className="overflow-x-auto">
@@ -146,5 +160,15 @@ export const EstimateLineItems: React.FC<EstimateLineItemsProps> = ({
         </div>
       </CardContent>
     </Card>
+
+    <MaterialOrderDialog
+      open={showOrderDialog}
+      onOpenChange={setShowOrderDialog}
+      estimateId={estimateId}
+      onSuccess={(orderId) => {
+        console.log('Order created:', orderId);
+      }}
+    />
+    </>
   );
 };

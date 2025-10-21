@@ -2897,11 +2897,13 @@ export type Database = {
           notes: string | null
           quantity: number
           sort_order: number | null
+          srs_item_code: string | null
           tenant_id: string
           total_price: number
           unit_cost: number
           unit_type: string
           updated_at: string
+          vendor_id: string | null
         }
         Insert: {
           created_at?: string
@@ -2920,11 +2922,13 @@ export type Database = {
           notes?: string | null
           quantity?: number
           sort_order?: number | null
+          srs_item_code?: string | null
           tenant_id: string
           total_price?: number
           unit_cost?: number
           unit_type?: string
           updated_at?: string
+          vendor_id?: string | null
         }
         Update: {
           created_at?: string
@@ -2943,11 +2947,13 @@ export type Database = {
           notes?: string | null
           quantity?: number
           sort_order?: number | null
+          srs_item_code?: string | null
           tenant_id?: string
           total_price?: number
           unit_cost?: number
           unit_type?: string
           updated_at?: string
+          vendor_id?: string | null
         }
         Relationships: [
           {
@@ -2969,6 +2975,13 @@ export type Database = {
             columns: ["material_id"]
             isOneToOne: false
             referencedRelation: "material_costs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "estimate_line_items_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
             referencedColumns: ["id"]
           },
         ]
@@ -5799,9 +5812,11 @@ export type Database = {
           name: string
           sku: string
           specifications: Json | null
+          srs_item_code: string | null
           tenant_id: string
           unit_of_measure: string | null
           updated_at: string | null
+          vendor_id: string | null
         }
         Insert: {
           category?: string | null
@@ -5814,9 +5829,11 @@ export type Database = {
           name: string
           sku: string
           specifications?: Json | null
+          srs_item_code?: string | null
           tenant_id: string
           unit_of_measure?: string | null
           updated_at?: string | null
+          vendor_id?: string | null
         }
         Update: {
           category?: string | null
@@ -5829,11 +5846,21 @@ export type Database = {
           name?: string
           sku?: string
           specifications?: Json | null
+          srs_item_code?: string | null
           tenant_id?: string
           unit_of_measure?: string | null
           updated_at?: string | null
+          vendor_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "products_vendor_id_fkey"
+            columns: ["vendor_id"]
+            isOneToOne: false
+            referencedRelation: "vendors"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
@@ -6472,11 +6499,13 @@ export type Database = {
           created_at: string | null
           delivered_quantity: number | null
           id: string
+          item_description: string | null
           line_total: number
           metadata: Json | null
           po_id: string
           product_id: string
           quantity: number
+          srs_item_code: string | null
           tenant_id: string
           unit_price: number
           vendor_product_id: string | null
@@ -6485,11 +6514,13 @@ export type Database = {
           created_at?: string | null
           delivered_quantity?: number | null
           id?: string
+          item_description?: string | null
           line_total: number
           metadata?: Json | null
           po_id: string
           product_id: string
           quantity: number
+          srs_item_code?: string | null
           tenant_id: string
           unit_price: number
           vendor_product_id?: string | null
@@ -6498,11 +6529,13 @@ export type Database = {
           created_at?: string | null
           delivered_quantity?: number | null
           id?: string
+          item_description?: string | null
           line_total?: number
           metadata?: Json | null
           po_id?: string
           product_id?: string
           quantity?: number
+          srs_item_code?: string | null
           tenant_id?: string
           unit_price?: number
           vendor_product_id?: string | null
@@ -9555,6 +9588,16 @@ export type Database = {
         Args: { p_job_id: string }
         Returns: Json
       }
+      api_create_material_order_from_estimate: {
+        Args: {
+          p_branch_code?: string
+          p_delivery_address?: Json
+          p_estimate_id: string
+          p_notes?: string
+          p_vendor_id: string
+        }
+        Returns: string
+      }
       api_dynamic_tags_frequently_used: {
         Args: { p_limit?: number }
         Returns: {
@@ -9842,6 +9885,10 @@ export type Database = {
         Returns: string
       }
       generate_job_number: {
+        Args: Record<PropertyKey, never>
+        Returns: string
+      }
+      generate_po_number: {
         Args: Record<PropertyKey, never>
         Returns: string
       }
