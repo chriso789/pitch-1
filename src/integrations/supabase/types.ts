@@ -3231,7 +3231,6 @@ export type Database = {
           feature_key: string
           id: string
           is_enabled: boolean
-          role: Database["public"]["Enums"]["app_role"]
           tenant_id: string
           updated_at: string
         }
@@ -3240,7 +3239,6 @@ export type Database = {
           feature_key: string
           id?: string
           is_enabled?: boolean
-          role: Database["public"]["Enums"]["app_role"]
           tenant_id: string
           updated_at?: string
         }
@@ -3249,7 +3247,6 @@ export type Database = {
           feature_key?: string
           id?: string
           is_enabled?: boolean
-          role?: Database["public"]["Enums"]["app_role"]
           tenant_id?: string
           updated_at?: string
         }
@@ -9193,7 +9190,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
-          role: Database["public"]["Enums"]["app_role"]
+          role: Database["public"]["Enums"]["app_role"] | null
           tenant_id: string
           user_id: string
         }
@@ -9201,7 +9198,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
-          role: Database["public"]["Enums"]["app_role"]
+          role?: Database["public"]["Enums"]["app_role"] | null
           tenant_id: string
           user_id: string
         }
@@ -9209,7 +9206,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
-          role?: Database["public"]["Enums"]["app_role"]
+          role?: Database["public"]["Enums"]["app_role"] | null
           tenant_id?: string
           user_id?: string
         }
@@ -9939,10 +9936,6 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: string
       }
-      get_user_role: {
-        Args: { _user_id: string }
-        Returns: Database["public"]["Enums"]["app_role"]
-      }
       get_user_tenant_id: {
         Args: Record<PropertyKey, never>
         Returns: string
@@ -9966,21 +9959,6 @@ export type Database = {
       gtrgm_out: {
         Args: { "": unknown }
         Returns: unknown
-      }
-      has_any_role: {
-        Args:
-          | {
-              _roles: Database["public"]["Enums"]["app_role"][]
-              _user_id: string
-            }
-          | { required_roles: Database["public"]["Enums"]["app_role"][] }
-        Returns: boolean
-      }
-      has_role: {
-        Args:
-          | { _role: Database["public"]["Enums"]["app_role"]; _user_id: string }
-          | { required_role: Database["public"]["Enums"]["app_role"] }
-        Returns: boolean
       }
       jsonb_get_path: {
         Args: { obj: Json; path: string }
@@ -10073,7 +10051,13 @@ export type Database = {
     Enums: {
       achievement_tier: "bronze" | "silver" | "gold" | "platinum" | "diamond"
       achievement_type: "milestone" | "skill" | "streak" | "special"
-      app_role: "master" | "admin" | "manager" | "rep" | "user"
+      app_role:
+        | "master"
+        | "corporate"
+        | "office_admin"
+        | "regional_manager"
+        | "sales_manager"
+        | "project_manager"
       commission_structure_type:
         | "profit_split"
         | "sales_percentage"
@@ -10308,7 +10292,14 @@ export const Constants = {
     Enums: {
       achievement_tier: ["bronze", "silver", "gold", "platinum", "diamond"],
       achievement_type: ["milestone", "skill", "streak", "special"],
-      app_role: ["master", "admin", "manager", "rep", "user"],
+      app_role: [
+        "master",
+        "corporate",
+        "office_admin",
+        "regional_manager",
+        "sales_manager",
+        "project_manager",
+      ],
       commission_structure_type: [
         "profit_split",
         "sales_percentage",

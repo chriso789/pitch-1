@@ -108,7 +108,7 @@ export const Jobs = () => {
         .order("created_at", { ascending: false });
 
       // Apply role-based filtering for users and managers
-      if (profile?.role === 'user' || profile?.role === 'manager') {
+      if (profile?.role === 'project_manager' || profile?.role === 'sales_manager' || profile?.role === 'regional_manager') {
         // Get user's location assignments
         const { data: locationAssignments } = await supabase
           .from('user_location_assignments')

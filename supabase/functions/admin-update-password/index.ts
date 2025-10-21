@@ -85,12 +85,12 @@ const handler = async (req: Request): Promise<Response> => {
 
     // Define role hierarchy
     const roleHierarchy: Record<string, number> = {
-      'master': 5,
-      'admin': 4,
-      'manager': 3,
-      'sales_rep': 2,
-      'technician': 2,
-      'user': 1
+      'master': 6,
+      'corporate': 5,
+      'office_admin': 4,
+      'regional_manager': 3,
+      'sales_manager': 2,
+      'project_manager': 1
     };
 
     const requestingRoleLevel = roleHierarchy[requestingProfile.role] || 0;
@@ -105,18 +105,18 @@ const handler = async (req: Request): Promise<Response> => {
     const canUpdate = (
       requestingUser.id === userId || // Own password
       requestingProfile.role === 'master' || // Master can update anyone
-      (requestingProfile.role === 'admin' && targetRoleLevel < 4) || // Admin can update below admin
-      (requestingProfile.role === 'manager' && targetRoleLevel <= 2) || // Manager can update reps/techs
+      (requestingProfile.role === 'corporate' && targetRoleLevel < 5) || // Corporate can update below corporate
+      (requestingProfile.role === 'office_admin' && targetRoleLevel < 4) || // Office Admin can update below
       (
-        // Chris O'Brien variations with manager+ role (special case)
+        // Chris O'Brien variations with elevated role (special case)
         (
           requestingProfile.first_name?.toLowerCase().includes('chris') && 
           requestingProfile.last_name?.toLowerCase().includes('brien') &&
-          ['manager', 'admin', 'master'].includes(requestingProfile.role)
+          ['corporate', 'office_admin', 'master'].includes(requestingProfile.role)
         ) && (
           targetProfile.first_name?.toLowerCase().includes('chris') && 
           targetProfile.last_name?.toLowerCase().includes('brien') &&
-          ['manager', 'admin', 'master'].includes(targetProfile.role)
+          ['corporate', 'office_admin', 'master'].includes(targetProfile.role)
         )
       )
     );

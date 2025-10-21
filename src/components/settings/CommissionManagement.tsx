@@ -87,7 +87,7 @@ export const CommissionManagement = () => {
         supabase
           .from('profiles')
           .select('id, first_name, last_name, email, role, personal_overhead_rate, photo_url')
-          .in('role', ['rep', 'manager', 'admin'])
+          .in('role', ['sales_manager', 'regional_manager', 'corporate'])
           .eq('is_active', true),
         supabase
           .from('commission_calculations')

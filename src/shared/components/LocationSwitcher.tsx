@@ -49,7 +49,7 @@ export const LocationSwitcher = ({ onLocationChange }: LocationSwitcherProps) =>
       let locationsQuery = supabase.from('locations').select('*');
 
       // If user is not admin/manager, only show locations they're assigned to
-      if (profile?.role !== 'admin' && profile?.role !== 'manager' && profile?.role !== 'master') {
+      if (profile?.role !== 'corporate' && profile?.role !== 'master' && profile?.role !== 'office_admin') {
         const { data: assignments } = await supabase
           .from('user_location_assignments')
           .select('location_id')

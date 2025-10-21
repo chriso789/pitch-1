@@ -66,13 +66,21 @@ serve(async (req) => {
       throw new Error('Cannot delete users from different tenant');
     }
 
-    // Verify permissions
-    const isMaster = currentUserProfile.role === 'master';
-    const isManager = currentUserProfile.role === 'manager';
-    const isSalesRep = targetUser.role === 'admin'; // 'admin' role is sales rep
-
-    // Master can delete anyone, Manager can only delete sales reps
-    if (!isMaster && !(isManager && isSalesRep)) {
+    // Verify permissions based on hierarchy
+    const roleHierarchy = {
+      master: 1,
+      corporate: 2,
+      office_admin: 3,
+      regional_manager: 4,
+      sales_manager: 5,
+      project_manager: 6
+    };
+    
+    const currentLevel = roleHierarchy[currentUserProfile.role] || 999;
+    const targetLevel = roleHierarchy[targetUser.role] || 999;
+    
+    // Can only delete users below you in hierarchy
+    if (currentLevel >= targetLevel) {
       throw new Error('Insufficient permissions to delete this user');
     }
 

@@ -54,7 +54,7 @@ const Login: React.FC = () => {
           email: user.email,
           first_name: user.user_metadata?.first_name || user.email?.split('@')[0] || 'User',
           last_name: user.user_metadata?.last_name || '',
-          role: 'user' as const,
+          role: 'project_manager' as const,
           company_name: user.user_metadata?.company_name || '',
           title: user.user_metadata?.title || '',
           tenant_id: user.user_metadata?.tenant_id || user.id,

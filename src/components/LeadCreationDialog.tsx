@@ -189,7 +189,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       const { data: profiles, error } = await supabase
         .from('profiles')
         .select('id, first_name, last_name, role')
-        .in('role', ['rep', 'manager', 'admin'])
+        .in('role', ['sales_manager', 'regional_manager', 'corporate', 'master'])
         .order('first_name');
 
       if (error) throw error;

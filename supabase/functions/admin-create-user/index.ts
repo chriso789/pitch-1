@@ -52,9 +52,9 @@ const handler = async (req: Request): Promise<Response> => {
       .eq("id", user.id)
       .single();
 
-    if (!profile || !['admin', 'master', 'manager'].includes(profile.role)) {
+    if (!profile || !['master', 'corporate', 'office_admin'].includes(profile.role)) {
       return new Response(
-        JSON.stringify({ error: "Only admins and masters can create users" }),
+        JSON.stringify({ error: "Only master, corporate, and office admin can create users" }),
         { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }

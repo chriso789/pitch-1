@@ -158,7 +158,7 @@ const Pipeline = () => {
       const { data: repsData } = await supabase
         .from('profiles')
         .select('id, first_name, last_name')
-        .in('role', ['admin', 'manager', 'rep', 'master']);
+        .in('role', ['master', 'corporate', 'office_admin', 'regional_manager', 'sales_manager']);
       
       if (repsData) {
         setSalesReps(repsData.map(rep => ({

@@ -176,7 +176,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       const { data, error } = await supabase
         .from('profiles')
         .select('id, first_name, last_name, overhead_rate, commission_structure, commission_rate')
-        .in('role', ['admin', 'manager'])  // Include both sales reps and managers
+        .in('role', ['sales_manager', 'regional_manager', 'corporate'])  // Include sales managers and higher
         .eq('is_active', true)
         .order('first_name');
 

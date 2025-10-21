@@ -416,9 +416,11 @@ export const UserManagement = () => {
   const getRoleBadgeVariant = (role: string) => {
     switch (role) {
       case 'master': return 'destructive';
-      case 'admin': return 'default';
-      case 'manager': return 'secondary';
-      case 'user': return 'outline';
+      case 'corporate': return 'destructive';
+      case 'office_admin': return 'default';
+      case 'regional_manager': return 'default';
+      case 'sales_manager': return 'secondary';
+      case 'project_manager': return 'outline';
       default: return 'outline';
     }
   };
@@ -568,9 +570,11 @@ export const UserManagement = () => {
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="user">User</SelectItem>
-                            <SelectItem value="manager">Manager</SelectItem>
-                            <SelectItem value="admin">Sales Rep</SelectItem>
+                            <SelectItem value="project_manager">Project Manager</SelectItem>
+                            <SelectItem value="sales_manager">Sales Manager</SelectItem>
+                            <SelectItem value="regional_manager">Regional Manager</SelectItem>
+                            <SelectItem value="office_admin">Office Admin</SelectItem>
+                            <SelectItem value="corporate">Corporate</SelectItem>
                             {currentUser?.role === 'master' && <SelectItem value="master">Master</SelectItem>}
                           </SelectContent>
                         </Select>

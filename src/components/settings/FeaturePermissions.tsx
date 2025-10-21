@@ -10,7 +10,7 @@ import { Loader2, Settings, Users, Shield } from 'lucide-react';
 interface FeaturePermission {
   id: string;
   tenant_id: string;
-  role: 'admin' | 'manager' | 'user';
+  role: 'master' | 'corporate' | 'office_admin' | 'regional_manager' | 'sales_manager' | 'project_manager';
   feature_key: string;
   is_enabled: boolean;
 }
@@ -33,9 +33,12 @@ const FEATURES = [
 ];
 
 const ROLES = [
-  { key: 'user', name: 'User', color: 'secondary' },
-  { key: 'manager', name: 'Manager', color: 'default' },
-  { key: 'admin', name: 'Admin', color: 'destructive' }
+  { key: 'master', name: 'Master', color: 'destructive' },
+  { key: 'corporate', name: 'Corporate', color: 'destructive' },
+  { key: 'office_admin', name: 'Office Admin', color: 'default' },
+  { key: 'regional_manager', name: 'Regional Manager', color: 'default' },
+  { key: 'sales_manager', name: 'Sales Manager', color: 'default' },
+  { key: 'project_manager', name: 'Project Manager', color: 'secondary' }
 ];
 
 const FeaturePermissions: React.FC = () => {
@@ -82,7 +85,7 @@ const FeaturePermissions: React.FC = () => {
         organized[role.key] = {};
         FEATURES.forEach(feature => {
           const permission = permissionsData?.find(
-            p => p.role === role.key && p.feature_key === feature.key
+            p => p.feature_key === feature.key
           );
           organized[role.key][feature.key] = permission?.is_enabled ?? true;
         });

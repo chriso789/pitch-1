@@ -187,7 +187,7 @@ export const EnhancedJobCreationDialog: React.FC<EnhancedJobCreationDialogProps>
         .from('profiles')
         .select('id, first_name, last_name, role')
         .eq('tenant_id', profile.tenant_id)
-        .in('role', ['admin', 'manager', 'master'])
+        .in('role', ['master', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'])
         .eq('is_active', true)
         .order('first_name');
 
