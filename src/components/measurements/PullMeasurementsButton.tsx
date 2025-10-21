@@ -27,6 +27,16 @@ export function PullMeasurementsButton({
   const [success, setSuccess] = useState(false);
 
   async function handlePull() {
+    // Validate coordinates before attempting pull
+    if (!lat || !lng || (lat === 0 && lng === 0)) {
+      toast({
+        title: "Missing Location",
+        description: "Property coordinates not found. Please verify the address first.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setLoading(true);
     setSuccess(false);
 

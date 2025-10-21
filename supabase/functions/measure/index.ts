@@ -473,122 +473,181 @@ serve(async (req) => {
   });
 
   try {
-    // GET /measure/:propertyId/latest
-    const latestMatch = pathname.match(/^\/measure\/([^/]+)\/latest$/);
-    if (req.method === 'GET' && latestMatch) {
-      const propertyId = latestMatch[1];
+    // Handle body-based routing (for supabase.functions.invoke())
+    if (req.method === 'POST') {
+      const body = await req.json();
+      const { action } = body;
       
-      const { data: measurements } = await supabase
-        .from('measurements')
-        .select('*')
-        .eq('property_id', propertyId)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1);
+      console.log('Measure request:', { action, pathname, body: JSON.stringify(body).substring(0, 200) });
 
-      const measurement = measurements?.[0] || null;
-      let tags = null;
-
-      if (measurement?.id) {
-        const { data: tagRows } = await supabase
-          .from('measurement_tags')
+      // Route: action=latest
+      if (action === 'latest') {
+        const { propertyId } = body;
+        if (!propertyId) {
+          return json({ ok: false, error: 'propertyId required' }, corsHeaders, 400);
+        }
+        
+        const { data: measurements } = await supabase
+          .from('measurements')
           .select('*')
-          .eq('measurement_id', measurement.id)
+          .eq('property_id', propertyId)
+          .eq('is_active', true)
           .order('created_at', { ascending: false })
           .limit(1);
-        
-        tags = tagRows?.[0]?.tags || null;
-      }
 
-      return json({ ok: true, data: { measurement, tags } }, corsHeaders);
-    }
+        const measurement = measurements?.[0] || null;
+        let tags = null;
 
-    // POST /measure/pull (auto-pull with provider chain)
-    if (req.method === 'POST' && pathname === '/measure/pull') {
-      const body = await req.json();
-      const { propertyId, lat, lng } = body;
-
-      if (!propertyId || !lat || !lng) {
-        throw new Error('propertyId, lat, and lng required');
-      }
-
-      // Get user ID
-      const { data: { user } } = await supabase.auth.getUser();
-      const userId = user?.id;
-
-      // Provider chain: Google Solar (primary) → OSM (fallback)
-      let meas: MeasureResult | null = null;
-      const tryOrder = [
-        async () => await providerGoogleSolar(supabase, lat, lng),
-        async () => await providerOSM(lat, lng),
-      ];
-
-      for (const fn of tryOrder) {
-        try {
-          const r = await fn();
-          meas = { ...r, property_id: propertyId };
-          break;
-        } catch (err) {
-          console.log(`Provider failed: ${err}`);
+        if (measurement?.id) {
+          const { data: tagRows } = await supabase
+            .from('measurement_tags')
+            .select('*')
+            .eq('measurement_id', measurement.id)
+            .order('created_at', { ascending: false })
+            .limit(1);
+          
+          tags = tagRows?.[0]?.tags || null;
         }
+
+        return json({ ok: true, data: { measurement, tags } }, corsHeaders);
       }
 
-      if (!meas) {
+      // Route: action=pull
+      if (action === 'pull') {
+        const { propertyId, lat, lng, address } = body;
+
+        if (!propertyId) {
+          return json({ 
+            ok: false, 
+            error: 'Missing propertyId',
+            details: 'propertyId is required' 
+          }, corsHeaders, 400);
+        }
+
+        if (!lat || !lng || (lat === 0 && lng === 0)) {
+          return json({ 
+            ok: false, 
+            error: 'Missing coordinates',
+            details: 'lat and lng must be provided and non-zero. Verify the property address first.' 
+          }, corsHeaders, 400);
+        }
+
+        console.log('Pull request:', { propertyId, lat, lng, address });
+
+        // Get user ID
+        const { data: { user } } = await supabase.auth.getUser();
+        const userId = user?.id;
+
+        // Provider chain: Google Solar (primary) → OSM (fallback)
+        let meas: MeasureResult | null = null;
+        const tryOrder = [
+          async () => await providerGoogleSolar(supabase, lat, lng),
+          async () => await providerOSM(lat, lng),
+        ];
+
+        for (const fn of tryOrder) {
+          try {
+            const r = await fn();
+            meas = { ...r, property_id: propertyId };
+            console.log(`Provider success: ${meas.source}`);
+            break;
+          } catch (err) {
+            console.log(`Provider failed: ${err}`);
+          }
+        }
+
+        if (!meas) {
+          return json({ 
+            ok: false, 
+            error: 'No provider available. Please use manual measurements.' 
+          }, corsHeaders, 404);
+        }
+
+        // Save measurement
+        const row = await persistMeasurement(supabase, meas, userId);
+        
+        // Generate and save Smart Tags
+        const tags = buildSmartTags({ ...meas, id: row.id });
+        await persistTags(supabase, row.id, propertyId, tags, userId);
+
+        console.log('Measurement saved:', { id: row.id, source: meas.source, squares: tags['roof.squares'] });
+
         return json({ 
-          ok: false, 
-          error: 'No provider available. Please use manual measurements.' 
-        }, corsHeaders, 404);
+          ok: true, 
+          data: { measurement: row, tags } 
+        }, corsHeaders);
       }
 
-      // Save measurement
-      const row = await persistMeasurement(supabase, meas, userId);
-      
-      // Generate and save Smart Tags
-      const tags = buildSmartTags({ ...meas, id: row.id });
-      await persistTags(supabase, row.id, propertyId, tags, userId);
+      // Route: action=manual
+      if (action === 'manual') {
+        const { propertyId, faces, linear_features, waste_pct = 12 } = body;
 
-      return json({ 
-        ok: true, 
-        data: { measurement: row, tags } 
-      }, corsHeaders);
+        if (!propertyId || !faces || faces.length === 0) {
+          return json({ ok: false, error: 'propertyId and faces required' }, corsHeaders, 400);
+        }
+
+        const { data: { user } } = await supabase.auth.getUser();
+        const userId = user?.id;
+
+        const total = faces.reduce((s: number, f: any) => s + (f.area_sqft || 0), 0);
+        
+        const result: MeasureResult = {
+          property_id: propertyId,
+          source: 'manual',
+          faces,
+          linear_features: linear_features || [],
+          summary: {
+            total_area_sqft: total,
+            total_squares: total / 100,
+            waste_pct,
+            pitch_method: 'manual'
+          },
+          geom_wkt: unionFacesWKT(faces)
+        };
+
+        const row = await persistMeasurement(supabase, result, userId);
+        const tags = buildSmartTags({ ...result, id: row.id });
+        await persistTags(supabase, row.id, propertyId, tags, userId);
+
+        return json({ 
+          ok: true, 
+          data: { measurement: row, tags } 
+        }, corsHeaders);
+      }
+
+      return json({ ok: false, error: 'Invalid action. Use: latest, pull, or manual' }, corsHeaders, 400);
     }
 
-    // POST /measure/manual (save manual measurements)
-    if (req.method === 'POST' && pathname === '/measure/manual') {
-      const body = await req.json();
-      const { propertyId, faces, linear_features, waste_pct = 12 } = body;
+    // Fallback for GET requests (legacy path-based routing)
+    if (req.method === 'GET') {
+      const latestMatch = pathname.match(/^\/measure\/([^/]+)\/latest$/);
+      if (latestMatch) {
+        const propertyId = latestMatch[1];
+        
+        const { data: measurements } = await supabase
+          .from('measurements')
+          .select('*')
+          .eq('property_id', propertyId)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1);
 
-      if (!propertyId || !faces || faces.length === 0) {
-        throw new Error('propertyId and faces required');
+        const measurement = measurements?.[0] || null;
+        let tags = null;
+
+        if (measurement?.id) {
+          const { data: tagRows } = await supabase
+            .from('measurement_tags')
+            .select('*')
+            .eq('measurement_id', measurement.id)
+            .order('created_at', { ascending: false })
+            .limit(1);
+          
+          tags = tagRows?.[0]?.tags || null;
+        }
+
+        return json({ ok: true, data: { measurement, tags } }, corsHeaders);
       }
-
-      const { data: { user } } = await supabase.auth.getUser();
-      const userId = user?.id;
-
-      const total = faces.reduce((s: number, f: any) => s + (f.area_sqft || 0), 0);
-      
-      const result: MeasureResult = {
-        property_id: propertyId,
-        source: 'manual',
-        faces,
-        linear_features: linear_features || [],
-        summary: {
-          total_area_sqft: total,
-          total_squares: total / 100,
-          waste_pct,
-          pitch_method: 'manual'
-        },
-        geom_wkt: unionFacesWKT(faces)
-      };
-
-      const row = await persistMeasurement(supabase, result, userId);
-      const tags = buildSmartTags({ ...result, id: row.id });
-      await persistTags(supabase, row.id, propertyId, tags, userId);
-
-      return json({ 
-        ok: true, 
-        data: { measurement: row, tags } 
-      }, corsHeaders);
     }
 
     return new Response('Not found', { status: 404, headers: corsHeaders });
@@ -597,7 +656,8 @@ serve(async (req) => {
     console.error('Measure error:', err);
     return json({ 
       ok: false, 
-      error: err instanceof Error ? err.message : String(err) 
+      error: err instanceof Error ? err.message : String(err),
+      details: err instanceof Error ? err.stack : undefined
     }, corsHeaders, 400);
   }
 });

@@ -84,6 +84,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const [showAddLineDialog, setShowAddLineDialog] = useState(false);
   const [pullingSolarMeasurements, setPullingSolarMeasurements] = useState(false);
   const [solarMeasurementData, setSolarMeasurementData] = useState<any>(null);
+  const [coordinates, setCoordinates] = useState<{lat: number, lng: number} | null>(null);
 
   useEffect(() => {
     loadTemplates();
@@ -120,6 +121,15 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
           const roofAreaSqFt = metadata.roof_area_sq_ft || metadata.comprehensive_measurements?.adjustedArea || 0;
           const comprehensiveMeasurements = metadata.comprehensive_measurements;
           const hasValidMeasurements = roofAreaSqFt > 0;
+          
+          // Extract coordinates from verified address
+          const verifiedAddress = metadata.verified_address;
+          if (verifiedAddress?.geometry?.location) {
+            setCoordinates({
+              lat: verifiedAddress.geometry.location.lat,
+              lng: verifiedAddress.geometry.location.lng
+            });
+          }
           
           setHasMeasurements(hasValidMeasurements);
           setMeasurementData(comprehensiveMeasurements);
@@ -506,8 +516,8 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                   <div className="mt-2">
                     <PullMeasurementsButton
                       propertyId={pipelineEntryId || ''}
-                      lat={0}
-                      lng={0}
+                      lat={coordinates?.lat || 0}
+                      lng={coordinates?.lng || 0}
                       onSuccess={(measurement, tags) => {
                         setPropertyDetails(prev => ({
                           ...prev,
