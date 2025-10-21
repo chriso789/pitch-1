@@ -58,7 +58,7 @@ const handler = async (req: Request): Promise<Response> => {
 
     const repName = `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
     const repEmail = profile?.email || user.email;
-    const companyName = profile?.company_name || "PITCH CRM";
+    const companyName = profile?.company_name || "Your Company";
 
     // Use verified domain as From, rep email as Reply-To for deliverability
     const fromAddress = `${repName} <onboarding@resend.dev>`;

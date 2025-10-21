@@ -15,7 +15,6 @@ interface UserInvitationRequest {
   lastName: string;
   role: string;
   companyName: string;
-  temporaryPassword: string;
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -30,19 +29,18 @@ const handler = async (req: Request): Promise<Response> => {
       firstName, 
       lastName, 
       role, 
-      companyName, 
-      temporaryPassword 
+      companyName
     }: UserInvitationRequest = await req.json();
 
     console.log('Sending invitation email to:', email);
 
     const emailResponse = await resend.emails.send({
-      from: "Roofing CRM <onboarding@resend.dev>",
+      from: "PITCH CRM <onboarding@resend.dev>",
       to: [email],
-      subject: "Welcome to Roofing CRM - Your Account Has Been Created",
+      subject: "Welcome to PITCH CRM - Your Account Has Been Created",
       html: `
         <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-          <h1 style="color: #2563eb; margin-bottom: 20px;">Welcome to Roofing CRM!</h1>
+          <h1 style="color: #2563eb; margin-bottom: 20px;">Welcome to PITCH CRM!</h1>
           
           <p style="font-size: 16px; line-height: 1.5; margin-bottom: 15px;">
             Hello ${firstName} ${lastName},
@@ -53,10 +51,9 @@ const handler = async (req: Request): Promise<Response> => {
           </p>
           
           <div style="background-color: #f3f4f6; padding: 20px; border-radius: 8px; margin: 20px 0;">
-            <h3 style="margin-top: 0; color: #1f2937;">Your Login Credentials:</h3>
+            <h3 style="margin-top: 0; color: #1f2937;">Your Login Information:</h3>
             <p style="margin-bottom: 10px;"><strong>Email:</strong> ${email}</p>
-            <p style="margin-bottom: 10px;"><strong>Temporary Password:</strong> ${temporaryPassword}</p>
-            <p style="margin-bottom: 0; color: #dc2626; font-weight: bold;">This password is temporary and must be changed on first login.</p>
+            <p style="margin-bottom: 10px; color: #dc2626; font-weight: bold;">Your administrator will provide your password.</p>
           </div>
           
           <div style="background-color: #fef3cd; border-left: 4px solid #f59e0b; padding: 15px; margin: 20px 0;">
@@ -64,26 +61,21 @@ const handler = async (req: Request): Promise<Response> => {
               <strong>Next Steps:</strong>
             </p>
             <ol style="margin: 10px 0; color: #92400e;">
+              <li>Contact your administrator to receive your password</li>
               <li>Go to the login page</li>
-              <li>Click "Set Password" tab</li>
-              <li>Enter your email and temporary password</li>
-              <li>Create a strong new password</li>
-              <li>You'll then be logged in automatically</li>
+              <li>Sign in with your email and the password provided</li>
+              <li>For security, consider changing your password after logging in</li>
             </ol>
           </div>
           
           <p style="font-size: 16px; line-height: 1.5; margin-bottom: 15px;">
-            You can access the system using the login page. Make sure to change your password immediately for security.
-          </p>
-          
-          <p style="font-size: 16px; line-height: 1.5; margin-bottom: 30px;">
             If you have any questions or need assistance, please contact your system administrator.
           </p>
           
           <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 30px;">
             <p style="font-size: 14px; color: #6b7280; margin: 0;">
               Best regards,<br>
-              The Roofing CRM Team
+              The PITCH CRM Team
             </p>
           </div>
         </div>

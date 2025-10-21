@@ -8,7 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Plus, Edit, Trash2, Shield, Settings, Eye, MapPin } from "lucide-react";
+import { Users, Plus, Edit, Trash2, Shield, Settings, Eye, MapPin, EyeOff } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import FeaturePermissions from './FeaturePermissions';
@@ -35,6 +35,9 @@ export const UserManagement = () => {
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
+  const [isCreating, setIsCreating] = useState(false);
   const [newUser, setNewUser] = useState({
     email: "",
     first_name: "",
@@ -42,7 +45,9 @@ export const UserManagement = () => {
     role: "user",
     company_name: "",
     title: "",
-    is_developer: false
+    is_developer: false,
+    password: "",
+    password_confirm: ""
   });
 
   const [payStructure, setPayStructure] = useState({
@@ -94,117 +99,115 @@ export const UserManagement = () => {
     }
   };
 
-  const createUser = async () => {
-    try {
-      // Generate a temporary password
-      const temporaryPassword = Math.random().toString(36).slice(-8) + Math.random().toString(36).slice(-8).toUpperCase() + "123!";
+  const validatePassword = (password: string): string | null => {
+    if (password.length < 8) {
+      return "Password must be at least 8 characters long";
+    }
+    if (!/[A-Z]/.test(password)) {
+      return "Password must contain at least one uppercase letter";
+    }
+    if (!/[a-z]/.test(password)) {
+      return "Password must contain at least one lowercase letter";
+    }
+    if (!/[0-9]/.test(password)) {
+      return "Password must contain at least one number";
+    }
+    if (!/[!@#$%^&*]/.test(password)) {
+      return "Password must contain at least one special character (!@#$%^&*)";
+    }
+    return null;
+  };
 
-      // First create the auth user with temporary password
-      const { data, error: authError } = await supabase.auth.signUp({
-        email: newUser.email,
-        password: temporaryPassword,
-        options: {
-          emailRedirectTo: `${window.location.origin}/`
+  const createUser = async () => {
+    if (isCreating) return;
+    
+    try {
+      setIsCreating(true);
+      
+      // Validate password
+      const passwordError = validatePassword(newUser.password);
+      if (passwordError) {
+        toast({
+          title: "Invalid Password",
+          description: passwordError,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Check password confirmation
+      if (newUser.password !== newUser.password_confirm) {
+        toast({
+          title: "Password Mismatch",
+          description: "Passwords do not match",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Validate email
+      if (!newUser.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newUser.email)) {
+        toast({
+          title: "Invalid Email",
+          description: "Please enter a valid email address",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Call the admin edge function to create user
+      const { data, error } = await supabase.functions.invoke('admin-create-user', {
+        body: {
+          email: newUser.email,
+          password: newUser.password,
+          firstName: newUser.first_name,
+          lastName: newUser.last_name,
+          role: newUser.role,
+          companyName: newUser.company_name,
+          title: newUser.title,
+          isDeveloper: newUser.is_developer,
+          payStructure: ['admin', 'manager'].includes(newUser.role) ? payStructure : undefined
         }
       });
 
-      if (authError) {
-        // Handle specific auth errors
-        if (authError.message.includes('User already registered')) {
-          throw new Error('A user with this email already exists');
-        }
-        throw authError;
+      if (error) {
+        throw new Error(error.message || "Failed to create user");
       }
 
-      if (data.user) {
-        // Create the user profile with pay structure for sales reps
-        const profileData: any = {
-          id: data.user.id,
-          email: newUser.email,
-          first_name: newUser.first_name,
-          last_name: newUser.last_name,
-          role: newUser.role as any,
-          company_name: newUser.company_name,
-          title: newUser.title,
-          is_developer: newUser.is_developer,
-          tenant_id: currentUser?.tenant_id
-        };
+      toast({
+        title: "User Created Successfully",
+        description: `${newUser.first_name} ${newUser.last_name} has been added. A welcome email has been sent. Please provide them with the password you set.`,
+      });
 
-        // Add pay structure for sales reps/managers
-        if (['admin', 'manager'].includes(newUser.role)) {
-          profileData.overhead_rate = payStructure.overhead_rate;
-          profileData.commission_structure = payStructure.commission_structure;
-          profileData.commission_rate = payStructure.commission_rate;
-          profileData.pay_structure_created_by = currentUser?.id;
-          profileData.pay_structure_created_at = new Date().toISOString();
-        }
-
-        const { error: profileError } = await supabase
-          .from('profiles')
-          .insert(profileData);
-
-        if (profileError) throw profileError;
-
-        // Send invitation email with credentials
-        try {
-          const { error: emailError } = await supabase.functions.invoke('send-user-invitation', {
-            body: {
-              email: newUser.email,
-              firstName: newUser.first_name,
-              lastName: newUser.last_name,
-              role: newUser.role,
-              companyName: newUser.company_name,
-              temporaryPassword
-            }
-          });
-
-          if (emailError) {
-            console.warn('Email sending failed:', emailError);
-            toast({
-              title: "User created but email failed",
-              description: `${newUser.first_name} ${newUser.last_name} has been added. Please provide them with these credentials:\nEmail: ${newUser.email}\nTemporary Password: ${temporaryPassword}`,
-              variant: "destructive",
-            });
-          } else {
-            toast({
-              title: "User created successfully",
-              description: `${newUser.first_name} ${newUser.last_name} has been added and an invitation email has been sent with login instructions.`,
-            });
-          }
-        } catch (emailError) {
-          console.warn('Email sending failed:', emailError);
-          toast({
-            title: "User created but email failed", 
-            description: `${newUser.first_name} ${newUser.last_name} has been added. Please provide them with these credentials:\nEmail: ${newUser.email}\nTemporary Password: ${temporaryPassword}`,
-            variant: "destructive",
-          });
-        }
-
-        setIsAddUserOpen(false);
-        setNewUser({
-          email: "",
-          first_name: "",
-          last_name: "",
-          role: "user",
-          company_name: "",
-          title: "",
-          is_developer: false
-        });
-        
-        setPayStructure({
-          overhead_rate: 5,
-          commission_structure: 'profit_split',
-          commission_rate: 50
-        });
-        loadUsers();
-      }
+      setIsAddUserOpen(false);
+      setNewUser({
+        email: "",
+        first_name: "",
+        last_name: "",
+        role: "user",
+        company_name: "",
+        title: "",
+        is_developer: false,
+        password: "",
+        password_confirm: ""
+      });
+      
+      setPayStructure({
+        overhead_rate: 5,
+        commission_structure: 'profit_split',
+        commission_rate: 50
+      });
+      
+      loadUsers();
     } catch (error: any) {
       console.error('Error creating user:', error);
       toast({
-        title: "Error creating user",
-        description: error.message || "An unexpected error occurred",
+        title: "Error Creating User",
+        description: error.message || "An unexpected error occurred. Please try again.",
         variant: "destructive",
       });
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -331,6 +334,50 @@ export const UserManagement = () => {
                       />
                     </div>
 
+                    <div className="space-y-2">
+                      <Label htmlFor="password">Password *</Label>
+                      <div className="relative">
+                        <Input
+                          id="password"
+                          type={showPassword ? "text" : "password"}
+                          value={newUser.password}
+                          onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
+                          placeholder="Min 8 chars, uppercase, number, special char"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0 h-full px-3"
+                          onClick={() => setShowPassword(!showPassword)}
+                        >
+                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-2">
+                      <Label htmlFor="password_confirm">Confirm Password *</Label>
+                      <div className="relative">
+                        <Input
+                          id="password_confirm"
+                          type={showPasswordConfirm ? "text" : "password"}
+                          value={newUser.password_confirm}
+                          onChange={(e) => setNewUser({ ...newUser, password_confirm: e.target.value })}
+                          placeholder="Re-enter password"
+                        />
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="absolute right-0 top-0 h-full px-3"
+                          onClick={() => setShowPasswordConfirm(!showPasswordConfirm)}
+                        >
+                          {showPasswordConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </Button>
+                      </div>
+                    </div>
+
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="role">Role</Label>
@@ -390,8 +437,8 @@ export const UserManagement = () => {
                       />
                     )}
 
-                    <Button onClick={createUser} className="w-full">
-                      Create User
+                    <Button onClick={createUser} className="w-full" disabled={isCreating}>
+                      {isCreating ? "Creating User..." : "Create User"}
                     </Button>
                   </div>
                 </DialogContent>
