@@ -114,6 +114,9 @@ verify_jwt = true
 [functions.send-user-invitation]
 verify_jwt = true
 
+[functions.admin-create-user]
+verify_jwt = true
+
 [functions.smart-follow-up]
 verify_jwt = true
 
@@ -156,22 +159,10 @@ verify_jwt = true
 [functions.qbo-check-projects-api]
 verify_jwt = true
 
-[functions.stripe-connect-onboard]
-verify_jwt = true
-
-[functions.stripe-connect-account-status]
-verify_jwt = true
-
-[functions.stripe-distribute-prize]
-verify_jwt = true
-
 [functions.twilio-voice-call]
 verify_jwt = true
 
 [functions.twilio-call-status]
-verify_jwt = false
-
-[functions.sunniland-importer]
 verify_jwt = false
 
 [functions.sunniland-importer]
