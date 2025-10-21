@@ -1,6 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { 
   TrendingUp, 
   Clock, 
@@ -9,9 +28,19 @@ import {
   DollarSign,
   Users,
   Calendar,
-  BarChart3
+  BarChart3,
+  RefreshCw,
+  Download,
+  ChevronDown,
+  Mail
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { useNavigate } from "react-router-dom";
+import { DateRange } from "react-day-picker";
+import { subDays, format } from "date-fns";
+import { exportToCSV, exportDashboardToPDF, formatDateRangeForExport } from "@/lib/export-utils";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 
 interface JobMetrics {
   total_jobs: number;
@@ -32,6 +61,7 @@ interface JobMetrics {
 }
 
 export const JobAnalyticsDashboard = () => {
+  const navigate = useNavigate();
   const [metrics, setMetrics] = useState<JobMetrics>({
     total_jobs: 0,
     lead_jobs: 0,
@@ -46,12 +76,26 @@ export const JobAnalyticsDashboard = () => {
     jobs_by_priority: { high: 0, medium: 0, low: 0 }
   });
   const [loading, setLoading] = useState(true);
+  const [isRefreshing, setIsRefreshing] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [dateRange, setDateRange] = useState<DateRange>({
+    from: subDays(new Date(), 30),
+    to: new Date()
+  });
+  const [emailDialogOpen, setEmailDialogOpen] = useState(false);
+  const [emailForm, setEmailForm] = useState({
+    to: '',
+    subject: `Job Analytics Report - ${format(new Date(), 'PP')}`,
+    message: 'Please find the attached job analytics report.'
+  });
 
   useEffect(() => {
-    fetchMetrics();
-  }, []);
+    fetchMetrics(dateRange);
+  }, [dateRange]);
 
-  const fetchMetrics = async () => {
+  const fetchMetrics = async (range?: DateRange, force?: boolean) => {
+    if (force) setIsRefreshing(true);
+    else setLoading(true);
     try {
       const { data: jobs, error } = await supabase
         .from('jobs')
@@ -108,13 +152,131 @@ export const JobAnalyticsDashboard = () => {
       });
     } catch (error) {
       console.error('Error fetching metrics:', error);
+      toast.error('Failed to fetch analytics data');
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   };
 
-  const MetricCard = ({ title, value, subtitle, icon: Icon, color }: any) => (
-    <Card>
+  const handleRefresh = async () => {
+    await fetchMetrics(dateRange, true);
+    toast.success('Analytics refreshed');
+  };
+
+  const handleExportCSV = () => {
+    const csvData = [
+      // Summary section
+      { section: 'Summary', metric: 'Total Jobs', value: metrics.total_jobs },
+      { section: 'Summary', metric: 'Leads', value: metrics.lead_jobs },
+      { section: 'Summary', metric: 'Legal', value: metrics.legal_jobs },
+      { section: 'Summary', metric: 'Contingency', value: metrics.contingency_jobs },
+      { section: 'Summary', metric: 'Ready for Approval', value: metrics.ready_for_approval_jobs },
+      { section: 'Summary', metric: 'Production', value: metrics.production_jobs },
+      { section: 'Summary', metric: 'Final Payment', value: metrics.final_payment_jobs },
+      { section: 'Summary', metric: 'Closed', value: metrics.closed_jobs },
+      {},
+      // Performance metrics
+      { section: 'Performance', metric: 'Avg Completion Days', value: metrics.avg_completion_days },
+      { section: 'Performance', metric: 'Completion Rate', value: `${metrics.completion_rate}%` },
+      {},
+      // Priority distribution
+      { section: 'Priority', level: 'High', count: metrics.jobs_by_priority.high },
+      { section: 'Priority', level: 'Medium', count: metrics.jobs_by_priority.medium },
+      { section: 'Priority', level: 'Low', count: metrics.jobs_by_priority.low },
+    ];
+
+    const timestamp = format(new Date(), 'yyyyMMdd_HHmm');
+    const metadata = [
+      `Job Analytics Export - Generated: ${format(new Date(), 'PPpp')}`,
+      `Date Range: ${formatDateRangeForExport(dateRange.from, dateRange.to)}`,
+      ''
+    ];
+
+    exportToCSV(csvData, `job_analytics_${timestamp}.csv`, metadata);
+    toast.success('Analytics data exported to CSV');
+  };
+
+  const handleExportPDF = async () => {
+    try {
+      setIsExporting(true);
+      const timestamp = format(new Date(), 'yyyyMMdd_HHmm');
+      const filename = `job_analytics_${timestamp}.pdf`;
+
+      await exportDashboardToPDF('job-analytics-container', filename, {
+        title: 'Job Analytics Report',
+        dateRange: formatDateRangeForExport(dateRange.from, dateRange.to),
+        companyName: 'PITCH Roofing'
+      });
+
+      toast.success('PDF report generated');
+    } catch (error) {
+      console.error('PDF export error:', error);
+      toast.error('Failed to generate PDF');
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
+  const handleEmailReport = async () => {
+    try {
+      // Generate PDF first
+      const timestamp = format(new Date(), 'yyyyMMdd_HHmm');
+      const filename = `job_analytics_${timestamp}.pdf`;
+      const pdfBlob = await exportDashboardToPDF('job-analytics-container', filename, {
+        title: 'Job Analytics Report',
+        dateRange: formatDateRangeForExport(dateRange.from, dateRange.to),
+        companyName: 'PITCH Roofing'
+      });
+
+      // Upload to Supabase Storage
+      const filePath = `analytics/${timestamp}.pdf`;
+      const { error: uploadError } = await supabase.storage
+        .from('reports')
+        .upload(filePath, pdfBlob);
+
+      if (uploadError) throw uploadError;
+
+      // Get signed URL
+      const { data: urlData } = await supabase.storage
+        .from('reports')
+        .createSignedUrl(filePath, 604800); // 7 days
+
+      if (!urlData) throw new Error('Failed to create signed URL');
+
+      // Send email
+      const { error: emailError } = await supabase.functions.invoke('send-email', {
+        body: {
+          to: [emailForm.to],
+          subject: emailForm.subject,
+          body: `${emailForm.message}\n\nView Report: ${urlData.signedUrl}`
+        }
+      });
+
+      if (emailError) throw emailError;
+
+      toast.success('Report emailed successfully');
+      setEmailDialogOpen(false);
+      setEmailForm({
+        to: '',
+        subject: `Job Analytics Report - ${format(new Date(), 'PP')}`,
+        message: 'Please find the attached job analytics report.'
+      });
+    } catch (error) {
+      console.error('Email report error:', error);
+      toast.error('Failed to email report');
+    }
+  };
+
+  const MetricCard = ({ title, value, subtitle, icon: Icon, color, onClick }: any) => (
+    <Card 
+      className={cn(
+        "relative overflow-hidden",
+        onClick && "cursor-pointer hover:shadow-md transition-shadow"
+      )}
+      onClick={onClick}
+      data-testid={`job-analytics-metric-${title.toLowerCase().replace(/\s+/g, '-')}`}
+    >
       <CardContent className="pt-6">
         <div className="flex items-center justify-between">
           <div>
@@ -151,13 +313,57 @@ export const JobAnalyticsDashboard = () => {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div id="job-analytics-container" className="space-y-6">
+      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
         <h2 className="text-2xl font-bold">Job Analytics</h2>
-        <Badge variant="outline" className="text-sm">
-          <Calendar className="h-3 w-3 mr-1" />
-          Last 30 days
-        </Badge>
+        
+        <div className="flex items-center gap-2 flex-wrap">
+          <DateRangePicker
+            value={dateRange}
+            onChange={(range) => setDateRange(range || { from: subDays(new Date(), 30), to: new Date() })}
+            data-testid="job-analytics-date-filter"
+          />
+
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            data-testid="job-analytics-refresh"
+          >
+            <RefreshCw className={cn("h-4 w-4", isRefreshing && "animate-spin")} />
+          </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" disabled={isExporting}>
+                <Download className="h-4 w-4 mr-2" />
+                Export
+                <ChevronDown className="h-4 w-4 ml-2" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent>
+              <DropdownMenuItem onClick={handleExportCSV} data-testid="job-analytics-export-csv">
+                <Download className="h-4 w-4 mr-2" />
+                Export CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleExportPDF} data-testid="job-analytics-export-pdf">
+                <Download className="h-4 w-4 mr-2" />
+                Export PDF
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+
+          <Button 
+            variant="outline" 
+            size="sm"
+            onClick={() => setEmailDialogOpen(true)}
+            data-testid="job-analytics-email-report"
+          >
+            <Mail className="h-4 w-4 mr-2" />
+            Email Report
+          </Button>
+        </div>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -166,22 +372,25 @@ export const JobAnalyticsDashboard = () => {
           value={metrics.total_jobs}
           icon={BarChart3}
           color="bg-blue-100 text-blue-600"
+          onClick={() => navigate(`/job-analytics/drilldown?metric=total&from=${dateRange.from?.toISOString()}&to=${dateRange.to?.toISOString()}`)}
         />
         
         <MetricCard
           title="Leads"
           value={metrics.lead_jobs}
-          subtitle={`${Math.round((metrics.lead_jobs / metrics.total_jobs) * 100)}% of total`}
+          subtitle={`${metrics.total_jobs > 0 ? Math.round((metrics.lead_jobs / metrics.total_jobs) * 100) : 0}% of total`}
           icon={Users}
           color="bg-amber-100 text-amber-600"
+          onClick={() => navigate(`/job-analytics/drilldown?metric=leads&from=${dateRange.from?.toISOString()}&to=${dateRange.to?.toISOString()}`)}
         />
         
         <MetricCard
           title="Production"
           value={metrics.production_jobs}
-          subtitle={`${Math.round((metrics.production_jobs / metrics.total_jobs) * 100)}% of total`}
+          subtitle={`${metrics.total_jobs > 0 ? Math.round((metrics.production_jobs / metrics.total_jobs) * 100) : 0}% of total`}
           icon={TrendingUp}
           color="bg-green-100 text-green-600"
+          onClick={() => navigate(`/job-analytics/drilldown?metric=production&from=${dateRange.from?.toISOString()}&to=${dateRange.to?.toISOString()}`)}
         />
         
         <MetricCard
@@ -190,6 +399,7 @@ export const JobAnalyticsDashboard = () => {
           subtitle={`${metrics.completion_rate}% completion rate`}
           icon={CheckCircle}
           color="bg-gray-100 text-gray-600"
+          onClick={() => navigate(`/job-analytics/drilldown?metric=closed&from=${dateRange.from?.toISOString()}&to=${dateRange.to?.toISOString()}`)}
         />
       </div>
 
@@ -290,6 +500,56 @@ export const JobAnalyticsDashboard = () => {
           color="bg-teal-100 text-teal-600"
         />
       </div>
+
+      {/* Email Report Dialog */}
+      <Dialog open={emailDialogOpen} onOpenChange={setEmailDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Email Analytics Report</DialogTitle>
+            <DialogDescription>
+              Send the job analytics report as a PDF attachment
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <Label htmlFor="email-to">To</Label>
+              <Input
+                id="email-to"
+                type="email"
+                placeholder="recipient@example.com"
+                value={emailForm.to}
+                onChange={(e) => setEmailForm({ ...emailForm, to: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="email-subject">Subject</Label>
+              <Input
+                id="email-subject"
+                value={emailForm.subject}
+                onChange={(e) => setEmailForm({ ...emailForm, subject: e.target.value })}
+              />
+            </div>
+            <div className="grid gap-2">
+              <Label htmlFor="email-message">Message</Label>
+              <Textarea
+                id="email-message"
+                rows={4}
+                value={emailForm.message}
+                onChange={(e) => setEmailForm({ ...emailForm, message: e.target.value })}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEmailDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleEmailReport} disabled={!emailForm.to}>
+              <Mail className="h-4 w-4 mr-2" />
+              Send Report
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

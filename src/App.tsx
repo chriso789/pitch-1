@@ -14,6 +14,7 @@ import ConfirmEmail from "./pages/ConfirmEmail";
 import ContactProfile from "./pages/ContactProfile";
 import JobDetails from "./pages/JobDetails";
 import JobAnalytics from "./pages/JobAnalytics";
+import JobAnalyticsDrilldown from "./pages/JobAnalyticsDrilldown";
 import LeadDetails from "./pages/LeadDetails";
 import ProjectDetails from "./pages/ProjectDetails";
 import EnhancedMeasurement from "./pages/EnhancedMeasurement";
@@ -117,6 +118,7 @@ const AppContent = () => {
         <Route path="/lead/:id" element={<LeadDetails />} />
         <Route path="/job/:id" element={<JobDetails />} />
         <Route path="/job-analytics" element={<JobAnalytics />} />
+        <Route path="/job-analytics/drilldown" element={<JobAnalyticsDrilldown />} />
         <Route path="/pipeline-entry/:id/review" element={<PipelineEntryReview />} />
         <Route path="/project/:id" element={<ProjectDetails />} />
         <Route path="/enhanced-measurement/:id" element={<EnhancedMeasurement />} />
