@@ -530,7 +530,15 @@ const Pipeline = () => {
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Delete error:', error);
+        toast({
+          title: "Error",
+          description: error.message || "Failed to delete pipeline entry",
+          variant: "destructive",
+        });
+        throw error;
+      }
 
       toast({
         title: "Success",
@@ -538,7 +546,7 @@ const Pipeline = () => {
       });
 
       // Refresh pipeline data
-      fetchPipelineData();
+      await fetchPipelineData();
     } catch (error) {
       console.error('Error deleting pipeline entry:', error);
       toast({
@@ -546,6 +554,7 @@ const Pipeline = () => {
         description: "Failed to delete pipeline entry",
         variant: "destructive",
       });
+      throw error;
     }
   };
 

@@ -58,6 +58,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [daysSinceLastComm, setDaysSinceLastComm] = useState<number>(0);
   const [generating, setGenerating] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     if (entry.contact_id) {
@@ -164,11 +165,21 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
     setShowDeleteDialog(true);
   };
 
-  const handleConfirmDelete = () => {
-    if (onDelete) {
-      onDelete(entry.id);
+  const handleConfirmDelete = async (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (!onDelete || isDeleting) return;
+    
+    setIsDeleting(true);
+    try {
+      await onDelete(entry.id);
+      setShowDeleteDialog(false);
+    } catch (error) {
+      console.error('Delete failed:', error);
+    } finally {
+      setIsDeleting(false);
     }
-    setShowDeleteDialog(false);
   };
 
   const handleLeadDetailsClick = (e: React.MouseEvent) => {
@@ -408,12 +419,13 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
                 <AlertDialogAction
                   onClick={handleConfirmDelete}
+                  disabled={isDeleting}
                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                 >
-                  Delete {entry.status === 'project' ? 'Job' : 'Lead'}
+                  {isDeleting ? 'Deleting...' : `Delete ${entry.status === 'project' ? 'Job' : 'Lead'}`}
                 </AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
