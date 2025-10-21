@@ -142,16 +142,173 @@ const Dashboard = () => {
     }
   });
 
+  // Pipeline status counts
+  const { data: pipelineStatusCounts = {} } = useQuery({
+    queryKey: ['dashboard-pipeline-counts', dateRange],
+    queryFn: async () => {
+      let query = supabase
+        .from('pipeline_entries')
+        .select('status');
+      
+      if (dateRange?.from) {
+        query = query.gte('created_at', dateRange.from.toISOString());
+      }
+      if (dateRange?.to) {
+        query = query.lte('created_at', dateRange.to.toISOString());
+      }
+      
+      const { data } = await query;
+      
+      const counts: any = {
+        lead: 0,
+        legal_review: 0,
+        contingency_signed: 0,
+        project: 0,
+        completed: 0,
+        closed: 0
+      };
+      
+      data?.forEach(entry => {
+        const status = entry.status;
+        if (status in counts) {
+          counts[status]++;
+        }
+      });
+      
+      return counts;
+    }
+  });
+
+  // Revenue and active projects
+  const { data: revenueData } = useQuery({
+    queryKey: ['dashboard-revenue', dateRange],
+    queryFn: async () => {
+      const { data: projects } = await supabase
+        .from('projects')
+        .select('budget_data')
+        .eq('status', 'active');
+      
+      const totalRevenue = projects?.reduce((sum, p) => {
+        const budgetTotal = (p.budget_data as any)?.total || 0;
+        return sum + budgetTotal;
+      }, 0) || 0;
+      
+      return { total: totalRevenue, change: 0 };
+    }
+  });
+
+  const { data: activeProjects = 0 } = useQuery({
+    queryKey: ['dashboard-active-projects'],
+    queryFn: async () => {
+      const { count } = await supabase
+        .from('projects')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'active');
+      return count || 0;
+    }
+  });
+
+  const { data: completedThisMonth = 0 } = useQuery({
+    queryKey: ['dashboard-completed-month'],
+    queryFn: async () => {
+      const startOfMonth = new Date();
+      startOfMonth.setDate(1);
+      startOfMonth.setHours(0,0,0,0);
+      
+      const { count } = await supabase
+        .from('projects')
+        .select('*', { count: 'exact', head: true })
+        .eq('status', 'completed')
+        .gte('actual_completion_date', startOfMonth.toISOString());
+      return count || 0;
+    }
+  });
+
+  const { data: profitMargin } = useQuery({
+    queryKey: ['dashboard-profit-margin'],
+    queryFn: async () => {
+      const { data: projects } = await supabase
+        .from('projects')
+        .select('budget_data')
+        .in('status', ['active', 'completed']);
+      
+      const margins = projects?.map(p => {
+        const budget = (p.budget_data as any) || {};
+        const total = budget.total || 0;
+        const cost = budget.total_cost || 0;
+        return total > 0 ? ((total - cost) / total) * 100 : 0;
+      }).filter(m => m > 0) || [];
+      
+      const avgMargin = margins.length > 0 
+        ? margins.reduce((a, b) => a + b, 0) / margins.length 
+        : 0;
+      
+      return { value: avgMargin, change: 0 };
+    }
+  });
+
+  // Recent projects
+  const { data: recentProjects = [] } = useQuery({
+    queryKey: ['dashboard-recent-projects'],
+    queryFn: async () => {
+      const { data: projects } = await supabase
+        .from('projects')
+        .select(`
+          id,
+          project_number,
+          name,
+          status,
+          budget_data,
+          pipeline_entry_id,
+          pipeline_entries!inner (
+            id,
+            contact_id,
+            contacts (
+              first_name,
+              last_name,
+              address_street,
+              address_city,
+              address_state
+            )
+          )
+        `)
+        .order('created_at', { ascending: false })
+        .limit(5);
+      
+      return projects?.map(project => {
+        const contact = (project.pipeline_entries as any)?.contacts;
+        const budget = (project.budget_data as any) || {};
+        const total = budget.total || 0;
+        const cost = budget.total_cost || 0;
+        const profit = total > 0 ? ((total - cost) / total) * 100 : 0;
+        
+        return {
+          id: project.project_number || project.id,
+          homeowner: contact 
+            ? `${contact.first_name} ${contact.last_name}` 
+            : project.name || 'Unknown',
+          address: contact 
+            ? `${contact.address_street}, ${contact.address_city}, ${contact.address_state}` 
+            : 'Address not available',
+          type: budget.roof_type || 'Roofing Project',
+          value: total > 0 ? `$${total.toLocaleString()}` : '$0',
+          status: project.status === 'active' ? 'Project' : project.status,
+          profit: profit > 0 ? `${profit.toFixed(1)}%` : '0%'
+        };
+      }) || [];
+    }
+  });
+
   // Export handlers
   const handleExportCSV = () => {
     const csvData = [
       // Pipeline Summary
-      { section: 'Pipeline Summary', status: 'Lead', count: leadsCount },
-      { section: 'Pipeline Summary', status: 'Legal', count: 12 },
-      { section: 'Pipeline Summary', status: 'Contingency', count: 8 },
-      { section: 'Pipeline Summary', status: 'Project', count: 23 },
-      { section: 'Pipeline Summary', status: 'Completed', count: 156 },
-      { section: 'Pipeline Summary', status: 'Closed', count: 892 },
+      { section: 'Pipeline Summary', status: 'Lead', count: (pipelineStatusCounts as any).lead || 0 },
+      { section: 'Pipeline Summary', status: 'Legal', count: (pipelineStatusCounts as any).legal_review || 0 },
+      { section: 'Pipeline Summary', status: 'Contingency', count: (pipelineStatusCounts as any).contingency_signed || 0 },
+      { section: 'Pipeline Summary', status: 'Project', count: (pipelineStatusCounts as any).project || 0 },
+      { section: 'Pipeline Summary', status: 'Completed', count: (pipelineStatusCounts as any).completed || 0 },
+      { section: 'Pipeline Summary', status: 'Closed', count: (pipelineStatusCounts as any).closed || 0 },
       {},
       // Progress Metrics
       { section: 'Progress', metric: 'Unassigned Leads', value: unassignedLeads },
@@ -191,71 +348,41 @@ const Dashboard = () => {
   const metrics = [
     {
       title: "Total Revenue",
-      value: "$1,247,890",
-      change: "+12.5%",
+      value: revenueData?.total ? `$${revenueData.total.toLocaleString()}` : "$0",
+      change: revenueData?.change ? `+${revenueData.change.toFixed(1)}%` : "0%",
       icon: DollarSign,
       color: "text-success"
     },
     {
       title: "Active Projects",
-      value: "23",
-      change: "+3",
+      value: String(activeProjects),
+      change: "+0",
       icon: Wrench,
       color: "text-primary"
     },
     {
       title: "Completed This Month",
-      value: "8",
-      change: "+2",
+      value: String(completedThisMonth),
+      change: "+0",
       icon: CheckCircle,
       color: "text-success"
     },
     {
       title: "Avg Profit Margin",
-      value: "31.2%",
-      change: "+1.8%",
+      value: profitMargin?.value ? `${profitMargin.value.toFixed(1)}%` : "0%",
+      change: profitMargin?.change ? `+${profitMargin.change.toFixed(1)}%` : "0%",
       icon: TrendingUp,
       color: "text-success"
     }
   ];
 
   const dashboardPipelineData = [
-    { status: "Lead", count: leadsCount, color: "bg-status-lead" },
-    { status: "Legal", count: 12, color: "bg-status-legal" },
-    { status: "Contingency", count: 8, color: "bg-status-contingency" },
-    { status: "Project", count: 23, color: "bg-status-project" },
-    { status: "Completed", count: 156, color: "bg-status-completed" },
-    { status: "Closed", count: 892, color: "bg-status-closed" }
-  ];
-
-  const recentProjects = [
-    {
-      id: "P-2024-001",
-      homeowner: "Johnson Residence",
-      address: "123 Oak St, Austin, TX",
-      type: "Shingle Replacement",
-      value: "$18,450",
-      status: "Project",
-      profit: "32.1%"
-    },
-    {
-      id: "P-2024-002", 
-      homeowner: "Smith Property",
-      address: "456 Pine Ave, Dallas, TX",
-      type: "Metal Roof Install",
-      value: "$32,800",
-      status: "Legal",
-      profit: "28.5%"
-    },
-    {
-      id: "P-2024-003",
-      homeowner: "Williams Home",
-      address: "789 Elm Dr, Houston, TX", 
-      type: "Tile Repair",
-      value: "$8,920",
-      status: "Contingency",
-      profit: "35.2%"
-    }
+    { status: "Lead", count: (pipelineStatusCounts as any).lead || 0, color: "bg-status-lead" },
+    { status: "Legal", count: (pipelineStatusCounts as any).legal_review || 0, color: "bg-status-legal" },
+    { status: "Contingency", count: (pipelineStatusCounts as any).contingency_signed || 0, color: "bg-status-contingency" },
+    { status: "Project", count: (pipelineStatusCounts as any).project || 0, color: "bg-status-project" },
+    { status: "Completed", count: (pipelineStatusCounts as any).completed || 0, color: "bg-status-completed" },
+    { status: "Closed", count: (pipelineStatusCounts as any).closed || 0, color: "bg-status-closed" }
   ];
 
   const getStatusColor = (status: string) => {
@@ -438,34 +565,41 @@ const Dashboard = () => {
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {recentProjects.map((project, index) => (
-              <div 
-                key={index} 
-                className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover:bg-muted transition-smooth cursor-pointer"
-                onClick={() => navigate(`/jobs/${project.id}`)}
-                data-testid="dashboard-project-card"
-              >
-                <div className="flex-1">
-                  <div className="flex items-center gap-3">
-                    <span className="font-mono text-sm text-muted-foreground">{project.id}</span>
-                    <Badge variant="outline" className={getStatusColor(project.status)}>
-                      {project.status}
-                    </Badge>
+          {recentProjects.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <HomeIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
+              <p>No projects yet. Create your first lead to get started!</p>
+            </div>
+          ) : (
+            <div className="space-y-4">
+              {recentProjects.map((project, index) => (
+                <div 
+                  key={index} 
+                  className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover:bg-muted transition-smooth cursor-pointer"
+                  onClick={() => navigate(`/jobs/${project.id}`)}
+                  data-testid="dashboard-project-card"
+                >
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3">
+                      <span className="font-mono text-sm text-muted-foreground">{project.id}</span>
+                      <Badge variant="outline" className={getStatusColor(project.status)}>
+                        {project.status}
+                      </Badge>
+                    </div>
+                    <h3 className="font-semibold mt-1">{project.homeowner}</h3>
+                    <p className="text-sm text-muted-foreground">{project.address}</p>
+                    <p className="text-sm text-primary">{project.type}</p>
                   </div>
-                  <h3 className="font-semibold mt-1">{project.homeowner}</h3>
-                  <p className="text-sm text-muted-foreground">{project.address}</p>
-                  <p className="text-sm text-primary">{project.type}</p>
-                </div>
-                <div className="text-right">
-                  <div className="text-lg font-bold">{project.value}</div>
-                  <div className="text-sm text-success">
-                    {project.profit} profit
+                  <div className="text-right">
+                    <div className="text-lg font-bold">{project.value}</div>
+                    <div className="text-sm text-success">
+                      {project.profit} profit
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
