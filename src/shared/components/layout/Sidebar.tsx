@@ -38,6 +38,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
 import { useNavigate } from "react-router-dom";
 import { TEST_IDS } from "@/../tests/utils/test-ids";
+import { getRoleDisplayName } from "@/lib/roleUtils";
 
 interface SidebarProps {
   isCollapsed?: boolean;
@@ -144,15 +145,17 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
   const getRoleBadgeVariant = (role: string) => {
     switch (role) {
       case 'master': return 'destructive';
-      case 'admin': return 'default';
-      case 'manager': return 'secondary';
-      case 'user': return 'outline';
+      case 'corporate': return 'destructive';
+      case 'office_admin': return 'default';
+      case 'regional_manager': return 'default';
+      case 'sales_manager': return 'secondary';
+      case 'project_manager': return 'outline';
       default: return 'outline';
     }
   };
 
   const getAvailableRoles = () => {
-    const allRoles = ['user', 'manager', 'admin'];
+    const allRoles = ['project_manager', 'sales_manager', 'regional_manager', 'office_admin', 'corporate'];
     if (currentUser?.is_developer || currentUser?.role === 'master') {
       allRoles.push('master');
     }
@@ -407,7 +410,7 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
                 <p className="text-xs text-muted-foreground">{currentUser?.email}</p>
                 {currentUser?.role && (
                   <Badge variant={getRoleBadgeVariant(currentUser.role)} className="text-xs w-fit">
-                    {currentUser.role}
+                    {getRoleDisplayName(currentUser.role)}
                   </Badge>
                 )}
               </div>

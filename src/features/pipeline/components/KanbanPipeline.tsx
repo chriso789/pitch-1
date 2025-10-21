@@ -100,8 +100,8 @@ const KanbanPipeline = () => {
         .single();
       setCurrentUser(profile);
       
-      // Check if user can delete jobs (managers and admins only)
-      const canDelete = profile?.role && ['admin', 'manager', 'master'].includes(profile.role);
+      // Check if user can delete jobs (hierarchy-based permissions)
+      const canDelete = profile?.role && ['master', 'corporate', 'office_admin'].includes(profile.role);
       setUserCanDelete(canDelete);
     }
   };

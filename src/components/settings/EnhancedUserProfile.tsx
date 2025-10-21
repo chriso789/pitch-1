@@ -94,15 +94,28 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
       return false;
     }
 
+    // Role hierarchy for permission checks
+    const roleHierarchy = {
+      master: 1,
+      corporate: 2,
+      office_admin: 3,
+      regional_manager: 4,
+      sales_manager: 5,
+      project_manager: 6
+    };
+    
+    const currentLevel = roleHierarchy[currentUser.role] || 999;
+    const targetLevel = roleHierarchy[user.role] || 999;
+
     // Master can edit all
     if (currentUser.role === 'master') {
       console.log('✓ Permission granted: Master role');
       return true;
     }
 
-    // Manager can edit sales reps only
-    if (currentUser.role === 'manager' && user.role === 'admin') {
-      console.log('✓ Permission granted: Manager editing sales rep');
+    // Can edit users below in hierarchy
+    if (currentLevel < targetLevel) {
+      console.log('✓ Permission granted: Higher role in hierarchy');
       return true;
     }
 
@@ -522,7 +535,7 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
                     />
                   </div>
 
-                  {user.role === 'rep' && (
+                  {user.role === 'sales_manager' && (
                     <div className="space-y-2">
                       <Label htmlFor="overhead_rate">Personal Overhead Rate (%)</Label>
                       <Input
@@ -541,7 +554,7 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
                 </div>
               </div>
 
-              {user.role === 'rep' && (
+              {user.role === 'sales_manager' && (
                 <>
                   <hr />
                   <div className="space-y-4">

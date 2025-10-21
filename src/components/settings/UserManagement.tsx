@@ -49,7 +49,7 @@ export const UserManagement = () => {
     email: "",
     first_name: "",
     last_name: "",
-    role: "user",
+    role: "project_manager",
     company_name: "",
     title: "",
     is_developer: false,
@@ -228,7 +228,7 @@ export const UserManagement = () => {
         email: "",
         first_name: "",
         last_name: "",
-        role: "user",
+        role: "project_manager",
         company_name: "",
         title: "",
         is_developer: false,
@@ -354,10 +354,22 @@ export const UserManagement = () => {
       onClick: () => setSelectedUserId(user.id)
     });
 
-    // Edit action - role-based permissions
+    // Edit action - role-based permissions using hierarchy
+    const roleHierarchy = {
+      master: 1,
+      corporate: 2,
+      office_admin: 3,
+      regional_manager: 4,
+      sales_manager: 5,
+      project_manager: 6
+    };
+    
+    const currentLevel = roleHierarchy[currentUser.role] || 999;
+    const targetLevel = roleHierarchy[user.role] || 999;
+    
     const canEdit =
       currentUser.role === 'master' || // Master can edit all
-      (currentUser.role === 'manager' && user.role === 'admin') || // Manager can edit sales reps
+      currentLevel < targetLevel || // Can edit users below in hierarchy
       currentUser.id === user.id; // Users can edit themselves
 
     if (canEdit) {
@@ -379,21 +391,23 @@ export const UserManagement = () => {
       separator: true
     });
 
-    // Delete action - role-based permissions
+    // Delete action - role-based permissions using hierarchy
     const canDelete =
       currentUser.role === 'master' || // Master can delete all
-      (currentUser.role === 'manager' && user.role === 'admin'); // Manager can delete sales reps
+      currentLevel < targetLevel; // Can delete users below in hierarchy
 
     console.log('🗑️ Delete permission check:', {
       canDelete,
-      isMaster: currentUser.role === 'master',
-      isManagerEditingAdmin: currentUser.role === 'manager' && user.role === 'admin',
+      currentRole: currentUser.role,
+      currentLevel,
+      targetRole: user.role,
+      targetLevel,
       isSelf: user.id === currentUser.id,
       willShowDelete: canDelete && user.id !== currentUser.id
     });
 
     if (canDelete && user.id !== currentUser.id) { // Can't delete yourself
-      const deleteLabel = user.role === 'admin' ? 'Delete Rep' : 'Delete User';
+      const deleteLabel = 'Delete User';
       console.log('✅ Adding delete button for user:', user.first_name, 'with label:', deleteLabel);
       actions.push({
         label: deleteLabel,

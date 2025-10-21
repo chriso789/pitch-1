@@ -555,7 +555,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ userId, onClose }) => 
                 />
               </div>
 
-              {user.role === 'rep' && (
+              {user.role === 'sales_manager' && (
                 <div className="space-y-2">
                   <Label htmlFor="overhead_rate">Personal Overhead Rate (%)</Label>
                   <Input
@@ -575,7 +575,7 @@ export const UserProfile: React.FC<UserProfileProps> = ({ userId, onClose }) => 
           </div>
 
           {/* Sales Rep Pay Structure Display */}
-          {user.role === 'rep' && (
+          {user.role === 'sales_manager' && (
             <>
               <hr />
               <div className="space-y-4">

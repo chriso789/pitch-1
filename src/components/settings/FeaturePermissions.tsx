@@ -189,9 +189,9 @@ const FeaturePermissions: React.FC = () => {
 
   // Check if user has permission to manage feature permissions
   const canManage = currentUser && (
-    currentUser.role === 'admin' || 
-    currentUser.role === 'manager' || 
-    currentUser.role === 'master'
+    currentUser.role === 'master' || 
+    currentUser.role === 'corporate' || 
+    currentUser.role === 'office_admin'
   );
 
   if (!canManage) {

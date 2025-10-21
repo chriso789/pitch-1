@@ -37,8 +37,8 @@ export const RepPayStructureConfig: React.FC<RepPayStructureConfigProps> = ({
     onChange(newConfig);
   };
 
-  // Only show for sales reps and if current user is manager+
-  if (!['admin', 'manager'].includes(role) || !['admin', 'manager', 'master'].includes(currentUser?.role)) {
+  // Only show for sales managers and if current user is regional_manager or higher
+  if (!['sales_manager'].includes(role) || !['master', 'corporate', 'office_admin', 'regional_manager'].includes(currentUser?.role)) {
     return null;
   }
 
