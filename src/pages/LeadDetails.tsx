@@ -26,6 +26,7 @@ import { DocumentsTab } from '@/components/DocumentsTab';
 import { PhoneNumberSelector } from '@/components/communication/PhoneNumberSelector';
 import { CallStatusMonitor } from '@/components/communication/CallStatusMonitor';
 import { CallDispositionDialog } from '@/components/communication/CallDispositionDialog';
+import { BackButton } from '@/shared/components/BackButton';
 
 interface LeadDetailsData {
   id: string;
@@ -493,14 +494,11 @@ const LeadDetails = () => {
       {/* Header with Contact Card */}
       <div className="flex items-start justify-between">
         <div className="flex items-center space-x-4 flex-1">
-          <Button 
-            variant="ghost" 
-            size="sm" 
-            onClick={() => navigate(-1)}
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
-          </Button>
+          <BackButton 
+            fallbackPath="/pipeline"
+            label="Back"
+            respectHistory={true}
+          />
           <div className="flex-1">
             <div className="flex items-center space-x-3">
               <h1 className="text-3xl font-bold">
