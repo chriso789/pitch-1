@@ -76,21 +76,20 @@ const Login: React.FC = () => {
   };
 
   useEffect(() => {
-    // Check if user is already authenticated and redirect if so
-    const checkAuth = async () => {
-      try {
-        const { data: { session } } = await supabase.auth.getSession();
-        if (session) {
-          console.log('User already authenticated, redirecting to dashboard');
-          navigate('/');
-          return;
-        }
-      } catch (error) {
-        console.error('Auth check error:', error);
-      }
-    };
-
-    checkAuth();
+    // DISABLED: Auto-login check - allows users to access login page when already authenticated
+    // const checkAuth = async () => {
+    //   try {
+    //     const { data: { session } } = await supabase.auth.getSession();
+    //     if (session) {
+    //       console.log('User already authenticated, redirecting to dashboard');
+    //       navigate('/');
+    //       return;
+    //     }
+    //   } catch (error) {
+    //     console.error('Auth check error:', error);
+    //   }
+    // };
+    // checkAuth();
 
     // Check URL params for password reset success message
     const urlParams = new URLSearchParams(window.location.search);
