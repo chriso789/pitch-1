@@ -44,6 +44,7 @@ export const UserManagement = () => {
   const [deleting, setDeleting] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [openInEditMode, setOpenInEditMode] = useState(false);
   const [newUser, setNewUser] = useState({
     email: "",
     first_name: "",
@@ -308,7 +309,10 @@ export const UserManagement = () => {
       actions.push({
         label: 'Edit Profile',
         icon: Edit2,
-        onClick: () => setSelectedUserId(user.id)
+        onClick: () => {
+          setOpenInEditMode(true);
+          setSelectedUserId(user.id);
+        }
       });
     }
 
@@ -365,7 +369,11 @@ export const UserManagement = () => {
     return (
       <EnhancedUserProfile 
         userId={selectedUserId} 
-        onClose={() => setSelectedUserId(null)} 
+        onClose={() => {
+          setSelectedUserId(null);
+          setOpenInEditMode(false);
+        }}
+        initialEditMode={openInEditMode}
       />
     );
   }

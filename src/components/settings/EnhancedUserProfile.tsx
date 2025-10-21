@@ -33,12 +33,13 @@ import {
 interface EnhancedUserProfileProps {
   userId: string;
   onClose: () => void;
+  initialEditMode?: boolean;
 }
 
-export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId, onClose }) => {
+export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId, onClose, initialEditMode = false }) => {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
+  const [editing, setEditing] = useState(initialEditMode);
   const [commissionHistory, setCommissionHistory] = useState<any[]>([]);
   const [uploadingAvatar, setUploadingAvatar] = useState(false);
   const [sendingReset, setSendingReset] = useState(false);
