@@ -163,6 +163,15 @@ const ContactForm: React.FC<ContactFormProps> = ({
       return;
     }
 
+    if (!formData.email && !formData.phone) {
+      toast({
+        title: "Validation Error",
+        description: "At least one contact method (email or phone) is required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -238,10 +247,32 @@ const ContactForm: React.FC<ContactFormProps> = ({
 
       onSubmit?.(data);
     } catch (error: any) {
-      console.error("Error creating contact:", error);
+      console.error("Error creating contact:", {
+        error,
+        message: error.message,
+        code: error.code,
+        details: error.details,
+        hint: error.hint,
+        formData,
+        contactData: {
+          ...formData,
+          tenant_id: currentUser?.tenant_id,
+          address: addressData,
+        }
+      });
+      
+      let errorMessage = "Failed to create contact.";
+      if (error.message?.includes("tenant_id")) {
+        errorMessage = "Your account is not properly configured. Please contact support.";
+      } else if (error.message?.includes("RLS")) {
+        errorMessage = "Permission denied. Please contact your administrator.";
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+      
       toast({
         title: "Creation Failed",
-        description: error.message || "Failed to create contact.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -292,7 +323,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
           {/* Contact Information */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>
-              <label className="text-sm font-medium">Email</label>
+              <label className="text-sm font-medium">Email <span className="text-muted-foreground text-xs">(Required if no phone)</span></label>
               <Input
                 data-testid={TEST_IDS.contacts.form.email}
                 type="email"
@@ -302,7 +333,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
               />
             </div>
             <div>
-              <label className="text-sm font-medium">Phone</label>
+              <label className="text-sm font-medium">Phone <span className="text-muted-foreground text-xs">(Required if no email)</span></label>
               <Input
                 data-testid={TEST_IDS.contacts.form.phone}
                 type="tel"
