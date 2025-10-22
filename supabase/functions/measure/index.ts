@@ -507,6 +507,11 @@ serve(async (req) => {
             .limit(1);
           
           tags = tagRows?.[0]?.tags || null;
+          
+          // If no tags found in DB, generate them from measurement data
+          if (!tags && measurement) {
+            tags = buildSmartTags(measurement);
+          }
         }
 
         return json({ ok: true, data: { measurement, tags } }, corsHeaders);
@@ -644,6 +649,11 @@ serve(async (req) => {
             .limit(1);
           
           tags = tagRows?.[0]?.tags || null;
+          
+          // If no tags found in DB, generate them from measurement data
+          if (!tags && measurement) {
+            tags = buildSmartTags(measurement);
+          }
         }
 
         return json({ ok: true, data: { measurement, tags } }, corsHeaders);
