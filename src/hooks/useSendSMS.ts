@@ -14,13 +14,28 @@ export const useSendSMS = () => {
   const [sending, setSending] = useState(false);
 
   const sendSMS = async (params: SendSMSParams) => {
+    console.log('🔵 useSendSMS: Starting SMS send with params:', params);
     setSending(true);
+    
     try {
+      console.log('🔵 useSendSMS: Invoking send-sms function...');
       const { data, error } = await supabase.functions.invoke('send-sms', {
         body: params
       });
       
-      if (error) throw error;
+      console.log('🔵 useSendSMS: Response received:', { data, error });
+      
+      if (error) {
+        console.error('🔴 useSendSMS: Supabase function error:', error);
+        throw error;
+      }
+      
+      if (!data?.success) {
+        console.error('🔴 useSendSMS: SMS failed:', data);
+        throw new Error(data?.message || 'Failed to send SMS');
+      }
+      
+      console.log('✅ useSendSMS: SMS sent successfully:', data);
       
       toast({
         title: "SMS Sent",
@@ -29,7 +44,7 @@ export const useSendSMS = () => {
       
       return data;
     } catch (error: any) {
-      console.error('Error sending SMS:', error);
+      console.error('🔴 useSendSMS: Caught error:', error);
       toast({
         title: "Failed to send SMS",
         description: error.message || "Please try again.",
@@ -38,6 +53,7 @@ export const useSendSMS = () => {
       throw error;
     } finally {
       setSending(false);
+      console.log('🔵 useSendSMS: Send operation completed');
     }
   };
 

@@ -108,8 +108,12 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({
 
   // Fetch SMS messages
   const fetchSMS = async () => {
-    if (!contactId) return;
+    if (!contactId) {
+      console.log('⚠️ CommunicationHub: fetchSMS called without contactId');
+      return;
+    }
     
+    console.log('🔵 CommunicationHub: Fetching SMS for contact:', contactId);
     try {
       const { data, error } = await supabase
         .from('communication_history')
@@ -118,10 +122,17 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({
         .eq('communication_type', 'sms')
         .order('created_at', { ascending: true });
 
+      console.log('🔵 CommunicationHub: SMS fetch result:', { 
+        data, 
+        error, 
+        count: data?.length,
+        messages: data?.map(m => ({ id: m.id, direction: m.direction, content: m.content.substring(0, 50) }))
+      });
+
       if (error) throw error;
       setSmsMessages(data || []);
     } catch (error) {
-      console.error('Error fetching SMS:', error);
+      console.error('🔴 CommunicationHub: Error fetching SMS:', error);
     }
   };
 
@@ -173,9 +184,18 @@ const CommunicationHub: React.FC<CommunicationHubProps> = ({
           filter: `contact_id=eq.${contactId}`
         },
         (payload) => {
+          console.log('🔵 CommunicationHub: Real-time update detected:', {
+            type: payload.new.communication_type,
+            direction: payload.new.direction,
+            contactId: payload.new.contact_id,
+            content: payload.new.content?.substring(0, 50)
+          });
+          
           if (payload.new.communication_type === 'sms') {
+            console.log('📱 CommunicationHub: New SMS detected, refreshing thread');
             fetchSMS();
           } else if (payload.new.communication_type === 'email') {
+            console.log('📧 CommunicationHub: New email detected, refreshing thread');
             fetchEmails();
           }
         }

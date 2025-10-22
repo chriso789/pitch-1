@@ -949,12 +949,26 @@ const LeadDetails = () => {
           phoneNumber={lead.contact.phone || ''}
           contactName={`${lead.contact.first_name} ${lead.contact.last_name}`}
           onSend={async (message) => {
-            await sendSMS({
-              to: lead.contact.phone || '',
+            console.log('🔵 LeadDetails: SMS onSend triggered', {
               message,
-              contactId: lead.contact.id
+              phone: lead.contact.phone,
+              contactId: lead.contact.id,
+              contactName: `${lead.contact.first_name} ${lead.contact.last_name}`
             });
-            setShowSMSDialog(false);
+            
+            try {
+              await sendSMS({
+                to: lead.contact.phone || '',
+                message,
+                contactId: lead.contact.id
+              });
+              
+              console.log('✅ LeadDetails: SMS sent successfully, closing dialog');
+              setShowSMSDialog(false);
+            } catch (error) {
+              console.error('🔴 LeadDetails: Failed to send SMS:', error);
+              // Dialog stays open on error so user can retry
+            }
           }}
         />
       )}
