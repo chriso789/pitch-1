@@ -1474,6 +1474,7 @@ export type Database = {
           address_street: string | null
           address_verification_data: Json | null
           address_zip: string | null
+          clj_formatted_number: string | null
           company_name: string | null
           contact_number: string | null
           created_at: string | null
@@ -1516,6 +1517,7 @@ export type Database = {
           address_street?: string | null
           address_verification_data?: Json | null
           address_zip?: string | null
+          clj_formatted_number?: string | null
           company_name?: string | null
           contact_number?: string | null
           created_at?: string | null
@@ -1558,6 +1560,7 @@ export type Database = {
           address_street?: string | null
           address_verification_data?: Json | null
           address_zip?: string | null
+          clj_formatted_number?: string | null
           company_name?: string | null
           contact_number?: string | null
           created_at?: string | null
@@ -4238,11 +4241,14 @@ export type Database = {
           contact_id: string | null
           created_at: string
           estimated_value: number | null
+          expires_at: string | null
           id: string
           manager_notes: string | null
           pipeline_entry_id: string
           priority: string
           requested_by: string | null
+          reviewed_at: string | null
+          reviewed_by: string | null
           status: string
           tenant_id: string
           updated_at: string
@@ -4255,11 +4261,14 @@ export type Database = {
           contact_id?: string | null
           created_at?: string
           estimated_value?: number | null
+          expires_at?: string | null
           id?: string
           manager_notes?: string | null
           pipeline_entry_id: string
           priority?: string
           requested_by?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           status?: string
           tenant_id: string
           updated_at?: string
@@ -4272,11 +4281,14 @@ export type Database = {
           contact_id?: string | null
           created_at?: string
           estimated_value?: number | null
+          expires_at?: string | null
           id?: string
           manager_notes?: string | null
           pipeline_entry_id?: string
           priority?: string
           requested_by?: string | null
+          reviewed_at?: string | null
+          reviewed_by?: string | null
           status?: string
           tenant_id?: string
           updated_at?: string
@@ -5218,6 +5230,7 @@ export type Database = {
           assigned_to: string | null
           clj_formatted_number: string | null
           contact_id: string | null
+          contact_number: number | null
           conversion_probability: number | null
           created_at: string | null
           created_by: string | null
@@ -5229,6 +5242,7 @@ export type Database = {
           id: string
           is_deleted: boolean | null
           last_status_change_reason: string | null
+          lead_number: number | null
           lead_quality_score: number | null
           lead_temperature: string | null
           location_id: string | null
@@ -5252,6 +5266,7 @@ export type Database = {
           assigned_to?: string | null
           clj_formatted_number?: string | null
           contact_id?: string | null
+          contact_number?: number | null
           conversion_probability?: number | null
           created_at?: string | null
           created_by?: string | null
@@ -5263,6 +5278,7 @@ export type Database = {
           id?: string
           is_deleted?: boolean | null
           last_status_change_reason?: string | null
+          lead_number?: number | null
           lead_quality_score?: number | null
           lead_temperature?: string | null
           location_id?: string | null
@@ -5286,6 +5302,7 @@ export type Database = {
           assigned_to?: string | null
           clj_formatted_number?: string | null
           contact_id?: string | null
+          contact_number?: number | null
           conversion_probability?: number | null
           created_at?: string | null
           created_by?: string | null
@@ -5297,6 +5314,7 @@ export type Database = {
           id?: string
           is_deleted?: boolean | null
           last_status_change_reason?: string | null
+          lead_number?: number | null
           lead_quality_score?: number | null
           lead_temperature?: string | null
           location_id?: string | null
@@ -6598,11 +6616,15 @@ export type Database = {
           budget_data: Json | null
           budget_file_path: string | null
           budget_variance_alerts: boolean | null
+          clj_formatted_number: string | null
+          contact_number: number | null
           created_at: string | null
           created_by: string | null
           description: string | null
           estimated_completion_date: string | null
           id: string
+          job_number: number | null
+          lead_number: number | null
           location_id: string | null
           metadata: Json | null
           name: string
@@ -6619,11 +6641,15 @@ export type Database = {
           budget_data?: Json | null
           budget_file_path?: string | null
           budget_variance_alerts?: boolean | null
+          clj_formatted_number?: string | null
+          contact_number?: number | null
           created_at?: string | null
           created_by?: string | null
           description?: string | null
           estimated_completion_date?: string | null
           id?: string
+          job_number?: number | null
+          lead_number?: number | null
           location_id?: string | null
           metadata?: Json | null
           name: string
@@ -6640,11 +6666,15 @@ export type Database = {
           budget_data?: Json | null
           budget_file_path?: string | null
           budget_variance_alerts?: boolean | null
+          clj_formatted_number?: string | null
+          contact_number?: number | null
           created_at?: string | null
           created_by?: string | null
           description?: string | null
           estimated_completion_date?: string | null
           id?: string
+          job_number?: number | null
+          lead_number?: number | null
           location_id?: string | null
           metadata?: Json | null
           name?: string
@@ -10381,6 +10411,10 @@ export type Database = {
         Args: { t: string }
         Returns: string[]
       }
+      format_clj_number: {
+        Args: { contact_num: number; job_num?: number; lead_num?: number }
+        Returns: string
+      }
       generate_clj_number: {
         Args: Record<PropertyKey, never>
         Returns: string
@@ -10644,6 +10678,18 @@ export type Database = {
       geomfromewkt: {
         Args: { "": string }
         Returns: unknown
+      }
+      get_next_contact_number: {
+        Args: { tenant_id_param: string }
+        Returns: number
+      }
+      get_next_job_number: {
+        Args: { pipeline_entry_id_param: string }
+        Returns: number
+      }
+      get_next_lead_number: {
+        Args: { contact_id_param: string }
+        Returns: number
       }
       get_proj4_from_srid: {
         Args: { "": number }

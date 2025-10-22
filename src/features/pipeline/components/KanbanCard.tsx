@@ -11,6 +11,7 @@ import { GripVertical, X, ArrowRight, MoreVertical, FileText, Mail } from "lucid
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import { CLJBadge } from '@/components/CLJBadge';
 
 interface KanbanCardProps {
   id: string;
@@ -319,14 +320,15 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
 
           {/* Display Number - Centered */}
           <div 
-            className="flex-1 text-center px-0.5 min-w-0"
+            className="flex-1 text-center px-0.5 min-w-0 flex items-center justify-center"
             title={displayNumber}
           >
-            <span 
-              className="font-mono font-semibold text-foreground block truncate text-[9px]"
-            >
-              {displayNumber}
-            </span>
+            <CLJBadge 
+              cljNumber={entry.clj_formatted_number} 
+              variant="outline" 
+              size="sm"
+              className="text-[8px] px-1 py-0"
+            />
           </div>
 
           {/* Communication Recency Badge */}

@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { CheckCircle, XCircle, DollarSign, AlertTriangle } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
+import { CLJBadge } from '@/components/CLJBadge';
 
 interface ManagerApprovalDialogProps {
   open: boolean;
@@ -123,8 +124,12 @@ export const ManagerApprovalDialog: React.FC<ManagerApprovalDialogProps> = ({
             <div className="text-sm text-muted-foreground">
               {pipelineEntry?.contacts?.address_street}, {pipelineEntry?.contacts?.address_city}
             </div>
-            <div className="text-sm font-mono text-muted-foreground mt-1">
-              C-L-J: {pipelineEntry?.clj_formatted_number || 'Not assigned'}
+            <div className="mt-2">
+              <CLJBadge 
+                cljNumber={pipelineEntry?.clj_formatted_number} 
+                showLabel 
+                size="lg"
+              />
             </div>
           </div>
 
@@ -145,15 +150,15 @@ export const ManagerApprovalDialog: React.FC<ManagerApprovalDialogProps> = ({
               />
             </div>
             {priority && (
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 mt-2">
                 <Badge variant={priority.color as any} className="flex items-center gap-1">
                   <priority.icon className="h-3 w-3" />
                   {priority.level.toUpperCase()} Priority
                 </Badge>
                 <span className="text-xs text-muted-foreground">
-                  {priority.level === 'high' ? 'Requires immediate attention' : 
-                   priority.level === 'medium' ? 'Standard approval process' : 
-                   'Low priority approval'}
+                  {priority.level === 'high' ? 'High priority approval (>$50K)' : 
+                   priority.level === 'medium' ? 'Medium priority approval ($25K-$50K)' : 
+                   'Low priority approval (<$25K)'}
                 </span>
               </div>
             )}
