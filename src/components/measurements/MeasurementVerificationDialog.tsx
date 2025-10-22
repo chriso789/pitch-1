@@ -358,7 +358,7 @@ export function MeasurementVerificationDialog({
               <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
                 📏 Linear Features
               </h3>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-3">
                 {[
                   { label: 'Ridge', value: ridge },
                   { label: 'Hip', value: hip },
@@ -367,9 +367,9 @@ export function MeasurementVerificationDialog({
                   { label: 'Rake', value: rake },
                   { label: 'Step', value: step },
                 ].map(({ label, value }) => (
-                  <div key={label} className="p-2 bg-muted/30 rounded-lg">
-                    <div className="text-base font-bold">{value.toFixed(0)} ft</div>
-                    <div className="text-xs text-muted-foreground">{label}</div>
+                  <div key={label} className="p-3 bg-muted/30 rounded-lg border border-muted">
+                    <div className="text-lg font-bold">{value.toFixed(0)} ft</div>
+                    <div className="text-xs text-muted-foreground uppercase tracking-wide">{label}</div>
                   </div>
                 ))}
               </div>
