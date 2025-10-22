@@ -237,15 +237,32 @@ const ContactForm: React.FC<ContactFormProps> = ({
       }
 
       const contactData = {
-        ...formData,
+        // Basic contact info
+        first_name: formData.first_name,
+        last_name: formData.last_name,
+        email: formData.email || null,
+        phone: formData.phone || null,
+        company_name: formData.company_name || null,
+        type: formData.type,
+        notes: formData.notes || null,
+        tags: formData.tags || [],
+        
+        // Lead source
+        lead_source: formData.lead_source || null,
+        
+        // System fields
         tenant_id: profile.tenant_id,
+        assigned_to: assignedTo || null,
+        created_by_ghost: isGhostAccount ? user.id : null,
+        
         // Address fields
-        address_street: addressData?.street || "",
-        address_city: addressData?.city || "",
-        address_state: addressData?.state || "",
-        address_zip: addressData?.zip || "",
+        address_street: addressData?.street || null,
+        address_city: addressData?.city || null,
+        address_state: addressData?.state || null,
+        address_zip: addressData?.zip || null,
         latitude: addressData?.lat ? Number(addressData.lat) : null,
         longitude: addressData?.lng ? Number(addressData.lng) : null,
+        
         // Verification data
         verified_address: addressData ? {
           street: addressData.street,
@@ -257,11 +274,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
           place_id: addressData.place_id,
           formatted_address: addressData.formatted_address,
         } : null,
-        address_verification_data: addressVerificationData,
-        // User assignment
-        assigned_to: assignedTo || null,
-        // Ghost account data
-        created_by_ghost: isGhostAccount ? user.id : null,
+        address_verification_data: addressVerificationData || {},
       };
 
       const { data, error } = await supabase
