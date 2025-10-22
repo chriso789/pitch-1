@@ -29,6 +29,7 @@ export function PullMeasurementsButton({
   const [verificationData, setVerificationData] = useState<{
     measurement: any;
     tags: Record<string, any>;
+    satelliteImageUrl?: string;
   } | null>(null);
   const [showVerificationDialog, setShowVerificationDialog] = useState(false);
 
@@ -67,13 +68,36 @@ export function PullMeasurementsButton({
 
       const { measurement, tags } = data.data;
 
+      // Fetch satellite image
+      let satelliteImageUrl: string | undefined;
+      try {
+        const { data: imageData } = await supabase.functions.invoke('google-maps-proxy', {
+          body: { 
+            endpoint: 'satellite',
+            params: {
+              center: `${lat},${lng}`,
+              zoom: '20',
+              size: '640x640',
+              maptype: 'satellite',
+              scale: '2'
+            }
+          }
+        });
+
+        if (imageData?.image) {
+          satelliteImageUrl = `data:image/png;base64,${imageData.image}`;
+        }
+      } catch (imgError) {
+        console.warn('Failed to fetch satellite image:', imgError);
+      }
+
       // Show verification dialog instead of immediately applying
-      setVerificationData({ measurement, tags });
+      setVerificationData({ measurement, tags, satelliteImageUrl });
       setShowVerificationDialog(true);
       
       toast({
         title: "Measurements Pulled",
-        description: "Review the measurements before applying to estimates",
+        description: "Review and adjust measurements before applying",
       });
 
     } catch (err: any) {
@@ -88,22 +112,25 @@ export function PullMeasurementsButton({
     }
   }
 
-  const handleAcceptMeasurements = async () => {
+  const handleAcceptMeasurements = async (adjustedMeasurement?: any) => {
     if (!verificationData) return;
 
     const { measurement, tags } = verificationData;
+    const finalMeasurement = adjustedMeasurement || measurement;
 
     // Invalidate measurement cache
     queryClient.invalidateQueries({ queryKey: ['measurement', propertyId] });
 
     setSuccess(true);
     
+    const squares = adjustedMeasurement?.adjustedSquares || tags['roof.squares'];
+    
     toast({
       title: "Measurements Applied",
-      description: `${tags['roof.squares']?.toFixed(1)} squares ready for estimates`,
+      description: `${squares?.toFixed(1)} squares ready for estimates`,
     });
 
-    onSuccess?.(measurement, tags);
+    onSuccess?.(finalMeasurement, tags);
 
     // Reset success state after 3 seconds
     setTimeout(() => setSuccess(false), 3000);
@@ -159,6 +186,9 @@ export function PullMeasurementsButton({
           onOpenChange={setShowVerificationDialog}
           measurement={verificationData.measurement}
           tags={verificationData.tags}
+          satelliteImageUrl={verificationData.satelliteImageUrl}
+          centerLat={lat}
+          centerLng={lng}
           onAccept={handleAcceptMeasurements}
           onReject={handleRejectMeasurements}
         />
