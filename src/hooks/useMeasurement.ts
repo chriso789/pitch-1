@@ -43,3 +43,21 @@ export function usePullMeasurement() {
     return data.data as MeasurementData;
   };
 }
+
+export function useManualVerification() {
+  return async (propertyId: string, measurement: any, tags: Record<string, any>) => {
+    const { data, error } = await supabase.functions.invoke('measure', {
+      body: { 
+        action: 'manual-verify',
+        propertyId,
+        measurement,
+        tags
+      }
+    });
+
+    if (error) throw error;
+    if (!data?.ok) throw new Error(data?.error || 'Failed to save manual verification');
+
+    return data.data as MeasurementData;
+  };
+}

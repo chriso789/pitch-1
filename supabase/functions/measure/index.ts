@@ -620,7 +620,50 @@ serve(async (req) => {
         }, corsHeaders);
       }
 
-      return json({ ok: false, error: 'Invalid action. Use: latest, pull, or manual' }, corsHeaders, 400);
+      // Route: action=manual-verify
+      if (action === 'manual-verify') {
+        const { propertyId, measurement: manualMeasurement, tags: manualTags } = body;
+
+        if (!propertyId || !manualMeasurement || !manualTags) {
+          return json({ ok: false, error: 'propertyId, measurement, and tags required' }, corsHeaders, 400);
+        }
+
+        const { data: { user } } = await supabase.auth.getUser();
+        const userId = user?.id;
+
+        // Mark as manually verified with high confidence
+        const verifiedMeasurement = {
+          ...manualMeasurement,
+          property_id: propertyId,
+          source: manualMeasurement.source === 'manual' ? 'manual' : `${manualMeasurement.source}_verified`,
+          confidence: 0.95,
+          manually_verified: true,
+          verified_by: userId,
+          verified_at: new Date().toISOString()
+        };
+
+        // Save to database
+        const row = await persistMeasurement(supabase, verifiedMeasurement, userId);
+        
+        // Update tags with verified status
+        const updatedTags = {
+          ...manualTags,
+          'meta.manually_verified': true,
+          'meta.verified_by': userId,
+          'meta.verified_at': new Date().toISOString()
+        };
+        
+        await persistTags(supabase, row.id, propertyId, updatedTags, userId);
+
+        console.log('Manual verification saved:', { id: row.id, propertyId, userId });
+
+        return json({ 
+          ok: true, 
+          data: { measurement: row, tags: updatedTags } 
+        }, corsHeaders);
+      }
+
+      return json({ ok: false, error: 'Invalid action. Use: latest, pull, manual, or manual-verify' }, corsHeaders, 400);
     }
 
     // Fallback for GET requests (legacy path-based routing)

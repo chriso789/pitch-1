@@ -9,8 +9,10 @@ import { CheckCircle2, Edit3, X, Satellite, AlertCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { PolygonEditor } from './PolygonEditor';
 import { ComprehensiveMeasurementOverlay } from './ComprehensiveMeasurementOverlay';
+import { ManualMeasurementEditor } from './ManualMeasurementEditor';
 import { parseWKTPolygon, calculatePolygonAreaSqft, calculatePerimeterFt } from '@/utils/geoCoordinates';
 import { supabase } from '@/integrations/supabase/client';
+import { useManualVerification } from '@/hooks/useMeasurement';
 
 // Industry-standard roof pitch multipliers
 const PITCH_MULTIPLIERS: Record<string, number> = {
@@ -55,6 +57,9 @@ export function MeasurementVerificationDialog({
   const [isAccepting, setIsAccepting] = useState(false);
   const [adjustedPolygon, setAdjustedPolygon] = useState<[number, number][] | null>(null);
   const [adjustedArea, setAdjustedArea] = useState<number | null>(null);
+  const [showManualEditor, setShowManualEditor] = useState(false);
+  
+  const manualVerify = useManualVerification();
   
   // Manufacturer selection for material calculations
   const [selectedManufacturer, setSelectedManufacturer] = useState('GAF');
@@ -177,6 +182,22 @@ export function MeasurementVerificationDialog({
   const handleReject = () => {
     onReject();
     onOpenChange(false);
+  };
+
+  const handleManualMeasurementSave = async (updatedMeasurement: any, updatedTags: Record<string, any>) => {
+    try {
+      const propertyId = measurement?.property_id || '';
+      await manualVerify(propertyId, updatedMeasurement, updatedTags);
+      
+      // Update local state with manually verified measurements
+      Object.assign(measurement, updatedMeasurement);
+      Object.assign(tags, updatedTags);
+      
+      setShowManualEditor(false);
+    } catch (error) {
+      console.error('Manual verification error:', error);
+      throw error;
+    }
   };
 
   const getConfidenceLevel = () => {
@@ -582,12 +603,21 @@ export function MeasurementVerificationDialog({
             {confidence.dots < 3 && (
               <div className="flex items-start gap-2 p-2 bg-destructive/10 border border-destructive/20 rounded-lg">
                 <AlertCircle className="h-4 w-4 text-destructive mt-0.5" />
-                <div className="text-sm">
+                <div className="text-sm flex-1">
                   <p className="font-medium text-destructive">Low Confidence</p>
                   <p className="text-muted-foreground mt-1 text-xs">
-                    Consider verifying manually or pulling again.
+                    The automated measurement may have missed important roof features.
                   </p>
                 </div>
+                <Button 
+                  size="sm" 
+                  variant="outline"
+                  onClick={() => setShowManualEditor(true)}
+                  className="shrink-0"
+                >
+                  <Edit3 className="h-3 w-3 mr-1" />
+                  Verify Manually
+                </Button>
               </div>
             )}
           </div>
@@ -604,14 +634,11 @@ export function MeasurementVerificationDialog({
           </Button>
           <Button
             variant="outline"
-            onClick={() => {
-              onOpenChange(false);
-              // Future: Open manual edit dialog
-            }}
+            onClick={() => setShowManualEditor(true)}
             disabled={isAccepting}
           >
             <Edit3 className="h-4 w-4 mr-2" />
-            Edit Manually
+            Verify Manually
           </Button>
           <Button
             onClick={handleAccept}
@@ -623,6 +650,20 @@ export function MeasurementVerificationDialog({
           </Button>
         </DialogFooter>
       </DialogContent>
+
+      {/* Manual Measurement Editor Modal */}
+      {satelliteImageUrl && (
+        <ManualMeasurementEditor
+          open={showManualEditor}
+          onOpenChange={setShowManualEditor}
+          satelliteImageUrl={satelliteImageUrl}
+          initialMeasurement={measurement}
+          initialTags={tags}
+          centerLat={centerLat}
+          centerLng={centerLng}
+          onSave={handleManualMeasurementSave}
+        />
+      )}
     </Dialog>
   );
 }
