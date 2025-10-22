@@ -4,6 +4,7 @@
  */
 
 import { supabase } from '@/integrations/supabase/client';
+import { whisperASR } from './whisperASR';
 
 export interface CallState {
   callId: string | null;
@@ -103,6 +104,12 @@ class TelnyxService {
             startTime: new Date()
           });
           this.startDurationTimer();
+          // Start ASR if remote stream available
+          if (call.remoteStream && this.callState.callId) {
+            whisperASR.initialize().then(() => {
+              whisperASR.startCapture(call.remoteStream, this.callState.callId!);
+            });
+          }
         } else if (call.state === 'done') {
           this.updateCallState({ status: 'ended' });
           this.endCall();
@@ -199,6 +206,7 @@ class TelnyxService {
     }
 
     this.stopDurationTimer();
+    whisperASR.stopCapture();
 
     // Update DB
     if (this.callState.callId) {

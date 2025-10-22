@@ -40,6 +40,7 @@ import PresentationsPage from "./pages/PresentationsPage";
 import PresentationBuilderPage from "./pages/PresentationBuilderPage";
 import PresentationModePage from "./pages/PresentationModePage";
 import CustomerPresentationView from "./pages/CustomerPresentationView";
+import Campaigns from "./pages/Campaigns";
 
 
 const queryClient = new QueryClient({
@@ -102,6 +103,7 @@ const AppContent = () => {
         <Route path="/calendar" element={<Calendar />} />
         <Route path="/storm-canvass" element={<StormCanvass />} />
         <Route path="/dialer" element={<Dialer />} />
+        <Route path="/campaigns" element={<Campaigns />} />
         <Route path="/smartdocs" element={<SmartDocs />} />
         <Route path="/jobs" element={<Jobs />} />
         <Route path="/estimates" element={<Estimates />} />

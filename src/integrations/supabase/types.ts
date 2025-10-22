@@ -781,6 +781,64 @@ export type Database = {
           },
         ]
       }
+      call_events: {
+        Row: {
+          call_id: string | null
+          campaign_id: string | null
+          client_state: Json | null
+          created_at: string | null
+          event_data: Json | null
+          event_type: string
+          id: string
+          telnyx_call_control_id: string | null
+          tenant_id: string
+        }
+        Insert: {
+          call_id?: string | null
+          campaign_id?: string | null
+          client_state?: Json | null
+          created_at?: string | null
+          event_data?: Json | null
+          event_type: string
+          id?: string
+          telnyx_call_control_id?: string | null
+          tenant_id: string
+        }
+        Update: {
+          call_id?: string | null
+          campaign_id?: string | null
+          client_state?: Json | null
+          created_at?: string | null
+          event_data?: Json | null
+          event_type?: string
+          id?: string
+          telnyx_call_control_id?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_events_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_events_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "dialer_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_forwarding_log: {
         Row: {
           forwarded_number: string
@@ -928,55 +986,141 @@ export type Database = {
           },
         ]
       }
+      call_transcripts: {
+        Row: {
+          call_id: string
+          confidence: number | null
+          created_at: string | null
+          id: string
+          is_partial: boolean | null
+          speaker: string | null
+          tenant_id: string
+          timestamp_ms: number
+          transcript_text: string
+        }
+        Insert: {
+          call_id: string
+          confidence?: number | null
+          created_at?: string | null
+          id?: string
+          is_partial?: boolean | null
+          speaker?: string | null
+          tenant_id: string
+          timestamp_ms: number
+          transcript_text: string
+        }
+        Update: {
+          call_id?: string
+          confidence?: number | null
+          created_at?: string | null
+          id?: string
+          is_partial?: boolean | null
+          speaker?: string | null
+          tenant_id?: string
+          timestamp_ms?: number
+          transcript_text?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_transcripts_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "calls"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_transcripts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       calls: {
         Row: {
+          answered_at: string | null
+          campaign_id: string | null
           contact_id: string | null
           created_at: string
           created_by: string | null
           direction: string | null
           duration: number | null
+          duration_seconds: number | null
+          ended_at: string | null
           from_number: string | null
+          handled_by: string | null
           id: string
           notes: string | null
+          recording_url: string | null
           status: string | null
+          telnyx_call_control_id: string | null
           tenant_id: string
           to_number: string | null
           updated_at: string
         }
         Insert: {
+          answered_at?: string | null
+          campaign_id?: string | null
           contact_id?: string | null
           created_at?: string
           created_by?: string | null
           direction?: string | null
           duration?: number | null
+          duration_seconds?: number | null
+          ended_at?: string | null
           from_number?: string | null
+          handled_by?: string | null
           id?: string
           notes?: string | null
+          recording_url?: string | null
           status?: string | null
+          telnyx_call_control_id?: string | null
           tenant_id: string
           to_number?: string | null
           updated_at?: string
         }
         Update: {
+          answered_at?: string | null
+          campaign_id?: string | null
           contact_id?: string | null
           created_at?: string
           created_by?: string | null
           direction?: string | null
           duration?: number | null
+          duration_seconds?: number | null
+          ended_at?: string | null
           from_number?: string | null
+          handled_by?: string | null
           id?: string
           notes?: string | null
+          recording_url?: string | null
           status?: string | null
+          telnyx_call_control_id?: string | null
           tenant_id?: string
           to_number?: string | null
           updated_at?: string
         }
         Relationships: [
           {
+            foreignKeyName: "calls_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "dialer_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
             foreignKeyName: "calls_contact_id_fkey"
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calls_handled_by_fkey"
+            columns: ["handled_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
             referencedColumns: ["id"]
           },
         ]
@@ -1833,39 +1977,63 @@ export type Database = {
       }
       dialer_campaigns: {
         Row: {
+          avg_talk_time_seconds: number | null
+          caller_id: string | null
+          completed_at: string | null
           created_at: string
           created_by: string | null
           description: string | null
           id: string
           is_active: boolean
           list_id: string | null
+          max_parallel_calls: number | null
           name: string
+          started_at: string | null
           status: string
           tenant_id: string
+          total_answered: number | null
+          total_attempts: number | null
+          total_bridged: number | null
           updated_at: string
         }
         Insert: {
+          avg_talk_time_seconds?: number | null
+          caller_id?: string | null
+          completed_at?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
           id?: string
           is_active?: boolean
           list_id?: string | null
+          max_parallel_calls?: number | null
           name: string
+          started_at?: string | null
           status?: string
           tenant_id: string
+          total_answered?: number | null
+          total_attempts?: number | null
+          total_bridged?: number | null
           updated_at?: string
         }
         Update: {
+          avg_talk_time_seconds?: number | null
+          caller_id?: string | null
+          completed_at?: string | null
           created_at?: string
           created_by?: string | null
           description?: string | null
           id?: string
           is_active?: boolean
           list_id?: string | null
+          max_parallel_calls?: number | null
           name?: string
+          started_at?: string | null
           status?: string
           tenant_id?: string
+          total_answered?: number | null
+          total_attempts?: number | null
+          total_bridged?: number | null
           updated_at?: string
         }
         Relationships: [
@@ -10825,6 +10993,18 @@ export type Database = {
         Args: { "": unknown }
         Returns: unknown
       }
+      increment_campaign_answered: {
+        Args: { p_campaign_id: string }
+        Returns: undefined
+      }
+      increment_campaign_attempts: {
+        Args: { p_campaign_id: string }
+        Returns: undefined
+      }
+      increment_campaign_bridged: {
+        Args: { p_campaign_id: string }
+        Returns: undefined
+      }
       insert_measurement: {
         Args: {
           p_created_by: string
@@ -12234,6 +12414,10 @@ export type Database = {
       unlockrows: {
         Args: { "": string }
         Returns: number
+      }
+      update_campaign_avg_talk_time: {
+        Args: { p_campaign_id: string; p_duration: number }
+        Returns: undefined
       }
       updategeometrysrid: {
         Args: {

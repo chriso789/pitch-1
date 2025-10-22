@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { telnyxService, CallState } from '@/services/telnyxService';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { AgentAssist } from './AgentAssist';
 
 export const SoftphonePanel = () => {
   const [callState, setCallState] = useState<CallState>(telnyxService.getCallState());
@@ -95,16 +96,17 @@ export const SoftphonePanel = () => {
   };
 
   return (
-    <Card className="w-full max-w-sm">
-      <CardHeader>
-        <CardTitle className="flex items-center justify-between">
-          <span>Softphone</span>
-          <Badge variant="outline" className={cn('transition-colors', getStatusColor())}>
-            {callState.status}
-          </Badge>
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+      <Card className="w-full">
+        <CardHeader>
+          <CardTitle className="flex items-center justify-between">
+            <span>Softphone</span>
+            <Badge variant="outline" className={cn('transition-colors', getStatusColor())}>
+              {callState.status}
+            </Badge>
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-4">
         {!isInitialized ? (
           <Button 
             onClick={handleInitialize} 
@@ -197,5 +199,7 @@ export const SoftphonePanel = () => {
         )}
       </CardContent>
     </Card>
+    <AgentAssist callId={callState.status === 'active' ? callState.callId : null} />
+    </div>
   );
 };
