@@ -138,6 +138,7 @@ export function PullMeasurementsButton({
 
   const handleRejectMeasurements = () => {
     setVerificationData(null);
+    setShowVerificationDialog(false);
     toast({
       title: "Measurements Rejected",
       description: "Pull measurements again or enter manually",
@@ -183,7 +184,13 @@ export function PullMeasurementsButton({
       {verificationData && (
         <MeasurementVerificationDialog
           open={showVerificationDialog}
-          onOpenChange={setShowVerificationDialog}
+          onOpenChange={(open) => {
+            setShowVerificationDialog(open);
+            if (!open) {
+              // Clear verification data when dialog is closed
+              setVerificationData(null);
+            }
+          }}
           measurement={verificationData.measurement}
           tags={verificationData.tags}
           satelliteImageUrl={verificationData.satelliteImageUrl}

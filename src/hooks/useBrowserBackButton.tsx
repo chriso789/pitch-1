@@ -39,14 +39,20 @@ export const useBrowserBackButton = ({
 
   // Custom back function that respects history
   const goBack = useCallback(() => {
-    const hasHistory = window.history.length > 1;
-    
-    if (hasHistory) {
-      window.history.back();
+    // Check if we have location state indicating where we came from
+    if (location.state?.from) {
+      navigate(location.state.from);
     } else {
-      navigate(fallbackPath);
+      // Use navigate(-1) which is more reliable than window.history.back()
+      // It will navigate to the previous entry in the history stack
+      try {
+        navigate(-1);
+      } catch {
+        // Fallback if navigate(-1) fails
+        navigate(fallbackPath);
+      }
     }
-  }, [navigate, fallbackPath]);
+  }, [navigate, fallbackPath, location.state]);
 
   return {
     goBack
