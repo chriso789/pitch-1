@@ -11,7 +11,7 @@ import {
   Loader2, ArrowLeft, MapPin, User, Phone, Mail, 
   FileText, CheckCircle, AlertCircle, ExternalLink,
   DollarSign, Hammer, Package, Settings, ChevronLeft,
-  ChevronRight, X, Camera, Image as ImageIcon, Edit2, Plus
+  ChevronRight, X, Camera, Image as ImageIcon, Edit2, Plus, MessageSquare
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -795,12 +795,42 @@ const LeadDetails = () => {
                   <Phone className="h-3 w-3 mr-1" />
                   Call
                 </Button>
-                <Button size="sm" variant="outline" className="flex-1">
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="flex-1"
+                  onClick={() => {
+                    if (lead?.contact?.email) {
+                      setShowEmailComposer(true);
+                    } else {
+                      toast({
+                        title: "No email address",
+                        description: "This contact doesn't have an email address on file.",
+                        variant: "destructive"
+                      });
+                    }
+                  }}
+                >
                   <Mail className="h-3 w-3 mr-1" />
                   Email
                 </Button>
-                <Button size="sm" variant="outline" className="flex-1">
-                  <Phone className="h-3 w-3 mr-1" />
+                <Button 
+                  size="sm" 
+                  variant="outline" 
+                  className="flex-1"
+                  onClick={() => {
+                    if (lead?.contact?.phone) {
+                      setShowSMSDialog(true);
+                    } else {
+                      toast({
+                        title: "No phone number",
+                        description: "This contact doesn't have a phone number on file.",
+                        variant: "destructive"
+                      });
+                    }
+                  }}
+                >
+                  <MessageSquare className="h-3 w-3 mr-1" />
                   SMS
                 </Button>
               </div>
