@@ -407,12 +407,12 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
               <Button
                 variant="ghost"
                 size="sm"
-                className="absolute bottom-0 right-0 h-5 w-5 p-0 text-destructive/70 hover:text-destructive hover:bg-destructive/10 opacity-40 group-hover:opacity-100 transition-opacity"
+                className="absolute bottom-0.5 right-0.5 h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/20 opacity-70 group-hover:opacity-100 transition-opacity rounded-sm"
                 onClick={handleDeleteClick}
                 onPointerDown={(e) => e.stopPropagation()}
                 aria-label={`Delete ${displayNumber}`}
               >
-                <X className="h-3.5 w-3.5" />
+                <X className="h-4 w-4" />
               </Button>
             </AlertDialogTrigger>
             <AlertDialogContent>
