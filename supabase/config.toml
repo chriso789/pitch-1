@@ -188,3 +188,12 @@ verify_jwt = true
 
 [functions.measure]
 verify_jwt = true
+
+[functions.text-to-speech-enhanced]
+verify_jwt = false
+
+[functions.voice-inbound]
+verify_jwt = false
+
+[functions.telnyx-mint-jwt]
+verify_jwt = true

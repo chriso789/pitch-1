@@ -1,8 +1,38 @@
+import { useState } from "react";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { HelpCircle, Mail, FileText, Video } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { HelpCircle, Mail, FileText, Video, Play } from "lucide-react";
+import { VideoWalkthrough } from "@/shared/components/VideoWalkthrough";
 
 const HelpPage = () => {
+  const [showWalkthrough, setShowWalkthrough] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const [currentSection, setCurrentSection] = useState("dashboard");
+
+  if (showWalkthrough) {
+    return (
+      <GlobalLayout>
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold">Product Walkthrough</h1>
+              <p className="text-muted-foreground mt-2">Comprehensive tour of PITCH CRM features</p>
+            </div>
+            <Button variant="outline" onClick={() => setShowWalkthrough(false)}>
+              Back to Help
+            </Button>
+          </div>
+          <VideoWalkthrough
+            onSectionChange={setCurrentSection}
+            isPlaying={isPlaying}
+            onPlayingChange={setIsPlaying}
+          />
+        </div>
+      </GlobalLayout>
+    );
+  }
+
   return (
     <GlobalLayout>
       <div className="space-y-6">
@@ -10,6 +40,24 @@ const HelpPage = () => {
           <h1 className="text-3xl font-bold">Help & Support</h1>
           <p className="text-muted-foreground mt-2">Get assistance and learn how to use the platform</p>
         </div>
+
+        <Card className="bg-gradient-to-br from-primary/10 to-secondary/10 border-primary/20">
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              <Video className="h-5 w-5" />
+              Interactive Product Walkthrough
+            </CardTitle>
+            <CardDescription>
+              New to PITCH CRM? Take our comprehensive guided tour to learn all features
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button onClick={() => setShowWalkthrough(true)} size="lg" className="gap-2">
+              <Play className="h-5 w-5" />
+              Start Walkthrough
+            </Button>
+          </CardContent>
+        </Card>
 
         <div className="grid gap-6 md:grid-cols-2">
           <Card>

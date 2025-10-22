@@ -9957,6 +9957,53 @@ export type Database = {
         }
         Relationships: []
       }
+      walkthrough_analytics: {
+        Row: {
+          completed: boolean
+          created_at: string
+          dropped_off: boolean
+          id: string
+          step_id: string
+          step_number: number
+          tenant_id: string
+          time_spent: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          completed?: boolean
+          created_at?: string
+          dropped_off?: boolean
+          id?: string
+          step_id: string
+          step_number: number
+          tenant_id: string
+          time_spent?: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          completed?: boolean
+          created_at?: string
+          dropped_off?: boolean
+          id?: string
+          step_id?: string
+          step_number?: number
+          tenant_id?: string
+          time_spent?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "walkthrough_analytics_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       weather_cache: {
         Row: {
           cached_at: string

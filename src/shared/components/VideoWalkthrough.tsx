@@ -10,11 +10,14 @@ import {
   Volume2,
   VolumeX,
   Maximize,
-  Minimize
+  Minimize,
+  Download,
+  Camera
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { screenshotCapture } from '@/services/screenshotCapture';
 
 interface WalkthroughStep {
   id: string;
@@ -53,9 +56,13 @@ export const VideoWalkthrough: React.FC<VideoWalkthroughProps> = ({
   const [playbackSpeed, setPlaybackSpeed] = useState(1);
   const [currentCaption, setCurrentCaption] = useState('');
   const [isBuffering, setIsBuffering] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [screenshots, setScreenshots] = useState<Record<string, string>>({});
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const recordedChunksRef = useRef<Blob[]>([]);
   const { toast } = useToast();
 
   const walkthroughSteps: WalkthroughStep[] = [
@@ -405,6 +412,126 @@ export const VideoWalkthrough: React.FC<VideoWalkthroughProps> = ({
     }
   };
 
+  const captureCurrentScreen = async () => {
+    try {
+      const screenshot = await screenshotCapture.captureScreen();
+      const stepId = currentStepData.id;
+      setScreenshots(prev => ({ ...prev, [stepId]: screenshot }));
+      toast({
+        title: "Screenshot captured",
+        description: "Screen capture saved for this step",
+      });
+    } catch (error) {
+      console.error('Screenshot capture failed:', error);
+      toast({
+        title: "Capture failed",
+        description: "Unable to capture screenshot",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({
+        video: { mediaSource: 'screen' } as any,
+        audio: true
+      });
+
+      const mediaRecorder = new MediaRecorder(stream, {
+        mimeType: 'video/webm;codecs=vp9'
+      });
+
+      mediaRecorderRef.current = mediaRecorder;
+      recordedChunksRef.current = [];
+
+      mediaRecorder.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          recordedChunksRef.current.push(event.data);
+        }
+      };
+
+      mediaRecorder.onstop = () => {
+        const blob = new Blob(recordedChunksRef.current, { type: 'video/webm' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `pitch-crm-walkthrough-${Date.now()}.webm`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        stream.getTracks().forEach(track => track.stop());
+        
+        toast({
+          title: "Recording saved",
+          description: "Video walkthrough has been downloaded",
+        });
+      };
+
+      mediaRecorder.start();
+      setIsRecording(true);
+      handlePlay();
+
+      toast({
+        title: "Recording started",
+        description: "Walkthrough recording in progress",
+      });
+    } catch (error) {
+      console.error('Recording failed:', error);
+      toast({
+        title: "Recording failed",
+        description: "Unable to start screen recording",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.stop();
+      setIsRecording(false);
+      handleStop();
+    }
+  };
+
+  // Auto-capture screenshots as walkthrough progresses
+  useEffect(() => {
+    if (isPlaying && !screenshots[currentStepData.id]) {
+      const captureTimeout = setTimeout(() => {
+        captureCurrentScreen();
+      }, 1000);
+      return () => clearTimeout(captureTimeout);
+    }
+  }, [currentStep, isPlaying]);
+
+  // Save progress to localStorage
+  useEffect(() => {
+    if (currentStep > 0 || currentTime > 0) {
+      localStorage.setItem('walkthrough_progress', JSON.stringify({
+        currentStep,
+        currentTime,
+        completedSteps: currentStep,
+        lastViewed: new Date().toISOString()
+      }));
+    }
+  }, [currentStep, currentTime]);
+
+  // Load progress on mount
+  useEffect(() => {
+    const savedProgress = localStorage.getItem('walkthrough_progress');
+    if (savedProgress) {
+      try {
+        const { currentStep: savedStep } = JSON.parse(savedProgress);
+        if (savedStep > 0 && savedStep < walkthroughSteps.length) {
+          // Optionally restore progress
+          // setCurrentStep(savedStep);
+        }
+      } catch (e) {
+        console.error('Failed to load walkthrough progress:', e);
+      }
+    }
+  }, []);
+
   const currentStepData = walkthroughSteps[currentStep];
   const progress = (currentTime / currentStepData.duration) * 100;
   const totalProgress = ((currentStep * 100) + progress) / walkthroughSteps.length;
@@ -523,10 +650,39 @@ export const VideoWalkthrough: React.FC<VideoWalkthroughProps> = ({
               <option value={1.5}>1.5x</option>
               <option value={2}>2x</option>
             </select>
+
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={captureCurrentScreen}
+              title="Capture screenshot"
+            >
+              <Camera className="h-4 w-4" />
+            </Button>
+
+            {!isRecording ? (
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={startRecording}
+                title="Record walkthrough"
+              >
+                <Download className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={stopRecording}
+                title="Stop recording"
+              >
+                <Square className="h-4 w-4" />
+              </Button>
+            )}
           </div>
 
           <Badge variant="outline">
-            {audioEnabled ? 'Audio + Captions' : 'Captions Only'}
+            {isRecording ? 'Recording...' : audioEnabled ? 'Audio + Captions' : 'Captions Only'}
           </Badge>
         </div>
       </div>
