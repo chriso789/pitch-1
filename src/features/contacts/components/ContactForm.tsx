@@ -203,8 +203,8 @@ const ContactForm: React.FC<ContactFormProps> = ({
         address_city: addressData?.city || "",
         address_state: addressData?.state || "",
         address_zip: addressData?.zip || "",
-        latitude: addressData?.lat,
-        longitude: addressData?.lng,
+        latitude: addressData?.lat ? Number(addressData.lat) : null,
+        longitude: addressData?.lng ? Number(addressData.lng) : null,
         // Verification data
         verified_address: addressData ? {
           street: addressData.street,
