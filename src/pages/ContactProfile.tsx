@@ -10,6 +10,7 @@ import { ContactDetailsTab } from "@/components/contact-profile/ContactDetailsTa
 import { ContactJobsTab } from "@/components/contact-profile/ContactJobsTab";
 import { ContactCommunicationTab } from "@/components/contact-profile/ContactCommunicationTab";
 import { SkipTraceButton } from "@/components/skip-trace/SkipTraceButton";
+import { CallButton, CallHistory } from "@/components/telephony";
 import { LeadCreationDialog } from "@/components/LeadCreationDialog";
 import { JobNumberBreakdown } from "@/components/JobNumberBreakdown";
 import { JobApprovalDialog } from "@/components/JobApprovalDialog";
@@ -174,6 +175,14 @@ const ContactProfile = () => {
               </div>
             </div>
             <div className="flex items-center gap-2">
+              {contact.phone && (
+                <CallButton 
+                  phoneNumber={contact.phone}
+                  contactId={contact.id}
+                  contactName={`${contact.first_name} ${contact.last_name}`}
+                  size="default"
+                />
+              )}
               <SkipTraceButton 
                 contactId={id!} 
                 onComplete={fetchContactData}
@@ -297,7 +306,10 @@ const ContactProfile = () => {
           </TabsContent>
 
           <TabsContent value="communication" className="space-y-0">
-            <ContactCommunicationTab contact={contact} />
+            <div className="space-y-6">
+              <ContactCommunicationTab contact={contact} />
+              <CallHistory contactId={contact.id} />
+            </div>
           </TabsContent>
 
           <TabsContent value="documents" className="space-y-0">
