@@ -30,6 +30,7 @@ import { CallDispositionDialog } from '@/components/communication/CallDispositio
 import { SMSComposerDialog } from '@/components/communication/SMSComposerDialog';
 import { FloatingEmailComposer } from '@/components/messaging/FloatingEmailComposer';
 import { BackButton } from '@/shared/components/BackButton';
+import { useSendSMS } from '@/hooks/useSendSMS';
 
 interface LeadDetailsData {
   id: string;
@@ -109,6 +110,9 @@ const LeadDetails = () => {
   // Communication states
   const [showEmailComposer, setShowEmailComposer] = useState(false);
   const [showSMSDialog, setShowSMSDialog] = useState(false);
+  
+  // SMS sending hook
+  const { sendSMS } = useSendSMS();
 
   // Define callback at component top level (not inside render function)
   const handleReadinessChange = React.useCallback((isReady: boolean, data: any) => {
@@ -945,8 +949,12 @@ const LeadDetails = () => {
           phoneNumber={lead.contact.phone || ''}
           contactName={`${lead.contact.first_name} ${lead.contact.last_name}`}
           onSend={async (message) => {
-            console.log('Sending SMS:', message);
-            // SMS sending is handled by the dialog
+            await sendSMS({
+              to: lead.contact.phone || '',
+              message,
+              contactId: lead.contact.id
+            });
+            setShowSMSDialog(false);
           }}
         />
       )}
