@@ -55,10 +55,29 @@ export function MeasurementVerificationDialog({
   const [adjustedArea, setAdjustedArea] = useState<number | null>(null);
   
   // Editable pitch and waste
-  const [selectedPitch, setSelectedPitch] = useState(tags['roof.pitch'] || '4/12');
+  // Helper function to derive pitch from pitch factor
+  const derivePitchFromFactor = (factor: number): string => {
+    if (!factor) return '4/12';
+    
+    let closestPitch = '4/12';
+    let minDiff = Infinity;
+    
+    for (const [pitch, multiplier] of Object.entries(PITCH_MULTIPLIERS)) {
+      const diff = Math.abs(multiplier - factor);
+      if (diff < minDiff) {
+        minDiff = diff;
+        closestPitch = pitch;
+      }
+    }
+    
+    return closestPitch;
+  };
+
+  const defaultPitch = measurement?.faces?.[0]?.pitch || derivePitchFromFactor(tags['roof.pitch_factor']) || '4/12';
+  const [selectedPitch, setSelectedPitch] = useState(defaultPitch);
   const [pitchFactor, setPitchFactor] = useState(tags['roof.pitch_factor'] || 1.0541);
-  const [wastePercent, setWastePercent] = useState(tags['roof.waste_percent'] || 12);
-  const [faceCount, setFaceCount] = useState(tags['roof.face_count'] || 0);
+  const [wastePercent, setWastePercent] = useState(tags['roof.waste_pct'] || 12);
+  const [faceCount, setFaceCount] = useState(tags['roof.faces_count'] || 0);
   
   // Material quantities (recalculated)
   const [shingleBundles, setShingleBundles] = useState(0);
@@ -126,21 +145,21 @@ export function MeasurementVerificationDialog({
   };
 
   // Calculate measurements (use adjusted values if available)
-  const planArea = adjustedArea || tags['roof.plan_area'] || 0;
+  const planArea = adjustedArea || tags['roof.plan_sqft'] || 0;
   const roofAreaNoWaste = planArea * pitchFactor;
   const totalAreaWithWaste = roofAreaNoWaste * (1 + wastePercent / 100);
   const roofSquares = totalAreaWithWaste / 100;
   const perimeter = buildingPolygon.length > 0 
     ? calculatePerimeterFt(adjustedPolygon || buildingPolygon)
-    : (tags['roof.perimeter'] || 0);
+    : (tags['lf.eave'] || 0) + (tags['lf.rake'] || 0) + (tags['lf.ridge'] || 0) + (tags['lf.hip'] || 0) + (tags['lf.valley'] || 0) + (tags['lf.step'] || 0);
 
-  // Linear features
-  const ridge = tags['roof.ridge'] || 0;
-  const hip = tags['roof.hip'] || 0;
-  const valley = tags['roof.valley'] || 0;
-  const eave = tags['roof.eave'] || 0;
-  const rake = tags['roof.rake'] || 0;
-  const step = tags['roof.step'] || 0;
+  // Linear features (use 'lf.' prefix for tag keys)
+  const ridge = tags['lf.ridge'] || 0;
+  const hip = tags['lf.hip'] || 0;
+  const valley = tags['lf.valley'] || 0;
+  const eave = tags['lf.eave'] || 0;
+  const rake = tags['lf.rake'] || 0;
+  const step = tags['lf.step'] || 0;
 
   // Recalculate materials when measurements change
   useEffect(() => {
