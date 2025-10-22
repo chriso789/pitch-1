@@ -116,6 +116,31 @@ export function calculatePolygonAreaSqft(coords: [number, number][]): number {
 }
 
 /**
+ * Calculate perimeter of polygon in feet from lng/lat coordinates
+ */
+export function calculatePerimeterFt(coords: [number, number][]): number {
+  if (coords.length < 2) return 0;
+  
+  let totalFt = 0;
+  for (let i = 0; i < coords.length; i++) {
+    const j = (i + 1) % coords.length;
+    const [lng1, lat1] = coords[i];
+    const [lng2, lat2] = coords[j];
+    
+    const midLat = (lat1 + lat2) / 2;
+    const metersPerDegLat = 111320;
+    const metersPerDegLng = 111320 * Math.cos((midLat * Math.PI) / 180);
+    
+    const dx = (lng2 - lng1) * metersPerDegLng;
+    const dy = (lat2 - lat1) * metersPerDegLat;
+    const distM = Math.sqrt(dx * dx + dy * dy);
+    totalFt += distM * 3.28084; // meters to feet
+  }
+  
+  return totalFt;
+}
+
+/**
  * Parse WKT polygon string to coordinate array
  */
 export function parseWKTPolygon(wkt: string): [number, number][] {

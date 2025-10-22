@@ -3,10 +3,29 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Input } from '@/components/ui/input';
 import { CheckCircle2, Edit3, X, Satellite, AlertCircle } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { PolygonEditor } from './PolygonEditor';
-import { parseWKTPolygon, calculatePolygonAreaSqft } from '@/utils/geoCoordinates';
+import { parseWKTPolygon, calculatePolygonAreaSqft, calculatePerimeterFt } from '@/utils/geoCoordinates';
+
+// Industry-standard roof pitch multipliers
+const PITCH_MULTIPLIERS: Record<string, number> = {
+  'flat': 1.0000,
+  '1/12': 1.0035,
+  '2/12': 1.0138,
+  '3/12': 1.0308,
+  '4/12': 1.0541,
+  '5/12': 1.0833,
+  '6/12': 1.1180,
+  '7/12': 1.1577,
+  '8/12': 1.2019,
+  '9/12': 1.2500,
+  '10/12': 1.3017,
+  '11/12': 1.3566,
+  '12/12': 1.4142,
+};
 
 interface MeasurementVerificationDialogProps {
   open: boolean;
@@ -34,33 +53,50 @@ export function MeasurementVerificationDialog({
   const [isAccepting, setIsAccepting] = useState(false);
   const [adjustedPolygon, setAdjustedPolygon] = useState<[number, number][] | null>(null);
   const [adjustedArea, setAdjustedArea] = useState<number | null>(null);
+  
+  // Editable pitch and waste
+  const [selectedPitch, setSelectedPitch] = useState(tags['roof.pitch'] || '4/12');
+  const [pitchFactor, setPitchFactor] = useState(tags['roof.pitch_factor'] || 1.0541);
+  const [wastePercent, setWastePercent] = useState(tags['roof.waste_percent'] || 12);
+  const [faceCount, setFaceCount] = useState(tags['roof.face_count'] || 0);
+  
+  // Material quantities (recalculated)
+  const [shingleBundles, setShingleBundles] = useState(0);
+  const [ridgeCapBundles, setRidgeCapBundles] = useState(0);
+  const [valleyRolls, setValleyRolls] = useState(0);
+  const [dripEdgeSticks, setDripEdgeSticks] = useState(0);
+
+  const handlePitchChange = (pitch: string) => {
+    setSelectedPitch(pitch);
+    setPitchFactor(PITCH_MULTIPLIERS[pitch]);
+  };
 
   const handleAccept = async () => {
     setIsAccepting(true);
     
-    // If polygon was adjusted, create updated measurement object
-    if (adjustedPolygon && adjustedArea) {
-      const pitchFactor = tags['roof.pitch_factor'] || 1.0;
-      const wastePercent = tags['roof.waste_percent'] || 12;
-      
-      const planArea = adjustedArea;
-      const adjustedRoofArea = planArea * pitchFactor;
-      const totalArea = adjustedRoofArea * (1 + wastePercent / 100);
-      const squares = totalArea / 100;
+    const planArea = adjustedArea || tags['roof.plan_area'] || 0;
+    const roofArea = planArea * pitchFactor;
+    const totalWithWaste = roofArea * (1 + wastePercent / 100);
+    const squares = totalWithWaste / 100;
+    const perimeter = buildingPolygon.length > 0 
+      ? calculatePerimeterFt(adjustedPolygon || buildingPolygon)
+      : (tags['roof.perimeter'] || 0);
 
-      const updatedMeasurement = {
-        ...measurement,
-        adjustedPolygon,
-        adjustedPlanArea: planArea,
-        adjustedTotalArea: totalArea,
-        adjustedSquares: squares
-      };
+    const updatedMeasurement = {
+      ...measurement,
+      adjustedPolygon,
+      adjustedPlanArea: planArea,
+      adjustedRoofArea: roofArea,
+      adjustedTotalArea: totalWithWaste,
+      adjustedSquares: squares,
+      adjustedPitch: selectedPitch,
+      adjustedPitchFactor: pitchFactor,
+      adjustedWastePercent: wastePercent,
+      adjustedPerimeter: perimeter,
+      adjustedFaceCount: faceCount,
+    };
 
-      await onAccept(updatedMeasurement);
-    } else {
-      await onAccept();
-    }
-    
+    await onAccept(updatedMeasurement);
     setIsAccepting(false);
     onOpenChange(false);
   };
@@ -79,18 +115,6 @@ export function MeasurementVerificationDialog({
 
   const confidence = getConfidenceLevel();
 
-  // Extract measurements from tags (use adjusted values if available)
-  const roofSquares = adjustedArea 
-    ? (adjustedArea * (tags['roof.pitch_factor'] || 1.0) * (1 + (tags['roof.waste_percent'] || 12) / 100)) / 100
-    : (tags['roof.squares'] || 0);
-  const totalArea = adjustedArea
-    ? adjustedArea * (tags['roof.pitch_factor'] || 1.0) * (1 + (tags['roof.waste_percent'] || 12) / 100)
-    : (tags['roof.area'] || 0);
-  const planArea = adjustedArea || tags['roof.plan_area'] || 0;
-  const pitchFactor = tags['roof.pitch_factor'] || 1.0;
-  const wastePercent = tags['roof.waste_percent'] || 12;
-  const faceCount = tags['roof.face_count'] || 0;
-
   // Extract building polygon for editor
   const buildingPolygon = measurement?.faces?.[0]?.wkt 
     ? parseWKTPolygon(measurement.faces[0].wkt)
@@ -101,6 +125,15 @@ export function MeasurementVerificationDialog({
     setAdjustedArea(areaSqft);
   };
 
+  // Calculate measurements (use adjusted values if available)
+  const planArea = adjustedArea || tags['roof.plan_area'] || 0;
+  const roofAreaNoWaste = planArea * pitchFactor;
+  const totalAreaWithWaste = roofAreaNoWaste * (1 + wastePercent / 100);
+  const roofSquares = totalAreaWithWaste / 100;
+  const perimeter = buildingPolygon.length > 0 
+    ? calculatePerimeterFt(adjustedPolygon || buildingPolygon)
+    : (tags['roof.perimeter'] || 0);
+
   // Linear features
   const ridge = tags['roof.ridge'] || 0;
   const hip = tags['roof.hip'] || 0;
@@ -109,11 +142,13 @@ export function MeasurementVerificationDialog({
   const rake = tags['roof.rake'] || 0;
   const step = tags['roof.step'] || 0;
 
-  // Material quantities
-  const shingleBundles = tags['material.shingle_bundles'] || 0;
-  const ridgeCapBundles = tags['material.ridge_cap_bundles'] || 0;
-  const valleyRolls = tags['material.valley_rolls'] || 0;
-  const dripEdgeSticks = tags['material.drip_edge_sticks'] || 0;
+  // Recalculate materials when measurements change
+  useEffect(() => {
+    setShingleBundles(Math.ceil(roofSquares * 3));
+    setRidgeCapBundles(Math.ceil((ridge + hip) / 33));
+    setValleyRolls(Math.ceil(valley / 50));
+    setDripEdgeSticks(Math.ceil((eave + rake) / 10));
+  }, [roofSquares, ridge, hip, valley, eave, rake]);
 
   const source = measurement?.source || 'Unknown';
 
@@ -174,25 +209,81 @@ export function MeasurementVerificationDialog({
           <div className="space-y-6">
 
             {/* Overview Cards */}
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-4 gap-3">
               <Card className="p-3 text-center">
-                <div className="text-xl font-bold text-primary">{totalArea.toFixed(0)}</div>
-                <div className="text-xs text-muted-foreground mt-1">Total Area (sq ft)</div>
+                <div className="text-xl font-bold text-primary">{planArea.toFixed(0)}</div>
+                <div className="text-xs text-muted-foreground mt-1">Plan Area (sq ft)</div>
+              </Card>
+              <Card className="p-3 text-center">
+                <div className="text-xl font-bold text-primary">{roofAreaNoWaste.toFixed(0)}</div>
+                <div className="text-xs text-muted-foreground mt-1">Roof Area (sq ft)</div>
                 {adjustedArea && (
                   <Badge variant="secondary" className="mt-1 text-xs">Adjusted</Badge>
                 )}
+              </Card>
+              <Card className="p-3 text-center">
+                <div className="text-xl font-bold text-primary">{totalAreaWithWaste.toFixed(0)}</div>
+                <div className="text-xs text-muted-foreground mt-1">Total w/ Waste</div>
               </Card>
               <Card className="p-3 text-center">
                 <div className="text-xl font-bold text-primary">{roofSquares.toFixed(1)}</div>
-                <div className="text-xs text-muted-foreground mt-1">Roof Squares</div>
-                {adjustedArea && (
-                  <Badge variant="secondary" className="mt-1 text-xs">Adjusted</Badge>
-                )}
+                <div className="text-xs text-muted-foreground mt-1">Squares</div>
               </Card>
-              <Card className="p-3 text-center">
-                <div className="text-xl font-bold text-primary">{faceCount}</div>
-                <div className="text-xs text-muted-foreground mt-1">Roof Faces</div>
-              </Card>
+            </div>
+
+            {/* Adjustments Section */}
+            <div className="border border-primary/20 rounded-lg p-4 bg-primary/5">
+              <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
+                ⚙️ Adjustments
+                <Badge variant="outline" className="text-xs">Editable</Badge>
+              </h3>
+              
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <label className="text-sm text-muted-foreground">Roof Pitch:</label>
+                  <Select value={selectedPitch} onValueChange={handlePitchChange}>
+                    <SelectTrigger className="w-[140px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="flat">Flat (1.000)</SelectItem>
+                      <SelectItem value="1/12">1/12 (1.004)</SelectItem>
+                      <SelectItem value="2/12">2/12 (1.014)</SelectItem>
+                      <SelectItem value="3/12">3/12 (1.031)</SelectItem>
+                      <SelectItem value="4/12">4/12 (1.054)</SelectItem>
+                      <SelectItem value="5/12">5/12 (1.083)</SelectItem>
+                      <SelectItem value="6/12">6/12 (1.118)</SelectItem>
+                      <SelectItem value="7/12">7/12 (1.158)</SelectItem>
+                      <SelectItem value="8/12">8/12 (1.202)</SelectItem>
+                      <SelectItem value="9/12">9/12 (1.250)</SelectItem>
+                      <SelectItem value="10/12">10/12 (1.302)</SelectItem>
+                      <SelectItem value="11/12">11/12 (1.357)</SelectItem>
+                      <SelectItem value="12/12">12/12 (1.414)</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <label className="text-sm text-muted-foreground">Waste Factor:</label>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      value={wastePercent}
+                      onChange={(e) => setWastePercent(Number(e.target.value))}
+                      className="w-[80px]"
+                      min="0"
+                      max="50"
+                      step="1"
+                    />
+                    <span className="text-sm">%</span>
+                  </div>
+                </div>
+                
+                <div className="flex items-center justify-between text-xs text-muted-foreground">
+                  <span>Pitch Multiplier:</span>
+                  <span className="font-mono">{pitchFactor.toFixed(4)}</span>
+                </div>
+              </div>
             </div>
 
             {/* Roof Geometry */}
@@ -202,20 +293,41 @@ export function MeasurementVerificationDialog({
               </h3>
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between py-1.5 border-b">
-                  <span className="text-muted-foreground">Plan Area:</span>
+                  <span className="text-muted-foreground">Flat/Plan Area:</span>
                   <span className="font-medium">{planArea.toFixed(0)} sq ft</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b">
-                  <span className="text-muted-foreground">Adjusted Area:</span>
-                  <span className="font-medium">{totalArea.toFixed(0)} sq ft (×{pitchFactor.toFixed(3)})</span>
+                  <span className="text-muted-foreground">Roof Area (no waste):</span>
+                  <span className="font-medium">{roofAreaNoWaste.toFixed(0)} sq ft</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b">
-                  <span className="text-muted-foreground">Waste Percentage:</span>
-                  <span className="font-medium">{wastePercent}%</span>
+                  <span className="text-muted-foreground">Total Area (with waste):</span>
+                  <span className="font-medium">{totalAreaWithWaste.toFixed(0)} sq ft</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b">
+                  <span className="text-muted-foreground">Perimeter:</span>
+                  <span className="font-medium">{perimeter.toFixed(0)} ft</span>
+                </div>
+                <div className="flex justify-between py-1.5 border-b">
+                  <span className="text-muted-foreground">Pitch:</span>
+                  <span className="font-medium">{selectedPitch} (×{pitchFactor.toFixed(3)})</span>
                 </div>
                 <div className="flex justify-between py-1.5">
-                  <span className="text-muted-foreground">Face Count:</span>
-                  <span className="font-medium">{faceCount} planes</span>
+                  <span className="text-muted-foreground">Roof Facets:</span>
+                  <div className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      value={faceCount}
+                      onChange={(e) => setFaceCount(Number(e.target.value))}
+                      className="w-[60px] h-7"
+                      min="1"
+                      max="20"
+                    />
+                    <span className="text-xs text-muted-foreground">planes</span>
+                    {faceCount > 4 && (
+                      <Badge variant="outline" className="text-xs">Complex</Badge>
+                    )}
+                  </div>
                 </div>
               </div>
             </div>
