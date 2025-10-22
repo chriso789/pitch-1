@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -42,7 +43,7 @@ serve(async (req) => {
   }
 
   try {
-    const { audio } = await req.json();
+    const { audio, callId, callSid, contactId, tenantId } = await req.json();
     
     if (!audio) {
       throw new Error('No audio data provided');
@@ -77,8 +78,40 @@ serve(async (req) => {
     const result = await response.json();
     console.log('Transcription successful:', result.text);
 
+    // Trigger SmartWords analysis if tenant info provided
+    let smartwordsResult = null;
+    if (tenantId && result.text) {
+      try {
+        const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+        const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+        const supabase = createClient(supabaseUrl, supabaseKey);
+
+        const { data, error } = await supabase.functions.invoke('smartwords-analyzer', {
+          body: {
+            callId,
+            callSid,
+            transcript: result.text,
+            contactId,
+            tenantId
+          }
+        });
+
+        if (error) {
+          console.error('SmartWords analysis error:', error);
+        } else {
+          smartwordsResult = data;
+          console.log('SmartWords analysis complete:', data);
+        }
+      } catch (error) {
+        console.error('Failed to invoke SmartWords analyzer:', error);
+      }
+    }
+
     return new Response(
-      JSON.stringify({ text: result.text }),
+      JSON.stringify({ 
+        text: result.text,
+        smartwords: smartwordsResult
+      }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 

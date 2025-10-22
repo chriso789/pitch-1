@@ -276,11 +276,10 @@ export const Dialer: React.FC<DialerProps> = ({ preloadedContact, isLoadingConta
     if (!selectedDisposition || !currentContact) return;
 
     try {
-      // Log the call
       const callDuration = callStartTime ? 
         Math.floor((new Date().getTime() - callStartTime.getTime()) / 1000) : 0;
 
-      // Get user's tenant_id for the call log
+      // Get user's tenant_id
       const { data: userData } = await supabase.auth.getUser();
       const { data: profile } = await supabase
         .from('profiles')
@@ -288,34 +287,61 @@ export const Dialer: React.FC<DialerProps> = ({ preloadedContact, isLoadingConta
         .eq('id', userData.user?.id)
         .single();
 
-      const { error } = await supabase
-        .from('calls')
-        .insert([{
-          tenant_id: profile?.tenant_id,
-          status: selectedDisposition,
-          duration: callDuration,
-          notes: dispositionNotes
-        }]);
+      if (!profile?.tenant_id) {
+        throw new Error('Unable to determine tenant');
+      }
 
-      if (!error) {
-        toast({
-          title: "Call Logged",
-          description: `Call disposition saved: ${selectedDisposition}`,
-        });
+      // Create call log entry first (types may be out of sync, using any)
+      const { data: callLog, error: callError } = await supabase
+        .from('call_logs')
+        .insert({
+          caller_id: selectedCallerId,
+          callee_number: currentContact.phone || '',
+          status: 'completed',
+          duration: callDuration
+        } as any)
+        .select()
+        .single();
 
-        // Reset call state
-        setCallStartTime(null);
-        setShowDispositionDialog(false);
-        setSelectedDisposition("");
-        setDispositionNotes("");
-        
-        // Load next contact if in campaign
-        if (activeCampaign) {
-          loadNextContact();
-        }
+      if (callError) {
+        console.error('Error creating call log:', callError);
+        throw callError;
+      }
+
+      // Save call disposition
+      const { error: dispError } = await supabase.rpc('api_save_call_disposition', {
+        p_call_id: callLog.id,
+        p_disposition: selectedDisposition,
+        p_notes: dispositionNotes
+      });
+
+      if (dispError) {
+        console.error('Error saving disposition:', dispError);
+        throw dispError;
+      }
+
+      toast({
+        title: "Call Logged",
+        description: `Call disposition saved: ${selectedDisposition}`,
+      });
+
+      // Reset call state
+      setCallStartTime(null);
+      setShowDispositionDialog(false);
+      setSelectedDisposition("");
+      setDispositionNotes("");
+      
+      // Load next contact if in campaign
+      if (activeCampaign) {
+        loadNextContact();
       }
     } catch (error) {
       console.error('Error saving call disposition:', error);
+      toast({
+        title: "Error",
+        description: "Failed to save call disposition",
+        variant: "destructive"
+      });
     }
   };
 

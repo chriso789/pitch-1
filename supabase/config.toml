@@ -132,6 +132,9 @@ verify_jwt = true
 [functions.voice-transcribe]
 verify_jwt = true
 
+[functions.smartwords-analyzer]
+verify_jwt = true
+
 [functions.weather-risk-analyzer]
 verify_jwt = true
 

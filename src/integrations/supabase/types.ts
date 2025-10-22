@@ -740,6 +740,47 @@ export type Database = {
         }
         Relationships: []
       }
+      call_dispositions: {
+        Row: {
+          call_id: string | null
+          call_sid: string | null
+          created_at: string
+          created_by: string | null
+          disposition: string
+          id: string
+          notes: string | null
+          tenant_id: string
+        }
+        Insert: {
+          call_id?: string | null
+          call_sid?: string | null
+          created_at?: string
+          created_by?: string | null
+          disposition: string
+          id?: string
+          notes?: string | null
+          tenant_id: string
+        }
+        Update: {
+          call_id?: string | null
+          call_sid?: string | null
+          created_at?: string
+          created_by?: string | null
+          disposition?: string
+          id?: string
+          notes?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_dispositions_call_id_fkey"
+            columns: ["call_id"]
+            isOneToOne: false
+            referencedRelation: "call_logs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_forwarding_log: {
         Row: {
           forwarded_number: string
@@ -8386,6 +8427,45 @@ export type Database = {
           },
         ]
       }
+      smartwords_rules: {
+        Row: {
+          action_config: Json
+          action_type: string
+          created_at: string
+          id: string
+          is_active: boolean
+          keywords: string[]
+          name: string
+          priority: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          action_config?: Json
+          action_type: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          keywords: string[]
+          name: string
+          priority?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          action_config?: Json
+          action_type?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          keywords?: string[]
+          name?: string
+          priority?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       spatial_ref_sys: {
         Row: {
           auth_name: string | null
@@ -10173,6 +10253,10 @@ export type Database = {
           pipeline_entry_id_param: string
         }
         Returns: Json
+      }
+      api_save_call_disposition: {
+        Args: { p_call_id: string; p_disposition: string; p_notes?: string }
+        Returns: undefined
       }
       api_smartdoc_build_context: {
         Args: { p_extra?: Json; p_job_id?: string; p_lead_id?: string }
