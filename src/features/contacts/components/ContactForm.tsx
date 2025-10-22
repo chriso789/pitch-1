@@ -274,7 +274,13 @@ const ContactForm: React.FC<ContactFormProps> = ({
           place_id: addressData.place_id,
           formatted_address: addressData.formatted_address,
         } : null,
-        address_verification_data: addressVerificationData || {},
+        address_verification_data: addressVerificationData ? {
+          place_id: addressVerificationData.place_id || null,
+          formatted_address: addressVerificationData.formatted_address || null,
+          verification_timestamp: addressVerificationData.verification_timestamp || null,
+          verification_status: addressVerificationData.verification_status || null,
+          error: addressVerificationData.error || null,
+        } : {},
       };
 
       const { data, error } = await supabase
