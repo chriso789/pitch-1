@@ -28,6 +28,7 @@ import { SystemHealthCheck } from "@/components/settings/SystemHealthCheck";
 import { SettingsTabEditor } from "@/components/settings/SettingsTabEditor";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 interface SettingsTab {
   id: string;
@@ -41,39 +42,16 @@ interface SettingsTab {
 }
 
 export const Settings = () => {
-  const [currentUser, setCurrentUser] = useState<any>(null);
-  const [loading, setLoading] = useState(true);
+  const { user: currentUser, loading } = useCurrentUser();
   const [tabConfig, setTabConfig] = useState<SettingsTab[]>([]);
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const { toast } = useToast();
-
-  useEffect(() => {
-    loadCurrentUser();
-  }, []);
 
   useEffect(() => {
     if (currentUser) {
       loadTabConfiguration();
     }
   }, [currentUser]);
-
-  const loadCurrentUser = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-        setCurrentUser(profile);
-      }
-    } catch (error) {
-      console.error('Error loading current user:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const loadTabConfiguration = async () => {
     try {
