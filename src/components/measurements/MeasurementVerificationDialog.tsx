@@ -8,6 +8,7 @@ import { Input } from '@/components/ui/input';
 import { CheckCircle2, Edit3, X, Satellite, AlertCircle } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { PolygonEditor } from './PolygonEditor';
+import { ComprehensiveMeasurementOverlay } from './ComprehensiveMeasurementOverlay';
 import { parseWKTPolygon, calculatePolygonAreaSqft, calculatePerimeterFt } from '@/utils/geoCoordinates';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -121,7 +122,15 @@ export function MeasurementVerificationDialog({
   const defaultPitch = measurement?.faces?.[0]?.pitch || derivePitchFromFactor(tags['roof.pitch_factor']) || '4/12';
   const [selectedPitch, setSelectedPitch] = useState(defaultPitch);
   const [pitchFactor, setPitchFactor] = useState(tags['roof.pitch_factor'] || 1.0541);
-  const [wastePercent, setWastePercent] = useState(tags['roof.waste_pct'] || 12);
+  const normalizeWaste = (value: number) => {
+    const options = [10, 12, 15, 20];
+    return options.reduce((prev, curr) => 
+      Math.abs(curr - value) < Math.abs(prev - value) ? curr : prev
+    );
+  };
+  const [wastePercent, setWastePercent] = useState(
+    normalizeWaste(tags['roof.waste_pct'] || 12)
+  );
   const [faceCount, setFaceCount] = useState(tags['roof.faces_count'] || 0);
   
   // Material quantities (recalculated)
@@ -236,18 +245,35 @@ export function MeasurementVerificationDialog({
 
         <div className="grid grid-cols-1 lg:grid-cols-[1.2fr,1fr] gap-6">
           {/* Left Panel: Visual Editor */}
-          {satelliteImageUrl && buildingPolygon.length > 0 && (
+          {satelliteImageUrl && (measurement?.faces || buildingPolygon.length > 0) && (
             <div className="space-y-4">
-              <PolygonEditor
-                satelliteImageUrl={satelliteImageUrl}
-                buildingPolygon={buildingPolygon}
-                centerLng={centerLng}
-                centerLat={centerLat}
-                zoom={20}
-                onPolygonChange={handlePolygonChange}
-                canvasWidth={640}
-                canvasHeight={480}
-              />
+              {measurement?.faces ? (
+                <ComprehensiveMeasurementOverlay
+                  satelliteImageUrl={satelliteImageUrl}
+                  measurement={measurement}
+                  tags={tags}
+                  centerLng={centerLng}
+                  centerLat={centerLat}
+                  zoom={20}
+                  onMeasurementUpdate={(updatedMeasurement, updatedTags) => {
+                    Object.assign(measurement, updatedMeasurement);
+                    Object.assign(tags, updatedTags);
+                  }}
+                  canvasWidth={640}
+                  canvasHeight={480}
+                />
+              ) : (
+                <PolygonEditor
+                  satelliteImageUrl={satelliteImageUrl}
+                  buildingPolygon={buildingPolygon}
+                  centerLng={centerLng}
+                  centerLat={centerLat}
+                  zoom={20}
+                  onPolygonChange={handlePolygonChange}
+                  canvasWidth={640}
+                  canvasHeight={480}
+                />
+              )}
               
               {/* Source and Confidence */}
               <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
@@ -369,11 +395,28 @@ export function MeasurementVerificationDialog({
                 
                 <div className="flex items-center justify-between">
                   <label className="text-sm text-muted-foreground">Waste Factor:</label>
+                  <Select 
+                    value={wastePercent.toString()} 
+                    onValueChange={(value) => setWastePercent(Number(value))}
+                  >
+                    <SelectTrigger className="w-[120px]">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover z-50">
+                      <SelectItem value="10">10%</SelectItem>
+                      <SelectItem value="12">12%</SelectItem>
+                      <SelectItem value="15">15%</SelectItem>
+                      <SelectItem value="20">20%</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                
+                <div className="flex items-center justify-between">
+                  <label className="text-sm text-muted-foreground">Other Adjustments:</label>
                   <div className="flex items-center gap-2">
                     <Input
                       type="number"
-                      value={wastePercent}
-                      onChange={(e) => setWastePercent(Number(e.target.value))}
+                      value={0}
                       className="w-[80px]"
                       min="0"
                       max="50"

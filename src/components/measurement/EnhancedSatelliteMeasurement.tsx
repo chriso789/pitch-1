@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { 
   Loader2, 
   MapPin, 
@@ -391,19 +392,25 @@ export const EnhancedSatelliteMeasurement: React.FC<EnhancedSatelliteMeasurement
                       </div>
                       
                       <div>
-                        <Label htmlFor="wasteFactor">Waste Factor (%)</Label>
-                        <Input
-                          id="wasteFactor"
-                          type="number"
-                          min="5"
-                          max="25"
-                          value={measurement.wasteFactor}
-                          onChange={(e) => setMeasurement(prev => ({ 
-                            ...prev, 
-                            wasteFactor: parseInt(e.target.value) || 10,
-                            adjustedArea: prev.area * (1 + (parseInt(e.target.value) || 10) / 100)
-                          }))}
-                        />
+                  <Label htmlFor="wasteFactor">Waste Factor</Label>
+                  <Select
+                    value={measurement.wasteFactor.toString()}
+                    onValueChange={(value) => setMeasurement(prev => ({
+                      ...prev,
+                      wasteFactor: parseInt(value),
+                      adjustedArea: prev.area * (1 + parseInt(value) / 100)
+                    }))}
+                  >
+                    <SelectTrigger id="wasteFactor">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-popover z-50">
+                      <SelectItem value="10">10%</SelectItem>
+                      <SelectItem value="12">12%</SelectItem>
+                      <SelectItem value="15">15%</SelectItem>
+                      <SelectItem value="20">20%</SelectItem>
+                    </SelectContent>
+                  </Select>
                       </div>
                     </CardContent>
                   </Card>
