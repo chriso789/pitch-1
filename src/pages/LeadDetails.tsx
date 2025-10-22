@@ -11,9 +11,10 @@ import {
   Loader2, ArrowLeft, MapPin, User, Phone, Mail, 
   FileText, CheckCircle, AlertCircle, ExternalLink,
   DollarSign, Hammer, Package, Settings, ChevronLeft,
-  ChevronRight, X, Camera, Image as ImageIcon
+  ChevronRight, X, Camera, Image as ImageIcon, Edit2, Plus
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import SatelliteMeasurement from '@/components/SatelliteMeasurement';
 import EstimateHyperlinkBar from '@/components/estimates/EstimateHyperlinkBar';
 import ProfitSlider from '@/components/estimates/ProfitSlider';
@@ -100,6 +101,8 @@ const LeadDetails = () => {
   const [activeCall, setActiveCall] = useState<any>(null);
   const [showDispositionDialog, setShowDispositionDialog] = useState(false);
   const [availablePhoneNumbers, setAvailablePhoneNumbers] = useState<any[]>([]);
+  const [availableSalesReps, setAvailableSalesReps] = useState<any[]>([]);
+  const [isEditingSalesRep, setIsEditingSalesRep] = useState(false);
 
   // Define callback at component top level (not inside render function)
   const handleReadinessChange = React.useCallback((isReady: boolean, data: any) => {
@@ -112,8 +115,46 @@ const LeadDetails = () => {
       checkApprovalRequirements();
       fetchPhotos();
       fetchProductionStage();
+      loadSalesReps();
     }
   }, [id]);
+
+  const loadSalesReps = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name')
+        .in('role', ['sales_manager', 'regional_manager', 'corporate'])
+        .eq('is_active', true)
+        .order('first_name');
+      
+      if (error) throw error;
+      setAvailableSalesReps(data || []);
+    } catch (error) {
+      console.error('Error loading sales reps:', error);
+    }
+  };
+
+  const handleSalesRepUpdate = async (repId: string) => {
+    try {
+      const { error } = await supabase
+        .from('pipeline_entries')
+        .update({ assigned_to: repId || null })
+        .eq('id', id);
+      
+      if (error) throw error;
+      
+      toast({ title: "Sales rep updated successfully" });
+      fetchLeadDetails();
+      setIsEditingSalesRep(false);
+    } catch (error) {
+      console.error('Error updating sales rep:', error);
+      toast({ 
+        title: "Error updating sales rep", 
+        variant: "destructive" 
+      });
+    }
+  };
 
   const fetchProductionStage = async () => {
     try {
@@ -571,6 +612,52 @@ const LeadDetails = () => {
                 </div>
               )}
             </div>
+
+            {/* Sales Rep */}
+            <div className="flex items-center gap-2 mt-2">
+              <span className="text-muted-foreground text-sm">Sales Rep:</span>
+              {isEditingSalesRep ? (
+                <Select 
+                  value={lead.assigned_rep?.id || ''} 
+                  onValueChange={(value) => handleSalesRepUpdate(value)}
+                >
+                  <SelectTrigger className="h-7 w-[200px]">
+                    <SelectValue placeholder="Select rep" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {availableSalesReps.map((rep) => (
+                      <SelectItem key={rep.id} value={rep.id}>
+                        {rep.first_name} {rep.last_name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : lead.assigned_rep ? (
+                <div className="flex items-center gap-1">
+                  <span className="font-medium text-sm">
+                    {lead.assigned_rep.first_name} {lead.assigned_rep.last_name}
+                  </span>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-5 w-5 p-0"
+                    onClick={() => setIsEditingSalesRep(true)}
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="h-6"
+                  onClick={() => setIsEditingSalesRep(true)}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Assign
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -650,21 +737,9 @@ const LeadDetails = () => {
               <CardTitle className="text-base">Communication Hub</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3">
-              {lead.assigned_rep ? (
-                <div className="flex items-center space-x-2">
-                  <div className="h-8 w-8 rounded-full bg-primary/10 flex items-center justify-center">
-                    <User className="h-4 w-4 text-primary" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium">
-                      {lead.assigned_rep.first_name} {lead.assigned_rep.last_name}
-                    </p>
-                    <p className="text-xs text-muted-foreground">Sales Rep</p>
-                  </div>
-                </div>
-              ) : (
-                <p className="text-sm text-muted-foreground">No rep assigned</p>
-              )}
+              <CommunicationHub 
+                contactId={lead.contact?.id}
+              />
               
               <div className="flex gap-2">
                 <Button 

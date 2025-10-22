@@ -16,6 +16,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Plus, MapPin, Check, AlertCircle, Loader2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface JobCreationDialogProps {
   trigger?: React.ReactNode;
@@ -52,7 +53,31 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<AddressSuggestion | null>(null);
   const [showAddressPicker, setShowAddressPicker] = useState(false);
+  const [salesReps, setSalesReps] = useState<any[]>([]);
+  const [selectedSalesRep, setSelectedSalesRep] = useState<string>('');
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (open) {
+      loadSalesReps();
+    }
+  }, [open]);
+
+  const loadSalesReps = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name')
+        .in('role', ['sales_manager', 'regional_manager', 'corporate'])
+        .eq('is_active', true)
+        .order('first_name');
+      
+      if (error) throw error;
+      setSalesReps(data || []);
+    } catch (error) {
+      console.error('Error loading sales reps:', error);
+    }
+  };
 
   useEffect(() => {
     if (contact && formData.useSameAddress) {
@@ -169,7 +194,8 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
           priority: 'medium',
           created_by: userData.user?.id,
           address_street: selectedAddress.formatted_address,
-          estimated_value: 0
+          estimated_value: 0,
+          assigned_to: selectedSalesRep || null
         }])
         .select()
         .single();
@@ -186,6 +212,7 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
       setFormData({ name: "", description: "", address: "", useSameAddress: false });
       setSelectedAddress(null);
       setShowAddressPicker(false);
+      setSelectedSalesRep('');
     } catch (error) {
       console.error('Error creating job:', error);
       toast({
@@ -260,6 +287,22 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
               </Label>
             </div>
           )}
+
+          <div>
+            <Label htmlFor="salesRep">Sales Representative</Label>
+            <Select value={selectedSalesRep} onValueChange={setSelectedSalesRep}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select sales rep (optional)" />
+              </SelectTrigger>
+              <SelectContent>
+                {salesReps.map((rep) => (
+                  <SelectItem key={rep.id} value={rep.id}>
+                    {rep.first_name} {rep.last_name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           <div>
             <Label htmlFor="address">Job Address *</Label>

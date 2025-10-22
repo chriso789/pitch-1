@@ -5,12 +5,10 @@ import { TrendingUp, DollarSign, Calculator } from 'lucide-react';
 
 interface ProfitBreakdownProps {
   calculations: any;
-  salesRep?: any;
 }
 
 export const ProfitBreakdownDisplay: React.FC<ProfitBreakdownProps> = ({ 
-  calculations,
-  salesRep 
+  calculations
 }) => {
   if (!calculations) return null;
 
@@ -22,15 +20,7 @@ export const ProfitBreakdownDisplay: React.FC<ProfitBreakdownProps> = ({
   };
 
   const grossProfit = calculations.selling_price - calculations.material_total - calculations.labor_total;
-  const repOverhead = salesRep?.overhead_rate ? (calculations.selling_price * (salesRep.overhead_rate / 100)) : 0;
-  const netProfit = grossProfit - repOverhead;
-  
-  const repCommission = salesRep?.commission_structure === 'profit_split' 
-    ? netProfit * ((salesRep?.commission_rate || 0) / 100)
-    : calculations.selling_price * ((salesRep?.commission_rate || 0) / 100);
-  
-  const companyProfit = netProfit - repCommission;
-  const profitMargin = calculations.selling_price > 0 ? (netProfit / calculations.selling_price) * 100 : 0;
+  const profitMargin = calculations.selling_price > 0 ? (grossProfit / calculations.selling_price) * 100 : 0;
 
   return (
     <Card className="border-success/20">
@@ -69,38 +59,6 @@ export const ProfitBreakdownDisplay: React.FC<ProfitBreakdownProps> = ({
             <span className="font-medium">Gross Profit:</span>
             <span className="font-bold text-success">{formatCurrency(grossProfit)}</span>
           </div>
-
-          {salesRep && (
-            <>
-              <div className="text-xs text-muted-foreground">
-                <div className="flex justify-between mb-1">
-                  <span>Sales Rep: {salesRep.first_name} {salesRep.last_name}</span>
-                  <Badge variant="outline" className="text-xs">
-                    {salesRep.commission_structure === 'profit_split' ? 'Profit Split' : 'Sales %'}
-                  </Badge>
-                </div>
-              </div>
-              
-              <div className="space-y-2 text-sm bg-muted/30 p-3 rounded">
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Rep Overhead ({salesRep.overhead_rate}%):</span>
-                  <span>{formatCurrency(repOverhead)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Net Profit:</span>
-                  <span className="font-medium">{formatCurrency(netProfit)}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Rep Commission ({salesRep.commission_rate}%):</span>
-                  <span className="font-bold text-success">{formatCurrency(repCommission)}</span>
-                </div>
-                <div className="flex justify-between border-t border-border pt-2">
-                  <span className="font-medium">Company Profit:</span>
-                  <span className="font-bold text-primary">{formatCurrency(companyProfit)}</span>
-                </div>
-              </div>
-            </>
-          )}
 
           <div className="flex justify-between items-center pt-2 border-t border-border">
             <span className="text-sm text-muted-foreground">Profit Margin:</span>

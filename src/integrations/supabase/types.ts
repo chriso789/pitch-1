@@ -3991,6 +3991,7 @@ export type Database = {
       jobs: {
         Row: {
           address_street: string | null
+          assigned_to: string | null
           contact_id: string
           created_at: string
           created_by: string | null
@@ -4012,6 +4013,7 @@ export type Database = {
         }
         Insert: {
           address_street?: string | null
+          assigned_to?: string | null
           contact_id: string
           created_at?: string
           created_by?: string | null
@@ -4033,6 +4035,7 @@ export type Database = {
         }
         Update: {
           address_street?: string | null
+          assigned_to?: string | null
           contact_id?: string
           created_at?: string
           created_by?: string | null
@@ -4053,6 +4056,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "jobs_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "jobs_contact_id_fkey"
             columns: ["contact_id"]
