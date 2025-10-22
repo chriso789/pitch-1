@@ -235,12 +235,18 @@ export const EnhancedClientList = () => {
       console.log("User profile:", profile);
       setUserProfile(profile);
 
-      // Query contacts with proper tenant filtering
+      // Query contacts with proper tenant filtering (master sees all)
       console.log("Fetching contacts...");
-      const { data: contactsData, error: contactsError } = await supabase
+      const isMaster = profile.role === 'master';
+      const contactsQuery = supabase
         .from("contacts")
-        .select("*")
-        .eq('tenant_id', profile.tenant_id)
+        .select("*");
+      
+      if (!isMaster) {
+        contactsQuery.eq('tenant_id', profile.tenant_id);
+      }
+      
+      const { data: contactsData, error: contactsError } = await contactsQuery
         .eq('is_deleted', false)
         .order("created_at", { ascending: false });
 

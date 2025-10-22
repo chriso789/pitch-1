@@ -40,9 +40,15 @@ const TemplateManager: React.FC = () => {
   const [showTemplateDialog, setShowTemplateDialog] = useState(false);
   const [showItemDialog, setShowItemDialog] = useState(false);
 
+  // Manufacturer state
+  const [manufacturers, setManufacturers] = useState<{manufacturer: string, product_line: string}[]>([]);
+
   // Form states
   const [templateForm, setTemplateForm] = useState({
     name: '',
+    manufacturer: '',
+    product_line: '',
+    uses_manufacturer_specs: false,
     labor: {
       rate_per_square: 125,
       complexity: {
@@ -70,7 +76,27 @@ const TemplateManager: React.FC = () => {
 
   useEffect(() => {
     fetchTemplates();
+    fetchManufacturers();
   }, []);
+
+  const fetchManufacturers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('manufacturer_specs' as any)
+        .select('manufacturer, product_line')
+        .eq('is_active', true);
+      
+      if (error) throw error;
+      
+      // Get unique manufacturer/product combinations
+      const unique = Array.from(
+        new Map(data?.map((item: any) => [`${item.manufacturer}-${item.product_line}`, item])).values()
+      ) as any[];
+      setManufacturers(unique);
+    } catch (error) {
+      console.error('Error fetching manufacturers:', error);
+    }
+  };
 
   const fetchTemplates = async () => {
     setLoading(true);
@@ -161,6 +187,9 @@ const TemplateManager: React.FC = () => {
   const resetTemplateForm = () => {
     setTemplateForm({
       name: '',
+      manufacturer: '',
+      product_line: '',
+      uses_manufacturer_specs: false,
       labor: {
         rate_per_square: 125,
         complexity: {
@@ -218,6 +247,51 @@ const TemplateManager: React.FC = () => {
                   onChange={(e) => setTemplateForm({...templateForm, name: e.target.value})}
                   placeholder="e.g., Asphalt Shingle Standard"
                 />
+              </div>
+
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label>Manufacturer</Label>
+                  <Select
+                    value={templateForm.manufacturer}
+                    onValueChange={(value) => setTemplateForm({...templateForm, manufacturer: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select manufacturer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="GAF">GAF</SelectItem>
+                      <SelectItem value="Owens Corning">Owens Corning</SelectItem>
+                      <SelectItem value="CertainTeed">CertainTeed</SelectItem>
+                      <SelectItem value="TAMKO">TAMKO</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label>Product Line</Label>
+                  <Select
+                    value={templateForm.product_line}
+                    onValueChange={(value) => setTemplateForm({...templateForm, product_line: value})}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select product" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {templateForm.manufacturer === 'GAF' && (
+                        <SelectItem value="Timberline HDZ">Timberline HDZ</SelectItem>
+                      )}
+                      {templateForm.manufacturer === 'Owens Corning' && (
+                        <SelectItem value="Duration">Duration</SelectItem>
+                      )}
+                      {templateForm.manufacturer === 'CertainTeed' && (
+                        <SelectItem value="Landmark">Landmark</SelectItem>
+                      )}
+                      {templateForm.manufacturer === 'TAMKO' && (
+                        <SelectItem value="Heritage">Heritage</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
               
               <div className="grid grid-cols-2 gap-4">
