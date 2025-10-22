@@ -109,10 +109,12 @@ const ContactForm: React.FC<ContactFormProps> = ({
         .from("profiles")
         .select("tenant_id")
         .eq("id", user.id)
-        .single();
+        .maybeSingle();
 
       if (profileError) throw profileError;
-      if (!profile?.tenant_id) throw new Error("User profile not found or missing tenant");
+      if (!profile?.tenant_id) {
+        throw new Error("User profile not found. Please contact support.");
+      }
 
       const contactData = {
         ...formData,
