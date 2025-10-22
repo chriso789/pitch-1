@@ -49,8 +49,15 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
   const { toast } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
-  const { user: currentUser, refetch: refetchUser } = useCurrentUser();
+  const { user: currentUser, loading: userLoading, refetch: refetchUser } = useCurrentUser();
   const [currentTenant, setCurrentTenant] = useState<any>(null);
+  
+  // Force refetch on mount if user data is not loaded
+  useEffect(() => {
+    if (!currentUser && !userLoading) {
+      refetchUser();
+    }
+  }, [currentUser, userLoading, refetchUser]);
   
   // Derive active section from current route
   const getActiveSection = () => {
@@ -370,18 +377,31 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
               {!isCollapsed && (
                 <div className="flex-1 min-w-0 text-left">
                   <div className="text-sm font-medium truncate">
-                    {currentUser?.first_name} {currentUser?.last_name}
-                    {currentUser?.is_developer && (
-                      <Code className="inline h-3 w-3 ml-1 text-destructive" />
+                    {userLoading ? (
+                      'Loading...'
+                    ) : currentUser?.first_name && currentUser?.last_name ? (
+                      <>
+                        {currentUser.first_name} {currentUser.last_name}
+                        {currentUser.is_developer && (
+                          <Code className="inline h-3 w-3 ml-1 text-destructive" />
+                        )}
+                      </>
+                    ) : currentUser?.email ? (
+                      currentUser.email.split('@')[0]
+                    ) : (
+                      'User'
                     )}
                   </div>
                   <div className="text-xs text-muted-foreground truncate">
-                    {currentUser?.title 
-                      ? currentUser.title.charAt(0).toUpperCase() + currentUser.title.slice(1)
-                      : currentUser?.role 
-                        ? getRoleDisplayName(currentUser.role)
-                        : 'User'
-                    }
+                    {userLoading ? (
+                      'Loading...'
+                    ) : currentUser?.title ? (
+                      currentUser.title.charAt(0).toUpperCase() + currentUser.title.slice(1)
+                    ) : currentUser?.role ? (
+                      getRoleDisplayName(currentUser.role)
+                    ) : (
+                      'User'
+                    )}
                   </div>
                 </div>
               )}
@@ -391,9 +411,12 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
             <DropdownMenuLabel>
               <div className="flex flex-col space-y-1">
                 <p className="text-sm font-medium">
-                  {currentUser?.first_name} {currentUser?.last_name}
+                  {currentUser?.first_name && currentUser?.last_name
+                    ? `${currentUser.first_name} ${currentUser.last_name}`
+                    : currentUser?.email || 'User'
+                  }
                 </p>
-                <p className="text-xs text-muted-foreground">{currentUser?.email}</p>
+                <p className="text-xs text-muted-foreground">{currentUser?.email || 'No email'}</p>
                 {currentUser?.role && (
                   <Badge variant={getRoleBadgeVariant(currentUser.role)} className="text-xs w-fit">
                     {getRoleDisplayName(currentUser.role)}

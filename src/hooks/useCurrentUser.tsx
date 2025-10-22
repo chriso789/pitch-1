@@ -58,6 +58,18 @@ export const useCurrentUser = () => {
 
       const role = userRole?.role || profile?.role || 'user';
 
+      console.log('useCurrentUser: Fetched user data:', {
+        id: authUser.id,
+        email: authUser.email,
+        first_name: profile?.first_name,
+        last_name: profile?.last_name,
+        title: profile?.title,
+        role: role,
+        is_developer: profile?.is_developer,
+        company_name: profile?.company_name,
+        tenant_id: profile?.tenant_id
+      });
+
       setUser({
         id: authUser.id,
         email: authUser.email || '',
