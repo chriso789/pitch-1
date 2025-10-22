@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { default as AddressVerification } from "@/shared/components/forms/AddressVerification";
 import { auditService } from "@/services/auditService";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 
 interface ContactFormData {
   first_name: string;
@@ -36,6 +37,9 @@ const ContactForm: React.FC<ContactFormProps> = ({
   initialData = {},
   isGhostAccount = false,
 }) => {
+  const { user: currentUser } = useCurrentUser();
+  const { toast } = useToast();
+
   const [formData, setFormData] = useState<ContactFormData>({
     first_name: initialData.first_name || "",
     last_name: initialData.last_name || "",
@@ -52,8 +56,45 @@ const ContactForm: React.FC<ContactFormProps> = ({
   const [addressVerificationData, setAddressVerificationData] = useState<any>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [newTag, setNewTag] = useState("");
+  const [assignedTo, setAssignedTo] = useState<string>("");
+  const [tenantUsers, setTenantUsers] = useState<Array<{ id: string; name: string; email: string }>>([]);
 
-  const { toast } = useToast();
+  // Fetch tenant users for assignment dropdown
+  useEffect(() => {
+    const fetchTenantUsers = async () => {
+      if (!currentUser) return;
+      
+      // Only fetch users if current user is a manager or admin
+      const managerRoles = ['master', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'];
+      if (!managerRoles.includes(currentUser.role)) {
+        // Auto-assign to self for non-managers
+        setAssignedTo(currentUser.id);
+        return;
+      }
+
+      try {
+        const { data, error } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name, email')
+          .eq('tenant_id', currentUser.tenant_id)
+          .order('first_name');
+
+        if (error) throw error;
+
+        const users = data?.map(u => ({
+          id: u.id,
+          name: `${u.first_name || ''} ${u.last_name || ''}`.trim() || u.email || 'Unknown User',
+          email: u.email || ''
+        })) || [];
+
+        setTenantUsers(users);
+      } catch (error) {
+        console.error('Error fetching tenant users:', error);
+      }
+    };
+
+    fetchTenantUsers();
+  }, [currentUser]);
 
   const handleInputChange = (field: keyof ContactFormData, value: string | string[]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -138,6 +179,8 @@ const ContactForm: React.FC<ContactFormProps> = ({
           formatted_address: addressData.formatted_address,
         } : null,
         address_verification_data: addressVerificationData,
+        // User assignment
+        assigned_to: assignedTo || null,
         // Ghost account data
         created_by_ghost: isGhostAccount ? user.id : null,
       };
@@ -271,6 +314,25 @@ const ContactForm: React.FC<ContactFormProps> = ({
               placeholder="Where did this lead come from?"
             />
           </div>
+
+          {/* Assign To - only show for managers/admins */}
+          {currentUser && ['master', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'].includes(currentUser.role) && (
+            <div>
+              <label className="text-sm font-medium">Assign To</label>
+              <Select value={assignedTo} onValueChange={setAssignedTo}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select user to assign contact..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {tenantUsers.map((user) => (
+                    <SelectItem key={user.id} value={user.id}>
+                      {user.name} {user.email && `(${user.email})`}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
           {/* Address Verification */}
           <div>

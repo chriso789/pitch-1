@@ -1515,6 +1515,7 @@ export type Database = {
           address_street: string | null
           address_verification_data: Json | null
           address_zip: string | null
+          assigned_to: string | null
           clj_formatted_number: string | null
           company_name: string | null
           contact_number: string | null
@@ -1558,6 +1559,7 @@ export type Database = {
           address_street?: string | null
           address_verification_data?: Json | null
           address_zip?: string | null
+          assigned_to?: string | null
           clj_formatted_number?: string | null
           company_name?: string | null
           contact_number?: string | null
@@ -1601,6 +1603,7 @@ export type Database = {
           address_street?: string | null
           address_verification_data?: Json | null
           address_zip?: string | null
+          assigned_to?: string | null
           clj_formatted_number?: string | null
           company_name?: string | null
           contact_number?: string | null
@@ -1638,6 +1641,13 @@ export type Database = {
           verified_address?: Json | null
         }
         Relationships: [
+          {
+            foreignKeyName: "contacts_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "contacts_created_by_fkey"
             columns: ["created_by"]
@@ -10780,7 +10790,7 @@ export type Database = {
         Returns: string
       }
       get_user_tenant_id: {
-        Args: Record<PropertyKey, never>
+        Args: Record<PropertyKey, never> | { _user_id: string }
         Returns: string
       }
       gettransactionid: {
