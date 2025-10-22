@@ -54,6 +54,7 @@ export const TEST_IDS = {
       lastName: 'contact-form-lastname',
       email: 'contact-form-email',
       phone: 'contact-form-phone',
+      leadSource: 'contact-form-lead-source',
       address: 'contact-form-address',
       submit: 'contact-form-submit',
       cancel: 'contact-form-cancel',

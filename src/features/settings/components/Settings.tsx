@@ -26,6 +26,7 @@ import QuickBooksSettings from "@/components/settings/QuickBooksSettings";
 import { JobTypeQBOMapping } from "@/components/settings/JobTypeQBOMapping";
 import { SystemHealthCheck } from "@/components/settings/SystemHealthCheck";
 import { SettingsTabEditor } from "@/components/settings/SettingsTabEditor";
+import { LeadSources } from "@/features/leads/components/LeadSources";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -175,6 +176,10 @@ export const Settings = () => {
 
         <TabsContent value="products" className="space-y-6">
           <ProductCatalogManager />
+        </TabsContent>
+
+        <TabsContent value="lead-sources" className="space-y-6">
+          <LeadSources />
         </TabsContent>
 
         <TabsContent value="company" className="space-y-6">

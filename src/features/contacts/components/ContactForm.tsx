@@ -59,6 +59,8 @@ const ContactForm: React.FC<ContactFormProps> = ({
   const [newTag, setNewTag] = useState("");
   const [assignedTo, setAssignedTo] = useState<string>("");
   const [tenantUsers, setTenantUsers] = useState<Array<{ id: string; name: string; email: string }>>([]);
+  const [leadSources, setLeadSources] = useState<Array<{ id: string; name: string }>>([]);
+  const [leadSourcesLoading, setLeadSourcesLoading] = useState(false);
 
   // Fetch tenant users for assignment dropdown
   useEffect(() => {
@@ -95,6 +97,32 @@ const ContactForm: React.FC<ContactFormProps> = ({
     };
 
     fetchTenantUsers();
+  }, [currentUser]);
+
+  // Fetch active lead sources for dropdown
+  useEffect(() => {
+    const fetchLeadSources = async () => {
+      if (!currentUser?.tenant_id) return;
+      
+      setLeadSourcesLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('lead_sources')
+          .select('id, name')
+          .eq('tenant_id', currentUser.tenant_id)
+          .eq('is_active', true)
+          .order('name');
+        
+        if (error) throw error;
+        setLeadSources(data || []);
+      } catch (error) {
+        console.error('Error fetching lead sources:', error);
+      } finally {
+        setLeadSourcesLoading(false);
+      }
+    };
+    
+    fetchLeadSources();
   }, [currentUser]);
 
   const handleInputChange = (field: keyof ContactFormData, value: string | string[]) => {
@@ -313,11 +341,33 @@ const ContactForm: React.FC<ContactFormProps> = ({
           {/* Lead Source */}
           <div>
             <label className="text-sm font-medium">Lead Source</label>
-            <Input
-              value={formData.lead_source}
-              onChange={(e) => handleInputChange("lead_source", e.target.value)}
-              placeholder="Where did this lead come from?"
-            />
+            <Select 
+              value={formData.lead_source} 
+              onValueChange={(value) => handleInputChange("lead_source", value)}
+              disabled={leadSourcesLoading}
+            >
+              <SelectTrigger data-testid={TEST_IDS.contacts.form.leadSource}>
+                <SelectValue placeholder={
+                  leadSourcesLoading 
+                    ? "Loading lead sources..." 
+                    : leadSources.length === 0
+                      ? "No lead sources configured"
+                      : "Select lead source"
+                } />
+              </SelectTrigger>
+              <SelectContent>
+                {leadSources.map((source) => (
+                  <SelectItem key={source.id} value={source.name}>
+                    {source.name}
+                  </SelectItem>
+                ))}
+                {leadSources.length === 0 && !leadSourcesLoading && (
+                  <div className="px-2 py-1.5 text-sm text-muted-foreground">
+                    No lead sources available. Add them in Settings → Lead Sources.
+                  </div>
+                )}
+              </SelectContent>
+            </Select>
           </div>
 
           {/* Assign To - only show for managers/admins */}
