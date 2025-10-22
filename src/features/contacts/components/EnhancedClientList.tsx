@@ -56,7 +56,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { toast } from "sonner";
 import ContactFormDialog from "@/components/ContactFormDialog";
-import EnhancedJobCreationDialog from "@/components/EnhancedJobCreationDialog";
+import EnhancedLeadCreationDialog from "@/components/EnhancedLeadCreationDialog";
 import PermanentDeleteDialog from "@/components/PermanentDeleteDialog";
 import TaskAssignmentDialog from "@/components/TaskAssignmentDialog";
 import { TEST_IDS } from "../../../../tests/utils/test-ids";
@@ -822,8 +822,8 @@ export const EnhancedClientList = () => {
             <Settings className="h-4 w-4 mr-2" />
             Set as Default
           </Button>
-          <EnhancedJobCreationDialog 
-            onJobCreated={fetchData}
+          <EnhancedLeadCreationDialog 
+            onLeadCreated={fetchData}
           />
           <ContactFormDialog 
             onContactCreated={handleContactCreated}
@@ -1266,9 +1266,9 @@ export const EnhancedClientList = () => {
       />
 
       {showJobDialog && selectedContactForJob && (
-        <EnhancedJobCreationDialog
+        <EnhancedLeadCreationDialog
           contact={selectedContactForJob}
-          onJobCreated={handleJobCreated}
+          onLeadCreated={handleJobCreated}
         />
       )}
 

@@ -39,7 +39,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
-import { EnhancedJobCreationDialog } from "@/components/EnhancedJobCreationDialog";
+import { EnhancedLeadCreationDialog } from "@/components/EnhancedLeadCreationDialog";
 
 const Pipeline = () => {
   const [pipelineData, setPipelineData] = useState({});
@@ -916,12 +916,12 @@ const Pipeline = () => {
             <TrendingUp className="h-4 w-4 mr-2" />
             View Analytics
           </Button>
-          <EnhancedJobCreationDialog 
-            onJobCreated={() => {
+          <EnhancedLeadCreationDialog 
+            onLeadCreated={() => {
               fetchPipelineData();
               toast({
                 title: "Success",
-                description: "Job created successfully"
+                description: "Lead created successfully"
               });
             }}
           />

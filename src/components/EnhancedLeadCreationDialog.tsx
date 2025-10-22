@@ -25,10 +25,10 @@ import { Plus, MapPin, Check, AlertCircle, Loader2, User, Briefcase } from "luci
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
-interface EnhancedJobCreationDialogProps {
+interface EnhancedLeadCreationDialogProps {
   trigger?: React.ReactNode;
   contact?: any;
-  onJobCreated?: (job: any) => void;
+  onLeadCreated?: (lead: any) => void;
 }
 
 interface AddressSuggestion {
@@ -50,10 +50,10 @@ interface SalesRep {
   role: string;
 }
 
-export const EnhancedJobCreationDialog: React.FC<EnhancedJobCreationDialogProps> = ({
+export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProps> = ({
   trigger,
   contact,
-  onJobCreated,
+  onLeadCreated,
 }) => {
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
@@ -270,7 +270,7 @@ export const EnhancedJobCreationDialog: React.FC<EnhancedJobCreationDialogProps>
   const validateForm = () => {
     const errors: string[] = [];
     
-    if (!formData.name.trim()) errors.push("Job name is required");
+    if (!formData.name.trim()) errors.push("Lead name is required");
     if (!formData.phone.trim()) errors.push("Phone number is required");
     if (!selectedAddress) errors.push("Verified address is required");
     if (!formData.status) errors.push("Status selection is required");
@@ -299,7 +299,7 @@ export const EnhancedJobCreationDialog: React.FC<EnhancedJobCreationDialogProps>
       let contactId = contact?.id;
       
       if (!contactId) {
-        // Create new contact from job form data
+        // Create new contact from lead form data
         const addressComponents = selectedAddress?.address_components || [];
         const streetNumber = addressComponents.find(c => c.types.includes('street_number'))?.long_name || '';
         const route = addressComponents.find(c => c.types.includes('route'))?.long_name || '';
@@ -332,7 +332,7 @@ export const EnhancedJobCreationDialog: React.FC<EnhancedJobCreationDialogProps>
         contactId = newContact.id;
       }
 
-      // Create pipeline entry first
+      // Create pipeline entry (lead)
       const pipelineData = {
         tenant_id: userProfile.tenant_id,
         contact_id: contactId,
@@ -353,38 +353,15 @@ export const EnhancedJobCreationDialog: React.FC<EnhancedJobCreationDialogProps>
 
       if (pipelineError) throw pipelineError;
 
-      // Create actual job record in jobs table
-      const jobData = {
-        tenant_id: userProfile.tenant_id,
-        contact_id: contactId,
-        pipeline_entry_id: pipelineEntry.id,
-        name: formData.name,
-        description: formData.description,
-        status: 'lead' as const,
-        priority: formData.priority,
-        estimated_value: formData.estimatedValue ? parseFloat(formData.estimatedValue) : null,
-        roof_type: formData.roofType || null,
-        address_street: selectedAddress?.formatted_address || '',
-        created_by: user.id,
-      };
-
-      const { data: jobRecord, error: jobError } = await supabase
-        .from('jobs')
-        .insert([jobData])
-        .select()
-        .single();
-
-      if (jobError) throw jobError;
-
       toast({
-        title: "Job Created Successfully",
-        description: `Job "${formData.name}" has been created and added to the pipeline`,
+        title: "Lead Created Successfully",
+        description: `Lead "${formData.name}" has been added to the pipeline`,
       });
 
-      onJobCreated?.(jobRecord);
+      onLeadCreated?.(pipelineEntry);
       
-      // Navigate to the job details page using the actual job ID
-      navigate(`/job/${jobRecord.id}`);
+      // Navigate to the pipeline page
+      navigate(`/pipeline`);
       
       // Reset form
       setOpen(false);
@@ -404,10 +381,10 @@ export const EnhancedJobCreationDialog: React.FC<EnhancedJobCreationDialogProps>
       setShowAddressPicker(false);
       
     } catch (error) {
-      console.error('Error creating job:', error);
+      console.error('Error creating lead:', error);
       toast({
         title: "Error",
-        description: "Failed to create job. Please try again.",
+        description: "Failed to create lead. Please try again.",
         variant: "destructive",
       });
     } finally {
@@ -418,7 +395,7 @@ export const EnhancedJobCreationDialog: React.FC<EnhancedJobCreationDialogProps>
   const defaultTrigger = (
     <Button className="shadow-soft transition-smooth bg-primary hover:bg-primary/90">
       <Plus className="h-4 w-4 mr-2" />
-      Add Job
+      Add Lead
     </Button>
   );
 
@@ -431,7 +408,7 @@ export const EnhancedJobCreationDialog: React.FC<EnhancedJobCreationDialogProps>
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Briefcase className="h-5 w-5 text-primary" />
-            Add New Job
+            Add New Lead
             {contact && (
               <Badge variant="outline">
                 for {contact.first_name} {contact.last_name}
@@ -460,7 +437,7 @@ export const EnhancedJobCreationDialog: React.FC<EnhancedJobCreationDialogProps>
             {/* Left Column */}
             <div className="space-y-4">
               <div>
-                <Label htmlFor="name">Job Name *</Label>
+                <Label htmlFor="name">Lead Name *</Label>
                 <Input
                   id="name"
                   value={formData.name}
@@ -527,7 +504,7 @@ export const EnhancedJobCreationDialog: React.FC<EnhancedJobCreationDialogProps>
             {/* Right Column */}
             <div className="space-y-4">
               <div>
-                <Label htmlFor="address">Job Address *</Label>
+                <Label htmlFor="address">Lead Address *</Label>
                 <div className="flex gap-2">
                   <Input
                     id="address"
@@ -583,7 +560,7 @@ export const EnhancedJobCreationDialog: React.FC<EnhancedJobCreationDialogProps>
                   id="description"
                   value={formData.description}
                   onChange={(e) => setFormData(prev => ({ ...prev, description: e.target.value }))}
-                  placeholder="Additional job details, requirements, or notes..."
+                  placeholder="Additional lead details, requirements, or notes..."
                   rows={4}
                 />
               </div>
@@ -636,12 +613,12 @@ export const EnhancedJobCreationDialog: React.FC<EnhancedJobCreationDialogProps>
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Creating Job...
+                  Creating Lead...
                 </>
               ) : (
                 <>
                   <Plus className="h-4 w-4 mr-2" />
-                  Create Job
+                  Create Lead
                 </>
               )}
             </Button>
@@ -652,4 +629,4 @@ export const EnhancedJobCreationDialog: React.FC<EnhancedJobCreationDialogProps>
   );
 };
 
-export default EnhancedJobCreationDialog;
+export default EnhancedLeadCreationDialog;
