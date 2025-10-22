@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { 
   Home, 
   Users, 
@@ -48,7 +49,7 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
   const { toast } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
-  const [currentUser, setCurrentUser] = useState<any>(null);
+  const { user: currentUser, refetch: refetchUser } = useCurrentUser();
   const [currentTenant, setCurrentTenant] = useState<any>(null);
   
   // Derive active section from current route
@@ -71,27 +72,6 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
   };
   
   const activeSection = getActiveSection();
-
-  useEffect(() => {
-    loadUserInfo();
-  }, []);
-
-  const loadUserInfo = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (user) {
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .maybeSingle();
-        
-        setCurrentUser(profile);
-      }
-    } catch (error) {
-      console.error('Error loading user info:', error);
-    }
-  };
 
   const handleSignOut = async () => {
     try {
@@ -126,7 +106,8 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
 
       if (error) throw error;
 
-      setCurrentUser({ ...currentUser, role: newRole });
+      // Refetch user data to update the UI
+      refetchUser();
       
       toast({
         title: "Role updated",
@@ -395,7 +376,12 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
                     )}
                   </div>
                   <div className="text-xs text-muted-foreground truncate">
-                    {currentUser?.title || 'User'}
+                    {currentUser?.title 
+                      ? currentUser.title.charAt(0).toUpperCase() + currentUser.title.slice(1)
+                      : currentUser?.role 
+                        ? getRoleDisplayName(currentUser.role)
+                        : 'User'
+                    }
                   </div>
                 </div>
               )}

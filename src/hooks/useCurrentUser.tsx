@@ -10,6 +10,8 @@ interface CurrentUser {
   role: string;
   tenant_id: string;
   phone?: string;
+  title?: string;
+  is_developer?: boolean;
 }
 
 export const useCurrentUser = () => {
@@ -64,7 +66,9 @@ export const useCurrentUser = () => {
         company_name: profile?.company_name,
         role: role,
         tenant_id: profile?.tenant_id,
-        phone: profile?.phone
+        phone: profile?.phone,
+        title: profile?.title,
+        is_developer: profile?.is_developer
       });
     } catch (err) {
       setError(err as Error);
