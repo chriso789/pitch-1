@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { 
   Play, 
@@ -10,13 +9,12 @@ import {
   SkipBack,
   Volume2,
   VolumeX,
-  Settings,
   Maximize,
   Minimize
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/components/ui/use-toast';
+import { useToast } from '@/hooks/use-toast';
 
 interface WalkthroughStep {
   id: string;
@@ -64,41 +62,41 @@ export const VideoWalkthrough: React.FC<VideoWalkthroughProps> = ({
     {
       id: 'intro',
       title: 'Welcome to PITCH CRM',
-      description: 'Your comprehensive business management solution',
-      narration: 'Welcome to PITCH CRM, your all-in-one business management platform designed to streamline your operations and boost productivity.',
+      description: 'Your all-in-one roofing business platform',
+      narration: 'Welcome to PITCH CRM - Your all-in-one roofing business platform designed to streamline operations from lead generation to project completion.',
       duration: 5000,
       action: 'overview',
       visual: {
-        highlight: 'dashboard',
+        highlight: 'main',
         animation: 'fade-in'
       },
       captions: [
-        { start: 0, end: 2000, text: 'Welcome to PITCH CRM' },
-        { start: 2000, end: 5000, text: 'Your comprehensive business management solution' }
+        { start: 0, end: 2500, text: 'Welcome to PITCH CRM' },
+        { start: 2500, end: 5000, text: 'Your all-in-one roofing business platform' }
       ]
     },
     {
       id: 'dashboard',
-      title: 'Dashboard Overview',
-      description: 'Monitor your key metrics and performance indicators',
-      narration: 'The dashboard provides a comprehensive view of your business metrics, recent activities, and key performance indicators at a glance.',
+      title: 'Dashboard & Metrics',
+      description: 'Real-time KPIs, revenue tracking, and active jobs overview',
+      narration: 'The dashboard provides real-time visibility into your business with key metrics including revenue tracking, active jobs, pipeline value, and team performance indicators.',
       duration: 8000,
       action: 'navigate:dashboard',
       visual: {
         highlight: 'dashboard-metrics',
-        screenshot: 'dashboard.png'
+        animation: 'fade-in'
       },
       captions: [
-        { start: 0, end: 3000, text: 'The dashboard shows your key metrics' },
-        { start: 3000, end: 6000, text: 'Track performance indicators in real-time' },
-        { start: 6000, end: 8000, text: 'View recent activities and updates' }
+        { start: 0, end: 3000, text: 'Monitor revenue, jobs, and pipeline value' },
+        { start: 3000, end: 6000, text: 'Track team performance in real-time' },
+        { start: 6000, end: 8000, text: 'View recent activities and alerts' }
       ]
     },
     {
       id: 'pipeline',
-      title: 'Lead Pipeline Management',
-      description: 'Track and manage your sales opportunities',
-      narration: 'The pipeline section allows you to visualize and manage your sales opportunities through different stages, from initial contact to closed deals.',
+      title: 'Lead Management & Pipeline',
+      description: 'Drag-and-drop pipeline with AI lead scoring',
+      narration: 'Manage your sales pipeline with drag-and-drop functionality. The AI-powered lead scoring helps prioritize opportunities, while automated stage progression keeps deals moving forward.',
       duration: 10000,
       action: 'navigate:pipeline',
       visual: {
@@ -106,67 +104,101 @@ export const VideoWalkthrough: React.FC<VideoWalkthroughProps> = ({
         animation: 'slide-right'
       },
       captions: [
-        { start: 0, end: 3000, text: 'Navigate to the Pipeline section' },
-        { start: 3000, end: 6000, text: 'Visualize sales opportunities by stage' },
-        { start: 6000, end: 10000, text: 'Drag and drop leads between stages' }
+        { start: 0, end: 3000, text: 'Drag leads between pipeline stages' },
+        { start: 3000, end: 6000, text: 'AI scoring prioritizes hot opportunities' },
+        { start: 6000, end: 10000, text: 'Automated workflows move deals forward' }
       ]
     },
     {
-      id: 'contacts',
-      title: 'Contact Management',
-      description: 'Organize and track all your business contacts',
-      narration: 'The contact management system helps you organize customer information, track interactions, and maintain detailed profiles for better relationship management.',
-      duration: 7000,
-      action: 'navigate:client-list',
+      id: 'storm-canvass',
+      title: 'Storm Canvass Pro',
+      description: 'Map-based canvassing with GPS tracking and photo capture',
+      narration: 'Storm Canvass Pro revolutionizes door-to-door operations with GPS tracking, map-based territory management, photo documentation, and real-time activity logging for your canvassing team.',
+      duration: 12000,
+      action: 'navigate:storm-canvass',
       visual: {
-        highlight: 'contact-list',
+        highlight: 'storm-map',
         animation: 'zoom-in'
       },
       captions: [
-        { start: 0, end: 2500, text: 'Access your contact database' },
-        { start: 2500, end: 5000, text: 'View detailed customer profiles' },
-        { start: 5000, end: 7000, text: 'Track interaction history' }
+        { start: 0, end: 3000, text: 'Map-based territory management' },
+        { start: 3000, end: 7000, text: 'Track door-knocking activity with GPS' },
+        { start: 7000, end: 12000, text: 'Capture damage photos on the spot' }
+      ]
+    },
+    {
+      id: 'dialer',
+      title: 'Dialer & Telephony',
+      description: 'Browser-based softphone with live transcription',
+      narration: 'Make and receive calls directly from your browser with the integrated Telnyx softphone. Features include live call transcription, automatic call logging, and agent assist powered by A.I.',
+      duration: 10000,
+      action: 'navigate:dialer',
+      visual: {
+        highlight: 'softphone',
+        animation: 'slide-up'
+      },
+      captions: [
+        { start: 0, end: 3000, text: 'Browser-based WebRTC calling' },
+        { start: 3000, end: 6000, text: 'Live call transcription and recording' },
+        { start: 6000, end: 10000, text: 'AI-powered agent assistance' }
       ]
     },
     {
       id: 'estimates',
-      title: 'Estimate Creation',
-      description: 'Generate professional quotes and proposals',
-      narration: 'Create professional estimates and proposals with our dynamic pricing engine, customizable templates, and automated calculations.',
-      duration: 9000,
+      title: 'Estimate Builder',
+      description: 'Dynamic pricing engine with material catalog integration',
+      narration: 'Create professional estimates with our dynamic pricing engine. Access comprehensive material catalogs, calculate labor costs automatically, generate PDF proposals, and email directly to customers.',
+      duration: 12000,
       action: 'navigate:estimates',
       visual: {
         highlight: 'estimate-builder',
-        animation: 'slide-up'
-      },
-      captions: [
-        { start: 0, end: 3000, text: 'Open the estimates section' },
-        { start: 3000, end: 6000, text: 'Use templates for quick creation' },
-        { start: 6000, end: 9000, text: 'Dynamic pricing and calculations' }
-      ]
-    },
-    {
-      id: 'projects',
-      title: 'Project Tracking',
-      description: 'Monitor project progress and resource allocation',
-      narration: 'Track your projects from initiation to completion with timeline management, resource allocation, and progress monitoring tools.',
-      duration: 8000,
-      action: 'navigate:projects',
-      visual: {
-        highlight: 'project-timeline',
         animation: 'fade-in-up'
       },
       captions: [
-        { start: 0, end: 3000, text: 'View active projects' },
-        { start: 3000, end: 5500, text: 'Monitor progress and timelines' },
-        { start: 5500, end: 8000, text: 'Manage resource allocation' }
+        { start: 0, end: 3000, text: 'Dynamic pricing with material catalogs' },
+        { start: 3000, end: 7000, text: 'Automatic labor and markup calculations' },
+        { start: 7000, end: 12000, text: 'Generate PDFs and email to customers' }
+      ]
+    },
+    {
+      id: 'production',
+      title: 'Job Production Workflow',
+      description: 'Production stages, material ordering, and documentation',
+      narration: 'Manage the entire production workflow from material ordering to final inspection. Track progress through production stages, manage documents, and maintain photo documentation throughout the project lifecycle.',
+      duration: 10000,
+      action: 'navigate:production',
+      visual: {
+        highlight: 'production-stages',
+        animation: 'slide-right'
+      },
+      captions: [
+        { start: 0, end: 3000, text: 'Track projects through production stages' },
+        { start: 3000, end: 6000, text: 'Order materials and manage inventory' },
+        { start: 6000, end: 10000, text: 'Document progress with photos' }
+      ]
+    },
+    {
+      id: 'smartdocs',
+      title: 'Smart Documents & DocuSign',
+      description: 'Template management and e-signature workflows',
+      narration: 'Streamline contract execution with Smart Documents. Manage reusable templates, integrate DocuSign for electronic signatures, track document status, and maintain a complete audit trail.',
+      duration: 8000,
+      action: 'navigate:smartdocs',
+      visual: {
+        highlight: 'document-templates',
+        animation: 'zoom-in'
+      },
+      captions: [
+        { start: 0, end: 3000, text: 'Template library for quick contracts' },
+        { start: 3000, end: 5000, text: 'DocuSign integration for e-signatures' },
+        { start: 5000, end: 8000, text: 'Track signing status in real-time' }
       ]
     },
     {
       id: 'calendar',
-      title: 'Schedule Management',
-      description: 'Organize appointments and manage your time',
-      narration: 'The integrated calendar system helps you schedule appointments, set reminders, and coordinate with your team for optimal time management.',
+      title: 'Calendar & Scheduling',
+      description: 'Google Calendar integration with appointment booking',
+      narration: 'Seamlessly integrate with Google Calendar for appointment management. Schedule site visits, coordinate with customers, set reminders, and keep your entire team synchronized.',
       duration: 6000,
       action: 'navigate:calendar',
       visual: {
@@ -174,24 +206,58 @@ export const VideoWalkthrough: React.FC<VideoWalkthroughProps> = ({
         animation: 'scale-in'
       },
       captions: [
-        { start: 0, end: 2000, text: 'Access your calendar' },
-        { start: 2000, end: 4000, text: 'Schedule appointments easily' },
-        { start: 4000, end: 6000, text: 'Set reminders and notifications' }
+        { start: 0, end: 2000, text: 'Google Calendar integration' },
+        { start: 2000, end: 4000, text: 'Schedule appointments and site visits' },
+        { start: 4000, end: 6000, text: 'Team coordination and reminders' }
+      ]
+    },
+    {
+      id: 'campaigns',
+      title: 'Automation & Campaigns',
+      description: 'SMS/Email automation with trigger-based workflows',
+      narration: 'Create powerful marketing campaigns with automated SMS and email sequences. Set up trigger-based workflows, nurture leads automatically, and maintain consistent communication with your customer base.',
+      duration: 7000,
+      action: 'navigate:campaigns',
+      visual: {
+        highlight: 'campaign-builder',
+        animation: 'fade-in'
+      },
+      captions: [
+        { start: 0, end: 2500, text: 'Build automated email and SMS campaigns' },
+        { start: 2500, end: 5000, text: 'Trigger workflows based on actions' },
+        { start: 5000, end: 7000, text: 'Nurture leads automatically' }
+      ]
+    },
+    {
+      id: 'analytics',
+      title: 'Analytics & Reporting',
+      description: 'Job analytics, revenue metrics, and export capabilities',
+      narration: 'Gain deep insights into your business performance with comprehensive analytics. Track job profitability, monitor revenue trends, analyze team performance, and export detailed reports for strategic planning.',
+      duration: 6000,
+      action: 'navigate:job-analytics',
+      visual: {
+        highlight: 'analytics-dashboard',
+        animation: 'slide-up'
+      },
+      captions: [
+        { start: 0, end: 2000, text: 'Comprehensive business analytics' },
+        { start: 2000, end: 4000, text: 'Revenue trends and profitability' },
+        { start: 4000, end: 6000, text: 'Export reports for planning' }
       ]
     },
     {
       id: 'conclusion',
-      title: 'Get Started Today',
-      description: 'Begin your journey with PITCH CRM',
-      narration: 'You are now ready to leverage the full power of PITCH CRM. Start by exploring each section and customizing the system to match your business needs.',
+      title: 'Start Building Your Success',
+      description: 'Begin your journey with PITCH CRM today',
+      narration: 'You are now ready to leverage the full power of PITCH CRM. From lead generation to project completion, every tool you need is at your fingertips. Start building your success today.',
       duration: 5000,
       action: 'overview',
       visual: {
         animation: 'celebration'
       },
       captions: [
-        { start: 0, end: 2500, text: 'You are ready to get started!' },
-        { start: 2500, end: 5000, text: 'Explore and customize for your business' }
+        { start: 0, end: 2500, text: 'Everything you need in one platform' },
+        { start: 2500, end: 5000, text: 'Start building your success today' }
       ]
     }
   ];
@@ -224,7 +290,7 @@ export const VideoWalkthrough: React.FC<VideoWalkthroughProps> = ({
         clearInterval(intervalRef.current);
       }
     };
-  }, [isPlaying, currentStep, playbackSpeed, onPlayingChange]);
+  }, [isPlaying, currentStep, playbackSpeed, onPlayingChange, walkthroughSteps]);
 
   // Handle captions
   useEffect(() => {
@@ -233,7 +299,7 @@ export const VideoWalkthrough: React.FC<VideoWalkthroughProps> = ({
       caption => currentTime >= caption.start && currentTime <= caption.end
     );
     setCurrentCaption(activeCaption?.text || '');
-  }, [currentTime, currentStep]);
+  }, [currentTime, currentStep, walkthroughSteps]);
 
   // Handle navigation actions
   useEffect(() => {
@@ -242,7 +308,7 @@ export const VideoWalkthrough: React.FC<VideoWalkthroughProps> = ({
       const section = step.action.split(':')[1];
       onSectionChange(section);
     }
-  }, [currentStep, onSectionChange]);
+  }, [currentStep, onSectionChange, walkthroughSteps]);
 
   // Play audio narration
   const playAudio = async (text: string) => {
@@ -250,18 +316,16 @@ export const VideoWalkthrough: React.FC<VideoWalkthroughProps> = ({
     
     setIsBuffering(true);
     try {
-      // Try ElevenLabs first, fallback to OpenAI
       const { data, error } = await supabase.functions.invoke('text-to-speech', {
         body: { 
           text, 
           voice: 'alloy',
-          provider: 'elevenlabs' // Try ElevenLabs first
+          provider: 'elevenlabs'
         }
       });
 
       if (error) {
         console.warn('ElevenLabs failed, trying OpenAI:', error);
-        // Fallback to OpenAI
         const { data: fallbackData, error: fallbackError } = await supabase.functions.invoke('text-to-speech', {
           body: { text, voice: 'alloy' }
         });
@@ -353,17 +417,19 @@ export const VideoWalkthrough: React.FC<VideoWalkthroughProps> = ({
       {/* Video Area */}
       <div className="relative aspect-video bg-gradient-to-br from-primary/10 to-secondary/10 flex items-center justify-center">
         {/* Visual Elements */}
-        <div className="absolute inset-0 flex items-center justify-center">
+        <div className="absolute inset-0 flex items-center justify-center p-8">
           <div className={cn(
             "text-center transition-all duration-1000",
             currentStepData.visual.animation === 'fade-in' && 'animate-fade-in',
             currentStepData.visual.animation === 'slide-right' && 'animate-slide-in-from-left',
             currentStepData.visual.animation === 'zoom-in' && 'animate-zoom-in',
             currentStepData.visual.animation === 'slide-up' && 'animate-slide-in-from-bottom',
+            currentStepData.visual.animation === 'fade-in-up' && 'animate-fade-in',
+            currentStepData.visual.animation === 'scale-in' && 'animate-scale-in',
             currentStepData.visual.animation === 'celebration' && 'animate-bounce'
           )}>
-            <h2 className="text-3xl font-bold mb-4">{currentStepData.title}</h2>
-            <p className="text-lg text-muted-foreground max-w-2xl">
+            <h2 className="text-4xl font-bold mb-4">{currentStepData.title}</h2>
+            <p className="text-xl text-muted-foreground max-w-3xl mx-auto">
               {currentStepData.description}
             </p>
           </div>
@@ -372,7 +438,7 @@ export const VideoWalkthrough: React.FC<VideoWalkthroughProps> = ({
         {/* Buffering indicator */}
         {isBuffering && (
           <div className="absolute inset-0 bg-black/20 flex items-center justify-center">
-            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+            <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
           </div>
         )}
 
@@ -396,7 +462,7 @@ export const VideoWalkthrough: React.FC<VideoWalkthroughProps> = ({
       </div>
 
       {/* Controls */}
-      <div className="p-4 space-y-4">
+      <div className="p-6 space-y-4">
         {/* Main Controls */}
         <div className="flex items-center justify-center gap-2">
           <Button variant="ghost" size="sm" onClick={handlePrevious} disabled={currentStep === 0}>
@@ -404,13 +470,13 @@ export const VideoWalkthrough: React.FC<VideoWalkthroughProps> = ({
           </Button>
           
           {!isPlaying ? (
-            <Button onClick={handlePlay} className="gap-2">
-              <Play className="h-4 w-4" />
-              Play Walkthrough
+            <Button onClick={handlePlay} size="lg" className="gap-2">
+              <Play className="h-5 w-5" />
+              {currentStep === 0 ? 'Start Walkthrough' : 'Resume'}
             </Button>
           ) : (
-            <Button onClick={handlePause} variant="secondary" className="gap-2">
-              <Pause className="h-4 w-4" />
+            <Button onClick={handlePause} variant="secondary" size="lg" className="gap-2">
+              <Pause className="h-5 w-5" />
               Pause
             </Button>
           )}
@@ -467,8 +533,8 @@ export const VideoWalkthrough: React.FC<VideoWalkthroughProps> = ({
 
       {/* Captions */}
       {currentCaption && (
-        <div className="absolute bottom-16 left-4 right-4 bg-black/80 text-white p-3 rounded-lg text-center">
-          <p className="text-sm md:text-base">{currentCaption}</p>
+        <div className="absolute bottom-20 left-4 right-4 bg-black/80 text-white p-4 rounded-lg text-center">
+          <p className="text-base md:text-lg font-medium">{currentCaption}</p>
         </div>
       )}
     </div>

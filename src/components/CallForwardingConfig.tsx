@@ -338,16 +338,84 @@ export const CallForwardingConfig: React.FC<CallForwardingConfigProps> = ({ onCo
 
                 <TabsContent value="geographic" className="space-y-4">
                   <div>
-                    <Label>Geographic Routing (by Area Code)</Label>
+                    <Label>Geographic Routing (by Area Code / ZIP)</Label>
                     <p className="text-sm text-muted-foreground mt-1">
-                      Route calls based on caller's area code
+                      Route calls based on caller's area code or ZIP code ranges
                     </p>
                   </div>
                   
-                  <div className="p-4 border rounded-lg bg-muted/50">
-                    <p className="text-sm text-muted-foreground">
-                      Geographic routing configuration coming soon...
-                    </p>
+                  <div className="space-y-4">
+                    <div className="grid grid-cols-3 gap-2">
+                      <Input placeholder="Area/ZIP code" id="geo-code" />
+                      <Input placeholder="Forward to number" id="geo-number" />
+                      <Button 
+                        size="sm"
+                        onClick={() => {
+                          const code = (document.getElementById('geo-code') as HTMLInputElement)?.value;
+                          const number = (document.getElementById('geo-number') as HTMLInputElement)?.value;
+                          if (!code || !number) return;
+                          
+                          const updatedRules = rules.map(r => {
+                            if (r.id === rule.id) {
+                              const updatedRule = { ...r };
+                              if (!updatedRule.conditions.geographicRouting) {
+                                updatedRule.conditions.geographicRouting = {};
+                              }
+                              updatedRule.conditions.geographicRouting[code] = { numbers: [number] };
+                              return updatedRule;
+                            }
+                            return r;
+                          });
+                          setRules(updatedRules);
+                          toast({
+                            title: "Geographic Rule Added",
+                            description: `Calls from ${code} will route to ${number}`,
+                          });
+                        }}
+                      >
+                        Add Rule
+                      </Button>
+                    </div>
+
+                    <div className="space-y-2">
+                      {rule.conditions.geographicRouting && Object.entries(rule.conditions.geographicRouting).map(([code, config]) => (
+                        <div key={code} className="flex items-center justify-between p-3 bg-muted rounded-lg">
+                          <div className="flex-1">
+                            <div className="font-medium">Area/ZIP: {code}</div>
+                            <div className="text-sm text-muted-foreground">
+                              Routes to: {config.numbers.join(', ')}
+                            </div>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => {
+                              const updatedRules = rules.map(r => {
+                                if (r.id === rule.id) {
+                                  const updatedRule = { ...r };
+                                  if (updatedRule.conditions.geographicRouting) {
+                                    delete updatedRule.conditions.geographicRouting[code];
+                                  }
+                                  return updatedRule;
+                                }
+                                return r;
+                              });
+                              setRules(updatedRules);
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      ))}
+                    </div>
+
+                    {(!rule.conditions.geographicRouting || Object.keys(rule.conditions.geographicRouting).length === 0) && (
+                      <div className="p-4 border rounded-lg bg-muted/50 text-center">
+                        <p className="text-sm text-muted-foreground">
+                          No geographic rules configured. Add rules above to route based on location.
+                        </p>
+                      </div>
+                    )}
                   </div>
                 </TabsContent>
 

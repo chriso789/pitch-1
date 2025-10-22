@@ -25,6 +25,7 @@ export interface TelnyxConfig {
 class TelnyxService {
   private client: any = null;
   private currentCall: any = null;
+  private config: TelnyxConfig | null = null;
   private callState: CallState = {
     callId: null,
     status: 'idle',
@@ -42,6 +43,11 @@ class TelnyxService {
    */
   async initialize(config?: TelnyxConfig) {
     try {
+      // Store config for later use
+      if (config) {
+        this.config = config;
+      }
+      
       // Dynamic import of Telnyx SDK (only load when needed)
       const TelnyxRTC = await import('@telnyx/webrtc') as any;
       
@@ -160,7 +166,7 @@ class TelnyxService {
       // Initiate call via Telnyx
       this.currentCall = await this.client.newCall({
         destinationNumber: phoneNumber,
-        callerNumber: '', // Use default from config
+        callerNumber: this.config?.outboundCallerId || '', // Use configured caller ID
       });
 
       this.updateCallState({
