@@ -27,6 +27,8 @@ import { DocumentsTab } from '@/components/DocumentsTab';
 import { PhoneNumberSelector } from '@/components/communication/PhoneNumberSelector';
 import { CallStatusMonitor } from '@/components/communication/CallStatusMonitor';
 import { CallDispositionDialog } from '@/components/communication/CallDispositionDialog';
+import { SMSComposerDialog } from '@/components/communication/SMSComposerDialog';
+import { FloatingEmailComposer } from '@/components/messaging/FloatingEmailComposer';
 import { BackButton } from '@/shared/components/BackButton';
 
 interface LeadDetailsData {
@@ -103,6 +105,10 @@ const LeadDetails = () => {
   const [availablePhoneNumbers, setAvailablePhoneNumbers] = useState<any[]>([]);
   const [availableSalesReps, setAvailableSalesReps] = useState<any[]>([]);
   const [isEditingSalesRep, setIsEditingSalesRep] = useState(false);
+  
+  // Communication states
+  const [showEmailComposer, setShowEmailComposer] = useState(false);
+  const [showSMSDialog, setShowSMSDialog] = useState(false);
 
   // Define callback at component top level (not inside render function)
   const handleReadinessChange = React.useCallback((isReady: boolean, data: any) => {
@@ -739,6 +745,13 @@ const LeadDetails = () => {
             <CardContent className="space-y-3">
               <CommunicationHub 
                 contactId={lead.contact?.id}
+                contactName={lead.contact ? `${lead.contact.first_name} ${lead.contact.last_name}` : undefined}
+                contactEmail={lead.contact?.email}
+                contactPhone={lead.contact?.phone}
+                assignedRep={lead.assigned_rep || undefined}
+                onCallClick={() => setShowCallDialog(true)}
+                onEmailClick={() => setShowEmailComposer(true)}
+                onSMSClick={() => setShowSMSDialog(true)}
               />
               
               <div className="flex gap-2">
@@ -906,6 +919,34 @@ const LeadDetails = () => {
           onSaved={() => {
             setActiveCall(null);
             setShowDispositionDialog(false);
+          }}
+        />
+      )}
+
+      {/* Email Composer */}
+      {lead?.contact && (
+        <FloatingEmailComposer
+          isOpen={showEmailComposer}
+          onClose={() => setShowEmailComposer(false)}
+          defaultRecipient={{
+            id: lead.contact.id,
+            name: `${lead.contact.first_name} ${lead.contact.last_name}`,
+            email: lead.contact.email || '',
+            type: 'contact'
+          }}
+        />
+      )}
+
+      {/* SMS Composer Dialog */}
+      {lead?.contact && (
+        <SMSComposerDialog
+          open={showSMSDialog}
+          onOpenChange={setShowSMSDialog}
+          phoneNumber={lead.contact.phone || ''}
+          contactName={`${lead.contact.first_name} ${lead.contact.last_name}`}
+          onSend={async (message) => {
+            console.log('Sending SMS:', message);
+            // SMS sending is handled by the dialog
           }}
         />
       )}
