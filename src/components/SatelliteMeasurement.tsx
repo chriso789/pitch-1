@@ -13,6 +13,7 @@ interface SatelliteMeasurementProps {
   latitude?: number;
   longitude?: number;
   pipelineEntryId: string;
+  measurementTags?: Record<string, any>;
   onMeasurementsSaved?: (measurements: any) => void;
 }
 
@@ -30,6 +31,7 @@ export const SatelliteMeasurement: React.FC<SatelliteMeasurementProps> = ({
   latitude,
   longitude,
   pipelineEntryId,
+  measurementTags,
   onMeasurementsSaved
 }) => {
   const [loading, setLoading] = useState(false);
@@ -382,6 +384,41 @@ export const SatelliteMeasurement: React.FC<SatelliteMeasurementProps> = ({
               onChange={(e) => setMeasurement(prev => ({ ...prev, wasteFactor: parseInt(e.target.value) || 10 }))}
             />
           </div>
+
+          {measurementTags && (
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Label className="text-sm font-semibold">Linear Features</Label>
+                <Badge variant="secondary" className="text-xs">From Pulled Data</Badge>
+              </div>
+              <div className="grid grid-cols-2 gap-4 p-4 bg-muted rounded-lg">
+                <div>
+                  <Label className="text-sm text-muted-foreground">Ridge</Label>
+                  <p className="text-base font-semibold">{Math.round(measurementTags['lf.ridge'] || 0)} ft</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground">Hip</Label>
+                  <p className="text-base font-semibold">{Math.round(measurementTags['lf.hip'] || 0)} ft</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground">Valley</Label>
+                  <p className="text-base font-semibold">{Math.round(measurementTags['lf.valley'] || 0)} ft</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground">Eave</Label>
+                  <p className="text-base font-semibold">{Math.round(measurementTags['lf.eave'] || 0)} ft</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground">Rake</Label>
+                  <p className="text-base font-semibold">{Math.round(measurementTags['lf.rake'] || 0)} ft</p>
+                </div>
+                <div>
+                  <Label className="text-sm text-muted-foreground">Step</Label>
+                  <p className="text-base font-semibold">{Math.round(measurementTags['lf.step'] || 0)} ft</p>
+                </div>
+              </div>
+            </div>
+          )}
 
           <div className="grid grid-cols-3 gap-4 p-4 bg-muted rounded-lg">
             <div>

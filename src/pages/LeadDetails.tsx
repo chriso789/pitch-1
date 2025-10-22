@@ -405,6 +405,7 @@ const LeadDetails = () => {
               latitude={lead?.verified_address?.geometry?.location?.lat || lead?.contact?.latitude}
               longitude={lead?.verified_address?.geometry?.location?.lng || lead?.contact?.longitude}
               pipelineEntryId={id!}
+              measurementTags={measurementData?.tags}
               onMeasurementsSaved={(measurements) => {
                 toast({
                   title: "Measurements Saved",
