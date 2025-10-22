@@ -77,11 +77,54 @@ export const Dialer: React.FC<DialerProps> = ({ preloadedContact, isLoadingConta
   const [selectedDisposition, setSelectedDisposition] = useState<string>("");
   const [dispositionNotes, setDispositionNotes] = useState<string>("");
   const [loading, setLoading] = useState(true);
+  const [selectedCallerId, setSelectedCallerId] = useState<string>("");
+  const [availablePhoneNumbers, setAvailablePhoneNumbers] = useState<Array<{number: string, label: string}>>([]);
 
   // Load data on component mount
   useEffect(() => {
     loadData();
+    loadCallerIdSettings();
   }, []);
+
+  // Load caller ID settings
+  const loadCallerIdSettings = async () => {
+    try {
+      // Try localStorage first
+      const localSettings = localStorage.getItem('caller_id_config');
+      if (localSettings) {
+        const settings = JSON.parse(localSettings);
+        if (settings.phone_number) {
+          const phoneEntry = {
+            number: settings.phone_number,
+            label: settings.display_name || settings.company_name || settings.phone_number
+          };
+          setAvailablePhoneNumbers([phoneEntry]);
+          setSelectedCallerId(settings.phone_number);
+        }
+      }
+      
+      // Also try database
+      const { data } = await supabase
+        .from('app_settings')
+        .select('setting_value')
+        .eq('setting_key', 'caller_id_config')
+        .maybeSingle();
+      
+      if (data?.setting_value) {
+        const settings = data.setting_value as any;
+        if (settings.phone_number) {
+          const phoneEntry = {
+            number: settings.phone_number,
+            label: settings.display_name || settings.company_name || settings.phone_number
+          };
+          setAvailablePhoneNumbers([phoneEntry]);
+          setSelectedCallerId(settings.phone_number);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading caller ID settings:', error);
+    }
+  };
 
   // Handle preloaded contact from props
   useEffect(() => {
@@ -201,12 +244,21 @@ export const Dialer: React.FC<DialerProps> = ({ preloadedContact, isLoadingConta
       return;
     }
 
+    if (!selectedCallerId) {
+      toast({
+        title: "No Caller ID Selected",
+        description: "Please configure a caller ID phone number in settings.",
+        variant: "destructive"
+      });
+      return;
+    }
+
     setIsCallActive(true);
     setCallStartTime(new Date());
     
     toast({
       title: "Call Started",
-      description: `Calling ${currentContact.name} at ${currentContact.phone}`,
+      description: `Calling ${currentContact.name} from ${selectedCallerId}`,
     });
 
     // Here you would integrate with WebRTC or calling service
@@ -306,10 +358,28 @@ export const Dialer: React.FC<DialerProps> = ({ preloadedContact, isLoadingConta
           <p className="text-muted-foreground">Advanced sales communication system</p>
         </div>
         <div className="flex items-center gap-4">
-          <Badge variant="outline" className="flex items-center gap-2">
+          <div className="flex items-center gap-2">
             <Phone className="h-4 w-4" />
-            Caller ID: (555) 123-4567
-          </Badge>
+            <Label className="text-sm">Caller ID:</Label>
+            <Select value={selectedCallerId} onValueChange={setSelectedCallerId}>
+              <SelectTrigger className="w-[240px]">
+                <SelectValue placeholder="Select phone number" />
+              </SelectTrigger>
+              <SelectContent>
+                {availablePhoneNumbers.length > 0 ? (
+                  availablePhoneNumbers.map((phone) => (
+                    <SelectItem key={phone.number} value={phone.number}>
+                      {phone.label}
+                    </SelectItem>
+                  ))
+                ) : (
+                  <SelectItem value="none" disabled>
+                    No phone numbers configured
+                  </SelectItem>
+                )}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
       </div>
 
