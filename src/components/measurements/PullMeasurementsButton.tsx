@@ -5,6 +5,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Satellite, Loader2, CheckCircle2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
+import { MeasurementVerificationDialog } from './MeasurementVerificationDialog';
 
 interface PullMeasurementsButtonProps {
   propertyId: string;
@@ -25,6 +26,11 @@ export function PullMeasurementsButton({
   const queryClient = useQueryClient();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [verificationData, setVerificationData] = useState<{
+    measurement: any;
+    tags: Record<string, any>;
+  } | null>(null);
+  const [showVerificationDialog, setShowVerificationDialog] = useState(false);
 
   async function handlePull() {
     // Validate coordinates before attempting pull
@@ -61,20 +67,14 @@ export function PullMeasurementsButton({
 
       const { measurement, tags } = data.data;
 
-      // Invalidate measurement cache
-      queryClient.invalidateQueries({ queryKey: ['measurement', propertyId] });
-
-      setSuccess(true);
+      // Show verification dialog instead of immediately applying
+      setVerificationData({ measurement, tags });
+      setShowVerificationDialog(true);
       
       toast({
-        title: "Measurements Ready",
-        description: `${tags['roof.squares']?.toFixed(1)} squares from ${measurement.source}`,
+        title: "Measurements Pulled",
+        description: "Review the measurements before applying to estimates",
       });
-
-      onSuccess?.(measurement, tags);
-
-      // Reset success state after 3 seconds
-      setTimeout(() => setSuccess(false), 3000);
 
     } catch (err: any) {
       console.error('Pull measurement error:', err);
@@ -88,8 +88,39 @@ export function PullMeasurementsButton({
     }
   }
 
+  const handleAcceptMeasurements = async () => {
+    if (!verificationData) return;
+
+    const { measurement, tags } = verificationData;
+
+    // Invalidate measurement cache
+    queryClient.invalidateQueries({ queryKey: ['measurement', propertyId] });
+
+    setSuccess(true);
+    
+    toast({
+      title: "Measurements Applied",
+      description: `${tags['roof.squares']?.toFixed(1)} squares ready for estimates`,
+    });
+
+    onSuccess?.(measurement, tags);
+
+    // Reset success state after 3 seconds
+    setTimeout(() => setSuccess(false), 3000);
+  };
+
+  const handleRejectMeasurements = () => {
+    setVerificationData(null);
+    toast({
+      title: "Measurements Rejected",
+      description: "Pull measurements again or enter manually",
+      variant: "destructive"
+    });
+  };
+
   return (
-    <div className="flex items-center gap-2">
+    <>
+      <div className="flex items-center gap-2">
       <Button
         onClick={handlePull}
         disabled={loading}
@@ -119,6 +150,19 @@ export function PullMeasurementsButton({
           ✓ Tags Ready
         </Badge>
       )}
-    </div>
+      </div>
+
+      {/* Verification Dialog */}
+      {verificationData && (
+        <MeasurementVerificationDialog
+          open={showVerificationDialog}
+          onOpenChange={setShowVerificationDialog}
+          measurement={verificationData.measurement}
+          tags={verificationData.tags}
+          onAccept={handleAcceptMeasurements}
+          onReject={handleRejectMeasurements}
+        />
+      )}
+    </>
   );
 }
