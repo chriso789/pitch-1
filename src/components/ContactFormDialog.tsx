@@ -9,6 +9,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Plus, UserPlus } from "lucide-react";
 import ContactForm from "@/features/contacts/components/ContactForm";
+import { TEST_IDS } from "../../tests/utils/test-ids";
 
 interface ContactFormDialogProps {
   trigger?: React.ReactNode;
@@ -35,7 +36,11 @@ export const ContactFormDialog: React.FC<ContactFormDialogProps> = ({
   };
 
   const defaultTrigger = (
-    <Button variant={buttonVariant} className="shadow-soft transition-smooth">
+    <Button 
+      variant={buttonVariant} 
+      className="shadow-soft transition-smooth"
+      data-testid={TEST_IDS.contacts.createButton}
+    >
       <Plus className="h-4 w-4 mr-2" />
       {buttonText}
     </Button>

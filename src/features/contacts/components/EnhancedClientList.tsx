@@ -40,7 +40,8 @@ import {
   MoreHorizontal,
   Trash2,
   MessageSquare,
-  Plus
+  Plus,
+  CheckCircle2
 } from "lucide-react";
 import { ActionsSelector } from "@/components/ui/actions-selector";
 import { FloatingChatWidget } from "@/components/messaging/FloatingChatWidget";
@@ -57,6 +58,8 @@ import { toast } from "sonner";
 import ContactFormDialog from "@/components/ContactFormDialog";
 import EnhancedJobCreationDialog from "@/components/EnhancedJobCreationDialog";
 import PermanentDeleteDialog from "@/components/PermanentDeleteDialog";
+import TaskAssignmentDialog from "@/components/TaskAssignmentDialog";
+import { TEST_IDS } from "../../../../tests/utils/test-ids";
 
 interface Contact {
   id: string;
@@ -660,6 +663,17 @@ export const EnhancedClientList = () => {
     }
   };
 
+  const [taskDialogState, setTaskDialogState] = useState<{
+    open: boolean;
+    contactId?: string;
+    projectId?: string;
+  }>({ open: false });
+
+  const handleTaskCreated = (task: any) => {
+    toast.success(`Task "${task.title}" created successfully!`);
+    setTaskDialogState({ open: false });
+  };
+
   const ActionsDropdown = ({ item, type }: { item: any, type: 'contact' | 'job' }) => {
     const actions = [
       {
@@ -719,6 +733,16 @@ export const EnhancedClientList = () => {
         onClick: () => handleAddJob(item)
       }] : []),
       {
+        label: "Assign Task",
+        icon: CheckCircle2,
+        onClick: () => setTaskDialogState({
+          open: true,
+          contactId: type === 'contact' ? item.id : item.contact_id,
+          projectId: type === 'job' ? item.project_id : undefined,
+        }),
+        separator: true
+      },
+      {
         label: "Map Surrounding Jobs",
         icon: MapPin,
         onClick: () => setMapCenter({
@@ -727,8 +751,7 @@ export const EnhancedClientList = () => {
           address: type === 'contact' 
             ? `${item.address_street}, ${item.address_city}, ${item.address_state}` 
             : `${item.contact?.address_street}, ${item.contact?.address_city}, ${item.contact?.address_state}`
-        }),
-        separator: true
+        })
       },
       {
         label: "Delete",
@@ -916,6 +939,7 @@ export const EnhancedClientList = () => {
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground h-4 w-4" />
                 <Input
+                  data-testid={TEST_IDS.contacts.searchInput}
                   placeholder={`Search ${activeView}...`}
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
@@ -927,7 +951,10 @@ export const EnhancedClientList = () => {
             {/* Status Filter */}
             <div className="flex gap-2">
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-40">
+                <SelectTrigger 
+                  className="w-40"
+                  data-testid={TEST_IDS.contacts.filterType}
+                >
                   <SelectValue placeholder="Filter by status" />
                 </SelectTrigger>
                 <SelectContent>
@@ -1123,7 +1150,11 @@ export const EnhancedClientList = () => {
                 </TableHeader>
                 <TableBody>
                   {filteredData.map((item: any, index) => (
-                    <TableRow key={item.id} className="hover:bg-muted/50 transition-colors">
+                    <TableRow 
+                      key={item.id} 
+                      className="hover:bg-muted/50 transition-colors"
+                      data-testid={TEST_IDS.contacts.listItem}
+                    >
                       {activeView === 'contacts' ? (
                         <>
                           <TableCell className="font-mono text-xs text-muted-foreground">
@@ -1308,6 +1339,16 @@ export const EnhancedClientList = () => {
               priority: undefined
             }))
           ]}
+        />
+      )}
+
+      {/* Task Assignment Dialog */}
+      {taskDialogState.open && (
+        <TaskAssignmentDialog
+          contactId={taskDialogState.contactId}
+          projectId={taskDialogState.projectId}
+          onTaskCreated={handleTaskCreated}
+          trigger={<div style={{ display: 'none' }} />}
         />
       )}
     </div>

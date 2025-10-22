@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { default as AddressVerification } from "@/shared/components/forms/AddressVerification";
 import { auditService } from "@/services/auditService";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { TEST_IDS } from "../../../../tests/utils/test-ids";
 
 interface ContactFormData {
   first_name: string;
@@ -241,6 +242,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
             <div>
               <label className="text-sm font-medium">First Name *</label>
               <Input
+                data-testid={TEST_IDS.contacts.form.firstName}
                 value={formData.first_name}
                 onChange={(e) => handleInputChange("first_name", e.target.value)}
                 placeholder="Enter first name"
@@ -250,6 +252,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
             <div>
               <label className="text-sm font-medium">Last Name *</label>
               <Input
+                data-testid={TEST_IDS.contacts.form.lastName}
                 value={formData.last_name}
                 onChange={(e) => handleInputChange("last_name", e.target.value)}
                 placeholder="Enter last name"
@@ -263,6 +266,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
             <div>
               <label className="text-sm font-medium">Email</label>
               <Input
+                data-testid={TEST_IDS.contacts.form.email}
                 type="email"
                 value={formData.email}
                 onChange={(e) => handleInputChange("email", e.target.value)}
@@ -272,6 +276,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
             <div>
               <label className="text-sm font-medium">Phone</label>
               <Input
+                data-testid={TEST_IDS.contacts.form.phone}
                 type="tel"
                 value={formData.phone}
                 onChange={(e) => handleInputChange("phone", e.target.value)}
@@ -387,6 +392,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
               type="submit"
               disabled={isSubmitting}
               className="flex-1"
+              data-testid={TEST_IDS.contacts.form.submit}
             >
               {isSubmitting ? (
                 "Creating Contact..."
@@ -403,6 +409,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
                 variant="outline"
                 onClick={onCancel}
                 disabled={isSubmitting}
+                data-testid={TEST_IDS.contacts.form.cancel}
               >
                 Cancel
               </Button>

@@ -42,19 +42,19 @@ This document maps every interactive element (buttons, links, inputs) to their c
 
 | Test ID | Component | Action | Service/Function | Side Effects | Test File | Status |
 |---------|-----------|--------|------------------|--------------|-----------|--------|
-| `contacts-create-button` | Contacts | Open create dialog | n/a | Opens dialog | ❌ TODO | ❌ |
-| `contacts-search-input` | Contacts | Search contacts | Query filter | Updates contact list | ❌ TODO | ❌ |
-| `contacts-filter-type` | Contacts | Filter by type | Query filter | Updates contact list | ❌ TODO | ❌ |
-| `contacts-list-item` | ContactItem | View contact details | React Router | Route change | ❌ TODO | ❌ |
+| `contacts-create-button` | ContactFormDialog | Open create dialog | n/a | Opens dialog | ❌ TODO | ✅ |
+| `contacts-search-input` | EnhancedClientList | Search contacts | Query filter | Updates contact list | ❌ TODO | ✅ |
+| `contacts-filter-type` | EnhancedClientList | Filter by type | Query filter | Updates contact list | ❌ TODO | ✅ |
+| `contacts-list-item` | EnhancedClientList | View contact details | React Router | Route change | ❌ TODO | ✅ |
 | `contacts-edit-button` | ContactItem | Open edit dialog | n/a | Opens dialog | ❌ TODO | ❌ |
 | `contacts-delete-button` | ContactItem | Delete contact | `supabase.from('contacts').delete()` | Soft deletes contact | ❌ TODO | ❌ |
-| `contact-form-firstname` | ContactForm | First name input | n/a | Updates form state | ❌ TODO | ❌ |
-| `contact-form-lastname` | ContactForm | Last name input | n/a | Updates form state | ❌ TODO | ❌ |
-| `contact-form-email` | ContactForm | Email input | n/a | Updates form state | ❌ TODO | ❌ |
-| `contact-form-phone` | ContactForm | Phone input | n/a | Updates form state | ❌ TODO | ❌ |
+| `contact-form-firstname` | ContactForm | First name input | n/a | Updates form state | ❌ TODO | ✅ |
+| `contact-form-lastname` | ContactForm | Last name input | n/a | Updates form state | ❌ TODO | ✅ |
+| `contact-form-email` | ContactForm | Email input | n/a | Updates form state | ❌ TODO | ✅ |
+| `contact-form-phone` | ContactForm | Phone input | n/a | Updates form state | ❌ TODO | ✅ |
 | `contact-form-address` | ContactForm | Address input | n/a | Updates form state | ❌ TODO | ❌ |
-| `contact-form-submit` | ContactForm | Submit form | `supabase.from('contacts').insert/update()` | Creates/updates contact, closes dialog | ❌ TODO | ❌ |
-| `contact-form-cancel` | ContactForm | Cancel form | n/a | Closes dialog without saving | ❌ TODO | ❌ |
+| `contact-form-submit` | ContactForm | Submit form | `supabase.from('contacts').insert/update()` | Creates/updates contact, closes dialog | ❌ TODO | ✅ |
+| `contact-form-cancel` | ContactForm | Cancel form | n/a | Closes dialog without saving | ❌ TODO | ✅ |
 
 ## Pipeline Module
 
@@ -80,6 +80,19 @@ This document maps every interactive element (buttons, links, inputs) to their c
 | `settings-save-button` | Settings | Save settings | Various service calls | Updates settings, shows toast | ❌ TODO | ❌ |
 | `settings-cancel-button` | Settings | Cancel changes | n/a | Resets form, closes dialog | ❌ TODO | ❌ |
 
+## Task Assignment Module
+
+| Test ID | Component | Action | Service/Function | Side Effects | Test File | Status |
+|---------|-----------|--------|------------------|--------------|-----------|--------|
+| `task-create-button` | TaskAssignmentDialog | Open task dialog | n/a | Opens dialog | ❌ TODO | ✅ |
+| `task-title-input` | TaskAssignmentDialog | Title input | n/a | Updates form state | ❌ TODO | ✅ |
+| `task-description-input` | TaskAssignmentDialog | Description input | n/a | Updates form state | ❌ TODO | ✅ |
+| `task-priority-select` | TaskAssignmentDialog | Select priority | n/a | Updates form state | ❌ TODO | ✅ |
+| `task-due-date-input` | TaskAssignmentDialog | Due date input | n/a | Updates form state | ❌ TODO | ✅ |
+| `task-assign-to-select` | TaskAssignmentDialog | Select assignee | Query users | Updates form state | ❌ TODO | ✅ |
+| `task-submit-button` | TaskAssignmentDialog | Create task | `supabase.from('tasks').insert()` | Creates task, closes dialog, shows toast | ❌ TODO | ✅ |
+| `task-cancel-button` | TaskAssignmentDialog | Cancel task | n/a | Closes dialog without saving | ❌ TODO | ✅ |
+
 ## Legend
 
 - ✅ Implemented and tested
@@ -92,11 +105,12 @@ This document maps every interactive element (buttons, links, inputs) to their c
 **Phase 1 - Week 1-2 (Current)**
 - Auth Module: 67% (6/9 test IDs implemented)
 - Navigation: 100% (8/8)
-- Contacts: 0% (0/13)
+- Contacts: 77% (10/13 test IDs implemented)
 - Pipeline: 0% (0/8)
 - Settings: 0% (0/6)
+- Tasks: 100% (8/8 test IDs implemented)
 
-**Overall: 32% (14/44 test IDs implemented)**
+**Overall: 62% (32/52 test IDs implemented)**
 
 ## Next Steps
 

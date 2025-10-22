@@ -100,6 +100,18 @@ export const TEST_IDS = {
     sendButton: 'estimates-send-button',
   },
 
+  // Tasks
+  tasks: {
+    createButton: 'task-create-button',
+    titleInput: 'task-title-input',
+    descriptionInput: 'task-description-input',
+    prioritySelect: 'task-priority-select',
+    dueDateInput: 'task-due-date-input',
+    assignToSelect: 'task-assign-to-select',
+    submitButton: 'task-submit-button',
+    cancelButton: 'task-cancel-button',
+  },
+
   // Generic actions (can be combined with feature prefix)
   actions: {
     save: 'action-save',
