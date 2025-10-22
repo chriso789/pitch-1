@@ -5,6 +5,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { GripVertical, AlertTriangle, DollarSign } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { CLJBadge } from "@/components/CLJBadge";
 
 interface ProductionCardProps {
   id: string;
@@ -12,6 +13,7 @@ interface ProductionCardProps {
     id: string;
     name: string;
     project_number: string;
+    clj_formatted_number?: string;
     customer_name: string;
     customer_address: string;
     contract_value: number;
@@ -113,7 +115,7 @@ export const ProductionCard: React.FC<ProductionCardProps> = ({
       aria-label={`Project ${projectNumber}, ${customerName}, ${project.days_in_stage} days in stage`}
     >
       <CardContent className="p-2 h-full flex flex-col justify-between">
-        {/* Row 1: Days Badge + Project Number + Overdue/Balance Alert */}
+        {/* Row 1: Days Badge + CLJ Number + Overdue/Balance Alert */}
         <div className="flex items-center justify-between w-full mb-1">
           {/* Days in Stage Badge */}
           <Badge 
@@ -125,17 +127,13 @@ export const ProductionCard: React.FC<ProductionCardProps> = ({
             {project.days_in_stage}d
           </Badge>
 
-          {/* Project Number - Centered */}
-          <div 
-            className="flex-1 text-center px-1 min-w-0"
-            title={projectNumber}
-          >
-            <span 
-              className="font-mono font-semibold text-foreground block truncate"
-              style={{ fontSize: 'clamp(10px, 2.5vw, 12px)' }}
-            >
-              {projectNumber}
-            </span>
+          {/* C-L-J Number - Centered */}
+          <div className="flex-1 flex justify-center px-1 min-w-0">
+            <CLJBadge 
+              cljNumber={project.clj_formatted_number} 
+              variant="outline" 
+              size="sm"
+            />
           </div>
 
           {/* Alert Badge */}

@@ -75,6 +75,37 @@ serve(async (req) => {
       });
     }
 
+    // Approval Gate Enforcement: Check if high-value project requires approval
+    const estimatedValue = pipelineEntry.estimated_value || 0;
+    const userRole = profile.role || 'user';
+
+    if (estimatedValue > 25000 && !['admin', 'manager', 'master'].includes(userRole)) {
+      // Check if there's an approved request for this pipeline entry
+      const { data: approvalCheck } = await supabase
+        .from('manager_approval_queue')
+        .select('*')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .eq('status', 'approved')
+        .order('reviewed_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (!approvalCheck) {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Manager approval required for projects over $25,000',
+            requires_approval: true,
+            estimated_value: estimatedValue,
+            clj_number: pipelineEntry.clj_formatted_number
+          }),
+          { 
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+          }
+        );
+      }
+    }
+
     // Create project record (for Production board)
     const projectData = {
       tenant_id: profile.tenant_id,

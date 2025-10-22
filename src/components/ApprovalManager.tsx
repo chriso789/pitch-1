@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { CLJBadge } from "@/components/CLJBadge";
 
 interface ApprovalRequest {
   id: string;
@@ -56,6 +57,26 @@ export const ApprovalManager: React.FC = () => {
 
   useEffect(() => {
     fetchApprovalRequests();
+
+    // Real-time subscription for approval queue updates
+    const subscription = supabase
+      .channel('approval_queue_changes')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'manager_approval_queue'
+        },
+        () => {
+          fetchApprovalRequests();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      subscription.unsubscribe();
+    };
   }, []);
 
   const fetchApprovalRequests = async () => {
@@ -104,75 +125,41 @@ export const ApprovalManager: React.FC = () => {
 
   const handleApproval = async (requestId: string, approved: boolean) => {
     try {
-      const request = requests.find(r => r.id === requestId);
-      if (!request) return;
+      const managerNotes = approved ? approvalNotes : rejectionReason;
+      
+      const { data, error } = await supabase.rpc('api_respond_to_approval_request' as any, {
+        approval_id_param: requestId,
+        action_param: approved ? 'approve' : 'reject',
+        manager_notes_param: managerNotes || null
+      });
 
-      if (approved) {
-        // Use the new RPC function to approve and create project
-        const { data, error } = await supabase.rpc('api_approve_job_from_lead', {
-          pipeline_entry_id_param: request.pipeline_entry_id,
-          approval_notes: approvalNotes || null
+      if (error) {
+        toast({
+          title: "Error",
+          description: error.message || "Failed to process request",
+          variant: "destructive",
         });
+        return;
+      }
 
-        if (error) {
+      if (data && typeof data === 'object' && 'success' in data) {
+        const result = data as { success: boolean; clj_number?: string; error?: string };
+        if (result.success) {
           toast({
-            title: "Error",
-            description: error.message || "Failed to approve request",
-            variant: "destructive",
+            title: approved ? "Approved" : "Rejected",
+            description: approved 
+              ? `Request for ${result.clj_number} has been approved`
+              : `Request for ${result.clj_number} has been rejected`,
+            variant: approved ? "default" : "destructive",
           });
-          return;
-        }
-
-        if (data && typeof data === 'object' && 'success' in data) {
-          const result = data as { success: boolean; project_clj_number?: string; error?: string };
-          if (result.success) {
-            toast({
-              title: "Success",
-              description: `Lead approved and converted to project. C-L-J: ${result.project_clj_number}`,
-            });
-          } else {
-            toast({
-              title: "Error",
-              description: result.error || "Failed to approve request",
-              variant: "destructive",
-            });
-            return;
-          }
         } else {
           toast({
             title: "Error",
-            description: "Unexpected response format",
+            description: result.error || "Failed to process request",
             variant: "destructive",
           });
           return;
         }
-      } else {
-        // Reject the approval
-        const { error } = await supabase
-          .from('manager_approval_queue' as any)
-          .update({
-            status: 'rejected',
-            rejected_by: (await supabase.auth.getUser()).data.user?.id,
-            rejected_at: new Date().toISOString(),
-            rejection_reason: rejectionReason || 'No reason provided',
-            updated_at: new Date().toISOString()
-          })
-          .eq('id', requestId);
-
-        if (error) {
-          toast({
-            title: "Error",
-            description: "Failed to reject request",
-            variant: "destructive",
-          });
-          return;
-        }
-
-        toast({
-          title: "Success",
-          description: "Request rejected successfully",
-          variant: "destructive",
-        });
       }
 
       // Reset form
@@ -288,9 +275,13 @@ export const ApprovalManager: React.FC = () => {
                             <p className="text-muted-foreground">
                               {contact.address_street}, {contact.address_city}
                             </p>
-                            <p className="text-sm font-mono text-muted-foreground">
-                              C-L-J: {request.pipeline_entries.clj_formatted_number || 'Not assigned'}
-                            </p>
+                            <div className="mt-1">
+                              <CLJBadge 
+                                cljNumber={request.pipeline_entries.clj_formatted_number} 
+                                variant="outline"
+                                size="sm"
+                              />
+                            </div>
                           </div>
                           <div className="flex items-center gap-2">
                             {isOld && (
