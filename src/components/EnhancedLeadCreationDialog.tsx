@@ -29,6 +29,8 @@ interface EnhancedLeadCreationDialogProps {
   trigger?: React.ReactNode;
   contact?: any;
   onLeadCreated?: (lead: any) => void;
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }
 
 interface AddressSuggestion {
@@ -54,9 +56,19 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
   trigger,
   contact,
   onLeadCreated,
+  open: controlledOpen,
+  onOpenChange: controlledOnOpenChange,
 }) => {
   const navigate = useNavigate();
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
+  const setOpen = (newOpen: boolean) => {
+    if (controlledOnOpenChange) {
+      controlledOnOpenChange(newOpen);
+    } else {
+      setInternalOpen(newOpen);
+    }
+  };
   const [loading, setLoading] = useState(false);
   const [addressLoading, setAddressLoading] = useState(false);
   const [salesReps, setSalesReps] = useState<SalesRep[]>([]);

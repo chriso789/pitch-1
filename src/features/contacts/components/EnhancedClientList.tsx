@@ -1265,12 +1265,12 @@ export const EnhancedClientList = () => {
         onConfirm={confirmPermanentDelete}
       />
 
-      {showJobDialog && selectedContactForJob && (
-        <EnhancedLeadCreationDialog
-          contact={selectedContactForJob}
-          onLeadCreated={handleJobCreated}
-        />
-      )}
+      <EnhancedLeadCreationDialog
+        open={showJobDialog}
+        onOpenChange={setShowJobDialog}
+        contact={selectedContactForJob || undefined}
+        onLeadCreated={handleJobCreated}
+      />
 
       {/* Floating Chat Widget */}
       {activeChatContact && (
