@@ -25,6 +25,8 @@ import { ApprovalRequirementsBubbles } from '@/components/ApprovalRequirementsBu
 import { MultiTemplateSelector } from '@/components/estimates/MultiTemplateSelector';
 import { DocumentsTab } from '@/components/DocumentsTab';
 import { PhoneNumberSelector } from '@/components/communication/PhoneNumberSelector';
+import { useLatestMeasurement } from '@/hooks/useMeasurement';
+import { LinearFeaturesPanel } from '@/components/measurements/LinearFeaturesPanel';
 import { CallStatusMonitor } from '@/components/communication/CallStatusMonitor';
 import { CallDispositionDialog } from '@/components/communication/CallDispositionDialog';
 import { SMSComposerDialog } from '@/components/communication/SMSComposerDialog';
@@ -98,6 +100,9 @@ const LeadDetails = () => {
   const [photos, setPhotos] = useState<any[]>([]);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [showFullScreenPhoto, setShowFullScreenPhoto] = useState(false);
+  
+  // Fetch measurement data
+  const { data: measurementData, isLoading: measurementLoading, refetch: refetchMeasurements } = useLatestMeasurement(id);
   
   // Call states
   const [showCallDialog, setShowCallDialog] = useState(false);
@@ -387,6 +392,14 @@ const LeadDetails = () => {
               pipelineEntryId={id!}
               onReadinessChange={handleReadinessChange}
             />
+            
+            {measurementData?.tags && (
+              <LinearFeaturesPanel 
+                tags={measurementData.tags}
+                loading={measurementLoading}
+              />
+            )}
+            
             <SatelliteMeasurement
               address={lead?.verified_address?.formatted_address || `${lead?.contact?.address_street}, ${lead?.contact?.address_city}, ${lead?.contact?.address_state}`}
               latitude={lead?.verified_address?.geometry?.location?.lat || lead?.contact?.latitude}
@@ -398,6 +411,7 @@ const LeadDetails = () => {
                   description: `Property measurements saved successfully. Area: ${measurements.adjustedArea} sq ft`,
                 });
                 checkApprovalRequirements();
+                refetchMeasurements();
               }}
             />
           </div>
