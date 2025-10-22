@@ -126,7 +126,7 @@ const Pipeline = () => {
 
       if (profile) {
         setUserRole(profile.role);
-        setIsManager(['admin', 'manager', 'master'].includes(profile.role));
+        setIsManager(['admin', 'manager', 'master', 'corporate', 'office_admin'].includes(profile.role));
       }
     } catch (error) {
       console.error('Error fetching user role:', error);
