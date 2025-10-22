@@ -5,13 +5,15 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
-import { UserPlus, Save, MapPin } from "lucide-react";
+import { UserPlus, Save, MapPin, Trash2, AlertCircle } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { default as AddressVerification } from "@/shared/components/forms/AddressVerification";
 import { auditService } from "@/services/auditService";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { TEST_IDS } from "../../../../tests/utils/test-ids";
+import { useContactDraftPersistence } from "@/hooks/useContactDraftPersistence";
+import { useNavigate } from "react-router-dom";
 
 interface ContactFormData {
   first_name: string;
@@ -40,6 +42,16 @@ const ContactForm: React.FC<ContactFormProps> = ({
 }) => {
   const { user: currentUser } = useCurrentUser();
   const { toast } = useToast();
+  const navigate = useNavigate();
+  const { 
+    hasDraft, 
+    draftTimestamp, 
+    loadDraft, 
+    saveDraft, 
+    clearDraft, 
+    saveDraftOnError,
+    showDraftRestoredNotification 
+  } = useContactDraftPersistence();
 
   const [formData, setFormData] = useState<ContactFormData>({
     first_name: initialData.first_name || "",
@@ -61,6 +73,35 @@ const ContactForm: React.FC<ContactFormProps> = ({
   const [tenantUsers, setTenantUsers] = useState<Array<{ id: string; name: string; email: string }>>([]);
   const [leadSources, setLeadSources] = useState<Array<{ id: string; name: string }>>([]);
   const [leadSourcesLoading, setLeadSourcesLoading] = useState(false);
+  const [draftLoaded, setDraftLoaded] = useState(false);
+
+  // Load draft on mount
+  useEffect(() => {
+    if (draftLoaded) return;
+    
+    const draft = loadDraft();
+    if (draft) {
+      setFormData(draft.formData);
+      setAddressData(draft.addressData);
+      setAssignedTo(draft.assignedTo);
+      setDraftLoaded(true);
+      
+      // Show notification after a brief delay
+      setTimeout(() => {
+        showDraftRestoredNotification();
+      }, 500);
+    }
+  }, [loadDraft, showDraftRestoredNotification, draftLoaded]);
+
+  // Auto-save draft when form data changes
+  useEffect(() => {
+    if (!draftLoaded) return; // Don't save until initial load is complete
+    
+    // Only save if there's actual data
+    if (formData.first_name || formData.last_name || formData.email || formData.phone) {
+      saveDraft(formData, addressData, assignedTo);
+    }
+  }, [formData, addressData, assignedTo, saveDraft, draftLoaded]);
 
   // Fetch tenant users for assignment dropdown
   useEffect(() => {
@@ -240,6 +281,9 @@ const ContactForm: React.FC<ContactFormProps> = ({
         contactData
       );
 
+      // Clear draft on successful submission
+      clearDraft();
+
       toast({
         title: "Contact Created",
         description: `${formData.first_name} ${formData.last_name} has been added to your contacts.`,
@@ -261,8 +305,20 @@ const ContactForm: React.FC<ContactFormProps> = ({
         }
       });
       
+      // Save draft on error
+      saveDraftOnError(formData, addressData, assignedTo, error.message);
+      
       let errorMessage = "Failed to create contact.";
-      if (error.message?.includes("tenant_id")) {
+      let showLoginButton = false;
+
+      // Check for auth session errors
+      if (error.message?.includes("Auth session missing") || 
+          error.message?.includes("JWT") ||
+          error.message?.includes("session") ||
+          error.code === "PGRST301") {
+        errorMessage = "Your session has expired. Please log in again to complete submission.";
+        showLoginButton = true;
+      } else if (error.message?.includes("tenant_id")) {
         errorMessage = "Your account is not properly configured. Please contact support.";
       } else if (error.message?.includes("RLS")) {
         errorMessage = "Permission denied. Please contact your administrator.";
@@ -274,6 +330,15 @@ const ContactForm: React.FC<ContactFormProps> = ({
         title: "Creation Failed",
         description: errorMessage,
         variant: "destructive",
+        action: showLoginButton ? (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => navigate("/login")}
+          >
+            Go to Login
+          </Button>
+        ) : undefined,
       });
     } finally {
       setIsSubmitting(false);
@@ -283,13 +348,32 @@ const ContactForm: React.FC<ContactFormProps> = ({
   return (
     <Card className="w-full max-w-4xl mx-auto">
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <UserPlus className="h-5 w-5" />
-          {isGhostAccount ? "Add Contact (Ghost Mode)" : "Add New Contact"}
-          {isGhostAccount && (
-            <Badge variant="secondary" className="ml-2">
-              Ghost Account
-            </Badge>
+        <CardTitle className="flex items-center gap-2 justify-between">
+          <div className="flex items-center gap-2">
+            <UserPlus className="h-5 w-5" />
+            {isGhostAccount ? "Add Contact (Ghost Mode)" : "Add New Contact"}
+            {isGhostAccount && (
+              <Badge variant="secondary" className="ml-2">
+                Ghost Account
+              </Badge>
+            )}
+          </div>
+          {hasDraft && draftTimestamp && (
+            <div className="flex items-center gap-2">
+              <Badge variant="outline" className="flex items-center gap-1">
+                <AlertCircle className="h-3 w-3" />
+                Draft from {new Date(draftTimestamp).toLocaleDateString()}
+              </Badge>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={clearDraft}
+                className="h-8 px-2"
+              >
+                <Trash2 className="h-4 w-4" />
+              </Button>
+            </div>
           )}
         </CardTitle>
       </CardHeader>
