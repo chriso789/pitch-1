@@ -120,9 +120,10 @@ class AsteriskService {
       const { data: callLogData, error: callLogError } = await supabase
         .from('call_logs')
         .insert({
-          tenant_id: profile?.tenant_id,
+          tenant_id: profile?.tenant_id || '',
           contact_id: contactId,
-          phone_number: phoneNumber,
+          callee_number: phoneNumber,
+          caller_id: this.config.sipUri || 'unknown',
           direction: 'outbound',
           status: 'ringing',
           started_at: new Date().toISOString(),
