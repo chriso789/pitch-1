@@ -4684,6 +4684,7 @@ export type Database = {
           id: string
           is_active: boolean
           linear_features: Json | null
+          penetrations: Json
           property_id: string
           source: string
           summary: Json
@@ -4699,6 +4700,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           linear_features?: Json | null
+          penetrations?: Json
           property_id: string
           source: string
           summary: Json
@@ -4714,6 +4716,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           linear_features?: Json | null
+          penetrations?: Json
           property_id?: string
           source?: string
           summary?: Json
@@ -10579,6 +10582,10 @@ export type Database = {
         Args: { name1: string; name2: string }
         Returns: number
       }
+      calculate_perimeter_from_linear_features: {
+        Args: { linear_features: Json }
+        Returns: number
+      }
       calculate_rep_commission: {
         Args: { project_id_param: string; sales_rep_id_param: string }
         Returns: Json
@@ -10830,6 +10837,7 @@ export type Database = {
           id: string
           is_active: boolean
           linear_features: Json | null
+          penetrations: Json
           property_id: string
           source: string
           summary: Json
