@@ -403,6 +403,74 @@ export type Database = {
           },
         ]
       }
+      asterisk_channels: {
+        Row: {
+          agent_id: string | null
+          call_log_id: string | null
+          channel_id: string
+          contact_id: string | null
+          id: string
+          pipeline_entry_id: string | null
+          started_at: string | null
+          status: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          agent_id?: string | null
+          call_log_id?: string | null
+          channel_id: string
+          contact_id?: string | null
+          id?: string
+          pipeline_entry_id?: string | null
+          started_at?: string | null
+          status?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          agent_id?: string | null
+          call_log_id?: string | null
+          channel_id?: string
+          contact_id?: string | null
+          id?: string
+          pipeline_entry_id?: string | null
+          started_at?: string | null
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "asterisk_channels_call_log_id_fkey"
+            columns: ["call_log_id"]
+            isOneToOne: false
+            referencedRelation: "call_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "asterisk_channels_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "asterisk_channels_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "asterisk_channels_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           action: string
@@ -902,6 +970,9 @@ export type Database = {
       call_logs: {
         Row: {
           answered_at: string | null
+          asterisk_channel_id: string | null
+          asterisk_recording_id: string | null
+          bridge_duration_seconds: number | null
           call_sid: string | null
           callee_number: string
           caller_id: string
@@ -925,6 +996,9 @@ export type Database = {
         }
         Insert: {
           answered_at?: string | null
+          asterisk_channel_id?: string | null
+          asterisk_recording_id?: string | null
+          bridge_duration_seconds?: number | null
           call_sid?: string | null
           callee_number: string
           caller_id: string
@@ -948,6 +1022,9 @@ export type Database = {
         }
         Update: {
           answered_at?: string | null
+          asterisk_channel_id?: string | null
+          asterisk_recording_id?: string | null
+          bridge_duration_seconds?: number | null
           call_sid?: string | null
           callee_number?: string
           caller_id?: string
@@ -1526,6 +1603,62 @@ export type Database = {
             columns: ["rep_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      communication_preferences: {
+        Row: {
+          asterisk_api_token: string | null
+          asterisk_api_url: string | null
+          created_at: string | null
+          email_enabled: boolean | null
+          email_from_address: string | null
+          recording_announcement: boolean | null
+          recording_enabled: boolean | null
+          sms_enabled: boolean | null
+          sms_from_number: string | null
+          tenant_id: string
+          updated_at: string | null
+          voicemail_email: string | null
+          voicemail_enabled: boolean | null
+        }
+        Insert: {
+          asterisk_api_token?: string | null
+          asterisk_api_url?: string | null
+          created_at?: string | null
+          email_enabled?: boolean | null
+          email_from_address?: string | null
+          recording_announcement?: boolean | null
+          recording_enabled?: boolean | null
+          sms_enabled?: boolean | null
+          sms_from_number?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          voicemail_email?: string | null
+          voicemail_enabled?: boolean | null
+        }
+        Update: {
+          asterisk_api_token?: string | null
+          asterisk_api_url?: string | null
+          created_at?: string | null
+          email_enabled?: boolean | null
+          email_from_address?: string | null
+          recording_announcement?: boolean | null
+          recording_enabled?: boolean | null
+          sms_enabled?: boolean | null
+          sms_from_number?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          voicemail_email?: string | null
+          voicemail_enabled?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "communication_preferences_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -2170,6 +2303,56 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      did_campaigns: {
+        Row: {
+          active: boolean | null
+          assigned_agents: string[] | null
+          campaign_id: string | null
+          campaign_name: string | null
+          created_at: string | null
+          did: string
+          greeting_message: string | null
+          id: string
+          routing_type: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          assigned_agents?: string[] | null
+          campaign_id?: string | null
+          campaign_name?: string | null
+          created_at?: string | null
+          did: string
+          greeting_message?: string | null
+          id?: string
+          routing_type?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          assigned_agents?: string[] | null
+          campaign_id?: string | null
+          campaign_name?: string | null
+          created_at?: string | null
+          did?: string
+          greeting_message?: string | null
+          id?: string
+          routing_type?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "did_campaigns_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       digital_signatures: {
         Row: {
