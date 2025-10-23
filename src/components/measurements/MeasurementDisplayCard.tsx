@@ -23,9 +23,13 @@ export function MeasurementDisplayCard({
 
   const roofSquares = tags['roof.squares'] || 0;
   const totalArea = tags['roof.area'] || 0;
-  const ridge = tags['roof.ridge'] || 0;
-  const hip = tags['roof.hip'] || 0;
-  const valley = tags['roof.valley'] || 0;
+  const ridge = tags['lf.ridge'] || 0;
+  const hip = tags['lf.hip'] || 0;
+  const valley = tags['lf.valley'] || 0;
+  const eave = tags['lf.eave'] || 0;
+  const rake = tags['lf.rake'] || 0;
+  const totalPenetrations = tags['pen.total'] || 0;
+  const roofAge = tags['age.years'] || 0;
   const source = measurement.source || 'Unknown';
   const timestamp = measurement.created_at ? new Date(measurement.created_at) : null;
 
@@ -85,8 +89,38 @@ export function MeasurementDisplayCard({
               Valley: {valley.toFixed(0)} ft
             </Badge>
           )}
+          {eave > 0 && (
+            <Badge variant="outline" className="text-xs">
+              Eave: {eave.toFixed(0)} ft
+            </Badge>
+          )}
+          {rake > 0 && (
+            <Badge variant="outline" className="text-xs">
+              Rake: {rake.toFixed(0)} ft
+            </Badge>
+          )}
         </div>
       </div>
+
+      {totalPenetrations > 0 && (
+        <div className="space-y-2 pt-3 border-t">
+          <div className="text-xs font-medium text-muted-foreground mb-2">Penetrations</div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm">Total penetrations:</span>
+            <Badge variant="default">{totalPenetrations}</Badge>
+          </div>
+        </div>
+      )}
+
+      {roofAge > 0 && (
+        <div className="space-y-2 pt-3 border-t">
+          <div className="text-xs font-medium text-muted-foreground mb-2">Roof Age</div>
+          <div className="flex items-center justify-between">
+            <span className="text-sm">Age:</span>
+            <Badge variant="secondary">{roofAge} years</Badge>
+          </div>
+        </div>
+      )}
     </Card>
   );
 }

@@ -81,6 +81,80 @@ export function LinearFeaturesPanel({ tags, loading }: LinearFeaturesPanelProps)
         </CardContent>
       </Card>
 
+      {/* Penetrations Card */}
+      {(tags['pen.total'] > 0) && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              🔧 Roof Penetrations
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              {tags['pen.pipe_vent'] > 0 && (
+                <div className="flex justify-between py-1.5 border-b">
+                  <span className="text-sm text-muted-foreground">Pipe Vents:</span>
+                  <span className="font-semibold">{tags['pen.pipe_vent']}</span>
+                </div>
+              )}
+              {tags['pen.skylight'] > 0 && (
+                <div className="flex justify-between py-1.5 border-b">
+                  <span className="text-sm text-muted-foreground">Skylights:</span>
+                  <span className="font-semibold">{tags['pen.skylight']}</span>
+                </div>
+              )}
+              {tags['pen.chimney'] > 0 && (
+                <div className="flex justify-between py-1.5 border-b">
+                  <span className="text-sm text-muted-foreground">Chimneys:</span>
+                  <span className="font-semibold">{tags['pen.chimney']}</span>
+                </div>
+              )}
+              {tags['pen.hvac'] > 0 && (
+                <div className="flex justify-between py-1.5 border-b">
+                  <span className="text-sm text-muted-foreground">HVAC Units:</span>
+                  <span className="font-semibold">{tags['pen.hvac']}</span>
+                </div>
+              )}
+              {tags['pen.other'] > 0 && (
+                <div className="flex justify-between py-1.5 border-b">
+                  <span className="text-sm text-muted-foreground">Other:</span>
+                  <span className="font-semibold">{tags['pen.other']}</span>
+                </div>
+              )}
+              <div className="flex justify-between py-2 border-t-2 font-bold">
+                <span>Total:</span>
+                <Badge variant="default">{tags['pen.total']}</Badge>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Roof Age Card */}
+      {tags['age.years'] > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2">
+              📅 Roof Age
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-2">
+              <div className="flex justify-between py-1.5 border-b">
+                <span className="text-sm text-muted-foreground">Age:</span>
+                <span className="font-semibold">{tags['age.years']} years</span>
+              </div>
+              {tags['age.source'] && (
+                <div className="flex justify-between py-1.5">
+                  <span className="text-sm text-muted-foreground">Source:</span>
+                  <Badge variant="secondary" className="capitalize">{tags['age.source']}</Badge>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">

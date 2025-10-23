@@ -117,6 +117,30 @@ export function PullMeasurementsButton({
 
     const { measurement, tags } = verificationData;
     const finalMeasurement = adjustedMeasurement || measurement;
+    
+    // Merge penetrations and age data into tags if adjusted
+    let finalTags = { ...tags };
+    if (adjustedMeasurement?.penetrations) {
+      const penetrations = adjustedMeasurement.penetrations;
+      finalTags['pen.pipe_vent'] = penetrations.pipe_vent || 0;
+      finalTags['pen.skylight'] = penetrations.skylight || 0;
+      finalTags['pen.chimney'] = penetrations.chimney || 0;
+      finalTags['pen.hvac'] = penetrations.hvac || 0;
+      finalTags['pen.other'] = penetrations.other || 0;
+      finalTags['pen.total'] = (
+        (penetrations.pipe_vent || 0) +
+        (penetrations.skylight || 0) +
+        (penetrations.chimney || 0) +
+        (penetrations.hvac || 0) +
+        (penetrations.other || 0)
+      );
+    }
+    if (adjustedMeasurement?.roofAge !== undefined) {
+      finalTags['age.years'] = adjustedMeasurement.roofAge;
+    }
+    if (adjustedMeasurement?.roofAgeSource) {
+      finalTags['age.source'] = adjustedMeasurement.roofAgeSource;
+    }
 
     // Invalidate measurement cache
     queryClient.invalidateQueries({ queryKey: ['measurement', propertyId] });
@@ -130,7 +154,7 @@ export function PullMeasurementsButton({
       description: `${squares?.toFixed(1)} squares ready for estimates`,
     });
 
-    onSuccess?.(finalMeasurement, tags);
+    onSuccess?.(finalMeasurement, finalTags);
 
     // Reset success state after 3 seconds
     setTimeout(() => setSuccess(false), 3000);

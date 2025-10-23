@@ -23,6 +23,19 @@ export function MeasurementSummaryPanel({
   const valley = tags['lf.valley'] || 0;
   const eave = tags['lf.eave'] || 0;
   const rake = tags['lf.rake'] || 0;
+  const perimeter = tags['lf.perimeter'] || 0;
+  
+  // Penetrations
+  const pipeVents = tags['pen.pipe_vent'] || 0;
+  const skylights = tags['pen.skylight'] || 0;
+  const chimneys = tags['pen.chimney'] || 0;
+  const hvac = tags['pen.hvac'] || 0;
+  const other = tags['pen.other'] || 0;
+  const totalPenetrations = tags['pen.total'] || 0;
+  
+  // Roof age
+  const roofAge = tags['age.years'] || 0;
+  const roofAgeSource = tags['age.source'] || '';
   const step = tags['lf.step'] || 0;
 
   // Area calculations
@@ -169,6 +182,76 @@ export function MeasurementSummaryPanel({
       </div>
 
       <Separator />
+
+      {/* Penetrations */}
+      {totalPenetrations > 0 && (
+        <>
+          <div>
+            <h4 className="text-sm font-semibold mb-2">Roof Penetrations</h4>
+            <div className="space-y-2 text-sm">
+              {pipeVents > 0 && (
+                <div className="flex justify-between py-1.5 border-b">
+                  <span className="text-muted-foreground">Pipe Vents:</span>
+                  <span className="font-medium">{pipeVents}</span>
+                </div>
+              )}
+              {skylights > 0 && (
+                <div className="flex justify-between py-1.5 border-b">
+                  <span className="text-muted-foreground">Skylights:</span>
+                  <span className="font-medium">{skylights}</span>
+                </div>
+              )}
+              {chimneys > 0 && (
+                <div className="flex justify-between py-1.5 border-b">
+                  <span className="text-muted-foreground">Chimneys:</span>
+                  <span className="font-medium">{chimneys}</span>
+                </div>
+              )}
+              {hvac > 0 && (
+                <div className="flex justify-between py-1.5 border-b">
+                  <span className="text-muted-foreground">HVAC Units:</span>
+                  <span className="font-medium">{hvac}</span>
+                </div>
+              )}
+              {other > 0 && (
+                <div className="flex justify-between py-1.5">
+                  <span className="text-muted-foreground">Other:</span>
+                  <span className="font-medium">{other}</span>
+                </div>
+              )}
+              <div className="flex justify-between py-2 border-t-2 font-semibold">
+                <span>Total Penetrations:</span>
+                <Badge variant="default">{totalPenetrations}</Badge>
+              </div>
+            </div>
+          </div>
+          <Separator />
+        </>
+      )}
+
+      {/* Roof Age */}
+      {roofAge > 0 && (
+        <>
+          <div>
+            <h4 className="text-sm font-semibold mb-2">Roof Age</h4>
+            <div className="space-y-2 text-sm">
+              <div className="flex justify-between py-1.5 border-b">
+                <span className="text-muted-foreground">Age:</span>
+                <span className="font-medium">{roofAge} years</span>
+              </div>
+              {roofAgeSource && (
+                <div className="flex justify-between py-1.5">
+                  <span className="text-muted-foreground">Source:</span>
+                  <Badge variant="secondary" className="text-xs capitalize">
+                    {roofAgeSource}
+                  </Badge>
+                </div>
+              )}
+            </div>
+          </div>
+          <Separator />
+        </>
+      )}
 
       {/* Confidence Indicator */}
       <div>
