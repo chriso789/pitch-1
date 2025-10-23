@@ -18,13 +18,13 @@ export const useSendSMS = () => {
     setSending(true);
     
     try {
-      console.log('🔵 useSendSMS: Invoking asterisk-sms-send function...');
-      const { data, error } = await supabase.functions.invoke('asterisk-sms-send', {
+      console.log('🔵 useSendSMS: Invoking telnyx-send-sms function...');
+      const { data, error } = await supabase.functions.invoke('telnyx-send-sms', {
         body: {
           to: params.to,
-          body: params.message,
+          message: params.message,
           contactId: params.contactId,
-          pipelineId: params.jobId
+          jobId: params.jobId
         }
       });
       
