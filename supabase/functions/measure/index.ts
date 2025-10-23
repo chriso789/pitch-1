@@ -5,6 +5,8 @@
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { computeStraightSkeleton } from "./straight-skeleton.ts";
+import { classifyBoundaryEdges } from "./gable-detector.ts";
 
 // Environment
 const GOOGLE_PLACES_API_KEY = Deno.env.get("GOOGLE_PLACES_API_KEY") || "";
@@ -37,6 +39,14 @@ interface MeasureSummary {
   total_squares: number;
   waste_pct: number;
   pitch_method: 'manual'|'vendor'|'assumed';
+  perimeter_ft?: number;
+  ridge_ft?: number;
+  hip_ft?: number;
+  valley_ft?: number;
+  eave_ft?: number;
+  rake_ft?: number;
+  roof_age_years?: number | null;
+  roof_age_source?: 'user'|'permit'|'assessor'|'unknown';
 }
 
 interface MeasureResult {
@@ -98,6 +108,105 @@ function unionFacesWKT(faces: RoofFace[]): string | undefined {
   return `MULTIPOLYGON(${polys})`;
 }
 
+// Calculate geodesic line length in feet
+function calculateGeodesicLength(start: [number, number], end: [number, number], midLat: number): number {
+  const { metersPerDegLat, metersPerDegLng } = degToMeters(midLat);
+  const dx = (end[0] - start[0]) * metersPerDegLng;
+  const dy = (end[1] - start[1]) * metersPerDegLat;
+  const length_m = Math.sqrt(dx * dx + dy * dy);
+  return length_m * 3.28084;
+}
+
+// Convert skeleton edges and boundary edges to LinearFeature array
+function buildLinearFeaturesFromTopology(
+  coords: [number, number][],
+  midLat: number
+): { features: LinearFeature[]; totals: Record<string, number> } {
+  try {
+    // Compute straight skeleton
+    const skeleton = computeStraightSkeleton(coords);
+    
+    // Classify boundary edges
+    const boundaryClass = classifyBoundaryEdges(coords, skeleton);
+    
+    const features: LinearFeature[] = [];
+    let featureId = 1;
+    
+    // Add skeleton-derived features (ridge, hip, valley)
+    for (const edge of skeleton) {
+      const length_ft = calculateGeodesicLength(edge.start, edge.end, midLat);
+      features.push({
+        id: `LF${featureId++}`,
+        wkt: `LINESTRING(${edge.start[0]} ${edge.start[1]}, ${edge.end[0]} ${edge.end[1]})`,
+        length_ft,
+        type: edge.type,
+        label: `${edge.type.charAt(0).toUpperCase() + edge.type.slice(1)} ${featureId - 1}`
+      });
+    }
+    
+    // Add boundary features (eave)
+    for (const edge of boundaryClass.eaveEdges) {
+      const length_ft = calculateGeodesicLength(edge[0], edge[1], midLat);
+      features.push({
+        id: `LF${featureId++}`,
+        wkt: `LINESTRING(${edge[0][0]} ${edge[0][1]}, ${edge[1][0]} ${edge[1][1]})`,
+        length_ft,
+        type: 'eave',
+        label: `Eave ${featureId - 1}`
+      });
+    }
+    
+    // Add boundary features (rake)
+    for (const edge of boundaryClass.rakeEdges) {
+      const length_ft = calculateGeodesicLength(edge[0], edge[1], midLat);
+      features.push({
+        id: `LF${featureId++}`,
+        wkt: `LINESTRING(${edge[0][0]} ${edge[0][1]}, ${edge[1][0]} ${edge[1][1]})`,
+        length_ft,
+        type: 'rake',
+        label: `Rake ${featureId - 1}`
+      });
+    }
+    
+    // Calculate totals
+    const totals = {
+      perimeter_ft: boundaryClass.eaveEdges.concat(boundaryClass.rakeEdges)
+        .reduce((sum, e) => sum + calculateGeodesicLength(e[0], e[1], midLat), 0),
+      ridge_ft: features.filter(f => f.type === 'ridge').reduce((s, f) => s + f.length_ft, 0),
+      hip_ft: features.filter(f => f.type === 'hip').reduce((s, f) => s + f.length_ft, 0),
+      valley_ft: features.filter(f => f.type === 'valley').reduce((s, f) => s + f.length_ft, 0),
+      eave_ft: features.filter(f => f.type === 'eave').reduce((s, f) => s + f.length_ft, 0),
+      rake_ft: features.filter(f => f.type === 'rake').reduce((s, f) => s + f.length_ft, 0),
+    };
+    
+    console.log('Topology extracted:', { 
+      featureCount: features.length, 
+      totals: Object.entries(totals).map(([k, v]) => `${k}=${Math.round(v)}`).join(', ')
+    });
+    
+    return { features, totals };
+  } catch (error) {
+    console.warn('Skeleton extraction failed, falling back to simple perimeter:', error);
+    // Fallback to simple perimeter estimation
+    return {
+      features: estimateLinearFeatures([{
+        id: 'A',
+        wkt: toPolygonWKT(coords),
+        plan_area_sqft: 0,
+        area_sqft: 0
+      }]),
+      totals: {
+        perimeter_ft: 0,
+        ridge_ft: 0,
+        hip_ft: 0,
+        valley_ft: 0,
+        eave_ft: 0,
+        rake_ft: 0
+      }
+    };
+  }
+}
+
 // Smart Tags builder
 function buildSmartTags(meas: MeasureResult) {
   const tags: Record<string, number|string> = {};
@@ -132,12 +241,31 @@ function buildSmartTags(meas: MeasureResult) {
   tags["lf.eave"] = round(lfBy(['eave']));
   tags["lf.rake"] = round(lfBy(['rake']));
   tags["lf.step"] = round(lfBy(['step']));
+  tags["lf.perimeter"] = round(sum.perimeter_ft || 0);
+
+  // Penetrations (default to 0 if not set)
+  const pens = (meas as any).penetrations || [];
+  tags["pen.total"] = pens.reduce((s: number, p: any) => s + (p.count || 0), 0);
+  tags["pen.pipe_vent"] = pens.find((p: any) => p.type === 'pipe_vent')?.count || 0;
+  tags["pen.skylight"] = pens.find((p: any) => p.type === 'skylight')?.count || 0;
+  tags["pen.chimney"] = pens.find((p: any) => p.type === 'chimney')?.count || 0;
+  tags["pen.hvac"] = pens.find((p: any) => p.type === 'hvac')?.count || 0;
+  tags["pen.other"] = pens.find((p: any) => p.type === 'other')?.count || 0;
+
+  // Age
+  tags["age.years"] = sum.roof_age_years || 0;
+  tags["age.source"] = sum.roof_age_source || 'unknown';
 
   // Derived quantities
   tags["bundles.shingles"] = Math.ceil(total_squares * 3);
-  tags["bundles.ridge_cap"] = Math.ceil((tags["lf.ridge"] as number) / 33);
+  tags["bundles.ridge_cap"] = Math.ceil((tags["lf.ridge"] as number + tags["lf.hip"] as number) / 33);
   tags["rolls.valley"] = Math.ceil((tags["lf.valley"] as number) / 50);
   tags["sticks.drip_edge"] = Math.ceil(((tags["lf.eave"] as number) + (tags["lf.rake"] as number)) / 10);
+  
+  // Penetration-based quantities
+  tags["boots.pipe"] = tags["pen.pipe_vent"];
+  tags["kits.skylight"] = tags["pen.skylight"];
+  tags["kits.chimney"] = tags["pen.chimney"];
 
   return tags;
 }
@@ -221,6 +349,10 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     const polygon = building.building_polygon;
     const coords: [number, number][] = polygon.coordinates[0];
     const plan_sqft = polygonAreaSqftFromLngLat(coords);
+    const midLat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+    
+    // Extract roof topology
+    const topology = buildLinearFeaturesFromTopology(coords, midLat);
     
     const faces: RoofFace[] = [];
     if (building.roof_segments && building.roof_segments.length > 0) {
@@ -256,12 +388,15 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
       property_id: "",
       source: building.source,
       faces,
-      linear_features: estimateLinearFeatures(faces),
+      linear_features: topology.features,
       summary: {
         total_area_sqft: totalArea,
         total_squares: totalArea / 100,
         waste_pct: wastePct,
-        pitch_method: building.roof_segments ? 'vendor' : 'assumed'
+        pitch_method: building.roof_segments ? 'vendor' : 'assumed',
+        ...topology.totals,
+        roof_age_years: null,
+        roof_age_source: 'unknown'
       },
       geom_wkt: unionFacesWKT(faces)
     };
@@ -286,6 +421,10 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
   // Extract building polygon
   const coords = boundingBoxToPolygon(json.boundingBox);
   const plan_sqft = polygonAreaSqftFromLngLat(coords);
+  const midLat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+  
+  // Extract roof topology (ridge, hip, valley, eave, rake)
+  const topology = buildLinearFeaturesFromTopology(coords, midLat);
   
   // Process roof segments
   const faces: RoofFace[] = [];
@@ -326,12 +465,15 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     property_id: "",
     source: 'google_solar',
     faces,
-    linear_features: estimateLinearFeatures(faces),
+    linear_features: topology.features,
     summary: {
       total_area_sqft: totalArea,
       total_squares: totalArea / 100,
       waste_pct: wastePct,
-      pitch_method: roofSegments.length > 0 ? 'vendor' : 'assumed'
+      pitch_method: roofSegments.length > 0 ? 'vendor' : 'assumed',
+      ...topology.totals,
+      roof_age_years: null,
+      roof_age_source: 'unknown'
     },
     geom_wkt: unionFacesWKT(faces)
   };
