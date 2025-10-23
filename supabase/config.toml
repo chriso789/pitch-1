@@ -1,5 +1,23 @@
 project_id = "alxelfrbjzkmtnsulcei"
 
+[functions.asterisk-sms-send]
+verify_jwt = true
+
+[functions.asterisk-sms-inbound]
+verify_jwt = false
+
+[functions.asterisk-call-inbound]
+verify_jwt = false
+
+[functions.asterisk-call-events]
+verify_jwt = false
+
+[functions.asterisk-email-send]
+verify_jwt = true
+
+[functions.asterisk-email-inbound]
+verify_jwt = false
+
 [functions.export-job-analytics]
 verify_jwt = false
 
