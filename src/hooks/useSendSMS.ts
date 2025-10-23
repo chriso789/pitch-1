@@ -18,9 +18,14 @@ export const useSendSMS = () => {
     setSending(true);
     
     try {
-      console.log('🔵 useSendSMS: Invoking send-sms function...');
-      const { data, error } = await supabase.functions.invoke('send-sms', {
-        body: params
+      console.log('🔵 useSendSMS: Invoking asterisk-sms-send function...');
+      const { data, error } = await supabase.functions.invoke('asterisk-sms-send', {
+        body: {
+          to: params.to,
+          body: params.message,
+          contactId: params.contactId,
+          pipelineId: params.jobId
+        }
       });
       
       console.log('🔵 useSendSMS: Response received:', { data, error });
