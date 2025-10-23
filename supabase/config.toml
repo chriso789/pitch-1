@@ -213,5 +213,8 @@ verify_jwt = false
 [functions.voice-inbound]
 verify_jwt = false
 
+[functions.telnyx-send-sms]
+verify_jwt = true
+
 [functions.telnyx-mint-jwt]
 verify_jwt = true
