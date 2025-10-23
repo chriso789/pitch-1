@@ -7,7 +7,6 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { computeStraightSkeleton } from "./straight-skeleton.ts";
 import { classifyBoundaryEdges } from "./gable-detector.ts";
-import * as fgb from "npm:flatgeobuf@4.3.1/geojson";
 
 // Environment
 const GOOGLE_PLACES_API_KEY = Deno.env.get("GOOGLE_PLACES_API_KEY") || "";
@@ -677,42 +676,50 @@ async function openBuildingsFGBFootprint(
   lng: number,
   iso: string
 ): Promise<{ faceWKT: string; plan_sqft: number } | null> {
-  const url = OPENBUILDINGS_FGB_TEMPLATE.replace("${ISO}", iso.toUpperCase());
-  const { dx, dy } = metersToDeg(lat, FOOTPRINT_BUFFER_M);
-  const rect = { minX: lng - dx, minY: lat - dy, maxX: lng + dx, maxY: lat + dy };
+  try {
+    // Dynamic import to avoid boot failure if package isn't available
+    const fgb = await import("npm:flatgeobuf@4.3.1/geojson");
+    
+    const url = OPENBUILDINGS_FGB_TEMPLATE.replace("${ISO}", iso.toUpperCase());
+    const { dx, dy } = metersToDeg(lat, FOOTPRINT_BUFFER_M);
+    const rect = { minX: lng - dx, minY: lat - dy, maxX: lng + dx, maxY: lat + dy };
 
-  const feats: any[] = [];
-  for await (const f of fgb.deserialize(url, rect)) feats.push(f);
-  if (!feats.length) return null;
+    const feats: any[] = [];
+    for await (const f of fgb.deserialize(url, rect)) feats.push(f);
+    if (!feats.length) return null;
 
-  // choose best polygon ring
-  const p: [number, number] = [lng, lat];
-  let best: [number, number][] | null = null;
-  let bestScore = Infinity;
+    // choose best polygon ring
+    const p: [number, number] = [lng, lat];
+    let best: [number, number][] | null = null;
+    let bestScore = Infinity;
 
-  for (const f of feats) {
-    const g = f.geometry;
-    if (!g) continue;
+    for (const f of feats) {
+      const g = f.geometry;
+      if (!g) continue;
 
-    const ring: [number, number][] =
-      g.type === "Polygon" ? g.coordinates[0] :
-      g.type === "MultiPolygon" ? g.coordinates[0][0] : null;
-    if (!ring) continue;
+      const ring: [number, number][] =
+        g.type === "Polygon" ? g.coordinates[0] :
+        g.type === "MultiPolygon" ? g.coordinates[0][0] : null;
+      if (!ring) continue;
 
-    const r = ring.map((c: number[]) => [c[0], c[1]] as [number, number]);
-    if (!isClosed(r)) r.push(r[0]);
+      const r = ring.map((c: number[]) => [c[0], c[1]] as [number, number]);
+      if (!isClosed(r)) r.push(r[0]);
 
-    const contains = pointInPolygon(p, r);
-    const d = distanceMetersToCentroid(lat, lng, r);
-    const score = contains ? 0 : d;
-    if (score < bestScore) { best = r; bestScore = score; }
+      const contains = pointInPolygon(p, r);
+      const d = distanceMetersToCentroid(lat, lng, r);
+      const score = contains ? 0 : d;
+      if (score < bestScore) { best = r; bestScore = score; }
+    }
+
+    if (!best) return null;
+
+    const plan_sqft = polygonAreaSqftFromLngLat(best);
+    const faceWKT = polygonWKT(best);
+    return { faceWKT, plan_sqft };
+  } catch (error) {
+    console.warn('OpenBuildings FGB not available:', error.message);
+    return null;
   }
-
-  if (!best) return null;
-
-  const plan_sqft = polygonAreaSqftFromLngLat(best);
-  const faceWKT = polygonWKT(best);
-  return { faceWKT, plan_sqft };
 }
 
 async function providerFreeFootprint(supabase: any, lat: number, lng: number, address?: any) {
