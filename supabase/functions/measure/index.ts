@@ -7,10 +7,14 @@ import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { computeStraightSkeleton } from "./straight-skeleton.ts";
 import { classifyBoundaryEdges } from "./gable-detector.ts";
+import * as fgb from "npm:flatgeobuf@4.3.1/geojson";
 
 // Environment
 const GOOGLE_PLACES_API_KEY = Deno.env.get("GOOGLE_PLACES_API_KEY") || "";
 const OSM_ENABLED = true;
+const OSM_OVERPASS_URL = Deno.env.get("OSM_OVERPASS_URL") || "https://overpass-api.de/api/interpreter";
+const OPENBUILDINGS_FGB_TEMPLATE = Deno.env.get("OPENBUILDINGS_FGB_TEMPLATE") || "";
+const FOOTPRINT_BUFFER_M = Number(Deno.env.get("FOOTPRINT_BUFFER_M") || "25");
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
 const SUPABASE_SERVICE_KEY = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
 
@@ -100,6 +104,67 @@ function pitchFactor(pitch?: string) {
 function toPolygonWKT(coords: [number, number][]) {
   const inner = coords.map(c => `${c[0]} ${c[1]}`).join(', ');
   return `POLYGON((${inner}))`;
+}
+
+function polygonWKT(coords: [number, number][]) {
+  const inner = coords.map(c => `${c[0]} ${c[1]}`).join(', ');
+  return `POLYGON((${inner}))`;
+}
+
+function isClosed(r: [number, number][]) {
+  const a = r[0], b = r[r.length - 1];
+  return a[0] === b[0] && a[1] === b[1];
+}
+
+function metersToDeg(lat: number, m: number) {
+  const mPerDegLat = 111_320;
+  const mPerDegLng = 111_320 * Math.cos(lat * Math.PI / 180);
+  return { dx: m / mPerDegLng, dy: m / mPerDegLat };
+}
+
+function pointInPolygon(p: [number, number], ring: [number, number][]) {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const xi = ring[i][0], yi = ring[i][1];
+    const xj = ring[j][0], yj = ring[j][1];
+    const intersect = ((yi > p[1]) !== (yj > p[1])) && (p[0] < (xj - xi) * (p[1] - yi) / (yj - yi) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function distanceMetersToCentroid(lat: number, lng: number, ring: [number, number][]) {
+  const cx = ring.reduce((s, c) => s + c[0], 0) / ring.length;
+  const cy = ring.reduce((s, c) => s + c[1], 0) / ring.length;
+  const R = 6371000;
+  const φ1 = lat * Math.PI / 180, φ2 = cy * Math.PI / 180;
+  const dφ = (cy - lat) * Math.PI / 180, dλ = (cx - lng) * Math.PI / 180;
+  const a = Math.sin(dφ/2)**2 + Math.cos(φ1)*Math.cos(φ2)*Math.sin(dλ/2)**2;
+  return 2 * R * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+function pickISO(address?: any): string | null {
+  const c = address?.country_iso || address?.countryCode || address?.country || null;
+  if (!c) return null;
+  const up = String(c).toUpperCase().trim();
+  if (up.length === 2) return up;
+  if (up.length === 3) return up;
+  if (up.startsWith("UNITED STATES")) return "USA";
+  if (up.startsWith("CANADA")) return "CAN";
+  if (up.startsWith("AUSTRALIA")) return "AUS";
+  return null;
+}
+
+function wktToCoords(wkt: string): [number, number][] {
+  const match = wkt.match(/POLYGON\(\(([^)]+)\)\)/);
+  if (!match) return [];
+  
+  return match[1]
+    .split(',')
+    .map(pair => {
+      const [lng, lat] = pair.trim().split(' ').map(Number);
+      return [lng, lat] as [number, number];
+    });
 }
 
 function unionFacesWKT(faces: RoofFace[]): string | undefined {
@@ -502,7 +567,205 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
   return result;
 }
 
-// Provider: OpenStreetMap (sync, global coverage)
+// --- FREE DEFAULT PROVIDER ---
+async function getFootprintFromYourProvider(
+  lat: number,
+  lng: number,
+  address?: any
+): Promise<{ faceWKT: string; plan_sqft: number; pitch?: string; waste_pct?: number; source: string }> {
+  // 1) OSM / Overpass
+  try {
+    const osm = await osmOverpassFootprint(lat, lng);
+    if (osm) return { ...osm, source: "osm" };
+  } catch (_e) {
+    // ignore, fall through
+  }
+
+  // 2) Open Buildings via FlatGeobuf (optional)
+  if (OPENBUILDINGS_FGB_TEMPLATE) {
+    try {
+      const iso = pickISO(address) || "USA";
+      const ob = await openBuildingsFGBFootprint(lat, lng, iso);
+      if (ob) return { ...ob, source: "openbuildings" };
+    } catch (_e) {
+      // ignore, fall through
+    }
+  }
+
+  // 3) Nothing found
+  return { faceWKT: "", plan_sqft: 0, source: "none" };
+}
+
+async function osmOverpassFootprint(
+  lat: number,
+  lng: number
+): Promise<{ faceWKT: string; plan_sqft: number } | null> {
+  const { dx, dy } = metersToDeg(lat, FOOTPRINT_BUFFER_M);
+  const south = lat - dy, west = lng - dx, north = lat + dy, east = lng + dx;
+  const bbox = `${south},${west},${north},${east}`;
+
+  const query = `
+    [out:json][timeout:25];
+    (
+      way["building"](${bbox});
+      relation["building"](${bbox});
+    );
+    out body;
+    >;
+    out skel qt;`;
+
+  const resp = await fetch(OSM_OVERPASS_URL, { method: "POST", body: query });
+  if (!resp.ok) throw new Error(`OSM ${resp.status}`);
+  const data = await resp.json();
+
+  // index nodes
+  const nodes: Record<string, { lat: number; lon: number }> = {};
+  for (const e of data.elements) if (e.type === "node") nodes[e.id] = { lat: e.lat, lon: e.lon };
+
+  // collect candidate rings from ways and relations
+  const rings: Array<[number, number][]> = [];
+
+  // ways with building tag
+  for (const e of data.elements) {
+    if (e.type === "way" && e.nodes?.length >= 4 && (e.tags?.building || e.tags?.["building:part"])) {
+      const ring = e.nodes.map((id: string) => [nodes[id].lon, nodes[id].lat] as [number, number]);
+      if (!isClosed(ring)) ring.push(ring[0]);
+      rings.push(ring);
+    }
+  }
+
+  // relations (multipolygons with role=outer)
+  for (const e of data.elements) {
+    if (e.type === "relation" && (e.tags?.type === "multipolygon" || e.tags?.type === "building")) {
+      const outerWayIds = (e.members || []).filter((m: any) => m.role === "outer" && m.type === "way").map((m: any) => m.ref);
+      const wayIndex: Record<string, any> = {};
+      for (const w of data.elements) if (w.type === "way") wayIndex[w.id] = w;
+      for (const wid of outerWayIds) {
+        const w = wayIndex[wid];
+        if (w?.nodes?.length >= 4) {
+          const ring = w.nodes.map((id: string) => [nodes[id].lon, nodes[id].lat] as [number, number]);
+          if (!isClosed(ring)) ring.push(ring[0]);
+          rings.push(ring);
+        }
+      }
+    }
+  }
+
+  if (!rings.length) return null;
+
+  // choose best ring: prefer one that contains the point; else nearest centroid
+  const p: [number, number] = [lng, lat];
+  let best: [number, number][] | null = null;
+  let bestScore = Infinity;
+
+  for (const r of rings) {
+    const contains = pointInPolygon(p, r);
+    const d = distanceMetersToCentroid(lat, lng, r);
+    const score = contains ? 0 : d;
+    if (score < bestScore) { best = r; bestScore = score; }
+  }
+
+  if (!best) return null;
+
+  const plan_sqft = polygonAreaSqftFromLngLat(best);
+  const faceWKT = polygonWKT(best);
+  return { faceWKT, plan_sqft };
+}
+
+async function openBuildingsFGBFootprint(
+  lat: number,
+  lng: number,
+  iso: string
+): Promise<{ faceWKT: string; plan_sqft: number } | null> {
+  const url = OPENBUILDINGS_FGB_TEMPLATE.replace("${ISO}", iso.toUpperCase());
+  const { dx, dy } = metersToDeg(lat, FOOTPRINT_BUFFER_M);
+  const rect = { minX: lng - dx, minY: lat - dy, maxX: lng + dx, maxY: lat + dy };
+
+  const feats: any[] = [];
+  for await (const f of fgb.deserialize(url, rect)) feats.push(f);
+  if (!feats.length) return null;
+
+  // choose best polygon ring
+  const p: [number, number] = [lng, lat];
+  let best: [number, number][] | null = null;
+  let bestScore = Infinity;
+
+  for (const f of feats) {
+    const g = f.geometry;
+    if (!g) continue;
+
+    const ring: [number, number][] =
+      g.type === "Polygon" ? g.coordinates[0] :
+      g.type === "MultiPolygon" ? g.coordinates[0][0] : null;
+    if (!ring) continue;
+
+    const r = ring.map((c: number[]) => [c[0], c[1]] as [number, number]);
+    if (!isClosed(r)) r.push(r[0]);
+
+    const contains = pointInPolygon(p, r);
+    const d = distanceMetersToCentroid(lat, lng, r);
+    const score = contains ? 0 : d;
+    if (score < bestScore) { best = r; bestScore = score; }
+  }
+
+  if (!best) return null;
+
+  const plan_sqft = polygonAreaSqftFromLngLat(best);
+  const faceWKT = polygonWKT(best);
+  return { faceWKT, plan_sqft };
+}
+
+async function providerFreeFootprint(supabase: any, lat: number, lng: number, address?: any) {
+  // 1. Get footprint from free provider
+  const footprint = await getFootprintFromYourProvider(lat, lng, address);
+  
+  if (footprint.plan_sqft === 0) {
+    throw new Error("No building footprint found");
+  }
+  
+  // 2. Parse WKT to coordinates
+  const coords = wktToCoords(footprint.faceWKT);
+  const midLat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+  
+  // 3. Extract roof topology (ridge/hip/valley/eave/rake)
+  const topology = buildLinearFeaturesFromTopology(coords, midLat);
+  
+  // 4. Build face with assumed pitch
+  const defaultPitch = "4/12";
+  const wastePct = 12;
+  const pf = pitchFactor(defaultPitch);
+  const adjusted = footprint.plan_sqft * pf * (1 + wastePct / 100);
+  
+  const face: RoofFace = {
+    id: "A",
+    wkt: footprint.faceWKT,
+    plan_area_sqft: footprint.plan_sqft,
+    pitch: defaultPitch,
+    area_sqft: adjusted,
+  };
+  
+  // 5. Return MeasureResult
+  const result: MeasureResult = {
+    property_id: "",
+    source: footprint.source,
+    faces: [face],
+    linear_features: topology.features,
+    summary: {
+      total_area_sqft: adjusted,
+      total_squares: adjusted / 100,
+      waste_pct: wastePct,
+      pitch_method: "assumed",
+      ...topology.totals,
+      roof_age_years: null,
+      roof_age_source: "unknown"
+    },
+    geom_wkt: `MULTIPOLYGON((${footprint.faceWKT.replace(/^POLYGON/, "")}))`
+  };
+  
+  return result;
+}
+
+// Provider: OpenStreetMap (sync, global coverage) - LEGACY
 async function providerOSM(lat: number, lng: number) {
   if (!OSM_ENABLED) throw new Error("OSM disabled");
   
@@ -685,11 +948,11 @@ serve(async (req) => {
         const { data: { user } } = await supabase.auth.getUser();
         const userId = user?.id;
 
-        // Provider chain: Google Solar (primary) → OSM (fallback)
+        // Provider chain: Google Solar (primary) → Free Footprint (OSM + Open Buildings fallback)
         let meas: MeasureResult | null = null;
         const tryOrder = [
           async () => await providerGoogleSolar(supabase, lat, lng),
-          async () => await providerOSM(lat, lng),
+          async () => await providerFreeFootprint(supabase, lat, lng, address),
         ];
 
         for (const fn of tryOrder) {
