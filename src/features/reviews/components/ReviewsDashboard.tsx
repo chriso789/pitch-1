@@ -22,7 +22,13 @@ export default function ReviewsDashboard() {
         .select(`
           *,
           contacts(first_name, last_name),
-          projects(title)
+          projects(name)
+        `)
+        .order('reviewed_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+  });
         `)
         .order('reviewed_at', { ascending: false });
       if (error) throw error;

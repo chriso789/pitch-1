@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -35,10 +35,13 @@ export default function ScoringRulesBuilder() {
       if (error) throw error;
       return data as ScoringRule[];
     },
-    onSuccess: (data) => {
-      if (data.length > 0) setRules(data);
-    },
   });
+
+  useEffect(() => {
+    if (existingRules && existingRules.length > 0) {
+      setRules(existingRules);
+    }
+  }, [existingRules]);
 
   const saveMutation = useMutation({
     mutationFn: async (rulesToSave: ScoringRule[]) => {

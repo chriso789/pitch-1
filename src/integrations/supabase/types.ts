@@ -1794,6 +1794,7 @@ export type Database = {
           address_zip: string | null
           assigned_to: string | null
           clj_formatted_number: string | null
+          clj_number: string | null
           company_name: string | null
           contact_number: string | null
           created_at: string | null
@@ -1839,6 +1840,7 @@ export type Database = {
           address_zip?: string | null
           assigned_to?: string | null
           clj_formatted_number?: string | null
+          clj_number?: string | null
           company_name?: string | null
           contact_number?: string | null
           created_at?: string | null
@@ -1884,6 +1886,7 @@ export type Database = {
           address_zip?: string | null
           assigned_to?: string | null
           clj_formatted_number?: string | null
+          clj_number?: string | null
           company_name?: string | null
           contact_number?: string | null
           created_at?: string | null
@@ -2025,6 +2028,89 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      customer_reviews: {
+        Row: {
+          clj_number: string | null
+          contact_id: string
+          created_at: string | null
+          id: string
+          is_public: boolean | null
+          project_id: string | null
+          rating: number
+          responded_at: string | null
+          responded_by: string | null
+          response_text: string | null
+          review_source: string | null
+          review_text: string | null
+          reviewed_at: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          clj_number?: string | null
+          contact_id: string
+          created_at?: string | null
+          id?: string
+          is_public?: boolean | null
+          project_id?: string | null
+          rating: number
+          responded_at?: string | null
+          responded_by?: string | null
+          response_text?: string | null
+          review_source?: string | null
+          review_text?: string | null
+          reviewed_at?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          clj_number?: string | null
+          contact_id?: string
+          created_at?: string | null
+          id?: string
+          is_public?: boolean | null
+          project_id?: string | null
+          rating?: number
+          responded_at?: string | null
+          responded_by?: string | null
+          response_text?: string | null
+          review_source?: string | null
+          review_text?: string | null
+          reviewed_at?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_reviews_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_reviews_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_reviews_responded_by_fkey"
+            columns: ["responded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_reviews_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       deleted_contacts: {
         Row: {
@@ -7765,6 +7851,76 @@ export type Database = {
           },
         ]
       }
+      satisfaction_surveys: {
+        Row: {
+          clj_number: string | null
+          completed_at: string | null
+          contact_id: string
+          created_at: string | null
+          feedback: Json | null
+          id: string
+          nps_score: number | null
+          project_id: string | null
+          sent_at: string | null
+          sentiment: string | null
+          survey_type: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          clj_number?: string | null
+          completed_at?: string | null
+          contact_id: string
+          created_at?: string | null
+          feedback?: Json | null
+          id?: string
+          nps_score?: number | null
+          project_id?: string | null
+          sent_at?: string | null
+          sentiment?: string | null
+          survey_type: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          clj_number?: string | null
+          completed_at?: string | null
+          contact_id?: string
+          created_at?: string | null
+          feedback?: Json | null
+          id?: string
+          nps_score?: number | null
+          project_id?: string | null
+          sent_at?: string | null
+          sentiment?: string | null
+          survey_type?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "satisfaction_surveys_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satisfaction_surveys_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "satisfaction_surveys_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       settings_tabs: {
         Row: {
           created_at: string | null
@@ -10277,44 +10433,131 @@ export type Database = {
       workflow_tasks: {
         Row: {
           ai_context: Json | null
+          assigned_to: string | null
           completion_criteria: Json | null
           created_at: string
           created_by: string | null
           current_phase: Database["public"]["Enums"]["workflow_phase"]
           description: string | null
+          due_date: string | null
           id: string
           is_active: boolean
+          parent_task_id: string | null
+          priority: string | null
+          status: string | null
           task_name: string
           tenant_id: string
           updated_at: string
         }
         Insert: {
           ai_context?: Json | null
+          assigned_to?: string | null
           completion_criteria?: Json | null
           created_at?: string
           created_by?: string | null
           current_phase?: Database["public"]["Enums"]["workflow_phase"]
           description?: string | null
+          due_date?: string | null
           id?: string
           is_active?: boolean
+          parent_task_id?: string | null
+          priority?: string | null
+          status?: string | null
           task_name: string
           tenant_id: string
           updated_at?: string
         }
         Update: {
           ai_context?: Json | null
+          assigned_to?: string | null
           completion_criteria?: Json | null
           created_at?: string
           created_by?: string | null
           current_phase?: Database["public"]["Enums"]["workflow_phase"]
           description?: string | null
+          due_date?: string | null
           id?: string
           is_active?: boolean
+          parent_task_id?: string | null
+          priority?: string | null
+          status?: string | null
           task_name?: string
           tenant_id?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "workflow_tasks_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workflow_tasks_parent_task_id_fkey"
+            columns: ["parent_task_id"]
+            isOneToOne: false
+            referencedRelation: "workflow_tasks"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workflow_templates: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          is_system_template: boolean | null
+          name: string
+          template_data: Json
+          template_type: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_system_template?: boolean | null
+          name: string
+          template_data: Json
+          template_type?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_system_template?: boolean | null
+          name?: string
+          template_data?: Json
+          template_type?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workflow_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workflow_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {

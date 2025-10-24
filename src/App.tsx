@@ -43,6 +43,9 @@ import CustomerPresentationView from "./pages/CustomerPresentationView";
 import Campaigns from "./pages/Campaigns";
 import CustomerPortal from "./pages/CustomerPortal";
 import Approvals from "./pages/Approvals";
+import TasksPage from "./pages/TasksPage";
+import LeadScoringPage from "./pages/LeadScoringPage";
+import ReviewsPage from "./pages/ReviewsPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -109,6 +112,9 @@ const AppContent = () => {
         <Route path="/jobs" element={<Jobs />} />
         <Route path="/estimates" element={<Estimates />} />
         <Route path="/automation" element={<AutomationDashboard />} />
+        <Route path="/tasks" element={<TasksPage />} />
+        <Route path="/lead-scoring" element={<LeadScoringPage />} />
+        <Route path="/reviews" element={<ReviewsPage />} />
         <Route path="/presentations" element={<PresentationsPage />} />
         <Route path="/presentations/:id/edit" element={<PresentationBuilderPage />} />
         <Route path="/presentations/:id/present" element={<PresentationModePage />} />

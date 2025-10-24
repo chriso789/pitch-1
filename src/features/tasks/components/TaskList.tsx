@@ -21,9 +21,7 @@ interface Task {
   priority: string;
   assigned_to: string | null;
   due_date: string | null;
-  phase: string;
-  clj_number: string | null;
-  profiles?: { full_name: string };
+  current_phase: string;
 }
 
 function SortableTask({ task, onStatusChange, onSelect }: { task: Task; onStatusChange: (id: string, status: string) => void; onSelect: (task: Task) => void }) {
@@ -69,17 +67,6 @@ function SortableTask({ task, onStatusChange, onSelect }: { task: Task; onStatus
                 <h4 className="font-medium text-sm">{task.task_name}</h4>
               </div>
               <div className="flex items-center gap-2 text-xs text-muted-foreground flex-wrap">
-                {task.clj_number && (
-                  <Badge variant="outline" className="text-xs">
-                    {task.clj_number}
-                  </Badge>
-                )}
-                {task.profiles?.full_name && (
-                  <div className="flex items-center gap-1">
-                    <User className="h-3 w-3" />
-                    <span>{task.profiles.full_name}</span>
-                  </div>
-                )}
                 {task.due_date && (
                   <div className="flex items-center gap-1">
                     <Calendar className="h-3 w-3" />
@@ -112,7 +99,7 @@ export default function TaskList({ onTaskSelect }: { onTaskSelect: (task: Task) 
     queryFn: async () => {
       let query = supabase
         .from('workflow_tasks')
-        .select('*, profiles:assigned_to(full_name)')
+        .select('*')
         .order('priority', { ascending: false })
         .order('due_date', { ascending: true });
 
@@ -125,7 +112,7 @@ export default function TaskList({ onTaskSelect }: { onTaskSelect: (task: Task) 
 
       const { data, error } = await query;
       if (error) throw error;
-      return data as Task[];
+      return data || [];
     },
   });
 

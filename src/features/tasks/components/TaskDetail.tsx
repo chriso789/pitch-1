@@ -29,12 +29,7 @@ export default function TaskDetail({ taskId, open, onOpenChange }: TaskDetailPro
       if (!taskId) return null;
       const { data, error } = await supabase
         .from('workflow_tasks')
-        .select(`
-          *,
-          profiles:assigned_to(full_name, email),
-          contacts(first_name, last_name),
-          projects(title)
-        `)
+        .select('*')
         .eq('id', taskId)
         .single();
       if (error) throw error;
@@ -48,8 +43,8 @@ export default function TaskDetail({ taskId, open, onOpenChange }: TaskDetailPro
     queryFn: async () => {
       const { data, error } = await supabase
         .from('profiles')
-        .select('id, full_name, role')
-        .order('full_name');
+        .select('id, email, role')
+        .order('email');
       if (error) throw error;
       return data;
     },
@@ -164,7 +159,7 @@ export default function TaskDetail({ taskId, open, onOpenChange }: TaskDetailPro
                 <SelectItem value="">Unassigned</SelectItem>
                 {users.map((user) => (
                   <SelectItem key={user.id} value={user.id}>
-                    {user.full_name} ({user.role})
+                    {user.email} ({user.role})
                   </SelectItem>
                 ))}
               </SelectContent>
@@ -185,29 +180,9 @@ export default function TaskDetail({ taskId, open, onOpenChange }: TaskDetailPro
           <div className="space-y-3 p-4 bg-muted/50 rounded-lg">
             <h4 className="font-semibold text-sm">Context</h4>
             
-            {task.clj_number && (
-              <div className="flex items-center gap-2 text-sm">
-                <Badge variant="outline">{task.clj_number}</Badge>
-              </div>
-            )}
-
-            {task.contacts && (
-              <div className="flex items-center gap-2 text-sm">
-                <User className="h-4 w-4 text-muted-foreground" />
-                <span>{task.contacts.first_name} {task.contacts.last_name}</span>
-              </div>
-            )}
-
-            {task.projects && (
-              <div className="flex items-center gap-2 text-sm">
-                <ExternalLink className="h-4 w-4 text-muted-foreground" />
-                <span>{task.projects.title}</span>
-              </div>
-            )}
-
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Clock className="h-4 w-4" />
-              <span>Phase: {task.phase}</span>
+              <span>Phase: {task.current_phase}</span>
             </div>
           </div>
 

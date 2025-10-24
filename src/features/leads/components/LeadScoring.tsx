@@ -18,13 +18,15 @@ import { LeadScoringActions } from '@/features/contacts/components/LeadScoringAc
 interface ScoringRule {
   id: string;
   rule_name: string;
-  rule_type: string;
   field_name: string;
-  condition_type: string;
-  condition_value: any;
+  operator: string;
+  field_value: string;
   points: number;
   is_active: boolean;
   created_at: string;
+  updated_at?: string;
+  tenant_id?: string;
+  created_by?: string;
 }
 
 interface QualificationStatus {
@@ -285,10 +287,10 @@ export const LeadScoring = () => {
     setEditingRule(rule);
     setRuleFormData({
       rule_name: rule.rule_name,
-      rule_type: rule.rule_type,
+      rule_type: 'field_match', // Default
       field_name: rule.field_name,
-      condition_type: rule.condition_type,
-      condition_value: rule.condition_value,
+      condition_type: rule.operator,
+      condition_value: { value: String(rule.field_value) },
       points: rule.points,
       is_active: rule.is_active
     });
@@ -596,13 +598,13 @@ export const LeadScoring = () => {
                     <TableRow key={rule.id}>
                       <TableCell className="font-medium">{rule.rule_name}</TableCell>
                       <TableCell>
-                        <Badge variant={getRuleTypeBadgeVariant(rule.rule_type)}>
-                          {rule.rule_type}
+                        <Badge variant="default">
+                          Rule
                         </Badge>
                       </TableCell>
                       <TableCell>{rule.field_name}</TableCell>
                       <TableCell>
-                        {rule.condition_type} "{rule.condition_value.value}"
+                        {rule.operator} "{rule.field_value}"
                       </TableCell>
                       <TableCell>
                         <span className={`font-medium ${
