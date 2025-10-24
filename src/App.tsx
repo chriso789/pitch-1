@@ -41,7 +41,8 @@ import PresentationBuilderPage from "./pages/PresentationBuilderPage";
 import PresentationModePage from "./pages/PresentationModePage";
 import CustomerPresentationView from "./pages/CustomerPresentationView";
 import Campaigns from "./pages/Campaigns";
-
+import CustomerPortal from "./pages/CustomerPortal";
+import Approvals from "./pages/Approvals";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -112,6 +113,8 @@ const AppContent = () => {
         <Route path="/presentations/:id/edit" element={<PresentationBuilderPage />} />
         <Route path="/presentations/:id/present" element={<PresentationModePage />} />
         <Route path="/presentations/:id/view" element={<CustomerPresentationView />} />
+        <Route path="/portal" element={<CustomerPortal />} />
+        <Route path="/approvals" element={<Approvals />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/help" element={<Help />} />
         
