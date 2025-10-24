@@ -1813,6 +1813,7 @@ export type Database = {
           lead_score: number | null
           lead_source: string | null
           lead_source_details: Json | null
+          lead_status: string | null
           location_id: string | null
           longitude: number | null
           metadata: Json | null
@@ -1857,6 +1858,7 @@ export type Database = {
           lead_score?: number | null
           lead_source?: string | null
           lead_source_details?: Json | null
+          lead_status?: string | null
           location_id?: string | null
           longitude?: number | null
           metadata?: Json | null
@@ -1901,6 +1903,7 @@ export type Database = {
           lead_score?: number | null
           lead_source?: string | null
           lead_source_details?: Json | null
+          lead_status?: string | null
           location_id?: string | null
           longitude?: number | null
           metadata?: Json | null
@@ -4407,44 +4410,41 @@ export type Database = {
       }
       lead_scoring_rules: {
         Row: {
-          condition_type: string
-          condition_value: Json
           created_at: string
           created_by: string | null
           field_name: string
+          field_value: string | null
           id: string
           is_active: boolean | null
+          operator: string | null
           points: number
           rule_name: string
-          rule_type: string
           tenant_id: string
           updated_at: string
         }
         Insert: {
-          condition_type: string
-          condition_value?: Json
           created_at?: string
           created_by?: string | null
           field_name: string
+          field_value?: string | null
           id?: string
           is_active?: boolean | null
+          operator?: string | null
           points?: number
           rule_name: string
-          rule_type: string
           tenant_id: string
           updated_at?: string
         }
         Update: {
-          condition_type?: string
-          condition_value?: Json
           created_at?: string
           created_by?: string | null
           field_name?: string
+          field_value?: string | null
           id?: string
           is_active?: boolean | null
+          operator?: string | null
           points?: number
           rule_name?: string
-          rule_type?: string
           tenant_id?: string
           updated_at?: string
         }
