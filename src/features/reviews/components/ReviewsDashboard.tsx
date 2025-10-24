@@ -29,12 +29,6 @@ export default function ReviewsDashboard() {
       return data || [];
     },
   });
-        `)
-        .order('reviewed_at', { ascending: false });
-      if (error) throw error;
-      return data;
-    },
-  });
 
   const { data: stats } = useQuery({
     queryKey: ['review-stats'],
@@ -82,16 +76,16 @@ export default function ReviewsDashboard() {
 
   const generateAIResponse = async (review: any) => {
     const rating = review.rating || 0;
-    const reviewText = review.review_text || '';
+    const firstName = review.contacts?.first_name || 'Customer';
     
     // Simple AI-suggested responses based on rating
     let suggestion = '';
     if (rating >= 4) {
-      suggestion = `Thank you so much for your wonderful ${rating}-star review, ${review.contacts?.first_name}! We're thrilled that you had a great experience with our team. Your feedback means the world to us and motivates us to continue delivering excellent service. We hope to work with you again in the future!`;
+      suggestion = `Thank you so much for your wonderful ${rating}-star review, ${firstName}! We're thrilled that you had a great experience with our team. Your feedback means the world to us and motivates us to continue delivering excellent service. We hope to work with you again in the future!`;
     } else if (rating === 3) {
-      suggestion = `Hi ${review.contacts?.first_name}, thank you for taking the time to share your feedback. We appreciate your 3-star review and would love to learn more about how we can improve. Please feel free to reach out to us directly so we can address any concerns. We're committed to your satisfaction!`;
+      suggestion = `Hi ${firstName}, thank you for taking the time to share your feedback. We appreciate your 3-star review and would love to learn more about how we can improve. Please feel free to reach out to us directly so we can address any concerns. We're committed to your satisfaction!`;
     } else {
-      suggestion = `Dear ${review.contacts?.first_name}, we sincerely apologize that we didn't meet your expectations. Your feedback is incredibly important to us. We'd like to make this right - please contact us at your earliest convenience so we can discuss how to resolve this issue. Thank you for giving us the opportunity to improve.`;
+      suggestion = `Dear ${firstName}, we sincerely apologize that we didn't meet your expectations. Your feedback is incredibly important to us. We'd like to make this right - please contact us at your earliest convenience so we can discuss how to resolve this issue. Thank you for giving us the opportunity to improve.`;
     }
     
     setReplyText({ ...replyText, [review.id]: suggestion });
@@ -213,7 +207,7 @@ export default function ReviewsDashboard() {
                       {review.contacts?.first_name} {review.contacts?.last_name}
                     </CardTitle>
                     <CardDescription>
-                      {review.projects?.title && `Project: ${review.projects.title}`}
+                      {review.projects?.name && `Project: ${review.projects.name}`}
                       {review.clj_number && ` • ${review.clj_number}`}
                     </CardDescription>
                   </div>
