@@ -27,7 +27,7 @@ export function TimeClockWidget() {
         navigator.geolocation.getCurrentPosition(resolve, reject);
       });
 
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('time_entries')
         .insert({
           tenant_id: profile.tenant_id,
@@ -67,7 +67,7 @@ export function TimeClockWidget() {
     
     setLoading(true);
     try {
-      const { error } = await supabase
+      const { error } = await (supabase as any)
         .from('time_entries')
         .update({
           clock_out: new Date().toISOString(),

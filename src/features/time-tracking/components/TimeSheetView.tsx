@@ -9,7 +9,7 @@ export function TimeSheetView() {
   const { data: timeEntries, isLoading } = useQuery({
     queryKey: ['time-entries'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('time_entries')
         .select(`
           *,

@@ -74,17 +74,14 @@ export function ChangeOrderForm({ onClose, onSuccess }: ChangeOrderFormProps) {
   const onSubmit = async (values: z.infer<typeof formSchema>) => {
     setIsSubmitting(true);
     try {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('id, tenant_id')
-        .eq('id', (await supabase.auth.getUser()).data.user?.id)
-        .single();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('User not found');
 
-      if (!profile) throw new Error('Profile not found');
+      const coNumber = `CO-${Date.now()}`;
 
-      const { error } = await supabase.from('change_orders').insert({
-        tenant_id: profile.tenant_id,
+      const { error } = await (supabase as any).from('change_orders').insert({
         project_id: values.project_id,
+        co_number: coNumber,
         title: values.title,
         description: values.description,
         reason: values.reason,
@@ -92,7 +89,7 @@ export function ChangeOrderForm({ onClose, onSuccess }: ChangeOrderFormProps) {
         new_scope: values.new_scope,
         cost_impact: parseFloat(values.cost_impact),
         time_impact_days: parseInt(values.time_impact_days || '0'),
-        requested_by: profile.id,
+        requested_by: user.id,
         status: 'draft',
       });
 

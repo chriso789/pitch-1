@@ -1367,6 +1367,151 @@ export type Database = {
         }
         Relationships: []
       }
+      change_order_line_items: {
+        Row: {
+          change_order_id: string
+          created_at: string | null
+          description: string | null
+          id: string
+          item_type: string | null
+          quantity: number | null
+          total_price: number | null
+          unit_price: number | null
+        }
+        Insert: {
+          change_order_id: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          item_type?: string | null
+          quantity?: number | null
+          total_price?: number | null
+          unit_price?: number | null
+        }
+        Update: {
+          change_order_id?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          item_type?: string | null
+          quantity?: number | null
+          total_price?: number | null
+          unit_price?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "change_order_line_items_change_order_id_fkey"
+            columns: ["change_order_id"]
+            isOneToOne: false
+            referencedRelation: "change_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      change_orders: {
+        Row: {
+          approved_by: string | null
+          approved_date: string | null
+          co_number: string
+          completed_date: string | null
+          cost_impact: number | null
+          created_at: string | null
+          customer_approved: boolean | null
+          customer_approved_at: string | null
+          description: string | null
+          id: string
+          new_scope: string | null
+          original_scope: string | null
+          project_id: string
+          reason: string | null
+          rejection_reason: string | null
+          requested_by: string | null
+          requested_date: string | null
+          status: string | null
+          tenant_id: string
+          time_impact_days: number | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          approved_by?: string | null
+          approved_date?: string | null
+          co_number: string
+          completed_date?: string | null
+          cost_impact?: number | null
+          created_at?: string | null
+          customer_approved?: boolean | null
+          customer_approved_at?: string | null
+          description?: string | null
+          id?: string
+          new_scope?: string | null
+          original_scope?: string | null
+          project_id: string
+          reason?: string | null
+          rejection_reason?: string | null
+          requested_by?: string | null
+          requested_date?: string | null
+          status?: string | null
+          tenant_id?: string
+          time_impact_days?: number | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          approved_by?: string | null
+          approved_date?: string | null
+          co_number?: string
+          completed_date?: string | null
+          cost_impact?: number | null
+          created_at?: string | null
+          customer_approved?: boolean | null
+          customer_approved_at?: string | null
+          description?: string | null
+          id?: string
+          new_scope?: string | null
+          original_scope?: string | null
+          project_id?: string
+          reason?: string | null
+          rejection_reason?: string | null
+          requested_by?: string | null
+          requested_date?: string | null
+          status?: string | null
+          tenant_id?: string
+          time_impact_days?: number | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "change_orders_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "change_orders_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "change_orders_requested_by_fkey"
+            columns: ["requested_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "change_orders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commission_calculations: {
         Row: {
           approved_at: string | null
@@ -4347,6 +4492,66 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      labor_cost_tracking: {
+        Row: {
+          actual_cost: number | null
+          actual_hours: number | null
+          budgeted_hours: number | null
+          budgeted_rate: number | null
+          budgeted_total: number | null
+          created_at: string | null
+          id: string
+          last_updated: string | null
+          project_id: string
+          tenant_id: string
+          variance_cost: number | null
+          variance_hours: number | null
+        }
+        Insert: {
+          actual_cost?: number | null
+          actual_hours?: number | null
+          budgeted_hours?: number | null
+          budgeted_rate?: number | null
+          budgeted_total?: number | null
+          created_at?: string | null
+          id?: string
+          last_updated?: string | null
+          project_id: string
+          tenant_id?: string
+          variance_cost?: number | null
+          variance_hours?: number | null
+        }
+        Update: {
+          actual_cost?: number | null
+          actual_hours?: number | null
+          budgeted_hours?: number | null
+          budgeted_rate?: number | null
+          budgeted_total?: number | null
+          created_at?: string | null
+          id?: string
+          last_updated?: string | null
+          project_id?: string
+          tenant_id?: string
+          variance_cost?: number | null
+          variance_hours?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "labor_cost_tracking_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "labor_cost_tracking_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -9737,6 +9942,101 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      time_entries: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          break_duration_minutes: number | null
+          clock_in: string
+          clock_out: string | null
+          created_at: string | null
+          entry_date: string
+          hourly_rate: number | null
+          id: string
+          labor_type: string | null
+          location_coordinates: Json | null
+          notes: string | null
+          project_id: string | null
+          status: string | null
+          tenant_id: string
+          total_cost: number | null
+          total_hours: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          break_duration_minutes?: number | null
+          clock_in: string
+          clock_out?: string | null
+          created_at?: string | null
+          entry_date: string
+          hourly_rate?: number | null
+          id?: string
+          labor_type?: string | null
+          location_coordinates?: Json | null
+          notes?: string | null
+          project_id?: string | null
+          status?: string | null
+          tenant_id?: string
+          total_cost?: number | null
+          total_hours?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          break_duration_minutes?: number | null
+          clock_in?: string
+          clock_out?: string | null
+          created_at?: string | null
+          entry_date?: string
+          hourly_rate?: number | null
+          id?: string
+          labor_type?: string | null
+          location_coordinates?: Json | null
+          notes?: string | null
+          project_id?: string | null
+          status?: string | null
+          tenant_id?: string
+          total_cost?: number | null
+          total_hours?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "time_entries_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_entries_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_entries_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "time_entries_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       transition_rules: {
         Row: {

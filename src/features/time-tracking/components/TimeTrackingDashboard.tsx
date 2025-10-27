@@ -18,7 +18,7 @@ export default function TimeTrackingDashboard() {
       const startOfWeek = new Date();
       startOfWeek.setDate(startOfWeek.getDate() - startOfWeek.getDay());
       
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('time_entries')
         .select('total_hours, total_cost, status')
         .gte('entry_date', format(startOfWeek, 'yyyy-MM-dd'))

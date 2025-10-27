@@ -17,7 +17,7 @@ export default function ChangeOrdersDashboard() {
   const { data: stats } = useQuery({
     queryKey: ['change-order-stats'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('change_orders')
         .select('status, cost_impact');
 

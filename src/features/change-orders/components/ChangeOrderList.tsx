@@ -14,7 +14,7 @@ export function ChangeOrderList({ status }: ChangeOrderListProps) {
   const { data: changeOrders, isLoading } = useQuery({
     queryKey: ['change-orders', status],
     queryFn: async () => {
-      let query = supabase
+      let query = (supabase as any)
         .from('change_orders')
         .select(`
           *,

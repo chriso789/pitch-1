@@ -8,7 +8,7 @@ export function LaborCostDashboard() {
   const { data: laborCosts, isLoading } = useQuery({
     queryKey: ['labor-cost-tracking'],
     queryFn: async () => {
-      const { data, error } = await supabase
+      const { data, error } = await (supabase as any)
         .from('labor_cost_tracking')
         .select(`
           *,
