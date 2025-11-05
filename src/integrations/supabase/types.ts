@@ -3250,6 +3250,189 @@ export type Database = {
           },
         ]
       }
+      equipment: {
+        Row: {
+          assigned_to: string | null
+          created_at: string | null
+          current_value: number | null
+          equipment_type: string
+          id: string
+          last_maintenance_date: string | null
+          location: string | null
+          name: string
+          next_maintenance_date: string | null
+          notes: string | null
+          purchase_cost: number | null
+          purchase_date: string | null
+          serial_number: string | null
+          status: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          created_at?: string | null
+          current_value?: number | null
+          equipment_type: string
+          id?: string
+          last_maintenance_date?: string | null
+          location?: string | null
+          name: string
+          next_maintenance_date?: string | null
+          notes?: string | null
+          purchase_cost?: number | null
+          purchase_date?: string | null
+          serial_number?: string | null
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          created_at?: string | null
+          current_value?: number | null
+          equipment_type?: string
+          id?: string
+          last_maintenance_date?: string | null
+          location?: string | null
+          name?: string
+          next_maintenance_date?: string | null
+          notes?: string | null
+          purchase_cost?: number | null
+          purchase_date?: string | null
+          serial_number?: string | null
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "crews"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      equipment_assignments: {
+        Row: {
+          assigned_date: string
+          condition_at_checkout: string | null
+          condition_at_return: string | null
+          created_at: string | null
+          crew_id: string | null
+          equipment_id: string
+          id: string
+          notes: string | null
+          project_id: string | null
+          returned_date: string | null
+          tenant_id: string
+        }
+        Insert: {
+          assigned_date: string
+          condition_at_checkout?: string | null
+          condition_at_return?: string | null
+          created_at?: string | null
+          crew_id?: string | null
+          equipment_id: string
+          id?: string
+          notes?: string | null
+          project_id?: string | null
+          returned_date?: string | null
+          tenant_id?: string
+        }
+        Update: {
+          assigned_date?: string
+          condition_at_checkout?: string | null
+          condition_at_return?: string | null
+          created_at?: string | null
+          crew_id?: string | null
+          equipment_id?: string
+          id?: string
+          notes?: string | null
+          project_id?: string | null
+          returned_date?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_assignments_crew_id_fkey"
+            columns: ["crew_id"]
+            isOneToOne: false
+            referencedRelation: "crews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_assignments_equipment_id_fkey"
+            columns: ["equipment_id"]
+            isOneToOne: false
+            referencedRelation: "equipment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_assignments_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      equipment_maintenance_log: {
+        Row: {
+          cost: number | null
+          created_at: string | null
+          description: string | null
+          equipment_id: string
+          id: string
+          maintenance_type: string | null
+          next_service_date: string | null
+          performed_by: string | null
+          performed_date: string
+          tenant_id: string
+        }
+        Insert: {
+          cost?: number | null
+          created_at?: string | null
+          description?: string | null
+          equipment_id: string
+          id?: string
+          maintenance_type?: string | null
+          next_service_date?: string | null
+          performed_by?: string | null
+          performed_date: string
+          tenant_id?: string
+        }
+        Update: {
+          cost?: number | null
+          created_at?: string | null
+          description?: string | null
+          equipment_id?: string
+          id?: string
+          maintenance_type?: string | null
+          next_service_date?: string | null
+          performed_by?: string | null
+          performed_date?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "equipment_maintenance_log_equipment_id_fkey"
+            columns: ["equipment_id"]
+            isOneToOne: false
+            referencedRelation: "equipment"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "equipment_maintenance_log_performed_by_fkey"
+            columns: ["performed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       estimate_approvals: {
         Row: {
           approval_notes: string | null
