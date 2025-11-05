@@ -2,7 +2,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GitHubConnectionGuide } from "./GitHubConnectionGuide";
 import { ClaudeAITester } from "./ClaudeAITester";
 import { GitHubActionsGuide } from "./GitHubActionsGuide";
-import { Github, Sparkles, Workflow } from "lucide-react";
+import { AIUsageDashboard } from "./AIUsageDashboard";
+import { Github, Sparkles, Workflow, BarChart3 } from "lucide-react";
 
 export const IntegrationsSettings = () => {
   return (
@@ -14,8 +15,12 @@ export const IntegrationsSettings = () => {
         </p>
       </div>
 
-      <Tabs defaultValue="github" className="space-y-6">
+      <Tabs defaultValue="ai-analytics" className="space-y-6">
         <TabsList>
+          <TabsTrigger value="ai-analytics" className="flex items-center gap-2">
+            <BarChart3 className="h-4 w-4" />
+            AI Analytics
+          </TabsTrigger>
           <TabsTrigger value="github" className="flex items-center gap-2">
             <Github className="h-4 w-4" />
             GitHub Connection
@@ -29,6 +34,10 @@ export const IntegrationsSettings = () => {
             Claude AI Testing
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="ai-analytics" className="space-y-6">
+          <AIUsageDashboard />
+        </TabsContent>
 
         <TabsContent value="github" className="space-y-6">
           <GitHubConnectionGuide />

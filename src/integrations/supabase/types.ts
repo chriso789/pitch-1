@@ -299,6 +299,71 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_usage_metrics: {
+        Row: {
+          completion_tokens: number | null
+          created_at: string
+          endpoint: string | null
+          error_message: string | null
+          estimated_cost_usd: number | null
+          feature: string
+          id: string
+          model: string
+          prompt_tokens: number | null
+          provider: string
+          request_id: string | null
+          response_time_ms: number | null
+          status: string
+          tenant_id: string | null
+          total_tokens: number | null
+          user_id: string | null
+        }
+        Insert: {
+          completion_tokens?: number | null
+          created_at?: string
+          endpoint?: string | null
+          error_message?: string | null
+          estimated_cost_usd?: number | null
+          feature: string
+          id?: string
+          model: string
+          prompt_tokens?: number | null
+          provider: string
+          request_id?: string | null
+          response_time_ms?: number | null
+          status: string
+          tenant_id?: string | null
+          total_tokens?: number | null
+          user_id?: string | null
+        }
+        Update: {
+          completion_tokens?: number | null
+          created_at?: string
+          endpoint?: string | null
+          error_message?: string | null
+          estimated_cost_usd?: number | null
+          feature?: string
+          id?: string
+          model?: string
+          prompt_tokens?: number | null
+          provider?: string
+          request_id?: string | null
+          response_time_ms?: number | null
+          status?: string
+          tenant_id?: string | null
+          total_tokens?: number | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_usage_metrics_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       answered_calls_log: {
         Row: {
           answered_at: string | null
@@ -11204,6 +11269,34 @@ export type Database = {
       }
     }
     Views: {
+      ai_usage_summary: {
+        Row: {
+          avg_response_time_ms: number | null
+          error_count: number | null
+          feature: string | null
+          hour: string | null
+          model: string | null
+          payment_required_count: number | null
+          provider: string | null
+          rate_limited_count: number | null
+          request_count: number | null
+          success_count: number | null
+          tenant_id: string | null
+          total_completion_tokens: number | null
+          total_cost_usd: number | null
+          total_prompt_tokens: number | null
+          total_tokens: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_usage_metrics_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       geography_columns: {
         Row: {
           coord_dimension: number | null
@@ -11863,6 +11956,10 @@ export type Database = {
         Returns: boolean
       }
       geomfromewkt: { Args: { "": string }; Returns: unknown }
+      get_ai_usage_stats: {
+        Args: { p_hours_back?: number; p_tenant_id: string }
+        Returns: Json
+      }
       get_next_contact_number: {
         Args: { tenant_id_param: string }
         Returns: number
