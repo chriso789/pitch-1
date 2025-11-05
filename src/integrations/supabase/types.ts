@@ -8056,6 +8056,166 @@ export type Database = {
           },
         ]
       }
+      safety_incidents: {
+        Row: {
+          corrective_actions: string | null
+          created_at: string | null
+          description: string
+          id: string
+          incident_date: string
+          incident_type: string
+          injuries_reported: boolean | null
+          location: string | null
+          project_id: string | null
+          reported_by: string | null
+          severity: string
+          status: string | null
+          tenant_id: string
+          updated_at: string | null
+          witnesses: string[] | null
+        }
+        Insert: {
+          corrective_actions?: string | null
+          created_at?: string | null
+          description: string
+          id?: string
+          incident_date: string
+          incident_type: string
+          injuries_reported?: boolean | null
+          location?: string | null
+          project_id?: string | null
+          reported_by?: string | null
+          severity: string
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          witnesses?: string[] | null
+        }
+        Update: {
+          corrective_actions?: string | null
+          created_at?: string | null
+          description?: string
+          id?: string
+          incident_date?: string
+          incident_type?: string
+          injuries_reported?: boolean | null
+          location?: string | null
+          project_id?: string | null
+          reported_by?: string | null
+          severity?: string
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          witnesses?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "safety_incidents_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      safety_inspections: {
+        Row: {
+          checklist_items: Json | null
+          created_at: string | null
+          id: string
+          inspection_date: string
+          inspection_type: string
+          inspector_id: string | null
+          next_inspection_date: string | null
+          notes: string | null
+          passed: boolean | null
+          project_id: string | null
+          tenant_id: string
+          updated_at: string | null
+          violations: string[] | null
+        }
+        Insert: {
+          checklist_items?: Json | null
+          created_at?: string | null
+          id?: string
+          inspection_date: string
+          inspection_type: string
+          inspector_id?: string | null
+          next_inspection_date?: string | null
+          notes?: string | null
+          passed?: boolean | null
+          project_id?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          violations?: string[] | null
+        }
+        Update: {
+          checklist_items?: Json | null
+          created_at?: string | null
+          id?: string
+          inspection_date?: string
+          inspection_type?: string
+          inspector_id?: string | null
+          next_inspection_date?: string | null
+          notes?: string | null
+          passed?: boolean | null
+          project_id?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          violations?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "safety_inspections_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      safety_training: {
+        Row: {
+          certification_number: string | null
+          created_at: string | null
+          expiration_date: string | null
+          id: string
+          instructor: string | null
+          status: string | null
+          tenant_id: string
+          training_date: string
+          training_type: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          certification_number?: string | null
+          created_at?: string | null
+          expiration_date?: string | null
+          id?: string
+          instructor?: string | null
+          status?: string | null
+          tenant_id?: string
+          training_date: string
+          training_type: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          certification_number?: string | null
+          created_at?: string | null
+          expiration_date?: string | null
+          id?: string
+          instructor?: string | null
+          status?: string | null
+          tenant_id?: string
+          training_date?: string
+          training_type?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       satisfaction_surveys: {
         Row: {
           clj_number: string | null
