@@ -11,7 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 
 export const ClaudeAITester = () => {
   const [prompt, setPrompt] = useState("");
-  const [model, setModel] = useState("anthropic/claude-sonnet-4-5");
+  const [model, setModel] = useState("claude-sonnet-4-5");
   const [response, setResponse] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -19,10 +19,10 @@ export const ClaudeAITester = () => {
   const { toast } = useToast();
 
   const models = [
-    { value: "anthropic/claude-sonnet-4-5", label: "Claude Sonnet 4.5 (Most Capable)", description: "Best for complex reasoning" },
-    { value: "anthropic/claude-opus-4-1", label: "Claude Opus 4.1 (Highly Intelligent)", description: "Expensive but powerful" },
-    { value: "anthropic/claude-3-7-sonnet", label: "Claude 3.7 Sonnet", description: "Extended thinking" },
-    { value: "anthropic/claude-3-5-haiku", label: "Claude 3.5 Haiku", description: "Fastest, cheapest" },
+    { value: "claude-sonnet-4-5", label: "Claude Sonnet 4.5 (Most Capable)", description: "Best for complex reasoning" },
+    { value: "claude-opus-4-1-20250805", label: "Claude Opus 4.1 (Highly Intelligent)", description: "Expensive but powerful" },
+    { value: "claude-3-7-sonnet-20250219", label: "Claude 3.7 Sonnet", description: "Extended thinking" },
+    { value: "claude-3-5-haiku-20241022", label: "Claude 3.5 Haiku", description: "Fastest, cheapest" },
   ];
 
   const samplePrompts = [
@@ -72,7 +72,7 @@ export const ClaudeAITester = () => {
       
       toast({
         title: "Success",
-        description: `Claude AI responded successfully using ${model.split('/')[1]}`
+        description: `Claude AI responded successfully using ${model}`
       });
 
     } catch (err: any) {
@@ -97,7 +97,7 @@ export const ClaudeAITester = () => {
           <div>
             <CardTitle>Test Claude AI Integration</CardTitle>
             <CardDescription>
-              Test your Claude AI integration using Lovable AI Gateway (no extra API key needed)
+              Test your Claude AI integration using Anthropic API directly
             </CardDescription>
           </div>
         </div>
@@ -106,7 +106,7 @@ export const ClaudeAITester = () => {
         <Alert>
           <CheckCircle2 className="h-4 w-4 text-green-600" />
           <AlertDescription>
-            Using LOVABLE_API_KEY - No additional configuration required
+            Using ANTHROPIC_API_KEY - Direct connection to Anthropic API
           </AlertDescription>
         </Alert>
 
@@ -195,11 +195,11 @@ export const ClaudeAITester = () => {
               <div className="grid grid-cols-2 gap-4">
                 <div className="p-3 bg-muted rounded-lg border">
                   <p className="text-xs text-muted-foreground">Input Tokens</p>
-                  <p className="text-lg font-semibold">{usage.prompt_tokens || 0}</p>
+                  <p className="text-lg font-semibold">{usage.input_tokens || 0}</p>
                 </div>
                 <div className="p-3 bg-muted rounded-lg border">
                   <p className="text-xs text-muted-foreground">Output Tokens</p>
-                  <p className="text-lg font-semibold">{usage.completion_tokens || 0}</p>
+                  <p className="text-lg font-semibold">{usage.output_tokens || 0}</p>
                 </div>
               </div>
             )}

@@ -22,10 +22,10 @@ interface CostPerModel {
 
 // Estimated costs per 1M tokens (as of 2025)
 const COST_PER_MILLION: Record<string, CostPerModel> = {
-  'anthropic/claude-sonnet-4-5': { input: 3, output: 15 },
-  'anthropic/claude-opus-4-1': { input: 15, output: 75 },
-  'anthropic/claude-3-7-sonnet': { input: 3, output: 15 },
-  'anthropic/claude-3-5-haiku': { input: 0.8, output: 4 },
+  'claude-sonnet-4-5': { input: 3, output: 15 },
+  'claude-opus-4-1-20250805': { input: 15, output: 75 },
+  'claude-3-7-sonnet-20250219': { input: 3, output: 15 },
+  'claude-3-5-haiku-20241022': { input: 0.8, output: 4 },
 }
 
 function estimateCost(model: string, promptTokens: number, completionTokens: number): number {
@@ -115,7 +115,7 @@ serve(async (req) => {
     
     const { 
       prompt, 
-      model = 'anthropic/claude-sonnet-4-5',
+      model = 'claude-sonnet-4-5',
       system_prompt = 'You are a helpful AI assistant for a roofing CRM system. Provide clear, actionable advice.',
       max_tokens = 4096,
       temperature = 1,
@@ -130,23 +130,24 @@ serve(async (req) => {
     console.log(`🤖 Prompt length: ${prompt.length} characters`)
     console.log(`🤖 Feature: ${feature}`)
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')
+    const ANTHROPIC_API_KEY = Deno.env.get('ANTHROPIC_API_KEY')
     
-    if (!LOVABLE_API_KEY) {
-      throw new Error('LOVABLE_API_KEY is not configured')
+    if (!ANTHROPIC_API_KEY) {
+      throw new Error('ANTHROPIC_API_KEY is not configured')
     }
 
-    // Call Lovable AI Gateway with Claude model
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    // Call Anthropic API directly
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
         model: model,
+        system: system_prompt,
         messages: [
-          { role: 'system', content: system_prompt },
           { role: 'user', content: prompt }
         ],
         max_tokens: max_tokens,
@@ -213,11 +214,11 @@ serve(async (req) => {
     console.log('✅ Claude AI response received')
     console.log(`⏱️ Response time: ${responseTimeMs}ms`)
 
-    // Extract the response content and usage
-    const assistantMessage = data.choices?.[0]?.message?.content || ''
+    // Extract the response content and usage (Anthropic API format)
+    const assistantMessage = data.content?.[0]?.text || ''
     const usage = data.usage || {}
-    const promptTokens = usage.prompt_tokens || 0
-    const completionTokens = usage.completion_tokens || 0
+    const promptTokens = usage.input_tokens || 0
+    const completionTokens = usage.output_tokens || 0
     
     console.log(`📊 Token usage - Prompt: ${promptTokens}, Completion: ${completionTokens}, Total: ${promptTokens + completionTokens}`)
     
@@ -269,7 +270,7 @@ serve(async (req) => {
             await logMetrics(
               supabase,
               user.id,
-              body.model || 'anthropic/claude-sonnet-4-5',
+              body.model || 'claude-sonnet-4-5',
               body.feature || 'ai-test',
               0,
               0,
