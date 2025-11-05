@@ -218,3 +218,6 @@ verify_jwt = true
 
 [functions.telnyx-mint-jwt]
 verify_jwt = true
+
+[functions.ai-claude-processor]
+verify_jwt = true
