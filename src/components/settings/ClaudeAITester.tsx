@@ -53,6 +53,7 @@ export const ClaudeAITester = () => {
         body: {
           prompt: prompt,
           model: model,
+          feature: 'claude-ai-tester',
         }
       });
 
