@@ -46,6 +46,7 @@ import Approvals from "./pages/Approvals";
 import TasksPage from "./pages/TasksPage";
 import LeadScoringPage from "./pages/LeadScoringPage";
 import ReviewsPage from "./pages/ReviewsPage";
+import IntegrationDashboard from "./pages/IntegrationDashboard";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -123,6 +124,7 @@ const AppContent = () => {
         <Route path="/approvals" element={<Approvals />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/help" element={<Help />} />
+        <Route path="/integration" element={<IntegrationDashboard />} />
         
         {/* Detail pages */}
         <Route path="/contact/:id" element={<ContactProfile />} />
