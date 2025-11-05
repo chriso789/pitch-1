@@ -1,7 +1,8 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GitHubConnectionGuide } from "./GitHubConnectionGuide";
 import { ClaudeAITester } from "./ClaudeAITester";
-import { Github, Sparkles } from "lucide-react";
+import { GitHubActionsGuide } from "./GitHubActionsGuide";
+import { Github, Sparkles, Workflow } from "lucide-react";
 
 export const IntegrationsSettings = () => {
   return (
@@ -19,6 +20,10 @@ export const IntegrationsSettings = () => {
             <Github className="h-4 w-4" />
             GitHub Connection
           </TabsTrigger>
+          <TabsTrigger value="github-actions" className="flex items-center gap-2">
+            <Workflow className="h-4 w-4" />
+            GitHub Actions
+          </TabsTrigger>
           <TabsTrigger value="claude-ai" className="flex items-center gap-2">
             <Sparkles className="h-4 w-4" />
             Claude AI Testing
@@ -27,6 +32,10 @@ export const IntegrationsSettings = () => {
 
         <TabsContent value="github" className="space-y-6">
           <GitHubConnectionGuide />
+        </TabsContent>
+
+        <TabsContent value="github-actions" className="space-y-6">
+          <GitHubActionsGuide />
         </TabsContent>
 
         <TabsContent value="claude-ai" className="space-y-6">

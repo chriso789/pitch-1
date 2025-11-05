@@ -1,0 +1,85 @@
+name: Claude AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+    branches:
+      - main
+      - develop
+
+jobs:
+  claude-review:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v44
+        with:
+          files: |
+            src/**/*.{ts,tsx,js,jsx}
+            supabase/**/*.ts
+
+      - name: Review with Claude AI
+        if: steps.changed-files.outputs.any_changed == 'true'
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+        run: |
+          # Get PR diff
+          git diff origin/${{ github.base_ref }}..HEAD > pr_diff.txt
+          
+          # Prepare review prompt
+          cat > review_prompt.json << 'EOF'
+          {
+            "prompt": "You are an expert code reviewer for a roofing CRM system. Review this code diff and provide:\n\n1. **Security Issues** - Any security vulnerabilities or data exposure risks\n2. **Performance Concerns** - Inefficient queries, memory leaks, unnecessary re-renders\n3. **Code Quality** - Violations of best practices, maintainability issues\n4. **Bug Risks** - Potential runtime errors or edge cases\n5. **Suggestions** - Specific improvements with code examples\n\nBe concise but thorough. Focus on critical issues first.\n\n```diff\n$(cat pr_diff.txt)\n```",
+            "model": "anthropic/claude-sonnet-4-5",
+            "system_prompt": "You are a senior software engineer reviewing code for a production roofing CRM. Focus on critical issues that could cause bugs, security problems, or performance degradation.",
+            "max_tokens": 8192,
+            "temperature": 0.3
+          }
+          EOF
+          
+          # Call Claude AI via edge function
+          REVIEW_RESPONSE=$(curl -s -X POST \
+            "$SUPABASE_URL/functions/v1/ai-claude-processor" \
+            -H "Authorization: Bearer $SUPABASE_ANON_KEY" \
+            -H "Content-Type: application/json" \
+            -d @review_prompt.json)
+          
+          # Extract review content
+          echo "$REVIEW_RESPONSE" | jq -r '.response' > review.md
+
+      - name: Post review comment
+        if: steps.changed-files.outputs.any_changed == 'true'
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const fs = require('fs');
+            const review = fs.readFileSync('review.md', 'utf8');
+            
+            const body = `## 🤖 Claude AI Code Review\n\n${review}\n\n---\n*Powered by Claude Sonnet 4.5 via Lovable AI Gateway*`;
+            
+            github.rest.issues.createComment({
+              issue_number: context.issue.number,
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              body: body
+            });
+
+      - name: Check for critical issues
+        if: steps.changed-files.outputs.any_changed == 'true'
+        run: |
+          if grep -qi "security\|vulnerability\|critical" review.md; then
+            echo "⚠️ Critical issues found in code review!"
+            echo "::warning::Claude AI detected potential security or critical issues. Review the PR comments."
+          fi
