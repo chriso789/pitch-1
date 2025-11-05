@@ -27,6 +27,7 @@ import { JobTypeQBOMapping } from "@/components/settings/JobTypeQBOMapping";
 import { SystemHealthCheck } from "@/components/settings/SystemHealthCheck";
 import { SettingsTabEditor } from "@/components/settings/SettingsTabEditor";
 import { LeadSources } from "@/features/leads/components/LeadSources";
+import { IntegrationsSettings } from "@/components/settings/IntegrationsSettings";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -231,6 +232,10 @@ export const Settings = () => {
 
         <TabsContent value="developer" className="space-y-6">
           <DeveloperAccess />
+        </TabsContent>
+
+        <TabsContent value="integrations" className="space-y-6">
+          <IntegrationsSettings />
         </TabsContent>
       </Tabs>
     </div>
