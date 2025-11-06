@@ -7,12 +7,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Building2, Mail, Phone, MapPin, Plus, Edit, History } from "lucide-react";
+import { Building2, Mail, Phone, MapPin, Plus, Edit, History, Upload } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { ArrowLeft } from "lucide-react";
+import { VendorBulkImport } from "@/components/vendors/VendorBulkImport";
+import { VendorBulkActions } from "@/components/vendors/VendorBulkActions";
 
 interface Vendor {
   id: string;
@@ -45,6 +48,8 @@ export default function VendorManagement() {
   const [editingVendor, setEditingVendor] = useState<Vendor | null>(null);
   const [selectedVendorHistory, setSelectedVendorHistory] = useState<CommunicationHistory[]>([]);
   const [historyDialogOpen, setHistoryDialogOpen] = useState(false);
+  const [selectedVendors, setSelectedVendors] = useState<Vendor[]>([]);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
   
   const [formData, setFormData] = useState({
     name: '',
@@ -181,6 +186,23 @@ export default function VendorManagement() {
     return isActive ? 'bg-green-500' : 'bg-gray-500';
   };
 
+  const handleToggleVendor = (vendor: Vendor) => {
+    const isSelected = selectedVendors.some(v => v.id === vendor.id);
+    if (isSelected) {
+      setSelectedVendors(selectedVendors.filter(v => v.id !== vendor.id));
+    } else {
+      setSelectedVendors([...selectedVendors, vendor]);
+    }
+  };
+
+  const handleSelectAll = () => {
+    if (selectedVendors.length === vendors.length) {
+      setSelectedVendors([]);
+    } else {
+      setSelectedVendors([...vendors]);
+    }
+  };
+
   if (loading) {
     return (
       <div className="container mx-auto p-6">
@@ -213,23 +235,29 @@ export default function VendorManagement() {
           </div>
         </div>
         
-        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-          <DialogTrigger asChild>
-            <Button onClick={() => {
-              setEditingVendor(null);
-              setFormData({
-                name: '',
-                code: '',
-                contact_email: '',
-                contact_phone: '',
-                address: null,
-                is_active: true
-              });
-            }}>
-              <Plus className="h-4 w-4 mr-2" />
-              Add Vendor
-            </Button>
-          </DialogTrigger>
+        <div className="flex gap-2">
+          <Button onClick={() => setImportDialogOpen(true)} variant="outline">
+            <Upload className="h-4 w-4 mr-2" />
+            Import CSV
+          </Button>
+          
+          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+            <DialogTrigger asChild>
+              <Button onClick={() => {
+                setEditingVendor(null);
+                setFormData({
+                  name: '',
+                  code: '',
+                  contact_email: '',
+                  contact_phone: '',
+                  address: null,
+                  is_active: true
+                });
+              }}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Vendor
+              </Button>
+            </DialogTrigger>
           <DialogContent className="max-w-2xl">
             <DialogHeader>
               <DialogTitle>{editingVendor ? 'Edit Vendor' : 'Add New Vendor'}</DialogTitle>
@@ -293,7 +321,14 @@ export default function VendorManagement() {
             </form>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
+
+      <VendorBulkActions
+        selectedVendors={selectedVendors}
+        onActionComplete={loadVendors}
+        onClearSelection={() => setSelectedVendors([])}
+      />
 
       <Card>
         <CardHeader>
@@ -312,6 +347,12 @@ export default function VendorManagement() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12">
+                    <Checkbox
+                      checked={selectedVendors.length === vendors.length && vendors.length > 0}
+                      onCheckedChange={handleSelectAll}
+                    />
+                  </TableHead>
                   <TableHead>Company</TableHead>
                   <TableHead>Code</TableHead>
                   <TableHead>Email</TableHead>
@@ -323,6 +364,12 @@ export default function VendorManagement() {
               <TableBody>
                 {vendors.map((vendor) => (
                   <TableRow key={vendor.id}>
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedVendors.some(v => v.id === vendor.id)}
+                        onCheckedChange={() => handleToggleVendor(vendor)}
+                      />
+                    </TableCell>
                     <TableCell className="font-medium">{vendor.name}</TableCell>
                     <TableCell>{vendor.code}</TableCell>
                     <TableCell>
@@ -418,6 +465,12 @@ export default function VendorManagement() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <VendorBulkImport
+        open={importDialogOpen}
+        onOpenChange={setImportDialogOpen}
+        onImportComplete={loadVendors}
+      />
     </div>
   );
 }

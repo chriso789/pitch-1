@@ -28,8 +28,72 @@ serve(async (req) => {
     const { data: { user } } = await supabaseClient.auth.getUser();
     if (!user) throw new Error('Unauthorized');
 
-    const { orderId, action } = await req.json();
+    const { orderId, action, vendors, subject, message } = await req.json();
     console.log('Processing material order email:', { orderId, action });
+
+    // Handle bulk vendor notification
+    if (action === 'bulk_vendor_notification') {
+      if (!vendors || !Array.isArray(vendors)) {
+        throw new Error('Vendors array is required for bulk notifications');
+      }
+
+      const results = [];
+      for (const vendor of vendors) {
+        try {
+          const emailHtml = `
+            <!DOCTYPE html>
+            <html>
+            <body style="font-family: Arial, sans-serif; line-height: 1.6; color: #333; max-width: 600px; margin: 0 auto; padding: 20px;">
+              <h2 style="color: #667eea;">Hello ${vendor.name},</h2>
+              <div style="margin: 20px 0;">
+                ${message.split('\n').map((line: string) => `<p style="margin: 10px 0;">${line}</p>`).join('')}
+              </div>
+              <hr style="margin: 30px 0; border: none; border-top: 1px solid #eee;">
+              <p style="color: #666; font-size: 12px;">This is an automated message from PITCH CRM. Please do not reply to this email.</p>
+            </body>
+            </html>
+          `;
+
+          const emailResponse = await resend.emails.send({
+            from: 'PITCH CRM <orders@pitch.app>',
+            to: [vendor.email],
+            subject: subject,
+            html: emailHtml,
+          });
+
+          results.push({ vendor: vendor.name, success: true, messageId: emailResponse.id });
+          
+          // Log communication
+          const serviceClient = createClient(
+            Deno.env.get('SUPABASE_URL') ?? '',
+            Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+          );
+
+          await serviceClient
+            .from('communication_history')
+            .insert({
+              type: 'email',
+              direction: 'outbound',
+              recipient: vendor.email,
+              subject: subject,
+              body: emailHtml,
+              status: 'sent',
+              metadata: {
+                vendorId: vendor.id,
+                bulkNotification: true
+              }
+            });
+        } catch (error: any) {
+          console.error(`Error sending to ${vendor.name}:`, error);
+          results.push({ vendor: vendor.name, success: false, error: error.message });
+        }
+      }
+
+      return new Response(
+        JSON.stringify({ success: true, results }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Fetch order details with vendor and items
     const { data: order, error: orderError } = await supabaseClient
