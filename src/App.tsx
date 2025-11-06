@@ -47,6 +47,8 @@ import TasksPage from "./pages/TasksPage";
 import LeadScoringPage from "./pages/LeadScoringPage";
 import ReviewsPage from "./pages/ReviewsPage";
 import IntegrationDashboard from "./pages/IntegrationDashboard";
+import AIAgentsCommandCenter from "./pages/AIAgentsCommandCenter";
+import PowerDialerAgent from "./pages/PowerDialerAgent";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -125,6 +127,8 @@ const AppContent = () => {
         <Route path="/settings" element={<Settings />} />
         <Route path="/help" element={<Help />} />
         <Route path="/integration" element={<IntegrationDashboard />} />
+        <Route path="/ai-agents" element={<AIAgentsCommandCenter />} />
+        <Route path="/power-dialer-agent" element={<PowerDialerAgent />} />
         
         {/* Detail pages */}
         <Route path="/contact/:id" element={<ContactProfile />} />
