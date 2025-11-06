@@ -28,6 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 interface ProjectData {
   id: string;
   project_number: string;
+  clj_formatted_number: string;
   name: string;
   homeowner: string;
   address: string;
@@ -160,6 +161,7 @@ const Projects = () => {
         return {
           id: project.id,
           project_number: project.project_number || `PROJ-${project.id.slice(-4)}`,
+          clj_formatted_number: project.clj_formatted_number || '',
           name: project.name,
           homeowner: contact ? `${contact.first_name} ${contact.last_name}` : 'Unknown',
           address: contact ? `${contact.address_street}, ${contact.address_city}, ${contact.address_state}` : 'Unknown',
