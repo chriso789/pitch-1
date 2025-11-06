@@ -3,6 +3,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { CLJBadge } from "@/components/CLJBadge";
 import { Input } from "@/components/ui/input";
 import { 
   Select,
@@ -41,6 +42,7 @@ import { useNavigate } from "react-router-dom";
 interface Contact {
   id: string;
   contact_number: string;
+  clj_formatted_number: string;
   first_name: string;
   last_name: string;
   email: string;
@@ -688,9 +690,7 @@ const ContactCard = ({ contact, onViewDetails }: { contact: Contact; onViewDetai
         <h3 className="text-lg font-semibold">
           {contact.first_name} {contact.last_name}
         </h3>
-        <Badge variant="outline" className="text-xs">
-          {contact.contact_number}
-        </Badge>
+        <CLJBadge cljNumber={contact.clj_formatted_number} size="sm" />
         <Badge className={`text-xs ${getStatusColor(contact.qualification_status, 'contact')}`}>
           {formatStatus(contact.qualification_status)}
         </Badge>

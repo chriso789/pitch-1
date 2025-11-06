@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { CLJBadge } from "@/components/CLJBadge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -269,9 +270,7 @@ const Projects = () => {
         <CardContent className="p-6">
           <div className="flex items-start justify-between mb-4">
             <div>
-              <span className="font-mono text-sm text-muted-foreground">
-                {project.project_number}
-              </span>
+              <CLJBadge cljNumber={project.clj_formatted_number} size="sm" className="mb-2" />
               <h3 className="font-semibold text-lg">{project.homeowner}</h3>
               <p className="text-sm text-muted-foreground">Rep: {project.sales_rep}</p>
             </div>

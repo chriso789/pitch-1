@@ -55,6 +55,7 @@ import MaterialOrders from "./pages/MaterialOrders";
 import MaterialOrderDetail from "./pages/MaterialOrderDetail";
 import ApprovalRules from "./pages/ApprovalRules";
 import PendingApprovals from "./pages/PendingApprovals";
+import ManagerApprovalQueue from "./pages/ManagerApprovalQueue";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -139,8 +140,9 @@ const AppContent = () => {
         <Route path="/material-calculations/:id" element={<MaterialCalculations />} />
         <Route path="/material-orders" element={<MaterialOrders />} />
         <Route path="/material-orders/:id" element={<MaterialOrderDetail />} />
-        <Route path="/approval-rules" element={<ApprovalRules />} />
-        <Route path="/pending-approvals" element={<PendingApprovals />} />
+          <Route path="/approval-rules" element={<ApprovalRules />} />
+          <Route path="/pending-approvals" element={<PendingApprovals />} />
+          <Route path="/manager-approval-queue" element={<ManagerApprovalQueue />} />
         
         {/* Detail pages */}
         <Route path="/contact/:id" element={<ContactProfile />} />
