@@ -36,6 +36,7 @@ import Help from "./pages/Help";
 import AutomationDashboard from "./pages/AutomationDashboard";
 import Jobs from "./pages/Jobs";
 import Estimates from "./pages/Estimates";
+import MaterialCalculations from "./pages/MaterialCalculations";
 import PresentationsPage from "./pages/PresentationsPage";
 import PresentationBuilderPage from "./pages/PresentationBuilderPage";
 import PresentationModePage from "./pages/PresentationModePage";
