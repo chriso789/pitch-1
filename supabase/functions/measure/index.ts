@@ -271,7 +271,7 @@ function buildLinearFeaturesFromTopology(
   }
 }
 
-// Smart Tags builder
+// Smart Tags builder - Expanded to 100+ tags
 function buildSmartTags(meas: MeasureResult) {
   const tags: Record<string, number|string> = {};
   const sum = meas.summary;
@@ -292,13 +292,50 @@ function buildSmartTags(meas: MeasureResult) {
     linear.filter(l => types.includes((l.type as EdgeFeatureType) || 'unknown'))
           .reduce((s, l) => s + (l.length_ft || 0), 0);
 
+  // ============= ROOF BASIC MEASUREMENTS =============
   tags["roof.plan_sqft"] = round(total_plan_sqft);
   tags["roof.total_sqft"] = round(total_adj_sqft);
   tags["roof.squares"] = round(total_squares, 2);
   tags["roof.faces_count"] = face_count;
-  tags["roof.waste_pct"] = sum.waste_pct;
+  tags["roof.waste_pct"] = sum.waste_pct || 10;
   tags["roof.pitch_factor"] = round(avg_pitch_factor, 3);
+  tags["roof.complexity"] = calculateComplexity(faces, linear);
+  tags["roof.perimeter_ft"] = round(sum.perimeter_ft || 0);
 
+  // ============= INDIVIDUAL ROOF FACETS (up to 20) =============
+  faces.slice(0, 20).forEach((face, i) => {
+    const num = i + 1;
+    const facet_plan_sqft = face.plan_area_sqft || 0;
+    const facet_area_sqft = face.area_sqft || 0;
+    const facet_pitch = face.pitch || 'unknown';
+    const facet_pitch_degrees = pitchToDegrees(facet_pitch);
+    
+    tags[`facet.${num}.area_sqft`] = round(facet_area_sqft);
+    tags[`facet.${num}.plan_area_sqft`] = round(facet_plan_sqft);
+    tags[`facet.${num}.pitch`] = facet_pitch;
+    tags[`facet.${num}.pitch_degrees`] = round(facet_pitch_degrees, 2);
+    tags[`facet.${num}.direction`] = getDirection(face.azimuth_degrees);
+    tags[`facet.${num}.squares`] = round(facet_area_sqft / 100, 2);
+  });
+
+  // ============= PITCH-SPECIFIC MEASUREMENTS =============
+  const pitchBreakdown = getPitchBreakdown(faces);
+  const pitches = ['2/12', '3/12', '4/12', '5/12', '6/12', '7/12', '8/12', '9/12', '10/12', '12/12', 'flat'];
+  pitches.forEach(pitch => {
+    const key = pitch.replace('/', '_');
+    tags[`pitch.${key}.sqft`] = round(pitchBreakdown[pitch] || 0);
+  });
+
+  // ============= WASTE-ADJUSTED CALCULATIONS =============
+  const wastePercentages = [0, 8, 10, 12, 15, 17, 20];
+  wastePercentages.forEach(pct => {
+    const adjusted_sqft = total_adj_sqft * (1 + pct / 100);
+    const adjusted_squares = adjusted_sqft / 100;
+    tags[`waste.${pct}pct.sqft`] = round(adjusted_sqft);
+    tags[`waste.${pct}pct.squares`] = round(adjusted_squares, 2);
+  });
+
+  // ============= LINEAR FEATURES =============
   tags["lf.ridge"] = round(lfBy(['ridge']));
   tags["lf.hip"] = round(lfBy(['hip']));
   tags["lf.valley"] = round(lfBy(['valley']));
@@ -307,7 +344,12 @@ function buildSmartTags(meas: MeasureResult) {
   tags["lf.step"] = round(lfBy(['step']));
   tags["lf.perimeter"] = round(sum.perimeter_ft || 0);
 
-  // Penetrations (default to 0 if not set)
+  // ============= COMBINED LINEAR MEASUREMENTS =============
+  tags["lf.ridge_hip_total"] = tags["lf.ridge"] as number + tags["lf.hip"] as number;
+  tags["lf.eave_rake_total"] = tags["lf.eave"] as number + tags["lf.rake"] as number;
+  tags["lf.valley_step_total"] = tags["lf.valley"] as number + tags["lf.step"] as number;
+
+  // ============= PENETRATIONS =============
   const pens = (meas as any).penetrations || [];
   tags["pen.total"] = pens.reduce((s: number, p: any) => s + (p.count || 0), 0);
   tags["pen.pipe_vent"] = pens.find((p: any) => p.type === 'pipe_vent')?.count || 0;
@@ -316,22 +358,98 @@ function buildSmartTags(meas: MeasureResult) {
   tags["pen.hvac"] = pens.find((p: any) => p.type === 'hvac')?.count || 0;
   tags["pen.other"] = pens.find((p: any) => p.type === 'other')?.count || 0;
 
-  // Age
-  tags["age.years"] = sum.roof_age_years || 0;
-  tags["age.source"] = sum.roof_age_source || 'unknown';
-
-  // Derived quantities
+  // ============= BASE MATERIAL QUANTITIES =============
   tags["bundles.shingles"] = Math.ceil(total_squares * 3);
   tags["bundles.ridge_cap"] = Math.ceil((tags["lf.ridge"] as number + tags["lf.hip"] as number) / 33);
   tags["rolls.valley"] = Math.ceil((tags["lf.valley"] as number) / 50);
-  tags["sticks.drip_edge"] = Math.ceil(((tags["lf.eave"] as number) + (tags["lf.rake"] as number)) / 10);
-  
-  // Penetration-based quantities
+  tags["rolls.ice_water"] = Math.ceil((tags["lf.valley"] as number + tags["lf.eave"] as number * 0.25) / 65); // First 3ft of eaves
+  tags["rolls.underlayment"] = Math.ceil(total_squares);
+  tags["sticks.drip_edge"] = Math.ceil((tags["lf.eave"] as number + tags["lf.rake"] as number) / 10);
   tags["boots.pipe"] = tags["pen.pipe_vent"];
   tags["kits.skylight"] = tags["pen.skylight"];
   tags["kits.chimney"] = tags["pen.chimney"];
 
+  // ============= WASTE-ADJUSTED MATERIALS =============
+  [8, 10, 12, 15, 20].forEach(pct => {
+    const adj_squares = total_squares * (1 + pct / 100);
+    tags[`bundles.shingles.waste_${pct}pct`] = Math.ceil(adj_squares * 3);
+    tags[`rolls.underlayment.waste_${pct}pct`] = Math.ceil(adj_squares);
+  });
+  [10, 15].forEach(pct => {
+    const adj_lf = (tags["lf.eave"] as number + tags["lf.rake"] as number) * (1 + pct / 100);
+    tags[`sticks.drip_edge.waste_${pct}pct`] = Math.ceil(adj_lf / 10);
+  });
+
+  // ============= PROPERTY METADATA =============
+  tags["age.years"] = sum.roof_age_years || 0;
+  tags["age.source"] = sum.roof_age_source || 'unknown';
+  tags["measure.date"] = new Date().toISOString().split('T')[0];
+  tags["measure.source"] = meas.source || 'unknown';
+  tags["measure.confidence"] = (meas as any).confidence || 0.85;
+
+  // ============= DERIVED CALCULATIONS =============
+  tags["calc.labor_hours"] = calculateLaborHours(total_squares, avg_pitch_factor, tags["roof.complexity"] as number);
+  tags["calc.crew_days"] = Math.ceil((tags["calc.labor_hours"] as number) / (4 * 8)); // 4-person crew, 8-hour days
+  tags["calc.dump_runs"] = Math.ceil(total_squares / 15); // ~15 squares per dump run
+  tags["calc.dumpster_size"] = total_squares <= 15 ? 10 : total_squares <= 30 ? 20 : 30;
+
   return tags;
+}
+
+// Helper: Calculate roof complexity (1-5 scale)
+function calculateComplexity(faces: RoofFace[], linear: LinearFeature[]): number {
+  let score = 1;
+  
+  // More facets = more complex
+  if (faces.length > 8) score += 2;
+  else if (faces.length > 4) score += 1;
+  
+  // Valleys and hips add complexity
+  const valleys = linear.filter(l => l.type === 'valley').length;
+  const hips = linear.filter(l => l.type === 'hip').length;
+  if (valleys + hips > 6) score += 1;
+  if (valleys + hips > 3) score += 0.5;
+  
+  // Steep pitches add complexity
+  const steepFaces = faces.filter(f => pitchToDegrees(f.pitch) > 30).length;
+  if (steepFaces > 0) score += 0.5;
+  
+  return Math.min(Math.round(score * 2) / 2, 5); // Round to nearest 0.5, max 5
+}
+
+// Helper: Calculate estimated labor hours
+function calculateLaborHours(squares: number, pitchFactor: number, complexity: number): number {
+  const baseHours = squares * 1.5; // 1.5 hours per square baseline
+  const pitchMultiplier = 0.5 + (pitchFactor - 1) * 2; // Steeper = more time
+  const complexityMultiplier = 0.8 + (complexity / 5) * 0.4; // 0.8 to 1.2
+  return Math.ceil(baseHours * pitchMultiplier * complexityMultiplier);
+}
+
+// Helper: Convert pitch to degrees
+function pitchToDegrees(pitch: string): number {
+  if (pitch === 'flat') return 0;
+  const match = pitch.match(/(\d+)\/12/);
+  if (!match) return 18.4; // Default to 4/12
+  const rise = parseInt(match[1]);
+  return Math.atan(rise / 12) * (180 / Math.PI);
+}
+
+// Helper: Get compass direction from azimuth
+function getDirection(azimuthDegrees?: number): string {
+  if (azimuthDegrees === undefined) return 'unknown';
+  const dirs = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  const index = Math.round(azimuthDegrees / 45) % 8;
+  return dirs[index];
+}
+
+// Helper: Get pitch breakdown
+function getPitchBreakdown(faces: RoofFace[]): Record<string, number> {
+  const breakdown: Record<string, number> = {};
+  faces.forEach(face => {
+    const pitch = face.pitch || 'unknown';
+    breakdown[pitch] = (breakdown[pitch] || 0) + (face.area_sqft || 0);
+  });
+  return breakdown;
 }
 
 function round(n: number, p = 1) {
@@ -854,6 +972,63 @@ async function persistMeasurement(supabase: any, m: MeasureResult, userId?: stri
   return data;
 }
 
+async function persistFacets(supabase: any, measurementId: string, faces: RoofFace[]) {
+  const facetRecords = faces.slice(0, 20).map((face, i) => ({
+    measurement_id: measurementId,
+    facet_number: i + 1,
+    area_sqft: face.area_sqft || 0,
+    plan_area_sqft: face.plan_area_sqft || 0,
+    pitch: face.pitch || 'unknown',
+    pitch_degrees: pitchToDegrees(face.pitch || '4/12'),
+    pitch_factor: pitchFactor(face.pitch || '4/12'),
+    direction: getDirection(face.azimuth_degrees),
+    azimuth_degrees: face.azimuth_degrees,
+    is_flat: face.pitch === 'flat',
+    geometry_wkt: face.wkt,
+  }));
+
+  if (facetRecords.length === 0) return;
+
+  const { error } = await supabase
+    .from('roof_facets')
+    .insert(facetRecords);
+
+  if (error) console.error('Failed to persist facets:', error.message);
+}
+
+async function persistWasteCalculations(supabase: any, measurementId: string, baseAreaSqft: number, baseSquares: number, linearFeatures: any) {
+  const wastePercentages = [0, 8, 10, 12, 15, 17, 20];
+  const ridgeHipTotal = (linearFeatures['lf.ridge'] || 0) + (linearFeatures['lf.hip'] || 0);
+  const eaveRakeTotal = (linearFeatures['lf.eave'] || 0) + (linearFeatures['lf.rake'] || 0);
+
+  const wasteRecords = wastePercentages.map(pct => {
+    const wasteArea = baseAreaSqft * (pct / 100);
+    const totalArea = baseAreaSqft + wasteArea;
+    const wasteSquares = wasteArea / 100;
+    const totalSquares = totalArea / 100;
+
+    return {
+      measurement_id: measurementId,
+      waste_percentage: pct,
+      base_area_sqft: baseAreaSqft,
+      waste_area_sqft: wasteArea,
+      total_area_sqft: totalArea,
+      base_squares: baseSquares,
+      waste_squares: wasteSquares,
+      total_squares: totalSquares,
+      shingle_bundles: Math.ceil(totalSquares * 3),
+      starter_lf: eaveRakeTotal,
+      ridge_cap_bundles: Math.ceil(ridgeHipTotal / 33),
+    };
+  });
+
+  const { error } = await supabase
+    .from('roof_waste_calculations')
+    .insert(wasteRecords);
+
+  if (error) console.error('Failed to persist waste calculations:', error.message);
+}
+
 async function persistTags(supabase: any, measurementId: string, propertyId: string, tags: Record<string,any>, userId?: string) {
   const { data, error } = await supabase
     .from('measurement_tags')
@@ -987,6 +1162,10 @@ serve(async (req) => {
         const tags = buildSmartTags({ ...meas, id: row.id });
         await persistTags(supabase, row.id, propertyId, tags, userId);
 
+        // Persist facets and waste calculations
+        await persistFacets(supabase, row.id, meas.faces || []);
+        await persistWasteCalculations(supabase, row.id, meas.summary.total_area_sqft, meas.summary.total_squares, tags);
+
         console.log('Measurement saved:', { id: row.id, source: meas.source, squares: tags['roof.squares'] });
 
         return json({ 
@@ -1025,6 +1204,10 @@ serve(async (req) => {
         const row = await persistMeasurement(supabase, result, userId);
         const tags = buildSmartTags({ ...result, id: row.id });
         await persistTags(supabase, row.id, propertyId, tags, userId);
+
+        // Persist facets and waste calculations
+        await persistFacets(supabase, row.id, result.faces || []);
+        await persistWasteCalculations(supabase, row.id, result.summary.total_area_sqft, result.summary.total_squares, tags);
 
         return json({ 
           ok: true, 

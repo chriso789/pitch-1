@@ -8328,6 +8328,124 @@ export type Database = {
           },
         ]
       }
+      roof_facets: {
+        Row: {
+          area_sqft: number
+          azimuth_degrees: number | null
+          created_at: string | null
+          direction: string | null
+          facet_number: number
+          geometry_wkt: string | null
+          id: string
+          is_flat: boolean | null
+          measurement_id: string
+          perimeter_ft: number | null
+          pitch: string
+          pitch_degrees: number | null
+          pitch_factor: number | null
+          plan_area_sqft: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          area_sqft: number
+          azimuth_degrees?: number | null
+          created_at?: string | null
+          direction?: string | null
+          facet_number: number
+          geometry_wkt?: string | null
+          id?: string
+          is_flat?: boolean | null
+          measurement_id: string
+          perimeter_ft?: number | null
+          pitch: string
+          pitch_degrees?: number | null
+          pitch_factor?: number | null
+          plan_area_sqft?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          area_sqft?: number
+          azimuth_degrees?: number | null
+          created_at?: string | null
+          direction?: string | null
+          facet_number?: number
+          geometry_wkt?: string | null
+          id?: string
+          is_flat?: boolean | null
+          measurement_id?: string
+          perimeter_ft?: number | null
+          pitch?: string
+          pitch_degrees?: number | null
+          pitch_factor?: number | null
+          plan_area_sqft?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_facets_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "measurements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      roof_waste_calculations: {
+        Row: {
+          base_area_sqft: number
+          base_squares: number
+          created_at: string | null
+          id: string
+          measurement_id: string
+          ridge_cap_bundles: number | null
+          shingle_bundles: number | null
+          starter_lf: number | null
+          total_area_sqft: number
+          total_squares: number
+          waste_area_sqft: number
+          waste_percentage: number
+          waste_squares: number
+        }
+        Insert: {
+          base_area_sqft: number
+          base_squares: number
+          created_at?: string | null
+          id?: string
+          measurement_id: string
+          ridge_cap_bundles?: number | null
+          shingle_bundles?: number | null
+          starter_lf?: number | null
+          total_area_sqft: number
+          total_squares: number
+          waste_area_sqft: number
+          waste_percentage: number
+          waste_squares: number
+        }
+        Update: {
+          base_area_sqft?: number
+          base_squares?: number
+          created_at?: string | null
+          id?: string
+          measurement_id?: string
+          ridge_cap_bundles?: number | null
+          shingle_bundles?: number | null
+          starter_lf?: number | null
+          total_area_sqft?: number
+          total_squares?: number
+          waste_area_sqft?: number
+          waste_percentage?: number
+          waste_squares?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_waste_calculations_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "measurements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       safety_incidents: {
         Row: {
           corrective_actions: string | null
