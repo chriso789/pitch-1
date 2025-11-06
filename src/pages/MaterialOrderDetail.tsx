@@ -16,7 +16,7 @@ import { supabase } from '@/integrations/supabase/client';
 export default function MaterialOrderDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { submitOrder, cancelOrder, updateOrderStatus } = useMaterialOrders();
+  const { submitOrder, cancelOrder, updateOrderStatus, requestApproval } = useMaterialOrders();
   const [order, setOrder] = useState<MaterialOrder | null>(null);
   const [items, setItems] = useState<MaterialOrderItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -165,10 +165,15 @@ export default function MaterialOrderDetail() {
         </div>
         <div className="flex gap-2">
           {canSubmit && (
-            <Button onClick={() => setShowSubmitDialog(true)}>
-              <Send className="h-4 w-4 mr-2" />
-              Submit Order
-            </Button>
+            <>
+              <Button onClick={() => setShowSubmitDialog(true)}>
+                <Send className="h-4 w-4 mr-2" />
+                Submit Order
+              </Button>
+              <Button variant="outline" onClick={() => requestApproval(order.id)}>
+                Request Approval
+              </Button>
+            </>
           )}
           {canMarkConfirmed && (
             <Button variant="outline" onClick={() => handleStatusChange('confirmed')}>

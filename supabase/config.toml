@@ -230,3 +230,9 @@ verify_jwt = false
 
 [functions.create-material-order]
 verify_jwt = false
+
+[functions.request-order-approval]
+verify_jwt = false
+
+[functions.approve-order]
+verify_jwt = false

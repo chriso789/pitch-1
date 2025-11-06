@@ -169,6 +169,36 @@ export const useMaterialOrders = () => {
     }
   };
 
+  const requestApproval = async (orderId: string) => {
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      const { data, error } = await supabase.functions.invoke('request-order-approval', {
+        body: {
+          po_id: orderId,
+          requested_by: user?.id,
+        },
+      });
+
+      if (error) throw error;
+
+      if (data.auto_approved) {
+        toast.success('Order auto-approved - no approval required');
+      } else {
+        toast.success(`Approval request sent to ${data.approvals_required} approver(s)`);
+      }
+      
+      await fetchOrders();
+    } catch (error: any) {
+      console.error('Error requesting approval:', error);
+      toast.error(error.message || 'Failed to request approval');
+      throw error;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return {
     loading,
     orders,
@@ -177,6 +207,7 @@ export const useMaterialOrders = () => {
     fetchOrderItems,
     updateOrderStatus,
     submitOrder,
-    cancelOrder
+    cancelOrder,
+    requestApproval,
   };
 };

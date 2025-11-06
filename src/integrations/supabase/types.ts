@@ -7695,6 +7695,165 @@ export type Database = {
           },
         ]
       }
+      purchase_order_approval_history: {
+        Row: {
+          action: string
+          actor_id: string | null
+          approval_id: string | null
+          comments: string | null
+          created_at: string
+          id: string
+          metadata: Json | null
+          po_id: string
+          tenant_id: string
+        }
+        Insert: {
+          action: string
+          actor_id?: string | null
+          approval_id?: string | null
+          comments?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          po_id: string
+          tenant_id: string
+        }
+        Update: {
+          action?: string
+          actor_id?: string | null
+          approval_id?: string | null
+          comments?: string | null
+          created_at?: string
+          id?: string
+          metadata?: Json | null
+          po_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_order_approval_history_approval_id_fkey"
+            columns: ["approval_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_order_approvals"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_approval_history_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      purchase_order_approval_rules: {
+        Row: {
+          approval_type: string
+          created_at: string
+          created_by: string | null
+          id: string
+          is_active: boolean
+          max_amount: number | null
+          min_amount: number
+          required_approvers: Json
+          rule_name: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          approval_type?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          max_amount?: number | null
+          min_amount?: number
+          required_approvers?: Json
+          rule_name: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          approval_type?: string
+          created_at?: string
+          created_by?: string | null
+          id?: string
+          is_active?: boolean
+          max_amount?: number | null
+          min_amount?: number
+          required_approvers?: Json
+          rule_name?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
+      purchase_order_approvals: {
+        Row: {
+          approval_level: number
+          approver_id: string | null
+          comments: string | null
+          created_at: string
+          id: string
+          po_id: string
+          requested_at: string
+          required_approver_id: string | null
+          required_approver_role: string | null
+          responded_at: string | null
+          rule_id: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          approval_level?: number
+          approver_id?: string | null
+          comments?: string | null
+          created_at?: string
+          id?: string
+          po_id: string
+          requested_at?: string
+          required_approver_id?: string | null
+          required_approver_role?: string | null
+          responded_at?: string | null
+          rule_id?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          approval_level?: number
+          approver_id?: string | null
+          comments?: string | null
+          created_at?: string
+          id?: string
+          po_id?: string
+          requested_at?: string
+          required_approver_id?: string | null
+          required_approver_role?: string | null
+          responded_at?: string | null
+          rule_id?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "purchase_order_approvals_po_id_fkey"
+            columns: ["po_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_orders"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "purchase_order_approvals_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "purchase_order_approval_rules"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       purchase_order_items: {
         Row: {
           created_at: string | null
@@ -11916,6 +12075,15 @@ export type Database = {
         Args: { p_session_id: string; p_signature_data?: Json }
         Returns: undefined
       }
+      determine_approval_requirements: {
+        Args: { p_order_amount: number; p_tenant_id: string }
+        Returns: {
+          approval_type: string
+          required_approvers: Json
+          rule_id: string
+          rule_name: string
+        }[]
+      }
       disablelongtransactions: { Args: never; Returns: string }
       dropgeometrycolumn:
         | {
@@ -12161,6 +12329,7 @@ export type Database = {
           isSetofReturn: false
         }
       }
+      is_order_fully_approved: { Args: { p_po_id: string }; Returns: boolean }
       jsonb_get_path: { Args: { obj: Json; path: string }; Returns: string }
       log_function_error: {
         Args: {
