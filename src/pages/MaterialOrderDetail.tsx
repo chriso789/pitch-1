@@ -12,6 +12,7 @@ import { ArrowLeft, Package, Calendar, DollarSign, Building2, FileText, MapPin, 
 import { format } from 'date-fns';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { MaterialOrderExport } from '@/components/orders/MaterialOrderExport';
 
 export default function MaterialOrderDetail() {
   const { id } = useParams<{ id: string }>();
@@ -164,6 +165,7 @@ export default function MaterialOrderDetail() {
           </div>
         </div>
         <div className="flex gap-2">
+          <MaterialOrderExport order={order} items={items} />
           {canSubmit && (
             <>
               <Button onClick={() => setShowSubmitDialog(true)}>
