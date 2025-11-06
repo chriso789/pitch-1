@@ -92,12 +92,18 @@ export default function AIAgentsCommandCenter() {
   }, []);
 
   const loadAgents = async () => {
-    const { data } = await supabase
-      .from('ai_agents' as any)
-      .select('*');
-    
-    if (data) {
-      setAgents(data as unknown as Agent[]);
+    try {
+      const { data, error } = await supabase
+        .from('ai_agents' as any)
+        .select('*');
+      
+      if (error) {
+        console.error('Error loading agents:', error);
+      } else if (data) {
+        setAgents(data as unknown as Agent[]);
+      }
+    } catch (err) {
+      console.error('Failed to load agents:', err);
     }
     setLoading(false);
   };
@@ -105,12 +111,20 @@ export default function AIAgentsCommandCenter() {
   const toggleAgent = async (agentId: string, currentStatus: string) => {
     const newStatus = currentStatus === 'active' ? 'inactive' : 'active';
     
-    await supabase
-      .from('ai_agents' as any)
-      .update({ status: newStatus })
-      .eq('id', agentId);
+    try {
+      const { error } = await supabase
+        .from('ai_agents' as any)
+        .update({ status: newStatus })
+        .eq('id', agentId);
 
-    loadAgents();
+      if (error) {
+        console.error('Error toggling agent:', error);
+      } else {
+        loadAgents();
+      }
+    } catch (err) {
+      console.error('Failed to toggle agent:', err);
+    }
   };
 
   const totalSavings = Object.values(agentConfigs).reduce((sum, config) => sum + config.savingsMonthly, 0);

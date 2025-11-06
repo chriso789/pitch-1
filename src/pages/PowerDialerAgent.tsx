@@ -84,7 +84,6 @@ export default function PowerDialerAgent() {
         description: `${mode.toUpperCase()} mode activated`
       });
 
-      // Load first contact
       loadNextContact(data.session.id);
     } catch (error: any) {
       toast({
@@ -110,7 +109,6 @@ export default function PowerDialerAgent() {
       if (data.contact) {
         setCurrentContact(data.contact);
         
-        // Auto-dial in power/predictive mode
         if (mode === 'power' || mode === 'predictive') {
           setTimeout(() => makeCall(data.contact), 500);
         }
@@ -189,7 +187,6 @@ export default function PowerDialerAgent() {
         description: `Contact marked as ${disposition}`
       });
 
-      // Load next contact
       loadNextContact(session.id);
     } catch (error: any) {
       toast({
