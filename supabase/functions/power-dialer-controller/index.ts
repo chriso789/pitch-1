@@ -16,6 +16,33 @@ interface DialerRequest {
   notes?: string;
 }
 
+// Rate Limiting Configuration
+const RATE_LIMITS = {
+  // API request limits per tenant
+  requestsPerMinute: 60,
+  requestsPerHour: 500,
+  
+  // Call limits per session (compliance)
+  maxCallsPerHour: 100,
+  maxCallsPerDay: 800,
+  
+  // Session limits
+  maxActiveSessions: 5,
+  maxSessionDuration: 8 * 60 * 60 * 1000, // 8 hours
+};
+
+interface RateLimitError extends Error {
+  status: number;
+  retryAfter?: number;
+}
+
+function createRateLimitError(message: string, retryAfter?: number): RateLimitError {
+  const error = new Error(message) as RateLimitError;
+  error.status = 429;
+  error.retryAfter = retryAfter;
+  return error;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -43,8 +70,16 @@ serve(async (req) => {
 
     if (!profile) throw new Error('Profile not found');
 
+    // Check API rate limits
+    await checkRateLimit(supabaseClient, profile.tenant_id, user.id);
+
     const body: DialerRequest = await req.json();
     console.log('Power Dialer Request:', body);
+
+    // Additional throttling checks for calling actions
+    if (body.action === 'next-contact' && body.sessionId) {
+      await checkCallThrottling(supabaseClient, body.sessionId);
+    }
 
     let result;
     switch (body.action) {
@@ -76,18 +111,157 @@ serve(async (req) => {
     );
   } catch (error) {
     console.error('Error in power-dialer-controller:', error);
+    
+    const status = (error as RateLimitError).status || 500;
+    const headers = { ...corsHeaders, 'Content-Type': 'application/json' };
+    
+    if ((error as RateLimitError).retryAfter) {
+      headers['Retry-After'] = String((error as RateLimitError).retryAfter);
+      headers['X-RateLimit-Reset'] = String(Date.now() + ((error as RateLimitError).retryAfter! * 1000));
+    }
+    
     return new Response(
-      JSON.stringify({ error: error.message }),
-      { 
-        status: 500,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
-      }
+      JSON.stringify({ 
+        error: error.message,
+        rateLimitExceeded: status === 429
+      }),
+      { status, headers }
     );
   }
 });
 
+async function checkRateLimit(supabase: any, tenantId: string, userId: string) {
+  const now = new Date();
+  const oneMinuteAgo = new Date(now.getTime() - 60 * 1000);
+  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+
+  // Check requests in last minute
+  const { count: minuteCount } = await supabase
+    .from('api_rate_limits')
+    .select('*', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
+    .eq('user_id', userId)
+    .gte('created_at', oneMinuteAgo.toISOString());
+
+  if (minuteCount >= RATE_LIMITS.requestsPerMinute) {
+    const retryAfter = 60;
+    console.warn(`Rate limit exceeded for tenant ${tenantId}: ${minuteCount} requests/minute`);
+    throw createRateLimitError(
+      `Rate limit exceeded: ${RATE_LIMITS.requestsPerMinute} requests per minute allowed`,
+      retryAfter
+    );
+  }
+
+  // Check requests in last hour
+  const { count: hourCount } = await supabase
+    .from('api_rate_limits')
+    .select('*', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
+    .eq('user_id', userId)
+    .gte('created_at', oneHourAgo.toISOString());
+
+  if (hourCount >= RATE_LIMITS.requestsPerHour) {
+    const retryAfter = 3600;
+    console.warn(`Rate limit exceeded for tenant ${tenantId}: ${hourCount} requests/hour`);
+    throw createRateLimitError(
+      `Rate limit exceeded: ${RATE_LIMITS.requestsPerHour} requests per hour allowed`,
+      retryAfter
+    );
+  }
+
+  // Log this request
+  await supabase
+    .from('api_rate_limits')
+    .insert({
+      tenant_id: tenantId,
+      user_id: userId,
+      endpoint: 'power-dialer-controller',
+      created_at: now.toISOString()
+    });
+
+  console.log(`Rate limit check passed: ${minuteCount}/min, ${hourCount}/hour`);
+}
+
+async function checkCallThrottling(supabase: any, sessionId: string) {
+  const { data: session } = await supabase
+    .from('power_dialer_sessions')
+    .select('*, ai_agents(configuration)')
+    .eq('id', sessionId)
+    .single();
+
+  if (!session) throw new Error('Session not found');
+
+  const now = new Date();
+  const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+
+  // Check calls in last hour
+  const { count: hourCallCount } = await supabase
+    .from('call_logs')
+    .select('*', { count: 'exact', head: true })
+    .eq('session_id', sessionId)
+    .gte('created_at', oneHourAgo.toISOString());
+
+  // Get configured max calls per hour from agent config
+  const agentConfig = session.ai_agents?.configuration || {};
+  const maxCallsPerHour = agentConfig.maxCallsPerHour || RATE_LIMITS.maxCallsPerHour;
+
+  if (hourCallCount >= maxCallsPerHour) {
+    const retryAfter = 3600;
+    console.warn(`Call throttling: ${hourCallCount} calls in last hour (limit: ${maxCallsPerHour})`);
+    throw createRateLimitError(
+      `Call rate limit exceeded: ${maxCallsPerHour} calls per hour allowed. This ensures compliance with calling regulations.`,
+      retryAfter
+    );
+  }
+
+  // Check calls today
+  const { count: dayCallCount } = await supabase
+    .from('call_logs')
+    .select('*', { count: 'exact', head: true })
+    .eq('session_id', sessionId)
+    .gte('created_at', todayStart.toISOString());
+
+  if (dayCallCount >= RATE_LIMITS.maxCallsPerDay) {
+    const retryAfter = 86400;
+    console.warn(`Daily call limit exceeded: ${dayCallCount} calls today`);
+    throw createRateLimitError(
+      `Daily call limit exceeded: ${RATE_LIMITS.maxCallsPerDay} calls per day allowed`,
+      retryAfter
+    );
+  }
+
+  // Check session duration
+  const sessionStart = new Date(session.started_at || session.created_at);
+  const sessionDuration = now.getTime() - sessionStart.getTime();
+
+  if (sessionDuration > RATE_LIMITS.maxSessionDuration) {
+    console.warn(`Session duration exceeded: ${sessionDuration}ms`);
+    throw createRateLimitError(
+      'Maximum session duration exceeded (8 hours). Please start a new session.',
+      3600
+    );
+  }
+
+  console.log(`Call throttling check passed: ${hourCallCount}/${maxCallsPerHour} calls/hour, ${dayCallCount}/${RATE_LIMITS.maxCallsPerDay} calls/day`);
+}
+
 async function startDialerSession(supabase: any, tenantId: string, body: DialerRequest) {
   console.log('Starting dialer session:', { tenantId, mode: body.mode, campaignId: body.campaignId });
+
+  // Check active session limits
+  const { count: activeSessionCount } = await supabase
+    .from('power_dialer_sessions')
+    .select('*', { count: 'exact', head: true })
+    .eq('tenant_id', tenantId)
+    .in('status', ['active', 'paused']);
+
+  if (activeSessionCount >= RATE_LIMITS.maxActiveSessions) {
+    throw createRateLimitError(
+      `Maximum active sessions limit reached (${RATE_LIMITS.maxActiveSessions}). Please stop an existing session before starting a new one.`,
+      300
+    );
+  }
 
   // Create or get power dialer agent
   let { data: agent } = await supabase
@@ -127,7 +301,8 @@ async function startDialerSession(supabase: any, tenantId: string, body: DialerR
       agent_id: agent.id,
       campaign_id: body.campaignId,
       mode: body.mode || 'power',
-      status: 'active'
+      status: 'active',
+      started_at: new Date().toISOString()
     })
     .select()
     .single();
@@ -135,6 +310,7 @@ async function startDialerSession(supabase: any, tenantId: string, body: DialerR
   if (sessionError) throw sessionError;
 
   console.log('Dialer session started:', session.id);
+  console.log(`Rate limits applied: ${activeSessionCount + 1}/${RATE_LIMITS.maxActiveSessions} active sessions`);
 
   return {
     success: true,
@@ -241,9 +417,22 @@ async function getNextContact(supabase: any, sessionId: string, mode: string) {
   await supabase
     .from('power_dialer_sessions')
     .update({ 
-      contacts_attempted: session.contacts_attempted + 1 
+      contacts_attempted: session.contacts_attempted + 1,
+      last_activity_at: new Date().toISOString()
     })
     .eq('id', sessionId);
+
+  // Create call log entry for throttling tracking
+  await supabase
+    .from('call_logs')
+    .insert({
+      tenant_id: session.tenant_id,
+      session_id: sessionId,
+      contact_id: contacts[0].id,
+      phone_number: contacts[0].phone,
+      status: 'initiated',
+      created_at: new Date().toISOString()
+    });
 
   return {
     success: true,
