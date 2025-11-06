@@ -34,6 +34,7 @@ import {
 } from '@/lib/measurements/materialCalculations';
 import { useToast } from '@/hooks/use-toast';
 import { useMaterialOrders } from '@/hooks/useMaterialOrders';
+import { supabase } from '@/integrations/supabase/client';
 
 interface MaterialCalculatorProps {
   measurementData: RoofMeasurementData;
@@ -85,26 +86,51 @@ export const MaterialCalculator: React.FC<MaterialCalculatorProps> = ({
   };
 
   const handleCreateOrder = async () => {
-    if (!pipelineEntryId || !calculation) {
+    if (!calculation) {
       toast({
         variant: 'destructive',
         title: 'Cannot create order',
-        description: 'Missing pipeline entry or calculation data',
+        description: 'Missing calculation data',
       });
       return;
     }
 
     setIsCreatingOrder(true);
     try {
-      // This would need an estimate ID - for now, show materials list
+      // Prepare materials for order creation
+      const materials = calculation.waste_adjusted_materials.map((item) => ({
+        srs_item_code: item.item_code,
+        item_description: item.product_name,
+        quantity: item.quantity,
+        unit_price: item.unit_cost,
+        line_total: item.total_cost,
+        metadata: {
+          category: item.category,
+          brand: item.brand,
+          unit: item.unit_of_measure,
+        },
+      }));
+
+      // Call edge function to create order
+      const { data, error } = await supabase.functions.invoke('create-material-order', {
+        body: {
+          pipeline_entry_id: pipelineEntryId,
+          vendor_id: 'default-vendor-id', // TODO: Allow vendor selection
+          materials,
+          notes: 'Order created from material calculator',
+        },
+      });
+
+      if (error) throw error;
+
       toast({
-        title: 'Material Order Ready',
-        description: `${calculation.waste_adjusted_materials.length} items calculated. Total: ${formatCurrency(calculation.total_waste_adjusted_cost)}`,
+        title: 'Order Created',
+        description: `Order ${data.po_number} created successfully with ${data.item_count} items`,
       });
       
-      // TODO: Implement actual order creation workflow
-      // const orderId = await createOrderFromEstimate(estimateId, vendorId);
-      // onOrderCreated?.(orderId);
+      if (data.order_id) {
+        onOrderCreated?.(data.order_id);
+      }
     } catch (error) {
       console.error('Error creating order:', error);
       toast({
