@@ -132,6 +132,7 @@ const AppContent = () => {
         <Route path="/ai-agents" element={<AIAgentsCommandCenter />} />
         <Route path="/power-dialer-agent" element={<PowerDialerAgent />} />
         <Route path="/contract-reports" element={<ContractReports />} />
+        <Route path="/material-calculations/:id" element={<MaterialCalculations />} />
         
         {/* Detail pages */}
         <Route path="/contact/:id" element={<ContactProfile />} />
