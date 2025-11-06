@@ -221,3 +221,6 @@ verify_jwt = true
 
 [functions.ai-claude-processor]
 verify_jwt = true
+
+[functions.generate-contract-reports]
+verify_jwt = true
