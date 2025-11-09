@@ -11,7 +11,6 @@ import { PolygonEditor } from './PolygonEditor';
 import { ComprehensiveMeasurementOverlay } from './ComprehensiveMeasurementOverlay';
 import { ManualMeasurementEditor } from './ManualMeasurementEditor';
 import { parseWKTPolygon, calculatePolygonAreaSqft, calculatePerimeterFt } from '@/utils/geoCoordinates';
-import { supabase } from '@/integrations/supabase/client';
 import { useManualVerification } from '@/hooks/useMeasurement';
 
 // Industry-standard roof pitch multipliers
@@ -60,50 +59,6 @@ export function MeasurementVerificationDialog({
   const [showManualEditor, setShowManualEditor] = useState(false);
   
   const manualVerify = useManualVerification();
-  
-  // Manufacturer selection for material calculations
-  const [selectedManufacturer, setSelectedManufacturer] = useState('GAF');
-  const [selectedProductLine, setSelectedProductLine] = useState('Timberline HDZ');
-  const [manufacturerSpecs, setManufacturerSpecs] = useState<any[]>([]);
-  
-  // Fetch manufacturer specs on mount
-  useEffect(() => {
-    const fetchSpecs = async () => {
-      const { data } = await supabase
-        .from('manufacturer_specs' as any)
-        .select('*')
-        .eq('manufacturer', selectedManufacturer)
-        .eq('product_line', selectedProductLine)
-        .eq('is_active', true);
-      
-      setManufacturerSpecs(data || []);
-    };
-    fetchSpecs();
-  }, [selectedManufacturer, selectedProductLine]);
-  
-  // Calculate material quantities based on manufacturer specs
-  const calculateMaterialQuantity = (productType: string) => {
-    const spec = manufacturerSpecs.find(s => s.product_type === productType);
-    if (!spec) return 0;
-
-    const coverage = spec.coverage_specs;
-    const waste = 1 + (wastePercent / 100);
-
-    switch (productType) {
-      case 'shingles':
-        return Math.ceil((roofSquares * (coverage.bundles_per_square || 3)) * waste);
-      case 'ridge_cap':
-        const ridgeTotal = (ridge + hip) * waste;
-        return Math.ceil(ridgeTotal / (coverage.linear_ft_per_bundle || 33));
-      case 'starter_strip':
-        const perimeterTotal = (eave + rake) * waste;
-        return Math.ceil(perimeterTotal / (coverage.linear_ft_per_bundle || coverage.linear_ft_per_roll || 120));
-      case 'valley':
-        return Math.ceil((valley * waste) / (coverage.linear_ft_per_roll || 50));
-      default:
-        return 0;
-    }
-  };
   
   // Editable pitch and waste
   // Helper function to derive pitch from pitch factor
@@ -371,46 +326,6 @@ export function MeasurementVerificationDialog({
               
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <label className="text-sm text-muted-foreground">Manufacturer:</label>
-                  <Select value={selectedManufacturer} onValueChange={setSelectedManufacturer}>
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="GAF">GAF</SelectItem>
-                      <SelectItem value="Owens Corning">Owens Corning</SelectItem>
-                      <SelectItem value="CertainTeed">CertainTeed</SelectItem>
-                      <SelectItem value="TAMKO">TAMKO</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <div className="flex items-center justify-between">
-                  <label className="text-sm text-muted-foreground">Product Line:</label>
-                  <Select value={selectedProductLine} onValueChange={setSelectedProductLine}>
-                    <SelectTrigger className="w-[180px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {selectedManufacturer === 'GAF' && (
-                        <SelectItem value="Timberline HDZ">Timberline HDZ</SelectItem>
-                      )}
-                      {selectedManufacturer === 'Owens Corning' && (
-                        <SelectItem value="Duration">Duration</SelectItem>
-                      )}
-                      {selectedManufacturer === 'CertainTeed' && (
-                        <SelectItem value="Landmark">Landmark</SelectItem>
-                      )}
-                      {selectedManufacturer === 'TAMKO' && (
-                        <SelectItem value="Heritage">Heritage</SelectItem>
-                      )}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-                <Separator />
-
-                <div className="flex items-center justify-between">
                   <label className="text-sm text-muted-foreground">Roof Pitch:</label>
                   <Select value={selectedPitch} onValueChange={handlePitchChange}>
                     <SelectTrigger className="w-[140px]">
@@ -519,55 +434,6 @@ export function MeasurementVerificationDialog({
                 </div>
               </div>
             </div>
-
-            {/* Material Preview - Brand Specific */}
-            {manufacturerSpecs.length > 0 && (
-              <div className="border border-green-500/20 rounded-lg p-4 bg-green-500/5">
-                <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
-                  📦 Material Preview
-                  <Badge variant="outline" className="text-xs">{selectedManufacturer} {selectedProductLine}</Badge>
-                </h3>
-                <div className="space-y-2 text-sm">
-                  {manufacturerSpecs.find(s => s.product_type === 'shingles') && (
-                    <div className="flex justify-between py-1.5 border-b">
-                      <span className="text-muted-foreground">Shingles:</span>
-                      <span className="font-medium text-green-600">
-                        {calculateMaterialQuantity('shingles')} bundles
-                      </span>
-                    </div>
-                  )}
-                  {manufacturerSpecs.find(s => s.product_type === 'ridge_cap') && (
-                    <div className="flex justify-between py-1.5 border-b">
-                      <span className="text-muted-foreground">Ridge Cap:</span>
-                      <span className="font-medium text-green-600">
-                        {calculateMaterialQuantity('ridge_cap')} bundles
-                      </span>
-                    </div>
-                  )}
-                  {manufacturerSpecs.find(s => s.product_type === 'starter_strip') && (
-                    <div className="flex justify-between py-1.5 border-b">
-                      <span className="text-muted-foreground">Starter Strip:</span>
-                      <span className="font-medium text-green-600">
-                        {calculateMaterialQuantity('starter_strip')} rolls
-                      </span>
-                    </div>
-                  )}
-                  {manufacturerSpecs.find(s => s.product_type === 'valley') && valley > 0 && (
-                    <div className="flex justify-between py-1.5 border-b">
-                      <span className="text-muted-foreground">Valley:</span>
-                      <span className="font-medium text-green-600">
-                        {calculateMaterialQuantity('valley')} rolls
-                      </span>
-                    </div>
-                  )}
-                  <p className="text-xs text-muted-foreground mt-2 italic">
-                    * Quantities include {wastePercent}% waste factor
-                  </p>
-                </div>
-              </div>
-            )}
-
-            <Separator />
 
             {/* Linear Features */}
             <div>
