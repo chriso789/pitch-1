@@ -2,7 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { Canvas as FabricCanvas, Line, Polygon, Circle, Text as FabricText, FabricObject } from "fabric";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Move, Mountain, Triangle, ArrowDownUp, Square, Trash2, RotateCcw, Eye, EyeOff } from "lucide-react";
+import { Move, Mountain, Triangle, ArrowDownUp, Square, Trash2, RotateCcw, Eye, EyeOff, MapPin, StickyNote, AlertTriangle } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 
 interface Point {
@@ -22,7 +31,15 @@ interface ComprehensiveMeasurementOverlayProps {
   canvasHeight?: number;
 }
 
-type EditMode = 'select' | 'add-ridge' | 'add-hip' | 'add-valley' | 'add-facet' | 'delete';
+type EditMode = 'select' | 'add-ridge' | 'add-hip' | 'add-valley' | 'add-facet' | 'delete' | 'add-marker' | 'add-note' | 'add-damage';
+
+interface Annotation {
+  id: string;
+  type: 'marker' | 'note' | 'damage';
+  position: Point;
+  text?: string;
+  normalizedPosition: [number, number];
+}
 
 export function ComprehensiveMeasurementOverlay({
   satelliteImageUrl,
@@ -44,9 +61,13 @@ export function ComprehensiveMeasurementOverlay({
     hips: true,
     valleys: true,
     perimeter: true,
+    annotations: true,
   });
   const [drawPoints, setDrawPoints] = useState<Point[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
+  const [noteDialogOpen, setNoteDialogOpen] = useState(false);
+  const [pendingAnnotation, setPendingAnnotation] = useState<{ position: Point; type: 'note' | 'damage' } | null>(null);
+  const [noteText, setNoteText] = useState('');
   
   // Store original data for reset
   const originalDataRef = useRef({ measurement, tags });
@@ -125,6 +146,14 @@ export function ComprehensiveMeasurementOverlay({
         handleAddLine(point);
       } else if (editMode === 'add-facet') {
         handleAddFacetPoint(point);
+      } else if (editMode === 'add-marker') {
+        handleAddAnnotation(point, 'marker');
+      } else if (editMode === 'add-note') {
+        setPendingAnnotation({ position: point, type: 'note' });
+        setNoteDialogOpen(true);
+      } else if (editMode === 'add-damage') {
+        setPendingAnnotation({ position: point, type: 'damage' });
+        setNoteDialogOpen(true);
       }
     };
 
@@ -161,6 +190,11 @@ export function ComprehensiveMeasurementOverlay({
     // Draw perimeter
     if (layers.perimeter) {
       drawPerimeter();
+    }
+
+    // Draw annotations
+    if (layers.annotations) {
+      drawAnnotations();
     }
   };
 
@@ -390,11 +424,132 @@ export function ComprehensiveMeasurementOverlay({
     toast.success(`Added roof facet: ${area.toFixed(1)} sq ft`);
   };
 
+  const drawAnnotations = () => {
+    if (!fabricCanvas) return;
+
+    const annotations: Annotation[] = tags.annotations || [];
+    
+    annotations.forEach((annotation, index) => {
+      const pos = {
+        x: annotation.normalizedPosition[0] * canvasWidth,
+        y: annotation.normalizedPosition[1] * canvasHeight,
+      };
+
+      let icon: FabricObject;
+      let color: string;
+
+      if (annotation.type === 'marker') {
+        // Draw marker pin
+        icon = new Circle({
+          left: pos.x,
+          top: pos.y,
+          radius: 8,
+          fill: 'hsl(var(--primary))',
+          stroke: 'white',
+          strokeWidth: 2,
+          originX: 'center',
+          originY: 'center',
+          selectable: editMode === 'select',
+        });
+        color = 'hsl(var(--primary))';
+      } else if (annotation.type === 'note') {
+        // Draw note icon
+        icon = new Polygon(
+          [
+            { x: pos.x - 10, y: pos.y - 10 },
+            { x: pos.x + 10, y: pos.y - 10 },
+            { x: pos.x + 10, y: pos.y + 10 },
+            { x: pos.x - 10, y: pos.y + 10 },
+          ],
+          {
+            fill: 'hsl(var(--secondary))',
+            stroke: 'white',
+            strokeWidth: 2,
+            selectable: editMode === 'select',
+          }
+        );
+        color = 'hsl(var(--secondary))';
+      } else {
+        // Draw damage warning triangle
+        icon = new Polygon(
+          [
+            { x: pos.x, y: pos.y - 12 },
+            { x: pos.x - 10, y: pos.y + 8 },
+            { x: pos.x + 10, y: pos.y + 8 },
+          ],
+          {
+            fill: 'hsl(var(--destructive))',
+            stroke: 'white',
+            strokeWidth: 2,
+            selectable: editMode === 'select',
+          }
+        );
+        color = 'hsl(var(--destructive))';
+      }
+
+      (icon as any).data = { type: 'annotation', editable: true, annotationIndex: index };
+      fabricCanvas.add(icon);
+
+      // Add text label if present
+      if (annotation.text) {
+        const label = new FabricText(annotation.text, {
+          left: pos.x,
+          top: pos.y + 20,
+          fontSize: 11,
+          fill: 'white',
+          backgroundColor: color,
+          padding: 3,
+          originX: 'center',
+          originY: 'top',
+          selectable: false,
+        });
+        (label as any).data = { type: 'annotation-label', annotationIndex: index };
+        fabricCanvas.add(label);
+      }
+    });
+  };
+
+  const handleAddAnnotation = (point: Point, type: 'marker' | 'note' | 'damage', text?: string) => {
+    const normalizedPosition: [number, number] = [point.x / canvasWidth, point.y / canvasHeight];
+    
+    const newAnnotation: Annotation = {
+      id: `${type}-${Date.now()}`,
+      type,
+      position: point,
+      normalizedPosition,
+      text,
+    };
+
+    const existingAnnotations = tags.annotations || [];
+    const updatedAnnotations = [...existingAnnotations, newAnnotation];
+    
+    const updatedTags = {
+      ...tags,
+      annotations: updatedAnnotations,
+    };
+
+    setHasChanges(true);
+    onMeasurementUpdate(measurement, updatedTags);
+    toast.success(`Added ${type} annotation`);
+  };
+
+  const handleSaveNote = () => {
+    if (!pendingAnnotation || !noteText.trim()) {
+      toast.error("Please enter note text");
+      return;
+    }
+
+    handleAddAnnotation(pendingAnnotation.position, pendingAnnotation.type, noteText);
+    setNoteDialogOpen(false);
+    setPendingAnnotation(null);
+    setNoteText('');
+  };
+
   const handleDeleteObject = (target: FabricObject) => {
     const targetData = (target as any).data;
     if (!targetData?.editable) return;
 
-    const { type, lineIndex, faceIndex } = targetData;
+    const { type, lineIndex, faceIndex, annotationIndex } = targetData;
 
     if (type === 'ridge' || type === 'hip' || type === 'valley') {
       const lineKey = `${type}_lines`;
@@ -423,6 +578,18 @@ export function ComprehensiveMeasurementOverlay({
       setHasChanges(true);
       onMeasurementUpdate(updatedMeasurement, tags);
       toast.success("Deleted roof facet");
+    } else if (type === 'annotation') {
+      const annotations = [...(tags.annotations || [])];
+      annotations.splice(annotationIndex, 1);
+      
+      const updatedTags = {
+        ...tags,
+        annotations,
+      };
+
+      setHasChanges(true);
+      onMeasurementUpdate(measurement, updatedTags);
+      toast.success("Deleted annotation");
     }
   };
 
@@ -474,7 +641,13 @@ export function ComprehensiveMeasurementOverlay({
       case 'add-facet':
         return 'Click to place corners. Click near first point to close polygon.';
       case 'delete':
-        return 'Click on any line or facet to delete it.';
+        return 'Click on any line, facet, or annotation to delete it.';
+      case 'add-marker':
+        return 'Click to place a custom marker on the measurement.';
+      case 'add-note':
+        return 'Click to place a note with custom text.';
+      case 'add-damage':
+        return 'Click to mark a damage indicator with notes.';
       default:
         return '';
     }
@@ -519,6 +692,27 @@ export function ComprehensiveMeasurementOverlay({
             onClick={() => setEditMode('add-facet')}
           >
             <Square className="h-4 w-4 mr-1" /> Facet
+          </Button>
+          <Button 
+            size="sm" 
+            variant={editMode === 'add-marker' ? 'default' : 'outline'} 
+            onClick={() => setEditMode('add-marker')}
+          >
+            <MapPin className="h-4 w-4 mr-1" /> Marker
+          </Button>
+          <Button 
+            size="sm" 
+            variant={editMode === 'add-note' ? 'default' : 'outline'} 
+            onClick={() => setEditMode('add-note')}
+          >
+            <StickyNote className="h-4 w-4 mr-1" /> Note
+          </Button>
+          <Button 
+            size="sm" 
+            variant={editMode === 'add-damage' ? 'default' : 'outline'} 
+            onClick={() => setEditMode('add-damage')}
+          >
+            <AlertTriangle className="h-4 w-4 mr-1" /> Damage
           </Button>
           <Button 
             size="sm" 
@@ -573,7 +767,7 @@ export function ComprehensiveMeasurementOverlay({
       </div>
       
       {/* Legend */}
-      <div className="grid grid-cols-5 gap-2 text-xs">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 text-xs">
         <div className="flex items-center gap-1">
           <div className="w-4 h-1 bg-green-500"></div>
           <span>Ridge</span>
@@ -594,7 +788,58 @@ export function ComprehensiveMeasurementOverlay({
           <div className="w-4 h-4 bg-primary/20 border border-primary"></div>
           <span>Facet</span>
         </div>
+        <div className="flex items-center gap-1">
+          <MapPin className="h-4 w-4 text-primary" />
+          <span>Marker</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <StickyNote className="h-4 w-4 text-secondary" />
+          <span>Note</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <AlertTriangle className="h-4 w-4 text-destructive" />
+          <span>Damage</span>
+        </div>
       </div>
+
+      {/* Note/Damage Dialog */}
+      <Dialog open={noteDialogOpen} onOpenChange={(open) => {
+        setNoteDialogOpen(open);
+        if (!open) {
+          setPendingAnnotation(null);
+          setNoteText('');
+        }
+      }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              Add {pendingAnnotation?.type === 'damage' ? 'Damage' : 'Note'} Annotation
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="note-text">
+                {pendingAnnotation?.type === 'damage' ? 'Damage Description' : 'Note Text'}
+              </Label>
+              <Input
+                id="note-text"
+                value={noteText}
+                onChange={(e) => setNoteText(e.target.value)}
+                placeholder={pendingAnnotation?.type === 'damage' ? 'Describe the damage...' : 'Enter your note...'}
+                autoFocus
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setNoteDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleSaveNote} disabled={!noteText.trim()}>
+              Add Annotation
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
