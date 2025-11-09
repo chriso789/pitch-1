@@ -68,27 +68,35 @@ export function PullMeasurementsButton({
 
       const { measurement, tags } = data.data;
 
-      // Fetch satellite image
+      // Try to use Mapbox visualization URL first, then fallback to Google Maps
       let satelliteImageUrl: string | undefined;
-      try {
-        const { data: imageData } = await supabase.functions.invoke('google-maps-proxy', {
-          body: { 
-            endpoint: 'satellite',
-            params: {
-              center: `${lat},${lng}`,
-              zoom: '20',
-              size: '640x640',
-              maptype: 'satellite',
-              scale: '2'
+      
+      if (measurement.mapbox_visualization_url) {
+        // Use the pre-generated Mapbox visualization with overlays
+        satelliteImageUrl = measurement.mapbox_visualization_url;
+        console.log('Using Mapbox visualization:', satelliteImageUrl);
+      } else {
+        // Fallback to Google Maps satellite image
+        try {
+          const { data: imageData } = await supabase.functions.invoke('google-maps-proxy', {
+            body: { 
+              endpoint: 'satellite',
+              params: {
+                center: `${lat},${lng}`,
+                zoom: '20',
+                size: '640x640',
+                maptype: 'satellite',
+                scale: '2'
+              }
             }
-          }
-        });
+          });
 
-        if (imageData?.image) {
-          satelliteImageUrl = `data:image/png;base64,${imageData.image}`;
+          if (imageData?.image) {
+            satelliteImageUrl = `data:image/png;base64,${imageData.image}`;
+          }
+        } catch (imgError) {
+          console.warn('Failed to fetch satellite image:', imgError);
         }
-      } catch (imgError) {
-        console.warn('Failed to fetch satellite image:', imgError);
       }
 
       // Show verification dialog instead of immediately applying
