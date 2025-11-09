@@ -2,15 +2,17 @@ import React, { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { ArrowLeft, Calculator } from 'lucide-react';
+import { ArrowLeft, Calculator, FileText } from 'lucide-react';
 import { MaterialCalculator } from '@/components/materials/MaterialCalculator';
 import { useLatestMeasurement } from '@/hooks/useMeasurement';
 import { Skeleton } from '@/components/ui/skeleton';
 import type { RoofMeasurementData } from '@/lib/measurements/materialCalculations';
+import MeasurementReportDialog from '@/components/measurements/MeasurementReportDialog';
 
 export default function MaterialCalculations() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [showReport, setShowReport] = useState(false);
   
   const { data: measurementResult, isLoading } = useLatestMeasurement(id, !!id);
 
@@ -86,6 +88,15 @@ export default function MaterialCalculations() {
             </p>
           </div>
         </div>
+        {measurement && (
+          <Button
+            variant="outline"
+            onClick={() => setShowReport(true)}
+          >
+            <FileText className="h-4 w-4 mr-2" />
+            View Report
+          </Button>
+        )}
       </div>
 
       {/* Measurement Summary */}
@@ -124,6 +135,16 @@ export default function MaterialCalculations() {
           // Navigate to order page or show success
         }}
       />
+
+      {/* Measurement Report Dialog */}
+      {measurement && (
+        <MeasurementReportDialog
+          open={showReport}
+          onOpenChange={setShowReport}
+          measurement={measurement}
+          tags={measurementResult.tags || undefined}
+        />
+      )}
     </div>
   );
 }

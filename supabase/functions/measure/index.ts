@@ -1209,6 +1209,21 @@ serve(async (req) => {
         await persistFacets(supabase, row.id, result.faces || []);
         await persistWasteCalculations(supabase, row.id, result.summary.total_area_sqft, result.summary.total_squares, tags);
 
+        // Generate Mapbox visualization (non-blocking)
+        try {
+          await supabase.functions.invoke('generate-measurement-visualization', {
+            body: {
+              measurement_id: row.id,
+              property_id: propertyId,
+              center_lat: lat,
+              center_lng: lng,
+            }
+          });
+          console.log('Visualization generation initiated for measurement:', row.id);
+        } catch (vizError) {
+          console.warn('Visualization generation failed (non-critical):', vizError);
+        }
+
         return json({ 
           ok: true, 
           data: { measurement: row, tags } 
@@ -1249,6 +1264,27 @@ serve(async (req) => {
         };
         
         await persistTags(supabase, row.id, propertyId, updatedTags, userId);
+
+        // Generate Mapbox visualization (non-blocking)
+        try {
+          // Try to extract coordinates from measurement data
+          const centerLat = manualMeasurement.center_lat;
+          const centerLng = manualMeasurement.center_lng;
+          
+          if (centerLat && centerLng) {
+            await supabase.functions.invoke('generate-measurement-visualization', {
+              body: {
+                measurement_id: row.id,
+                property_id: propertyId,
+                center_lat: centerLat,
+                center_lng: centerLng,
+              }
+            });
+            console.log('Visualization generation initiated for manual verification:', row.id);
+          }
+        } catch (vizError) {
+          console.warn('Visualization generation failed (non-critical):', vizError);
+        }
 
         console.log('Manual verification saved:', { id: row.id, propertyId, userId });
 

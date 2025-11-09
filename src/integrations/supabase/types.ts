@@ -5430,6 +5430,7 @@ export type Database = {
           id: string
           is_active: boolean
           linear_features: Json | null
+          mapbox_visualization_url: string | null
           penetrations: Json
           property_id: string
           source: string
@@ -5437,6 +5438,8 @@ export type Database = {
           supersedes: string | null
           updated_at: string
           version: number
+          visualization_generated_at: string | null
+          visualization_metadata: Json | null
         }
         Insert: {
           created_at?: string
@@ -5446,6 +5449,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           linear_features?: Json | null
+          mapbox_visualization_url?: string | null
           penetrations?: Json
           property_id: string
           source: string
@@ -5453,6 +5457,8 @@ export type Database = {
           supersedes?: string | null
           updated_at?: string
           version?: number
+          visualization_generated_at?: string | null
+          visualization_metadata?: Json | null
         }
         Update: {
           created_at?: string
@@ -5462,6 +5468,7 @@ export type Database = {
           id?: string
           is_active?: boolean
           linear_features?: Json | null
+          mapbox_visualization_url?: string | null
           penetrations?: Json
           property_id?: string
           source?: string
@@ -5469,6 +5476,8 @@ export type Database = {
           supersedes?: string | null
           updated_at?: string
           version?: number
+          visualization_generated_at?: string | null
+          visualization_metadata?: Json | null
         }
         Relationships: [
           {
@@ -12314,6 +12323,7 @@ export type Database = {
           id: string
           is_active: boolean
           linear_features: Json | null
+          mapbox_visualization_url: string | null
           penetrations: Json
           property_id: string
           source: string
@@ -12321,6 +12331,8 @@ export type Database = {
           supersedes: string | null
           updated_at: string
           version: number
+          visualization_generated_at: string | null
+          visualization_metadata: Json | null
         }
         SetofOptions: {
           from: "*"

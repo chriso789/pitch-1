@@ -236,3 +236,9 @@ verify_jwt = false
 
 [functions.approve-order]
 verify_jwt = false
+
+[functions.generate-measurement-visualization]
+verify_jwt = true
+
+[functions.material-order-send-email]
+verify_jwt = true
