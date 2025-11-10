@@ -8,6 +8,7 @@ import { ErrorTrackingProvider } from "@/hooks/useErrorTracking";
 import { LocationSelectionDialog } from "@/components/auth/LocationSelectionDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { ImageCacheProvider } from "@/contexts/ImageCacheContext";
 import { initSessionPersistence } from "@/utils/sessionPersistence";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
@@ -178,9 +179,11 @@ const App = () => {
       <AuthProvider>
         <ErrorTrackingProvider>
           <TooltipProvider>
-            <BrowserRouter>
-              <AppContent />
-            </BrowserRouter>
+            <ImageCacheProvider>
+              <BrowserRouter>
+                <AppContent />
+              </BrowserRouter>
+            </ImageCacheProvider>
           </TooltipProvider>
         </ErrorTrackingProvider>
       </AuthProvider>

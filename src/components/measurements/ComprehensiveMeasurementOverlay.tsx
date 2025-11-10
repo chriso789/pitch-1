@@ -13,7 +13,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { useLRUImageCache } from "@/hooks/useLRUImageCache";
+import { useImageCache } from "@/contexts/ImageCacheContext";
 
 interface Point {
   x: number;
@@ -73,8 +73,8 @@ export function ComprehensiveMeasurementOverlay({
   // Store original data for reset
   const originalDataRef = useRef({ measurement, tags });
   
-  // LRU cache for satellite images (max 10 images to prevent memory issues)
-  const imageCache = useLRUImageCache({ maxSize: 10 });
+  // Use global image cache
+  const imageCache = useImageCache();
 
   // Load and cache satellite image with LRU eviction
   useEffect(() => {
@@ -106,7 +106,7 @@ export function ComprehensiveMeasurementOverlay({
       
       // Log cache stats
       const stats = imageCache.getCacheStats();
-      console.log(`[Cache Stats] ${stats.size}/${stats.maxSize} images cached`);
+      console.log(`[Cache Stats] ${stats.currentSize}/${stats.maxSize} images cached`);
     }).catch((error) => {
       console.error('Failed to load satellite image:', error);
       toast.error('Failed to load satellite image');
