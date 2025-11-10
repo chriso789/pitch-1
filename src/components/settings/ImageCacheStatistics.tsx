@@ -2,9 +2,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { Trash2, Image as ImageIcon, TrendingUp, Database, Clock } from "lucide-react";
+import { Trash2, Image as ImageIcon, TrendingUp, Database, Clock, Download, FileJson, FileSpreadsheet } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { formatDistanceToNow } from "date-fns";
+import { formatDistanceToNow, format } from "date-fns";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -16,6 +16,14 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { toast } from "sonner";
+import Papa from "papaparse";
 
 interface CacheEntry {
   url: string;
@@ -60,6 +68,110 @@ export function ImageCacheStatistics({ cacheStats, onClearCache }: ImageCacheSta
     return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
   };
 
+  const exportToJSON = () => {
+    const exportData = {
+      exportDate: new Date().toISOString(),
+      summary: {
+        currentSize: cacheStats.currentSize,
+        maxSize: cacheStats.maxSize,
+        totalMemoryBytes: cacheStats.totalMemoryBytes,
+        totalMemoryMB: cacheStats.totalMemoryMB,
+        hitRate: `${cacheStats.hitRate}%`,
+        totalHits: cacheStats.hits,
+        totalMisses: cacheStats.misses,
+        totalEvictions: cacheStats.evictions,
+        totalRequests: cacheStats.totalRequests,
+      },
+      cachedImages: cacheStats.entries.map((entry, index) => ({
+        rank: index + 1,
+        url: entry.url,
+        lastAccessedTimestamp: entry.lastAccessed,
+        lastAccessedDate: format(entry.lastAccessed, 'yyyy-MM-dd HH:mm:ss'),
+        sizeBytes: entry.size,
+        sizeMB: (entry.size / (1024 * 1024)).toFixed(2),
+      })),
+    };
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `cache-statistics-${format(new Date(), 'yyyy-MM-dd-HHmmss')}.json`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success('Cache statistics exported to JSON');
+  };
+
+  const exportToCSV = () => {
+    const csvData = [
+      {
+        'Metric': 'Export Date',
+        'Value': format(new Date(), 'yyyy-MM-dd HH:mm:ss'),
+      },
+      {
+        'Metric': 'Current Cache Size',
+        'Value': `${cacheStats.currentSize} images`,
+      },
+      {
+        'Metric': 'Max Cache Size',
+        'Value': `${cacheStats.maxSize} images`,
+      },
+      {
+        'Metric': 'Total Memory Used',
+        'Value': `${cacheStats.totalMemoryMB} MB`,
+      },
+      {
+        'Metric': 'Cache Hit Rate',
+        'Value': `${cacheStats.hitRate}%`,
+      },
+      {
+        'Metric': 'Total Hits',
+        'Value': cacheStats.hits,
+      },
+      {
+        'Metric': 'Total Misses',
+        'Value': cacheStats.misses,
+      },
+      {
+        'Metric': 'Total Evictions',
+        'Value': cacheStats.evictions,
+      },
+      {
+        'Metric': 'Total Requests',
+        'Value': cacheStats.totalRequests,
+      },
+      { 'Metric': '', 'Value': '' }, // Empty row
+      { 'Metric': 'CACHED IMAGES', 'Value': '' },
+    ];
+
+    // Add cached images data
+    const imageRows = cacheStats.entries.map((entry, index) => ({
+      'Rank': index + 1,
+      'URL': entry.url,
+      'Last Accessed': format(entry.lastAccessed, 'yyyy-MM-dd HH:mm:ss'),
+      'Size (Bytes)': entry.size,
+      'Size (MB)': (entry.size / (1024 * 1024)).toFixed(2),
+    }));
+
+    const csv = Papa.unparse({
+      fields: ['Metric', 'Value'],
+      data: csvData,
+    }) + '\n\n' + Papa.unparse(imageRows);
+
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `cache-statistics-${format(new Date(), 'yyyy-MM-dd-HHmmss')}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+    toast.success('Cache statistics exported to CSV');
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -73,27 +185,47 @@ export function ImageCacheStatistics({ cacheStats, onClearCache }: ImageCacheSta
               Performance statistics for cached satellite imagery
             </CardDescription>
           </div>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive" size="sm" disabled={cacheStats.currentSize === 0}>
-                <Trash2 className="h-4 w-4 mr-2" />
-                Clear Cache
-              </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Clear Image Cache?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  This will remove all {cacheStats.currentSize} cached images ({cacheStats.totalMemoryMB} MB).
-                  Images will need to be re-downloaded when accessed again.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>Cancel</AlertDialogCancel>
-                <AlertDialogAction onClick={onClearCache}>Clear Cache</AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
+          <div className="flex items-center gap-2">
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" size="sm" disabled={cacheStats.totalRequests === 0}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Export
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                <DropdownMenuItem onClick={exportToJSON}>
+                  <FileJson className="h-4 w-4 mr-2" />
+                  Export as JSON
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={exportToCSV}>
+                  <FileSpreadsheet className="h-4 w-4 mr-2" />
+                  Export as CSV
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button variant="destructive" size="sm" disabled={cacheStats.currentSize === 0}>
+                  <Trash2 className="h-4 w-4 mr-2" />
+                  Clear Cache
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Clear Image Cache?</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    This will remove all {cacheStats.currentSize} cached images ({cacheStats.totalMemoryMB} MB).
+                    Images will need to be re-downloaded when accessed again.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                  <AlertDialogAction onClick={onClearCache}>Clear Cache</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-6">
