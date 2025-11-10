@@ -83,6 +83,8 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const [measurementData, setMeasurementData] = useState<any>(null);
   const [hasMeasurements, setHasMeasurements] = useState(false);
   const [savedEstimates, setSavedEstimates] = useState<any[]>([]);
+  const [editingEstimateId, setEditingEstimateId] = useState<string | null>(null);
+  const [activeTab, setActiveTab] = useState('builder');
 
   const [showAddLineDialog, setShowAddLineDialog] = useState(false);
   const [pullingSolarMeasurements, setPullingSolarMeasurements] = useState(false);
@@ -478,6 +480,9 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       
       // Refresh the saved estimates list
       await loadSavedEstimates();
+      
+      // Clear editing state after saving
+      setEditingEstimateId(null);
     } catch (error: any) {
       console.error('Error saving estimate:', error);
       toast({
@@ -495,6 +500,133 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       style: 'currency',
       currency: 'USD'
     }).format(amount);
+  };
+
+  const handleLoadEstimate = async (estimateId: string) => {
+    try {
+      setLoading(true);
+      
+      // Fetch the full estimate details
+      const { data: estimate, error } = await supabase
+        .from('enhanced_estimates')
+        .select('*')
+        .eq('id', estimateId)
+        .maybeSingle();
+
+      if (error) throw error;
+      
+      if (!estimate) {
+        toast({
+          title: "Estimate Not Found",
+          description: "The selected estimate could not be loaded",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Populate property details
+      setPropertyDetails({
+        roof_area_sq_ft: estimate.roof_area_sq_ft || 0,
+        roof_type: (estimate as any).roof_type || 'asphalt_shingle',
+        complexity_level: estimate.complexity_level || 'moderate',
+        roof_pitch: estimate.roof_pitch || '4/12',
+        customer_name: estimate.customer_name || '',
+        customer_address: estimate.customer_address || ''
+      });
+
+      // Populate line items
+      if (estimate.line_items && Array.isArray(estimate.line_items)) {
+        setLineItems(estimate.line_items as unknown as LineItem[]);
+      }
+
+      // Populate excel config
+      setExcelConfig({
+        target_margin_percent: estimate.target_profit_percent || 30.0,
+        overhead_percent: estimate.overhead_percent || 15.0,
+        commission_percent: 5.0, // Not stored in estimate, use default
+        waste_factor_percent: estimate.waste_factor_percent || 10.0,
+        contingency_percent: estimate.contingency_percent || 5.0
+      });
+
+      // Set template if exists
+      if (estimate.template_id) {
+        setTemplateId(estimate.template_id);
+      }
+
+      // Populate calculation results for display
+      setCalculationResults({
+        roof_area_sq_ft: estimate.roof_area_sq_ft,
+        material_cost: estimate.material_cost,
+        material_total: estimate.material_total,
+        labor_cost: estimate.labor_cost,
+        labor_hours: estimate.labor_hours,
+        labor_rate_per_hour: estimate.labor_rate_per_hour,
+        labor_total: estimate.labor_total,
+        subtotal: estimate.subtotal,
+        overhead_amount: estimate.overhead_amount,
+        overhead_percent: estimate.overhead_percent,
+        sales_rep_commission_amount: 0, // Calculate if needed
+        cost_pre_profit: estimate.subtotal,
+        target_profit_amount: estimate.target_profit_amount || estimate.actual_profit_amount,
+        actual_profit_percent: estimate.actual_profit_percent,
+        selling_price: estimate.selling_price,
+        price_per_sq_ft: estimate.price_per_sq_ft,
+        waste_factor_percent: estimate.waste_factor_percent
+      });
+
+      // Set editing state
+      setEditingEstimateId(estimateId);
+
+      // Switch to builder tab
+      setActiveTab('builder');
+
+      toast({
+        title: "Estimate Loaded",
+        description: `${estimate.estimate_number} is ready for editing`,
+      });
+
+    } catch (error: any) {
+      console.error('Error loading estimate:', error);
+      toast({
+        title: "Load Failed",
+        description: error.message || "Failed to load estimate",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleNewEstimate = () => {
+    // Reset all form fields to create a new estimate
+    setEditingEstimateId(null);
+    setLineItems([
+      {
+        item_category: 'material',
+        item_name: 'Asphalt Shingles',
+        description: 'Architectural shingles',
+        quantity: 1,
+        unit_cost: 150,
+        unit_type: 'square',
+        markup_percent: 25
+      }
+    ]);
+    setExcelConfig({
+      target_margin_percent: 30.0,
+      overhead_percent: 15.0,
+      commission_percent: 5.0,
+      waste_factor_percent: 10.0,
+      contingency_percent: 5.0
+    });
+    setTemplateId('');
+    setSalesRepId('');
+    setSecondaryRepIds([]);
+    setCalculationResults(null);
+    
+    toast({
+      title: "New Estimate",
+      description: "Form cleared for new estimate",
+    });
   };
 
   return (
@@ -532,9 +664,16 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
         </CardHeader>
       </Card>
 
-      <Tabs defaultValue="builder" className="w-full">
+      <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="builder">Builder</TabsTrigger>
+          <TabsTrigger value="builder">
+            Builder
+            {editingEstimateId && (
+              <Badge variant="outline" className="ml-2 text-xs">
+                Editing
+              </Badge>
+            )}
+          </TabsTrigger>
           <TabsTrigger value="estimates">
             Saved Estimates
             {savedEstimates.length > 0 && (
@@ -546,6 +685,29 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
         </TabsList>
 
         <TabsContent value="builder" className="space-y-6">
+          {editingEstimateId && (
+            <Card className="border-primary/50 bg-primary/5">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Badge variant="default">Editing Mode</Badge>
+                    <span className="text-sm text-muted-foreground">
+                      Make changes and click "Save Estimate" to update
+                    </span>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleNewEstimate}
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    New Estimate
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+          
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left Column - Input Forms */}
         <div className="space-y-6">
@@ -1100,12 +1262,16 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       ) : (
         <div className="space-y-3">
           {savedEstimates.map((estimate) => (
-            <Card key={estimate.id} className="hover:shadow-md transition-shadow">
+            <Card 
+              key={estimate.id} 
+              className="hover:shadow-md transition-all cursor-pointer hover:border-primary/50 group"
+              onClick={() => handleLoadEstimate(estimate.id)}
+            >
               <CardContent className="p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
-                      <h4 className="font-semibold">
+                      <h4 className="font-semibold group-hover:text-primary transition-colors">
                         {estimate.estimate_calculation_templates?.name || 'Custom Estimate'}
                       </h4>
                       <Badge variant="secondary" className="text-xs">
@@ -1119,7 +1285,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                       </Badge>
                     </div>
                     <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                      <span>Type: {estimate.roof_type?.replace('_', ' ') || 'Not specified'}</span>
+                      <span>Type: {(estimate as any).roof_type?.replace('_', ' ') || 'Not specified'}</span>
                       <span>•</span>
                       <span>{new Date(estimate.created_at).toLocaleDateString()}</span>
                     </div>
@@ -1134,6 +1300,9 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                         {estimate.actual_profit_percent?.toFixed(1)}% Profit
                       </span>
                     </div>
+                    <span className="text-xs text-muted-foreground mt-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                      Click to edit
+                    </span>
                   </div>
                 </div>
               </CardContent>
