@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Canvas as FabricCanvas, Line, Polygon, Circle, Text as FabricText, FabricObject } from "fabric";
+import { Canvas as FabricCanvas, Line, Polygon, Circle, Text as FabricText, FabricObject, FabricImage } from "fabric";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Move, Mountain, Triangle, ArrowDownUp, Square, Trash2, RotateCcw, Eye, EyeOff, MapPin, StickyNote, AlertTriangle } from "lucide-react";
@@ -83,14 +83,16 @@ export function ComprehensiveMeasurementOverlay({
       selection: editMode === 'select',
     });
 
-    // Load satellite image as background
-    const img = new Image();
-    img.crossOrigin = 'anonymous';
-    img.onload = () => {
-      canvas.backgroundImage = img as any;
+    // Load satellite image as background using Fabric.js v6 API
+    FabricImage.fromURL(satelliteImageUrl, {
+      crossOrigin: 'anonymous',
+    }).then((img) => {
+      canvas.backgroundImage = img;
       canvas.renderAll();
-    };
-    img.src = satelliteImageUrl;
+    }).catch((error) => {
+      console.error('Failed to load satellite image:', error);
+      toast.error('Failed to load satellite image');
+    });
 
     setFabricCanvas(canvas);
 
