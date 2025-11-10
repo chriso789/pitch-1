@@ -7062,6 +7062,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          active_tenant_id: string | null
           avatar_url: string | null
           commission_rate: number | null
           commission_structure: string | null
@@ -7091,6 +7092,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          active_tenant_id?: string | null
           avatar_url?: string | null
           commission_rate?: number | null
           commission_structure?: string | null
@@ -7120,6 +7122,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          active_tenant_id?: string | null
           avatar_url?: string | null
           commission_rate?: number | null
           commission_structure?: string | null
@@ -7149,6 +7152,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "profiles_active_tenant_id_fkey"
+            columns: ["active_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "profiles_created_by_master_fkey"
             columns: ["created_by_master"]
@@ -11126,6 +11136,64 @@ export type Database = {
           },
         ]
       }
+      user_company_access: {
+        Row: {
+          access_level: string
+          created_at: string
+          granted_at: string
+          granted_by: string | null
+          id: string
+          is_active: boolean
+          tenant_id: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          access_level?: string
+          created_at?: string
+          granted_at?: string
+          granted_by?: string | null
+          id?: string
+          is_active?: boolean
+          tenant_id: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          access_level?: string
+          created_at?: string
+          granted_at?: string
+          granted_by?: string | null
+          id?: string
+          is_active?: boolean
+          tenant_id?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_company_access_granted_by_fkey"
+            columns: ["granted_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_company_access_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "user_company_access_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_location_assignments: {
         Row: {
           assigned_at: string
@@ -12382,9 +12450,21 @@ export type Database = {
         Args: { contact_id_param: string }
         Returns: number
       }
+      get_user_accessible_tenants: {
+        Args: never
+        Returns: {
+          access_level: string
+          is_primary: boolean
+          location_count: number
+          tenant_id: string
+          tenant_name: string
+          tenant_subdomain: string
+        }[]
+      }
+      get_user_active_tenant_id: { Args: never; Returns: string }
       get_user_tenant_id:
-        | { Args: { _user_id: string }; Returns: string }
         | { Args: never; Returns: string }
+        | { Args: { _user_id: string }; Returns: string }
       gettransactionid: { Args: never; Returns: unknown }
       increment_campaign_answered: {
         Args: { p_campaign_id: string }
@@ -13134,6 +13214,7 @@ export type Database = {
         }
         Returns: string
       }
+      switch_active_tenant: { Args: { p_tenant_id: string }; Returns: Json }
       switch_developer_context: {
         Args: { target_tenant_id: string }
         Returns: boolean
