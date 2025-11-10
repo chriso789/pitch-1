@@ -1168,6 +1168,30 @@ serve(async (req) => {
 
         console.log('Measurement saved:', { id: row.id, source: meas.source, squares: tags['roof.squares'] });
 
+        // Generate Mapbox visualization (non-blocking)
+        try {
+          console.log('Generating Mapbox visualization for measurement:', row.id);
+          const { data: vizData, error: vizError } = await supabase.functions.invoke('generate-measurement-visualization', {
+            body: {
+              measurement_id: row.id,
+              property_id: propertyId,
+              center_lat: lat,
+              center_lng: lng,
+            }
+          });
+          
+          if (vizError) {
+            console.error('Visualization generation error:', vizError);
+          } else if (vizData?.ok) {
+            console.log('Visualization generated successfully:', vizData.data?.visualization_url);
+          } else {
+            console.warn('Visualization returned error:', vizData?.error);
+          }
+        } catch (vizError) {
+          console.error('Visualization generation exception:', vizError);
+          // Don't fail the pull request if visualization fails
+        }
+
         return json({ 
           ok: true, 
           data: { measurement: row, tags } 
