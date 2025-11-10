@@ -759,122 +759,114 @@ const LeadDetails = () => {
         </CardContent>
       </Card>
 
-      {/* Communication Hub & Photos - Side by Side */}
-      <ResizablePanelGroup direction="horizontal" className="min-h-[400px] rounded-lg border">
-        {/* Communication Hub Panel */}
-        <ResizablePanel defaultSize={60} minSize={40}>
-          <Card className="h-full border-0 shadow-none">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base">Communication Hub</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-3">
-              <CommunicationHub 
-                contactId={lead.contact?.id}
-                contactName={lead.contact ? `${lead.contact.first_name} ${lead.contact.last_name}` : undefined}
-                contactEmail={lead.contact?.email}
-                contactPhone={lead.contact?.phone}
-                assignedRep={lead.assigned_rep || undefined}
-                onCallClick={() => setShowCallDialog(true)}
-                onEmailClick={() => setShowEmailComposer(true)}
-                onSMSClick={() => setShowSMSDialog(true)}
-              />
-              
-              <div className="flex gap-2">
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="flex-1"
-                  onClick={() => {
-                    if (lead?.contact?.phone) {
-                      setAvailablePhoneNumbers([
-                        { label: 'Primary Phone', number: lead.contact.phone }
-                      ]);
-                      setShowCallDialog(true);
-                    } else {
-                      toast({
-                        title: "No phone number",
-                        description: "This contact doesn't have a phone number on file.",
-                        variant: "destructive"
-                      });
-                    }
-                  }}
-                >
-                  <Phone className="h-3 w-3 mr-1" />
-                  Call
-                </Button>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="flex-1"
-                  onClick={() => {
-                    if (lead?.contact?.email) {
-                      setShowEmailComposer(true);
-                    } else {
-                      toast({
-                        title: "No email address",
-                        description: "This contact doesn't have an email address on file.",
-                        variant: "destructive"
-                      });
-                    }
-                  }}
-                >
-                  <Mail className="h-3 w-3 mr-1" />
-                  Email
-                </Button>
-                <Button 
-                  size="sm" 
-                  variant="outline" 
-                  className="flex-1"
-                  onClick={() => {
-                    if (lead?.contact?.phone) {
-                      setShowSMSDialog(true);
-                    } else {
-                      toast({
-                        title: "No phone number",
-                        description: "This contact doesn't have a phone number on file.",
-                        variant: "destructive"
-                      });
-                    }
-                  }}
-                >
-                  <MessageSquare className="h-3 w-3 mr-1" />
-                  SMS
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </ResizablePanel>
-
-        {/* Vertical Divider */}
-        <ResizableHandle withHandle />
-
-        {/* Photos Panel */}
-        <ResizablePanel defaultSize={40} minSize={30}>
-          <Card className="h-full border-0 shadow-none">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-base flex items-center justify-between">
-                <span className="flex items-center gap-2">
-                  <Camera className="h-4 w-4" />
-                  Photos
-                </span>
+      {/* Communication Hub & Photos - Tabbed Interface */}
+      <Card>
+        <Tabs defaultValue="communication" className="w-full">
+          <CardHeader className="pb-3">
+            <TabsList className="w-full justify-start">
+              <TabsTrigger value="communication">Communication Hub</TabsTrigger>
+              <TabsTrigger value="photos" className="flex items-center gap-2">
+                <Camera className="h-4 w-4" />
+                Photos
                 {photos.length > 0 && (
-                  <span className="text-xs font-normal text-muted-foreground">
-                    {currentPhotoIndex + 1} of {photos.length}
-                  </span>
+                  <Badge variant="secondary" className="ml-1 text-xs">
+                    {photos.length}
+                  </Badge>
                 )}
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-3">
+              </TabsTrigger>
+            </TabsList>
+          </CardHeader>
+
+          <CardContent>
+            <TabsContent value="communication" className="mt-0">
+              <div className="space-y-3">
+                <CommunicationHub 
+                  contactId={lead.contact?.id}
+                  contactName={lead.contact ? `${lead.contact.first_name} ${lead.contact.last_name}` : undefined}
+                  contactEmail={lead.contact?.email}
+                  contactPhone={lead.contact?.phone}
+                  assignedRep={lead.assigned_rep || undefined}
+                  onCallClick={() => setShowCallDialog(true)}
+                  onEmailClick={() => setShowEmailComposer(true)}
+                  onSMSClick={() => setShowSMSDialog(true)}
+                />
+                
+                <div className="flex gap-2">
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="flex-1"
+                    onClick={() => {
+                      if (lead?.contact?.phone) {
+                        setAvailablePhoneNumbers([
+                          { label: 'Primary Phone', number: lead.contact.phone }
+                        ]);
+                        setShowCallDialog(true);
+                      } else {
+                        toast({
+                          title: "No phone number",
+                          description: "This contact doesn't have a phone number on file.",
+                          variant: "destructive"
+                        });
+                      }
+                    }}
+                  >
+                    <Phone className="h-3 w-3 mr-1" />
+                    Call
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="flex-1"
+                    onClick={() => {
+                      if (lead?.contact?.email) {
+                        setShowEmailComposer(true);
+                      } else {
+                        toast({
+                          title: "No email address",
+                          description: "This contact doesn't have an email address on file.",
+                          variant: "destructive"
+                        });
+                      }
+                    }}
+                  >
+                    <Mail className="h-3 w-3 mr-1" />
+                    Email
+                  </Button>
+                  <Button 
+                    size="sm" 
+                    variant="outline" 
+                    className="flex-1"
+                    onClick={() => {
+                      if (lead?.contact?.phone) {
+                        setShowSMSDialog(true);
+                      } else {
+                        toast({
+                          title: "No phone number",
+                          description: "This contact doesn't have a phone number on file.",
+                          variant: "destructive"
+                        });
+                      }
+                    }}
+                  >
+                    <MessageSquare className="h-3 w-3 mr-1" />
+                    SMS
+                  </Button>
+                </div>
+              </div>
+            </TabsContent>
+
+            <TabsContent value="photos" className="mt-0">
               {photos.length > 0 ? (
-                <div className="space-y-2">
+                <div className="space-y-4">
                   {/* Photo Display */}
                   <div 
-                    className="relative aspect-square bg-muted rounded-lg flex items-center justify-center cursor-pointer overflow-hidden group"
+                    className="relative aspect-video bg-muted rounded-lg flex items-center justify-center cursor-pointer overflow-hidden group"
                     onClick={() => setShowFullScreenPhoto(true)}
                   >
-                    <ImageIcon className="h-12 w-12 text-muted-foreground" />
+                    <ImageIcon className="h-16 w-16 text-muted-foreground" />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                      <span className="text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span className="text-sm text-white opacity-0 group-hover:opacity-100 transition-opacity">
                         Click to expand
                       </span>
                     </div>
@@ -883,38 +875,38 @@ const LeadDetails = () => {
                   {/* Navigation Controls */}
                   <div className="flex items-center justify-between">
                     <Button
-                      size="icon"
+                      size="sm"
                       variant="outline"
                       onClick={() => setCurrentPhotoIndex(Math.max(0, currentPhotoIndex - 1))}
                       disabled={currentPhotoIndex === 0}
-                      className="h-7 w-7"
                     >
-                      <ChevronLeft className="h-3 w-3" />
+                      <ChevronLeft className="h-4 w-4 mr-1" />
+                      Previous
                     </Button>
-                    <span className="text-xs text-muted-foreground truncate max-w-[100px]">
-                      {photos[currentPhotoIndex]?.filename || 'Photo'}
+                    <span className="text-sm text-muted-foreground">
+                      {currentPhotoIndex + 1} of {photos.length} - {photos[currentPhotoIndex]?.filename || 'Photo'}
                     </span>
                     <Button
-                      size="icon"
+                      size="sm"
                       variant="outline"
                       onClick={() => setCurrentPhotoIndex(Math.min(photos.length - 1, currentPhotoIndex + 1))}
                       disabled={currentPhotoIndex === photos.length - 1}
-                      className="h-7 w-7"
                     >
-                      <ChevronRight className="h-3 w-3" />
+                      Next
+                      <ChevronRight className="h-4 w-4 ml-1" />
                     </Button>
                   </div>
                 </div>
               ) : (
-                <div className="aspect-square bg-muted rounded-lg flex flex-col items-center justify-center text-center p-3">
-                  <Camera className="h-6 w-6 text-muted-foreground mb-1.5" />
-                  <p className="text-xs text-muted-foreground">No photos uploaded yet</p>
+                <div className="aspect-video bg-muted rounded-lg flex flex-col items-center justify-center text-center p-6">
+                  <Camera className="h-12 w-12 text-muted-foreground mb-3" />
+                  <p className="text-sm text-muted-foreground">No photos uploaded yet</p>
                 </div>
               )}
-            </CardContent>
-          </Card>
-        </ResizablePanel>
-      </ResizablePanelGroup>
+            </TabsContent>
+          </CardContent>
+        </Tabs>
+      </Card>
 
       {/* Hyperlink Bar Estimate System */}
       <EstimateHyperlinkBar
