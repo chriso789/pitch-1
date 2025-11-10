@@ -77,6 +77,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 
   const [templateId, setTemplateId] = useState('');
   const [salesRepId, setSalesRepId] = useState('');
+  const [secondaryRepIds, setSecondaryRepIds] = useState<string[]>([]);
   const [calculationResults, setCalculationResults] = useState<any>(null);
   const [measurementData, setMeasurementData] = useState<any>(null);
   const [hasMeasurements, setHasMeasurements] = useState(false);
@@ -463,9 +464,28 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
           <CardTitle className="flex items-center gap-2">
             <Calculator className="h-5 w-5" />
             Excel-Style Estimate Builder
-            <div className="ml-auto flex items-center gap-2 text-sm text-muted-foreground">
-              <Target className="h-4 w-4" />
-              Guaranteed {excelConfig.target_margin_percent}% Margin
+            <div className="ml-auto flex items-center gap-2">
+              {templateId && templates.length > 0 && (
+                <Badge variant="secondary" className="text-xs">
+                  Template: {templates.find((t: any) => t.id === templateId)?.name || 'Selected'}
+                </Badge>
+              )}
+              {selectedSalesRep && (
+                <>
+                  <Badge variant="secondary" className="text-xs">
+                    Primary: {selectedSalesRep.first_name} {selectedSalesRep.last_name}
+                  </Badge>
+                  {secondaryRepIds.length > 0 && (
+                    <Badge variant="outline" className="text-xs">
+                      +{secondaryRepIds.length} Secondary Rep{secondaryRepIds.length > 1 ? 's' : ''}
+                    </Badge>
+                  )}
+                </>
+              )}
+              <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                <Target className="h-4 w-4" />
+                Guaranteed {excelConfig.target_margin_percent}% Margin
+              </div>
             </div>
           </CardTitle>
         </CardHeader>
@@ -627,22 +647,6 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                     <SelectItem value="8/12">8/12</SelectItem>
                     <SelectItem value="10/12">10/12</SelectItem>
                     <SelectItem value="12/12">12/12</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="template">Template</Label>
-                <Select value={templateId} onValueChange={setTemplateId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select template (optional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {templates.map((template: any) => (
-                      <SelectItem key={template.id} value={template.id}>
-                        {template.name}
-                      </SelectItem>
-                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -811,6 +815,22 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
               <Separator />
 
               <div className="space-y-2">
+                <Label htmlFor="template">Template</Label>
+                <Select value={templateId} onValueChange={setTemplateId}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select template (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templates.map((template: any) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        {template.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
                 <Label htmlFor="sales_rep">Sales Representative</Label>
                 <Select value={salesRepId} onValueChange={(value) => {
                   setSalesRepId(value);
@@ -834,6 +854,35 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                   </SelectContent>
                 </Select>
               </div>
+
+              {salesRepId && (
+                <div className="space-y-2">
+                  <Label>Secondary Reps (optional)</Label>
+                  <div className="border rounded-md p-3 space-y-2 max-h-40 overflow-y-auto">
+                    {salesReps
+                      .filter((rep: any) => rep.id !== salesRepId)
+                      .map((rep: any) => (
+                        <label key={rep.id} className="flex items-center space-x-2 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={secondaryRepIds.includes(rep.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) {
+                                setSecondaryRepIds(prev => [...prev, rep.id]);
+                              } else {
+                                setSecondaryRepIds(prev => prev.filter(id => id !== rep.id));
+                              }
+                            }}
+                            className="rounded border-input"
+                          />
+                          <span className="text-sm">
+                            {rep.first_name} {rep.last_name}
+                          </span>
+                        </label>
+                      ))}
+                  </div>
+                </div>
+              )}
 
 
               <Button 
