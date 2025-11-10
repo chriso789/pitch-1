@@ -28,6 +28,7 @@ import { SystemHealthCheck } from "@/components/settings/SystemHealthCheck";
 import { SettingsTabEditor } from "@/components/settings/SettingsTabEditor";
 import { LeadSources } from "@/features/leads/components/LeadSources";
 import { IntegrationsSettings } from "@/components/settings/IntegrationsSettings";
+import { SecurityAudit } from "@/components/settings/SecurityAudit";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -236,6 +237,10 @@ export const Settings = () => {
 
         <TabsContent value="integrations" className="space-y-6">
           <IntegrationsSettings />
+        </TabsContent>
+
+        <TabsContent value="security" className="space-y-6">
+          <SecurityAudit />
         </TabsContent>
       </Tabs>
     </div>
