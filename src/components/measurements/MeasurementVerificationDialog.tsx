@@ -674,7 +674,17 @@ export function MeasurementVerificationDialog({
           </Button>
           <Button
             variant="outline"
-            onClick={() => setShowManualEditor(true)}
+            onClick={() => {
+              if (!satelliteImageUrl) {
+                toast({
+                  title: "Satellite Image Required",
+                  description: "Please regenerate the satellite visualization before manual verification.",
+                  variant: "destructive"
+                });
+                return;
+              }
+              setShowManualEditor(true);
+            }}
             disabled={isAccepting}
           >
             <Edit3 className="h-4 w-4 mr-2" />
