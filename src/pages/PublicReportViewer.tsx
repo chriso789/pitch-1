@@ -23,7 +23,7 @@ export default function PublicReportViewer() {
     try {
       console.log('📄 Loading report with token:', token);
 
-      const { data: reportData, error } = await supabase
+      const { data: reportData, error } = await (supabase as any)
         .from('measurement_reports')
         .select('*')
         .eq('share_token', token)
@@ -37,7 +37,7 @@ export default function PublicReportViewer() {
 
       setReport(reportData);
 
-      await supabase.rpc('increment_report_view_count', {
+      await (supabase as any).rpc('increment_report_view_count', {
         report_token: token,
       });
 
@@ -60,7 +60,7 @@ export default function PublicReportViewer() {
     if (!pdfUrl || !token) return;
 
     try {
-      await supabase.rpc('increment_report_download_count', {
+      await (supabase as any).rpc('increment_report_download_count', {
         report_token: token,
       });
 

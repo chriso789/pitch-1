@@ -4,7 +4,7 @@ import jsPDF from 'jspdf';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import { uploadBlobToStorage, generateSignedURL } from '@/lib/export-utils';
-import { format } from 'date-fns';
+import { format as formatDate } from 'date-fns';
 
 interface EnhancedPDFOptions {
   filename?: string;
@@ -94,7 +94,7 @@ export function useEnhancedPDFGeneration() {
       const pdf = new jsPDF({
         orientation,
         unit: 'mm',
-        format,
+        format: format as any,
       });
 
       const imgData = canvas.toDataURL('image/jpeg', 0.95);
@@ -119,7 +119,7 @@ export function useEnhancedPDFGeneration() {
       setProgress(70);
       toast.info('Uploading to cloud storage...');
 
-      const reportId = `RPT-${format(new Date(), 'yyyyMMdd-HHmmss')}`;
+      const reportId = `RPT-${formatDate(new Date(), 'yyyyMMdd-HHmmss')}`;
       const timestamp = Date.now();
       const storagePath = `${tenantId}/${options.propertyId || 'general'}/${reportId}-${timestamp}.pdf`;
 
@@ -134,7 +134,7 @@ export function useEnhancedPDFGeneration() {
         ? new Date(Date.now() + shareExpiration * 24 * 60 * 60 * 1000)
         : null;
 
-      const { data: reportData, error: reportError } = await supabase
+      const { data: reportData, error: reportError } = await (supabase as any)
         .from('measurement_reports')
         .insert({
           tenant_id: tenantId,
