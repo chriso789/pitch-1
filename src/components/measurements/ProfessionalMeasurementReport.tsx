@@ -12,7 +12,8 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Download, Printer, Mail, Share2, Loader2 } from 'lucide-react';
-import { usePDFGeneration } from '@/hooks/usePDFGeneration';
+import { useEnhancedPDFGeneration } from '@/hooks/useEnhancedPDFGeneration';
+import { ReportShareDialog } from './ReportShareDialog';
 import { calculateMaterialQuantities, formatMaterialList } from '@/utils/materialCalculations';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -32,6 +33,7 @@ interface Facet {
 interface ProfessionalMeasurementReportProps {
   propertyAddress: string;
   customerName?: string;
+  customerEmail?: string;
   facets: Facet[];
   totalArea: number;
   satelliteImageUrl?: string;
@@ -42,11 +44,15 @@ interface ProfessionalMeasurementReportProps {
   companyName?: string;
   companyLogo?: string;
   showMaterials?: boolean;
+  measurementId?: string;
+  propertyId?: string;
+  pipelineEntryId?: string;
 }
 
 export function ProfessionalMeasurementReport({
   propertyAddress,
   customerName,
+  customerEmail,
   facets,
   totalArea,
   satelliteImageUrl,
@@ -57,9 +63,17 @@ export function ProfessionalMeasurementReport({
   companyName = 'Your Roofing Company',
   companyLogo,
   showMaterials = true,
+  measurementId,
+  propertyId,
+  pipelineEntryId,
 }: ProfessionalMeasurementReportProps) {
-  const { downloadPDF, printPDF, isGenerating, progress } = usePDFGeneration();
+  const { generateAndUploadPDF, downloadPDF, isGenerating, progress } = useEnhancedPDFGeneration();
   const [showPreview, setShowPreview] = useState(true);
+  const [shareDialogOpen, setShareDialogOpen] = useState(false);
+  const [reportShareData, setReportShareData] = useState<{
+    reportId: string;
+    shareUrl: string;
+  } | null>(null);
 
   const reportId = `RPT-${format(new Date(), 'yyyyMMdd-HHmmss')}`;
   const measurementDate = format(new Date(), 'MMMM dd, yyyy');
@@ -89,36 +103,75 @@ export function ProfessionalMeasurementReport({
   const materialList = formatMaterialList(materials);
 
   const handleDownload = async () => {
-    await downloadPDF('measurement-report', {
+    const result = await downloadPDF('measurement-report', {
       filename: `measurement-report-${reportId}.pdf`,
       orientation: 'portrait',
       format: 'letter',
+      propertyAddress,
+      customerName,
+      customerEmail,
+      measurementId,
+      propertyId,
+      pipelineEntryId,
     });
+
+    if (result.success) {
+      toast.success('Report downloaded successfully!');
+    }
   };
 
-  const handlePrint = async () => {
-    await printPDF('measurement-report', {
+  const handlePrint = () => {
+    window.print();
+  };
+
+  const handleEmail = async () => {
+    toast.info('Generating shareable report...');
+    
+    const result = await generateAndUploadPDF('measurement-report', {
+      filename: `measurement-report-${reportId}.pdf`,
       orientation: 'portrait',
       format: 'letter',
+      propertyAddress,
+      customerName,
+      customerEmail,
+      measurementId,
+      propertyId,
+      pipelineEntryId,
+      generateShareLink: true,
+      shareExpiration: 7,
+      makePublic: true,
     });
-  };
 
-  const handleEmail = () => {
-    toast.info('Email functionality coming soon');
+    if (result.success && result.reportId && result.shareUrl) {
+      setReportShareData({
+        reportId: result.reportId,
+        shareUrl: result.shareUrl,
+      });
+      setShareDialogOpen(true);
+    }
   };
 
   const handleShare = async () => {
-    if (navigator.share) {
-      try {
-        await navigator.share({
-          title: `Roof Measurement Report - ${propertyAddress}`,
-          text: `Professional roof measurement report for ${propertyAddress}`,
-        });
-      } catch (error) {
-        console.error('Share failed:', error);
-      }
-    } else {
-      toast.info('Share functionality not supported in this browser');
+    toast.info('Generating shareable link...');
+    
+    const result = await generateAndUploadPDF('measurement-report', {
+      filename: `measurement-report-${reportId}.pdf`,
+      orientation: 'portrait',
+      format: 'letter',
+      propertyAddress,
+      customerName,
+      customerEmail,
+      measurementId,
+      propertyId,
+      pipelineEntryId,
+      generateShareLink: true,
+      shareExpiration: 30,
+      makePublic: true,
+    });
+
+    if (result.success && result.shareUrl) {
+      await navigator.clipboard.writeText(result.shareUrl);
+      toast.success('Shareable link copied to clipboard!');
     }
   };
 
@@ -386,6 +439,18 @@ export function ProfessionalMeasurementReport({
             </div>
           </div>
         </Card>
+      )}
+
+      {/* Report Share Dialog */}
+      {reportShareData && (
+        <ReportShareDialog
+          open={shareDialogOpen}
+          onClose={() => setShareDialogOpen(false)}
+          reportId={reportShareData.reportId}
+          shareUrl={reportShareData.shareUrl}
+          propertyAddress={propertyAddress}
+          customerEmail={customerEmail}
+        />
       )}
     </div>
   );

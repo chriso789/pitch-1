@@ -67,6 +67,7 @@ import LiveCanvassingPage from "./pages/storm-canvass/LiveCanvassingPage";
 import TerritoryMapPage from "./pages/storm-canvass/TerritoryMapPage";
 import CanvasserDashboard from "./pages/storm-canvass/CanvasserDashboard";
 import LeaderboardPage from "./pages/storm-canvass/LeaderboardPage";
+import PublicReportViewer from "./pages/PublicReportViewer";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -125,6 +126,7 @@ const AppContent = () => {
         <Route path="/demo-request" element={<DemoRequest />} />
         <Route path="/quickbooks/callback" element={<QuickBooksCallback />} />
         <Route path="/google-calendar/callback" element={<GoogleCalendarCallback />} />
+        <Route path="/reports/:token" element={<PublicReportViewer />} />
         
         {/* Main application routes */}
         <Route path="/dashboard" element={<Dashboard />} />
