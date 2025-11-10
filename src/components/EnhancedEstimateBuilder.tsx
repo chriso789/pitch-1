@@ -98,6 +98,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const [savedEstimates, setSavedEstimates] = useState<any[]>([]);
   const [editingEstimateId, setEditingEstimateId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('builder');
+  const [autoPopulateRan, setAutoPopulateRan] = useState(false);
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showNewEstimateConfirm, setShowNewEstimateConfirm] = useState(false);
   
@@ -204,15 +205,37 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     const params = new URLSearchParams(window.location.search);
     const autoPopulate = params.get('autoPopulate') === 'true';
     
-    if (autoPopulate && measurementData && hasMeasurements && lineItems.length === 1) {
+    console.log('🔍 Auto-populate check:', {
+      autoPopulate,
+      hasMeasurementData: !!measurementData,
+      hasMeasurements,
+      autoPopulateRan,
+      shouldRun: autoPopulate && measurementData && hasMeasurements && !autoPopulateRan
+    });
+    
+    if (autoPopulate && measurementData && hasMeasurements && !autoPopulateRan) {
+      console.log('✅ Running auto-populate...');
       autoPopulateLineItems();
+      setAutoPopulateRan(true);
     }
-  }, [measurementData, hasMeasurements]);
+  }, [measurementData, hasMeasurements, autoPopulateRan]);
 
   const autoPopulateLineItems = () => {
+    console.log('🔧 Starting auto-populate with data:', {
+      measurementData,
+      propertyDetails,
+      excelConfig
+    });
+
     const roofAreaSqFt = propertyDetails.roof_area_sq_ft;
     const pitch = propertyDetails.roof_pitch;
     const wastePct = excelConfig.waste_factor_percent / 100;
+    
+    console.log('📐 Base measurements:', {
+      roofAreaSqFt,
+      pitch,
+      wastePct: excelConfig.waste_factor_percent
+    });
     
     // Calculate pitch multiplier
     const pitchMultipliers: Record<string, number> = {
@@ -225,6 +248,11 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     // Calculate adjusted squares
     const adjustedSquares = (roofAreaSqFt * pitchMultiplier * (1 + wastePct)) / 100;
     
+    console.log('📊 Calculated squares:', {
+      pitchMultiplier,
+      adjustedSquares
+    });
+    
     // Get linear features from measurement data
     const ridgeFt = measurementData?.tags?.['lf.ridge'] || 0;
     const hipFt = measurementData?.tags?.['lf.hip'] || 0;
@@ -232,6 +260,15 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     const eaveFt = measurementData?.tags?.['lf.eave'] || 0;
     const rakeFt = measurementData?.tags?.['lf.rake'] || 0;
     const perimeterFt = eaveFt + rakeFt;
+    
+    console.log('📏 Linear features:', {
+      ridgeFt,
+      hipFt,
+      valleyFt,
+      eaveFt,
+      rakeFt,
+      perimeterFt
+    });
     
     const newLineItems: LineItem[] = [
       {
@@ -293,11 +330,21 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       });
     }
     
+    console.log('✨ Generated line items:', newLineItems);
+    
     setLineItems(newLineItems);
+    
+    console.log('✅ Auto-populate complete!');
+    
     toast({
       title: "Line Items Auto-Populated",
       description: `${newLineItems.length} items added from measurements`,
     });
+    
+    // Trigger calculation after a short delay to ensure state updates
+    setTimeout(() => {
+      calculateEstimate();
+    }, 100);
   };
 
   const loadTemplates = async () => {
