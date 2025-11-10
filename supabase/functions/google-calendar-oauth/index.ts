@@ -60,21 +60,32 @@ serve(async (req) => {
     }
 
     // Get user's active tenant (supports multi-company switching)
+    console.log('Fetching profile for user:', user.id);
+    
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
       .select('active_tenant_id, tenant_id')
       .eq('id', user.id)
       .single();
 
+    console.log('Profile query result:', { profile, profileError });
+
     if (profileError) {
       console.error('Failed to fetch profile:', profileError);
       throw new Error(`User profile not found: ${profileError.message}`);
     }
 
-    const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+    if (!profile) {
+      console.error('Profile query succeeded but returned null/undefined');
+      throw new Error('User profile does not exist');
+    }
+
+    const tenantId = profile.active_tenant_id || profile.tenant_id;
+    console.log('Resolved tenant ID:', tenantId);
+    
     if (!tenantId) {
       console.error('Profile exists but has no tenant_id:', profile);
-      throw new Error('User tenant not found');
+      throw new Error('User tenant not found - profile has no tenant_id or active_tenant_id');
     }
 
     switch (action) {
