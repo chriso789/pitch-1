@@ -831,6 +831,72 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                   className="w-full"
                 />
                 <div className="text-xs text-muted-foreground">2% - 10%</div>
+                
+                {/* Commission Split Preview */}
+                {(salesRepId || secondaryRepIds.length > 0) && (
+                  <div className="mt-3 p-3 bg-muted/50 rounded-lg border border-border/50">
+                    <div className="text-xs font-medium text-muted-foreground mb-2">Commission Split Preview</div>
+                    {(() => {
+                      const totalReps = (salesRepId ? 1 : 0) + secondaryRepIds.length;
+                      const commissionPerRep = totalReps > 0 ? excelConfig.commission_percent / totalReps : 0;
+                      const totalCommissionAmount = calculationResults?.sales_rep_commission_amount || 0;
+                      const amountPerRep = totalReps > 0 ? totalCommissionAmount / totalReps : 0;
+                      
+                      return (
+                        <div className="space-y-1.5">
+                          {salesRepId && selectedSalesRep && (
+                            <div className="flex justify-between items-center text-xs">
+                              <span className="text-foreground font-medium">
+                                {selectedSalesRep.first_name} {selectedSalesRep.last_name}
+                                <span className="text-primary ml-1">(Primary)</span>
+                              </span>
+                              <span className="font-semibold text-accent">
+                                {commissionPerRep.toFixed(1)}%
+                                {totalCommissionAmount > 0 && (
+                                  <span className="text-muted-foreground ml-1">
+                                    ({formatCurrency(amountPerRep)})
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          )}
+                          {secondaryRepIds.map((repId, index) => {
+                            const rep = salesReps.find((r: any) => r.id === repId);
+                            return rep ? (
+                              <div key={repId} className="flex justify-between items-center text-xs">
+                                <span className="text-foreground font-medium">
+                                  {rep.first_name} {rep.last_name}
+                                  <span className="text-muted-foreground ml-1">(Secondary)</span>
+                                </span>
+                                <span className="font-semibold text-accent">
+                                  {commissionPerRep.toFixed(1)}%
+                                  {totalCommissionAmount > 0 && (
+                                    <span className="text-muted-foreground ml-1">
+                                      ({formatCurrency(amountPerRep)})
+                                    </span>
+                                  )}
+                                </span>
+                              </div>
+                            ) : null;
+                          })}
+                          {totalReps > 1 && (
+                            <div className="pt-1.5 mt-1.5 border-t border-border/50 flex justify-between items-center text-xs font-semibold">
+                              <span className="text-foreground">Total ({totalReps} reps)</span>
+                              <span className="text-primary">
+                                {excelConfig.commission_percent}%
+                                {totalCommissionAmount > 0 && (
+                                  <span className="text-muted-foreground ml-1">
+                                    ({formatCurrency(totalCommissionAmount)})
+                                  </span>
+                                )}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </div>
+                )}
               </div>
 
               <Separator />
