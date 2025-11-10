@@ -13,6 +13,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
+import { useLRUImageCache } from "@/hooks/useLRUImageCache";
 
 interface Point {
   x: number;
@@ -72,35 +73,45 @@ export function ComprehensiveMeasurementOverlay({
   // Store original data for reset
   const originalDataRef = useRef({ measurement, tags });
   
-  // Cache the loaded satellite image to prevent re-downloading
-  const cachedImageRef = useRef<FabricImage | null>(null);
-  const cachedImageUrlRef = useRef<string>('');
+  // LRU cache for satellite images (max 10 images to prevent memory issues)
+  const imageCache = useLRUImageCache({ maxSize: 10 });
 
-  // Load and cache satellite image
+  // Load and cache satellite image with LRU eviction
   useEffect(() => {
-    // Only reload if URL changed
-    if (cachedImageUrlRef.current === satelliteImageUrl && cachedImageRef.current) {
-      console.log('Using cached satellite image');
+    // Check if image is in cache
+    const cachedImage = imageCache.getImage(satelliteImageUrl);
+    
+    if (cachedImage) {
+      // Use cached image
+      if (fabricCanvas) {
+        fabricCanvas.backgroundImage = cachedImage;
+        fabricCanvas.renderAll();
+      }
       return;
     }
 
+    // Load new image
     console.log('Loading satellite image:', satelliteImageUrl);
     FabricImage.fromURL(satelliteImageUrl, {
       crossOrigin: 'anonymous',
     }).then((img) => {
-      cachedImageRef.current = img;
-      cachedImageUrlRef.current = satelliteImageUrl;
+      // Cache the loaded image
+      imageCache.setImage(satelliteImageUrl, img);
       
       // Update canvas background if canvas exists
       if (fabricCanvas) {
         fabricCanvas.backgroundImage = img;
         fabricCanvas.renderAll();
       }
+      
+      // Log cache stats
+      const stats = imageCache.getCacheStats();
+      console.log(`[Cache Stats] ${stats.size}/${stats.maxSize} images cached`);
     }).catch((error) => {
       console.error('Failed to load satellite image:', error);
       toast.error('Failed to load satellite image');
     });
-  }, [satelliteImageUrl, fabricCanvas]);
+  }, [satelliteImageUrl, fabricCanvas, imageCache]);
 
   // Initialize canvas
   useEffect(() => {
@@ -114,9 +125,10 @@ export function ComprehensiveMeasurementOverlay({
     });
 
     // Use cached image if available
-    if (cachedImageRef.current && cachedImageUrlRef.current === satelliteImageUrl) {
+    const cachedImage = imageCache.getImage(satelliteImageUrl);
+    if (cachedImage) {
       console.log('Applying cached image to new canvas');
-      canvas.backgroundImage = cachedImageRef.current;
+      canvas.backgroundImage = cachedImage;
       canvas.renderAll();
     }
 
@@ -125,7 +137,7 @@ export function ComprehensiveMeasurementOverlay({
     return () => {
       canvas.dispose();
     };
-  }, [canvasWidth, canvasHeight]);
+  }, [canvasWidth, canvasHeight, satelliteImageUrl, imageCache]);
 
   // Update canvas selection mode
   useEffect(() => {
