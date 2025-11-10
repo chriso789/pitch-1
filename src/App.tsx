@@ -62,6 +62,7 @@ import ManagerApprovalQueue from "./pages/ManagerApprovalQueue";
 import VendorManagement from "./pages/VendorManagement";
 import PriceManagement from "./pages/PriceManagement";
 import ProfessionalMeasurement from "./pages/ProfessionalMeasurement";
+import MeasurementWorkflowDemo from "./pages/MeasurementWorkflowDemo";
 import LiveCanvassingPage from "./pages/storm-canvass/LiveCanvassingPage";
 import TerritoryMapPage from "./pages/storm-canvass/TerritoryMapPage";
 import CanvasserDashboard from "./pages/storm-canvass/CanvasserDashboard";
@@ -176,6 +177,7 @@ const AppContent = () => {
         <Route path="/project/:id" element={<ProjectDetails />} />
         <Route path="/enhanced-measurement/:id" element={<EnhancedMeasurement />} />
         <Route path="/professional-measurement/:id" element={<ProfessionalMeasurement />} />
+        <Route path="/measurement-workflow" element={<MeasurementWorkflowDemo />} />
         
         <Route path="/" element={<Index />} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
