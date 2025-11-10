@@ -326,6 +326,135 @@ export const useStormCanvass = () => {
     }
   };
 
+  const getCompetitionLeaderboard = async (competitionId: string, limit: number = 20) => {
+    try {
+      const { data: leaderboard, error } = await supabase
+        .from('competition_leaderboards')
+        .select(`
+          *,
+          user:profiles!competition_leaderboards_user_id_fkey(id, first_name, last_name, avatar_url)
+        `)
+        .eq('competition_id', competitionId)
+        .eq('is_final', false)
+        .order('rank', { ascending: true })
+        .limit(limit);
+      
+      if (error) throw error;
+      return leaderboard || [];
+    } catch (error: any) {
+      toast({
+        title: 'Error loading leaderboard',
+        description: error.message,
+        variant: 'destructive',
+      });
+      return [];
+    }
+  };
+
+  const getUserCompetitions = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('competition_participants')
+        .select(`
+          *,
+          competition:canvass_competitions!competition_participants_competition_id_fkey(*)
+        `)
+        .eq('user_id', userId)
+        .order('last_activity_at', { ascending: false });
+      
+      if (error) throw error;
+      return data || [];
+    } catch (error: any) {
+      toast({
+        title: 'Error loading competitions',
+        description: error.message,
+        variant: 'destructive',
+      });
+      return [];
+    }
+  };
+
+  const getUserAchievements = async (userId: string) => {
+    try {
+      const { data: unlocked, error: unlockedError } = await supabase
+        .from('user_achievements')
+        .select(`
+          *,
+          achievement:canvass_achievements!user_achievements_achievement_id_fkey(*)
+        `)
+        .eq('user_id', userId)
+        .order('unlocked_at', { ascending: false });
+      
+      if (unlockedError) throw unlockedError;
+      
+      const { data: allAchievements, error: allError } = await supabase
+        .from('canvass_achievements')
+        .select('*')
+        .eq('is_active', true);
+      
+      if (allError) throw allError;
+      
+      return {
+        unlocked: unlocked || [],
+        all: allAchievements || [],
+        totalPoints: unlocked?.reduce((sum: number, ua: any) => sum + (ua.achievement?.reward_points || 0), 0) || 0
+      };
+    } catch (error: any) {
+      toast({
+        title: 'Error loading achievements',
+        description: error.message,
+        variant: 'destructive',
+      });
+      return { unlocked: [], all: [], totalPoints: 0 };
+    }
+  };
+
+  const getRewardHistory = async (userId: string) => {
+    try {
+      const { data, error } = await supabase
+        .from('achievement_rewards')
+        .select('*')
+        .eq('user_id', userId)
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      
+      return {
+        all: data || [],
+        pending: data?.filter(r => r.status === 'pending') || [],
+        processing: data?.filter(r => r.status === 'processing') || [],
+        sent: data?.filter(r => r.status === 'sent') || [],
+        claimed: data?.filter(r => r.status === 'claimed') || [],
+        totalValue: data?.reduce((sum, r) => sum + Number(r.reward_value), 0) || 0
+      };
+    } catch (error: any) {
+      toast({
+        title: 'Error loading rewards',
+        description: error.message,
+        variant: 'destructive',
+      });
+      return { all: [], pending: [], processing: [], sent: [], claimed: [], totalValue: 0 };
+    }
+  };
+
+  const updateCompetitionScores = async (userId: string) => {
+    try {
+      const { data, error } = await supabase.functions.invoke('update-competition-scores', {
+        body: { user_id: userId }
+      });
+      
+      if (error) throw error;
+      return data;
+    } catch (error: any) {
+      toast({
+        title: 'Error updating scores',
+        description: error.message,
+        variant: 'destructive',
+      });
+      throw error;
+    }
+  };
+
   return {
     loading,
     getActivities,
@@ -333,5 +462,10 @@ export const useStormCanvass = () => {
     updateDisposition,
     getStats,
     getDetailedStats,
+    getCompetitionLeaderboard,
+    getUserCompetitions,
+    getUserAchievements,
+    getRewardHistory,
+    updateCompetitionScores,
   };
 };

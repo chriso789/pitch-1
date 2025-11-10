@@ -12,7 +12,8 @@ import {
   Settings,
   Upload,
   Download,
-  FileText
+  FileText,
+  Trophy
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -107,9 +108,8 @@ export default function StormCanvassPro() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-3 gap-2">
               <Button 
-                className="flex-1" 
                 variant="outline"
                 onClick={() => navigate('/storm-canvass/map')}
               >
@@ -117,12 +117,18 @@ export default function StormCanvassPro() {
                 Map
               </Button>
               <Button 
-                className="flex-1" 
                 variant="outline"
                 onClick={() => navigate('/storm-canvass/dashboard')}
               >
                 <BarChart className="h-4 w-4 mr-2" />
                 Dashboard
+              </Button>
+              <Button 
+                variant="outline"
+                onClick={() => navigate('/storm-canvass/leaderboard')}
+              >
+                <Trophy className="h-4 w-4 mr-2" />
+                Leaderboard
               </Button>
             </div>
           </CardContent>

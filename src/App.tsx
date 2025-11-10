@@ -64,6 +64,7 @@ import PriceManagement from "./pages/PriceManagement";
 import ProfessionalMeasurement from "./pages/ProfessionalMeasurement";
 import TerritoryMapPage from "./pages/storm-canvass/TerritoryMapPage";
 import CanvasserDashboard from "./pages/storm-canvass/CanvasserDashboard";
+import LeaderboardPage from "./pages/storm-canvass/LeaderboardPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -132,6 +133,7 @@ const AppContent = () => {
         <Route path="/storm-canvass" element={<StormCanvass />} />
         <Route path="/storm-canvass/map" element={<TerritoryMapPage />} />
         <Route path="/storm-canvass/dashboard" element={<CanvasserDashboard />} />
+        <Route path="/storm-canvass/leaderboard" element={<LeaderboardPage />} />
         <Route path="/dialer" element={<Dialer />} />
         <Route path="/campaigns" element={<Campaigns />} />
         <Route path="/smartdocs" element={<SmartDocs />} />
