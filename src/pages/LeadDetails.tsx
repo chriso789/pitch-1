@@ -743,13 +743,13 @@ const LeadDetails = () => {
 
       {/* Approval Requirements Progress */}
       <Card className="border-primary/20">
-        <CardHeader>
-          <CardTitle className="flex items-center space-x-2">
-            <CheckCircle className="h-5 w-5 text-primary" />
+        <CardHeader className="p-4">
+          <CardTitle className="flex items-center space-x-2 text-base">
+            <CheckCircle className="h-4 w-4 text-primary" />
             <span>Approval Requirements</span>
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="p-4 pt-0">
           <ApprovalRequirementsBubbles 
             requirements={requirements}
             onApprove={handleApproveToProject}
