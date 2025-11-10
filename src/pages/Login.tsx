@@ -20,6 +20,11 @@ const Login: React.FC = () => {
   const [resetEmail, setResetEmail] = useState('');
   const [connectionStatus, setConnectionStatus] = useState<'online' | 'offline' | 'checking'>('checking');
   const [sessionCheckComplete, setSessionCheckComplete] = useState(false);
+  const [rememberMe, setRememberMe] = useState(() => {
+    // Check if user previously selected remember me
+    const saved = localStorage.getItem('pitch_remember_me');
+    return saved === 'true';
+  });
   
   // Login form state
   const [loginForm, setLoginForm] = useState({
@@ -181,10 +186,16 @@ const Login: React.FC = () => {
 
       if (data.user) {
         console.log('Login successful, redirecting to dashboard');
+        
+        // Save remember me preference
+        localStorage.setItem('pitch_remember_me', rememberMe.toString());
+        
         await ensureUserProfile(data.user);
         toast({
           title: "Login successful",
-          description: "Redirecting to dashboard...",
+          description: rememberMe 
+            ? "You'll stay signed in on this device" 
+            : "Redirecting to dashboard...",
         });
         
         // Immediately navigate to dashboard
@@ -434,6 +445,20 @@ const Login: React.FC = () => {
                       </Button>
                     </div>
                     {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
+                  </div>
+
+                  <div className="flex items-center space-x-2">
+                    <input
+                      type="checkbox"
+                      id="remember-me"
+                      checked={rememberMe}
+                      onChange={(e) => setRememberMe(e.target.checked)}
+                      className="rounded border-input cursor-pointer"
+                      data-testid="auth-remember-me"
+                    />
+                    <Label htmlFor="remember-me" className="text-sm font-normal cursor-pointer">
+                      Keep me signed in
+                    </Label>
                   </div>
 
                   <Button type="submit" className="w-full" disabled={loading}>

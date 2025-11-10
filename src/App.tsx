@@ -7,6 +7,8 @@ import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import { ErrorTrackingProvider } from "@/hooks/useErrorTracking";
 import { LocationSelectionDialog } from "@/components/auth/LocationSelectionDialog";
 import { supabase } from "@/integrations/supabase/client";
+import { AuthProvider } from "@/contexts/AuthContext";
+import { initSessionPersistence } from "@/utils/sessionPersistence";
 import Index from "./pages/Index";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
@@ -89,7 +91,13 @@ const AppContent = () => {
       }
     });
 
-    return () => subscription.unsubscribe();
+    // Initialize session persistence
+    const cleanup = initSessionPersistence();
+
+    return () => {
+      subscription.unsubscribe();
+      cleanup();
+    };
   }, [navigate]);
 
   return (
@@ -167,13 +175,15 @@ const AppContent = () => {
 const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
-      <ErrorTrackingProvider>
-        <TooltipProvider>
-          <BrowserRouter>
-            <AppContent />
-          </BrowserRouter>
-        </TooltipProvider>
-      </ErrorTrackingProvider>
+      <AuthProvider>
+        <ErrorTrackingProvider>
+          <TooltipProvider>
+            <BrowserRouter>
+              <AppContent />
+            </BrowserRouter>
+          </TooltipProvider>
+        </ErrorTrackingProvider>
+      </AuthProvider>
     </QueryClientProvider>
   );
 };
