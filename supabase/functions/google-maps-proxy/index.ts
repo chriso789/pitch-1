@@ -19,24 +19,26 @@ serve(async (req) => {
       throw new Error('Google Places API key not configured');
     }
 
+    // Ensure params is a plain object for URLSearchParams
+    const searchParams = params && typeof params === 'object' ? new URLSearchParams(params) : '';
     let url = '';
     
     switch (endpoint) {
       case 'autocomplete':
-        url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?key=${apiKey}&${new URLSearchParams(params)}`;
+        url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?key=${apiKey}&${searchParams}`;
         break;
       case 'details':
-        url = `https://maps.googleapis.com/maps/api/place/details/json?key=${apiKey}&${new URLSearchParams(params)}`;
+        url = `https://maps.googleapis.com/maps/api/place/details/json?key=${apiKey}&${searchParams}`;
         break;
       case 'geocode':
-        url = `https://maps.googleapis.com/maps/api/geocode/json?key=${apiKey}&${new URLSearchParams(params)}`;
+        url = `https://maps.googleapis.com/maps/api/geocode/json?key=${apiKey}&${searchParams}`;
         break;
       case 'directions':
-        url = `https://maps.googleapis.com/maps/api/directions/json?key=${apiKey}&${new URLSearchParams(params)}`;
+        url = `https://maps.googleapis.com/maps/api/directions/json?key=${apiKey}&${searchParams}`;
         break;
       case 'satellite':
         // Google Maps Static API for satellite imagery - return secure URL
-        url = `https://maps.googleapis.com/maps/api/staticmap?key=${apiKey}&${new URLSearchParams(params)}`;
+        url = `https://maps.googleapis.com/maps/api/staticmap?key=${apiKey}&${searchParams}`;
         
         // Fetch the image and return it as base64 to avoid exposing the API key
         const imageResponse = await fetch(url);
@@ -56,15 +58,15 @@ serve(async (req) => {
         break;
       case 'elevation':
         // Elevation API for roof pitch calculation
-        url = `https://maps.googleapis.com/maps/api/elevation/json?key=${apiKey}&${new URLSearchParams(params)}`;
+        url = `https://maps.googleapis.com/maps/api/elevation/json?key=${apiKey}&${searchParams}`;
         break;
       case 'streetview':
         // Street View Static API for roof angle analysis
-        url = `https://maps.googleapis.com/maps/api/streetview?key=${apiKey}&${new URLSearchParams(params)}`;
+        url = `https://maps.googleapis.com/maps/api/streetview?key=${apiKey}&${searchParams}`;
         break;
       case 'places':
         // Places API for property boundary detection
-        url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?key=${apiKey}&${new URLSearchParams(params)}`;
+        url = `https://maps.googleapis.com/maps/api/place/findplacefromtext/json?key=${apiKey}&${searchParams}`;
         break;
       default:
         throw new Error('Invalid endpoint');

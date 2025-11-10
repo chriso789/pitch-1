@@ -208,9 +208,9 @@ function buildGeoJSONOverlay(measurement: MeasurementData) {
             coordinates: [coords],
           },
           properties: {
-            'fill': 'rgba(100,200,255,0.4)',
+            fill: '#64c8ff',
             'fill-opacity': 0.4,
-            'stroke': '#007cbf',
+            stroke: '#007cbf',
             'stroke-width': 2,
             'stroke-opacity': 0.9,
           },
@@ -232,7 +232,7 @@ function buildGeoJSONOverlay(measurement: MeasurementData) {
             coordinates: coords,
           },
           properties: {
-            'stroke': color,
+            stroke: color,
             'stroke-width': 3,
             'stroke-opacity': 0.9,
           },
