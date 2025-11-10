@@ -6,18 +6,26 @@ import { useAuth } from '@/contexts/AuthContext';
 interface NearbyPropertiesLayerProps {
   map: mapboxgl.Map;
   userLocation: { lat: number; lng: number };
+  onContactSelect: (contact: Contact) => void;
 }
 
 interface Contact {
   id: string;
   first_name: string;
   last_name: string;
+  address_street: string;
+  address_city?: string;
+  address_state?: string;
+  address_zip?: string;
   latitude: number;
   longitude: number;
-  metadata: any;
+  qualification_status?: string;
+  metadata?: any;
+  phone?: string;
+  email?: string;
 }
 
-export default function NearbyPropertiesLayer({ map, userLocation }: NearbyPropertiesLayerProps) {
+export default function NearbyPropertiesLayer({ map, userLocation, onContactSelect }: NearbyPropertiesLayerProps) {
   const { user } = useAuth();
   const [markers, setMarkers] = useState<mapboxgl.Marker[]>([]);
 
@@ -38,7 +46,7 @@ export default function NearbyPropertiesLayer({ map, userLocation }: NearbyPrope
       // Fetch contacts with GPS coordinates
       const { data: contacts, error } = await supabase
         .from('contacts')
-        .select('id, first_name, last_name, latitude, longitude, metadata')
+        .select('id, first_name, last_name, latitude, longitude, metadata, address_street, address_city, address_state, address_zip, phone, email, qualification_status')
         .eq('tenant_id', tenantId)
         .not('latitude', 'is', null)
         .not('longitude', 'is', null);
@@ -65,7 +73,7 @@ export default function NearbyPropertiesLayer({ map, userLocation }: NearbyPrope
 
       // Create new markers
       const newMarkers = nearbyContacts.map((contact) => {
-        const disposition = contact.metadata?.qualification_status || 'not_contacted';
+        const disposition = contact.qualification_status || contact.metadata?.qualification_status || 'not_contacted';
         
         // Color-code by disposition
         const color =
@@ -92,6 +100,12 @@ export default function NearbyPropertiesLayer({ map, userLocation }: NearbyPrope
         el.style.fontWeight = 'bold';
         el.style.color = 'white';
         el.textContent = contact.first_name?.charAt(0) || 'C';
+
+        // Add click handler to open disposition panel
+        el.addEventListener('click', (e) => {
+          e.stopPropagation();
+          onContactSelect(contact);
+        });
 
         const marker = new mapboxgl.Marker(el)
           .setLngLat([contact.longitude, contact.latitude])

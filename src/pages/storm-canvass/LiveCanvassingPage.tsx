@@ -7,16 +7,54 @@ import { useNavigate } from 'react-router-dom';
 import LiveLocationMap from '@/components/storm-canvass/LiveLocationMap';
 import QuickActivityPanel from '@/components/storm-canvass/QuickActivityPanel';
 import LiveStatsOverlay from '@/components/storm-canvass/LiveStatsOverlay';
+import MobileDispositionPanel from '@/components/storm-canvass/MobileDispositionPanel';
 import { locationService } from '@/services/locationService';
 import { useToast } from '@/hooks/use-toast';
+import { useStormCanvass } from '@/hooks/useStormCanvass';
+
+interface Contact {
+  id: string;
+  first_name: string;
+  last_name: string;
+  address_street: string;
+  address_city?: string;
+  address_state?: string;
+  address_zip?: string;
+  latitude: number;
+  longitude: number;
+  qualification_status?: string;
+  metadata?: any;
+  phone?: string;
+  email?: string;
+}
+
+interface Disposition {
+  id: string;
+  name: string;
+  qualification_status?: string;
+  is_qualified?: boolean;
+  color?: string;
+}
 
 export default function LiveCanvassingPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { getDispositions } = useStormCanvass();
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [currentAddress, setCurrentAddress] = useState<string>('Loading location...');
   const [isTracking, setIsTracking] = useState(false);
   const [distanceTraveled, setDistanceTraveled] = useState(0);
+  const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [dispositions, setDispositions] = useState<Disposition[]>([]);
+
+  useEffect(() => {
+    // Load dispositions
+    const loadDispositions = async () => {
+      const disps = await getDispositions();
+      setDispositions(disps);
+    };
+    loadDispositions();
+  }, []);
 
   useEffect(() => {
     // Request initial location
@@ -109,6 +147,7 @@ export default function LiveCanvassingPage() {
             <LiveLocationMap
               userLocation={userLocation}
               currentAddress={currentAddress}
+              onContactSelect={setSelectedContact}
             />
             <LiveStatsOverlay distanceTraveled={distanceTraveled} />
           </>
@@ -125,6 +164,20 @@ export default function LiveCanvassingPage() {
       {/* Quick Activity Panel */}
       {userLocation && (
         <QuickActivityPanel userLocation={userLocation} />
+      )}
+
+      {/* Mobile Disposition Panel */}
+      {userLocation && (
+        <MobileDispositionPanel
+          contact={selectedContact}
+          userLocation={userLocation}
+          dispositions={dispositions}
+          onClose={() => setSelectedContact(null)}
+          onUpdate={() => {
+            // Refresh map/markers after disposition update
+            setSelectedContact(null);
+          }}
+        />
       )}
     </div>
   );

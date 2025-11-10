@@ -4,12 +4,29 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '@/integrations/supabase/client';
 import NearbyPropertiesLayer from './NearbyPropertiesLayer';
 
+interface Contact {
+  id: string;
+  first_name: string;
+  last_name: string;
+  address_street: string;
+  address_city?: string;
+  address_state?: string;
+  address_zip?: string;
+  latitude: number;
+  longitude: number;
+  qualification_status?: string;
+  metadata?: any;
+  phone?: string;
+  email?: string;
+}
+
 interface LiveLocationMapProps {
   userLocation: { lat: number; lng: number };
   currentAddress: string;
+  onContactSelect: (contact: Contact) => void;
 }
 
-export default function LiveLocationMap({ userLocation, currentAddress }: LiveLocationMapProps) {
+export default function LiveLocationMap({ userLocation, currentAddress, onContactSelect }: LiveLocationMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const userMarker = useRef<mapboxgl.Marker | null>(null);
@@ -105,6 +122,7 @@ export default function LiveLocationMap({ userLocation, currentAddress }: LiveLo
         <NearbyPropertiesLayer
           map={map.current}
           userLocation={userLocation}
+          onContactSelect={onContactSelect}
         />
       )}
       <style>{`
