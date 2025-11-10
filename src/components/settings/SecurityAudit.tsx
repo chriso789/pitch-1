@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, createElement } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import { ScrollArea } from '@/components/ui/scroll-area';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { 
@@ -17,7 +18,9 @@ import {
   RefreshCw,
   CheckCircle,
   AlertCircle,
-  Activity
+  Activity,
+  XCircle,
+  History
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -32,8 +35,23 @@ interface SessionInfo {
   ipAddress?: string;
 }
 
+interface ActivityLog {
+  id: string;
+  user_id: string | null;
+  email: string;
+  event_type: string;
+  ip_address: string | null;
+  user_agent: string | null;
+  device_info: string | null;
+  location_info: string | null;
+  success: boolean;
+  error_message: string | null;
+  created_at: string;
+}
+
 export const SecurityAudit = () => {
   const [sessions, setSessions] = useState<SessionInfo[]>([]);
+  const [activityLogs, setActivityLogs] = useState<ActivityLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [lastLogin, setLastLogin] = useState<string | null>(null);
   const [rememberMeEnabled, setRememberMeEnabled] = useState(false);
@@ -41,9 +59,31 @@ export const SecurityAudit = () => {
 
   useEffect(() => {
     loadSecurityInfo();
+    loadActivityLogs();
     const rememberMe = localStorage.getItem('pitch_remember_me') === 'true';
     setRememberMeEnabled(rememberMe);
   }, []);
+
+  const loadActivityLogs = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (!user) return;
+
+      const { data, error } = await supabase
+        .from('session_activity_log')
+        .select('*')
+        .eq('user_id', user.id)
+        .order('created_at', { ascending: false })
+        .limit(50);
+
+      if (error) throw error;
+
+      setActivityLogs(data || []);
+    } catch (error) {
+      console.error('Error loading activity logs:', error);
+    }
+  };
 
   const loadSecurityInfo = async () => {
     setLoading(true);
@@ -86,8 +126,22 @@ export const SecurityAudit = () => {
 
   const handleRefresh = async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
       const { error } = await supabase.auth.refreshSession();
       if (error) throw error;
+
+      // Log session refresh
+      if (user) {
+        await supabase.functions.invoke('log-auth-activity', {
+          body: {
+            user_id: user.id,
+            email: user.email || '',
+            event_type: 'session_refresh',
+            success: true
+          }
+        }).catch(err => console.error('Failed to log activity:', err));
+      }
 
       toast({
         title: "Session Refreshed",
@@ -95,6 +149,7 @@ export const SecurityAudit = () => {
       });
       
       loadSecurityInfo();
+      loadActivityLogs();
     } catch (error) {
       console.error('Error refreshing session:', error);
       toast({
@@ -107,6 +162,20 @@ export const SecurityAudit = () => {
 
   const handleSignOutAllSessions = async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        // Log logout activity
+        await supabase.functions.invoke('log-auth-activity', {
+          body: {
+            user_id: user.id,
+            email: user.email,
+            event_type: 'logout',
+            success: true
+          }
+        }).catch(err => console.error('Failed to log activity:', err));
+      }
+      
       await supabase.auth.signOut({ scope: 'global' });
       
       toast({
@@ -125,6 +194,20 @@ export const SecurityAudit = () => {
 
   const handleRevokeCurrentSession = async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      if (user) {
+        // Log logout activity
+        await supabase.functions.invoke('log-auth-activity', {
+          body: {
+            user_id: user.id,
+            email: user.email,
+            event_type: 'logout',
+            success: true
+          }
+        }).catch(err => console.error('Failed to log activity:', err));
+      }
+      
       await supabase.auth.signOut({ scope: 'local' });
       
       toast({
@@ -184,7 +267,7 @@ export const SecurityAudit = () => {
             Manage your account security and active sessions
           </p>
         </div>
-        <Button onClick={loadSecurityInfo} variant="outline" size="sm">
+        <Button onClick={() => { loadSecurityInfo(); loadActivityLogs(); }} variant="outline" size="sm">
           <RefreshCw className="h-4 w-4 mr-2" />
           Refresh
         </Button>
@@ -378,6 +461,92 @@ export const SecurityAudit = () => {
               Sign Out All
             </Button>
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Activity Log */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <History className="h-5 w-5" />
+            Login Activity History
+          </CardTitle>
+          <CardDescription>
+            Recent authentication activity and login attempts on your account
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <ScrollArea className="h-[400px] pr-4">
+            {activityLogs.length === 0 ? (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  No activity logs found. Activity will appear here as you use the system.
+                </AlertDescription>
+              </Alert>
+            ) : (
+              <div className="space-y-3">
+                {activityLogs.map((log) => {
+                  const isSuccess = log.success;
+                  const eventIcon = log.event_type === 'login_success' ? CheckCircle :
+                                   log.event_type === 'login_failed' ? XCircle :
+                                   log.event_type === 'logout' ? LogOut :
+                                   log.event_type === 'session_refresh' ? RefreshCw :
+                                   Shield;
+                  
+                  const eventColor = isSuccess ? 'text-success' : 'text-destructive';
+                  const DeviceIcon = log.device_info === 'Mobile' ? Smartphone :
+                                    log.device_info === 'Tablet' ? Smartphone :
+                                    Monitor;
+                  
+                  return (
+                    <div
+                      key={log.id}
+                      className="flex items-start gap-3 p-3 border rounded-lg hover:bg-accent/50 transition-colors"
+                    >
+                      <div className={`p-2 rounded-lg ${isSuccess ? 'bg-success/10' : 'bg-destructive/10'}`}>
+                        {createElement(eventIcon, { className: `h-4 w-4 ${eventColor}` })}
+                      </div>
+                      <div className="flex-1 space-y-1">
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold capitalize">
+                            {log.event_type.replace(/_/g, ' ')}
+                          </span>
+                          <Badge variant={isSuccess ? 'default' : 'destructive'} className="text-xs">
+                            {isSuccess ? 'Success' : 'Failed'}
+                          </Badge>
+                        </div>
+                        <p className="text-sm text-muted-foreground">{log.email}</p>
+                        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+                          <div className="flex items-center gap-1">
+                            <Clock className="h-3 w-3" />
+                            {format(new Date(log.created_at), 'MMM d, yyyy h:mm a')}
+                          </div>
+                          {log.ip_address && (
+                            <div className="flex items-center gap-1">
+                              <MapPin className="h-3 w-3" />
+                              {log.ip_address}
+                            </div>
+                          )}
+                          {log.device_info && (
+                            <div className="flex items-center gap-1">
+                              <DeviceIcon className="h-3 w-3" />
+                              {log.device_info}
+                            </div>
+                          )}
+                        </div>
+                        {log.error_message && (
+                          <p className="text-xs text-destructive mt-1">
+                            Error: {log.error_message}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </ScrollArea>
         </CardContent>
       </Card>
 

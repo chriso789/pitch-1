@@ -176,10 +176,31 @@ const Login: React.FC = () => {
       if (error) {
         if (error.message.includes('Invalid login credentials')) {
           setErrors({ general: 'Invalid email or password' });
+          
+          // Log failed login attempt
+          supabase.functions.invoke('log-auth-activity', {
+            body: {
+              email: loginForm.email,
+              event_type: 'login_failed',
+              success: false,
+              error_message: 'Invalid credentials'
+            }
+          }).catch(err => console.error('Failed to log activity:', err));
+          
         } else if (error.message.includes('Email not confirmed')) {
           setErrors({ general: 'Please check your email and click the confirmation link before signing in' });
         } else {
           setErrors({ general: error.message });
+          
+          // Log failed login attempt
+          supabase.functions.invoke('log-auth-activity', {
+            body: {
+              email: loginForm.email,
+              event_type: 'login_failed',
+              success: false,
+              error_message: error.message
+            }
+          }).catch(err => console.error('Failed to log activity:', err));
         }
         return;
       }
@@ -189,6 +210,16 @@ const Login: React.FC = () => {
         
         // Save remember me preference
         localStorage.setItem('pitch_remember_me', rememberMe.toString());
+        
+        // Log successful login
+        supabase.functions.invoke('log-auth-activity', {
+          body: {
+            user_id: data.user.id,
+            email: loginForm.email,
+            event_type: 'login_success',
+            success: true
+          }
+        }).catch(err => console.error('Failed to log activity:', err));
         
         await ensureUserProfile(data.user);
         toast({
@@ -318,6 +349,15 @@ const Login: React.FC = () => {
           redirectTo: `${window.location.origin}/reset-password`,
           timestamp: new Date().toISOString()
         });
+        
+        // Log password reset request
+        supabase.functions.invoke('log-auth-activity', {
+          body: {
+            email: resetEmail,
+            event_type: 'password_reset_request',
+            success: true
+          }
+        }).catch(err => console.error('Failed to log activity:', err));
       }
 
       // Always show success message for security (don't reveal if email exists)

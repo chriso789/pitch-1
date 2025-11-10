@@ -8844,6 +8844,48 @@ export type Database = {
           },
         ]
       }
+      session_activity_log: {
+        Row: {
+          created_at: string
+          device_info: string | null
+          email: string
+          error_message: string | null
+          event_type: string
+          id: string
+          ip_address: string | null
+          location_info: string | null
+          success: boolean
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          device_info?: string | null
+          email: string
+          error_message?: string | null
+          event_type: string
+          id?: string
+          ip_address?: string | null
+          location_info?: string | null
+          success?: boolean
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          device_info?: string | null
+          email?: string
+          error_message?: string | null
+          event_type?: string
+          id?: string
+          ip_address?: string | null
+          location_info?: string | null
+          success?: boolean
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       settings_tabs: {
         Row: {
           created_at: string | null

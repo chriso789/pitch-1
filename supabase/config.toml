@@ -242,3 +242,6 @@ verify_jwt = true
 
 [functions.material-order-send-email]
 verify_jwt = true
+
+[functions.log-auth-activity]
+verify_jwt = false
