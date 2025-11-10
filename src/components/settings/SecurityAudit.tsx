@@ -522,7 +522,13 @@ export const SecurityAudit = () => {
                             <Clock className="h-3 w-3" />
                             {format(new Date(log.created_at), 'MMM d, yyyy h:mm a')}
                           </div>
-                          {log.ip_address && (
+                          {log.location_info && (
+                            <div className="flex items-center gap-1">
+                              <MapPin className="h-3 w-3" />
+                              {log.location_info}
+                            </div>
+                          )}
+                          {log.ip_address && !log.location_info && (
                             <div className="flex items-center gap-1">
                               <MapPin className="h-3 w-3" />
                               {log.ip_address}

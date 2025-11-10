@@ -59,6 +59,29 @@ Deno.serve(async (req) => {
       device_info = 'Tablet';
     }
 
+    // Get location from IP address using ip-api.com (free, no API key required)
+    let location_info = body.location_info || null;
+    if (ip_address && ip_address !== 'Unknown' && !location_info) {
+      try {
+        console.log('🌍 Looking up location for IP:', ip_address);
+        const geoResponse = await fetch(`http://ip-api.com/json/${ip_address}?fields=status,country,countryCode,region,regionName,city,zip,lat,lon,timezone`);
+        
+        if (geoResponse.ok) {
+          const geoData = await geoResponse.json();
+          
+          if (geoData.status === 'success') {
+            location_info = `${geoData.city || 'Unknown'}, ${geoData.regionName || geoData.region || ''}, ${geoData.country || 'Unknown'}`;
+            console.log('✅ Location resolved:', location_info);
+          } else {
+            console.log('⚠️ IP geolocation lookup failed:', geoData.message);
+          }
+        }
+      } catch (geoError) {
+        console.error('❌ Error fetching geolocation:', geoError);
+        // Continue without location info
+      }
+    }
+
     // Prepare log entry
     const logEntry = {
       user_id: body.user_id || null,
@@ -67,7 +90,7 @@ Deno.serve(async (req) => {
       ip_address,
       user_agent,
       device_info,
-      location_info: body.location_info || null,
+      location_info: location_info,
       success: body.success,
       error_message: body.error_message || null,
       created_at: new Date().toISOString()
