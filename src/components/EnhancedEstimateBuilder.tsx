@@ -832,17 +832,6 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                   )}
                 </div>
 
-              <div className="space-y-2">
-                <Label>Roof Type</Label>
-                <div className="flex items-center gap-2">
-                  <Badge variant="secondary" className="text-sm">
-                    {propertyDetails.roof_type?.replace('_', ' ') || 'Not specified'}
-                  </Badge>
-                  <span className="text-xs text-muted-foreground">
-                    (Set during lead creation)
-                  </span>
-                </div>
-              </div>
             </CardContent>
           </Card>
 
@@ -1092,68 +1081,10 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                 )}
               </div>
 
-              <Separator />
-
-              <div className="space-y-2">
-                <Label htmlFor="sales_rep">Sales Representative</Label>
-                <Select value={salesRepId} onValueChange={(value) => {
-                  setSalesRepId(value);
-                  const rep = salesReps.find((r: any) => r.id === value);
-                  setSelectedSalesRep(rep);
-                }}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select sales rep (optional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {salesReps.map((rep: any) => (
-                      <SelectItem key={rep.id} value={rep.id}>
-                        {rep.first_name} {rep.last_name}
-                        {rep.commission_structure && (
-                          <span className="text-xs text-muted-foreground ml-2">
-                            ({rep.commission_structure === 'profit_split' ? 'Profit Split' : 'Sales %'} - {rep.commission_rate}%)
-                          </span>
-                        )}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {salesRepId && (
-                <div className="space-y-2">
-                  <Label>Secondary Reps (optional)</Label>
-                  <div className="border rounded-md p-3 space-y-2 max-h-40 overflow-y-auto">
-                    {salesReps
-                      .filter((rep: any) => rep.id !== salesRepId)
-                      .map((rep: any) => (
-                        <label key={rep.id} className="flex items-center space-x-2 cursor-pointer">
-                          <input
-                            type="checkbox"
-                            checked={secondaryRepIds.includes(rep.id)}
-                            onChange={(e) => {
-                              if (e.target.checked) {
-                                setSecondaryRepIds(prev => [...prev, rep.id]);
-                              } else {
-                                setSecondaryRepIds(prev => prev.filter(id => id !== rep.id));
-                              }
-                            }}
-                            className="rounded border-input"
-                          />
-                          <span className="text-sm">
-                            {rep.first_name} {rep.last_name}
-                          </span>
-                        </label>
-                      ))}
-                  </div>
-                </div>
-              )}
-
-
               <Button 
                 onClick={calculateEstimate} 
-                disabled={calculating || !propertyDetails.customer_name.trim() || !propertyDetails.roof_area_sq_ft}
+                disabled={calculating || !propertyDetails.roof_area_sq_ft}
                 className="w-full"
-                variant={propertyDetails.customer_name.trim() && propertyDetails.roof_area_sq_ft ? "default" : "outline"}
               >
                 {calculating ? 'Calculating Excel-Style Estimate...' : 'Calculate Guaranteed Margin Estimate'}
               </Button>
@@ -1170,52 +1101,53 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                 </CardTitle>
               </CardHeader>
               <CardContent className="space-y-4">
-                <div className="grid grid-cols-2 gap-4 text-sm">
+                <div className="grid grid-cols-2 gap-4">
                   <div>
-                    <span className="text-muted-foreground">Material Total:</span>
-                    <p className="font-medium">{formatCurrency(calculationResults.material_total)}</p>
+                    <span className="text-sm text-muted-foreground">Material Total:</span>
+                    <p className="text-base font-medium">{formatCurrency(calculationResults.material_total)}</p>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Labor Total:</span>
-                    <p className="font-medium">{formatCurrency(calculationResults.labor_total)}</p>
+                    <span className="text-sm text-muted-foreground">Labor Total:</span>
+                    <p className="text-base font-medium">{formatCurrency(calculationResults.labor_total)}</p>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Subtotal:</span>
-                    <p className="font-medium">{formatCurrency(calculationResults.subtotal)}</p>
+                    <span className="text-sm text-muted-foreground">Subtotal:</span>
+                    <p className="text-base font-medium">{formatCurrency(calculationResults.subtotal)}</p>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Overhead:</span>
-                    <p className="font-medium">{formatCurrency(calculationResults.overhead_amount)}</p>
+                    <span className="text-sm text-muted-foreground">Overhead:</span>
+                    <p className="text-base font-medium">{formatCurrency(calculationResults.overhead_amount)}</p>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Commission:</span>
-                    <p className="font-medium">{formatCurrency(calculationResults.sales_rep_commission_amount)}</p>
+                    <span className="text-sm text-muted-foreground">Commission:</span>
+                    <p className="text-base font-medium">{formatCurrency(calculationResults.sales_rep_commission_amount)}</p>
                   </div>
                   <div>
-                    <span className="text-muted-foreground">Profit:</span>
-                    <p className="font-medium">{formatCurrency(calculationResults.target_profit_amount)}</p>
+                    <span className="text-sm text-muted-foreground">Profit:</span>
+                    <p className="text-base font-medium">{formatCurrency(calculationResults.target_profit_amount)}</p>
                   </div>
                 </div>
 
-                <Separator />
+                <Separator className="my-4" />
 
-                <div className="text-center">
-                  <div className="text-2xl font-bold text-primary">
+                <div className="text-center py-2">
+                  <div className="text-sm text-muted-foreground mb-1">Total Selling Price</div>
+                  <div className="text-4xl font-bold text-primary">
                     {formatCurrency(calculationResults.selling_price)}
                   </div>
-                  <div className="text-sm text-muted-foreground">
+                  <div className="text-sm text-muted-foreground mt-1">
                     {formatCurrency(calculationResults.price_per_sq_ft)}/sq ft
                   </div>
                 </div>
 
-                <div className="text-xs text-muted-foreground space-y-1">
+                <div className="text-xs text-muted-foreground space-y-1 bg-muted/30 p-3 rounded-md">
                   <p><span className="font-medium text-primary">Guaranteed Margin:</span> {calculationResults.actual_profit_percent?.toFixed(1)}%</p>
                   <p><span className="font-medium">Labor Hours:</span> {calculationResults.labor_hours?.toFixed(1)}</p>
                   <p><span className="font-medium">Waste Factor:</span> {calculationResults.waste_factor_percent || 10}%</p>
                   <p><span className="font-medium">Overhead on Selling Price:</span> {calculationResults.overhead_percent?.toFixed(1)}%</p>
                 </div>
 
-                <Separator />
+                <Separator className="my-4" />
 
                 <Button
                   onClick={handleSaveEstimate}
@@ -1231,7 +1163,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                   ) : (
                     <>
                       <FileText className="h-5 w-5 mr-2" />
-                      Save Estimate with Budget
+                      Save Estimate
                     </>
                   )}
                 </Button>
