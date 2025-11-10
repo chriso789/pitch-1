@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -33,6 +34,7 @@ const MeasurementGating: React.FC<MeasurementGatingProps> = ({
   onReadinessChange,
   className
 }) => {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [measurements, setMeasurements] = useState<MeasurementData | null>(null);
@@ -306,7 +308,11 @@ const MeasurementGating: React.FC<MeasurementGatingProps> = ({
             <p className="text-sm text-muted-foreground mb-3">
               Add roof measurements to enable cost calculations
             </p>
-            <Button size="sm" className="flex items-center space-x-1">
+            <Button 
+              size="sm" 
+              className="flex items-center space-x-1"
+              onClick={() => navigate(`/enhanced-measurement/${pipelineEntryId}`)}
+            >
               <MapPin className="h-4 w-4" />
               <span>Add Measurements</span>
             </Button>
