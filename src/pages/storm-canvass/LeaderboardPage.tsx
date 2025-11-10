@@ -5,6 +5,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useStormCanvass } from '@/hooks/useStormCanvass';
+import { useNotifications } from '@/hooks/useNotifications';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { CompetitionSelector } from '@/components/storm-canvass/CompetitionSelector';
@@ -29,6 +30,7 @@ export default function LeaderboardPage() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const stormCanvass = useStormCanvass();
+  const { addNotification } = useNotifications();
 
   // Get current user
   useEffect(() => {
@@ -198,6 +200,16 @@ export default function LeaderboardPage() {
           duration: 5000,
         });
 
+        // Save notification
+        addNotification(
+          currentUserId,
+          'rank_change',
+          '🎉 Rank Up!',
+          `You moved up to rank #${userRank}! Keep it up!`,
+          '🎉',
+          { previousRank, newRank: userRank }
+        );
+
         // Check if entered prize zone
         const prizePositions = selectedCompetition?.prize_pool 
           ? Object.keys(selectedCompetition.prize_pool).length 
@@ -205,11 +217,22 @@ export default function LeaderboardPage() {
         
         if (prizePositions > 0 && userRank <= prizePositions && previousRank > prizePositions) {
           triggerConfetti();
+          const prizeAmount = selectedCompetition?.prize_pool[userRank.toString()];
           toast({
             title: "💰 Prize Zone!",
-            description: `You're in the prize zone! Win $${selectedCompetition?.prize_pool[userRank.toString()]}`,
+            description: `You're in the prize zone! Win $${prizeAmount}`,
             duration: 8000,
           });
+
+          // Save prize zone notification
+          addNotification(
+            currentUserId,
+            'prize_zone',
+            '💰 Prize Zone!',
+            `You're in the prize zone! Win $${prizeAmount}`,
+            '💰',
+            { rank: userRank, prizeAmount }
+          );
         }
       } else {
         toast({
@@ -218,10 +241,20 @@ export default function LeaderboardPage() {
           variant: "destructive",
           duration: 4000,
         });
+
+        // Save notification
+        addNotification(
+          currentUserId,
+          'rank_change',
+          '📉 Rank Change',
+          `You moved to rank #${userRank}. Time to step up your game!`,
+          '📉',
+          { previousRank, newRank: userRank }
+        );
       }
       previousRankRef.current = userRank;
     }
-  }, [userRank, selectedCompetition, toast]);
+  }, [userRank, selectedCompetition, toast, currentUserId, addNotification]);
 
   // Track achievement unlocks
   useEffect(() => {
@@ -241,9 +274,20 @@ export default function LeaderboardPage() {
         description: `You unlocked ${newAchievements} new achievement${newAchievements > 1 ? 's' : ''}!`,
         duration: 6000,
       });
+
+      // Save notification
+      addNotification(
+        currentUserId,
+        'achievement_unlock',
+        '🏆 Achievement Unlocked!',
+        `You unlocked ${newAchievements} new achievement${newAchievements > 1 ? 's' : ''}!`,
+        '🏆',
+        { count: newAchievements }
+      );
+
       previousAchievementCountRef.current = currentCount;
     }
-  }, [achievementsData, toast]);
+  }, [achievementsData, toast, currentUserId, addNotification]);
 
   return (
     <GlobalLayout>
