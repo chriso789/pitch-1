@@ -289,6 +289,15 @@ export default function LeaderboardPage() {
     }
   }, [achievementsData, toast, currentUserId, addNotification]);
 
+  // Handle tab parameter from URL
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const tab = params.get('tab');
+    if (tab === 'achievements' || tab === 'rewards') {
+      setSelectedTab(tab);
+    }
+  }, []);
+
   return (
     <GlobalLayout>
       <div className="space-y-6">

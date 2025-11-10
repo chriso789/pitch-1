@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -10,13 +11,14 @@ import {
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Bell, X, CheckCheck, Trash2, TrendingUp, Trophy, DollarSign, Gift } from 'lucide-react';
+import { Bell, X, CheckCheck, Trash2, TrendingUp, Trophy, DollarSign, Gift, ExternalLink } from 'lucide-react';
 import { useNotifications, Notification } from '@/hooks/useNotifications';
 import { supabase } from '@/integrations/supabase/client';
 import { formatDistanceToNow } from 'date-fns';
 import { cn } from '@/lib/utils';
 
 export function NotificationCenter() {
+  const navigate = useNavigate();
   const [userId, setUserId] = useState<string>('');
   const [isOpen, setIsOpen] = useState(false);
   const {
@@ -59,6 +61,41 @@ export function NotificationCenter() {
   const handleNotificationClick = (notification: Notification) => {
     if (!notification.is_read) {
       markAsRead(notification.id);
+    }
+  };
+
+  const getActionButton = (notification: Notification) => {
+    switch (notification.type) {
+      case 'rank_change':
+      case 'prize_zone':
+        return {
+          label: 'View Leaderboard',
+          icon: Trophy,
+          action: () => {
+            setIsOpen(false);
+            navigate('/storm-canvass/leaderboard');
+          }
+        };
+      case 'achievement_unlock':
+        return {
+          label: 'View Achievements',
+          icon: Trophy,
+          action: () => {
+            setIsOpen(false);
+            navigate('/storm-canvass/leaderboard?tab=achievements');
+          }
+        };
+      case 'reward_ready':
+        return {
+          label: 'View Rewards',
+          icon: Gift,
+          action: () => {
+            setIsOpen(false);
+            navigate('/storm-canvass/leaderboard?tab=rewards');
+          }
+        };
+      default:
+        return null;
     }
   };
 
@@ -125,53 +162,75 @@ export function NotificationCenter() {
             </div>
           ) : (
             <div className="space-y-1 p-1">
-              {notifications.map((notification) => (
-                <DropdownMenuItem
-                  key={notification.id}
-                  className={cn(
-                    "flex items-start gap-3 p-3 cursor-pointer rounded-md transition-colors",
-                    !notification.is_read && "bg-primary/5 hover:bg-primary/10",
-                    notification.is_read && "opacity-70"
-                  )}
-                  onClick={() => handleNotificationClick(notification)}
-                >
-                  <div className="flex-shrink-0 mt-1">
-                    {typeof notification.icon === 'string' && notification.icon.length <= 2 
-                      ? <span className="text-xl">{notification.icon}</span>
-                      : getNotificationIcon(notification.type, notification.icon)
-                    }
-                  </div>
-                  
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <p className="font-semibold text-sm leading-tight">
-                        {notification.title}
-                      </p>
-                      {!notification.is_read && (
-                        <div className="h-2 w-2 bg-primary rounded-full flex-shrink-0 mt-1" />
-                      )}
-                    </div>
-                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
-                      {notification.message}
-                    </p>
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
-                    </p>
-                  </div>
-
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-6 w-6 flex-shrink-0 opacity-0 group-hover:opacity-100 hover:bg-destructive/10"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      dismissNotification(notification.id);
-                    }}
+              {notifications.map((notification) => {
+                const actionButton = getActionButton(notification);
+                
+                return (
+                  <DropdownMenuItem
+                    key={notification.id}
+                    className={cn(
+                      "flex flex-col gap-2 p-3 cursor-pointer rounded-md transition-colors group",
+                      !notification.is_read && "bg-primary/5 hover:bg-primary/10",
+                      notification.is_read && "opacity-70"
+                    )}
+                    onClick={() => handleNotificationClick(notification)}
                   >
-                    <X className="h-3 w-3" />
-                  </Button>
-                </DropdownMenuItem>
-              ))}
+                    <div className="flex items-start gap-3 w-full">
+                      <div className="flex-shrink-0 mt-1">
+                        {typeof notification.icon === 'string' && notification.icon.length <= 2 
+                          ? <span className="text-xl">{notification.icon}</span>
+                          : getNotificationIcon(notification.type, notification.icon)
+                        }
+                      </div>
+                      
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-start justify-between gap-2">
+                          <p className="font-semibold text-sm leading-tight">
+                            {notification.title}
+                          </p>
+                          {!notification.is_read && (
+                            <div className="h-2 w-2 bg-primary rounded-full flex-shrink-0 mt-1" />
+                          )}
+                        </div>
+                        <p className="text-xs text-muted-foreground mt-1 line-clamp-2">
+                          {notification.message}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          {formatDistanceToNow(new Date(notification.created_at), { addSuffix: true })}
+                        </p>
+                      </div>
+
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 flex-shrink-0 opacity-0 group-hover:opacity-100 hover:bg-destructive/10"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          dismissNotification(notification.id);
+                        }}
+                      >
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </div>
+
+                    {actionButton && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        className="w-full h-8 text-xs"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          actionButton.action();
+                        }}
+                      >
+                        <actionButton.icon className="h-3 w-3 mr-1" />
+                        {actionButton.label}
+                        <ExternalLink className="h-3 w-3 ml-1" />
+                      </Button>
+                    )}
+                  </DropdownMenuItem>
+                );
+              })}
             </div>
           )}
         </ScrollArea>
