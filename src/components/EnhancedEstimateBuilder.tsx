@@ -769,17 +769,38 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 
         {/* Right Column - Configuration & Results */}
         <div className="space-y-6">
-          {/* Excel-Style Calculation Controls */}
+          {/* Template Selection */}
+          <Card>
+            <CardContent className="pt-4 pb-3">
+              <div className="space-y-2">
+                <Label htmlFor="template" className="text-sm">Template</Label>
+                <Select value={templateId} onValueChange={setTemplateId}>
+                  <SelectTrigger className="h-9">
+                    <SelectValue placeholder="Select template (optional)" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {templates.map((template: any) => (
+                      <SelectItem key={template.id} value={template.id}>
+                        {template.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Pre Cap Margin */}
           <Card>
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 <TrendingUp className="h-5 w-5" />
-                Excel-Style Controls
+                Pre Cap Margin
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-6">
+            <CardContent className="space-y-3">
               {/* Target Margin Slider */}
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <Label className="text-sm font-medium">Target Margin (Guaranteed)</Label>
                   <span className="text-sm font-bold text-primary">{excelConfig.target_margin_percent}%</span>
@@ -796,7 +817,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
               </div>
 
               {/* Commission Slider */}
-              <div className="space-y-3">
+              <div className="space-y-2">
                 <div className="flex justify-between items-center">
                   <Label className="text-sm font-medium">Sales Commission (% of Selling Price)</Label>
                   <span className="text-sm font-bold text-accent">{excelConfig.commission_percent}%</span>
@@ -813,22 +834,6 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
               </div>
 
               <Separator />
-
-              <div className="space-y-2">
-                <Label htmlFor="template">Template</Label>
-                <Select value={templateId} onValueChange={setTemplateId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Select template (optional)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {templates.map((template: any) => (
-                      <SelectItem key={template.id} value={template.id}>
-                        {template.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
 
               <div className="space-y-2">
                 <Label htmlFor="sales_rep">Sales Representative</Label>
