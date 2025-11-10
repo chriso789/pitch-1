@@ -5,13 +5,15 @@ import { Card } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { CheckCircle2, Edit3, X, Satellite, AlertCircle } from 'lucide-react';
+import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { PolygonEditor } from './PolygonEditor';
 import { ComprehensiveMeasurementOverlay } from './ComprehensiveMeasurementOverlay';
 import { ManualMeasurementEditor } from './ManualMeasurementEditor';
 import { parseWKTPolygon, calculatePolygonAreaSqft, calculatePerimeterFt } from '@/utils/geoCoordinates';
 import { useManualVerification } from '@/hooks/useMeasurement';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 // Industry-standard roof pitch multipliers
 const PITCH_MULTIPLIERS: Record<string, number> = {
@@ -47,18 +49,26 @@ export function MeasurementVerificationDialog({
   onOpenChange,
   measurement,
   tags,
-  satelliteImageUrl,
+  satelliteImageUrl: initialSatelliteImageUrl,
   centerLat,
   centerLng,
   onAccept,
   onReject
 }: MeasurementVerificationDialogProps) {
+  const { toast } = useToast();
   const [isAccepting, setIsAccepting] = useState(false);
   const [adjustedPolygon, setAdjustedPolygon] = useState<[number, number][] | null>(null);
   const [adjustedArea, setAdjustedArea] = useState<number | null>(null);
   const [showManualEditor, setShowManualEditor] = useState(false);
+  const [isRegenerating, setIsRegenerating] = useState(false);
+  const [satelliteImageUrl, setSatelliteImageUrl] = useState(initialSatelliteImageUrl);
   
   const manualVerify = useManualVerification();
+  
+  // Update satellite image URL when prop changes
+  useEffect(() => {
+    setSatelliteImageUrl(initialSatelliteImageUrl);
+  }, [initialSatelliteImageUrl]);
   
   // Editable pitch and waste
   // Helper function to derive pitch from pitch factor
@@ -221,6 +231,61 @@ export function MeasurementVerificationDialog({
 
   const source = measurement?.source || 'Unknown';
 
+  const handleRegenerateVisualization = async () => {
+    if (!measurement?.id) {
+      toast({
+        title: "Cannot Regenerate",
+        description: "Measurement ID is required",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setIsRegenerating(true);
+
+    try {
+      toast({
+        title: "Regenerating Visualization",
+        description: "Fetching updated satellite imagery...",
+      });
+
+      const { data, error } = await supabase.functions.invoke('generate-measurement-visualization', {
+        body: {
+          measurement_id: measurement.id,
+          property_id: measurement.property_id,
+          center_lat: centerLat,
+          center_lng: centerLng,
+        }
+      });
+
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || 'Regeneration failed');
+
+      // Update the satellite image URL with the new visualization
+      const newVisualizationUrl = data.data.visualization_url;
+      setSatelliteImageUrl(newVisualizationUrl);
+      
+      // Add cache buster to force reload
+      const urlWithCacheBuster = `${newVisualizationUrl}?t=${Date.now()}`;
+      setSatelliteImageUrl(urlWithCacheBuster);
+
+      toast({
+        title: "Visualization Updated",
+        description: "Satellite imagery has been regenerated",
+      });
+
+    } catch (err: any) {
+      console.error('Regenerate visualization error:', err);
+      toast({
+        title: "Regeneration Failed",
+        description: err.message || "Could not regenerate visualization",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[90vw] max-h-[90vh] overflow-y-auto">
@@ -272,21 +337,44 @@ export function MeasurementVerificationDialog({
               )}
               
               {/* Source and Confidence */}
-              <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
-                <div className="flex items-center gap-2">
-                  <Satellite className="h-4 w-4 text-muted-foreground" />
-                  <span className="text-sm font-medium">Source: {source}</span>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                  <div className="flex items-center gap-2">
+                    <Satellite className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Source: {source}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <div
+                        key={i}
+                        className={`h-2 w-2 rounded-full ${
+                          i < confidence.dots ? 'bg-primary' : 'bg-muted'
+                        }`}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <div className="flex items-center gap-1">
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <div
-                      key={i}
-                      className={`h-2 w-2 rounded-full ${
-                        i < confidence.dots ? 'bg-primary' : 'bg-muted'
-                      }`}
-                    />
-                  ))}
-                </div>
+                
+                {/* Regenerate Visualization Button */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleRegenerateVisualization}
+                  disabled={isRegenerating}
+                  className="w-full"
+                >
+                  {isRegenerating ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Regenerating...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Regenerate Satellite View
+                    </>
+                  )}
+                </Button>
               </div>
             </div>
           )}
