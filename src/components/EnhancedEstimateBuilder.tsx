@@ -97,6 +97,11 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const [activeTab, setActiveTab] = useState('builder');
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showNewEstimateConfirm, setShowNewEstimateConfirm] = useState(false);
+  
+  // Filtering and sorting state
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterRoofType, setFilterRoofType] = useState<string>('all');
+  const [sortBy, setSortBy] = useState<string>('date_desc');
 
   const [showAddLineDialog, setShowAddLineDialog] = useState(false);
   const [pullingSolarMeasurements, setPullingSolarMeasurements] = useState(false);
@@ -516,6 +521,45 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       style: 'currency',
       currency: 'USD'
     }).format(amount);
+  };
+
+  // Filter and sort saved estimates
+  const getFilteredAndSortedEstimates = () => {
+    let filtered = [...savedEstimates];
+
+    // Apply status filter
+    if (filterStatus !== 'all') {
+      filtered = filtered.filter(est => est.status === filterStatus);
+    }
+
+    // Apply roof type filter
+    if (filterRoofType !== 'all') {
+      filtered = filtered.filter(est => est.roof_type === filterRoofType);
+    }
+
+    // Apply sorting
+    switch (sortBy) {
+      case 'date_desc':
+        filtered.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+        break;
+      case 'date_asc':
+        filtered.sort((a, b) => new Date(a.created_at).getTime() - new Date(b.created_at).getTime());
+        break;
+      case 'price_desc':
+        filtered.sort((a, b) => b.selling_price - a.selling_price);
+        break;
+      case 'price_asc':
+        filtered.sort((a, b) => a.selling_price - b.selling_price);
+        break;
+      case 'profit_desc':
+        filtered.sort((a, b) => (b.actual_profit_percent || 0) - (a.actual_profit_percent || 0));
+        break;
+      case 'profit_asc':
+        filtered.sort((a, b) => (a.actual_profit_percent || 0) - (b.actual_profit_percent || 0));
+        break;
+    }
+
+    return filtered;
   };
 
   const handleLoadEstimate = async (estimateId: string) => {
@@ -1186,8 +1230,118 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
           </CardContent>
         </Card>
       ) : (
-        <div className="space-y-3">
-          {savedEstimates.map((estimate) => (
+        <div className="space-y-4">
+          {/* Filter and Sort Controls */}
+          <Card>
+            <CardContent className="pt-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {/* Status Filter */}
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Filter by Status</Label>
+                  <Select value={filterStatus} onValueChange={setFilterStatus}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Statuses</SelectItem>
+                      <SelectItem value="draft">Draft</SelectItem>
+                      <SelectItem value="pending">Pending</SelectItem>
+                      <SelectItem value="approved">Approved</SelectItem>
+                      <SelectItem value="rejected">Rejected</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Roof Type Filter */}
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Filter by Roof Type</Label>
+                  <Select value={filterRoofType} onValueChange={setFilterRoofType}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All Roof Types</SelectItem>
+                      <SelectItem value="asphalt_shingle">Asphalt Shingle</SelectItem>
+                      <SelectItem value="metal">Metal</SelectItem>
+                      <SelectItem value="tile">Tile</SelectItem>
+                      <SelectItem value="flat">Flat</SelectItem>
+                      <SelectItem value="slate">Slate</SelectItem>
+                      <SelectItem value="wood_shake">Wood Shake</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Sort By */}
+                <div className="space-y-2">
+                  <Label className="text-xs text-muted-foreground">Sort By</Label>
+                  <Select value={sortBy} onValueChange={setSortBy}>
+                    <SelectTrigger className="h-9">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="date_desc">Newest First</SelectItem>
+                      <SelectItem value="date_asc">Oldest First</SelectItem>
+                      <SelectItem value="price_desc">Highest Price</SelectItem>
+                      <SelectItem value="price_asc">Lowest Price</SelectItem>
+                      <SelectItem value="profit_desc">Highest Profit %</SelectItem>
+                      <SelectItem value="profit_asc">Lowest Profit %</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+
+              {/* Active Filters Summary */}
+              {(filterStatus !== 'all' || filterRoofType !== 'all') && (
+                <div className="flex items-center gap-2 mt-3 pt-3 border-t">
+                  <span className="text-xs text-muted-foreground">Active filters:</span>
+                  {filterStatus !== 'all' && (
+                    <Badge variant="secondary" className="text-xs">
+                      Status: {filterStatus}
+                    </Badge>
+                  )}
+                  {filterRoofType !== 'all' && (
+                    <Badge variant="secondary" className="text-xs">
+                      Type: {filterRoofType.replace('_', ' ')}
+                    </Badge>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 text-xs ml-auto"
+                    onClick={() => {
+                      setFilterStatus('all');
+                      setFilterRoofType('all');
+                    }}
+                  >
+                    Clear Filters
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Estimates List */}
+          <div className="space-y-3">
+            {getFilteredAndSortedEstimates().length === 0 ? (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-8">
+                  <FileText className="h-10 w-10 text-muted-foreground mb-3" />
+                  <p className="text-muted-foreground">No estimates match your filters</p>
+                  <Button
+                    variant="link"
+                    size="sm"
+                    className="mt-2"
+                    onClick={() => {
+                      setFilterStatus('all');
+                      setFilterRoofType('all');
+                    }}
+                  >
+                    Clear filters to see all estimates
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              getFilteredAndSortedEstimates().map((estimate) => (
             <Card 
               key={estimate.id} 
               className="hover:shadow-md transition-all cursor-pointer hover:border-primary/50 group"
@@ -1233,7 +1387,9 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                 </div>
               </CardContent>
             </Card>
-          ))}
+              ))
+            )}
+          </div>
         </div>
       )}
     </TabsContent>
