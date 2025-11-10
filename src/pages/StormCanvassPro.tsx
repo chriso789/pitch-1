@@ -174,7 +174,7 @@ export default function StormCanvassPro() {
           <CardContent>
             <Button 
               className="w-full" 
-              onClick={() => navigate('/storm-canvass/map')}
+              onClick={() => navigate('/storm-canvass/live')}
             >
               <Map className="h-4 w-4 mr-2" />
               Start Canvassing

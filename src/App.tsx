@@ -62,6 +62,7 @@ import ManagerApprovalQueue from "./pages/ManagerApprovalQueue";
 import VendorManagement from "./pages/VendorManagement";
 import PriceManagement from "./pages/PriceManagement";
 import ProfessionalMeasurement from "./pages/ProfessionalMeasurement";
+import LiveCanvassingPage from "./pages/storm-canvass/LiveCanvassingPage";
 import TerritoryMapPage from "./pages/storm-canvass/TerritoryMapPage";
 import CanvasserDashboard from "./pages/storm-canvass/CanvasserDashboard";
 import LeaderboardPage from "./pages/storm-canvass/LeaderboardPage";
@@ -131,6 +132,7 @@ const AppContent = () => {
         <Route path="/client-list" element={<ClientList />} />
         <Route path="/calendar" element={<Calendar />} />
         <Route path="/storm-canvass" element={<StormCanvass />} />
+        <Route path="/storm-canvass/live" element={<LiveCanvassingPage />} />
         <Route path="/storm-canvass/map" element={<TerritoryMapPage />} />
         <Route path="/storm-canvass/dashboard" element={<CanvasserDashboard />} />
         <Route path="/storm-canvass/leaderboard" element={<LeaderboardPage />} />
