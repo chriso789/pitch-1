@@ -8,7 +8,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Calculator, Plus, Trash2, FileText, DollarSign, Target, TrendingUp, MapPin, Satellite, Loader2, AlertTriangle } from 'lucide-react';
+import { Calculator, Plus, Trash2, FileText, DollarSign, Target, TrendingUp, MapPin, Satellite, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -35,6 +35,8 @@ interface LineItem {
   unit_cost: number;
   unit_type: string;
   markup_percent: number;
+  sku?: string;
+  last_price_updated?: string;
 }
 
 interface EnhancedEstimateBuilderProps {
@@ -52,6 +54,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
   const [savingEstimate, setSavingEstimate] = useState(false);
+  const [refreshingPricing, setRefreshingPricing] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [salesReps, setSalesReps] = useState([]);
   const [selectedSalesRep, setSelectedSalesRep] = useState<any>(null);
@@ -516,6 +519,97 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     }
   };
 
+  const handleRefreshPricing = async () => {
+    // Filter line items that have SKUs
+    const itemsWithSkus = lineItems.filter(item => item.sku && item.sku.trim() !== '');
+    
+    if (itemsWithSkus.length === 0) {
+      toast({
+        title: "No SKUs Found",
+        description: "Add SKU codes to line items to enable price refresh",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setRefreshingPricing(true);
+    try {
+      // Call material-pricing-api with refresh flag
+      const { data, error } = await supabase.functions.invoke('material-pricing-api', {
+        body: {
+          skus: itemsWithSkus.map(item => item.sku),
+          vendors: ['SRS'], // Default to SRS vendor
+          refresh: true // Force refresh from live API
+        }
+      });
+
+      if (error) throw error;
+
+      if (!data || !Array.isArray(data.results)) {
+        throw new Error('Invalid response from pricing API');
+      }
+
+      // Update line items with refreshed prices
+      const now = new Date().toISOString();
+      let updatedCount = 0;
+      let failedCount = 0;
+
+      const updatedLineItems = lineItems.map(item => {
+        if (!item.sku) return item;
+
+        const pricingResult = data.results.find((r: any) => r.sku === item.sku);
+        if (pricingResult && pricingResult.price) {
+          updatedCount++;
+          return {
+            ...item,
+            unit_cost: pricingResult.price,
+            last_price_updated: now
+          };
+        } else {
+          failedCount++;
+          return item;
+        }
+      });
+
+      setLineItems(updatedLineItems);
+      setHasUnsavedChanges(true);
+
+      toast({
+        title: "Pricing Updated",
+        description: `${updatedCount} item(s) updated with live SRS pricing${failedCount > 0 ? `, ${failedCount} failed` : ''}`,
+      });
+
+    } catch (error: any) {
+      console.error('Error refreshing pricing:', error);
+      toast({
+        title: "Pricing Refresh Failed",
+        description: error.message || "Failed to fetch updated prices from SRS API",
+        variant: "destructive",
+      });
+    } finally {
+      setRefreshingPricing(false);
+    }
+  };
+
+  const isPriceStale = (lastUpdated?: string) => {
+    if (!lastUpdated) return false;
+    const twentyFourHoursAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    return new Date(lastUpdated) < twentyFourHoursAgo;
+  };
+
+  const formatLastUpdated = (lastUpdated?: string) => {
+    if (!lastUpdated) return 'Never updated';
+    const date = new Date(lastUpdated);
+    const now = new Date();
+    const diffMs = now.getTime() - date.getTime();
+    const diffHours = Math.floor(diffMs / (1000 * 60 * 60));
+    const diffDays = Math.floor(diffHours / 24);
+
+    if (diffDays > 0) return `${diffDays} day${diffDays > 1 ? 's' : ''} ago`;
+    if (diffHours > 0) return `${diffHours} hour${diffHours > 1 ? 's' : ''} ago`;
+    return 'Just now';
+  };
+
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -885,27 +979,57 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
               <CardHeader>
                 <div className="flex justify-between items-center">
                   <CardTitle className="text-lg">Line Items</CardTitle>
-                  <Button onClick={addLineItem} size="sm" variant="outline">
-                    <Plus className="h-4 w-4 mr-2" />
-                    Add Item
-                  </Button>
+                  <div className="flex gap-2">
+                    <Button 
+                      onClick={handleRefreshPricing} 
+                      size="sm" 
+                      variant="secondary"
+                      disabled={refreshingPricing || lineItems.every(item => !item.sku)}
+                    >
+                      {refreshingPricing ? (
+                        <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      ) : (
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                      )}
+                      Refresh Pricing
+                    </Button>
+                    <Button onClick={addLineItem} size="sm" variant="outline">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Item
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
                 {lineItems.map((item, index) => (
                   <div key={index} className="border rounded-lg p-4 space-y-3">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm font-medium">Item {index + 1}</span>
-                      {lineItems.length > 1 && (
-                        <Button
-                          onClick={() => removeLineItem(index)}
-                          size="sm"
-                          variant="ghost"
-                          className="text-red-500 hover:text-red-700"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      )}
+                      <div className="flex items-center gap-2">
+                        <span className="text-sm font-medium">Item {index + 1}</span>
+                        {item.last_price_updated && isPriceStale(item.last_price_updated) && (
+                          <Badge variant="destructive" className="text-xs">
+                            <AlertTriangle className="h-3 w-3 mr-1" />
+                            Stale Price
+                          </Badge>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {item.last_price_updated && (
+                          <span className="text-xs text-muted-foreground">
+                            Updated: {formatLastUpdated(item.last_price_updated)}
+                          </span>
+                        )}
+                        {lineItems.length > 1 && (
+                          <Button
+                            onClick={() => removeLineItem(index)}
+                            size="sm"
+                            variant="ghost"
+                            className="text-red-500 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                     
                     <div className="grid grid-cols-2 gap-3">
@@ -943,7 +1067,15 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                       />
                     </div>
 
-                    <div className="grid grid-cols-4 gap-3">
+                    <div className="grid grid-cols-5 gap-3">
+                      <div className="space-y-2">
+                        <Label>SKU</Label>
+                        <Input
+                          value={item.sku || ''}
+                          onChange={(e) => updateLineItem(index, 'sku', e.target.value)}
+                          placeholder="ABC123"
+                        />
+                      </div>
                       <div className="space-y-2">
                         <Label>Quantity</Label>
                         <Input
