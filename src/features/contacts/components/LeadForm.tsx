@@ -56,6 +56,7 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
     lastName: '',
     email: '',
     phone: '',
+    roofAge: '',
     street: '',
     city: '',
     state: '',
@@ -110,10 +111,21 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
       }
 
       // Validate required fields
-      if (!formData.firstName || !formData.lastName || !formData.phone) {
+      if (!formData.firstName || !formData.lastName || !formData.phone || !formData.roofAge) {
         toast({
           title: "Missing required fields",
-          description: "Please fill in first name, last name, and phone number.",
+          description: "Please fill in first name, last name, phone number, and roof age.",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Validate roof age range
+      const roofAgeNum = parseInt(formData.roofAge);
+      if (isNaN(roofAgeNum) || roofAgeNum < 0 || roofAgeNum > 100) {
+        toast({
+          title: "Invalid roof age",
+          description: "Roof age must be between 0 and 100 years.",
           variant: "destructive",
         });
         return;
@@ -148,7 +160,8 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
             job_type: formData.jobType,
             current_roof_type: formData.currentRoofType,
             urgency_level: formData.urgency,
-            estimated_value: formData.estimatedValue
+            estimated_value: formData.estimatedValue,
+            roof_age_years: parseInt(formData.roofAge)
           }
         })
         .select()
@@ -170,7 +183,10 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
           status: 'lead',
           priority: formData.urgency === 'immediate' ? 'urgent' : 'medium',
           lead_quality_score: leadScore,
-          estimated_value: formData.estimatedValue ? parseFloat(formData.estimatedValue) : null
+          estimated_value: formData.estimatedValue ? parseFloat(formData.estimatedValue) : null,
+          metadata: {
+            roof_age_years: parseInt(formData.roofAge)
+          }
         })
         .select()
         .single();
@@ -193,6 +209,7 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
         lastName: '',
         email: '',
         phone: '',
+        roofAge: '',
         street: '',
         city: '',
         state: '',
@@ -278,6 +295,19 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
                 placeholder="(555) 123-4567"
               />
             </div>
+          </div>
+
+          <div>
+            <Label htmlFor="roofAge">Roof Age (years) *</Label>
+            <Input
+              id="roofAge"
+              type="number"
+              min="0"
+              max="100"
+              value={formData.roofAge}
+              onChange={(e) => handleInputChange('roofAge', e.target.value)}
+              placeholder="e.g., 15"
+            />
           </div>
 
           <div>
@@ -462,7 +492,7 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
           </Button>
           <Button
             onClick={handleSubmit}
-            disabled={isSubmitting || !formData.firstName || !formData.lastName || !formData.phone}
+            disabled={isSubmitting || !formData.firstName || !formData.lastName || !formData.phone || !formData.roofAge}
             className="gradient-primary"
           >
             {isSubmitting ? 'Creating Lead...' : 'Create Lead'}

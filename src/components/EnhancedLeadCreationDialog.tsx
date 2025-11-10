@@ -79,6 +79,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     description: "",
     address: "",
     phone: "",
+    roofAge: "",
     status: "",
     priority: "medium" as const,
     estimatedValue: "",
@@ -284,8 +285,14 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     
     if (!formData.name.trim()) errors.push("Lead name is required");
     if (!formData.phone.trim()) errors.push("Phone number is required");
+    if (!formData.roofAge) errors.push("Roof age is required");
     if (!selectedAddress) errors.push("Verified address is required");
     if (!formData.status) errors.push("Status selection is required");
+    
+    const roofAgeNum = parseInt(formData.roofAge);
+    if (formData.roofAge && (isNaN(roofAgeNum) || roofAgeNum < 0 || roofAgeNum > 100)) {
+      errors.push("Roof age must be between 0 and 100 years");
+    }
     
     return errors;
   };
@@ -345,7 +352,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
       }
 
       // Create pipeline entry (lead)
-      const pipelineData = {
+      const pipelineData: any = {
         tenant_id: userProfile.tenant_id,
         contact_id: contactId,
         status: (formData.status as "canceled" | "closed" | "completed" | "contingency_signed" | "duplicate" | "hold_mgr_review" | "lead" | "legal_review" | "lost" | "project"),
@@ -355,6 +362,11 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         assigned_to: formData.salesReps[0] || null, // Assign to first selected rep
         notes: formData.description,
         created_by: user.id,
+        metadata: {
+          verified_address: selectedAddress,
+          secondary_reps: formData.salesReps.slice(1),
+          roof_age_years: parseInt(formData.roofAge)
+        }
       };
 
       const { data: pipelineEntry, error: pipelineError } = await supabase
@@ -382,6 +394,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         description: "",
         address: "",
         phone: "",
+        roofAge: "",
         status: "",
         priority: "medium",
         estimatedValue: "",
@@ -466,6 +479,19 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
                   onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
                   placeholder="(555) 123-4567"
                   disabled={formData.useSameInfo}
+                />
+              </div>
+
+              <div>
+                <Label htmlFor="roofAge">Roof Age (years) *</Label>
+                <Input
+                  id="roofAge"
+                  type="number"
+                  min="0"
+                  max="100"
+                  value={formData.roofAge}
+                  onChange={(e) => setFormData(prev => ({ ...prev, roofAge: e.target.value }))}
+                  placeholder="e.g., 15"
                 />
               </div>
 

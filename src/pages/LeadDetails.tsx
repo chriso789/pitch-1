@@ -630,6 +630,12 @@ const LeadDetails = () => {
                   <span className="capitalize font-medium">{lead.roof_type.replace('_', ' ')}</span>
                 </div>
               )}
+              {lead.metadata?.roof_age_years && (
+                <div className="flex items-center gap-1">
+                  <span className="text-muted-foreground">Roof Age:</span>
+                  <span className="font-medium">{lead.metadata.roof_age_years} years</span>
+                </div>
+              )}
               {lead.estimated_value && (
                 <div className="flex items-center gap-1">
                   <span className="text-muted-foreground">Est. Value:</span>

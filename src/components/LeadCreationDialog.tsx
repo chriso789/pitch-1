@@ -57,6 +57,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
   const [formData, setFormData] = useState({
     name: "",
     phone: "",
+    roofAge: "",
     status: "lead",
     roofType: "",
     priority: "medium",
@@ -117,6 +118,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       let initialFormData = {
         name: "",
         phone: "",
+        roofAge: "",
         status: "lead",
         roofType: "",
         priority: "medium",
@@ -323,6 +325,25 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       return false;
     }
 
+    if (!formData.roofAge) {
+      toast({
+        title: "Validation Error",
+        description: "Roof age is required",
+        variant: "destructive",
+      });
+      return false;
+    }
+
+    const roofAgeNum = parseInt(formData.roofAge);
+    if (isNaN(roofAgeNum) || roofAgeNum < 0 || roofAgeNum > 100) {
+      toast({
+        title: "Validation Error",
+        description: "Roof age must be between 0 and 100 years",
+        variant: "destructive",
+      });
+      return false;
+    }
+
     if (!selectedAddress) {
       toast({
         title: "Address Required",
@@ -418,7 +439,8 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
           metadata: {
             multiple_reps: formData.assignedTo,
             address_verified: true,
-            verified_address: selectedAddress
+            verified_address: selectedAddress,
+            roof_age_years: parseInt(formData.roofAge)
           }
         } as any)
         .select()
@@ -446,6 +468,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       const resetFormData = {
         name: "",
         phone: "",
+        roofAge: "",
         status: "lead",
         roofType: "",
         priority: "medium",
@@ -523,6 +546,19 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
                 placeholder="(555) 123-4567"
               />
             </div>
+          </div>
+
+          <div>
+            <Label htmlFor="roofAge">Roof Age (years) *</Label>
+            <Input
+              id="roofAge"
+              type="number"
+              min="0"
+              max="100"
+              value={formData.roofAge}
+              onChange={(e) => setFormData(prev => ({ ...prev, roofAge: e.target.value }))}
+              placeholder="e.g., 15"
+            />
           </div>
 
           {contact && (
