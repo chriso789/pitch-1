@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw } from 'lucide-react';
+import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { PolygonEditor } from './PolygonEditor';
 import { ComprehensiveMeasurementOverlay } from './ComprehensiveMeasurementOverlay';
@@ -63,6 +63,8 @@ export function MeasurementVerificationDialog({
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [satelliteImageUrl, setSatelliteImageUrl] = useState(initialSatelliteImageUrl);
   const [autoRegenerateAttempted, setAutoRegenerateAttempted] = useState(false);
+  const [adjustedCenterLat, setAdjustedCenterLat] = useState(centerLat);
+  const [adjustedCenterLng, setAdjustedCenterLng] = useState(centerLng);
   
   const manualVerify = useManualVerification();
   
@@ -270,7 +272,34 @@ export function MeasurementVerificationDialog({
 
   const source = measurement?.source || 'Unknown';
 
-  const handleRegenerateVisualization = async () => {
+  const handlePan = (direction: 'up' | 'down' | 'left' | 'right') => {
+    const delta = 0.00005; // ~5 meters at equator
+    let newLat = adjustedCenterLat;
+    let newLng = adjustedCenterLng;
+
+    switch (direction) {
+      case 'up':
+        newLat += delta;
+        break;
+      case 'down':
+        newLat -= delta;
+        break;
+      case 'left':
+        newLng -= delta;
+        break;
+      case 'right':
+        newLng += delta;
+        break;
+    }
+
+    setAdjustedCenterLat(newLat);
+    setAdjustedCenterLng(newLng);
+    
+    // Auto-regenerate after pan
+    handleRegenerateVisualization(newLat, newLng);
+  };
+
+  const handleRegenerateVisualization = async (lat?: number, lng?: number) => {
     if (!measurement?.id) {
       toast({
         title: "Cannot Regenerate",
@@ -292,8 +321,8 @@ export function MeasurementVerificationDialog({
         body: {
           measurement_id: measurement.id,
           property_id: measurement.property_id,
-          center_lat: centerLat,
-          center_lng: centerLng,
+          center_lat: lat ?? adjustedCenterLat,
+          center_lng: lng ?? adjustedCenterLng,
         }
       });
 
@@ -419,7 +448,7 @@ export function MeasurementVerificationDialog({
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={handleRegenerateVisualization}
+                  onClick={() => handleRegenerateVisualization()}
                   disabled={isRegenerating || !measurement?.id}
                   className="w-full"
                 >
@@ -435,6 +464,51 @@ export function MeasurementVerificationDialog({
                     </>
                   )}
                 </Button>
+                
+                {/* Manual Pan Controls */}
+                <div className="p-3 bg-muted/50 rounded-lg">
+                  <div className="text-xs text-muted-foreground mb-2 text-center">Fine-tune Center Position</div>
+                  <div className="flex flex-col items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handlePan('up')}
+                      disabled={isRegenerating}
+                      className="h-8 w-8 p-0"
+                    >
+                      <ArrowUp className="h-4 w-4" />
+                    </Button>
+                    <div className="flex gap-1">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePan('left')}
+                        disabled={isRegenerating}
+                        className="h-8 w-8 p-0"
+                      >
+                        <ArrowLeft className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePan('down')}
+                        disabled={isRegenerating}
+                        className="h-8 w-8 p-0"
+                      >
+                        <ArrowDown className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => handlePan('right')}
+                        disabled={isRegenerating}
+                        className="h-8 w-8 p-0"
+                      >
+                        <ArrowRight className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           )}
