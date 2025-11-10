@@ -180,7 +180,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                   `${pipelineEntry.contacts.address_state || ''} ${pipelineEntry.contacts.address_zip || ''}`.trim()
                 ].filter(Boolean).join(', ')
               : prev.customer_address,
-            roof_pitch: comprehensiveMeasurements?.pitch || prev.roof_pitch,
+            roof_pitch: comprehensiveMeasurements?.adjustedPitch || comprehensiveMeasurements?.pitch || prev.roof_pitch,
             complexity_level: comprehensiveMeasurements?.complexity || prev.complexity_level
           }));
 
@@ -198,6 +198,107 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 
     loadMeasurementData();
   }, [pipelineEntryId]);
+
+  // Auto-populate line items when autoPopulate parameter is present
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const autoPopulate = params.get('autoPopulate') === 'true';
+    
+    if (autoPopulate && measurementData && hasMeasurements && lineItems.length === 1) {
+      autoPopulateLineItems();
+    }
+  }, [measurementData, hasMeasurements]);
+
+  const autoPopulateLineItems = () => {
+    const roofAreaSqFt = propertyDetails.roof_area_sq_ft;
+    const pitch = propertyDetails.roof_pitch;
+    const wastePct = excelConfig.waste_factor_percent / 100;
+    
+    // Calculate pitch multiplier
+    const pitchMultipliers: Record<string, number> = {
+      'flat': 1.0000, '1/12': 1.0035, '2/12': 1.0138, '3/12': 1.0308,
+      '4/12': 1.0541, '5/12': 1.0833, '6/12': 1.1180, '7/12': 1.1577,
+      '8/12': 1.2019, '9/12': 1.2500, '10/12': 1.3017, '11/12': 1.3566, '12/12': 1.4142
+    };
+    const pitchMultiplier = pitchMultipliers[pitch] || 1.0541;
+    
+    // Calculate adjusted squares
+    const adjustedSquares = (roofAreaSqFt * pitchMultiplier * (1 + wastePct)) / 100;
+    
+    // Get linear features from measurement data
+    const ridgeFt = measurementData?.tags?.['lf.ridge'] || 0;
+    const hipFt = measurementData?.tags?.['lf.hip'] || 0;
+    const valleyFt = measurementData?.tags?.['lf.valley'] || 0;
+    const eaveFt = measurementData?.tags?.['lf.eave'] || 0;
+    const rakeFt = measurementData?.tags?.['lf.rake'] || 0;
+    const perimeterFt = eaveFt + rakeFt;
+    
+    const newLineItems: LineItem[] = [
+      {
+        item_category: 'material',
+        item_name: 'Asphalt Shingles',
+        description: 'Architectural shingles',
+        quantity: adjustedSquares,
+        unit_cost: 150,
+        unit_type: 'square',
+        markup_percent: 25,
+      },
+      {
+        item_category: 'material',
+        item_name: 'Ridge Cap',
+        description: 'Ridge cap shingles',
+        quantity: Math.ceil((ridgeFt + hipFt) / 35), // 35 ft per bundle
+        unit_cost: 45,
+        unit_type: 'bundle',
+        markup_percent: 25,
+      },
+      {
+        item_category: 'material',
+        item_name: 'Starter Strip',
+        description: 'Starter course shingles',
+        quantity: Math.ceil((eaveFt + rakeFt) / 100), // Per square (100 sq ft)
+        unit_cost: 35,
+        unit_type: 'square',
+        markup_percent: 25,
+      },
+      {
+        item_category: 'material',
+        item_name: 'Ice & Water Shield',
+        description: 'Self-adhering underlayment',
+        quantity: Math.ceil(valleyFt + (eaveFt * 3)), // Valleys + first 3ft of eaves
+        unit_cost: 2.5,
+        unit_type: 'linear_ft',
+        markup_percent: 25,
+      },
+      {
+        item_category: 'material',
+        item_name: 'Drip Edge',
+        description: 'Metal drip edge',
+        quantity: Math.ceil(perimeterFt),
+        unit_cost: 1.5,
+        unit_type: 'linear_ft',
+        markup_percent: 25,
+      },
+    ];
+    
+    if (valleyFt > 0) {
+      newLineItems.push({
+        item_category: 'material',
+        item_name: 'Valley Material',
+        description: 'Valley flashing or shingles',
+        quantity: Math.ceil(valleyFt),
+        unit_cost: 3.0,
+        unit_type: 'linear_ft',
+        markup_percent: 25,
+      });
+    }
+    
+    setLineItems(newLineItems);
+    toast({
+      title: "Line Items Auto-Populated",
+      description: `${newLineItems.length} items added from measurements`,
+    });
+  };
 
   const loadTemplates = async () => {
     try {

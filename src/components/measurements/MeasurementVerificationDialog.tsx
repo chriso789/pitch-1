@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Home } from 'lucide-react';
+import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Home, ArrowRight as ArrowRightIcon } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { PolygonEditor } from './PolygonEditor';
 import { ComprehensiveMeasurementOverlay } from './ComprehensiveMeasurementOverlay';
@@ -175,6 +175,10 @@ export function MeasurementVerificationDialog({
       adjustedWastePercent: wastePercent,
       adjustedPerimeter: perimeter,
       adjustedFaceCount: faceCount,
+      adjustedArea: roofArea,
+      pitch: selectedPitch,
+      wastePct: wastePercent,
+      complexity: faceCount > 6 ? 'complex' : faceCount > 3 ? 'moderate' : 'simple',
       penetrations: {
         pipe_vent: pipeVents,
         skylight: skylights,
@@ -183,11 +187,92 @@ export function MeasurementVerificationDialog({
         other: otherPenetrations,
       },
       numberOfStories: numberOfStories,
+      tags: {
+        ...tags,
+        'roof.total_area': roofArea,
+        'roof.squares': squares,
+        'roof.pitch_factor': pitchFactor,
+        'roof.waste_pct': wastePercent,
+      }
     };
+
+    // Persist adjusted measurements to database
+    try {
+      if (measurement?.id) {
+        const { error: measurementError } = await supabase
+          .from('measurements')
+          .update({
+            summary: {
+              total_area_sqft: roofArea,
+              total_squares: squares,
+              waste_pct: wastePercent,
+              pitch: selectedPitch,
+              pitch_factor: pitchFactor,
+              perimeter: perimeter,
+              stories: numberOfStories,
+            },
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', measurement.id);
+        
+        if (measurementError) {
+          console.error('Failed to update measurement:', measurementError);
+        }
+      }
+
+      // Update pipeline entry metadata with adjusted measurements
+      if (measurement?.property_id) {
+        const { data: pipelineData } = await (supabase as any)
+          .from('pipeline_entries')
+          .select('metadata')
+          .eq('property_id', measurement.property_id)
+          .single();
+
+        if (pipelineData) {
+          const existingMetadata = (pipelineData.metadata as any) || {};
+          
+          await (supabase as any)
+            .from('pipeline_entries')
+            .update({
+              metadata: {
+                ...existingMetadata,
+                comprehensive_measurements: updatedMeasurement,
+                roof_area_sq_ft: roofArea,
+                roof_pitch: selectedPitch,
+              }
+            })
+            .eq('property_id', measurement.property_id);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to save adjusted measurements:', error);
+      toast({
+        title: "Warning",
+        description: "Measurements accepted but may not have saved to database",
+        variant: "destructive",
+      });
+    }
 
     await onAccept(updatedMeasurement);
     setIsAccepting(false);
     onOpenChange(false);
+  };
+
+  const handleAcceptAndCreateEstimate = async () => {
+    await handleAccept();
+    
+    // Navigate to estimate builder with auto-populate
+    if (measurement?.property_id) {
+      const { data: pipelineEntry } = await (supabase as any)
+        .from('pipeline_entries')
+        .select('id')
+        .eq('property_id', measurement.property_id)
+        .single();
+      
+      if (pipelineEntry) {
+        window.location.href = `/lead/${pipelineEntry.id}?tab=estimate&autoPopulate=true`;
+      }
+    }
   };
 
   const handleReject = () => {
@@ -824,10 +909,18 @@ export function MeasurementVerificationDialog({
           <Button
             onClick={handleAccept}
             disabled={isAccepting}
-            className="bg-primary"
+            variant="secondary"
           >
             <CheckCircle2 className="h-4 w-4 mr-2" />
             {isAccepting ? 'Applying...' : 'Accept & Apply'}
+          </Button>
+          <Button
+            onClick={handleAcceptAndCreateEstimate}
+            disabled={isAccepting}
+            className="bg-primary"
+          >
+            <CheckCircle2 className="h-4 w-4 mr-2" />
+            {isAccepting ? 'Processing...' : 'Accept & Create Estimate'}
           </Button>
         </DialogFooter>
       </DialogContent>
