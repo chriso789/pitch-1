@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { GlobalLayout } from '@/shared/components/layout';
 import { Card, CardContent } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -12,14 +12,19 @@ import { CompetitionLeaderboard } from '@/components/storm-canvass/CompetitionLe
 import { PrizePoolDisplay } from '@/components/storm-canvass/PrizePoolDisplay';
 import { AchievementShowcase } from '@/components/storm-canvass/AchievementShowcase';
 import { RewardHistory } from '@/components/storm-canvass/RewardHistory';
-import { RefreshCw, AlertCircle } from 'lucide-react';
+import { RefreshCw, AlertCircle, TrendingUp, Trophy, DollarSign } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
+import confetti from 'canvas-confetti';
 
 export default function LeaderboardPage() {
   const [selectedTab, setSelectedTab] = useState<'competitions' | 'achievements' | 'rewards'>('competitions');
   const [selectedCompetitionId, setSelectedCompetitionId] = useState<string | null>(null);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [currentUserId, setCurrentUserId] = useState<string>('');
+  
+  const previousRankRef = useRef<number | null>(null);
+  const previousAchievementCountRef = useRef<number>(0);
+  const hasShownInitialData = useRef(false);
   
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -148,6 +153,97 @@ export default function LeaderboardPage() {
   const selectedCompetition = competitions.find(c => c.id === selectedCompetitionId);
   const userRank = leaderboard.find(entry => entry.user_id === currentUserId)?.rank;
   const enrolledCompetitionIds = userCompetitions.map(uc => uc.competition_id);
+
+  // Confetti effect
+  const triggerConfetti = () => {
+    const duration = 3000;
+    const animationEnd = Date.now() + duration;
+    
+    const randomInRange = (min: number, max: number) => Math.random() * (max - min) + min;
+
+    const interval = setInterval(() => {
+      const timeLeft = animationEnd - Date.now();
+      if (timeLeft <= 0) {
+        clearInterval(interval);
+        return;
+      }
+
+      confetti({
+        particleCount: 3,
+        angle: randomInRange(55, 125),
+        spread: randomInRange(50, 70),
+        origin: { x: randomInRange(0.1, 0.9), y: Math.random() - 0.2 },
+        colors: ['#FFD700', '#FFA500', '#FF6347', '#4169E1', '#32CD32'],
+      });
+    }, 50);
+  };
+
+  // Track rank changes
+  useEffect(() => {
+    if (!userRank || !hasShownInitialData.current) {
+      if (userRank) {
+        previousRankRef.current = userRank;
+        hasShownInitialData.current = true;
+      }
+      return;
+    }
+
+    const previousRank = previousRankRef.current;
+    if (previousRank && previousRank !== userRank) {
+      if (userRank < previousRank) {
+        // Rank improved
+        toast({
+          title: "🎉 Rank Up!",
+          description: `You moved up to rank #${userRank}! Keep it up!`,
+          duration: 5000,
+        });
+
+        // Check if entered prize zone
+        const prizePositions = selectedCompetition?.prize_pool 
+          ? Object.keys(selectedCompetition.prize_pool).length 
+          : 0;
+        
+        if (prizePositions > 0 && userRank <= prizePositions && previousRank > prizePositions) {
+          triggerConfetti();
+          toast({
+            title: "💰 Prize Zone!",
+            description: `You're in the prize zone! Win $${selectedCompetition?.prize_pool[userRank.toString()]}`,
+            duration: 8000,
+          });
+        }
+      } else {
+        toast({
+          title: "📉 Rank Change",
+          description: `You moved to rank #${userRank}. Time to step up your game!`,
+          variant: "destructive",
+          duration: 4000,
+        });
+      }
+      previousRankRef.current = userRank;
+    }
+  }, [userRank, selectedCompetition, toast]);
+
+  // Track achievement unlocks
+  useEffect(() => {
+    if (!achievementsData) return;
+    
+    const currentCount = achievementsData.unlocked.length;
+    if (!hasShownInitialData.current) {
+      previousAchievementCountRef.current = currentCount;
+      return;
+    }
+
+    if (currentCount > previousAchievementCountRef.current) {
+      const newAchievements = currentCount - previousAchievementCountRef.current;
+      triggerConfetti();
+      toast({
+        title: "🏆 Achievement Unlocked!",
+        description: `You unlocked ${newAchievements} new achievement${newAchievements > 1 ? 's' : ''}!`,
+        duration: 6000,
+      });
+      previousAchievementCountRef.current = currentCount;
+    }
+  }, [achievementsData, toast]);
 
   return (
     <GlobalLayout>
