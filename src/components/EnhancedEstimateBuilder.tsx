@@ -843,49 +843,6 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                   </span>
                 </div>
               </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="waste">Waste Percentage</Label>
-                  <Select
-                    value={excelConfig.waste_factor_percent.toString()}
-                    onValueChange={(value) => {
-                      setExcelConfig(prev => ({ ...prev, waste_factor_percent: parseFloat(value) }));
-                      if (editingEstimateId) setHasUnsavedChanges(true);
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="10">10%</SelectItem>
-                      <SelectItem value="15">15%</SelectItem>
-                      <SelectItem value="20">20%</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="roof_pitch">Roof Pitch</Label>
-                <Select
-                  value={propertyDetails.roof_pitch}
-                  onValueChange={(value) => {
-                    setPropertyDetails(prev => ({ ...prev, roof_pitch: value }));
-                    if (editingEstimateId) setHasUnsavedChanges(true);
-                  }}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="2/12">2/12</SelectItem>
-                    <SelectItem value="4/12">4/12</SelectItem>
-                    <SelectItem value="6/12">6/12</SelectItem>
-                    <SelectItem value="8/12">8/12</SelectItem>
-                    <SelectItem value="10/12">10/12</SelectItem>
-                    <SelectItem value="12/12">12/12</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
             </CardContent>
           </Card>
 
