@@ -14,8 +14,10 @@ import {
   Download,
   FileText
 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 
 export default function StormCanvassPro() {
+  const navigate = useNavigate();
   return (
     <div className="space-y-6 p-6">
       {/* Header */}
@@ -105,8 +107,12 @@ export default function StormCanvassPro() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button className="w-full" variant="outline">
-              Manage Territories
+            <Button 
+              className="w-full" 
+              variant="outline"
+              onClick={() => navigate('/storm-canvass/map')}
+            >
+              Open Territory Map
             </Button>
           </CardContent>
         </Card>
