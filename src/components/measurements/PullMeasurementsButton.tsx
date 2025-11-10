@@ -78,12 +78,38 @@ export function PullMeasurementsButton({
       } else {
         // Fallback to Google Maps satellite image (ALWAYS provide fallback)
         console.log('Mapbox visualization not available, using Google Maps fallback');
+        
+        // Calculate measurement center if faces are available for better framing
+        let centerLat = lat;
+        let centerLng = lng;
+        if (measurement.faces && measurement.faces.length > 0) {
+          let sumLat = 0, sumLng = 0, pointCount = 0;
+          measurement.faces.forEach((face: any) => {
+            const match = face.wkt?.match(/POLYGON\(\(([^)]+)\)\)/);
+            if (match) {
+              match[1].split(',').forEach((pair: string) => {
+                const [lng, lat] = pair.trim().split(' ').map(Number);
+                if (!isNaN(lat) && !isNaN(lng)) {
+                  sumLat += lat;
+                  sumLng += lng;
+                  pointCount++;
+                }
+              });
+            }
+          });
+          if (pointCount > 0) {
+            centerLat = sumLat / pointCount;
+            centerLng = sumLng / pointCount;
+            console.log('Using calculated measurement center:', { centerLat, centerLng });
+          }
+        }
+        
         try {
           const { data: imageData, error: imageError } = await supabase.functions.invoke('google-maps-proxy', {
             body: { 
               endpoint: 'satellite',
               params: {
-                center: `${lat},${lng}`,
+                center: `${centerLat},${centerLng}`,
                 zoom: '20',
                 size: '640x640',
                 maptype: 'satellite',

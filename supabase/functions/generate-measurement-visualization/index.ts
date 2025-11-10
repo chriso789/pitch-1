@@ -106,9 +106,10 @@ serve(async (req) => {
     // Encode GeoJSON for URL
     const encodedGeoJSON = encodeURIComponent(JSON.stringify(geojson));
     
-    const mapboxUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/geojson(${encodedGeoJSON})/${lng},${lat},${zoom},0,0/${width}x${height}${retina}?access_token=${MAPBOX_TOKEN}`;
+    // Use calculated bounds center instead of metadata center for precise framing
+    const mapboxUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/geojson(${encodedGeoJSON})/${bounds.centerLng},${bounds.centerLat},${zoom},0,0/${width}x${height}${retina}?access_token=${MAPBOX_TOKEN}`;
 
-    console.log('Fetching Mapbox static image:', { lat, lng, zoom, features: geojson.features.length });
+    console.log('Fetching Mapbox static image:', { centerLat: bounds.centerLat, centerLng: bounds.centerLng, zoom, features: geojson.features.length });
 
     // Fetch static image
     const imageResponse = await fetch(mapboxUrl);
@@ -149,7 +150,7 @@ serve(async (req) => {
       bounds,
       zoom,
       dimensions: { width, height },
-      center: { lat, lng },
+      center: { lat: bounds.centerLat, lng: bounds.centerLng },
       feature_count: geojson.features.length,
       generated_at: new Date().toISOString(),
     };
