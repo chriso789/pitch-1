@@ -71,8 +71,38 @@ export function ComprehensiveMeasurementOverlay({
   
   // Store original data for reset
   const originalDataRef = useRef({ measurement, tags });
+  
+  // Cache the loaded satellite image to prevent re-downloading
+  const cachedImageRef = useRef<FabricImage | null>(null);
+  const cachedImageUrlRef = useRef<string>('');
 
-  // Initialize canvas with satellite image
+  // Load and cache satellite image
+  useEffect(() => {
+    // Only reload if URL changed
+    if (cachedImageUrlRef.current === satelliteImageUrl && cachedImageRef.current) {
+      console.log('Using cached satellite image');
+      return;
+    }
+
+    console.log('Loading satellite image:', satelliteImageUrl);
+    FabricImage.fromURL(satelliteImageUrl, {
+      crossOrigin: 'anonymous',
+    }).then((img) => {
+      cachedImageRef.current = img;
+      cachedImageUrlRef.current = satelliteImageUrl;
+      
+      // Update canvas background if canvas exists
+      if (fabricCanvas) {
+        fabricCanvas.backgroundImage = img;
+        fabricCanvas.renderAll();
+      }
+    }).catch((error) => {
+      console.error('Failed to load satellite image:', error);
+      toast.error('Failed to load satellite image');
+    });
+  }, [satelliteImageUrl, fabricCanvas]);
+
+  // Initialize canvas
   useEffect(() => {
     if (!canvasRef.current) return;
 
@@ -83,23 +113,19 @@ export function ComprehensiveMeasurementOverlay({
       selection: editMode === 'select',
     });
 
-    // Load satellite image as background using Fabric.js v6 API
-    FabricImage.fromURL(satelliteImageUrl, {
-      crossOrigin: 'anonymous',
-    }).then((img) => {
-      canvas.backgroundImage = img;
+    // Use cached image if available
+    if (cachedImageRef.current && cachedImageUrlRef.current === satelliteImageUrl) {
+      console.log('Applying cached image to new canvas');
+      canvas.backgroundImage = cachedImageRef.current;
       canvas.renderAll();
-    }).catch((error) => {
-      console.error('Failed to load satellite image:', error);
-      toast.error('Failed to load satellite image');
-    });
+    }
 
     setFabricCanvas(canvas);
 
     return () => {
       canvas.dispose();
     };
-  }, [satelliteImageUrl, canvasWidth, canvasHeight]);
+  }, [canvasWidth, canvasHeight]);
 
   // Update canvas selection mode
   useEffect(() => {
