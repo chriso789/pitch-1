@@ -94,7 +94,12 @@ export function PullMeasurementsButton({
 
           if (imageError) {
             console.error('Google Maps proxy error:', imageError);
+          } else if (imageData?.image_url) {
+            // Use cached URL directly
+            satelliteImageUrl = imageData.image_url;
+            console.log(`Google Maps ${imageData.cached ? 'cached' : 'fresh'} image loaded successfully`);
           } else if (imageData?.image) {
+            // Fallback to base64 if caching didn't work
             satelliteImageUrl = `data:image/png;base64,${imageData.image}`;
             console.log('Google Maps fallback image loaded successfully');
           } else {

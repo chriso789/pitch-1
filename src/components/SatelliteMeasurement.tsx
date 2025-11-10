@@ -79,12 +79,14 @@ export const SatelliteMeasurement: React.FC<SatelliteMeasurementProps> = ({
 
       if (error) throw error;
 
-      // Edge function returns the image URL or base64 data
-      if (data?.url) {
-        setSatelliteImageUrl(data.url);
+      // Edge function returns the cached image URL or base64 data
+      if (data?.image_url) {
+        setSatelliteImageUrl(data.image_url);
+        console.log(`Satellite image loaded from ${data.cached ? 'cache' : 'Google Maps'}`);
       } else if (data?.image) {
-        // If base64 data is returned
+        // Fallback to base64 if caching didn't work
         setSatelliteImageUrl(`data:image/png;base64,${data.image}`);
+        console.log('Satellite image loaded as base64 fallback');
       } else {
         throw new Error('No image data returned from edge function');
       }

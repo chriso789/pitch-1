@@ -110,10 +110,12 @@ export const EnhancedSatelliteMeasurement: React.FC<EnhancedSatelliteMeasurement
 
       if (imageError) throw imageError;
 
-      if (imageData?.url) {
-        setSatelliteImageUrl(imageData.url);
+      if (imageData?.image_url) {
+        setSatelliteImageUrl(imageData.image_url);
+        console.log(`Satellite image loaded from ${imageData.cached ? 'cache' : 'Google Maps'}`);
       } else if (imageData?.image) {
         setSatelliteImageUrl(`data:image/png;base64,${imageData.image}`);
+        console.log('Satellite image loaded as base64 fallback');
       } else {
         throw new Error('Failed to load satellite image');
       }

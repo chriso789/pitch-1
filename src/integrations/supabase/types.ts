@@ -8774,6 +8774,57 @@ export type Database = {
         }
         Relationships: []
       }
+      satellite_image_cache: {
+        Row: {
+          access_count: number | null
+          cache_key: string
+          created_at: string | null
+          file_size_bytes: number | null
+          height: number
+          id: string
+          last_accessed_at: string | null
+          lat: number
+          lng: number
+          maptype: string
+          storage_path: string
+          tenant_id: string | null
+          width: number
+          zoom: number
+        }
+        Insert: {
+          access_count?: number | null
+          cache_key: string
+          created_at?: string | null
+          file_size_bytes?: number | null
+          height: number
+          id?: string
+          last_accessed_at?: string | null
+          lat: number
+          lng: number
+          maptype: string
+          storage_path: string
+          tenant_id?: string | null
+          width: number
+          zoom: number
+        }
+        Update: {
+          access_count?: number | null
+          cache_key?: string
+          created_at?: string | null
+          file_size_bytes?: number | null
+          height?: number
+          id?: string
+          last_accessed_at?: string | null
+          lat?: number
+          lng?: number
+          maptype?: string
+          storage_path?: string
+          tenant_id?: string | null
+          width?: number
+          zoom?: number
+        }
+        Relationships: []
+      }
       satisfaction_surveys: {
         Row: {
           clj_number: string | null
@@ -13096,6 +13147,10 @@ export type Database = {
         Returns: undefined
       }
       unlockrows: { Args: { "": string }; Returns: number }
+      update_cache_access_stats: {
+        Args: { p_cache_key: string }
+        Returns: undefined
+      }
       update_campaign_avg_talk_time: {
         Args: { p_campaign_id: string; p_duration: number }
         Returns: undefined

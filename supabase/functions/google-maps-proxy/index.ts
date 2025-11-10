@@ -1,8 +1,120 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4'
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+// Initialize Supabase client for caching
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+// Generate cache key from satellite image parameters
+function generateCacheKey(params: URLSearchParams): string {
+  const center = params.get('center') || '';
+  const zoom = params.get('zoom') || '20';
+  const size = params.get('size') || '640x480';
+  const maptype = params.get('maptype') || 'satellite';
+  
+  return `${center}_z${zoom}_${size}_${maptype}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+}
+
+// Check if image exists in cache
+async function getCachedImage(cacheKey: string): Promise<{ url: string; cached: boolean } | null> {
+  try {
+    // Check cache metadata
+    const { data: cacheData, error: cacheError } = await supabase
+      .from('satellite_image_cache')
+      .select('storage_path')
+      .eq('cache_key', cacheKey)
+      .single();
+
+    if (cacheError || !cacheData) {
+      console.log('Cache miss:', cacheKey);
+      return null;
+    }
+
+    // Get public URL for cached image
+    const { data: urlData } = supabase.storage
+      .from('satellite-cache')
+      .getPublicUrl(cacheData.storage_path);
+
+    if (urlData?.publicUrl) {
+      // Update access statistics
+      await supabase.rpc('update_cache_access_stats', { p_cache_key: cacheKey });
+      
+      console.log('Cache hit:', cacheKey);
+      return { url: urlData.publicUrl, cached: true };
+    }
+
+    return null;
+  } catch (error) {
+    console.error('Error checking cache:', error);
+    return null;
+  }
+}
+
+// Store image in cache
+async function cacheImage(cacheKey: string, imageBuffer: ArrayBuffer, params: URLSearchParams): Promise<string | null> {
+  try {
+    const fileName = `${cacheKey}.png`;
+    
+    // Upload to storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('satellite-cache')
+      .upload(fileName, imageBuffer, {
+        contentType: 'image/png',
+        cacheControl: '31536000', // 1 year
+        upsert: true
+      });
+
+    if (uploadError) {
+      console.error('Error uploading to cache:', uploadError);
+      return null;
+    }
+
+    // Extract parameters for metadata
+    const center = params.get('center')?.split(',') || ['0', '0'];
+    const lat = parseFloat(center[0]);
+    const lng = parseFloat(center[1]);
+    const zoom = parseInt(params.get('zoom') || '20');
+    const size = params.get('size')?.split('x') || ['640', '480'];
+    const width = parseInt(size[0]);
+    const height = parseInt(size[1]);
+    const maptype = params.get('maptype') || 'satellite';
+
+    // Store metadata
+    const { error: metadataError } = await supabase
+      .from('satellite_image_cache')
+      .insert({
+        cache_key: cacheKey,
+        storage_path: fileName,
+        lat,
+        lng,
+        zoom,
+        width,
+        height,
+        maptype,
+        file_size_bytes: imageBuffer.byteLength
+      });
+
+    if (metadataError) {
+      console.error('Error storing cache metadata:', metadataError);
+    }
+
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('satellite-cache')
+      .getPublicUrl(fileName);
+
+    console.log('Image cached:', cacheKey);
+    return urlData?.publicUrl || null;
+  } catch (error) {
+    console.error('Error caching image:', error);
+    return null;
+  }
 }
 
 serve(async (req) => {
@@ -37,10 +149,26 @@ serve(async (req) => {
         url = `https://maps.googleapis.com/maps/api/directions/json?key=${apiKey}&${searchParams}`;
         break;
       case 'satellite':
-        // Google Maps Static API for satellite imagery - return secure URL
+        // Generate cache key from parameters
+        const cacheKey = generateCacheKey(searchParams);
+        
+        // Check cache first
+        const cachedResult = await getCachedImage(cacheKey);
+        if (cachedResult) {
+          console.log('Returning cached image:', cacheKey);
+          return new Response(JSON.stringify({ 
+            image_url: cachedResult.url,
+            cached: true,
+            status: 'success'
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        
+        // Cache miss - fetch from Google Maps
+        console.log('Fetching from Google Maps:', cacheKey);
         url = `https://maps.googleapis.com/maps/api/staticmap?key=${apiKey}&${searchParams}`;
         
-        // Fetch the image and return it as base64 to avoid exposing the API key
         const imageResponse = await fetch(url);
         if (!imageResponse.ok) {
           throw new Error('Failed to fetch satellite image');
@@ -48,9 +176,23 @@ serve(async (req) => {
         
         const imageBuffer = await imageResponse.arrayBuffer();
         
-        // Convert ArrayBuffer to base64 in chunks to avoid stack overflow
+        // Store in cache for future requests
+        const cachedUrl = await cacheImage(cacheKey, imageBuffer, searchParams);
+        
+        if (cachedUrl) {
+          // Return cached URL instead of base64
+          return new Response(JSON.stringify({ 
+            image_url: cachedUrl,
+            cached: false,
+            status: 'success'
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        
+        // Fallback to base64 if caching fails
         const uint8Array = new Uint8Array(imageBuffer);
-        const chunkSize = 8192; // Process 8KB at a time
+        const chunkSize = 8192;
         let binary = '';
         
         for (let i = 0; i < uint8Array.length; i += chunkSize) {
@@ -62,6 +204,7 @@ serve(async (req) => {
         
         return new Response(JSON.stringify({ 
           image: base64Image,
+          cached: false,
           status: 'success'
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
