@@ -57,14 +57,14 @@ serve(async (req) => {
 
     const userId = userData.user.id;
 
-    // Get user's tenant ID
+    // Get user's active tenant (supports multi-company switching)
     const { data: profile } = await supabase
       .from('profiles')
-      .select('tenant_id')
+      .select('active_tenant_id, tenant_id')
       .eq('id', userId)
       .single();
 
-    const tenantId = profile?.tenant_id;
+    const tenantId = profile?.active_tenant_id || profile?.tenant_id;
 
     console.log(`Processing ${action} for user ${userId}, tenant ${tenantId}`);
 

@@ -64,11 +64,12 @@ serve(async (req) => {
 
     const { data: profile } = await supabaseClient
       .from('profiles')
-      .select('tenant_id')
+      .select('active_tenant_id, tenant_id')
       .eq('id', user.id)
       .single();
 
     if (!profile) throw new Error('Profile not found');
+    const tenantId = profile.active_tenant_id || profile.tenant_id;
 
     // Check API rate limits
     await checkRateLimit(supabaseClient, profile.tenant_id, user.id);

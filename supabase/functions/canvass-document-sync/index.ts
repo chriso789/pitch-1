@@ -43,10 +43,10 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Get rep info
+    // Get rep's active tenant (supports multi-company switching)
     const { data: rep, error: repError } = await supabase
       .from('profiles')
-      .select('tenant_id')
+      .select('active_tenant_id, tenant_id')
       .eq('id', repId)
       .single();
 
@@ -57,12 +57,14 @@ Deno.serve(async (req) => {
       );
     }
 
+    const tenantId = rep.active_tenant_id || rep.tenant_id;
+
     // Verify contact exists and belongs to rep's tenant
     const { data: contact, error: contactError } = await supabase
       .from('contacts')
       .select('id, tenant_id')
       .eq('id', contactId)
-      .eq('tenant_id', rep.tenant_id)
+      .eq('tenant_id', tenantId)
       .single();
 
     if (contactError || !contact) {
@@ -80,7 +82,7 @@ Deno.serve(async (req) => {
         const file = value as File;
         const fileExt = file.name.split('.').pop();
         const fileName = `canvass_${contactId}_${Date.now()}.${fileExt}`;
-        const filePath = `canvass-documents/${rep.tenant_id}/${fileName}`;
+        const filePath = `canvass-documents/${tenantId}/${fileName}`;
 
         // Upload to Supabase Storage
         const { data: uploadData, error: uploadError } = await supabase.storage
@@ -97,7 +99,7 @@ Deno.serve(async (req) => {
 
         // Create document record
         const documentData = {
-          tenant_id: rep.tenant_id,
+          tenant_id: tenantId,
           contact_id: contactId,
           filename: file.name,
           file_path: filePath,

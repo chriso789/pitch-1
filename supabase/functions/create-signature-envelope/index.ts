@@ -66,14 +66,15 @@ const handler = async (req: Request): Promise<Response> => {
       expires_in_days = 30 
     }: CreateEnvelopeRequest = await req.json();
 
-    // Get user's tenant_id
+    // Get user's active tenant (supports multi-company switching)
     const { data: profile } = await supabaseClient
       .from('profiles')
-      .select('tenant_id')
+      .select('active_tenant_id, tenant_id')
       .eq('id', user.id)
       .single();
 
-    if (!profile?.tenant_id) {
+    const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+    if (!tenantId) {
       return new Response(JSON.stringify({ error: "User profile not found" }), {
         status: 404,
         headers: { "Content-Type": "application/json", ...corsHeaders },

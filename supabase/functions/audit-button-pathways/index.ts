@@ -28,14 +28,14 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Unauthorized');
     }
 
-    // Get tenant_id
+    // Get active tenant (supports multi-company switching)
     const { data: profile } = await supabase
       .from('profiles')
-      .select('tenant_id')
+      .select('active_tenant_id, tenant_id')
       .eq('id', user.id)
       .single();
 
-    const tenantId = profile?.tenant_id || user.id;
+    const tenantId = profile?.active_tenant_id || profile?.tenant_id || user.id;
 
     // Simulate file scanning (in production, this would scan actual files)
     const mockFiles = files_to_audit || [

@@ -49,14 +49,14 @@ serve(async (req) => {
       );
     }
 
-    // Get tenant_id
+    // Get active tenant (supports multi-company switching)
     const { data: profile } = await supabaseClient
       .from('profiles')
-      .select('tenant_id')
+      .select('active_tenant_id, tenant_id')
       .eq('id', user.id)
       .single();
 
-    const tenantId = profile?.tenant_id;
+    const tenantId = profile?.active_tenant_id || profile?.tenant_id;
 
     // Format phone number (remove any non-digits, ensure E.164 format)
     const cleanedNumber = phoneNumber.replace(/\D/g, '');

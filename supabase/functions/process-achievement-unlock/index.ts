@@ -30,20 +30,22 @@ serve(async (req) => {
 
     console.log(`Processing achievement unlock for user: ${user_id}`);
 
-    // Get user's tenant_id
+    // Get user's active tenant (supports multi-company switching)
     const { data: profile, error: profileError } = await supabaseClient
       .from("profiles")
-      .select("tenant_id")
+      .select("active_tenant_id, tenant_id")
       .eq("id", user_id)
       .single();
 
     if (profileError) throw profileError;
 
+    const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+
     // Get all active achievements for the tenant
     const { data: achievements, error: achievementsError } = await supabaseClient
       .from("canvass_achievements")
       .select("*")
-      .eq("tenant_id", profile.tenant_id)
+      .eq("tenant_id", tenantId)
       .eq("is_active", true);
 
     if (achievementsError) throw achievementsError;
@@ -90,7 +92,7 @@ serve(async (req) => {
         const { error: insertError } = await supabaseClient
           .from("user_achievements")
           .insert({
-            tenant_id: profile.tenant_id,
+            tenant_id: tenantId,
             user_id: user_id,
             achievement_id: achievement.id,
           });
@@ -105,7 +107,7 @@ serve(async (req) => {
           const { error: rewardError } = await supabaseClient
             .from("achievement_rewards")
             .insert({
-              tenant_id: profile.tenant_id,
+              tenant_id: tenantId,
               user_id: user_id,
               achievement_id: achievement.id,
               reward_type: achievement.reward_type,

@@ -48,10 +48,10 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Get rep's tenant
+      // Get rep's active tenant (supports multi-company switching)
       const { data: rep, error: repError } = await supabase
         .from('profiles')
-        .select('tenant_id')
+        .select('active_tenant_id, tenant_id')
         .eq('id', repId)
         .single();
 
@@ -62,11 +62,13 @@ Deno.serve(async (req) => {
         );
       }
 
+      const tenantId = rep.active_tenant_id || rep.tenant_id;
+
       // Get available dispositions
       const { data: dispositions, error: dispError } = await supabase
         .from('dialer_dispositions')
         .select('id, name, description, is_positive')
-        .eq('tenant_id', rep.tenant_id)
+        .eq('tenant_id', tenantId)
         .eq('is_active', true)
         .order('name');
 
@@ -99,10 +101,10 @@ Deno.serve(async (req) => {
         );
       }
 
-      // Get rep info
+      // Get rep's active tenant (supports multi-company switching)
       const { data: rep, error: repError } = await supabase
         .from('profiles')
-        .select('tenant_id')
+        .select('active_tenant_id, tenant_id')
         .eq('id', repId)
         .single();
 
@@ -113,12 +115,14 @@ Deno.serve(async (req) => {
         );
       }
 
+      const tenantId = rep.active_tenant_id || rep.tenant_id;
+
       // Get disposition details
       const { data: disposition, error: dispError } = await supabase
         .from('dialer_dispositions')
         .select('name, description, is_positive')
         .eq('id', disposition_id)
-        .eq('tenant_id', rep.tenant_id)
+        .eq('tenant_id', tenantId)
         .single();
 
       if (dispError || !disposition) {
@@ -148,7 +152,7 @@ Deno.serve(async (req) => {
           }
         })
         .eq('id', contact_id)
-        .eq('tenant_id', rep.tenant_id);
+        .eq('tenant_id', tenantId);
 
       if (updateError) {
         console.error('Error updating contact:', updateError);
@@ -164,14 +168,14 @@ Deno.serve(async (req) => {
           .from('pipeline_entries')
           .select('id')
           .eq('contact_id', contact_id)
-          .eq('tenant_id', rep.tenant_id)
+          .eq('tenant_id', tenantId)
           .single();
 
         if (!existingPipeline) {
           await supabase
             .from('pipeline_entries')
             .insert({
-              tenant_id: rep.tenant_id,
+              tenant_id: tenantId,
               contact_id: contact_id,
               status: 'lead',
               lead_quality_score: 80,

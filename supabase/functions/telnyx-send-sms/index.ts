@@ -41,14 +41,14 @@ serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    // Get user's tenant
+    // Get user's active tenant (supports multi-company switching)
     const { data: profile } = await supabaseAdmin
       .from('profiles')
-      .select('tenant_id')
+      .select('active_tenant_id, tenant_id')
       .eq('id', user.id)
       .single();
 
-    const tenantId = profile?.tenant_id;
+    const tenantId = profile?.active_tenant_id || profile?.tenant_id;
 
     // Parse request body
     const { to, message, contactId, jobId } = await req.json();

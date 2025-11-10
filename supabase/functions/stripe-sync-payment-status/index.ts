@@ -28,14 +28,15 @@ Deno.serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    // Get user's tenant_id
+    // Get user's active tenant (supports multi-company switching)
     const { data: profile } = await supabase
       .from('profiles')
-      .select('tenant_id')
+      .select('active_tenant_id, tenant_id')
       .eq('id', user.id)
       .single();
 
-    if (!profile) {
+    const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+    if (!tenantId) {
       throw new Error('Profile not found');
     }
 
@@ -48,7 +49,7 @@ Deno.serve(async (req) => {
     let query = supabase
       .from('payments')
       .select('id, stripe_payment_intent_id, status')
-      .eq('tenant_id', profile.tenant_id)
+      .eq('tenant_id', tenantId)
       .not('stripe_payment_intent_id', 'is', null);
 
     if (paymentIds.length > 0) {

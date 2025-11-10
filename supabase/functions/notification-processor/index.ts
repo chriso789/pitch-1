@@ -49,14 +49,15 @@ serve(async (req) => {
       throw new Error('Invalid authorization token');
     }
 
-    // Get user's tenant ID
+    // Get user's active tenant (supports multi-company switching)
     const { data: profile } = await supabase
       .from('profiles')
-      .select('tenant_id')
+      .select('active_tenant_id, tenant_id')
       .eq('id', user.id)
       .single();
 
-    if (!profile?.tenant_id) {
+    const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+    if (!tenantId) {
       throw new Error('User tenant not found');
     }
 

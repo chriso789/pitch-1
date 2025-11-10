@@ -24,11 +24,12 @@ Deno.serve(async (req) => {
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('tenant_id')
+      .select('active_tenant_id, tenant_id')
       .eq('id', user.id)
       .single();
 
-    if (!profile?.tenant_id) {
+    const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+    if (!tenantId) {
       throw new Error('No tenant found');
     }
 
@@ -36,7 +37,7 @@ Deno.serve(async (req) => {
     const { data: connection } = await supabase
       .from('qbo_connections')
       .select('*')
-      .eq('tenant_id', profile.tenant_id)
+      .eq('tenant_id', tenantId)
       .eq('is_active', true)
       .single();
 

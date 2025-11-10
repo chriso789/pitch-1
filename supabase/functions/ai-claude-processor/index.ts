@@ -48,14 +48,15 @@ async function logMetrics(
   requestId?: string
 ) {
   try {
-    // Get user's tenant_id
+    // Get user's active tenant (supports multi-company switching)
     const { data: profile } = await supabaseClient
       .from('profiles')
-      .select('tenant_id')
+      .select('active_tenant_id, tenant_id')
       .eq('id', userId)
       .single()
 
-    if (!profile?.tenant_id) {
+    const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+    if (!tenantId) {
       console.warn('⚠️ No tenant_id found for user, skipping metrics logging')
       return
     }

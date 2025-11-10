@@ -30,14 +30,15 @@ Deno.serve(async (req) => {
 
     const { contactId, returnUrl } = await req.json();
 
-    // Get user's tenant_id
+    // Get user's active tenant (supports multi-company switching)
     const { data: profile } = await supabase
       .from('profiles')
-      .select('tenant_id')
+      .select('active_tenant_id, tenant_id')
       .eq('id', user.id)
       .single();
 
-    if (!profile) {
+    const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+    if (!tenantId) {
       throw new Error('Profile not found');
     }
 
@@ -46,7 +47,7 @@ Deno.serve(async (req) => {
       .from('contacts')
       .select('stripe_customer_id, email, first_name, last_name')
       .eq('id', contactId)
-      .eq('tenant_id', profile.tenant_id)
+      .eq('tenant_id', tenantId)
       .single();
 
     if (!contact) {
@@ -62,7 +63,7 @@ Deno.serve(async (req) => {
         name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim(),
         metadata: {
           contact_id: contactId,
-          tenant_id: profile.tenant_id,
+          tenant_id: tenantId,
         },
       });
       

@@ -36,18 +36,17 @@ Deno.serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    // Get tenant_id
+    // Get active tenant (supports multi-company switching)
     const { data: profile } = await supabase
       .from('profiles')
-      .select('tenant_id')
+      .select('active_tenant_id, tenant_id')
       .eq('id', user.id)
       .single();
 
-    if (!profile) {
+    const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+    if (!tenantId) {
       throw new Error('Profile not found');
     }
-
-    const tenant_id = profile.tenant_id;
 
     // Parse request body
     const { items, vendor_id, effective_date } = await req.json() as {
@@ -66,11 +65,11 @@ Deno.serve(async (req) => {
 
     const effectiveDate = effective_date || new Date().toISOString().split('T')[0];
 
-    console.log(`Importing ${items.length} SRS pricelist items for tenant ${tenant_id}`);
+    console.log(`Importing ${items.length} SRS pricelist items for tenant ${tenantId}`);
 
     // Prepare supplier_pricebooks records
     const pricebookRecords = items.map(item => ({
-      tenant_id,
+      tenant_id: tenantId,
       supplier_name: 'SRS Distribution',
       item_code: item.item_code,
       item_description: item.product,
@@ -105,7 +104,7 @@ Deno.serve(async (req) => {
 
     // Create or update products for commonly used items
     const productRecords = items.map(item => ({
-      tenant_id,
+      tenant_id: tenantId,
       sku: item.item_code,
       name: item.product,
       description: `${item.brand || ''} ${item.product}`.trim(),
@@ -140,7 +139,7 @@ Deno.serve(async (req) => {
 
     // Update price_cache
     const cacheRecords = items.map(item => ({
-      tenant_id,
+      tenant_id: tenantId,
       sku: item.item_code,
       vendor_id,
       branch: 'SRS-FL',
