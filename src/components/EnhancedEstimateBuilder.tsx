@@ -463,7 +463,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Calculator className="h-5 w-5" />
-            Excel-Style Estimate Builder
+            Estimate Builder
             <div className="ml-auto flex items-center gap-2">
               {templateId && templates.length > 0 && (
                 <Badge variant="secondary" className="text-xs">
