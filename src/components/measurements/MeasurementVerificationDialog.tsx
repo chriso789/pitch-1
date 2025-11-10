@@ -7,6 +7,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Home, ArrowRight as ArrowRightIcon } from 'lucide-react';
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { PolygonEditor } from './PolygonEditor';
 import { ComprehensiveMeasurementOverlay } from './ComprehensiveMeasurementOverlay';
 import { ManualMeasurementEditor } from './ManualMeasurementEditor';
@@ -41,6 +42,7 @@ interface MeasurementVerificationDialogProps {
   satelliteImageUrl?: string;
   centerLat: number;
   centerLng: number;
+  pipelineEntryId?: string;
   onAccept: (adjustedMeasurement?: any) => void;
   onReject: () => void;
 }
@@ -53,9 +55,11 @@ export function MeasurementVerificationDialog({
   satelliteImageUrl: initialSatelliteImageUrl,
   centerLat,
   centerLng,
+  pipelineEntryId,
   onAccept,
   onReject
 }: MeasurementVerificationDialogProps) {
+  const navigate = useNavigate();
   const { toast } = useToast();
   const [isAccepting, setIsAccepting] = useState(false);
   const [adjustedPolygon, setAdjustedPolygon] = useState<[number, number][] | null>(null);
@@ -261,17 +265,14 @@ export function MeasurementVerificationDialog({
   const handleAcceptAndCreateEstimate = async () => {
     await handleAccept();
     
-    // Navigate to estimate builder with auto-populate
-    if (measurement?.property_id) {
-      const { data: pipelineEntry } = await (supabase as any)
-        .from('pipeline_entries')
-        .select('id')
-        .eq('property_id', measurement.property_id)
-        .single();
-      
-      if (pipelineEntry) {
-        window.location.href = `/lead/${pipelineEntry.id}?tab=estimate&autoPopulate=true`;
-      }
+    if (pipelineEntryId) {
+      navigate(`/lead/${pipelineEntryId}?tab=estimate&autoPopulate=true`);
+    } else {
+      toast({
+        title: "Cannot Navigate",
+        description: "Missing pipeline entry ID",
+        variant: "destructive",
+      });
     }
   };
 

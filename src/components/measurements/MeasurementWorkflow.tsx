@@ -339,6 +339,7 @@ export function MeasurementWorkflow({
           satelliteImageUrl={measurementData.satelliteImageUrl}
           centerLat={lat}
           centerLng={lng}
+          pipelineEntryId={pipelineEntryId}
           onAccept={handleVerificationAccept}
           onReject={handleVerificationReject}
         />
