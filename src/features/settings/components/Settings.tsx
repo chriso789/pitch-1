@@ -31,6 +31,7 @@ import { IntegrationsSettings } from "@/components/settings/IntegrationsSettings
 import { SecurityAudit } from "@/components/settings/SecurityAudit";
 import { CacheManagement } from "@/components/settings/CacheManagement";
 import { CompanyManagement } from "@/features/settings/components/CompanyManagement";
+import { CompanyActivityLog } from "@/features/settings/components/CompanyActivityLog";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -251,6 +252,10 @@ export const Settings = () => {
 
         <TabsContent value="companies" className="space-y-6">
           <CompanyManagement />
+        </TabsContent>
+
+        <TabsContent value="company-activity" className="space-y-6">
+          <CompanyActivityLog />
         </TabsContent>
       </Tabs>
     </div>

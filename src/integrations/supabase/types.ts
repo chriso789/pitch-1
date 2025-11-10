@@ -1897,6 +1897,69 @@ export type Database = {
           },
         ]
       }
+      company_activity_log: {
+        Row: {
+          action_description: string
+          action_type: string
+          created_at: string
+          id: string
+          ip_address: unknown
+          location_info: Json | null
+          metadata: Json | null
+          resource_id: string | null
+          resource_type: string | null
+          severity: string
+          tenant_id: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          action_description: string
+          action_type: string
+          created_at?: string
+          id?: string
+          ip_address?: unknown
+          location_info?: Json | null
+          metadata?: Json | null
+          resource_id?: string | null
+          resource_type?: string | null
+          severity?: string
+          tenant_id: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          action_description?: string
+          action_type?: string
+          created_at?: string
+          id?: string
+          ip_address?: unknown
+          location_info?: Json | null
+          metadata?: Json | null
+          resource_id?: string | null
+          resource_type?: string | null
+          severity?: string
+          tenant_id?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_activity_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_activity_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       competition_leaderboards: {
         Row: {
           competition_id: string
@@ -12516,6 +12579,18 @@ export type Database = {
       }
       is_order_fully_approved: { Args: { p_po_id: string }; Returns: boolean }
       jsonb_get_path: { Args: { obj: Json; path: string }; Returns: string }
+      log_company_activity: {
+        Args: {
+          p_action_description: string
+          p_action_type: string
+          p_metadata?: Json
+          p_resource_id?: string
+          p_resource_type?: string
+          p_severity?: string
+          p_tenant_id: string
+        }
+        Returns: string
+      }
       log_function_error: {
         Args: {
           p_context?: Json
