@@ -173,3 +173,88 @@ const POLYGON_COLORS = [
 export function getPolygonColor(index: number): string {
   return POLYGON_COLORS[index % POLYGON_COLORS.length];
 }
+
+/**
+ * Smart roof type detection based on facet geometry
+ */
+export interface RoofTypeDetection {
+  type: 'Gable' | 'Hip' | 'Flat' | 'Mansard' | 'Gambrel' | 'Dutch Hip' | 'Complex';
+  confidence: number;
+  complexity: number; // 1-5 scale
+}
+
+export function detectRoofType(measurement: any, tags: Record<string, any>): RoofTypeDetection {
+  const faceCount = measurement?.faces?.length || 0;
+  const ridgeCount = tags['ridge_lines']?.length || 0;
+  const hipCount = tags['hip_lines']?.length || 0;
+  const valleyCount = tags['valley_lines']?.length || 0;
+  
+  // Calculate complexity score (1-5 scale)
+  const complexity = Math.min(5, Math.round(
+    1 + (faceCount * 0.2) + (valleyCount * 0.3) + (hipCount * 0.1)
+  ));
+  
+  let type: RoofTypeDetection['type'] = 'Complex';
+  let confidence = 0.5;
+  
+  // Flat roof detection
+  if (faceCount <= 2 && ridgeCount === 0 && hipCount === 0) {
+    type = 'Flat';
+    confidence = 0.9;
+  }
+  // Gable roof detection (2-4 faces, has ridge, minimal hips)
+  else if (faceCount >= 2 && faceCount <= 4 && ridgeCount >= 1 && hipCount <= 1) {
+    type = 'Gable';
+    confidence = 0.85;
+  }
+  // Hip roof detection (4+ faces, multiple hips)
+  else if (faceCount >= 4 && hipCount >= 2) {
+    type = 'Hip';
+    confidence = 0.8;
+  }
+  // Dutch Hip (combination of hip and gable features)
+  else if (faceCount >= 4 && ridgeCount >= 1 && hipCount >= 2) {
+    type = 'Dutch Hip';
+    confidence = 0.75;
+  }
+  // Gambrel/Mansard (lots of faces, multiple ridges)
+  else if (faceCount >= 6 && ridgeCount >= 2) {
+    type = 'Gambrel';
+    confidence = 0.7;
+  }
+  // Complex (everything else)
+  else {
+    type = 'Complex';
+    confidence = 0.6;
+  }
+  
+  return { type, confidence, complexity };
+}
+
+/**
+ * Snap a point to the nearest edge of a polygon
+ */
+export function snapToEdge(point: Point, polygon: Point[], threshold: number = 15): Point | null {
+  const closestEdgeIndex = findClosestEdge(point, polygon);
+  
+  if (closestEdgeIndex === null) return null;
+  
+  const start = polygon[closestEdgeIndex];
+  const end = polygon[(closestEdgeIndex + 1) % polygon.length];
+  
+  // Calculate projection point on edge
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.sqrt(dx * dx + dy * dy);
+  
+  if (length === 0) return null;
+  
+  const t = Math.max(0, Math.min(1, 
+    ((point.x - start.x) * dx + (point.y - start.y) * dy) / (length * length)
+  ));
+  
+  const projX = start.x + t * dx;
+  const projY = start.y + t * dy;
+  
+  return { x: projX, y: projY };
+}

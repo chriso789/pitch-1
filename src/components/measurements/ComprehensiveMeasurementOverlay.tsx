@@ -14,6 +14,8 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useImageCache } from "@/contexts/ImageCacheContext";
+import { snapToEdge } from "@/utils/measurementGeometry";
+import * as turf from '@turf/turf';
 
 interface Point {
   x: number;
@@ -256,9 +258,23 @@ export function ComprehensiveMeasurementOverlay({
         selectable: editMode === 'select',
         hasControls: true,
         hasBorders: true,
+        cornerSize: 12,
+        cornerColor: 'white',
+        cornerStrokeColor: `hsl(${(index * 60) % 360}, 70%, 60%)`,
+        transparentCorners: false,
+        lockRotation: true,
+        lockScalingX: false,
+        lockScalingY: false,
       });
 
       (polygon as any).data = { type: 'facet', editable: true, faceIndex: index };
+      
+      // Enable interactive corner dragging
+      if (editMode === 'select') {
+        polygon.on('modified', () => handleFacetModified(polygon, index));
+        polygon.on('moving', () => handleFacetModified(polygon, index));
+      }
+      
       fabricCanvas.add(polygon);
 
       // Add area label
@@ -277,6 +293,57 @@ export function ComprehensiveMeasurementOverlay({
       (label as any).data = { type: 'label' };
       fabricCanvas.add(label);
     });
+  };
+
+  const handleFacetModified = (polygon: Polygon, faceIndex: number) => {
+    // Get updated points from the polygon
+    const points = polygon.points;
+    if (!points || points.length < 3) return;
+
+    // Normalize coordinates back to 0-1 range
+    const normalizedPoints = points.map((p: any) => [
+      p.x / canvasWidth,
+      p.y / canvasHeight
+    ]);
+
+    // Calculate new area using Turf.js
+    const turfPolygon = turf.polygon([[...normalizedPoints.map((p: number[]) => [p[0], p[1]]), normalizedPoints[0]]]);
+    const areaInDegrees = turf.area(turfPolygon);
+    
+    // Convert to square feet (approximate, depends on location)
+    const areaSqft = areaInDegrees * 10763910.4; // 1 degree^2 ≈ 10.76M sq ft at equator
+
+    // Update the face in measurement data
+    const updatedFaces = [...measurement.faces];
+    updatedFaces[faceIndex] = {
+      ...updatedFaces[faceIndex],
+      boundary: normalizedPoints,
+      area: areaSqft,
+      plan_area_sqft: areaSqft,
+    };
+
+    const updatedMeasurement = {
+      ...measurement,
+      faces: updatedFaces,
+    };
+
+    setHasChanges(true);
+    onMeasurementUpdate(updatedMeasurement, tags);
+    
+    // Redraw to show updated label
+    setTimeout(() => {
+      if (fabricCanvas) {
+        const objects = fabricCanvas.getObjects();
+        objects.forEach(obj => {
+          const objData = (obj as any).data;
+          if (objData?.type !== 'background') {
+            fabricCanvas.remove(obj);
+          }
+        });
+        drawAllMeasurements();
+        fabricCanvas.renderAll();
+      }
+    }, 100);
   };
 
   const drawFeatureLines = (type: string, lines: any[], color: string) => {
@@ -358,18 +425,65 @@ export function ComprehensiveMeasurementOverlay({
   };
 
   const handleAddLine = (point: Point) => {
+    // Try to snap to facet edges
+    let snappedPoint = point;
+    if (measurement?.faces) {
+      for (const face of measurement.faces) {
+        if (!face.boundary || face.boundary.length < 3) continue;
+        
+        const facePoints = face.boundary.map((coord: number[]) => ({
+          x: coord[0] * canvasWidth,
+          y: coord[1] * canvasHeight,
+        }));
+        
+        const snapResult = snapToEdge(point, facePoints, 20);
+        if (snapResult) {
+          snappedPoint = snapResult;
+          // Show visual feedback for snap
+          drawSnapIndicator(snapResult);
+          break;
+        }
+      }
+    }
+    
     if (drawPoints.length === 0) {
       // First point
-      setDrawPoints([point]);
-      drawTempPoint(point);
-      toast.info("Click to set end point");
+      setDrawPoints([snappedPoint]);
+      drawTempPoint(snappedPoint);
+      toast.info("Click to set end point (snaps to edges)");
     } else if (drawPoints.length === 1) {
       // Second point - complete the line
-      const newLine = { start: drawPoints[0], end: point };
+      const newLine = { start: drawPoints[0], end: snappedPoint };
       addNewLine(editMode.replace('add-', '') as 'ridge' | 'hip' | 'valley', newLine);
       setDrawPoints([]);
       clearTempDrawings();
     }
+  };
+
+  const drawSnapIndicator = (point: Point) => {
+    if (!fabricCanvas) return;
+    
+    const indicator = new Circle({
+      left: point.x,
+      top: point.y,
+      radius: 8,
+      fill: 'transparent',
+      stroke: 'yellow',
+      strokeWidth: 2,
+      originX: 'center',
+      originY: 'center',
+      selectable: false,
+    });
+    (indicator as any).data = { type: 'temp' };
+    fabricCanvas.add(indicator);
+    
+    // Remove after 500ms
+    setTimeout(() => {
+      fabricCanvas.remove(indicator);
+      fabricCanvas.renderAll();
+    }, 500);
+    
+    fabricCanvas.renderAll();
   };
 
   const handleAddFacetPoint = (point: Point) => {

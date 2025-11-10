@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight } from 'lucide-react';
+import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Home } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { PolygonEditor } from './PolygonEditor';
 import { ComprehensiveMeasurementOverlay } from './ComprehensiveMeasurementOverlay';
@@ -14,6 +14,7 @@ import { parseWKTPolygon, calculatePolygonAreaSqft, calculatePerimeterFt } from 
 import { useManualVerification } from '@/hooks/useMeasurement';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { detectRoofType } from '@/utils/measurementGeometry';
 
 // Industry-standard roof pitch multipliers
 const PITCH_MULTIPLIERS: Record<string, number> = {
@@ -67,6 +68,16 @@ export function MeasurementVerificationDialog({
   const [adjustedCenterLng, setAdjustedCenterLng] = useState(centerLng);
   
   const manualVerify = useManualVerification();
+  
+  // Smart roof type detection
+  const [detectedRoofType, setDetectedRoofType] = useState<ReturnType<typeof detectRoofType> | null>(null);
+  
+  useEffect(() => {
+    if (measurement && tags) {
+      const detection = detectRoofType(measurement, tags);
+      setDetectedRoofType(detection);
+    }
+  }, [measurement, tags]);
   
   // Update satellite image URL when prop changes
   useEffect(() => {
@@ -387,6 +398,9 @@ export function MeasurementVerificationDialog({
                   onMeasurementUpdate={(updatedMeasurement, updatedTags) => {
                     Object.assign(measurement, updatedMeasurement);
                     Object.assign(tags, updatedTags);
+                    // Re-detect roof type on changes
+                    const detection = detectRoofType(updatedMeasurement, updatedTags);
+                    setDetectedRoofType(detection);
                   }}
                   canvasWidth={640}
                   canvasHeight={480}
@@ -402,6 +416,27 @@ export function MeasurementVerificationDialog({
                   canvasWidth={640}
                   canvasHeight={480}
                 />
+              )}
+              
+              {/* Smart Roof Type Detection Display */}
+              {detectedRoofType && (
+                <div className="p-3 bg-muted/50 rounded-lg">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Home className="h-4 w-4 text-muted-foreground" />
+                      <span className="text-sm font-medium">Detected Roof Type:</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Badge variant="default">{detectedRoofType.type}</Badge>
+                      <Badge variant="outline" className="text-xs">
+                        {Math.round(detectedRoofType.confidence * 100)}% confident
+                      </Badge>
+                      <Badge variant="secondary" className="text-xs">
+                        Complexity: {detectedRoofType.complexity}/5
+                      </Badge>
+                    </div>
+                  </div>
+                </div>
               )}
               
               {/* Source and Confidence */}
