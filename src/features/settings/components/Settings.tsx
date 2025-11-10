@@ -30,6 +30,7 @@ import { LeadSources } from "@/features/leads/components/LeadSources";
 import { IntegrationsSettings } from "@/components/settings/IntegrationsSettings";
 import { SecurityAudit } from "@/components/settings/SecurityAudit";
 import { CacheManagement } from "@/components/settings/CacheManagement";
+import { CompanyManagement } from "@/features/settings/components/CompanyManagement";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -246,6 +247,10 @@ export const Settings = () => {
 
         <TabsContent value="cache" className="space-y-6">
           <CacheManagement />
+        </TabsContent>
+
+        <TabsContent value="companies" className="space-y-6">
+          <CompanyManagement />
         </TabsContent>
       </Tabs>
     </div>

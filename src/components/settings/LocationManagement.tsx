@@ -8,6 +8,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
 import { MapPin, Plus, Edit, Trash2, Building2, Users } from "lucide-react";
+import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
+
+interface LocationManagementProps {
+  tenantId?: string; // If provided, manage locations for this specific tenant
+}
 
 interface Location {
   id: string;
@@ -23,7 +28,7 @@ interface Location {
   created_at: string;
 }
 
-export const LocationManagement = () => {
+export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) => {
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -37,17 +42,28 @@ export const LocationManagement = () => {
     phone: '',
     email: ''
   });
+  const { activeCompanyId } = useCompanySwitcher();
 
   useEffect(() => {
     fetchLocations();
-  }, []);
+  }, [tenantId, activeCompanyId]);
 
   const fetchLocations = async () => {
     try {
       setLoading(true);
+      
+      // Use provided tenantId or active company
+      const effectiveTenantId = tenantId || activeCompanyId;
+      
+      if (!effectiveTenantId) {
+        setLoading(false);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('locations')
         .select('*')
+        .eq('tenant_id', effectiveTenantId)
         .order('name');
 
       if (error) throw error;
