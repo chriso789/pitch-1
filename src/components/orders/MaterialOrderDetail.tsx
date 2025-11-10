@@ -11,6 +11,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { useMaterialOrders, MaterialOrder, MaterialOrderItem } from '@/hooks/useMaterialOrders';
+import { PriceLockStatus } from './PriceLockStatus';
 import { Loader2, Package, Send, XCircle, CheckCircle } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from 'sonner';
@@ -173,6 +174,9 @@ export const MaterialOrderDetail: React.FC<MaterialOrderDetailProps> = ({ orderI
           </div>
         </CardContent>
       </Card>
+
+      {/* Price Lock Status */}
+      <PriceLockStatus items={items} />
 
       {/* Order Items */}
       <Card>

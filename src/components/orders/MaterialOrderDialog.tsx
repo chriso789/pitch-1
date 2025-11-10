@@ -17,9 +17,12 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/integrations/supabase/client';
 import { useMaterialOrders } from '@/hooks/useMaterialOrders';
-import { Loader2 } from 'lucide-react';
+import { useLivePricing } from '@/hooks/useLivePricing';
+import { LivePricingStatus } from './LivePricingStatus';
+import { Loader2, AlertCircle } from 'lucide-react';
 import { toast } from 'sonner';
 
 interface MaterialOrderDialogProps {
@@ -36,8 +39,12 @@ export const MaterialOrderDialog: React.FC<MaterialOrderDialogProps> = ({
   onSuccess
 }) => {
   const { createOrderFromEstimate, loading } = useMaterialOrders();
+  const { fetchLivePricing, applyLivePricing, refreshing } = useLivePricing();
   const [vendors, setVendors] = useState<any[]>([]);
   const [loadingVendors, setLoadingVendors] = useState(true);
+  const [estimateItems, setEstimateItems] = useState<any[]>([]);
+  const [pricingData, setPricingData] = useState<any[]>([]);
+  const [loadingPricing, setLoadingPricing] = useState(false);
   const [formData, setFormData] = useState({
     vendorId: '',
     branchCode: 'SRS-FL-CENTRAL',
@@ -48,8 +55,15 @@ export const MaterialOrderDialog: React.FC<MaterialOrderDialogProps> = ({
   useEffect(() => {
     if (open) {
       fetchVendors();
+      fetchEstimateItems();
     }
   }, [open]);
+
+  useEffect(() => {
+    if (formData.vendorId && estimateItems.length > 0) {
+      handleRefreshPricing();
+    }
+  }, [formData.vendorId, estimateItems]);
 
   const fetchVendors = async () => {
     try {
@@ -76,6 +90,59 @@ export const MaterialOrderDialog: React.FC<MaterialOrderDialogProps> = ({
       toast.error('Failed to load vendors');
     } finally {
       setLoadingVendors(false);
+    }
+  };
+
+  const fetchEstimateItems = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('estimate_line_items')
+        .select('*')
+        .eq('estimate_id', estimateId)
+        .eq('item_category', 'material')
+        .order('sort_order');
+
+      if (error) throw error;
+
+      const items = (data || []).map(item => ({
+        sku: item.srs_item_code,
+        item_description: item.description,
+        quantity: item.quantity,
+        unit_price: item.unit_cost,
+        last_price_updated: undefined // Will be fetched from pricing API
+      }));
+
+      setEstimateItems(items);
+      setPricingData(items);
+    } catch (error) {
+      console.error('Error fetching estimate items:', error);
+      toast.error('Failed to load estimate items');
+    }
+  };
+
+  const handleRefreshPricing = async () => {
+    if (estimateItems.length === 0) return;
+
+    setLoadingPricing(true);
+    try {
+      const enrichedItems = await fetchLivePricing(
+        estimateItems,
+        formData.vendorId,
+        formData.branchCode
+      );
+      setPricingData(enrichedItems);
+      
+      const hasSignificantChanges = enrichedItems.some(
+        item => item.price_variance_pct && Math.abs(item.price_variance_pct) > 5
+      );
+      
+      if (hasSignificantChanges) {
+        toast.warning('Significant price changes detected. Review pricing before creating PO.');
+      }
+    } catch (error) {
+      console.error('Error refreshing pricing:', error);
+    } finally {
+      setLoadingPricing(false);
     }
   };
 
@@ -125,6 +192,28 @@ export const MaterialOrderDialog: React.FC<MaterialOrderDialogProps> = ({
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Pricing Status */}
+            {pricingData.length > 0 && (
+              <LivePricingStatus
+                items={pricingData}
+                onRefreshPricing={handleRefreshPricing}
+                refreshing={refreshing || loadingPricing}
+              />
+            )}
+
+            {/* Warning for stale prices */}
+            {pricingData.some(item => {
+              if (!item.last_price_updated) return true;
+              const priceAge = new Date().getTime() - new Date(item.last_price_updated).getTime();
+              return priceAge > 24 * 60 * 60 * 1000;
+            }) && (
+              <Alert>
+                <AlertCircle className="h-4 w-4" />
+                <AlertDescription>
+                  Some prices are over 24 hours old. Consider refreshing pricing before creating the PO to ensure accurate costs.
+                </AlertDescription>
+              </Alert>
+            )}
             <div className="space-y-2">
               <Label htmlFor="vendor">Vendor *</Label>
               <Select

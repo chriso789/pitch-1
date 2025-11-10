@@ -8066,8 +8066,13 @@ export type Database = {
           id: string
           item_description: string | null
           line_total: number
+          live_unit_price: number | null
           metadata: Json | null
           po_id: string
+          price_age_at_lock_hours: number | null
+          price_fetched_from: string | null
+          price_locked_at: string | null
+          price_variance_pct: number | null
           product_id: string
           quantity: number
           srs_item_code: string | null
@@ -8081,8 +8086,13 @@ export type Database = {
           id?: string
           item_description?: string | null
           line_total: number
+          live_unit_price?: number | null
           metadata?: Json | null
           po_id: string
+          price_age_at_lock_hours?: number | null
+          price_fetched_from?: string | null
+          price_locked_at?: string | null
+          price_variance_pct?: number | null
           product_id: string
           quantity: number
           srs_item_code?: string | null
@@ -8096,8 +8106,13 @@ export type Database = {
           id?: string
           item_description?: string | null
           line_total?: number
+          live_unit_price?: number | null
           metadata?: Json | null
           po_id?: string
+          price_age_at_lock_hours?: number | null
+          price_fetched_from?: string | null
+          price_locked_at?: string | null
+          price_variance_pct?: number | null
           product_id?: string
           quantity?: number
           srs_item_code?: string | null
