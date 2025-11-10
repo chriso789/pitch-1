@@ -119,6 +119,7 @@ export function MeasurementVerificationDialog({
     normalizeWaste(tags['roof.waste_pct'] || 12)
   );
   const [faceCount, setFaceCount] = useState(tags['roof.faces_count'] || 0);
+  const [numberOfStories, setNumberOfStories] = useState(1);
   
   // Material quantities (recalculated)
   const [shingleBundles, setShingleBundles] = useState(0);
@@ -174,6 +175,7 @@ export function MeasurementVerificationDialog({
       },
       roofAge: roofAge,
       roofAgeSource: roofAgeSource,
+      numberOfStories: numberOfStories,
     };
 
     await onAccept(updatedMeasurement);
@@ -221,8 +223,34 @@ export function MeasurementVerificationDialog({
     setAdjustedArea(areaSqft);
   };
 
+  // Helper function to calculate flat area (pitch ≤ 2/12 only)
+  const calculateFlatArea = (): number => {
+    if (!measurement?.faces || measurement.faces.length === 0) {
+      return 0;
+    }
+    
+    let flatArea = 0;
+    for (const facet of measurement.faces) {
+      if (!facet.pitch) continue;
+      
+      // Parse pitch string (e.g., "6/12", "2/12")
+      const pitchMatch = facet.pitch.match(/^(\d+)\/12$/);
+      if (!pitchMatch) continue;
+      
+      const pitchNumerator = parseInt(pitchMatch[1]);
+      
+      // Include only pitches ≤ 2/12
+      if (pitchNumerator <= 2) {
+        flatArea += facet.plan_area_sqft || 0;
+      }
+    }
+    
+    return flatArea;
+  };
+
   // Calculate measurements (use adjusted values if available)
   const planArea = adjustedArea || tags['roof.plan_sqft'] || 0;
+  const flatArea = calculateFlatArea();
   const roofAreaNoWaste = planArea * pitchFactor;
   const totalAreaWithWaste = roofAreaNoWaste * (1 + wastePercent / 100);
   const roofSquares = totalAreaWithWaste / 100;
@@ -494,18 +522,16 @@ export function MeasurementVerificationDialog({
                 </div>
                 
                 <div className="flex items-center justify-between">
-                  <label className="text-sm text-muted-foreground">Other Adjustments:</label>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      value={0}
-                      className="w-[80px]"
-                      min="0"
-                      max="50"
-                      step="1"
-                    />
-                    <span className="text-sm">%</span>
-                  </div>
+                  <label className="text-sm text-muted-foreground">Number of Stories:</label>
+                  <Input
+                    type="number"
+                    value={numberOfStories}
+                    onChange={(e) => setNumberOfStories(parseInt(e.target.value) || 1)}
+                    className="w-[80px]"
+                    min="1"
+                    max="5"
+                    step="1"
+                  />
                 </div>
                 
                 <div className="flex items-center justify-between text-xs text-muted-foreground">
@@ -522,8 +548,8 @@ export function MeasurementVerificationDialog({
               </h3>
               <div className="space-y-1 text-sm">
                 <div className="flex justify-between py-1.5 border-b">
-                  <span className="text-muted-foreground">Flat/Plan Area:</span>
-                  <span className="font-medium">{planArea.toFixed(0)} sq ft</span>
+                  <span className="text-muted-foreground">Flat/Plan Area (≤2/12 pitch):</span>
+                  <span className="font-medium">{flatArea.toFixed(0)} sq ft</span>
                 </div>
                 <div className="flex justify-between py-1.5 border-b">
                   <span className="text-muted-foreground">Roof Area (no waste):</span>

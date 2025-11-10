@@ -334,6 +334,15 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       return false;
     }
 
+    if (!formData.roofType) {
+      toast({
+        title: "Validation Error",
+        description: "Roof type is required",
+        variant: "destructive",
+      });
+      return false;
+    }
+
     const roofAgeNum = parseInt(formData.roofAge);
     if (isNaN(roofAgeNum) || roofAgeNum < 0 || roofAgeNum > 100) {
       toast({
@@ -440,7 +449,8 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
             multiple_reps: formData.assignedTo,
             address_verified: true,
             verified_address: selectedAddress,
-            roof_age_years: parseInt(formData.roofAge)
+            roof_age_years: parseInt(formData.roofAge),
+            roof_type: formData.roofType
           }
         } as any)
         .select()
@@ -594,7 +604,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
               </Select>
             </div>
             <div>
-              <Label htmlFor="roofType">Roof Type</Label>
+              <Label htmlFor="roofType">Roof Type *</Label>
               <Select value={formData.roofType} onValueChange={(value) => setFormData(prev => ({ ...prev, roofType: value }))}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select roof type" />

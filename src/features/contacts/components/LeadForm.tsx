@@ -111,10 +111,10 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
       }
 
       // Validate required fields
-      if (!formData.firstName || !formData.lastName || !formData.phone || !formData.roofAge) {
+      if (!formData.firstName || !formData.lastName || !formData.phone || !formData.roofAge || !formData.currentRoofType) {
         toast({
           title: "Missing required fields",
-          description: "Please fill in first name, last name, phone number, and roof age.",
+          description: "Please fill in first name, last name, phone number, roof age, and roof type.",
           variant: "destructive",
         });
         return;
@@ -185,7 +185,8 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
           lead_quality_score: leadScore,
           estimated_value: formData.estimatedValue ? parseFloat(formData.estimatedValue) : null,
           metadata: {
-            roof_age_years: parseInt(formData.roofAge)
+            roof_age_years: parseInt(formData.roofAge),
+            roof_type: formData.currentRoofType
           }
         })
         .select()
@@ -385,7 +386,7 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <Label htmlFor="currentRoofType">Current Roof Type</Label>
+              <Label htmlFor="currentRoofType">Current Roof Type *</Label>
               <Select value={formData.currentRoofType} onValueChange={(value) => handleInputChange('currentRoofType', value)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select roof type" />

@@ -293,6 +293,9 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     if (formData.roofAge && (isNaN(roofAgeNum) || roofAgeNum < 0 || roofAgeNum > 100)) {
       errors.push("Roof age must be between 0 and 100 years");
     }
+    if (!formData.roofType) {
+      errors.push("Roof type is required");
+    }
     
     return errors;
   };
@@ -365,7 +368,8 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         metadata: {
           verified_address: selectedAddress,
           secondary_reps: formData.salesReps.slice(1),
-          roof_age_years: parseInt(formData.roofAge)
+          roof_age_years: parseInt(formData.roofAge),
+          roof_type: formData.roofType
         }
       };
 
@@ -512,7 +516,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
               </div>
 
               <div>
-                <Label htmlFor="roofType">Roof Type</Label>
+                <Label htmlFor="roofType">Roof Type *</Label>
                 <Select value={formData.roofType} onValueChange={(value) => setFormData(prev => ({ ...prev, roofType: value }))}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select roof type" />

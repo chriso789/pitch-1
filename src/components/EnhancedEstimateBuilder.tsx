@@ -11,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Calculator, Plus, Trash2, FileText, DollarSign, Target, TrendingUp, MapPin, Satellite, Loader2 } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ProfitBreakdownDisplay } from './ProfitBreakdownDisplay';
 import { AddEstimateLineDialog } from './estimates/AddEstimateLineDialog';
 import { PullMeasurementsButton } from './measurements/PullMeasurementsButton';
@@ -81,6 +82,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const [calculationResults, setCalculationResults] = useState<any>(null);
   const [measurementData, setMeasurementData] = useState<any>(null);
   const [hasMeasurements, setHasMeasurements] = useState(false);
+  const [savedEstimates, setSavedEstimates] = useState<any[]>([]);
 
   const [showAddLineDialog, setShowAddLineDialog] = useState(false);
   const [pullingSolarMeasurements, setPullingSolarMeasurements] = useState(false);
@@ -90,7 +92,10 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   useEffect(() => {
     loadTemplates();
     loadSalesReps();
-  }, []);
+    if (pipelineEntryId) {
+      loadSavedEstimates();
+    }
+  }, [pipelineEntryId]);
 
   // Load measurement data from pipeline entry
   useEffect(() => {
@@ -135,11 +140,14 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
           setHasMeasurements(hasValidMeasurements);
           setMeasurementData(comprehensiveMeasurements);
 
+          // Load roof type from pipeline metadata if not set
+          const roofTypeFromMetadata = metadata.roof_type || pipelineEntry.roof_type;
+
           // Update property details with measurement data
           setPropertyDetails(prev => ({
             ...prev,
             roof_area_sq_ft: roofAreaSqFt || prev.roof_area_sq_ft,
-            roof_type: pipelineEntry.roof_type || prev.roof_type,
+            roof_type: roofTypeFromMetadata || prev.roof_type,
             customer_name: pipelineEntry.contacts 
               ? `${pipelineEntry.contacts.first_name || ''} ${pipelineEntry.contacts.last_name || ''}`.trim()
               : prev.customer_name,
@@ -197,6 +205,36 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       setSalesReps(data || []);
     } catch (error: any) {
       console.error('Error loading sales reps:', error);
+    }
+  };
+
+  const loadSavedEstimates = async () => {
+    if (!pipelineEntryId) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('enhanced_estimates')
+        .select(`
+          id,
+          estimate_number,
+          selling_price,
+          actual_profit_percent,
+          roof_type,
+          status,
+          created_at,
+          template_id,
+          estimate_calculation_templates (
+            name
+          )
+        `)
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .order('created_at', { ascending: false });
+        
+      if (!error && data) {
+        setSavedEstimates(data);
+      }
+    } catch (error: any) {
+      console.error('Error loading saved estimates:', error);
     }
   };
 
@@ -437,6 +475,9 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       });
 
       onEstimateCreated?.(newEstimate);
+      
+      // Refresh the saved estimates list
+      await loadSavedEstimates();
     } catch (error: any) {
       console.error('Error saving estimate:', error);
       toast({
@@ -491,7 +532,21 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
         </CardHeader>
       </Card>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <Tabs defaultValue="builder" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="builder">Builder</TabsTrigger>
+          <TabsTrigger value="estimates">
+            Saved Estimates
+            {savedEstimates.length > 0 && (
+              <Badge variant="secondary" className="ml-2">
+                {savedEstimates.length}
+              </Badge>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="builder" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Left Column - Input Forms */}
         <div className="space-y-6">
           {/* Property Details */}
@@ -500,40 +555,31 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
               <CardTitle className="text-lg">Property Details</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="customer_name">Customer Name</Label>
-                  <Input
-                    id="customer_name"
-                    value={propertyDetails.customer_name}
-                    onChange={(e) => setPropertyDetails(prev => ({ ...prev, customer_name: e.target.value }))}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <div className="flex items-center justify-between">
-                    <Label htmlFor="roof_area">Squares (1 square = 100 sq ft)</Label>
-                    {hasMeasurements && (
-                      <Badge variant="secondary" className="text-xs">
-                        <MapPin className="h-3 w-3 mr-1" />
-                        Satellite Measured
-                      </Badge>
-                    )}
-                  </div>
-                  <Input
-                    id="roof_area"
-                    type="number"
-                    step="0.1"
-                    value={(propertyDetails.roof_area_sq_ft / 100).toFixed(2)}
-                    onChange={(e) => setPropertyDetails(prev => ({ ...prev, roof_area_sq_ft: (parseFloat(e.target.value) || 0) * 100 }))}
-                  />
-                  {hasMeasurements && measurementData && (
-                    <p className="text-xs text-muted-foreground">
-                      Confidence: {Math.round((measurementData.accuracyScore || 0.85) * 100)}%
-                      {measurementData.perimeter && ` • Perimeter: ${measurementData.perimeter.toFixed(0)} ft`}
-                    </p>
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="roof_area">Squares (1 square = 100 sq ft)</Label>
+                  {hasMeasurements && (
+                    <Badge variant="secondary" className="text-xs">
+                      <MapPin className="h-3 w-3 mr-1" />
+                      Satellite Measured
+                    </Badge>
                   )}
-                  
-                  <div className="mt-2">
+                </div>
+                <Input
+                  id="roof_area"
+                  type="number"
+                  step="0.1"
+                  value={(propertyDetails.roof_area_sq_ft / 100).toFixed(2)}
+                  onChange={(e) => setPropertyDetails(prev => ({ ...prev, roof_area_sq_ft: (parseFloat(e.target.value) || 0) * 100 }))}
+                />
+                {hasMeasurements && measurementData && (
+                  <p className="text-xs text-muted-foreground">
+                    Confidence: {Math.round((measurementData.accuracyScore || 0.85) * 100)}%
+                    {measurementData.perimeter && ` • Perimeter: ${measurementData.perimeter.toFixed(0)} ft`}
+                  </p>
+                )}
+                
+                <div className="mt-2">
                     <PullMeasurementsButton
                       propertyId={pipelineEntryId || ''}
                       lat={coordinates?.lat || 0}
@@ -592,29 +638,21 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                     </div>
                   )}
                 </div>
+
+              <div className="space-y-2">
+                <Label>Roof Type</Label>
+                <div className="flex items-center gap-2">
+                  <Badge variant="secondary" className="text-sm">
+                    {propertyDetails.roof_type?.replace('_', ' ') || 'Not specified'}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground">
+                    (Set during lead creation)
+                  </span>
+                </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="roof_type">Roof Type</Label>
-                  <Select
-                    value={propertyDetails.roof_type}
-                    onValueChange={(value) => setPropertyDetails(prev => ({ ...prev, roof_type: value }))}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="asphalt_shingle">Asphalt Shingle</SelectItem>
-                      <SelectItem value="metal">Metal</SelectItem>
-                      <SelectItem value="tile">Tile</SelectItem>
-                      <SelectItem value="slate">Slate</SelectItem>
-                      <SelectItem value="flat">Flat</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="waste">Waste Percentage</Label>
+              <div className="space-y-2">
+                <Label htmlFor="waste">Waste Percentage</Label>
                   <Select
                     value={excelConfig.waste_factor_percent.toString()}
                     onValueChange={(value) => setExcelConfig(prev => ({ ...prev, waste_factor_percent: parseFloat(value) }))}
@@ -626,9 +664,8 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                       <SelectItem value="10">10%</SelectItem>
                       <SelectItem value="15">15%</SelectItem>
                       <SelectItem value="20">20%</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
+                  </SelectContent>
+                </Select>
               </div>
 
               <div className="space-y-2">
@@ -1047,6 +1084,65 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
           )}
         </div>
       </div>
+    </TabsContent>
+
+    <TabsContent value="estimates" className="space-y-4">
+      {savedEstimates.length === 0 ? (
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <FileText className="h-12 w-12 text-muted-foreground mb-4" />
+            <p className="text-muted-foreground">No saved estimates yet</p>
+            <p className="text-sm text-muted-foreground">
+              Create your first estimate using the Builder tab
+            </p>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {savedEstimates.map((estimate) => (
+            <Card key={estimate.id} className="hover:shadow-md transition-shadow">
+              <CardContent className="p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h4 className="font-semibold">
+                        {estimate.estimate_calculation_templates?.name || 'Custom Estimate'}
+                      </h4>
+                      <Badge variant="secondary" className="text-xs">
+                        {estimate.estimate_number}
+                      </Badge>
+                      <Badge variant={
+                        estimate.status === 'approved' ? 'default' :
+                        estimate.status === 'draft' ? 'secondary' : 'outline'
+                      }>
+                        {estimate.status}
+                      </Badge>
+                    </div>
+                    <div className="flex items-center gap-4 text-sm text-muted-foreground">
+                      <span>Type: {estimate.roof_type?.replace('_', ' ') || 'Not specified'}</span>
+                      <span>•</span>
+                      <span>{new Date(estimate.created_at).toLocaleDateString()}</span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1">
+                    <div className="text-2xl font-bold text-primary">
+                      {formatCurrency(estimate.selling_price)}
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <TrendingUp className="h-4 w-4 text-green-600" />
+                      <span className="text-sm font-medium text-green-600">
+                        {estimate.actual_profit_percent?.toFixed(1)}% Profit
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+    </TabsContent>
+  </Tabs>
 
       <AddEstimateLineDialog
         open={showAddLineDialog}
