@@ -62,6 +62,7 @@ export function MeasurementVerificationDialog({
   const [showManualEditor, setShowManualEditor] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [satelliteImageUrl, setSatelliteImageUrl] = useState(initialSatelliteImageUrl);
+  const [autoRegenerateAttempted, setAutoRegenerateAttempted] = useState(false);
   
   const manualVerify = useManualVerification();
   
@@ -69,6 +70,22 @@ export function MeasurementVerificationDialog({
   useEffect(() => {
     setSatelliteImageUrl(initialSatelliteImageUrl);
   }, [initialSatelliteImageUrl]);
+  
+  // Auto-regenerate visualization if missing Mapbox URL on open
+  useEffect(() => {
+    const shouldAutoRegenerate = 
+      open && 
+      !autoRegenerateAttempted && 
+      measurement?.id && 
+      !measurement?.mapbox_visualization_url &&
+      centerLat &&
+      centerLng;
+      
+    if (shouldAutoRegenerate) {
+      setAutoRegenerateAttempted(true);
+      handleRegenerateVisualization();
+    }
+  }, [open, measurement?.id, measurement?.mapbox_visualization_url, centerLat, centerLng, autoRegenerateAttempted]);
   
   // Editable pitch and waste
   // Helper function to derive pitch from pitch factor
@@ -355,12 +372,33 @@ export function MeasurementVerificationDialog({
                   </div>
                 </div>
                 
+                {/* Visualization Status Indicator */}
+                <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
+                  <span className="text-xs text-muted-foreground">Image Source:</span>
+                  {measurement?.mapbox_visualization_url ? (
+                    <Badge variant="default" className="gap-1">
+                      <CheckCircle2 className="h-3 w-3" />
+                      Aerial Photo
+                    </Badge>
+                  ) : satelliteImageUrl?.includes('data:image') ? (
+                    <Badge variant="secondary" className="gap-1">
+                      <AlertCircle className="h-3 w-3" />
+                      Satellite View (Fallback)
+                    </Badge>
+                  ) : (
+                    <Badge variant="destructive" className="gap-1">
+                      <X className="h-3 w-3" />
+                      No Satellite Image
+                    </Badge>
+                  )}
+                </div>
+                
                 {/* Regenerate Visualization Button */}
                 <Button
                   variant="outline"
                   size="sm"
                   onClick={handleRegenerateVisualization}
-                  disabled={isRegenerating}
+                  disabled={isRegenerating || !measurement?.id}
                   className="w-full"
                 >
                   {isRegenerating ? (
@@ -678,14 +716,14 @@ export function MeasurementVerificationDialog({
               if (!satelliteImageUrl) {
                 toast({
                   title: "Satellite Image Required",
-                  description: "Please regenerate the satellite visualization before manual verification.",
+                  description: "Click 'Regenerate Satellite View' above to generate an aerial photo, or use Google Maps fallback.",
                   variant: "destructive"
                 });
                 return;
               }
               setShowManualEditor(true);
             }}
-            disabled={isAccepting}
+            disabled={isAccepting || !satelliteImageUrl}
           >
             <Edit3 className="h-4 w-4 mr-2" />
             Verify Manually

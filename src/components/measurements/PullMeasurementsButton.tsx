@@ -76,9 +76,10 @@ export function PullMeasurementsButton({
         satelliteImageUrl = measurement.mapbox_visualization_url;
         console.log('Using Mapbox visualization:', satelliteImageUrl);
       } else {
-        // Fallback to Google Maps satellite image
+        // Fallback to Google Maps satellite image (ALWAYS provide fallback)
+        console.log('Mapbox visualization not available, using Google Maps fallback');
         try {
-          const { data: imageData } = await supabase.functions.invoke('google-maps-proxy', {
+          const { data: imageData, error: imageError } = await supabase.functions.invoke('google-maps-proxy', {
             body: { 
               endpoint: 'satellite',
               params: {
@@ -91,12 +92,24 @@ export function PullMeasurementsButton({
             }
           });
 
-          if (imageData?.image) {
+          if (imageError) {
+            console.error('Google Maps proxy error:', imageError);
+          } else if (imageData?.image) {
             satelliteImageUrl = `data:image/png;base64,${imageData.image}`;
+            console.log('Google Maps fallback image loaded successfully');
+          } else {
+            console.warn('Google Maps proxy returned no image data');
           }
         } catch (imgError) {
-          console.warn('Failed to fetch satellite image:', imgError);
+          console.error('Failed to fetch satellite image:', imgError);
         }
+      }
+      
+      // Log final satellite image status
+      if (satelliteImageUrl) {
+        console.log('Satellite image ready for verification dialog');
+      } else {
+        console.warn('No satellite image available - verification will be limited');
       }
 
       // Show verification dialog instead of immediately applying

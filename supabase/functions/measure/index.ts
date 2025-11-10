@@ -1211,7 +1211,7 @@ serve(async (req) => {
 
         // Generate Mapbox visualization (non-blocking)
         try {
-          await supabase.functions.invoke('generate-measurement-visualization', {
+          const { data: vizData, error: vizError } = await supabase.functions.invoke('generate-measurement-visualization', {
             body: {
               measurement_id: row.id,
               property_id: propertyId,
@@ -1219,9 +1219,16 @@ serve(async (req) => {
               center_lng: lng,
             }
           });
-          console.log('Visualization generation initiated for measurement:', row.id);
+          
+          if (vizError) {
+            console.error('Visualization generation error:', vizError);
+          } else if (vizData?.ok) {
+            console.log('Visualization generation successful:', row.id, vizData.data?.visualization_url);
+          } else {
+            console.warn('Visualization generation returned error:', vizData?.error);
+          }
         } catch (vizError) {
-          console.warn('Visualization generation failed (non-critical):', vizError);
+          console.error('Visualization generation exception:', vizError instanceof Error ? vizError.message : String(vizError));
         }
 
         return json({ 
@@ -1272,7 +1279,7 @@ serve(async (req) => {
           const centerLng = manualMeasurement.center_lng;
           
           if (centerLat && centerLng) {
-            await supabase.functions.invoke('generate-measurement-visualization', {
+            const { data: vizData, error: vizError } = await supabase.functions.invoke('generate-measurement-visualization', {
               body: {
                 measurement_id: row.id,
                 property_id: propertyId,
@@ -1280,10 +1287,19 @@ serve(async (req) => {
                 center_lng: centerLng,
               }
             });
-            console.log('Visualization generation initiated for manual verification:', row.id);
+            
+            if (vizError) {
+              console.error('Manual verification visualization error:', vizError);
+            } else if (vizData?.ok) {
+              console.log('Manual verification visualization successful:', row.id, vizData.data?.visualization_url);
+            } else {
+              console.warn('Manual verification visualization returned error:', vizData?.error);
+            }
+          } else {
+            console.warn('Cannot generate visualization: missing coordinates');
           }
         } catch (vizError) {
-          console.warn('Visualization generation failed (non-critical):', vizError);
+          console.error('Manual verification visualization exception:', vizError instanceof Error ? vizError.message : String(vizError));
         }
 
         console.log('Manual verification saved:', { id: row.id, propertyId, userId });
