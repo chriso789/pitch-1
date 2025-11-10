@@ -133,10 +133,6 @@ export function MeasurementVerificationDialog({
   const [chimneys, setChimneys] = useState(tags['pen.chimney'] || 0);
   const [hvacUnits, setHvacUnits] = useState(tags['pen.hvac'] || 0);
   const [otherPenetrations, setOtherPenetrations] = useState(tags['pen.other'] || 0);
-  
-  // Roof age state
-  const [roofAge, setRoofAge] = useState(tags['age.years'] || 0);
-  const [roofAgeSource, setRoofAgeSource] = useState(tags['age.source'] || 'estimated');
 
   const handlePitchChange = (pitch: string) => {
     setSelectedPitch(pitch);
@@ -173,8 +169,6 @@ export function MeasurementVerificationDialog({
         hvac: hvacUnits,
         other: otherPenetrations,
       },
-      roofAge: roofAge,
-      roofAgeSource: roofAgeSource,
       numberOfStories: numberOfStories,
     };
 
@@ -640,42 +634,6 @@ export function MeasurementVerificationDialog({
               </div>
             </div>
 
-            {/* Roof Age */}
-            <div className="border border-primary/20 rounded-lg p-4 bg-primary/5">
-              <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
-                📅 Roof Age
-                <Badge variant="outline" className="text-xs">Editable</Badge>
-              </h3>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm text-muted-foreground">Age (years):</label>
-                  <Input
-                    type="number"
-                    value={roofAge}
-                    onChange={(e) => setRoofAge(Number(e.target.value))}
-                    className="w-[100px] h-8"
-                    min="0"
-                    max="100"
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <label className="text-sm text-muted-foreground">Source:</label>
-                  <Select value={roofAgeSource} onValueChange={setRoofAgeSource}>
-                    <SelectTrigger className="w-[140px] h-8">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="estimated">Estimated</SelectItem>
-                      <SelectItem value="homeowner">Homeowner</SelectItem>
-                      <SelectItem value="permit">Permit Records</SelectItem>
-                      <SelectItem value="inspection">Inspection</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-              </div>
-            </div>
-
-            <Separator />
 
             {/* Material Quantities */}
             <div>
