@@ -8,9 +8,12 @@ import LiveLocationMap from '@/components/storm-canvass/LiveLocationMap';
 import QuickActivityPanel from '@/components/storm-canvass/QuickActivityPanel';
 import LiveStatsOverlay from '@/components/storm-canvass/LiveStatsOverlay';
 import MobileDispositionPanel from '@/components/storm-canvass/MobileDispositionPanel';
+import AddressSearchBar from '@/components/storm-canvass/AddressSearchBar';
+import NavigationPanel from '@/components/storm-canvass/NavigationPanel';
 import { locationService } from '@/services/locationService';
 import { useToast } from '@/hooks/use-toast';
 import { useStormCanvass } from '@/hooks/useStormCanvass';
+import { supabase } from '@/integrations/supabase/client';
 
 interface Contact {
   id: string;
@@ -46,6 +49,17 @@ export default function LiveCanvassingPage() {
   const [distanceTraveled, setDistanceTraveled] = useState(0);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
   const [dispositions, setDispositions] = useState<Disposition[]>([]);
+  const [destination, setDestination] = useState<{
+    lat: number;
+    lng: number;
+    address: string;
+  } | null>(null);
+  const [routeData, setRouteData] = useState<{
+    distance: { distance: number; unit: string };
+    duration: number;
+    polyline: string;
+  } | null>(null);
+  const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
 
   useEffect(() => {
     // Load dispositions
@@ -113,6 +127,117 @@ export default function LiveCanvassingPage() {
     };
   }, []);
 
+  // Calculate route when destination is selected
+  const calculateRoute = async (dest: { lat: number; lng: number; address: string }) => {
+    if (!userLocation) return;
+
+    setIsCalculatingRoute(true);
+    try {
+      const route = await locationService.getRoute(
+        { lat: userLocation.lat, lng: userLocation.lng },
+        { lat: dest.lat, lng: dest.lng }
+      );
+
+      if (route.polyline) {
+        setRouteData({
+          distance: route.distance,
+          duration: route.duration,
+          polyline: route.polyline,
+        });
+        setDestination(dest);
+
+        toast({
+          title: 'Route Calculated',
+          description: `${route.distance.distance.toFixed(1)} miles · ${Math.round(route.duration / 60)} min`,
+        });
+      } else {
+        throw new Error('No route polyline available');
+      }
+    } catch (error) {
+      console.error('Route calculation error:', error);
+      toast({
+        title: 'Route Error',
+        description: 'Failed to calculate route',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsCalculatingRoute(false);
+    }
+  };
+
+  // Clear active route
+  const clearRoute = () => {
+    setDestination(null);
+    setRouteData(null);
+  };
+
+  // Handle address selection from search
+  const handleAddressSelect = async (place: any) => {
+    if (!place.geometry?.location) {
+      // Fetch place details if geometry not provided
+      try {
+        const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
+          body: {
+            endpoint: 'details',
+            params: {
+              place_id: place.place_id,
+              fields: 'geometry,formatted_address',
+            },
+          },
+        });
+
+        if (error) throw error;
+
+        const location = data?.result?.geometry?.location;
+        if (location) {
+          await calculateRoute({
+            lat: location.lat,
+            lng: location.lng,
+            address: data.result.formatted_address || place.description,
+          });
+        }
+      } catch (error) {
+        console.error('Failed to get place details:', error);
+      }
+    } else {
+      await calculateRoute({
+        lat: place.geometry.location.lat,
+        lng: place.geometry.location.lng,
+        address: place.description,
+      });
+    }
+  };
+
+  // Handle "Navigate Here" on contact properties
+  const handleNavigateToContact = async (contact: Contact) => {
+    await calculateRoute({
+      lat: contact.latitude,
+      lng: contact.longitude,
+      address: contact.address_street,
+    });
+  };
+
+  // Open device navigation
+  const openDeviceNavigation = () => {
+    if (!destination) return;
+
+    const destCoords = `${destination.lat},${destination.lng}`;
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+    const isAndroid = /Android/.test(navigator.userAgent);
+
+    let navigationUrl = '';
+
+    if (isIOS) {
+      navigationUrl = `maps://?daddr=${destCoords}&dirflg=d`;
+    } else if (isAndroid) {
+      navigationUrl = `google.navigation:q=${destCoords}&mode=d`;
+    } else {
+      navigationUrl = `https://www.google.com/maps/dir/?api=1&destination=${destCoords}&travelmode=driving`;
+    }
+
+    window.open(navigationUrl, '_blank');
+  };
+
   return (
     <div className="h-screen w-full flex flex-col bg-background">
       {/* Header */}
@@ -126,19 +251,38 @@ export default function LiveCanvassingPage() {
             >
               <ArrowLeft className="h-5 w-5" />
             </Button>
-            <div>
+            <div className="min-w-0">
               <h1 className="text-lg font-semibold">Live Canvassing</h1>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Navigation className="h-3 w-3" />
-                <span className="truncate max-w-[200px]">{currentAddress}</span>
-              </div>
             </div>
           </div>
-          <Badge variant={isTracking ? 'default' : 'secondary'}>
-            {isTracking ? 'Tracking Active' : 'Not Tracking'}
-          </Badge>
+          <div className="flex items-center gap-2">
+            <Badge variant={isTracking ? 'default' : 'secondary'} className="hidden sm:flex">
+              {isTracking ? 'Tracking' : 'Not Tracking'}
+            </Badge>
+          </div>
         </div>
+        
+        {/* Search Bar */}
+        {userLocation && (
+          <div className="px-4 pb-4">
+            <AddressSearchBar
+              userLocation={userLocation}
+              onAddressSelect={handleAddressSelect}
+            />
+          </div>
+        )}
       </Card>
+
+      {/* Navigation Panel */}
+      {routeData && destination && (
+        <NavigationPanel
+          routeData={routeData}
+          destination={destination}
+          onStartNavigation={openDeviceNavigation}
+          onClearRoute={clearRoute}
+          onRecalculateRoute={() => calculateRoute(destination)}
+        />
+      )}
 
       {/* Map Container */}
       <div className="flex-1 relative">
@@ -148,6 +292,8 @@ export default function LiveCanvassingPage() {
               userLocation={userLocation}
               currentAddress={currentAddress}
               onContactSelect={setSelectedContact}
+              routeData={routeData}
+              destination={destination}
             />
             <LiveStatsOverlay distanceTraveled={distanceTraveled} />
           </>
@@ -177,6 +323,7 @@ export default function LiveCanvassingPage() {
             // Refresh map/markers after disposition update
             setSelectedContact(null);
           }}
+          onNavigate={handleNavigateToContact}
         />
       )}
     </div>

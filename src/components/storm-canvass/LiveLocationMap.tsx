@@ -3,6 +3,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import { supabase } from '@/integrations/supabase/client';
 import NearbyPropertiesLayer from './NearbyPropertiesLayer';
+import RouteVisualization from './RouteVisualization';
 
 interface Contact {
   id: string;
@@ -24,9 +25,21 @@ interface LiveLocationMapProps {
   userLocation: { lat: number; lng: number };
   currentAddress: string;
   onContactSelect: (contact: Contact) => void;
+  routeData?: {
+    distance: { distance: number; unit: string };
+    duration: number;
+    polyline: string;
+  } | null;
+  destination?: { lat: number; lng: number; address: string } | null;
 }
 
-export default function LiveLocationMap({ userLocation, currentAddress, onContactSelect }: LiveLocationMapProps) {
+export default function LiveLocationMap({
+  userLocation,
+  currentAddress,
+  onContactSelect,
+  routeData,
+  destination,
+}: LiveLocationMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const userMarker = useRef<mapboxgl.Marker | null>(null);
@@ -119,11 +132,21 @@ export default function LiveLocationMap({ userLocation, currentAddress, onContac
     <>
       <div ref={mapContainer} className="absolute inset-0" />
       {map.current && mapboxToken && (
-        <NearbyPropertiesLayer
-          map={map.current}
-          userLocation={userLocation}
-          onContactSelect={onContactSelect}
-        />
+        <>
+          <NearbyPropertiesLayer
+            map={map.current}
+            userLocation={userLocation}
+            onContactSelect={onContactSelect}
+          />
+          {routeData && destination && (
+            <RouteVisualization
+              map={map.current}
+              userLocation={userLocation}
+              destination={destination}
+              polyline={routeData.polyline}
+            />
+          )}
+        </>
       )}
       <style>{`
         @keyframes pulse {

@@ -15,6 +15,7 @@ interface MobileDispositionPanelProps {
   dispositions: Disposition[];
   onClose: () => void;
   onUpdate: () => void;
+  onNavigate?: (contact: Contact) => void;
 }
 
 interface Contact {
@@ -47,6 +48,7 @@ export default function MobileDispositionPanel({
   dispositions,
   onClose,
   onUpdate,
+  onNavigate,
 }: MobileDispositionPanelProps) {
   const { toast } = useToast();
   const navigate = useNavigate();
@@ -166,6 +168,19 @@ export default function MobileDispositionPanel({
               );
             })}
           </div>
+
+          {/* Navigate Button */}
+          {onNavigate && (
+            <Button
+              variant="outline"
+              onClick={() => onNavigate(contact)}
+              className="w-full h-12 text-base justify-start gap-3"
+              size="lg"
+            >
+              <Navigation className="h-5 w-5" />
+              Navigate Here · {formattedDistance}
+            </Button>
+          )}
 
           {/* Optional Notes Section */}
           <div className="space-y-2">
