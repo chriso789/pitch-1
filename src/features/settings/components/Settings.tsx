@@ -32,6 +32,7 @@ import { SecurityAudit } from "@/components/settings/SecurityAudit";
 import { CacheManagement } from "@/components/settings/CacheManagement";
 import { CompanyManagement } from "@/features/settings/components/CompanyManagement";
 import { CompanyActivityLog } from "@/features/settings/components/CompanyActivityLog";
+import { PriceManagementDashboard } from "@/components/pricing/PriceManagementDashboard";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -256,6 +257,10 @@ export const Settings = () => {
 
         <TabsContent value="company-activity" className="space-y-6">
           <CompanyActivityLog />
+        </TabsContent>
+
+        <TabsContent value="pricing" className="space-y-6">
+          <PriceManagementDashboard />
         </TabsContent>
       </Tabs>
     </div>

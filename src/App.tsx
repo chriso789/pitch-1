@@ -60,6 +60,7 @@ import ApprovalRules from "./pages/ApprovalRules";
 import PendingApprovals from "./pages/PendingApprovals";
 import ManagerApprovalQueue from "./pages/ManagerApprovalQueue";
 import VendorManagement from "./pages/VendorManagement";
+import PriceManagement from "./pages/PriceManagement";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -154,6 +155,7 @@ const AppContent = () => {
           <Route path="/pending-approvals" element={<PendingApprovals />} />
           <Route path="/manager-approval-queue" element={<ManagerApprovalQueue />} />
           <Route path="/vendor-management" element={<VendorManagement />} />
+          <Route path="/price-management" element={<PriceManagement />} />
         
         {/* Detail pages */}
         <Route path="/contact/:id" element={<ContactProfile />} />

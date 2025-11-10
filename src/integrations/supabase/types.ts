@@ -6801,6 +6801,129 @@ export type Database = {
           },
         ]
       }
+      price_history: {
+        Row: {
+          branch_code: string | null
+          changed_at: string
+          created_at: string
+          id: string
+          new_price: number
+          old_price: number | null
+          price_change_pct: number | null
+          product_name: string | null
+          sku: string
+          sync_log_id: string | null
+          tenant_id: string
+          vendor_code: string
+        }
+        Insert: {
+          branch_code?: string | null
+          changed_at?: string
+          created_at?: string
+          id?: string
+          new_price: number
+          old_price?: number | null
+          price_change_pct?: number | null
+          product_name?: string | null
+          sku: string
+          sync_log_id?: string | null
+          tenant_id: string
+          vendor_code: string
+        }
+        Update: {
+          branch_code?: string | null
+          changed_at?: string
+          created_at?: string
+          id?: string
+          new_price?: number
+          old_price?: number | null
+          price_change_pct?: number | null
+          product_name?: string | null
+          sku?: string
+          sync_log_id?: string | null
+          tenant_id?: string
+          vendor_code?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "price_history_sync_log_id_fkey"
+            columns: ["sync_log_id"]
+            isOneToOne: false
+            referencedRelation: "price_sync_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "price_history_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      price_sync_logs: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          errors: Json | null
+          failed_updates: number | null
+          id: string
+          started_at: string
+          status: string
+          successful_updates: number | null
+          sync_type: string
+          tenant_id: string
+          total_skus: number | null
+          triggered_by: string | null
+          vendor_code: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          errors?: Json | null
+          failed_updates?: number | null
+          id?: string
+          started_at?: string
+          status?: string
+          successful_updates?: number | null
+          sync_type: string
+          tenant_id: string
+          total_skus?: number | null
+          triggered_by?: string | null
+          vendor_code: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          errors?: Json | null
+          failed_updates?: number | null
+          id?: string
+          started_at?: string
+          status?: string
+          successful_updates?: number | null
+          sync_type?: string
+          tenant_id?: string
+          total_skus?: number | null
+          triggered_by?: string | null
+          vendor_code?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "price_sync_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "price_sync_logs_triggered_by_fkey"
+            columns: ["triggered_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pricing_calculations: {
         Row: {
           backlog_adjustment: number | null
@@ -12280,6 +12403,10 @@ export type Database = {
       }
       calculate_perimeter_from_linear_features: {
         Args: { linear_features: Json }
+        Returns: number
+      }
+      calculate_price_change_pct: {
+        Args: { new_price: number; old_price: number }
         Returns: number
       }
       calculate_rep_commission: {
