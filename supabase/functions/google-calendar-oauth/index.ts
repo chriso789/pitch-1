@@ -59,14 +59,14 @@ serve(async (req) => {
       throw new Error('Google Calendar credentials not configured');
     }
 
-    // Get user's tenant_id from profiles
+    // Get user's active tenant (supports multi-company switching)
     const { data: profile } = await supabase
       .from('profiles')
-      .select('tenant_id')
+      .select('active_tenant_id, tenant_id')
       .eq('id', user.id)
       .single();
 
-    const tenantId = profile?.tenant_id;
+    const tenantId = profile?.active_tenant_id || profile?.tenant_id;
     if (!tenantId) {
       throw new Error('User tenant not found');
     }
