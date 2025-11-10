@@ -8,10 +8,20 @@ import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Calculator, Plus, Trash2, FileText, DollarSign, Target, TrendingUp, MapPin, Satellite, Loader2 } from 'lucide-react';
+import { Calculator, Plus, Trash2, FileText, DollarSign, Target, TrendingUp, MapPin, Satellite, Loader2, AlertTriangle } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 import { ProfitBreakdownDisplay } from './ProfitBreakdownDisplay';
 import { AddEstimateLineDialog } from './estimates/AddEstimateLineDialog';
 import { PullMeasurementsButton } from './measurements/PullMeasurementsButton';
@@ -85,6 +95,8 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const [savedEstimates, setSavedEstimates] = useState<any[]>([]);
   const [editingEstimateId, setEditingEstimateId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState('builder');
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const [showNewEstimateConfirm, setShowNewEstimateConfirm] = useState(false);
 
   const [showAddLineDialog, setShowAddLineDialog] = useState(false);
   const [pullingSolarMeasurements, setPullingSolarMeasurements] = useState(false);
@@ -242,6 +254,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 
   const addLineItem = () => {
     setShowAddLineDialog(true);
+    if (editingEstimateId) setHasUnsavedChanges(true);
   };
 
   const handleAddLineFromDialog = (line: any) => {
@@ -258,12 +271,14 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 
   const removeLineItem = (index: number) => {
     setLineItems(prev => prev.filter((_, i) => i !== index));
+    if (editingEstimateId) setHasUnsavedChanges(true);
   };
 
   const updateLineItem = (index: number, field: keyof LineItem, value: any) => {
     setLineItems(prev => prev.map((item, i) => 
       i === index ? { ...item, [field]: value } : item
     ));
+    if (editingEstimateId) setHasUnsavedChanges(true);
   };
 
   const calculateEstimate = async () => {
@@ -481,8 +496,9 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       // Refresh the saved estimates list
       await loadSavedEstimates();
       
-      // Clear editing state after saving
+      // Clear editing state and unsaved changes after saving
       setEditingEstimateId(null);
+      setHasUnsavedChanges(false);
     } catch (error: any) {
       console.error('Error saving estimate:', error);
       toast({
@@ -576,6 +592,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 
       // Set editing state
       setEditingEstimateId(estimateId);
+      setHasUnsavedChanges(false);
 
       // Switch to builder tab
       setActiveTab('builder');
@@ -598,6 +615,15 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   };
 
   const handleNewEstimate = () => {
+    if (hasUnsavedChanges && editingEstimateId) {
+      setShowNewEstimateConfirm(true);
+      return;
+    }
+    
+    performNewEstimate();
+  };
+
+  const performNewEstimate = () => {
     // Reset all form fields to create a new estimate
     setEditingEstimateId(null);
     setLineItems([
@@ -622,6 +648,8 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     setSalesRepId('');
     setSecondaryRepIds([]);
     setCalculationResults(null);
+    setHasUnsavedChanges(false);
+    setShowNewEstimateConfirm(false);
     
     toast({
       title: "New Estimate",
@@ -732,7 +760,10 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                   type="number"
                   step="0.1"
                   value={(propertyDetails.roof_area_sq_ft / 100).toFixed(2)}
-                  onChange={(e) => setPropertyDetails(prev => ({ ...prev, roof_area_sq_ft: (parseFloat(e.target.value) || 0) * 100 }))}
+                  onChange={(e) => {
+                    setPropertyDetails(prev => ({ ...prev, roof_area_sq_ft: (parseFloat(e.target.value) || 0) * 100 }));
+                    if (editingEstimateId) setHasUnsavedChanges(true);
+                  }}
                 />
                 {hasMeasurements && measurementData && (
                   <p className="text-xs text-muted-foreground">
@@ -817,7 +848,10 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                 <Label htmlFor="waste">Waste Percentage</Label>
                   <Select
                     value={excelConfig.waste_factor_percent.toString()}
-                    onValueChange={(value) => setExcelConfig(prev => ({ ...prev, waste_factor_percent: parseFloat(value) }))}
+                    onValueChange={(value) => {
+                      setExcelConfig(prev => ({ ...prev, waste_factor_percent: parseFloat(value) }));
+                      if (editingEstimateId) setHasUnsavedChanges(true);
+                    }}
                   >
                     <SelectTrigger>
                       <SelectValue />
@@ -834,7 +868,10 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                 <Label htmlFor="roof_pitch">Roof Pitch</Label>
                 <Select
                   value={propertyDetails.roof_pitch}
-                  onValueChange={(value) => setPropertyDetails(prev => ({ ...prev, roof_pitch: value }))}
+                  onValueChange={(value) => {
+                    setPropertyDetails(prev => ({ ...prev, roof_pitch: value }));
+                    if (editingEstimateId) setHasUnsavedChanges(true);
+                  }}
                 >
                   <SelectTrigger>
                     <SelectValue />
@@ -1328,6 +1365,26 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
           eave_lf: measurementData?.eave_length || 0
         }}
       />
+
+      <AlertDialog open={showNewEstimateConfirm} onOpenChange={setShowNewEstimateConfirm}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="h-5 w-5 text-yellow-500" />
+              Unsaved Changes
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              You have unsaved changes to the current estimate. If you create a new estimate, these changes will be lost. Are you sure you want to continue?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={performNewEstimate}>
+              Discard Changes
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
