@@ -107,13 +107,24 @@ export default function StormCanvassPro() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button 
-              className="w-full" 
-              variant="outline"
-              onClick={() => navigate('/storm-canvass/map')}
-            >
-              Open Territory Map
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                className="flex-1" 
+                variant="outline"
+                onClick={() => navigate('/storm-canvass/map')}
+              >
+                <Map className="h-4 w-4 mr-2" />
+                Map
+              </Button>
+              <Button 
+                className="flex-1" 
+                variant="outline"
+                onClick={() => navigate('/storm-canvass/dashboard')}
+              >
+                <BarChart className="h-4 w-4 mr-2" />
+                Dashboard
+              </Button>
+            </div>
           </CardContent>
         </Card>
 
@@ -131,7 +142,11 @@ export default function StormCanvassPro() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button className="w-full" variant="outline">
+            <Button 
+              className="w-full" 
+              variant="outline"
+              onClick={() => navigate('/storm-canvass/dashboard')}
+            >
               View Dashboard
             </Button>
           </CardContent>

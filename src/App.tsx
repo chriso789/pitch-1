@@ -63,6 +63,7 @@ import VendorManagement from "./pages/VendorManagement";
 import PriceManagement from "./pages/PriceManagement";
 import ProfessionalMeasurement from "./pages/ProfessionalMeasurement";
 import TerritoryMapPage from "./pages/storm-canvass/TerritoryMapPage";
+import CanvasserDashboard from "./pages/storm-canvass/CanvasserDashboard";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -130,6 +131,7 @@ const AppContent = () => {
         <Route path="/calendar" element={<Calendar />} />
         <Route path="/storm-canvass" element={<StormCanvass />} />
         <Route path="/storm-canvass/map" element={<TerritoryMapPage />} />
+        <Route path="/storm-canvass/dashboard" element={<CanvasserDashboard />} />
         <Route path="/dialer" element={<Dialer />} />
         <Route path="/campaigns" element={<Campaigns />} />
         <Route path="/smartdocs" element={<SmartDocs />} />
