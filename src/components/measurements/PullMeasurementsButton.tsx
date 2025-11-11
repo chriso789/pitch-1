@@ -108,13 +108,13 @@ export function PullMeasurementsButton({
           const { data: imageData, error: imageError } = await supabase.functions.invoke('google-maps-proxy', {
             body: { 
               endpoint: 'satellite',
-              params: {
-                center: `${centerLat},${centerLng}`,
-                zoom: '20',
-                size: '640x640',
-                maptype: 'satellite',
-                scale: '2'
-              }
+          params: {
+            center: `${centerLat},${centerLng}`,
+            zoom: '21',
+            size: '1280x1280',
+            maptype: 'satellite',
+            scale: '2'
+          }
             }
           });
 

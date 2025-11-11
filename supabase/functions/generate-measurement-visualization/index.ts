@@ -340,8 +340,9 @@ function calculateOptimalZoom(bounds: any, width: number, height: number): numbe
   const latZoom = zoom(height, WORLD_DIM.height, latFraction);
   const lngZoom = zoom(width, WORLD_DIM.width, lngFraction);
 
-  // Add padding by reducing zoom by 1
-  return Math.min(latZoom, lngZoom, ZOOM_MAX) - 1;
+  // Reduce padding to 0.5 for better detail
+  const optimalZoom = Math.min(latZoom, lngZoom, ZOOM_MAX);
+  return Math.max(optimalZoom - 0.5, 18);
 }
 
 function json(payload: unknown, headers: Record<string, string>, status = 200) {
