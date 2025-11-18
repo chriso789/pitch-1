@@ -1113,6 +1113,9 @@ export function MeasurementVerificationDialog({
               satelliteImageUrl={satelliteImageUrl}
               buildingPolygon={buildingPolygon}
               measurement={measurement}
+              centerLng={centerLng}
+              centerLat={centerLat}
+              zoom={20}
               onSave={handleFacetSplitterSave}
               onCancel={() => setShowFacetSplitter(false)}
             />

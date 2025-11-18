@@ -15,8 +15,11 @@ import {
 
 interface FacetSplitterOverlayProps {
   satelliteImageUrl: string;
-  buildingPolygon: [number, number][]; // Normalized coordinates [0-1]
+  buildingPolygon: [number, number][]; // Geographic coordinates [lng, lat]
   measurement: any;
+  centerLng: number;
+  centerLat: number;
+  zoom: number;
   onSave: (splitFacets: SplitFacet[]) => void;
   onCancel: () => void;
   canvasWidth?: number;
@@ -27,6 +30,9 @@ export function FacetSplitterOverlay({
   satelliteImageUrl,
   buildingPolygon,
   measurement,
+  centerLng,
+  centerLat,
+  zoom,
   onSave,
   onCancel,
   canvasWidth = 640,
@@ -70,30 +76,50 @@ export function FacetSplitterOverlay({
     });
   }, [fabricCanvas, satelliteImageUrl, canvasWidth, canvasHeight]);
 
+  // Convert geographic coordinates to normalized canvas coordinates
+  const geoToNormalized = (lng: number, lat: number): [number, number] => {
+    const scale = Math.pow(2, zoom);
+    const worldX = (lng + 180) / 360;
+    const worldY = (1 - Math.log(Math.tan((lat * Math.PI) / 180) + 1 / Math.cos((lat * Math.PI) / 180)) / Math.PI) / 2;
+    
+    const centerWorldX = (centerLng + 180) / 360;
+    const centerWorldY = (1 - Math.log(Math.tan((centerLat * Math.PI) / 180) + 1 / Math.cos((centerLat * Math.PI) / 180)) / Math.PI) / 2;
+    
+    const normalizedX = 0.5 + (worldX - centerWorldX) * scale * 2;
+    const normalizedY = 0.5 + (worldY - centerWorldY) * scale * 2;
+    
+    return [normalizedX, normalizedY];
+  };
+
   // Initialize with building polygon as first facet
   useEffect(() => {
     if (buildingPolygon.length > 0 && currentFacets.length === 0) {
+      // Convert geographic coordinates to normalized [0-1] coordinates
+      const normalizedPoints = buildingPolygon.map(([lng, lat]) => geoToNormalized(lng, lat));
+      
       const initialFacet: SplitFacet = {
         id: 'facet-0',
-        points: buildingPolygon,
-        area: calculatePolygonArea(buildingPolygon),
+        points: normalizedPoints,
+        area: calculatePolygonArea(normalizedPoints),
         color: getFacetColor(0),
       };
       setCurrentFacets([initialFacet]);
     }
-  }, [buildingPolygon]);
+  }, [buildingPolygon, centerLng, centerLat, zoom]);
 
   // Auto-detect suggested split lines
   useEffect(() => {
     if (buildingPolygon.length > 0 && measurement) {
-      const suggestions = suggestSplitLines(measurement, buildingPolygon);
+      // Convert building polygon to normalized coordinates for suggestions
+      const normalizedPolygon = buildingPolygon.map(([lng, lat]) => geoToNormalized(lng, lat));
+      const suggestions = suggestSplitLines(measurement, normalizedPolygon);
       setSuggestedLines(suggestions);
       
       if (suggestions.length > 0) {
         toast.info(`Found ${suggestions.length} suggested split line(s) from ridge/hip/valley data`);
       }
     }
-  }, [buildingPolygon, measurement]);
+  }, [buildingPolygon, measurement, centerLng, centerLat, zoom]);
 
   // Render facets on canvas
   useEffect(() => {
