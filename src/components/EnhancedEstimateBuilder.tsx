@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -51,6 +52,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   onEstimateCreated
 }) => {
   const { toast } = useToast();
+  const [searchParams] = useSearchParams();
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
   const [savingEstimate, setSavingEstimate] = useState(false);
@@ -202,14 +204,14 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 
   // Auto-populate line items when autoPopulate parameter is present
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const autoPopulate = params.get('autoPopulate') === 'true';
+    const autoPopulate = searchParams.get('autoPopulate') === 'true';
     
     console.log('🔍 Auto-populate check:', {
       autoPopulate,
       hasMeasurementData: !!measurementData,
       hasMeasurements,
       autoPopulateRan,
+      propertyDetails,
       shouldRun: autoPopulate && measurementData && hasMeasurements && !autoPopulateRan
     });
     
@@ -218,9 +220,9 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       autoPopulateLineItems();
       setAutoPopulateRan(true);
     }
-  }, [measurementData, hasMeasurements, autoPopulateRan]);
+  }, [searchParams, measurementData, hasMeasurements, autoPopulateRan]);
 
-  const autoPopulateLineItems = () => {
+  const autoPopulateLineItems = useCallback(() => {
     console.log('🔧 Starting auto-populate with data:', {
       measurementData,
       propertyDetails,
@@ -345,7 +347,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     setTimeout(() => {
       calculateEstimate();
     }, 100);
-  };
+  }, [measurementData, propertyDetails, excelConfig, toast]);
 
   const loadTemplates = async () => {
     try {
