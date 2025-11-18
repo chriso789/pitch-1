@@ -117,37 +117,98 @@ function lineIntersection(
 }
 
 /**
- * Suggest split lines based on ridge/hip/valley data
- * Returns array of suggested split lines
+ * Suggest split lines based on ridge/hip/valley data with enhanced scoring
+ * Returns array of suggested split lines prioritized by quality
  */
 export function suggestSplitLines(
   measurement: any,
   buildingPolygon: [number, number][]
 ): SplitLine[] {
-  const suggestions: SplitLine[] = [];
+  const suggestions: { line: SplitLine; score: number }[] = [];
   
   // Extract linear features from measurement
   const ridges = measurement.linear_features?.ridges || [];
   const hips = measurement.linear_features?.hips || [];
   const valleys = measurement.linear_features?.valleys || [];
   
-  // Combine all linear features
-  const allFeatures = [...ridges, ...hips, ...valleys];
+  // Score features by type (ridge=1.0, hip=0.8, valley=0.6)
+  const scoredFeatures = [
+    ...ridges.map((f: any) => ({ feature: f, typeScore: 1.0 })),
+    ...hips.map((f: any) => ({ feature: f, typeScore: 0.8 })),
+    ...valleys.map((f: any) => ({ feature: f, typeScore: 0.6 })),
+  ];
   
-  // For each linear feature, check if it can be a split line
-  for (const feature of allFeatures) {
+  for (const { feature, typeScore } of scoredFeatures) {
     if (feature.points && feature.points.length >= 2) {
       const start = feature.points[0];
       const end = feature.points[feature.points.length - 1];
       
-      // Check if the line intersects the building polygon
+      // Check if the line intersects the building polygon at exactly 2 points
+      const line: SplitLine = { start, end };
+      
       if (doesLineIntersectPolygon([start, end], buildingPolygon)) {
-        suggestions.push({ start, end });
+        // Calculate line length inside polygon
+        const dx = end[0] - start[0];
+        const dy = end[1] - start[1];
+        const length = Math.sqrt(dx * dx + dy * dy);
+        const lengthScore = Math.min(1.0, length / 0.5); // Normalize, longer is better
+        
+        // Calculate final score
+        const finalScore = typeScore * 0.6 + lengthScore * 0.4;
+        
+        suggestions.push({ line, score: finalScore });
       }
     }
   }
   
-  return suggestions;
+  // Sort by score and return top suggestions
+  return suggestions
+    .sort((a, b) => b.score - a.score)
+    .map(s => s.line);
+}
+
+/**
+ * Detect symmetrical split lines using bilateral symmetry
+ */
+export function detectSymmetricalSplits(
+  buildingPolygon: [number, number][]
+): SplitLine[] {
+  if (buildingPolygon.length < 3) return [];
+
+  try {
+    const polygon = turf.polygon([[...buildingPolygon, buildingPolygon[0]]]);
+    const centroid = turf.centroid(polygon);
+    const center = centroid.geometry.coordinates as [number, number];
+
+    // Calculate bounding box
+    const bbox = turf.bbox(polygon);
+    const width = bbox[2] - bbox[0];
+    const height = bbox[3] - bbox[1];
+
+    // Primary axis is along the longer dimension
+    const isHorizontalPrimary = width > height;
+    const offset = Math.max(width, height) * 0.6;
+
+    const splitLine: SplitLine = isHorizontalPrimary
+      ? {
+          start: [center[0] - offset, center[1]],
+          end: [center[0] + offset, center[1]],
+        }
+      : {
+          start: [center[0], center[1] - offset],
+          end: [center[0], center[1] + offset],
+        };
+
+    // Check if split line intersects polygon properly
+    if (doesLineIntersectPolygon([splitLine.start, splitLine.end], buildingPolygon)) {
+      return [splitLine];
+    }
+
+    return [];
+  } catch (error) {
+    console.error('Error detecting symmetrical splits:', error);
+    return [];
+  }
 }
 
 /**
@@ -199,19 +260,128 @@ export function calculatePolygonArea(points: [number, number][]): number {
 }
 
 /**
- * Generate distinct colors for facets
+ * Generate colors for facets based on pitch angle
  */
-const FACET_COLORS = [
-  '#64c8ff', // Light blue
-  '#ff9966', // Orange
-  '#66ff99', // Light green
-  '#ff6699', // Pink
-  '#ffcc66', // Yellow
-  '#9966ff', // Purple
-  '#66ffcc', // Cyan
-  '#ff6666', // Red
-];
+export function getFacetColor(index: number, pitch?: string): string {
+  // If pitch is provided, color-code by pitch range
+  if (pitch) {
+    const pitchNum = parseInt(pitch.split('/')[0]);
+    if (pitchNum <= 2) return '#e5e7eb'; // Flat - Light gray
+    if (pitchNum <= 4) return '#93c5fd'; // Low slope - Light blue
+    if (pitchNum <= 7) return '#3b82f6'; // Medium - Blue
+    if (pitchNum <= 10) return '#6366f1'; // Steep - Indigo
+    return '#8b5cf6'; // Very steep - Purple
+  }
 
-export function getFacetColor(index: number): string {
+  // Fallback to index-based colors
+  const FACET_COLORS = [
+    '#64c8ff', '#ff9966', '#66ff99', '#ff6699',
+    '#ffcc66', '#9966ff', '#66ffcc', '#ff6666',
+  ];
   return FACET_COLORS[index % FACET_COLORS.length];
+}
+
+/**
+ * Merge two adjacent facets into one
+ */
+export function mergeFacets(
+  facet1: SplitFacet,
+  facet2: SplitFacet
+): SplitFacet | null {
+  try {
+    // Find shared edge points
+    const shared: [number, number][] = [];
+    for (const p1 of facet1.points) {
+      for (const p2 of facet2.points) {
+        if (Math.abs(p1[0] - p2[0]) < 0.001 && Math.abs(p1[1] - p2[1]) < 0.001) {
+          shared.push(p1);
+        }
+      }
+    }
+
+    // Need at least 2 shared points to merge
+    if (shared.length < 2) {
+      console.log('Facets do not share an edge');
+      return null;
+    }
+
+    // Combine points excluding shared edge
+    const allPoints = [...facet1.points, ...facet2.points];
+    const uniquePoints = allPoints.filter((point, index, self) => {
+      return index === self.findIndex(p => 
+        Math.abs(p[0] - point[0]) < 0.001 && Math.abs(p[1] - point[1]) < 0.001
+      );
+    });
+
+    // Calculate merged area
+    const mergedArea = facet1.area + facet2.area;
+
+    // Preserve properties from larger facet
+    const largerFacet = facet1.area > facet2.area ? facet1 : facet2;
+
+    return {
+      id: `merged-${Date.now()}`,
+      points: uniquePoints,
+      area: mergedArea,
+      pitch: largerFacet.pitch,
+      direction: largerFacet.direction,
+      color: largerFacet.color,
+    };
+  } catch (error) {
+    console.error('Error merging facets:', error);
+    return null;
+  }
+}
+
+/**
+ * Export facets to WKT format
+ */
+export function exportFacetsToWKT(facets: SplitFacet[]): string {
+  const wktPolygons = facets.map(facet => {
+    const coords = facet.points.map(p => `${p[0]} ${p[1]}`).join(', ');
+    const closed = `${coords}, ${facet.points[0][0]} ${facet.points[0][1]}`;
+    return `POLYGON((${closed}))`;
+  });
+
+  return `GEOMETRYCOLLECTION(${wktPolygons.join(', ')})`;
+}
+
+/**
+ * Import facets from WKT format
+ */
+export function importFacetsFromWKT(wkt: string): SplitFacet[] {
+  try {
+    // Simple WKT parser for POLYGON format
+    const polygonRegex = /POLYGON\(\(([\d\s.,]+)\)\)/g;
+    const facets: SplitFacet[] = [];
+    let match;
+    let index = 0;
+
+    while ((match = polygonRegex.exec(wkt)) !== null) {
+      const coords = match[1].trim().split(',').map(pair => {
+        const [x, y] = pair.trim().split(/\s+/).map(Number);
+        return [x, y] as [number, number];
+      });
+
+      // Remove duplicate last point if it closes the polygon
+      if (coords.length > 1 && 
+          coords[0][0] === coords[coords.length - 1][0] &&
+          coords[0][1] === coords[coords.length - 1][1]) {
+        coords.pop();
+      }
+
+      facets.push({
+        id: `facet-${index}`,
+        points: coords,
+        area: calculatePolygonArea(coords),
+        color: getFacetColor(index),
+      });
+      index++;
+    }
+
+    return facets;
+  } catch (error) {
+    console.error('Error parsing WKT:', error);
+    return [];
+  }
 }
