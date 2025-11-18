@@ -96,8 +96,8 @@ serve(async (req) => {
 
     // Calculate bounds and optimal zoom
     const bounds = calculateBounds(geojson);
-    const width = 1600;
-    const height = 1200;
+    const width = 1280;  // Mapbox max limit
+    const height = 960;  // 4:3 ratio
     const zoom = calculateOptimalZoom(bounds, width, height, zoom_adjustment || 0);
 
     // Build Mapbox Static Images API URL
