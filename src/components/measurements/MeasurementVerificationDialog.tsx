@@ -5,12 +5,13 @@ import { Card } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Home, ArrowRight as ArrowRightIcon, ZoomIn, ZoomOut } from 'lucide-react';
+import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Home, ArrowRight as ArrowRightIcon, ZoomIn, ZoomOut, Scissors } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PolygonEditor } from './PolygonEditor';
 import { ComprehensiveMeasurementOverlay } from './ComprehensiveMeasurementOverlay';
 import { ManualMeasurementEditor } from './ManualMeasurementEditor';
+import { FacetSplitterOverlay } from './FacetSplitterOverlay';
 import { parseWKTPolygon, calculatePolygonAreaSqft, calculatePerimeterFt } from '@/utils/geoCoordinates';
 import { useManualVerification } from '@/hooks/useMeasurement';
 import { supabase } from '@/integrations/supabase/client';
@@ -65,6 +66,7 @@ export function MeasurementVerificationDialog({
   const [adjustedPolygon, setAdjustedPolygon] = useState<[number, number][] | null>(null);
   const [adjustedArea, setAdjustedArea] = useState<number | null>(null);
   const [showManualEditor, setShowManualEditor] = useState(false);
+  const [showFacetSplitter, setShowFacetSplitter] = useState(false);
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [satelliteImageUrl, setSatelliteImageUrl] = useState(initialSatelliteImageUrl);
   const [autoRegenerateAttempted, setAutoRegenerateAttempted] = useState(false);
@@ -295,6 +297,60 @@ export function MeasurementVerificationDialog({
     } catch (error) {
       console.error('Manual verification error:', error);
       throw error;
+    }
+  };
+  
+  const handleFacetSplitterSave = async (splitFacets: any[]) => {
+    try {
+      // Update measurement with split facets
+      const updatedMeasurement = {
+        ...measurement,
+        faces: splitFacets.map((facet, index) => ({
+          id: facet.id,
+          pitch_angle: measurement.summary?.pitch || '6/12',
+          azimuth_angle: measurement.summary?.predominant_direction || 0,
+          area_sqft: facet.area,
+          plan_area_sqft: facet.area,
+          geometry_wkt: `POLYGON((${facet.points.map((p: [number, number]) => `${p[0]} ${p[1]}`).join(', ')}, ${facet.points[0][0]} ${facet.points[0][1]}))`,
+        })),
+        summary: {
+          ...measurement.summary,
+          facet_count: splitFacets.length,
+        },
+      };
+      
+      // Save to database
+      if (measurement?.id) {
+        const { error } = await supabase
+          .from('measurements')
+          .update({
+            faces: updatedMeasurement.faces,
+            summary: updatedMeasurement.summary,
+          })
+          .eq('id', measurement.id);
+          
+        if (error) throw error;
+      }
+      
+      // Update local state
+      Object.assign(measurement, updatedMeasurement);
+      
+      toast({
+        title: "Facets Saved",
+        description: `Successfully split into ${splitFacets.length} roof facets.`,
+      });
+      
+      setShowFacetSplitter(false);
+      
+      // Trigger visualization regeneration with new facet geometries
+      handleRegenerateVisualization();
+    } catch (error) {
+      console.error('Facet split save error:', error);
+      toast({
+        title: "Save Failed",
+        description: "Could not save split facets. Please try again.",
+        variant: "destructive",
+      });
     }
   };
 
@@ -996,6 +1052,24 @@ export function MeasurementVerificationDialog({
             Verify Manually
           </Button>
           <Button
+            variant="outline"
+            onClick={() => {
+              if (!satelliteImageUrl) {
+                toast({
+                  title: "Satellite Image Required",
+                  description: "Click 'Regenerate Satellite View' above to generate an aerial photo.",
+                  variant: "destructive"
+                });
+                return;
+              }
+              setShowFacetSplitter(true);
+            }}
+            disabled={isAccepting || !satelliteImageUrl}
+          >
+            <Scissors className="h-4 w-4 mr-2" />
+            Split Facets
+          </Button>
+          <Button
             onClick={handleAccept}
             disabled={isAccepting}
             variant="secondary"
@@ -1026,6 +1100,24 @@ export function MeasurementVerificationDialog({
           centerLng={centerLng}
           onSave={handleManualMeasurementSave}
         />
+      )}
+      
+      {/* Facet Splitter Modal */}
+      {satelliteImageUrl && showFacetSplitter && (
+        <Dialog open={showFacetSplitter} onOpenChange={setShowFacetSplitter}>
+          <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+            <DialogHeader>
+              <DialogTitle>Split Building into Roof Facets</DialogTitle>
+            </DialogHeader>
+            <FacetSplitterOverlay
+              satelliteImageUrl={satelliteImageUrl}
+              buildingPolygon={buildingPolygon}
+              measurement={measurement}
+              onSave={handleFacetSplitterSave}
+              onCancel={() => setShowFacetSplitter(false)}
+            />
+          </DialogContent>
+        </Dialog>
       )}
     </Dialog>
   );
