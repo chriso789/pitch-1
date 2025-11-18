@@ -49,7 +49,9 @@ export function FacetSplitterOverlay({
     if (!canvasRef.current) return;
     const canvas = new FabricCanvas(canvasRef.current, { width: canvasWidth, height: canvasHeight, backgroundColor: '#f3f4f6' });
     setFabricCanvas(canvas);
-    return () => canvas.dispose();
+    return () => {
+      canvas.dispose();
+    };
   }, [canvasWidth, canvasHeight]);
 
   useEffect(() => {
