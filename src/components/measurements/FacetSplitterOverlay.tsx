@@ -1,21 +1,24 @@
-import { useEffect, useRef, useState } from 'react';
-import { Canvas as FabricCanvas, Line, Polygon, Circle, FabricImage } from 'fabric';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Canvas as FabricCanvas, Line, Polygon, Circle, Text, FabricImage } from 'fabric';
 import { Button } from '@/components/ui/button';
+import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Scissors, Undo, Save, X, Lightbulb, Trash2 } from 'lucide-react';
+import { Scissors, X, Undo, Save, Lightbulb, Grid3x3, Download, Trash2, Redo } from 'lucide-react';
 import { toast } from 'sonner';
-import {
-  splitPolygonByLine,
-  suggestSplitLines,
-  calculatePolygonArea,
-  getFacetColor,
-  type SplitLine,
-  type SplitFacet,
+import { 
+  splitPolygonByLine, calculatePolygonArea, getFacetColor, suggestSplitLines,
+  detectSymmetricalSplits, exportFacetsToWKT, type SplitLine, type SplitFacet 
 } from '@/utils/polygonSplitting';
+import { detectRoofPattern } from '@/utils/roofPatternDetection';
+import { useFacetManager } from '@/hooks/useFacetManager';
+import { FacetSplitProgress } from './FacetSplitProgress';
+import { FacetPropertiesPanel } from './FacetPropertiesPanel';
+import { FacetPreviewPanel } from './FacetPreviewPanel';
+import { RulerTool } from './RulerTool';
 
 interface FacetSplitterOverlayProps {
   satelliteImageUrl: string;
-  buildingPolygon: [number, number][]; // Geographic coordinates [lng, lat]
+  buildingPolygon: [number, number][];
   measurement: any;
   centerLng: number;
   centerLat: number;
@@ -27,388 +30,236 @@ interface FacetSplitterOverlayProps {
 }
 
 export function FacetSplitterOverlay({
-  satelliteImageUrl,
-  buildingPolygon,
-  measurement,
-  centerLng,
-  centerLat,
-  zoom,
-  onSave,
-  onCancel,
-  canvasWidth = 640,
-  canvasHeight = 480,
+  satelliteImageUrl, buildingPolygon, measurement, centerLng, centerLat, zoom,
+  onSave, onCancel, canvasWidth = 800, canvasHeight = 600,
 }: FacetSplitterOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
-  const [currentFacets, setCurrentFacets] = useState<SplitFacet[]>([]);
-  const [drawPoints, setDrawPoints] = useState<[number, number][]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [drawingPoints, setDrawingPoints] = useState<[number, number][]>([]);
   const [suggestedLines, setSuggestedLines] = useState<SplitLine[]>([]);
-  const undoStackRef = useRef<SplitFacet[][]>([]);
+  const [showGrid, setShowGrid] = useState(false);
+  const [rulerActive, setRulerActive] = useState(false);
+  const [rulerPoints, setRulerPoints] = useState<[number, number][]>([]);
+  const [roofPattern, setRoofPattern] = useState<any>(null);
 
-  // Initialize canvas
+  const { facets, selectedFacetId, selectFacet, setFacets, updateFacet, deleteFacet, undo, redo, canUndo, canRedo } = useFacetManager([]);
+
   useEffect(() => {
     if (!canvasRef.current) return;
-
-    const canvas = new FabricCanvas(canvasRef.current, {
-      width: canvasWidth,
-      height: canvasHeight,
-      selection: false,
-    });
-
+    const canvas = new FabricCanvas(canvasRef.current, { width: canvasWidth, height: canvasHeight, backgroundColor: '#f3f4f6' });
     setFabricCanvas(canvas);
-
-    return () => {
-      canvas.dispose();
-    };
+    return () => canvas.dispose();
   }, [canvasWidth, canvasHeight]);
 
-  // Load satellite image
   useEffect(() => {
     if (!fabricCanvas || !satelliteImageUrl) return;
-
+    
+    let mounted = true;
+    
     FabricImage.fromURL(satelliteImageUrl, { crossOrigin: 'anonymous' }).then((img) => {
-      img.scaleToWidth(canvasWidth);
-      img.scaleToHeight(canvasHeight);
-      img.selectable = false;
-      fabricCanvas.backgroundImage = img;
-      fabricCanvas.renderAll();
+      if (mounted) {
+        img.scaleToWidth(canvasWidth);
+        img.scaleToHeight(canvasHeight);
+        img.selectable = false;
+        fabricCanvas.backgroundImage = img;
+        fabricCanvas.renderAll();
+      }
     });
+    
+    return () => {
+      mounted = false;
+    };
   }, [fabricCanvas, satelliteImageUrl, canvasWidth, canvasHeight]);
 
-  // Convert geographic coordinates to normalized canvas coordinates
-  const geoToNormalized = (lng: number, lat: number): [number, number] => {
+  const geoToNormalized = useCallback((lng: number, lat: number): [number, number] => {
     const scale = Math.pow(2, zoom);
     const worldX = (lng + 180) / 360;
     const worldY = (1 - Math.log(Math.tan((lat * Math.PI) / 180) + 1 / Math.cos((lat * Math.PI) / 180)) / Math.PI) / 2;
-    
     const centerWorldX = (centerLng + 180) / 360;
     const centerWorldY = (1 - Math.log(Math.tan((centerLat * Math.PI) / 180) + 1 / Math.cos((centerLat * Math.PI) / 180)) / Math.PI) / 2;
-    
-    const normalizedX = 0.5 + (worldX - centerWorldX) * scale * 2;
-    const normalizedY = 0.5 + (worldY - centerWorldY) * scale * 2;
-    
-    return [normalizedX, normalizedY];
-  };
+    return [0.5 + (worldX - centerWorldX) * scale * 2, 0.5 + (worldY - centerWorldY) * scale * 2];
+  }, [centerLng, centerLat, zoom]);
 
-  // Initialize with building polygon as first facet
   useEffect(() => {
-    if (buildingPolygon.length > 0 && currentFacets.length === 0) {
-      // Convert geographic coordinates to normalized [0-1] coordinates
+    if (buildingPolygon.length > 0 && facets.length === 0) {
       const normalizedPoints = buildingPolygon.map(([lng, lat]) => geoToNormalized(lng, lat));
-      
-      const initialFacet: SplitFacet = {
-        id: 'facet-0',
-        points: normalizedPoints,
-        area: calculatePolygonArea(normalizedPoints),
-        color: getFacetColor(0),
-      };
-      setCurrentFacets([initialFacet]);
+      setFacets([{ id: 'facet-0', points: normalizedPoints, area: calculatePolygonArea(normalizedPoints), color: getFacetColor(0) }]);
     }
-  }, [buildingPolygon, centerLng, centerLat, zoom]);
+  }, [buildingPolygon, facets.length, geoToNormalized, setFacets]);
 
-  // Auto-detect suggested split lines
   useEffect(() => {
     if (buildingPolygon.length > 0 && measurement) {
-      // Convert building polygon to normalized coordinates for suggestions
       const normalizedPolygon = buildingPolygon.map(([lng, lat]) => geoToNormalized(lng, lat));
+      const pattern = detectRoofPattern(normalizedPolygon, measurement.linear_features);
+      setRoofPattern(pattern);
       const suggestions = suggestSplitLines(measurement, normalizedPolygon);
-      setSuggestedLines(suggestions);
-      
-      if (suggestions.length > 0) {
-        toast.info(`Found ${suggestions.length} suggested split line(s) from ridge/hip/valley data`);
-      }
+      const symmetry = detectSymmetricalSplits(normalizedPolygon);
+      setSuggestedLines([...suggestions, ...symmetry]);
     }
-  }, [buildingPolygon, measurement, centerLng, centerLat, zoom]);
+  }, [buildingPolygon, measurement, geoToNormalized]);
 
-  // Render facets on canvas
   useEffect(() => {
-    if (!fabricCanvas) return;
-
-    // Clear existing facets
-    fabricCanvas.getObjects().forEach((obj) => {
-      if (obj.get('data')?.type === 'facet') {
-        fabricCanvas.remove(obj);
-      }
-    });
-
-    // Render each facet
-    currentFacets.forEach((facet) => {
-      const canvasPoints = facet.points.map(([x, y]) => ({
-        x: x * canvasWidth,
-        y: y * canvasHeight,
-      }));
-
-      const polygon = new Polygon(canvasPoints, {
-        fill: facet.color + '40', // 25% opacity
-        stroke: facet.color,
-        strokeWidth: 2,
-        selectable: false,
-        evented: false,
-      } as any);
+    if (!fabricCanvas || facets.length === 0) return;
+    fabricCanvas.clear();
+    
+    facets.forEach((facet, index) => {
+      const points = facet.points.map(p => ({ x: p[0] * canvasWidth, y: p[1] * canvasHeight }));
+      const isSelected = facet.id === selectedFacetId;
+      const color = getFacetColor(index, facet.pitch);
       
-      (polygon as any).data = { type: 'facet', id: facet.id };
+      const polygon = new Polygon(points, {
+        fill: color, opacity: isSelected ? 0.7 : 0.4, stroke: isSelected ? '#3b82f6' : color,
+        strokeWidth: isSelected ? 4 : 2, selectable: true, hasControls: isSelected,
+        cornerSize: 12, cornerColor: '#3b82f6',
+      });
 
+      polygon.on('selected', () => selectFacet(facet.id));
       fabricCanvas.add(polygon);
+
+      const centroid = [(facet.points.reduce((s, p) => s + p[0], 0) / facet.points.length) * canvasWidth,
+                       (facet.points.reduce((s, p) => s + p[1], 0) / facet.points.length) * canvasHeight];
+      fabricCanvas.add(new Text(`#${index + 1}\n${facet.area.toLocaleString()} sq ft`, {
+        left: centroid[0], top: centroid[1], fontSize: 14, fill: '#fff',
+        stroke: '#000', strokeWidth: 1, selectable: false, originX: 'center', originY: 'center',
+      }));
     });
 
     fabricCanvas.renderAll();
-  }, [currentFacets, fabricCanvas, canvasWidth, canvasHeight]);
+  }, [fabricCanvas, facets, selectedFacetId, canvasWidth, canvasHeight, selectFacet]);
 
-  // Render suggested lines
-  useEffect(() => {
-    if (!fabricCanvas || suggestedLines.length === 0) return;
-
-    // Clear existing suggestions
-    fabricCanvas.getObjects().forEach((obj) => {
-      if (obj.get('data')?.type === 'suggestion') {
-        fabricCanvas.remove(obj);
+  const executeSplit = (line: SplitLine) => {
+    const newFacets = facets.flatMap(facet => {
+      const result = splitPolygonByLine(facet.points, line);
+      if (result) {
+        return [
+          { id: `facet-${Date.now()}-1`, points: result.facet1, area: calculatePolygonArea(result.facet1), 
+            pitch: facet.pitch, direction: facet.direction, color: getFacetColor(facets.length, facet.pitch) },
+          { id: `facet-${Date.now()}-2`, points: result.facet2, area: calculatePolygonArea(result.facet2),
+            pitch: facet.pitch, direction: facet.direction, color: getFacetColor(facets.length + 1, facet.pitch) },
+        ];
       }
+      return [facet];
     });
-
-    // Render suggested lines
-    suggestedLines.forEach((splitLine, index) => {
-      const line = new Line(
-        [
-          splitLine.start[0] * canvasWidth,
-          splitLine.start[1] * canvasHeight,
-          splitLine.end[0] * canvasWidth,
-          splitLine.end[1] * canvasHeight,
-        ],
-        {
-          stroke: '#ffcc00',
-          strokeWidth: 2,
-          strokeDashArray: [10, 5],
-          selectable: false,
-          evented: false,
-        } as any
-      );
-      
-      (line as any).data = { type: 'suggestion', index };
-
-      fabricCanvas.add(line);
-    });
-
-    fabricCanvas.renderAll();
-  }, [suggestedLines, fabricCanvas, canvasWidth, canvasHeight]);
-
-  // Handle canvas click to draw split line
-  const handleCanvasClick = (e: any) => {
-    if (!isDrawing) return;
-
-    const pointer = fabricCanvas?.getPointer(e.e);
-    if (!pointer) return;
-
-    const normalizedX = pointer.x / canvasWidth;
-    const normalizedY = pointer.y / canvasHeight;
-
-    const newPoint: [number, number] = [normalizedX, normalizedY];
-    const newPoints = [...drawPoints, newPoint];
-    setDrawPoints(newPoints);
-
-    // If we have 2 points, execute the split
-    if (newPoints.length === 2) {
-      executeSplit({ start: newPoints[0], end: newPoints[1] });
-      setDrawPoints([]);
-      setIsDrawing(false);
-    } else {
-      // Draw temporary point
-      const circle = new Circle({
-        left: pointer.x,
-        top: pointer.y,
-        radius: 5,
-        fill: '#3b82f6',
-        selectable: false,
-        evented: false,
-      } as any);
-      
-      (circle as any).data = { type: 'temp-point' };
-      fabricCanvas?.add(circle);
-    }
-  };
-
-  // Execute polygon split
-  const executeSplit = (splitLine: SplitLine) => {
-    // Save current state for undo
-    undoStackRef.current.push(JSON.parse(JSON.stringify(currentFacets)));
-
-    // Find which facet to split (use the largest one for now)
-    const sortedFacets = [...currentFacets].sort((a, b) => b.area - a.area);
-    const facetToSplit = sortedFacets[0];
-
-    const result = splitPolygonByLine(facetToSplit.points, splitLine);
-
-    if (!result) {
-      toast.error('Split line does not properly divide the facet');
-      return;
-    }
-
-    // Remove the original facet
-    const remainingFacets = currentFacets.filter((f) => f.id !== facetToSplit.id);
-
-    // Create two new facets
-    const newFacet1: SplitFacet = {
-      id: `facet-${Date.now()}-1`,
-      points: result.facet1,
-      area: calculatePolygonArea(result.facet1),
-      color: getFacetColor(currentFacets.length),
-      pitch: facetToSplit.pitch,
-      direction: facetToSplit.direction,
-    };
-
-    const newFacet2: SplitFacet = {
-      id: `facet-${Date.now()}-2`,
-      points: result.facet2,
-      area: calculatePolygonArea(result.facet2),
-      color: getFacetColor(currentFacets.length + 1),
-      pitch: facetToSplit.pitch,
-      direction: facetToSplit.direction,
-    };
-
-    setCurrentFacets([...remainingFacets, newFacet1, newFacet2]);
+    setFacets(newFacets);
     toast.success('Facet split successfully');
+    setDrawingPoints([]);
+    setIsDrawing(false);
   };
 
-  // Apply suggested split line
-  const applySuggestedLine = (index: number) => {
-    if (index < 0 || index >= suggestedLines.length) return;
-    executeSplit(suggestedLines[index]);
+  const handleCanvasClick = (e: any) => {
+    if (!fabricCanvas || (!isDrawing && !rulerActive)) return;
+    const pointer = fabricCanvas.getPointer(e.e);
+    const point: [number, number] = [pointer.x / canvasWidth, pointer.y / canvasHeight];
     
-    // Remove the applied suggestion
-    const newSuggestions = suggestedLines.filter((_, i) => i !== index);
-    setSuggestedLines(newSuggestions);
-  };
-
-  // Undo last split
-  const handleUndo = () => {
-    if (undoStackRef.current.length === 0) {
-      toast.info('Nothing to undo');
-      return;
-    }
-
-    const previousState = undoStackRef.current.pop();
-    if (previousState) {
-      setCurrentFacets(previousState);
-      toast.success('Undone last split');
+    if (rulerActive) {
+      setRulerPoints(prev => [...prev, point]);
+    } else if (isDrawing) {
+      setDrawingPoints(prev => {
+        const newPoints = [...prev, point];
+        if (newPoints.length === 2) {
+          executeSplit({ start: newPoints[0], end: newPoints[1] });
+          return [];
+        }
+        return newPoints;
+      });
     }
   };
 
-  // Start drawing mode
-  const handleStartDrawing = () => {
-    setIsDrawing(true);
-    setDrawPoints([]);
-    
-    // Clear temporary points
-    fabricCanvas?.getObjects().forEach((obj) => {
-      if (obj.get('data')?.type === 'temp-point') {
-        fabricCanvas.remove(obj);
-      }
-    });
-    
-    toast.info('Click two points to draw a split line');
-  };
-
-  // Save split facets
-  const handleSave = () => {
-    if (currentFacets.length < 2) {
-      toast.error('Must have at least 2 facets');
-      return;
-    }
-
-    onSave(currentFacets);
-  };
-
-  // Listen to canvas click events
   useEffect(() => {
     if (!fabricCanvas) return;
-
     fabricCanvas.on('mouse:down', handleCanvasClick);
+    return () => fabricCanvas.off('mouse:down', handleCanvasClick);
+  }, [fabricCanvas, isDrawing, rulerActive, facets, setFacets]);
 
-    return () => {
-      fabricCanvas.off('mouse:down', handleCanvasClick);
-    };
-  }, [fabricCanvas, isDrawing, drawPoints]);
+  const selectedFacet = facets.find(f => f.id === selectedFacetId);
 
   return (
-    <div className="space-y-4">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h3 className="text-lg font-semibold">Split Building into Roof Facets</h3>
-          <p className="text-sm text-muted-foreground">
-            Draw lines to divide the building into individual roof planes
-          </p>
-        </div>
-        <Badge variant="secondary">
-          {currentFacets.length} Facet{currentFacets.length !== 1 ? 's' : ''}
-        </Badge>
-      </div>
-
-      {/* Toolbar */}
-      <div className="flex flex-wrap gap-2">
-        <Button
-          onClick={handleStartDrawing}
-          disabled={isDrawing}
-          size="sm"
-          variant={isDrawing ? 'default' : 'outline'}
-        >
-          <Scissors className="h-4 w-4 mr-2" />
-          {isDrawing ? 'Drawing...' : 'Draw Split Line'}
-        </Button>
-
-        {suggestedLines.length > 0 && (
-          <Button
-            onClick={() => applySuggestedLine(0)}
-            size="sm"
-            variant="outline"
-          >
-            <Lightbulb className="h-4 w-4 mr-2" />
-            Apply Suggestion ({suggestedLines.length})
-          </Button>
-        )}
-
-        <Button onClick={handleUndo} size="sm" variant="outline">
-          <Undo className="h-4 w-4 mr-2" />
-          Undo
-        </Button>
-
-        <div className="flex-1" />
-
-        <Button onClick={onCancel} size="sm" variant="outline">
-          <X className="h-4 w-4 mr-2" />
-          Cancel
-        </Button>
-
-        <Button onClick={handleSave} size="sm">
-          <Save className="h-4 w-4 mr-2" />
-          Save Facets
-        </Button>
-      </div>
-
-      {/* Canvas */}
-      <div className="border rounded-lg overflow-hidden bg-muted">
-        <canvas ref={canvasRef} />
-      </div>
-
-      {/* Facet List */}
-      <div className="space-y-2">
-        <h4 className="text-sm font-medium">Facets</h4>
-        <div className="grid grid-cols-2 gap-2">
-          {currentFacets.map((facet, index) => (
-            <div
-              key={facet.id}
-              className="flex items-center gap-2 p-2 border rounded-lg"
-            >
-              <div
-                className="w-4 h-4 rounded"
-                style={{ backgroundColor: facet.color }}
-              />
-              <div className="flex-1 text-sm">
-                <div className="font-medium">Facet {index + 1}</div>
-                <div className="text-muted-foreground">{facet.area.toFixed(0)} sq ft</div>
+    <div className="fixed inset-0 z-50 bg-background/95 backdrop-blur-sm">
+      <div className="container h-full py-6">
+        <div className="grid grid-cols-1 lg:grid-cols-[1fr_350px] gap-4 h-full">
+          <div className="flex flex-col gap-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h2 className="text-2xl font-bold">Facet Splitting Tool</h2>
+                <p className="text-sm text-muted-foreground">Split the building into individual roof facets</p>
               </div>
+              <Button variant="ghost" size="icon" onClick={onCancel}><X className="w-5 h-5" /></Button>
             </div>
-          ))}
+
+            <FacetSplitProgress facets={facets} />
+
+            {roofPattern && roofPattern.confidence > 0.7 && (
+              <div className="bg-card border rounded-lg p-3">
+                <Badge variant="default">{roofPattern.pattern.toUpperCase()} ROOF</Badge>
+                <p className="text-xs text-muted-foreground mt-1">{roofPattern.description}</p>
+              </div>
+            )}
+
+            <div className="bg-card border rounded-lg p-3">
+              <div className="flex flex-wrap gap-2">
+                <Button size="sm" variant={isDrawing ? "default" : "outline"} 
+                  onClick={() => { setIsDrawing(true); setRulerActive(false); toast.info('Click two points'); }}>
+                  <Scissors className="w-4 h-4 mr-2" />Draw Split
+                </Button>
+                <Button size="sm" variant="outline" onClick={undo} disabled={!canUndo}>
+                  <Undo className="w-4 h-4 mr-2" />Undo
+                </Button>
+                <Button size="sm" variant="outline" onClick={redo} disabled={!canRedo}>
+                  <Redo className="w-4 h-4 mr-2" />Redo
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => selectedFacetId && deleteFacet(selectedFacetId)} disabled={!selectedFacetId}>
+                  <Trash2 className="w-4 h-4 mr-2" />Delete
+                </Button>
+                <Separator orientation="vertical" className="h-6" />
+                <Button size="sm" variant={showGrid ? "default" : "outline"} onClick={() => setShowGrid(!showGrid)}>
+                  <Grid3x3 className="w-4 h-4 mr-2" />Grid
+                </Button>
+                <Button size="sm" variant="outline" onClick={() => { navigator.clipboard.writeText(exportFacetsToWKT(facets)); toast.success('WKT copied'); }}>
+                  <Download className="w-4 h-4 mr-2" />Export
+                </Button>
+              </div>
+
+              {suggestedLines.length > 0 && (
+                <div className="mt-3 pt-3 border-t">
+                  <div className="flex items-center gap-2 mb-2">
+                    <Lightbulb className="w-4 h-4 text-yellow-600" />
+                    <span className="text-sm font-medium">Suggested Splits ({suggestedLines.length})</span>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {suggestedLines.slice(0, 5).map((line, i) => (
+                      <Button key={i} size="sm" variant="outline" onClick={() => executeSplit(line)}>Apply #{i + 1}</Button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex-1 border rounded-lg overflow-hidden bg-muted">
+              <canvas ref={canvasRef} />
+            </div>
+
+            <RulerTool active={rulerActive} onToggle={() => { setRulerActive(!rulerActive); setIsDrawing(false); setRulerPoints([]); }}
+              points={rulerPoints} onAddPoint={() => {}} onClear={() => setRulerPoints([])} />
+
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={onCancel}>Cancel</Button>
+              <Button className="flex-1" onClick={() => onSave(facets)} disabled={facets.length < 2}>
+                <Save className="w-4 h-4 mr-2" />Save Facets ({facets.length})
+              </Button>
+            </div>
+          </div>
+
+          <div className="space-y-4">
+            {selectedFacet && (
+              <FacetPropertiesPanel facet={selectedFacet} onUpdateFacet={updateFacet}
+                onCopyToAll={() => {
+                  facets.forEach(f => f.id !== selectedFacetId && updateFacet(f.id, { pitch: selectedFacet.pitch, direction: selectedFacet.direction }));
+                  toast.success('Properties copied');
+                }} />
+            )}
+            <FacetPreviewPanel facets={facets} selectedFacetId={selectedFacetId} onSelectFacet={selectFacet} />
+          </div>
         </div>
       </div>
     </div>
