@@ -477,17 +477,36 @@ export function MeasurementVerificationDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[90vw] max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <div className="flex items-center justify-between">
-            <DialogTitle className="flex items-center gap-2">
-              <Satellite className="h-5 w-5" />
-              Verify Measurements
-            </DialogTitle>
+          <div className="flex items-start justify-between">
+            <div className="space-y-2">
+              <DialogTitle className="flex items-center gap-2">
+                <Satellite className="h-5 w-5" />
+                Verify Measurements
+              </DialogTitle>
+              <div className="flex items-center gap-2 flex-wrap">
+                <Badge variant="secondary" className="flex items-center gap-1">
+                  <Satellite className="h-3 w-3" />
+                  AI Pull - Aggregate Data
+                </Badge>
+                {detectedRoofType && (
+                  <>
+                    <Badge variant="outline" className="flex items-center gap-1">
+                      <Home className="h-3 w-3" />
+                      {detectedRoofType.type} Roof
+                    </Badge>
+                    <span className="text-xs text-muted-foreground">
+                      {Math.round(detectedRoofType.confidence * 100)}% confidence
+                    </span>
+                  </>
+                )}
+              </div>
+            </div>
             <Badge variant={confidence.variant}>
               {confidence.label} Confidence
             </Badge>
           </div>
           <p className="text-sm text-muted-foreground">
-            Review these measurements before applying them to your estimates
+            Google Solar API provides building-level data. Individual roof facet boundaries are approximate.
           </p>
         </DialogHeader>
 
