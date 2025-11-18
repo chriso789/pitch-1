@@ -12713,6 +12713,7 @@ export type Database = {
         | { Args: never; Returns: string }
         | { Args: { _user_id: string }; Returns: string }
       gettransactionid: { Args: never; Returns: unknown }
+      has_high_level_role: { Args: { p_user_id: string }; Returns: boolean }
       increment_campaign_answered: {
         Args: { p_campaign_id: string }
         Returns: undefined
