@@ -226,97 +226,132 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     console.log('🔧 Starting auto-populate with data:', {
       measurementData,
       propertyDetails,
-      excelConfig
+      excelConfig,
+      hasMeasurements
     });
 
-    const roofAreaSqFt = propertyDetails.roof_area_sq_ft;
-    const pitch = propertyDetails.roof_pitch;
-    const wastePct = excelConfig.waste_factor_percent / 100;
-    
-    console.log('📐 Base measurements:', {
-      roofAreaSqFt,
-      pitch,
-      wastePct: excelConfig.waste_factor_percent
-    });
-    
-    // Calculate pitch multiplier
+    if (!measurementData) {
+      console.warn('⚠️ No measurement data available');
+      return;
+    }
+
+    // Calculate pitch multiplier (define early for fallback calculation)
     const pitchMultipliers: Record<string, number> = {
       'flat': 1.0000, '1/12': 1.0035, '2/12': 1.0138, '3/12': 1.0308,
       '4/12': 1.0541, '5/12': 1.0833, '6/12': 1.1180, '7/12': 1.1577,
       '8/12': 1.2019, '9/12': 1.2500, '10/12': 1.3017, '11/12': 1.3566, '12/12': 1.4142
     };
+
+    const measurements = measurementData.comprehensive_measurements || measurementData;
+    
+    console.log('📊 Measurement structure:', {
+      hasComprehensive: !!measurementData.comprehensive_measurements,
+      adjustedSquares: measurements.adjustedSquares,
+      summary: measurements.summary,
+      linearFeatures: measurements.linear_features?.length || 0,
+      tags: Object.keys(measurementData.tags || {}).length
+    });
+
+    // Try comprehensive_measurements first, then fallback to propertyDetails
+    const totalSquares = measurements.adjustedSquares || 
+                        measurements.summary?.total_squares || 
+                        (measurements.summary?.total_area_sqft ? measurements.summary.total_area_sqft / 100 : 0) ||
+                        ((propertyDetails.roof_area_sq_ft || 0) * (pitchMultipliers[propertyDetails.roof_pitch] || 1.05) * (1 + (excelConfig.waste_factor_percent / 100)) / 100);
+    
+    const wastePercent = measurements.adjustedWastePercent || measurements.summary?.waste_pct || excelConfig.waste_factor_percent;
+    const pitch = measurements.adjustedPitch || measurements.summary?.pitch || propertyDetails.roof_pitch;
     const pitchMultiplier = pitchMultipliers[pitch] || 1.0541;
     
-    // Calculate adjusted squares
-    const adjustedSquares = (roofAreaSqFt * pitchMultiplier * (1 + wastePct)) / 100;
-    
-    console.log('📊 Calculated squares:', {
-      pitchMultiplier,
-      adjustedSquares
+    console.log('📐 Using measurements:', {
+      totalSquares: totalSquares.toFixed(2),
+      pitch,
+      wastePercent,
+      pitchMultiplier
     });
     
-    // Get linear features from measurement data
-    const ridgeFt = measurementData?.tags?.['lf.ridge'] || 0;
-    const hipFt = measurementData?.tags?.['lf.hip'] || 0;
-    const valleyFt = measurementData?.tags?.['lf.valley'] || 0;
-    const eaveFt = measurementData?.tags?.['lf.eave'] || 0;
-    const rakeFt = measurementData?.tags?.['lf.rake'] || 0;
-    const perimeterFt = eaveFt + rakeFt;
+    // Get linear features from comprehensive_measurements or tags
+    const linearFeatures = measurements.linear_features || [];
+    const ridgeFt = linearFeatures.filter((f: any) => f.type === 'ridge').reduce((sum: number, f: any) => sum + (f.length_ft || 0), 0) || measurementData?.tags?.['lf.ridge'] || 0;
+    const hipFt = linearFeatures.filter((f: any) => f.type === 'hip').reduce((sum: number, f: any) => sum + (f.length_ft || 0), 0) || measurementData?.tags?.['lf.hip'] || 0;
+    const valleyFt = linearFeatures.filter((f: any) => f.type === 'valley').reduce((sum: number, f: any) => sum + (f.length_ft || 0), 0) || measurementData?.tags?.['lf.valley'] || 0;
+    const eaveFt = linearFeatures.filter((f: any) => f.type === 'eave').reduce((sum: number, f: any) => sum + (f.length_ft || 0), 0) || measurementData?.tags?.['lf.eave'] || 0;
+    const rakeFt = linearFeatures.filter((f: any) => f.type === 'rake').reduce((sum: number, f: any) => sum + (f.length_ft || 0), 0) || measurementData?.tags?.['lf.rake'] || 0;
+    const perimeterFt = measurements.adjustedPerimeter || measurements.summary?.perimeter || (eaveFt + rakeFt) || 0;
     
     console.log('📏 Linear features:', {
-      ridgeFt,
-      hipFt,
-      valleyFt,
-      eaveFt,
-      rakeFt,
-      perimeterFt
+      ridgeFt: ridgeFt.toFixed(0),
+      hipFt: hipFt.toFixed(0),
+      valleyFt: valleyFt.toFixed(0),
+      eaveFt: eaveFt.toFixed(0),
+      rakeFt: rakeFt.toFixed(0),
+      perimeterFt: perimeterFt.toFixed(0)
     });
+
+    if (totalSquares === 0) {
+      console.error('❌ Cannot auto-populate: total_squares is zero');
+      toast({
+        title: "Auto-Population Failed",
+        description: "Measurement data is incomplete. Please verify measurements first.",
+        variant: "destructive",
+      });
+      return;
+    }
     
     const newLineItems: LineItem[] = [
       {
         item_category: 'material',
         item_name: 'Asphalt Shingles',
-        description: 'Architectural shingles',
-        quantity: adjustedSquares,
+        description: `Architectural shingles (${totalSquares.toFixed(1)} squares with ${wastePercent}% waste)`,
+        quantity: totalSquares,
         unit_cost: 150,
         unit_type: 'square',
         markup_percent: 25,
+        sku: 'SHINGLE-ARCH-001',
+        last_price_updated: new Date().toISOString()
       },
       {
         item_category: 'material',
         item_name: 'Ridge Cap',
-        description: 'Ridge cap shingles',
-        quantity: Math.ceil((ridgeFt + hipFt) / 35), // 35 ft per bundle
+        description: `Hip & Ridge cap shingles (${(ridgeFt + hipFt).toFixed(0)} ft ÷ 3)`,
+        quantity: Math.max(1, Math.ceil((ridgeFt + hipFt) / 3)), // 3 ft per bundle, min 1
         unit_cost: 45,
         unit_type: 'bundle',
         markup_percent: 25,
+        sku: 'RIDGE-CAP-001',
+        last_price_updated: new Date().toISOString()
       },
       {
         item_category: 'material',
         item_name: 'Starter Strip',
-        description: 'Starter course shingles',
-        quantity: Math.ceil((eaveFt + rakeFt) / 100), // Per square (100 sq ft)
+        description: `Starter strip shingles (${(eaveFt + rakeFt).toFixed(0)} ft)`,
+        quantity: Math.max(1, Math.ceil((eaveFt + rakeFt) / 100)), // 100 ft per bundle
         unit_cost: 35,
-        unit_type: 'square',
+        unit_type: 'bundle',
         markup_percent: 25,
+        sku: 'STARTER-001',
+        last_price_updated: new Date().toISOString()
       },
       {
         item_category: 'material',
         item_name: 'Ice & Water Shield',
-        description: 'Self-adhering underlayment',
-        quantity: Math.ceil(valleyFt + (eaveFt * 3)), // Valleys + first 3ft of eaves
-        unit_cost: 2.5,
-        unit_type: 'linear_ft',
+        description: `Ice & water barrier (${(valleyFt + eaveFt * 0.25).toFixed(0)} ft coverage)`,
+        quantity: Math.max(1, Math.ceil((valleyFt + (eaveFt * 0.25)) / 65)), // 65 ft per roll
+        unit_cost: 85,
+        unit_type: 'roll',
         markup_percent: 25,
+        sku: 'ICE-WATER-001',
+        last_price_updated: new Date().toISOString()
       },
       {
         item_category: 'material',
         item_name: 'Drip Edge',
-        description: 'Metal drip edge',
-        quantity: Math.ceil(perimeterFt),
-        unit_cost: 1.5,
-        unit_type: 'linear_ft',
+        description: `Aluminum drip edge (${perimeterFt.toFixed(0)} ft perimeter)`,
+        quantity: Math.max(1, Math.ceil(perimeterFt / 10)), // 10 ft pieces
+        unit_cost: 8,
+        unit_type: 'piece',
         markup_percent: 25,
+        sku: 'DRIP-EDGE-001',
+        last_price_updated: new Date().toISOString()
       },
     ];
     
@@ -324,29 +359,29 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       newLineItems.push({
         item_category: 'material',
         item_name: 'Valley Material',
-        description: 'Valley flashing or shingles',
-        quantity: Math.ceil(valleyFt),
-        unit_cost: 3.0,
-        unit_type: 'linear_ft',
+        description: `Valley flashing (${valleyFt.toFixed(0)} ft)`,
+        quantity: Math.ceil(valleyFt / 10),
+        unit_cost: 15,
+        unit_type: 'piece',
         markup_percent: 25,
+        sku: 'VALLEY-001',
+        last_price_updated: new Date().toISOString()
       });
     }
     
-    console.log('✨ Generated line items:', newLineItems);
-    
+    console.log('✅ Auto-populated line items:', newLineItems);
     setLineItems(newLineItems);
     
-    console.log('✅ Auto-populate complete!');
-    
     toast({
-      title: "Line Items Auto-Populated",
-      description: `${newLineItems.length} items added from measurements`,
+      title: "Materials Auto-Populated",
+      description: `${newLineItems.length} line items added from measurements`,
     });
-    
-    // Trigger calculation after a short delay to ensure state updates
+
+    // Trigger calculation automatically
     setTimeout(() => {
       calculateEstimate();
     }, 100);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [measurementData, propertyDetails, excelConfig, toast]);
 
   const loadTemplates = async () => {
