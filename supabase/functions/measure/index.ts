@@ -1166,7 +1166,25 @@ serve(async (req) => {
         await persistFacets(supabase, row.id, meas.faces || []);
         await persistWasteCalculations(supabase, row.id, meas.summary.total_area_sqft, meas.summary.total_squares, tags);
 
-        console.log('Measurement saved:', { id: row.id, source: meas.source, squares: tags['roof.squares'] });
+        // Fix: Recalculate and update summary totals from faces (RPC may not persist correctly)
+        const totalAreaFromFaces = (meas.faces || []).reduce((sum, f) => sum + (f.area_sqft || 0), 0);
+        const wastePct = meas.summary.waste_pct || 10;
+        const adjustedTotal = totalAreaFromFaces * (1 + wastePct / 100);
+        
+        await supabase.from('measurements').update({
+          summary: {
+            ...meas.summary,
+            total_area_sqft: adjustedTotal,
+            total_squares: adjustedTotal / 100,
+          }
+        }).eq('id', row.id);
+
+        console.log('Measurement saved with corrected totals:', { 
+          id: row.id, 
+          source: meas.source, 
+          total_area_sqft: adjustedTotal,
+          squares: adjustedTotal / 100 
+        });
 
         // Generate Mapbox visualization (non-blocking)
         try {

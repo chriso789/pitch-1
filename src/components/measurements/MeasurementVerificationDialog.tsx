@@ -228,27 +228,36 @@ export function MeasurementVerificationDialog({
       }
 
       // Update pipeline entry metadata with adjusted measurements
-      if (measurement?.property_id) {
+      if (pipelineEntryId) {
         const { data: pipelineData } = await (supabase as any)
           .from('pipeline_entries')
           .select('metadata')
-          .eq('property_id', measurement.property_id)
+          .eq('id', pipelineEntryId)
           .single();
 
-        if (pipelineData) {
-          const existingMetadata = (pipelineData.metadata as any) || {};
-          
-          await (supabase as any)
-            .from('pipeline_entries')
-            .update({
-              metadata: {
-                ...existingMetadata,
-                comprehensive_measurements: updatedMeasurement,
-                roof_area_sq_ft: roofArea,
-                roof_pitch: selectedPitch,
-              }
-            })
-            .eq('property_id', measurement.property_id);
+        const existingMetadata = (pipelineData?.metadata as any) || {};
+        
+        const { error: pipelineError } = await (supabase as any)
+          .from('pipeline_entries')
+          .update({
+            metadata: {
+              ...existingMetadata,
+              comprehensive_measurements: updatedMeasurement,
+              roof_area_sq_ft: roofArea,
+              roof_pitch: selectedPitch,
+            }
+          })
+          .eq('id', pipelineEntryId);
+        
+        if (pipelineError) {
+          console.error('Failed to update pipeline entry:', pipelineError);
+        } else {
+          console.log('✅ Saved comprehensive_measurements to pipeline_entries:', {
+            pipelineEntryId,
+            roof_area_sq_ft: roofArea,
+            squares: squares,
+            pitch: selectedPitch
+          });
         }
       }
     } catch (error) {
