@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -84,9 +84,10 @@ interface ApprovalRequirements {
 const LeadDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
   const [lead, setLead] = useState<LeadDetailsData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'overview');
   const [productionStage, setProductionStage] = useState<string | null>(null);
   const [estimateCalculations, setEstimateCalculations] = useState<any>(null);
   const [measurementReadiness, setMeasurementReadiness] = useState({ isReady: false, data: null });
@@ -123,6 +124,14 @@ const LeadDetails = () => {
   const handleReadinessChange = React.useCallback((isReady: boolean, data: any) => {
     setMeasurementReadiness({ isReady, data });
   }, []);
+
+  // Handle URL tab parameter changes
+  useEffect(() => {
+    const tab = searchParams.get('tab');
+    if (tab && tab !== activeTab) {
+      setActiveTab(tab);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     if (id) {
