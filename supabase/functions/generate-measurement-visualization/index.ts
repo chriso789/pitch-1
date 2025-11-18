@@ -50,7 +50,7 @@ serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     const body = await req.json();
-    const { measurement_id, property_id, measurement, center_lat, center_lng } = body;
+    const { measurement_id, property_id, measurement, center_lat, center_lng, zoom_adjustment } = body;
 
     if (!MAPBOX_TOKEN) {
       console.error('MAPBOX_PUBLIC_TOKEN not configured');
@@ -96,11 +96,11 @@ serve(async (req) => {
 
     // Calculate bounds and optimal zoom
     const bounds = calculateBounds(geojson);
-    const zoom = calculateOptimalZoom(bounds, 1280, 960);
+    const width = 1600;
+    const height = 1200;
+    const zoom = calculateOptimalZoom(bounds, width, height, zoom_adjustment || 0);
 
     // Build Mapbox Static Images API URL
-    const width = 1280;
-    const height = 960;
     const retina = '@2x';
     
     // Encode GeoJSON for URL
@@ -319,9 +319,9 @@ function calculateBounds(geojson: any) {
 }
 
 // Calculate optimal zoom level for bounds
-function calculateOptimalZoom(bounds: any, width: number, height: number): number {
-  const WORLD_DIM = { height: 256, width: 256 };
+function calculateOptimalZoom(bounds: any, width: number, height: number, zoomAdjustment: number = 0): number {
   const ZOOM_MAX = 21;
+  const WORLD_DIM = { height: 256, width: 256 };
 
   function latRad(lat: number) {
     const sin = Math.sin(lat * Math.PI / 180);
@@ -342,7 +342,17 @@ function calculateOptimalZoom(bounds: any, width: number, height: number): numbe
 
   // Reduce padding to 0.5 for better detail
   const optimalZoom = Math.min(latZoom, lngZoom, ZOOM_MAX);
-  return Math.max(optimalZoom - 0.5, 18);
+  const baseZoom = Math.max(optimalZoom - 0.5, 18);
+  
+  // Apply manual zoom adjustment (-1 to +2 range)
+  const finalZoom = Math.max(
+    Math.min(baseZoom + zoomAdjustment, 21), // Max zoom 21
+    17 // Min zoom 17
+  );
+  
+  console.log(`Zoom calculation: optimal=${optimalZoom.toFixed(2)}, base=${baseZoom.toFixed(2)}, adjustment=${zoomAdjustment}, final=${finalZoom.toFixed(2)}`);
+  
+  return finalZoom;
 }
 
 function json(payload: unknown, headers: Record<string, string>, status = 200) {

@@ -5,7 +5,7 @@ import { Card } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Home, ArrowRight as ArrowRightIcon } from 'lucide-react';
+import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Home, ArrowRight as ArrowRightIcon, ZoomIn, ZoomOut } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PolygonEditor } from './PolygonEditor';
@@ -70,6 +70,7 @@ export function MeasurementVerificationDialog({
   const [autoRegenerateAttempted, setAutoRegenerateAttempted] = useState(false);
   const [adjustedCenterLat, setAdjustedCenterLat] = useState(centerLat);
   const [adjustedCenterLng, setAdjustedCenterLng] = useState(centerLng);
+  const [manualZoom, setManualZoom] = useState(0); // Range: -1 to +2
   
   const manualVerify = useManualVerification();
   
@@ -395,8 +396,28 @@ export function MeasurementVerificationDialog({
     // Auto-regenerate after pan
     handleRegenerateVisualization(newLat, newLng);
   };
+  
+  const handleZoomAdjust = (direction: 'in' | 'out' | 'reset') => {
+    let newZoom = manualZoom;
+    
+    if (direction === 'in') {
+      newZoom = Math.min(manualZoom + 1, 2); // Max +2 zoom
+    } else if (direction === 'out') {
+      newZoom = Math.max(manualZoom - 1, -1); // Max -1 zoom
+    } else if (direction === 'reset') {
+      newZoom = 0; // Reset to optimal
+    }
+    
+    setManualZoom(newZoom);
+    handleRegenerateVisualization(adjustedCenterLat, adjustedCenterLng, newZoom);
+    
+    toast({
+      title: "Zoom Adjusted",
+      description: `Zoom level: ${newZoom > 0 ? '+' : ''}${newZoom}`,
+    });
+  };
 
-  const handleRegenerateVisualization = async (lat?: number, lng?: number) => {
+  const handleRegenerateVisualization = async (lat?: number, lng?: number, zoomAdjust?: number) => {
     if (!measurement?.id) {
       toast({
         title: "Cannot Regenerate",
@@ -420,6 +441,7 @@ export function MeasurementVerificationDialog({
           property_id: measurement.property_id,
           center_lat: lat ?? adjustedCenterLat,
           center_lng: lng ?? adjustedCenterLng,
+          zoom_adjustment: zoomAdjust ?? manualZoom,
         }
       });
 
@@ -629,6 +651,53 @@ export function MeasurementVerificationDialog({
                       </Button>
                     </div>
                   </div>
+                </div>
+                
+                {/* Manual Zoom Controls */}
+                <div className="p-3 bg-muted/50 rounded-lg">
+                  <div className="text-xs text-muted-foreground mb-2 text-center flex items-center justify-center gap-2">
+                    Zoom Level
+                    <Badge variant="outline" className="font-mono">
+                      {manualZoom > 0 ? `+${manualZoom}` : manualZoom}
+                    </Badge>
+                  </div>
+                  <div className="grid grid-cols-3 gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleZoomAdjust('out')}
+                      disabled={isRegenerating || manualZoom <= -1}
+                      className="w-full"
+                    >
+                      <ZoomOut className="h-4 w-4 mr-1" />
+                      Out
+                    </Button>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleZoomAdjust('reset')}
+                      disabled={isRegenerating || manualZoom === 0}
+                      className="w-full"
+                    >
+                      <Home className="h-4 w-4 mr-1" />
+                      Reset
+                    </Button>
+                    
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => handleZoomAdjust('in')}
+                      disabled={isRegenerating || manualZoom >= 2}
+                      className="w-full"
+                    >
+                      <ZoomIn className="h-4 w-4 mr-1" />
+                      In
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground mt-2 text-center">
+                    -1 (wider) to +2 (closer)
+                  </p>
                 </div>
               </div>
             </div>
