@@ -238,6 +238,140 @@ export function ComprehensiveMeasurementOverlay({
     if (layers.annotations) {
       drawAnnotations();
     }
+
+    // Draw compass rose (north arrow)
+    drawCompass();
+
+    // Draw aggregate facet annotations
+    drawAggregateFacetAnnotations();
+  };
+
+  const drawCompass = () => {
+    if (!fabricCanvas) return;
+
+    const compassSize = 60;
+    const compassX = canvasWidth - compassSize - 20;
+    const compassY = 20 + compassSize / 2;
+
+    // Draw compass circle background
+    const compassBg = new Circle({
+      left: compassX,
+      top: compassY,
+      radius: compassSize / 2,
+      fill: 'rgba(255, 255, 255, 0.9)',
+      stroke: 'hsl(var(--border))',
+      strokeWidth: 2,
+      selectable: false,
+      evented: false,
+    });
+    (compassBg as any).data = { type: 'compass' };
+    fabricCanvas.add(compassBg);
+
+    // Draw north arrow
+    const arrowPoints = [
+      { x: compassX, y: compassY - compassSize / 2 + 10 },
+      { x: compassX - 8, y: compassY },
+      { x: compassX, y: compassY - 5 },
+      { x: compassX + 8, y: compassY },
+    ];
+    
+    const arrow = new Polygon(arrowPoints, {
+      fill: 'hsl(var(--destructive))',
+      stroke: 'hsl(var(--destructive))',
+      strokeWidth: 1,
+      selectable: false,
+      evented: false,
+    });
+    (arrow as any).data = { type: 'compass' };
+    fabricCanvas.add(arrow);
+
+    // Draw 'N' label
+    const northLabel = new FabricText('N', {
+      left: compassX,
+      top: compassY - compassSize / 2 + 5,
+      fontSize: 16,
+      fontWeight: 'bold',
+      fill: 'hsl(var(--foreground))',
+      originX: 'center',
+      originY: 'center',
+      selectable: false,
+      evented: false,
+    });
+    (northLabel as any).data = { type: 'compass' };
+    fabricCanvas.add(northLabel);
+
+    // Draw cardinal direction labels
+    const directions = [
+      { label: 'E', x: compassX + compassSize / 2 - 5, y: compassY },
+      { label: 'S', x: compassX, y: compassY + compassSize / 2 - 5 },
+      { label: 'W', x: compassX - compassSize / 2 + 5, y: compassY },
+    ];
+
+    directions.forEach(dir => {
+      const label = new FabricText(dir.label, {
+        left: dir.x,
+        top: dir.y,
+        fontSize: 12,
+        fill: 'hsl(var(--muted-foreground))',
+        originX: 'center',
+        originY: 'center',
+        selectable: false,
+        evented: false,
+      });
+      (label as any).data = { type: 'compass' };
+      fabricCanvas.add(label);
+    });
+  };
+
+  const drawAggregateFacetAnnotations = () => {
+    if (!fabricCanvas || !measurement?.faces) return;
+
+    // Group facets by direction and aggregate data
+    const directionGroups: Record<string, { area: number; pitch: string; count: number }> = {};
+
+    measurement.faces.forEach((face: any) => {
+      const direction = face.direction || 'Unknown';
+      const pitch = face.pitch || 'Unknown';
+      const area = face.plan_area_sqft || face.area || 0;
+
+      if (!directionGroups[direction]) {
+        directionGroups[direction] = { area: 0, pitch, count: 0 };
+      }
+      directionGroups[direction].area += area;
+      directionGroups[direction].count += 1;
+    });
+
+    // Position annotations around the perimeter
+    const positions = [
+      { direction: 'North', x: canvasWidth / 2, y: 40 },
+      { direction: 'East', x: canvasWidth - 140, y: canvasHeight / 2 },
+      { direction: 'South', x: canvasWidth / 2, y: canvasHeight - 40 },
+      { direction: 'West', x: 140, y: canvasHeight / 2 },
+    ];
+
+    positions.forEach(pos => {
+      const group = directionGroups[pos.direction];
+      if (!group || group.count === 0) return;
+
+      const text = `${pos.direction} Face\n${group.pitch} pitch\n${Math.round(group.area).toLocaleString()} sq ft`;
+
+      const annotation = new FabricText(text, {
+        left: pos.x,
+        top: pos.y,
+        fontSize: 13,
+        fontWeight: 'bold',
+        fill: 'white',
+        backgroundColor: 'rgba(0, 0, 0, 0.75)',
+        padding: 8,
+        originX: 'center',
+        originY: 'center',
+        selectable: false,
+        evented: false,
+        textAlign: 'center',
+      });
+      (annotation as any).data = { type: 'aggregate-annotation' };
+      fabricCanvas.add(annotation);
+    });
   };
 
   const drawRoofFacets = () => {
