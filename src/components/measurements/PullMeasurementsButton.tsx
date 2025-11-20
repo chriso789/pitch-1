@@ -47,6 +47,10 @@ export function PullMeasurementsButton({
     setLoading(true);
     setSuccess(false);
 
+    // 📊 Performance Monitoring: Start timing
+    const pullStartTime = Date.now();
+    console.log('⏱️ Measurement pull started:', { propertyId, lat, lng, timestamp: new Date().toISOString() });
+
     try {
       toast({
         title: "Pulling Measurements",
@@ -65,6 +69,20 @@ export function PullMeasurementsButton({
 
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || 'Pull failed');
+      
+      // 📊 Performance Monitoring: Record pull time
+      const pullEndTime = Date.now();
+      const pullDuration = pullEndTime - pullStartTime;
+      console.log(`⏱️ Measurement pull completed in ${pullDuration}ms`, {
+        propertyId,
+        duration: pullDuration,
+        target: 5000,
+        status: pullDuration < 5000 ? 'PASS' : 'SLOW'
+      });
+      
+      if (pullDuration > 5000) {
+        console.warn(`⚠️ Slow measurement pull: ${pullDuration}ms (target: <5000ms)`);
+      }
 
       const { measurement, tags } = data.data;
 

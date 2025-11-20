@@ -5,13 +5,15 @@ import { Card } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
-import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Home, ArrowRight as ArrowRightIcon, ZoomIn, ZoomOut, Scissors } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Home, ArrowRight as ArrowRightIcon, ZoomIn, ZoomOut, Scissors, Info, ChevronDown } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PolygonEditor } from './PolygonEditor';
 import { ComprehensiveMeasurementOverlay } from './ComprehensiveMeasurementOverlay';
 import { ManualMeasurementEditor } from './ManualMeasurementEditor';
 import { FacetSplitterOverlay } from './FacetSplitterOverlay';
+import { MeasurementSystemLimitations } from '@/components/documentation/MeasurementSystemLimitations';
 import { parseWKTPolygon, calculatePolygonAreaSqft, calculatePerimeterFt } from '@/utils/geoCoordinates';
 import { useManualVerification } from '@/hooks/useMeasurement';
 import { supabase } from '@/integrations/supabase/client';
@@ -1094,7 +1096,21 @@ export function MeasurementVerificationDialog({
             <CheckCircle2 className="h-4 w-4 mr-2" />
             {isAccepting ? 'Processing...' : 'Accept & Create Estimate'}
           </Button>
-        </DialogFooter>
+         </DialogFooter>
+        
+        {/* Documentation Section - Collapsible */}
+        <div className="mt-4 px-6 pb-6">
+          <Collapsible>
+            <CollapsibleTrigger className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors">
+              <Info className="h-4 w-4" />
+              About Measurement Data Sources
+              <ChevronDown className="h-4 w-4 transition-transform duration-200" />
+            </CollapsibleTrigger>
+            <CollapsibleContent className="mt-3">
+              <MeasurementSystemLimitations />
+            </CollapsibleContent>
+          </Collapsible>
+        </div>
       </DialogContent>
 
       {/* Manual Measurement Editor Modal */}
