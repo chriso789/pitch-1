@@ -101,7 +101,7 @@ serve(async (req) => {
     const height = 480;  // 4:3 ratio
     const zoom = calculateOptimalZoom(bounds, width, height, zoom_adjustment || 0);
 
-    // Build Mapbox Static Images API URL
+    // Build Mapbox Static Images API URL with higher resolution
     const retina = '@2x';
     
     // Encode GeoJSON for URL
@@ -110,20 +110,118 @@ serve(async (req) => {
     // Use calculated bounds center instead of metadata center for precise framing
     const mapboxUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/geojson(${encodedGeoJSON})/${bounds.centerLng},${bounds.centerLat},${zoom},0,0/${width}x${height}${retina}?access_token=${MAPBOX_TOKEN}`;
 
-    console.log('Fetching Mapbox static image:', { centerLat: bounds.centerLat, centerLng: bounds.centerLng, zoom, features: geojson.features.length });
+    console.log('Mapbox Static Image Request:', { 
+      centerLat: bounds.centerLat, 
+      centerLng: bounds.centerLng, 
+      zoom, 
+      features: geojson.features.length,
+      dimensions: `${width}x${height}${retina}`,
+      bounds,
+      geojson: JSON.stringify(geojson).substring(0, 500) + '...' // Log first 500 chars
+    });
 
-    // Fetch static image
-    const imageResponse = await fetch(mapboxUrl);
+    // Retry logic with exponential backoff (3 attempts)
+    let imageBuffer: Uint8Array | null = null;
+    let lastError: string | null = null;
     
-    if (!imageResponse.ok) {
-      const errorText = await imageResponse.text();
-      console.error('Mapbox API error:', errorText);
-      return json({ ok: false, error: 'Failed to generate visualization from Mapbox' }, corsHeaders, 500);
+    for (let attempt = 1; attempt <= 3; attempt++) {
+      try {
+        console.log(`Mapbox fetch attempt ${attempt}/3`);
+        const imageResponse = await fetch(mapboxUrl);
+        
+        if (!imageResponse.ok) {
+          const errorText = await imageResponse.text();
+          lastError = errorText;
+          console.error(`Mapbox API error (attempt ${attempt}/3):`, {
+            status: imageResponse.status,
+            statusText: imageResponse.statusText,
+            error: errorText,
+            url: mapboxUrl.substring(0, 200) + '...' // Log URL (truncated)
+          });
+          
+          if (attempt < 3) {
+            // Exponential backoff: 1s, 2s, 4s
+            const delay = Math.pow(2, attempt - 1) * 1000;
+            console.log(`Retrying in ${delay}ms...`);
+            await new Promise(resolve => setTimeout(resolve, delay));
+            continue;
+          }
+        } else {
+          // Success - extract image buffer
+          const imageBlob = await imageResponse.blob();
+          const imageArrayBuffer = await imageBlob.arrayBuffer();
+          imageBuffer = new Uint8Array(imageArrayBuffer);
+          console.log(`Mapbox image fetched successfully (${imageBuffer.length} bytes)`);
+          break;
+        }
+      } catch (fetchError) {
+        lastError = fetchError instanceof Error ? fetchError.message : String(fetchError);
+        console.error(`Mapbox fetch error (attempt ${attempt}/3):`, lastError);
+        
+        if (attempt < 3) {
+          const delay = Math.pow(2, attempt - 1) * 1000;
+          await new Promise(resolve => setTimeout(resolve, delay));
+        }
+      }
     }
-
-    const imageBlob = await imageResponse.blob();
-    const imageArrayBuffer = await imageBlob.arrayBuffer();
-    const imageBuffer = new Uint8Array(imageArrayBuffer);
+    
+    // If Mapbox failed after 3 attempts, fallback to Google Maps
+    if (!imageBuffer) {
+      console.warn('Mapbox failed after 3 attempts, falling back to Google Maps Static API');
+      
+      try {
+        // Call google-maps-proxy edge function for fallback
+        const googleMapsResponse = await fetch(`${SUPABASE_URL}/functions/v1/google-maps-proxy`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${SUPABASE_SERVICE_KEY}`,
+          },
+          body: JSON.stringify({
+            endpoint: 'staticmap',
+            params: {
+              center: `${bounds.centerLat},${bounds.centerLng}`,
+              zoom: Math.floor(zoom),
+              size: '1280x1280',
+              maptype: 'satellite',
+              scale: 2,
+            }
+          })
+        });
+        
+        if (!googleMapsResponse.ok) {
+          const googleError = await googleMapsResponse.text();
+          console.error('Google Maps fallback also failed:', googleError);
+          return json({ 
+            ok: false, 
+            error: `Both Mapbox and Google Maps failed. Mapbox: ${lastError}. Google: ${googleError}` 
+          }, corsHeaders, 500);
+        }
+        
+        const googleData = await googleMapsResponse.json();
+        if (googleData.image_data) {
+          // Convert base64 to Uint8Array
+          const base64Data = googleData.image_data.replace(/^data:image\/\w+;base64,/, '');
+          const binaryString = atob(base64Data);
+          imageBuffer = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            imageBuffer[i] = binaryString.charCodeAt(i);
+          }
+          console.log('Google Maps fallback successful');
+        } else {
+          return json({ 
+            ok: false, 
+            error: 'Google Maps fallback returned no image data' 
+          }, corsHeaders, 500);
+        }
+      } catch (googleError) {
+        console.error('Google Maps fallback exception:', googleError);
+        return json({ 
+          ok: false, 
+          error: `Visualization generation failed. Mapbox: ${lastError}. Google fallback: ${googleError}` 
+        }, corsHeaders, 500);
+      }
+    }
 
     // Upload to Supabase Storage
     const fileName = `${property_id || measurementData.property_id}/${measurementData.id || measurement_id}.png`;
