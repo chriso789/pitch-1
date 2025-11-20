@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Calculator, Plus, Trash2, FileText, DollarSign, Target, TrendingUp, MapPin, Satellite, Loader2, AlertTriangle, RefreshCw } from 'lucide-react';
+import { Calculator, Plus, Trash2, FileText, DollarSign, Target, TrendingUp, MapPin, Satellite, Loader2, AlertTriangle, RefreshCw, Clock } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -27,6 +27,7 @@ import { ProfitBreakdownDisplay } from './ProfitBreakdownDisplay';
 import { AddEstimateLineDialog } from './estimates/AddEstimateLineDialog';
 import { PullMeasurementsButton } from './measurements/PullMeasurementsButton';
 import { useLatestMeasurement } from '@/hooks/useMeasurement';
+import { useLivePricing } from '@/hooks/useLivePricing';
 
 interface LineItem {
   item_category: string;
@@ -53,10 +54,10 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 }) => {
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
+  const { fetchLivePricing, applyLivePricing, refreshing: livePricingRefreshing } = useLivePricing();
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
   const [savingEstimate, setSavingEstimate] = useState(false);
-  const [refreshingPricing, setRefreshingPricing] = useState(false);
   const [templates, setTemplates] = useState([]);
   const [salesReps, setSalesReps] = useState([]);
   const [selectedSalesRep, setSelectedSalesRep] = useState<any>(null);
@@ -765,74 +766,75 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   };
 
   const handleRefreshPricing = async () => {
-    // Filter line items that have SKUs
-    const itemsWithSkus = lineItems.filter(item => item.sku && item.sku.trim() !== '');
+    const itemsWithSKU = lineItems.filter(item => item.sku && item.sku.trim());
     
-    if (itemsWithSkus.length === 0) {
+    if (itemsWithSKU.length === 0) {
       toast({
         title: "No SKUs Found",
-        description: "Add SKU codes to line items to enable price refresh",
-        variant: "destructive",
+        description: "Add SKUs to line items to refresh pricing",
+        variant: "destructive"
       });
       return;
     }
 
-    setRefreshingPricing(true);
+    console.log('🔄 Refreshing pricing for items:', itemsWithSKU);
+
     try {
-      // Call material-pricing-api with refresh flag
-      const { data, error } = await supabase.functions.invoke('material-pricing-api', {
-        body: {
-          skus: itemsWithSkus.map(item => item.sku),
-          vendors: ['SRS'], // Default to SRS vendor
-          refresh: true // Force refresh from live API
-        }
-      });
+      const pricingItems = itemsWithSKU.map(item => ({
+        sku: item.sku,
+        item_description: item.item_name,
+        quantity: item.quantity,
+        unit_price: item.unit_cost,
+        last_price_updated: item.last_price_updated
+      }));
 
-      if (error) throw error;
-
-      if (!data || !Array.isArray(data.results)) {
-        throw new Error('Invalid response from pricing API');
-      }
-
-      // Update line items with refreshed prices
-      const now = new Date().toISOString();
-      let updatedCount = 0;
-      let failedCount = 0;
-
-      const updatedLineItems = lineItems.map(item => {
+      const enrichedItems = await fetchLivePricing(pricingItems);
+      
+      // Track price changes for variance warnings
+      const significantChanges: string[] = [];
+      
+      // Update line items with new pricing
+      setLineItems(prev => prev.map(item => {
         if (!item.sku) return item;
+        
+        const enriched = enrichedItems.find(e => e.sku === item.sku);
+        if (!enriched || !enriched.live_price) return item;
 
-        const pricingResult = data.results.find((r: any) => r.sku === item.sku);
-        if (pricingResult && pricingResult.price) {
-          updatedCount++;
-          return {
-            ...item,
-            unit_cost: pricingResult.price,
-            last_price_updated: now
-          };
-        } else {
-          failedCount++;
-          return item;
+        const variance = enriched.price_variance_pct || 0;
+        if (Math.abs(variance) > 10) {
+          significantChanges.push(`${item.item_name}: ${variance > 0 ? '+' : ''}${variance.toFixed(1)}%`);
         }
-      });
 
-      setLineItems(updatedLineItems);
-      setHasUnsavedChanges(true);
+        return {
+          ...item,
+          unit_cost: enriched.live_price,
+          last_price_updated: enriched.last_price_updated || new Date().toISOString()
+        };
+      }));
+
+      // Show variance warnings
+      if (significantChanges.length > 0) {
+        toast({
+          title: "⚠️ Significant Price Changes Detected",
+          description: significantChanges.join(' | '),
+          variant: "default"
+        });
+      }
 
       toast({
         title: "Pricing Updated",
-        description: `${updatedCount} item(s) updated with live SRS pricing${failedCount > 0 ? `, ${failedCount} failed` : ''}`,
+        description: `${itemsWithSKU.length} items refreshed`,
       });
+      
+      if (editingEstimateId) setHasUnsavedChanges(true);
 
-    } catch (error: any) {
+    } catch (error) {
       console.error('Error refreshing pricing:', error);
       toast({
         title: "Pricing Refresh Failed",
-        description: error.message || "Failed to fetch updated prices from SRS API",
-        variant: "destructive",
+        description: "Could not update prices. Please try again.",
+        variant: "destructive"
       });
-    } finally {
-      setRefreshingPricing(false);
     }
   };
 
@@ -1229,9 +1231,9 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                       onClick={handleRefreshPricing} 
                       size="sm" 
                       variant="secondary"
-                      disabled={refreshingPricing || lineItems.every(item => !item.sku)}
+                      disabled={livePricingRefreshing || lineItems.every(item => !item.sku)}
                     >
-                      {refreshingPricing ? (
+                      {livePricingRefreshing ? (
                         <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                       ) : (
                         <RefreshCw className="h-4 w-4 mr-2" />
@@ -1330,7 +1332,21 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label>Unit Cost</Label>
+                        <div className="flex items-center justify-between">
+                          <Label>Unit Cost</Label>
+                          {item.last_price_updated && (
+                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
+                              <Clock className="h-3 w-3" />
+                              {formatLastUpdated(item.last_price_updated)}
+                              {isPriceStale(item.last_price_updated) && (
+                                <Badge variant="outline" className="ml-1 text-yellow-600 border-yellow-600">
+                                  <AlertTriangle className="h-3 w-3 mr-1" />
+                                  Stale
+                                </Badge>
+                              )}
+                            </div>
+                          )}
+                        </div>
                         <Input
                           type="number"
                           value={item.unit_cost}
