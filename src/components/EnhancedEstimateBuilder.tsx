@@ -223,15 +223,19 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   }, [searchParams, measurementData, hasMeasurements, autoPopulateRan]);
 
   const autoPopulateLineItems = useCallback(() => {
+    // 📊 Performance Monitoring: Start timing
+    const autoPopStartTime = Date.now();
     console.log('🔧 Starting auto-populate with data:', {
       measurementData,
       propertyDetails,
       excelConfig,
-      hasMeasurements
+      hasMeasurements,
+      timestamp: new Date().toISOString()
     });
 
     if (!measurementData) {
       console.warn('⚠️ No measurement data available');
+      console.log('📊 Auto-population failed: No measurement data (duration: 0ms)');
       return;
     }
 
@@ -371,6 +375,26 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     
     console.log('✅ Auto-populated line items:', newLineItems);
     setLineItems(newLineItems);
+    
+    // 📊 Performance Monitoring: Calculate validation metrics
+    const autoPopEndTime = Date.now();
+    const autoPopDuration = autoPopEndTime - autoPopStartTime;
+    
+    const validationResults = {
+      expectedItems: 6,
+      actualItems: newLineItems.length,
+      allQuantitiesValid: newLineItems.every(item => item.quantity > 0),
+      totalSquares: totalSquares.toFixed(2),
+      duration: autoPopDuration,
+      target: 1000,
+      status: autoPopDuration < 1000 ? 'PASS' : 'SLOW'
+    };
+    
+    console.log(`📊 Auto-population validation:`, validationResults);
+    
+    if (autoPopDuration > 1000) {
+      console.warn(`⚠️ Slow auto-population: ${autoPopDuration}ms (target: <1000ms)`);
+    }
     
     toast({
       title: "Materials Auto-Populated",
@@ -619,6 +643,16 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     }
 
     setSavingEstimate(true);
+    
+    // 📊 Performance Monitoring: Start timing
+    const saveStartTime = Date.now();
+    console.log('💾 Starting estimate save:', {
+      pipelineEntryId,
+      lineItemCount: lineItems.length,
+      sellingPrice: calculationResults.selling_price,
+      timestamp: new Date().toISOString()
+    });
+    
     try {
       // Get user and tenant info
       const { data: { user } } = await supabase.auth.getUser();
@@ -679,6 +713,23 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 
       if (error) throw error;
 
+      // 📊 Performance Monitoring: Record save time
+      const saveEndTime = Date.now();
+      const saveDuration = saveEndTime - saveStartTime;
+      
+      console.log('📊 Estimate save success:', {
+        duration: saveDuration,
+        estimateNumber,
+        lineItemCount: lineItems.length,
+        totalCost: calculationResults.selling_price,
+        target: 2000,
+        status: saveDuration < 2000 ? 'PASS' : 'SLOW'
+      });
+      
+      if (saveDuration > 2000) {
+        console.warn(`⚠️ Slow estimate save: ${saveDuration}ms (target: <2000ms)`);
+      }
+
       toast({
         title: "Estimate Saved",
         description: `Estimate ${estimateNumber} saved successfully`,
@@ -693,6 +744,15 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       setEditingEstimateId(null);
       setHasUnsavedChanges(false);
     } catch (error: any) {
+      const saveEndTime = Date.now();
+      const saveDuration = saveEndTime - saveStartTime;
+      
+      console.error('📊 Estimate save failed:', {
+        duration: saveDuration,
+        error: error.message,
+        lineItemCount: lineItems.length
+      });
+      
       console.error('Error saving estimate:', error);
       toast({
         title: "Save Failed",
