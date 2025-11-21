@@ -50,7 +50,7 @@ serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     const body = await req.json();
-    const { measurement_id, property_id, measurement, center_lat, center_lng, zoom_adjustment } = body;
+    const { measurement_id, property_id, measurement, center_lat, center_lng, verified_address_lat, verified_address_lng, zoom_adjustment } = body;
 
     if (!MAPBOX_TOKEN) {
       console.error('MAPBOX_PUBLIC_TOKEN not configured');
@@ -78,7 +78,7 @@ serve(async (req) => {
       measurementData = data;
     }
 
-    // Get coordinates
+    // Get coordinates - prioritize verified address
     const lat = center_lat || measurementData.center_lat;
     const lng = center_lng || measurementData.center_lng;
 
@@ -96,6 +96,30 @@ serve(async (req) => {
 
     // Calculate bounds and optimal zoom
     const bounds = calculateBounds(geojson);
+    
+    // Priority order for centering:
+    // 1. Verified address coordinates (most accurate for property location)
+    // 2. Calculated bounds center from features
+    // 3. Fallback to request parameters
+    const finalCenterLat = verified_address_lat || bounds.centerLat || lat;
+    const finalCenterLng = verified_address_lng || bounds.centerLng || lng;
+    
+    // Calculate distance between verified address and bounds center for diagnostics
+    if (verified_address_lat && verified_address_lng) {
+      const latDiff = Math.abs(verified_address_lat - bounds.centerLat);
+      const lngDiff = Math.abs(verified_address_lng - bounds.centerLng);
+      const distanceMeters = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff) * 111000; // Rough conversion to meters
+      
+      if (distanceMeters > 30) {
+        console.warn('⚠️ Coordinate mismatch detected:', {
+          verifiedCoords: { lat: verified_address_lat, lng: verified_address_lng },
+          boundsCoords: { lat: bounds.centerLat, lng: bounds.centerLng },
+          distanceMeters: Math.round(distanceMeters),
+          usingVerifiedAddress: true
+        });
+      }
+    }
+    
     // With @2x retina, requesting 640x480 yields 1280x960 effective resolution
     const width = 640;   
     const height = 480;  // 4:3 ratio
@@ -107,12 +131,13 @@ serve(async (req) => {
     // Encode GeoJSON for URL
     const encodedGeoJSON = encodeURIComponent(JSON.stringify(geojson));
     
-    // Use calculated bounds center instead of metadata center for precise framing
-    const mapboxUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/geojson(${encodedGeoJSON})/${bounds.centerLng},${bounds.centerLat},${zoom},0,0/${width}x${height}${retina}?access_token=${MAPBOX_TOKEN}`;
+    // Use verified address center for precise property framing
+    const mapboxUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/geojson(${encodedGeoJSON})/${finalCenterLng},${finalCenterLat},${zoom},0,0/${width}x${height}${retina}?access_token=${MAPBOX_TOKEN}`;
 
     console.log('Mapbox Static Image Request:', { 
-      centerLat: bounds.centerLat, 
-      centerLng: bounds.centerLng, 
+      finalCenterLat, 
+      finalCenterLng,
+      verifiedAddressUsed: !!(verified_address_lat && verified_address_lng),
       zoom, 
       features: geojson.features.length,
       dimensions: `${width}x${height}${retina}`,

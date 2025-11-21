@@ -502,12 +502,37 @@ export function MeasurementVerificationDialog({
         description: "Fetching updated satellite imagery...",
       });
 
+      // Try to fetch verified address coordinates for accurate centering
+      let verifiedLat: number | undefined;
+      let verifiedLng: number | undefined;
+      
+      if (pipelineEntryId) {
+        const { data: pipelineData } = await supabase
+          .from('pipeline_entries')
+          .select('metadata')
+          .eq('id', pipelineEntryId)
+          .single();
+        
+        if (pipelineData?.metadata) {
+          const metadata = pipelineData.metadata as any;
+          if (metadata.verified_address?.geometry?.location) {
+            verifiedLat = metadata.verified_address.geometry.location.lat;
+            verifiedLng = metadata.verified_address.geometry.location.lng;
+          } else if (metadata.verified_address?.lat && metadata.verified_address?.lng) {
+            verifiedLat = metadata.verified_address.lat;
+            verifiedLng = metadata.verified_address.lng;
+          }
+        }
+      }
+
       const { data, error } = await supabase.functions.invoke('generate-measurement-visualization', {
         body: {
           measurement_id: measurement.id,
           property_id: measurement.property_id,
           center_lat: lat ?? adjustedCenterLat,
           center_lng: lng ?? adjustedCenterLng,
+          verified_address_lat: verifiedLat,
+          verified_address_lng: verifiedLng,
           zoom_adjustment: zoomAdjust ?? manualZoom,
         }
       });
@@ -546,9 +571,17 @@ export function MeasurementVerificationDialog({
         <DialogHeader>
           <div className="flex items-start justify-between">
             <div className="space-y-2">
-              <DialogTitle className="flex items-center gap-2">
-                <Satellite className="h-5 w-5" />
-                Verify Measurements
+              <DialogTitle className="flex items-center gap-2 flex-col items-start">
+                <div className="flex items-center gap-2">
+                  <Satellite className="h-5 w-5" />
+                  Verify Measurements
+                </div>
+                <div className="text-sm font-normal text-muted-foreground flex items-center gap-2 flex-wrap">
+                  <span className="max-w-[300px] truncate">{tags['prop.address'] || 'Unknown Address'}</span>
+                  <Badge variant="outline" className="font-mono text-xs">
+                    {centerLat.toFixed(6)}, {centerLng.toFixed(6)}
+                  </Badge>
+                </div>
               </DialogTitle>
               <div className="flex items-center gap-2 flex-wrap">
                 <Badge variant="secondary" className="flex items-center gap-1">
@@ -673,26 +706,43 @@ export function MeasurementVerificationDialog({
                   )}
                 </div>
                 
-                {/* Regenerate Visualization Button */}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => handleRegenerateVisualization()}
-                  disabled={isRegenerating || !measurement?.id}
-                  className="w-full"
-                >
-                  {isRegenerating ? (
-                    <>
-                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                      Regenerating...
-                    </>
-                  ) : (
-                    <>
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      Regenerate Satellite View
-                    </>
-                  )}
-                </Button>
+                {/* Regenerate Visualization Buttons */}
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setAdjustedCenterLat(centerLat);
+                      setAdjustedCenterLng(centerLng);
+                      setManualZoom(0);
+                      handleRegenerateVisualization(centerLat, centerLng, 0);
+                    }}
+                    disabled={isRegenerating}
+                    title="Re-center satellite image on verified address"
+                  >
+                    <Home className="h-4 w-4 mr-2" />
+                    Re-center
+                  </Button>
+                  
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleRegenerateVisualization()}
+                    disabled={isRegenerating || !measurement?.id}
+                  >
+                    {isRegenerating ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Regenerating...
+                      </>
+                    ) : (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Regenerate
+                      </>
+                    )}
+                  </Button>
+                </div>
                 
                 {/* Manual Pan Controls */}
                 <div className="p-3 bg-muted/50 rounded-lg">

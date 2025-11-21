@@ -1186,6 +1186,33 @@ serve(async (req) => {
           squares: adjustedTotal / 100 
         });
 
+        // Fetch verified address coordinates from pipeline_entries for accurate centering
+        let verifiedLat: number | undefined;
+        let verifiedLng: number | undefined;
+        
+        try {
+          const { data: pipelineData } = await supabase
+            .from('pipeline_entries')
+            .select('metadata')
+            .eq('id', propertyId)
+            .single();
+          
+          if (pipelineData?.metadata) {
+            const metadata = pipelineData.metadata as any;
+            if (metadata.verified_address?.geometry?.location) {
+              verifiedLat = metadata.verified_address.geometry.location.lat;
+              verifiedLng = metadata.verified_address.geometry.location.lng;
+              console.log('Found verified address coordinates:', { verifiedLat, verifiedLng });
+            } else if (metadata.verified_address?.lat && metadata.verified_address?.lng) {
+              verifiedLat = metadata.verified_address.lat;
+              verifiedLng = metadata.verified_address.lng;
+              console.log('Found verified address coordinates (alt format):', { verifiedLat, verifiedLng });
+            }
+          }
+        } catch (error) {
+          console.warn('Could not fetch verified address:', error);
+        }
+
         // Generate Mapbox visualization (non-blocking)
         try {
           console.log('Generating Mapbox visualization for measurement:', row.id);
@@ -1195,6 +1222,8 @@ serve(async (req) => {
               property_id: propertyId,
               center_lat: lat,
               center_lng: lng,
+              verified_address_lat: verifiedLat,
+              verified_address_lng: verifiedLng,
             }
           });
           
