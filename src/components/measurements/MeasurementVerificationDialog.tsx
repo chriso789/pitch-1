@@ -19,6 +19,8 @@ import { useManualVerification } from '@/hooks/useMeasurement';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { detectRoofType } from '@/utils/measurementGeometry';
+import { saveMeasurementWithOfflineSupport } from '@/services/offlineMeasurementSync';
+import { useOfflineSync } from '@/hooks/useOfflineSync';
 
 // Industry-standard roof pitch multipliers
 const PITCH_MULTIPLIERS: Record<string, number> = {
@@ -64,6 +66,7 @@ export function MeasurementVerificationDialog({
 }: MeasurementVerificationDialogProps) {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { isOnline } = useOfflineSync();
   const [isAccepting, setIsAccepting] = useState(false);
   const [adjustedPolygon, setAdjustedPolygon] = useState<[number, number][] | null>(null);
   const [adjustedArea, setAdjustedArea] = useState<number | null>(null);
@@ -287,60 +290,39 @@ export function MeasurementVerificationDialog({
       }
     };
 
-    // Persist adjusted measurements to database
+    // Persist adjusted measurements with offline support
     try {
-      if (measurement?.id) {
-        const { error: measurementError } = await supabase
-          .from('measurements')
-          .update({
-            summary: {
-              total_area_sqft: roofArea,
-              total_squares: squares,
-              waste_pct: wastePercent,
-              pitch: selectedPitch,
-              pitch_factor: pitchFactor,
-              perimeter: perimeter,
-              stories: numberOfStories,
-            },
-            updated_at: new Date().toISOString(),
-          })
-          .eq('id', measurement.id);
+      if (measurement?.id && pipelineEntryId) {
+        const result = await saveMeasurementWithOfflineSupport({
+          measurementId: measurement.id,
+          propertyId: pipelineEntryId,
+          facets: measurement.faces || [],
+          linearFeatures: measurement.linear_features || [],
+          summary: {
+            total_area_sqft: roofArea,
+            total_squares: squares,
+            waste_pct: wastePercent,
+            pitch: selectedPitch,
+            pitch_factor: pitchFactor,
+            perimeter: perimeter,
+            stories: numberOfStories,
+          },
+          metadata: updatedMeasurement,
+        });
         
-        if (measurementError) {
-          console.error('Failed to update measurement:', measurementError);
-        }
-      }
-
-      // Update pipeline entry metadata with adjusted measurements
-      if (pipelineEntryId) {
-        const { data: pipelineData } = await (supabase as any)
-          .from('pipeline_entries')
-          .select('metadata')
-          .eq('id', pipelineEntryId)
-          .single();
-
-        const existingMetadata = (pipelineData?.metadata as any) || {};
-        
-        const { error: pipelineError } = await (supabase as any)
-          .from('pipeline_entries')
-          .update({
-            metadata: {
-              ...existingMetadata,
-              comprehensive_measurements: updatedMeasurement,
-              roof_area_sq_ft: roofArea,
-              roof_pitch: selectedPitch,
-            }
-          })
-          .eq('id', pipelineEntryId);
-        
-        if (pipelineError) {
-          console.error('Failed to update pipeline entry:', pipelineError);
-        } else {
-          console.log('✅ Saved comprehensive_measurements to pipeline_entries:', {
-            pipelineEntryId,
-            roof_area_sq_ft: roofArea,
-            squares: squares,
-            pitch: selectedPitch
+        if (!result.success) {
+          console.error('Failed to save measurement:', result.error);
+          toast({
+            title: isOnline ? "Save Failed" : "Saved Offline",
+            description: isOnline 
+              ? "Measurements queued for retry when connection improves" 
+              : "Changes will sync when connection is restored",
+            variant: isOnline ? "destructive" : "default",
+          });
+        } else if (!isOnline) {
+          toast({
+            title: "Saved Offline",
+            description: "Changes will sync when connection is restored",
           });
         }
       }
@@ -348,7 +330,7 @@ export function MeasurementVerificationDialog({
       console.error('Failed to save adjusted measurements:', error);
       toast({
         title: "Warning",
-        description: "Measurements accepted but may not have saved to database",
+        description: "Measurements accepted but may not have saved",
         variant: "destructive",
       });
     }
@@ -412,17 +394,26 @@ export function MeasurementVerificationDialog({
         },
       };
       
-      // Save to database
-      if (measurement?.id) {
-        const { error } = await supabase
-          .from('measurements')
-          .update({
-            faces: updatedMeasurement.faces,
-            summary: updatedMeasurement.summary,
-          })
-          .eq('id', measurement.id);
-          
-        if (error) throw error;
+      // Save to database with offline support
+      if (measurement?.id && pipelineEntryId) {
+        const totalArea = updatedMeasurement.faces.reduce((sum: number, f: any) => sum + f.area_sqft, 0);
+        const result = await saveMeasurementWithOfflineSupport({
+          measurementId: measurement.id,
+          propertyId: pipelineEntryId,
+          facets: updatedMeasurement.faces,
+          linearFeatures: measurement.linear_features || [],
+          summary: {
+            total_area_sqft: totalArea,
+            total_squares: totalArea / 100,
+            waste_pct: wastePercent,
+            pitch: updatedMeasurement.summary.pitch || '6/12',
+            perimeter: tags['roof.perimeter'] || 0,
+            stories: numberOfStories,
+          },
+          metadata: updatedMeasurement,
+        });
+        
+        if (!result.success) throw new Error(result.error);
       }
       
       // Update local state
@@ -701,6 +692,9 @@ export function MeasurementVerificationDialog({
                     </span>
                   </>
                 )}
+                <Badge variant={isOnline ? 'default' : 'destructive'} className="ml-auto">
+                  {isOnline ? '🟢 Online' : '🔴 Offline - Changes will sync later'}
+                </Badge>
               </div>
             </div>
             <Badge variant={confidence.variant}>
