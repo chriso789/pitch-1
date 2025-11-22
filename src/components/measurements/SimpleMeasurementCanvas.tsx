@@ -12,11 +12,15 @@ import {
   Home, 
   Loader2,
   CheckCircle2,
-  MousePointer2
+  MousePointer2,
+  Eye,
+  EyeOff
 } from 'lucide-react';
 import { useMeasurementDrawing } from '@/hooks/useMeasurementDrawing';
 import { calculatePolygonArea, calculatePolygonPerimeter, convertSolarPolygonToPoints } from '@/utils/measurementGeometry';
 import { supabase } from '@/integrations/supabase/client';
+import { RidgeLineVisualizer } from './RidgeLineVisualizer';
+import { FacetSplittingTools } from './FacetSplittingTools';
 
 interface SimpleMeasurementCanvasProps {
   satelliteImageUrl: string;
@@ -47,6 +51,9 @@ export function SimpleMeasurementCanvas({
   const [isDetectingBuilding, setIsDetectingBuilding] = useState(false);
   const [pixelsPerFoot, setPixelsPerFoot] = useState(1);
   const [mode, setMode] = useState<'select' | 'draw'>('draw');
+  const [detectedLinearFeatures, setDetectedLinearFeatures] = useState<any>(null);
+  const [showLinearFeatures, setShowLinearFeatures] = useState(true);
+  const [buildingPolygon, setBuildingPolygon] = useState<[number, number][]>([]);
 
   const {
     polygons,
@@ -305,6 +312,9 @@ export function SimpleMeasurementCanvas({
       
       if (measurement?.buildingFootprint?.coordinates) {
         const coords = measurement.buildingFootprint.coordinates[0];
+        const geoCoords = coords.map(c => [c.lng, c.lat] as [number, number]);
+        setBuildingPolygon(geoCoords);
+        
         const points = convertSolarPolygonToPoints(
           coords,
           centerLng,
@@ -315,7 +325,37 @@ export function SimpleMeasurementCanvas({
         );
         
         importBuildingOutline(points);
-        toast.success('Building outline detected and imported');
+        
+        // Extract linear features (ridge, hip, valley)
+        if (measurement.linear_features) {
+          const ridges = measurement.linear_features.filter((f: any) => f.type === 'ridge');
+          const hips = measurement.linear_features.filter((f: any) => f.type === 'hip');
+          const valleys = measurement.linear_features.filter((f: any) => f.type === 'valley');
+          
+          setDetectedLinearFeatures({
+            ridges: ridges.map((f: any) => ({
+              ...f,
+              points: f.wkt ? parseLineString(f.wkt) : undefined,
+            })),
+            hips: hips.map((f: any) => ({
+              ...f,
+              points: f.wkt ? parseLineString(f.wkt) : undefined,
+            })),
+            valleys: valleys.map((f: any) => ({
+              ...f,
+              points: f.wkt ? parseLineString(f.wkt) : undefined,
+            })),
+          });
+          
+          toast.success(
+            'Building detected with roof topology!',
+            { 
+              description: `${ridges.length} ridges, ${hips.length} hips, ${valleys.length} valleys`
+            }
+          );
+        } else {
+          toast.success('Building outline detected and imported');
+        }
       } else {
         toast.error('No building outline found');
       }
@@ -347,6 +387,26 @@ export function SimpleMeasurementCanvas({
     setMode('draw');
     startDrawing();
     toast.info('Click to add corners. Click first point or double-click to close polygon.');
+  };
+
+  const handleApplySplit = useCallback((splitLine: any) => {
+    // Convert geo coordinates to canvas pixels if needed
+    // For now, just show a toast - full implementation would split the polygon
+    toast.info('Split line applied - implementation in progress');
+    console.log('Split line:', splitLine);
+  }, []);
+
+  // Helper to parse WKT LINESTRING
+  const parseLineString = (wkt: string): [number, number][] => {
+    const match = wkt.match(/LINESTRING\(([^)]+)\)/);
+    if (!match) return [];
+    
+    return match[1]
+      .split(',')
+      .map(pair => {
+        const [lng, lat] = pair.trim().split(' ').map(Number);
+        return [lng, lat] as [number, number];
+      });
   };
 
   return (
@@ -422,6 +482,17 @@ export function SimpleMeasurementCanvas({
             >
               <Trash2 className="w-4 h-4" />
             </Button>
+
+            {detectedLinearFeatures && (
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setShowLinearFeatures(!showLinearFeatures)}
+                title={showLinearFeatures ? 'Hide Ridge/Hip/Valley Lines' : 'Show Ridge/Hip/Valley Lines'}
+              >
+                {showLinearFeatures ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+              </Button>
+            )}
           </div>
         </div>
       </Card>
@@ -459,6 +530,16 @@ export function SimpleMeasurementCanvas({
         </div>
       </Card>
 
+      {/* Facet Splitting Tools */}
+      {buildingPolygon.length >= 3 && (
+        <FacetSplittingTools
+          buildingPolygon={buildingPolygon}
+          linearFeatures={detectedLinearFeatures}
+          onApplySplit={handleApplySplit}
+          disabled={isDrawing}
+        />
+      )}
+
       {/* Canvas */}
       <Card className="relative overflow-hidden">
         {isLoadingImage && (
@@ -471,7 +552,39 @@ export function SimpleMeasurementCanvas({
         )}
         
         <canvas ref={canvasRef} />
+        
+        {/* Ridge/Hip/Valley Line Visualizer */}
+        <RidgeLineVisualizer
+          canvas={fabricCanvasRef.current}
+          linearFeatures={detectedLinearFeatures}
+          centerLng={centerLng}
+          centerLat={centerLat}
+          zoom={zoom}
+          canvasWidth={width}
+          canvasHeight={height}
+          visible={showLinearFeatures}
+        />
       </Card>
+
+      {/* Linear Features Legend */}
+      {detectedLinearFeatures && showLinearFeatures && (
+        <Card className="p-3">
+          <div className="flex items-center gap-4 flex-wrap text-sm">
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-0.5 bg-[#10b981] border-dashed" />
+              <span className="text-muted-foreground">Ridge Lines</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-0.5 bg-[#3b82f6] border-dashed" />
+              <span className="text-muted-foreground">Hip Lines</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-8 h-0.5 bg-[#ef4444] border-dashed" />
+              <span className="text-muted-foreground">Valley Lines</span>
+            </div>
+          </div>
+        </Card>
+      )}
 
       {/* Instructions */}
       {isDrawing && (
