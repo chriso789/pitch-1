@@ -76,6 +76,30 @@ interface StorageStats {
   totalSize: string;
 }
 
+interface CachedSatelliteImage {
+  id: string;
+  url: string;
+  propertyId: string;
+  lat: number;
+  lng: number;
+  zoom: number;
+  blob: Blob;
+  cachedAt: string;
+  expiresAt: string;
+  sizeBytes: number;
+  accessCount: number;
+  lastAccessedAt: string;
+}
+
+interface CachedMeasurement {
+  id: string;
+  propertyId: string;
+  measurementData: any;
+  satelliteImageId?: string;
+  cachedAt: string;
+  expiresAt: string;
+}
+
 // IndexedDB Schema
 interface StormCanvassDB extends DBSchema {
   routes: {
@@ -98,6 +122,16 @@ interface StormCanvassDB extends DBSchema {
     value: CachedDisposition;
     indexes: { 'by-expires': string };
   };
+  satelliteImages: {
+    key: string;
+    value: CachedSatelliteImage;
+    indexes: { 'by-expires': string; 'by-property': string };
+  };
+  measurements: {
+    key: string;
+    value: CachedMeasurement;
+    indexes: { 'by-expires': string; 'by-property': string };
+  };
 }
 
 class OfflineManager {
@@ -110,8 +144,8 @@ class OfflineManager {
   async initialize(): Promise<void> {
     if (this.db) return;
 
-    this.db = await openDB<StormCanvassDB>('storm-canvass-offline', 1, {
-      upgrade(db) {
+    this.db = await openDB<StormCanvassDB>('storm-canvass-offline', 2, {
+      upgrade(db, oldVersion) {
         // Routes store
         if (!db.objectStoreNames.contains('routes')) {
           const routeStore = db.createObjectStore('routes', { keyPath: 'id' });
@@ -135,6 +169,20 @@ class OfflineManager {
         if (!db.objectStoreNames.contains('dispositions')) {
           const dispositionStore = db.createObjectStore('dispositions', { keyPath: 'id' });
           dispositionStore.createIndex('by-expires', 'expiresAt');
+        }
+
+        // Satellite images store (v2)
+        if (oldVersion < 2 && !db.objectStoreNames.contains('satelliteImages')) {
+          const imageStore = db.createObjectStore('satelliteImages', { keyPath: 'id' });
+          imageStore.createIndex('by-expires', 'expiresAt');
+          imageStore.createIndex('by-property', 'propertyId');
+        }
+
+        // Measurements store (v2)
+        if (oldVersion < 2 && !db.objectStoreNames.contains('measurements')) {
+          const measurementStore = db.createObjectStore('measurements', { keyPath: 'id' });
+          measurementStore.createIndex('by-expires', 'expiresAt');
+          measurementStore.createIndex('by-property', 'propertyId');
         }
       },
     });
@@ -472,6 +520,124 @@ class OfflineManager {
     return allDispositions.filter(d => d.expiresAt >= now);
   }
 
+  // Satellite Image Caching
+  async cacheSatelliteImage(
+    url: string,
+    propertyId: string,
+    lat: number,
+    lng: number,
+    zoom: number
+  ): Promise<string | null> {
+    await this.initialize();
+    if (!this.db) return null;
+
+    try {
+      // Fetch image as blob
+      const response = await fetch(url);
+      if (!response.ok) return null;
+      
+      const blob = await response.blob();
+      const id = `sat_${propertyId}_${zoom}`;
+      const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(); // 7 days
+
+      await this.db.put('satelliteImages', {
+        id,
+        url,
+        propertyId,
+        lat,
+        lng,
+        zoom,
+        blob,
+        cachedAt: new Date().toISOString(),
+        expiresAt,
+        sizeBytes: blob.size,
+        accessCount: 0,
+        lastAccessedAt: new Date().toISOString(),
+      });
+
+      return URL.createObjectURL(blob);
+    } catch (error) {
+      console.error('Failed to cache satellite image:', error);
+      return null;
+    }
+  }
+
+  async getCachedSatelliteImage(propertyId: string, zoom: number): Promise<string | null> {
+    await this.initialize();
+    if (!this.db) return null;
+
+    const id = `sat_${propertyId}_${zoom}`;
+    const cached = await this.db.get('satelliteImages', id);
+
+    if (!cached) return null;
+
+    const now = new Date().toISOString();
+    if (cached.expiresAt < now) {
+      await this.db.delete('satelliteImages', id);
+      return null;
+    }
+
+    // Update access count
+    await this.db.put('satelliteImages', {
+      ...cached,
+      accessCount: cached.accessCount + 1,
+      lastAccessedAt: now,
+    });
+
+    return URL.createObjectURL(cached.blob);
+  }
+
+  // Measurement Caching
+  async cacheMeasurement(
+    measurementId: string,
+    propertyId: string,
+    measurementData: any,
+    satelliteImageId?: string
+  ): Promise<void> {
+    await this.initialize();
+    if (!this.db) return;
+
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(); // 30 days
+
+    await this.db.put('measurements', {
+      id: measurementId,
+      propertyId,
+      measurementData,
+      satelliteImageId,
+      cachedAt: new Date().toISOString(),
+      expiresAt,
+    });
+  }
+
+  async getCachedMeasurement(measurementId: string): Promise<any | null> {
+    await this.initialize();
+    if (!this.db) return null;
+
+    const cached = await this.db.get('measurements', measurementId);
+    if (!cached) return null;
+
+    const now = new Date().toISOString();
+    if (cached.expiresAt < now) {
+      await this.db.delete('measurements', measurementId);
+      return null;
+    }
+
+    return cached.measurementData;
+  }
+
+  async getCachedMeasurementsByProperty(propertyId: string): Promise<any[]> {
+    await this.initialize();
+    if (!this.db) return [];
+
+    const index = this.db.transaction('measurements').store.index('by-property');
+    const measurements = await index.getAll(propertyId);
+    const now = new Date().toISOString();
+
+    return measurements
+      .filter(m => m.expiresAt >= now)
+      .map(m => m.measurementData);
+  }
+
   // Utilities
   async clearAllCache(): Promise<void> {
     await this.initialize();
@@ -481,6 +647,8 @@ class OfflineManager {
     await this.db.clear('activityQueue');
     await this.db.clear('contacts');
     await this.db.clear('dispositions');
+    await this.db.clear('satelliteImages');
+    await this.db.clear('measurements');
   }
 
   async clearExpiredEntries(): Promise<void> {
