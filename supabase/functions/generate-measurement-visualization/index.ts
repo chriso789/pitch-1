@@ -224,7 +224,7 @@ serve(async (req) => {
           body: JSON.stringify({
             endpoint: 'staticmap',
             params: {
-              center: `${bounds.centerLat},${bounds.centerLng}`,
+              center: `${finalCenterLat},${finalCenterLng}`,
               zoom: Math.floor(zoom),
               size: '1280x1280',
               maptype: 'satellite',
@@ -293,7 +293,12 @@ serve(async (req) => {
       bounds,
       zoom,
       dimensions: { width, height },
-      center: { lat: bounds.centerLat, lng: bounds.centerLng },
+      center: { lat: finalCenterLat, lng: finalCenterLng },
+      verified_address: verified_address_lat && verified_address_lng ? {
+        lat: verified_address_lat,
+        lng: verified_address_lng
+      } : null,
+      coordinate_source: verified_address_lat ? 'verified_address' : 'bounds_calculation',
       feature_count: geojson.features.length,
       generated_at: new Date().toISOString(),
     };
@@ -485,12 +490,12 @@ function calculateOptimalZoom(bounds: any, width: number, height: number, zoomAd
 
   // Reduce padding to 0.5 for better detail
   const optimalZoom = Math.min(latZoom, lngZoom, ZOOM_MAX);
-  const baseZoom = Math.max(optimalZoom - 0.5, 18);
+  const baseZoom = Math.max(optimalZoom - 0.5, 16);
   
-  // Apply manual zoom adjustment (-1 to +2 range)
+  // Apply manual zoom adjustment (-2 to +3 range for more flexibility)
   const finalZoom = Math.max(
     Math.min(baseZoom + zoomAdjustment, 21), // Max zoom 21
-    17 // Min zoom 17
+    15 // Min zoom 15 for wider view
   );
   
   console.log(`Zoom calculation: optimal=${optimalZoom.toFixed(2)}, base=${baseZoom.toFixed(2)}, adjustment=${zoomAdjustment}, final=${finalZoom.toFixed(2)}`);
