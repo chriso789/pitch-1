@@ -52,6 +52,63 @@ export function PullMeasurementsButton({
     console.log('⏱️ Measurement pull started:', { propertyId, lat, lng, timestamp: new Date().toISOString() });
 
     try {
+      // ✅ Coordinate Validation: Check against verified address
+      const { data: pipelineData } = await supabase
+        .from('pipeline_entries')
+        .select('metadata')
+        .eq('id', propertyId)
+        .single();
+
+      const metadata = pipelineData?.metadata as any;
+      const verifiedAddress = metadata?.verified_address;
+      const verifiedLat = verifiedAddress?.latitude as number | undefined;
+      const verifiedLng = verifiedAddress?.longitude as number | undefined;
+
+      if (verifiedLat && verifiedLng) {
+        // Calculate distance using haversine formula
+        const R = 6371e3; // Earth radius in meters
+        const φ1 = (verifiedLat * Math.PI) / 180;
+        const φ2 = (lat * Math.PI) / 180;
+        const Δφ = ((lat - verifiedLat) * Math.PI) / 180;
+        const Δλ = ((lng - verifiedLng) * Math.PI) / 180;
+
+        const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+          Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        const distance = R * c; // Distance in meters
+
+        console.log('🎯 Coordinate validation:', {
+          pullCoords: { lat, lng },
+          verifiedCoords: { lat: verifiedLat, lng: verifiedLng },
+          distance: `${Math.round(distance)}m`,
+          threshold: '30m',
+          status: distance > 30 ? '⚠️ MISMATCH' : '✅ OK'
+        });
+
+        if (distance > 30) {
+          toast({
+            title: "⚠️ Coordinate Mismatch Detected",
+            description: (
+              <div className="space-y-2 text-sm">
+                <p>Pull coordinates are {Math.round(distance)}m from verified address.</p>
+                <p className="text-muted-foreground">
+                  Using verified address coordinates ({verifiedLat.toFixed(6)}, {verifiedLng.toFixed(6)}) instead.
+                </p>
+              </div>
+            ),
+            variant: "default",
+            duration: 7000,
+          });
+
+          // Override with verified coordinates
+          lat = verifiedLat;
+          lng = verifiedLng;
+          console.log('✅ Coordinates corrected to verified address');
+        }
+      } else {
+        console.warn('⚠️ No verified address found in metadata - proceeding with provided coordinates');
+      }
+
       toast({
         title: "Pulling Measurements",
         description: "Fetching roof data from satellite imagery...",
