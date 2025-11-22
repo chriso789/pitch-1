@@ -14,7 +14,12 @@ import {
   CheckCircle2,
   MousePointer2,
   Eye,
-  EyeOff
+  EyeOff,
+  ZoomIn,
+  ZoomOut,
+  RotateCcw,
+  MapPin,
+  AlertTriangle
 } from 'lucide-react';
 import { useMeasurementDrawing } from '@/hooks/useMeasurementDrawing';
 import { calculatePolygonArea, calculatePolygonPerimeter, convertSolarPolygonToPoints } from '@/utils/measurementGeometry';
@@ -54,6 +59,9 @@ export function SimpleMeasurementCanvas({
   const [detectedLinearFeatures, setDetectedLinearFeatures] = useState<any>(null);
   const [showLinearFeatures, setShowLinearFeatures] = useState(true);
   const [buildingPolygon, setBuildingPolygon] = useState<[number, number][]>([]);
+  const [currentZoom, setCurrentZoom] = useState(zoom);
+  const [zoomAdjustment, setZoomAdjustment] = useState(0);
+  const [isRegenerating, setIsRegenerating] = useState(false);
 
   const {
     polygons,
@@ -409,12 +417,119 @@ export function SimpleMeasurementCanvas({
       });
   };
 
+  const handleRegenerateSatellite = async (newZoomAdjustment?: number) => {
+    if (!propertyId) {
+      toast.error('Property ID required for regeneration');
+      return;
+    }
+
+    setIsRegenerating(true);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('generate-measurement-visualization', {
+        body: {
+          property_id: propertyId,
+          verified_address_lat: centerLat,
+          verified_address_lng: centerLng,
+          zoom_adjustment: newZoomAdjustment ?? zoomAdjustment
+        }
+      });
+
+      if (error) throw error;
+      
+      if (data?.ok && data.data?.visualization_url) {
+        // Force reload with cache buster
+        const newUrl = `${data.data.visualization_url}?t=${Date.now()}`;
+        
+        // Update canvas with new satellite image
+        if (fabricCanvasRef.current) {
+          FabricImage.fromURL(newUrl).then((img) => {
+            img.scaleToWidth(width);
+            img.scaleToHeight(height);
+            img.set({ selectable: false, evented: false });
+            
+            const canvas = fabricCanvasRef.current;
+            if (canvas) {
+              const existingBg = canvas.backgroundImage;
+              if (existingBg) {
+                canvas.remove(existingBg as any);
+              }
+              canvas.backgroundImage = img as any;
+              canvas.renderAll();
+            }
+          });
+        }
+
+        setCurrentZoom(data.data.metadata?.zoom || currentZoom);
+        toast.success('Satellite view updated successfully');
+      } else {
+        throw new Error(data?.error || 'Failed to regenerate satellite view');
+      }
+    } catch (err) {
+      console.error('Regeneration error:', err);
+      toast.error(err instanceof Error ? err.message : 'Failed to regenerate satellite view');
+    } finally {
+      setIsRegenerating(false);
+    }
+  };
+
+  const handleZoomIn = () => {
+    const newAdjustment = Math.min(zoomAdjustment + 1, 3);
+    setZoomAdjustment(newAdjustment);
+    handleRegenerateSatellite(newAdjustment);
+  };
+
+  const handleZoomOut = () => {
+    const newAdjustment = Math.max(zoomAdjustment - 1, -2);
+    setZoomAdjustment(newAdjustment);
+    handleRegenerateSatellite(newAdjustment);
+  };
+
+  const handleZoomReset = () => {
+    setZoomAdjustment(0);
+    handleRegenerateSatellite(0);
+  };
+
   return (
     <div className="flex flex-col gap-4">
       {/* Toolbar */}
       <Card className="p-4">
         <div className="flex items-center justify-between gap-4 flex-wrap">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2 border-r border-border pr-4">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleZoomOut}
+                disabled={isRegenerating || zoomAdjustment <= -2}
+                title="Zoom Out"
+              >
+                <ZoomOut className="h-4 w-4" />
+              </Button>
+              <Badge variant="secondary" className="min-w-[80px] justify-center">
+                Zoom: {(currentZoom + zoomAdjustment).toFixed(1)}
+              </Badge>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={handleZoomIn}
+                disabled={isRegenerating || zoomAdjustment >= 3}
+                title="Zoom In"
+              >
+                <ZoomIn className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={handleZoomReset}
+                disabled={isRegenerating || zoomAdjustment === 0}
+                title="Reset Zoom"
+              >
+                <RotateCcw className="h-4 w-4" />
+              </Button>
+            </div>
+
+            <div className="flex items-center gap-2">
             <Button
               variant={mode === 'draw' ? 'default' : 'outline'}
               size="sm"
@@ -450,6 +565,7 @@ export function SimpleMeasurementCanvas({
                 Complete
               </Button>
             )}
+          </div>
           </div>
 
           <div className="flex items-center gap-2">
@@ -492,6 +608,18 @@ export function SimpleMeasurementCanvas({
               >
                 {showLinearFeatures ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
               </Button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-2 text-sm">
+            <Badge variant="outline" className="gap-1">
+              <MapPin className="h-3 w-3" />
+              {centerLat.toFixed(6)}, {centerLng.toFixed(6)}
+            </Badge>
+            {address && (
+              <Badge variant="secondary" className="max-w-[300px] truncate">
+                {address}
+              </Badge>
             )}
           </div>
         </div>
