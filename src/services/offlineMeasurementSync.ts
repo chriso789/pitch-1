@@ -7,10 +7,11 @@ export interface MeasurementSavePayload {
   facets: any[];
   linearFeatures: any[];
   summary: {
-    totalAreaSqft: number;
-    totalSquares: number;
-    wastePercentage: number;
+    total_area_sqft: number;
+    total_squares: number;
+    waste_pct: number;
     pitch: string;
+    pitch_factor?: number;
     perimeter: number;
     stories: number;
   };
@@ -44,21 +45,32 @@ export async function saveMeasurementWithOfflineSupport(
           ...payload.metadata,
           last_updated: new Date().toISOString(),
         },
+        updated_at: new Date().toISOString(),
       })
       .eq('id', payload.measurementId);
 
     if (measurementError) throw measurementError;
 
+    // Fetch existing pipeline metadata to merge
+    const { data: pipelineData } = await supabase
+      .from('pipeline_entries')
+      .select('metadata')
+      .eq('id', payload.propertyId)
+      .single();
+    
+    const existingMetadata = (pipelineData?.metadata as any) || {};
+
     const { error: pipelineError } = await supabase
       .from('pipeline_entries')
       .update({
         metadata: {
+          ...existingMetadata,
           comprehensive_measurements: {
             faces: payload.facets,
             linear_features: payload.linearFeatures,
             summary: payload.summary,
           },
-          roof_area_sq_ft: payload.summary.totalAreaSqft,
+          roof_area_sq_ft: payload.summary.total_area_sqft,
           roof_pitch: payload.summary.pitch,
         },
       })
