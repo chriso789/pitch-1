@@ -50,7 +50,12 @@ serve(async (req) => {
   try {
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_KEY);
     const body = await req.json();
-    const { measurement_id, property_id, measurement, center_lat, center_lng, verified_address_lat, verified_address_lng, zoom_adjustment } = body;
+    const { measurement_id, property_id, measurement, center_lat, center_lng, verified_address_lat, verified_address_lng } = body;
+    
+    // Apply default zoom adjustment for initial pulls (wider view)
+    const isInitialPull = body.zoom_adjustment === undefined;
+    const defaultZoomAdjustment = isInitialPull ? -2 : 0;
+    const zoom_adjustment = (body.zoom_adjustment || 0) + defaultZoomAdjustment;
 
     if (!MAPBOX_TOKEN) {
       console.error('MAPBOX_PUBLIC_TOKEN not configured');
@@ -488,14 +493,17 @@ function calculateOptimalZoom(bounds: any, width: number, height: number, zoomAd
   const latZoom = zoom(height, WORLD_DIM.height, latFraction);
   const lngZoom = zoom(width, WORLD_DIM.width, lngFraction);
 
-  // Reduce padding to 0.5 for better detail
-  const optimalZoom = Math.min(latZoom, lngZoom, ZOOM_MAX);
-  const baseZoom = Math.max(optimalZoom - 0.5, 16);
+  // Use a much wider default view for initial pulls
+  const minZoom = 12; // Allow zoom 12 for very wide view (~800m radius)
+  const maxZoom = 18; // Reasonable maximum detail
   
-  // Apply manual zoom adjustment (-2 to +3 range for more flexibility)
+  const optimalZoom = Math.min(latZoom, lngZoom, ZOOM_MAX);
+  const baseZoom = Math.max(optimalZoom - 0.5, minZoom);
+  
+  // Apply zoom adjustment and clamp between min/max
   const finalZoom = Math.max(
-    Math.min(baseZoom + zoomAdjustment, 21), // Max zoom 21
-    14 // Min zoom 14 for much wider neighborhood view (~300m radius)
+    Math.min(baseZoom + zoomAdjustment, maxZoom),
+    minZoom
   );
   
   console.log(`Zoom calculation: optimal=${optimalZoom.toFixed(2)}, base=${baseZoom.toFixed(2)}, adjustment=${zoomAdjustment}, final=${finalZoom.toFixed(2)}`);
