@@ -33,6 +33,7 @@ import { CacheManagement } from "@/components/settings/CacheManagement";
 import { CompanyManagement } from "@/features/settings/components/CompanyManagement";
 import { CompanyActivityLog } from "@/features/settings/components/CompanyActivityLog";
 import { PriceManagementDashboard } from "@/components/pricing/PriceManagementDashboard";
+import { BatchRegenerationPanel } from "@/components/measurements/BatchRegenerationPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -261,6 +262,10 @@ export const Settings = () => {
 
         <TabsContent value="pricing" className="space-y-6">
           <PriceManagementDashboard />
+        </TabsContent>
+
+        <TabsContent value="measurements" className="space-y-6">
+          <BatchRegenerationPanel />
         </TabsContent>
       </Tabs>
     </div>
