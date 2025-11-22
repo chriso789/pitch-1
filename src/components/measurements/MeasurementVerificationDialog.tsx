@@ -1182,6 +1182,61 @@ export function MeasurementVerificationDialog({
             <X className="h-4 w-4 mr-2" />
             Cancel
           </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                // Always use verified address coordinates if available
+                const lat = verifiedAddressLat ?? centerLat;
+                const lng = verifiedAddressLng ?? centerLng;
+                
+                toast({
+                  title: "Force Regenerating Satellite View",
+                  description: (
+                    <div className="space-y-1 text-xs">
+                      <div>📍 Coords: {lat.toFixed(6)}, {lng.toFixed(6)}</div>
+                      <div>🔍 Zoom: Default (wider view)</div>
+                      <div>📏 Source: {verifiedAddressLat ? 'Verified Address' : 'Bounds Center'}</div>
+                      {coordinateMismatchDistance > 10 && (
+                        <div className="text-yellow-500">
+                          ⚠️ Previous offset: {Math.round(coordinateMismatchDistance)}m
+                        </div>
+                      )}
+                    </div>
+                  ),
+                  duration: 5000,
+                });
+                
+                // Reset zoom to 0 to use new default wider view from edge function
+                setManualZoom(0);
+                setAdjustedCenterLat(lat);
+                setAdjustedCenterLng(lng);
+                
+                handleRegenerateVisualization(lat, lng, 0);
+              }}
+              disabled={isRegenerating}
+              className="border-primary/50"
+              title="Regenerate satellite image using verified address coordinates and default zoom. Use this to test coordinate/zoom fixes."
+            >
+              {isRegenerating ? (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                  Regenerating...
+                </>
+              ) : (
+                <>
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Force Regenerate
+                </>
+              )}
+            </Button>
+            {verifiedAddressLat && verifiedAddressLng && coordinateMismatchDistance > 30 && (
+              <Badge variant="destructive" className="text-xs">
+                <AlertCircle className="h-3 w-3 mr-1" />
+                Regenerate recommended
+              </Badge>
+            )}
+          </div>
           <Button
             variant="outline"
             onClick={() => {
