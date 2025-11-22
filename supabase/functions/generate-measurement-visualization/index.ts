@@ -495,7 +495,7 @@ function calculateOptimalZoom(bounds: any, width: number, height: number, zoomAd
   // Apply manual zoom adjustment (-2 to +3 range for more flexibility)
   const finalZoom = Math.max(
     Math.min(baseZoom + zoomAdjustment, 21), // Max zoom 21
-    15 // Min zoom 15 for wider view
+    14 // Min zoom 14 for much wider neighborhood view (~300m radius)
   );
   
   console.log(`Zoom calculation: optimal=${optimalZoom.toFixed(2)}, base=${baseZoom.toFixed(2)}, adjustment=${zoomAdjustment}, final=${finalZoom.toFixed(2)}`);
