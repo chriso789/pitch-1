@@ -1186,31 +1186,44 @@ serve(async (req) => {
           squares: adjustedTotal / 100 
         });
 
-        // Fetch verified address coordinates from pipeline_entries for accurate centering
+        // Fetch verified address coordinates from contact record (Google-verified)
         let verifiedLat: number | undefined;
         let verifiedLng: number | undefined;
         
         try {
           const { data: pipelineData } = await supabase
             .from('pipeline_entries')
-            .select('metadata')
+            .select('contact_id, metadata, contacts(verified_address, latitude, longitude)')
             .eq('id', propertyId)
             .single();
           
-          if (pipelineData?.metadata) {
-            const metadata = pipelineData.metadata as any;
-            if (metadata.verified_address?.geometry?.location) {
+          const contact = (pipelineData as any)?.contacts;
+          
+          if (contact?.verified_address?.lat && contact?.verified_address?.lng) {
+            // Priority 1: Google-verified coordinates (most accurate)
+            verifiedLat = contact.verified_address.lat;
+            verifiedLng = contact.verified_address.lng;
+            console.log('✅ Using Google-verified coordinates from contact:', { verifiedLat, verifiedLng });
+          } else if (contact?.latitude && contact?.longitude) {
+            // Priority 2: Legacy contact coordinates
+            verifiedLat = contact.latitude;
+            verifiedLng = contact.longitude;
+            console.log('⚠️ Using legacy contact coordinates:', { verifiedLat, verifiedLng });
+          } else {
+            // Priority 3: Pipeline metadata (fallback only)
+            const metadata = (pipelineData as any)?.metadata;
+            if (metadata?.verified_address?.geometry?.location) {
               verifiedLat = metadata.verified_address.geometry.location.lat;
               verifiedLng = metadata.verified_address.geometry.location.lng;
-              console.log('Found verified address coordinates:', { verifiedLat, verifiedLng });
-            } else if (metadata.verified_address?.lat && metadata.verified_address?.lng) {
+              console.log('⚠️ Using pipeline metadata coordinates (fallback):', { verifiedLat, verifiedLng });
+            } else if (metadata?.verified_address?.lat && metadata?.verified_address?.lng) {
               verifiedLat = metadata.verified_address.lat;
               verifiedLng = metadata.verified_address.lng;
-              console.log('Found verified address coordinates (alt format):', { verifiedLat, verifiedLng });
+              console.log('⚠️ Using pipeline metadata coordinates (alt format):', { verifiedLat, verifiedLng });
             }
           }
         } catch (error) {
-          console.warn('Could not fetch verified address:', error);
+          console.error('❌ Could not fetch verified address:', error);
         }
 
         // Generate Mapbox visualization (non-blocking)
