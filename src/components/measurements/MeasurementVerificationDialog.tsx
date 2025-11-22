@@ -97,7 +97,7 @@ export function MeasurementVerificationDialog({
     setSatelliteImageUrl(initialSatelliteImageUrl);
   }, [initialSatelliteImageUrl]);
   
-  // Load verified address coordinates and check for mismatches
+  // Load verified address coordinates from contacts table (PRIORITY #1)
   useEffect(() => {
     const loadVerifiedCoordinates = async () => {
       if (!pipelineEntryId || !open) return;
@@ -105,21 +105,35 @@ export function MeasurementVerificationDialog({
       try {
         const { data: pipelineData } = await supabase
           .from('pipeline_entries')
-          .select('metadata')
+          .select('contact_id, metadata, contacts!inner(verified_address, latitude, longitude)')
           .eq('id', pipelineEntryId)
           .single();
         
-        if (pipelineData?.metadata) {
-          const metadata = pipelineData.metadata as any;
+        if (pipelineData) {
+          const contact = (pipelineData as any)?.contacts;
           let vLat: number | undefined;
           let vLng: number | undefined;
           
-          if (metadata.verified_address?.geometry?.location) {
-            vLat = metadata.verified_address.geometry.location.lat;
-            vLng = metadata.verified_address.geometry.location.lng;
-          } else if (metadata.verified_address?.lat && metadata.verified_address?.lng) {
-            vLat = metadata.verified_address.lat;
-            vLng = metadata.verified_address.lng;
+          // Priority #1: contact.verified_address (Google-verified)
+          if (contact?.verified_address?.lat && contact?.verified_address?.lng) {
+            vLat = contact.verified_address.lat;
+            vLng = contact.verified_address.lng;
+          } 
+          // Priority #2: contact.latitude/longitude (legacy fallback)
+          else if (contact?.latitude && contact?.longitude) {
+            vLat = contact.latitude;
+            vLng = contact.longitude;
+          }
+          // Priority #3: pipeline metadata (last resort)
+          else if (pipelineData.metadata) {
+            const metadata = pipelineData.metadata as any;
+            if (metadata.verified_address?.geometry?.location) {
+              vLat = metadata.verified_address.geometry.location.lat;
+              vLng = metadata.verified_address.geometry.location.lng;
+            } else if (metadata.verified_address?.lat && metadata.verified_address?.lng) {
+              vLat = metadata.verified_address.lat;
+              vLng = metadata.verified_address.lng;
+            }
           }
           
           if (vLat && vLng) {

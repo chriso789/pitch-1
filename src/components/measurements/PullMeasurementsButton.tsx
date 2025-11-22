@@ -52,17 +52,17 @@ export function PullMeasurementsButton({
     console.log('⏱️ Measurement pull started:', { propertyId, lat, lng, timestamp: new Date().toISOString() });
 
     try {
-      // ✅ Coordinate Validation: Check against verified address
+      // ✅ Coordinate Validation: Check against verified address from contacts table (PRIORITY #1)
       const { data: pipelineData } = await supabase
         .from('pipeline_entries')
-        .select('metadata')
+        .select('contact_id, metadata, contacts!inner(verified_address, latitude, longitude)')
         .eq('id', propertyId)
         .single();
 
-      const metadata = pipelineData?.metadata as any;
-      const verifiedAddress = metadata?.verified_address;
-      const verifiedLat = verifiedAddress?.latitude as number | undefined;
-      const verifiedLng = verifiedAddress?.longitude as number | undefined;
+      const contact = (pipelineData as any)?.contacts;
+      const verifiedAddress = contact?.verified_address;
+      const verifiedLat = (verifiedAddress?.lat || contact?.latitude) as number | undefined;
+      const verifiedLng = (verifiedAddress?.lng || contact?.longitude) as number | undefined;
 
       if (verifiedLat && verifiedLng) {
         // Calculate distance using haversine formula

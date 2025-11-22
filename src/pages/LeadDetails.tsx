@@ -63,6 +63,12 @@ interface LeadDetailsData {
     address_zip?: string;
     latitude?: number;
     longitude?: number;
+    verified_address?: {
+      lat: number;
+      lng: number;
+      formatted_address?: string;
+      [key: string]: any;
+    };
   };
   assigned_rep?: {
     id: string;
@@ -411,8 +417,8 @@ const LeadDetails = () => {
             
             <SatelliteMeasurement
               address={lead?.verified_address?.formatted_address || `${lead?.contact?.address_street}, ${lead?.contact?.address_city}, ${lead?.contact?.address_state}`}
-              latitude={lead?.verified_address?.geometry?.location?.lat || lead?.contact?.latitude}
-              longitude={lead?.verified_address?.geometry?.location?.lng || lead?.contact?.longitude}
+              latitude={(lead?.contact?.verified_address as any)?.lat || lead?.contact?.latitude || lead?.verified_address?.geometry?.location?.lat}
+              longitude={(lead?.contact?.verified_address as any)?.lng || lead?.contact?.longitude || lead?.verified_address?.geometry?.location?.lng}
               pipelineEntryId={id!}
               measurementTags={measurementData?.tags}
               onMeasurementsSaved={(measurements) => {
