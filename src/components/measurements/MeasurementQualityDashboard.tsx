@@ -5,16 +5,19 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMeasurementHealthMetrics } from "@/hooks/useMeasurementHealthMetrics";
 import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Download, RefreshCw, AlertTriangle, CheckCircle2, TrendingUp, Eye, Zap } from "lucide-react";
+import { Download, RefreshCw, AlertTriangle, CheckCircle2, TrendingUp, Eye, Zap, RotateCcw } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 
 export function MeasurementQualityDashboard() {
   const navigate = useNavigate();
   const [isAutoFixing, setIsAutoFixing] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [coordinateSyncHealth, setCoordinateSyncHealth] = useState<{ total: number; synced: number } | null>(null);
+  
   const {
     metrics,
     accuracyTrend,
@@ -25,6 +28,81 @@ export function MeasurementQualityDashboard() {
     refetchProblems,
     exportMetrics,
   } = useMeasurementHealthMetrics();
+
+  // Load coordinate sync health on mount
+  useEffect(() => {
+    loadCoordinateSyncHealth();
+  }, []);
+
+  const loadCoordinateSyncHealth = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('pipeline_entries')
+        .select(`
+          id,
+          metadata,
+          contacts!inner(verified_address, latitude, longitude)
+        `);
+
+      if (error) throw error;
+
+      let total = 0;
+      let synced = 0;
+
+      for (const entry of data || []) {
+        const contact = (entry as any)?.contacts;
+        if (!contact?.verified_address?.lat || !contact?.verified_address?.lng) continue;
+
+        total++;
+
+        const metadata = entry.metadata as any;
+        const currentLat = metadata?.verified_address?.geometry?.location?.lat || metadata?.verified_address?.lat;
+        const currentLng = metadata?.verified_address?.geometry?.location?.lng || metadata?.verified_address?.lng;
+
+        if (currentLat && currentLng) {
+          const latDiff = Math.abs(contact.verified_address.lat - currentLat);
+          const lngDiff = Math.abs(contact.verified_address.lng - currentLng);
+          const distance = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff) * 111000;
+
+          if (distance < 10) {
+            synced++;
+          }
+        }
+      }
+
+      setCoordinateSyncHealth({ total, synced });
+    } catch (error: any) {
+      console.error('Failed to load coordinate sync health:', error);
+    }
+  };
+
+  const handleSyncAllCoordinates = async () => {
+    setIsSyncing(true);
+    const toastId = 'coordinate-sync';
+    
+    toast.loading('Syncing all mismatched coordinates...', { id: toastId, duration: Infinity });
+
+    try {
+      const { data, error } = await supabase.functions.invoke('sync-verified-coordinates', {
+        body: { batchMode: true }
+      });
+
+      if (error) throw error;
+
+      toast.success(
+        `Successfully synced ${data.syncedCount} coordinates${data.errorCount > 0 ? `, ${data.errorCount} errors` : ''}`,
+        { id: toastId }
+      );
+
+      // Refresh health metrics
+      await loadCoordinateSyncHealth();
+      refetchMetrics();
+    } catch (error: any) {
+      toast.error(`Failed to sync coordinates: ${error.message}`, { id: toastId });
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const handleRegenerateMeasurement = async (measurementId: string, propertyId: string) => {
     try {
@@ -111,8 +189,8 @@ export function MeasurementQualityDashboard() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <div className="grid gap-4 md:grid-cols-4">
-          {[1, 2, 3, 4].map(i => (
+        <div className="grid gap-4 md:grid-cols-5">
+          {[1, 2, 3, 4, 5].map(i => (
             <Card key={i}>
               <CardHeader className="pb-2">
                 <Skeleton className="h-4 w-24" />
@@ -179,69 +257,86 @@ export function MeasurementQualityDashboard() {
       </div>
 
       {/* Quality Metrics Cards */}
-      <div className="grid gap-4 md:grid-cols-4">
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Total Measurements
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{metrics?.totalMeasurements || 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">Last 30 days</p>
-          </CardContent>
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-5">
+        <Card className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Total Measurements</p>
+              <h3 className="text-2xl font-bold mt-2">{metrics?.totalMeasurements || 0}</h3>
+            </div>
+            <Eye className="h-8 w-8 text-muted-foreground" />
+          </div>
+        </Card>
+        
+        <Card className="p-6">
+          <div className="flex flex-col h-full">
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-sm font-medium text-muted-foreground">Coordinate Sync</p>
+              <RotateCcw className="h-8 w-8 text-muted-foreground" />
+            </div>
+            {coordinateSyncHealth ? (
+              <>
+                <h3 className="text-2xl font-bold">
+                  {coordinateSyncHealth.synced} / {coordinateSyncHealth.total}
+                </h3>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {Math.round((coordinateSyncHealth.synced / coordinateSyncHealth.total) * 100)}% in sync
+                </p>
+                {coordinateSyncHealth.synced < coordinateSyncHealth.total && (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="mt-3"
+                    onClick={handleSyncAllCoordinates}
+                    disabled={isSyncing}
+                  >
+                    {isSyncing ? 'Syncing...' : 'Sync All'}
+                  </Button>
+                )}
+              </>
+            ) : (
+              <Skeleton className="h-8 w-24 mt-2" />
+            )}
+          </div>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Avg Coordinate Accuracy
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-baseline gap-2">
-              <div className="text-3xl font-bold">
-                {metrics?.avgCoordinateAccuracy?.toFixed(1) || 0}m
+        <Card className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Avg Accuracy</p>
+              <div className="flex items-baseline gap-2 mt-2">
+                <h3 className="text-2xl font-bold">
+                  {metrics?.avgCoordinateAccuracy?.toFixed(1) || 0}m
+                </h3>
+                {metrics && metrics.avgCoordinateAccuracy < 30 && (
+                  <CheckCircle2 className="h-5 w-5 text-green-500" />
+                )}
+                {metrics && metrics.avgCoordinateAccuracy >= 30 && (
+                  <AlertTriangle className="h-5 w-5 text-orange-500" />
+                )}
               </div>
-              {metrics && metrics.avgCoordinateAccuracy < 30 && (
-                <CheckCircle2 className="h-5 w-5 text-green-500" />
-              )}
-              {metrics && metrics.avgCoordinateAccuracy >= 30 && (
-                <AlertTriangle className="h-5 w-5 text-orange-500" />
-              )}
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {metrics && metrics.avgCoordinateAccuracy < 30 ? 'Excellent' : 'Needs Attention'}
-            </p>
-          </CardContent>
+          </div>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Visualization Success
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">
-              {metrics?.visualizationSuccessRate?.toFixed(1) || 0}%
+        <Card className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Visual Success</p>
+              <h3 className="text-2xl font-bold mt-2">
+                {metrics?.visualizationSuccessRate?.toFixed(1) || 0}%
+              </h3>
             </div>
-            <p className="text-xs text-muted-foreground mt-1">
-              {metrics && metrics.visualizationSuccessRate >= 90 ? 'Healthy' : 'Below Target'}
-            </p>
-          </CardContent>
+          </div>
         </Card>
 
-        <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm font-medium text-muted-foreground">
-              Manual Regenerations
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="text-3xl font-bold">{metrics?.manualRegenerationCount || 0}</div>
-            <p className="text-xs text-muted-foreground mt-1">Quality indicator</p>
-          </CardContent>
+        <Card className="p-6">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">Manual Regen</p>
+              <h3 className="text-2xl font-bold mt-2">{metrics?.manualRegenerationCount || 0}</h3>
+            </div>
+          </div>
         </Card>
       </div>
 
