@@ -71,6 +71,7 @@ export function SimpleMeasurementCanvas({
   const [isRegenerating, setIsRegenerating] = useState(false);
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [fabricZoomLevel, setFabricZoomLevel] = useState(1);
+  const [coordinateOffset, setCoordinateOffset] = useState(0);
 
   const isMobile = useIsMobile();
   const { vibrate, isSupported: hapticSupported } = useHapticFeedback();
@@ -549,6 +550,66 @@ export function SimpleMeasurementCanvas({
     );
   }
 
+  // Mouse wheel zoom functionality
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas || isMobile) return;
+
+    const handleMouseWheel = (opt: any) => {
+      const delta = opt.e.deltaY;
+      let zoom = canvas.getZoom();
+      zoom *= 0.999 ** delta;
+      
+      // Clamp zoom between 0.5x and 3x
+      zoom = Math.max(0.5, Math.min(3, zoom));
+      
+      const point = { x: opt.e.offsetX, y: opt.e.offsetY };
+      canvas.zoomToPoint(point as any, zoom);
+      opt.e.preventDefault();
+      opt.e.stopPropagation();
+      
+      setFabricZoomLevel(zoom);
+    };
+
+    canvas.on('mouse:wheel', handleMouseWheel);
+
+    return () => {
+      canvas.off('mouse:wheel', handleMouseWheel);
+    };
+  }, [fabricCanvasRef.current, isMobile]);
+
+  // Keyboard shortcuts for zoom
+  useEffect(() => {
+    if (isMobile) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const canvas = fabricCanvasRef.current;
+      if (!canvas) return;
+      
+      if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        const newZoom = Math.min(canvas.getZoom() * 1.1, 3);
+        canvas.setZoom(newZoom);
+        canvas.renderAll();
+        setFabricZoomLevel(newZoom);
+      } else if (e.key === '-' || e.key === '_') {
+        e.preventDefault();
+        const newZoom = Math.max(canvas.getZoom() * 0.9, 0.5);
+        canvas.setZoom(newZoom);
+        canvas.renderAll();
+        setFabricZoomLevel(newZoom);
+      } else if (e.key === '0') {
+        e.preventDefault();
+        canvas.setZoom(1);
+        canvas.renderAll();
+        setFabricZoomLevel(1);
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [fabricCanvasRef.current, isMobile]);
+
   // Network status monitoring
   useEffect(() => {
     const handleOnline = () => setIsOffline(false);
@@ -642,37 +703,58 @@ export function SimpleMeasurementCanvas({
       <Card className="p-4">
         <div className="flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-4">
+            {/* Coordinate accuracy display */}
+            <div className="flex items-center gap-2 border-r border-border pr-4">
+              <Badge variant="outline" className="text-xs">
+                <MapPin className="h-3 w-3 mr-1" />
+                {centerLat.toFixed(6)}, {centerLng.toFixed(6)}
+              </Badge>
+              
+              <Badge variant="secondary" className="text-xs">
+                Canvas: {fabricZoomLevel.toFixed(1)}x
+              </Badge>
+            </div>
+
             <div className="flex items-center gap-2 border-r border-border pr-4">
               <Button
                 variant="outline"
-                size="icon"
+                size="sm"
                 onClick={handleZoomOut}
                 disabled={isRegenerating || zoomAdjustment <= -2}
-                title="Zoom Out"
+                title="Zoom Out (- key)"
+                className="h-8"
               >
-                <ZoomOut className="h-4 w-4" />
+                <ZoomOut className="h-3 w-3 mr-1" />
+                Out (-)
               </Button>
               <Badge variant="secondary" className="min-w-[80px] justify-center">
-                Zoom: {(currentZoom + zoomAdjustment).toFixed(1)}
+                Map: {(currentZoom + zoomAdjustment).toFixed(1)}
               </Badge>
               <Button
                 variant="outline"
-                size="icon"
+                size="sm"
                 onClick={handleZoomIn}
                 disabled={isRegenerating || zoomAdjustment >= 3}
-                title="Zoom In"
+                title="Zoom In (+ key)"
+                className="h-8"
               >
-                <ZoomIn className="h-4 w-4" />
+                <ZoomIn className="h-3 w-3 mr-1" />
+                In (+)
               </Button>
               <Button
                 variant="ghost"
-                size="icon"
+                size="sm"
                 onClick={handleZoomReset}
                 disabled={isRegenerating || zoomAdjustment === 0}
-                title="Reset Zoom"
+                title="Reset Zoom (0 key)"
+                className="h-8"
               >
-                <RotateCcw className="h-4 w-4" />
+                <RotateCcw className="h-3 w-3 mr-1" />
+                Reset (0)
               </Button>
+              <span className="text-xs text-muted-foreground">
+                or scroll
+              </span>
             </div>
 
             <div className="flex items-center gap-2">
