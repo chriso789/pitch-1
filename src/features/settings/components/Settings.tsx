@@ -34,6 +34,7 @@ import { CompanyManagement } from "@/features/settings/components/CompanyManagem
 import { CompanyActivityLog } from "@/features/settings/components/CompanyActivityLog";
 import { PriceManagementDashboard } from "@/components/pricing/PriceManagementDashboard";
 import { BatchRegenerationPanel } from "@/components/measurements/BatchRegenerationPanel";
+import { MeasurementQualityDashboard } from "@/components/measurements/MeasurementQualityDashboard";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -266,6 +267,10 @@ export const Settings = () => {
 
         <TabsContent value="measurements" className="space-y-6">
           <BatchRegenerationPanel />
+        </TabsContent>
+
+        <TabsContent value="quality-monitoring" className="space-y-6">
+          <MeasurementQualityDashboard />
         </TabsContent>
       </Tabs>
     </div>
