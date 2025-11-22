@@ -42,6 +42,7 @@ interface MobileToolbarProps {
   onZoomOut: () => void;
   onZoomReset: () => void;
   onCompletePolygon?: () => void;
+  position?: 'bottom' | 'left' | 'right';
 }
 
 export function MobileToolbar({
@@ -64,9 +65,16 @@ export function MobileToolbar({
   onZoomOut,
   onZoomReset,
   onCompletePolygon,
+  position = 'bottom',
 }: MobileToolbarProps) {
+  const isVertical = position === 'left' || position === 'right';
+  
+  const containerClass = isVertical
+    ? `fixed ${position}-0 top-0 bottom-0 w-20 bg-background border-${position === 'left' ? 'r' : 'l'} border-border p-2 z-50 flex flex-col gap-2`
+    : "fixed bottom-0 left-0 right-0 bg-background border-t border-border p-4 safe-area-bottom z-50";
+
   return (
-    <div className="fixed bottom-0 left-0 right-0 bg-background border-t border-border p-4 safe-area-bottom z-50">
+    <div className={containerClass}>
       <div className="flex items-center justify-between gap-2">
         {/* Primary Action - Large button */}
         <Button

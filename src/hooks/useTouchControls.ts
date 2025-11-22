@@ -7,6 +7,7 @@ interface TouchControlsOptions {
   onDoubleTap?: (x: number, y: number) => void;
   onPinchZoom?: (scale: number) => void;
   onPan?: (deltaX: number, deltaY: number) => void;
+  onSwipe?: (direction: 'left' | 'right' | 'up' | 'down') => void;
   enablePinchZoom?: boolean;
   enablePan?: boolean;
 }
@@ -17,13 +18,28 @@ export function useTouchControls({
   onDoubleTap,
   onPinchZoom,
   onPan,
+  onSwipe,
   enablePinchZoom = true,
   enablePan = true,
 }: TouchControlsOptions) {
   const lastTapRef = useRef<number>(0);
   const lastTouchDistanceRef = useRef<number>(0);
   const lastPanPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const touchStartPositionRef = useRef<{ x: number; y: number } | null>(null);
   const isPinchingRef = useRef(false);
+
+  const detectSwipe = useCallback((startX: number, startY: number, endX: number, endY: number) => {
+    const deltaX = endX - startX;
+    const deltaY = endY - startY;
+    const minSwipeDistance = 50; // pixels
+
+    if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > minSwipeDistance) {
+      return deltaX > 0 ? 'right' : 'left';
+    } else if (Math.abs(deltaY) > minSwipeDistance) {
+      return deltaY > 0 ? 'down' : 'up';
+    }
+    return null;
+  }, []);
 
   const calculateDistance = useCallback((touch1: Touch, touch2: Touch) => {
     const dx = touch1.clientX - touch2.clientX;
@@ -45,6 +61,7 @@ export function useTouchControls({
       isPinchingRef.current = false;
       const touch = touches[0];
       lastPanPositionRef.current = { x: touch.clientX, y: touch.clientY };
+      touchStartPositionRef.current = { x: touch.clientX, y: touch.clientY };
     }
   }, [canvas, enablePinchZoom, calculateDistance]);
 
@@ -81,28 +98,42 @@ export function useTouchControls({
     const x = touch.clientX - rect.left;
     const y = touch.clientY - rect.top;
 
-    if (!isPinchingRef.current) {
-      const now = Date.now();
-      const timeSinceLastTap = now - lastTapRef.current;
-
-      if (timeSinceLastTap < 300) {
-        // Double tap detected
-        onDoubleTap?.(x, y);
-        lastTapRef.current = 0;
+    // Detect swipe gesture
+    if (touchStartPositionRef.current && !isPinchingRef.current) {
+      const swipeDirection = detectSwipe(
+        touchStartPositionRef.current.x,
+        touchStartPositionRef.current.y,
+        touch.clientX,
+        touch.clientY
+      );
+      
+      if (swipeDirection && onSwipe) {
+        onSwipe(swipeDirection);
       } else {
-        // Single tap
-        setTimeout(() => {
-          if (lastTapRef.current === now) {
-            onTap?.(x, y);
-          }
-        }, 300);
-        lastTapRef.current = now;
+        // Handle tap if no swipe detected
+        const now = Date.now();
+        const timeSinceLastTap = now - lastTapRef.current;
+
+        if (timeSinceLastTap < 300) {
+          // Double tap detected
+          onDoubleTap?.(x, y);
+          lastTapRef.current = 0;
+        } else {
+          // Single tap
+          setTimeout(() => {
+            if (lastTapRef.current === now) {
+              onTap?.(x, y);
+            }
+          }, 300);
+          lastTapRef.current = now;
+        }
       }
     }
 
     isPinchingRef.current = false;
     lastPanPositionRef.current = null;
-  }, [canvas, onTap, onDoubleTap]);
+    touchStartPositionRef.current = null;
+  }, [canvas, onTap, onDoubleTap, onSwipe, detectSwipe]);
 
   useEffect(() => {
     if (!canvas) return;

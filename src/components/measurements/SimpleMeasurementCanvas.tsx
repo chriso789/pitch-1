@@ -28,6 +28,7 @@ import { calculatePolygonArea, calculatePolygonPerimeter, convertSolarPolygonToP
 import { supabase } from '@/integrations/supabase/client';
 import { RidgeLineVisualizer } from './RidgeLineVisualizer';
 import { FacetSplittingTools } from './FacetSplittingTools';
+import { useMobileMeasurementControls } from './SimpleMeasurementCanvas.touch';
 import { MobileToolbar } from './MobileToolbar';
 import { useIsMobile } from '@/hooks/use-mobile';
 import { useTouchControls } from '@/hooks/useTouchControls';
@@ -237,10 +238,10 @@ export function SimpleMeasurementCanvas({
         const circle = new Circle({
           left: point.x,
           top: point.y,
-          radius: 6,
+          radius: isMobile ? 12 : 6,
           fill: polygon.color,
           stroke: '#ffffff',
-          strokeWidth: 2,
+          strokeWidth: isMobile ? 3 : 2,
           originX: 'center',
           originY: 'center',
           selectable: true,
@@ -537,18 +538,15 @@ export function SimpleMeasurementCanvas({
     handleRegenerateSatellite(0);
   };
 
-  // Mobile touch controls integration
-  const { useMobileMeasurementControls } = require('./SimpleMeasurementCanvas.touch');
-  if (isMobile) {
-    useMobileMeasurementControls(
-      fabricCanvasRef.current,
-      mode,
-      isDrawing,
-      addPoint,
-      completePolygon,
-      setFabricZoomLevel
-    );
-  }
+  // Mobile touch controls integration - imported at top
+  useMobileMeasurementControls(
+    fabricCanvasRef.current,
+    mode,
+    isDrawing,
+    addPoint,
+    completePolygon,
+    setFabricZoomLevel
+  );
 
   // Mouse wheel zoom functionality
   useEffect(() => {

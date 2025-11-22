@@ -27,9 +27,9 @@ interface CachedRoute {
 
 export interface QueuedActivity {
   id?: string;
-  type: 'door_knock' | 'disposition_update' | 'lead_create' | 'photo_upload';
+  type: 'door_knock' | 'disposition_update' | 'lead_create' | 'photo_upload' | 'measurement_save';
   payload: any;
-  userLocation: Location;
+  userLocation: Location | null;
   timestamp: string;
   retryCount?: number;
   status?: 'pending' | 'syncing' | 'failed';

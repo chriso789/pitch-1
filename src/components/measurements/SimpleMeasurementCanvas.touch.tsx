@@ -52,12 +52,21 @@ export function useMobileMeasurementControls(
     }
   }, [canvas]);
 
+  const handleSwipe = useCallback((direction: 'left' | 'right' | 'up' | 'down') => {
+    if (direction === 'up' && mode === 'draw' && isDrawing) {
+      completePolygon();
+      vibrate('success');
+    }
+    // Future: Add left/right swipes for facet navigation
+  }, [mode, isDrawing, completePolygon, vibrate]);
+
   useTouchControls({
     canvas,
     onTap: handleTap,
     onDoubleTap: handleDoubleTap,
     onPinchZoom: handlePinchZoom,
     onPan: handlePan,
+    onSwipe: handleSwipe,
     enablePinchZoom: true,
     enablePan: !isDrawing, // Disable pan while drawing
   });
