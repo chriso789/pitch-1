@@ -104,20 +104,39 @@ serve(async (req) => {
     const finalCenterLat = verified_address_lat || bounds.centerLat || lat;
     const finalCenterLng = verified_address_lng || bounds.centerLng || lng;
     
-    // Calculate distance between verified address and bounds center for diagnostics
+    // CRITICAL: Calculate distance between verified address and bounds center for diagnostics
+    // ALWAYS log coordinate discrepancy for debugging
     if (verified_address_lat && verified_address_lng) {
       const latDiff = Math.abs(verified_address_lat - bounds.centerLat);
       const lngDiff = Math.abs(verified_address_lng - bounds.centerLng);
       const distanceMeters = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff) * 111000; // Rough conversion to meters
       
-      if (distanceMeters > 30) {
-        console.warn('⚠️ Coordinate mismatch detected:', {
+      if (distanceMeters > 10) {
+        const severity = distanceMeters > 50 ? '🚨 CRITICAL' : distanceMeters > 30 ? '⚠️ WARNING' : 'ℹ️ INFO';
+        console.error(`${severity} Coordinate mismatch detected:`, {
+          property_id,
+          measurement_id,
           verifiedCoords: { lat: verified_address_lat, lng: verified_address_lng },
           boundsCoords: { lat: bounds.centerLat, lng: bounds.centerLng },
           distanceMeters: Math.round(distanceMeters),
-          usingVerifiedAddress: true
+          action: 'Using verified address coordinates (priority #1)',
+          severity: distanceMeters > 50 ? 'CRITICAL - House likely not visible' : 
+                    distanceMeters > 30 ? 'HIGH - House may be off-center' : 
+                    'LOW - Minor offset'
+        });
+      } else {
+        console.log('✅ Coordinates aligned:', {
+          verifiedCoords: { lat: verified_address_lat, lng: verified_address_lng },
+          boundsCoords: { lat: bounds.centerLat, lng: bounds.centerLng },
+          distanceMeters: Math.round(distanceMeters),
+          status: 'GOOD'
         });
       }
+    } else {
+      console.warn('⚠️ No verified address coordinates provided - using calculated bounds center:', {
+        boundsCoords: { lat: bounds.centerLat, lng: bounds.centerLng },
+        recommendation: 'Pass verified_address_lat/lng for accurate centering'
+      });
     }
     
     // With @2x retina, requesting 640x480 yields 1280x960 effective resolution

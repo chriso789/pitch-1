@@ -75,6 +75,10 @@ export function MeasurementVerificationDialog({
   const [adjustedCenterLat, setAdjustedCenterLat] = useState(centerLat);
   const [adjustedCenterLng, setAdjustedCenterLng] = useState(centerLng);
   const [manualZoom, setManualZoom] = useState(0); // Range: -1 to +2
+  const [verifiedAddressLat, setVerifiedAddressLat] = useState<number | null>(null);
+  const [verifiedAddressLng, setVerifiedAddressLng] = useState<number | null>(null);
+  const [coordinateMismatchDistance, setCoordinateMismatchDistance] = useState<number>(0);
+  const [hasAutoFixedMismatch, setHasAutoFixedMismatch] = useState(false);
   
   const manualVerify = useManualVerification();
   
@@ -92,6 +96,70 @@ export function MeasurementVerificationDialog({
   useEffect(() => {
     setSatelliteImageUrl(initialSatelliteImageUrl);
   }, [initialSatelliteImageUrl]);
+  
+  // Load verified address coordinates and check for mismatches
+  useEffect(() => {
+    const loadVerifiedCoordinates = async () => {
+      if (!pipelineEntryId || !open) return;
+      
+      try {
+        const { data: pipelineData } = await supabase
+          .from('pipeline_entries')
+          .select('metadata')
+          .eq('id', pipelineEntryId)
+          .single();
+        
+        if (pipelineData?.metadata) {
+          const metadata = pipelineData.metadata as any;
+          let vLat: number | undefined;
+          let vLng: number | undefined;
+          
+          if (metadata.verified_address?.geometry?.location) {
+            vLat = metadata.verified_address.geometry.location.lat;
+            vLng = metadata.verified_address.geometry.location.lng;
+          } else if (metadata.verified_address?.lat && metadata.verified_address?.lng) {
+            vLat = metadata.verified_address.lat;
+            vLng = metadata.verified_address.lng;
+          }
+          
+          if (vLat && vLng) {
+            setVerifiedAddressLat(vLat);
+            setVerifiedAddressLng(vLng);
+            
+            // Calculate distance between verified address and visualization center
+            const latDiff = Math.abs(vLat - centerLat);
+            const lngDiff = Math.abs(vLng - centerLng);
+            const distanceMeters = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff) * 111000;
+            setCoordinateMismatchDistance(distanceMeters);
+            
+            // Show warning if coordinate mismatch > 30 meters
+            if (distanceMeters > 30) {
+              const severity = distanceMeters > 50 ? 'destructive' : 'default';
+              toast({
+                title: "⚠️ Coordinate Mismatch Detected",
+                description: `Visualization is ${Math.round(distanceMeters)}m off from verified address. ${distanceMeters > 50 ? 'House may not be visible.' : 'Click "Re-center on Address" to fix.'}`,
+                variant: severity as any,
+                duration: distanceMeters > 50 ? 15000 : 10000,
+              });
+              
+              // Auto-regenerate if mismatch is critical (>50m) and not already attempted
+              if (distanceMeters > 50 && !hasAutoFixedMismatch) {
+                console.warn('🔄 Auto-regenerating visualization due to critical coordinate mismatch (>50m)');
+                setHasAutoFixedMismatch(true);
+                setTimeout(() => {
+                  handleRegenerateVisualization(vLat, vLng, 0);
+                }, 1000);
+              }
+            }
+          }
+        }
+      } catch (error) {
+        console.error('Failed to load verified coordinates:', error);
+      }
+    };
+    
+    loadVerifiedCoordinates();
+  }, [open, pipelineEntryId, centerLat, centerLng, hasAutoFixedMismatch]);
   
   // Auto-regenerate visualization if missing Mapbox URL on open
   useEffect(() => {
@@ -576,11 +644,31 @@ export function MeasurementVerificationDialog({
                   <Satellite className="h-5 w-5" />
                   Verify Measurements
                 </div>
-                <div className="text-sm font-normal text-muted-foreground flex items-center gap-2 flex-wrap">
-                  <span className="max-w-[300px] truncate">{tags['prop.address'] || 'Unknown Address'}</span>
-                  <Badge variant="outline" className="font-mono text-xs">
-                    {centerLat.toFixed(6)}, {centerLng.toFixed(6)}
-                  </Badge>
+                <div className="text-sm font-normal text-muted-foreground">
+                  <span className="max-w-[300px] truncate block mb-2">{tags['prop.address'] || 'Unknown Address'}</span>
+                  
+                  {/* Coordinate Display */}
+                  <div className="space-y-1">
+                    {verifiedAddressLat && verifiedAddressLng && (
+                      <div className="flex items-center gap-2 text-xs">
+                        <Badge variant="outline" className="bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20">
+                          Verified Address
+                        </Badge>
+                        <span className="font-mono">{verifiedAddressLat.toFixed(6)}, {verifiedAddressLng.toFixed(6)}</span>
+                      </div>
+                    )}
+                    <div className="flex items-center gap-2 text-xs">
+                      <Badge variant={coordinateMismatchDistance > 30 ? "destructive" : "secondary"}>
+                        Visualization Center
+                      </Badge>
+                      <span className="font-mono">{centerLat.toFixed(6)}, {centerLng.toFixed(6)}</span>
+                      {coordinateMismatchDistance > 10 && (
+                        <Badge variant={coordinateMismatchDistance > 50 ? "destructive" : "outline"} className="ml-1">
+                          {Math.round(coordinateMismatchDistance)}m offset
+                        </Badge>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </DialogTitle>
               <div className="flex items-center gap-2 flex-wrap">
