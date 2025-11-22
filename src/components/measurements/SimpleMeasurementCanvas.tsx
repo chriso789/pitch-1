@@ -19,13 +19,20 @@ import {
   ZoomOut,
   RotateCcw,
   MapPin,
-  AlertTriangle
+  AlertTriangle,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import { useMeasurementDrawing } from '@/hooks/useMeasurementDrawing';
 import { calculatePolygonArea, calculatePolygonPerimeter, convertSolarPolygonToPoints } from '@/utils/measurementGeometry';
 import { supabase } from '@/integrations/supabase/client';
 import { RidgeLineVisualizer } from './RidgeLineVisualizer';
 import { FacetSplittingTools } from './FacetSplittingTools';
+import { MobileToolbar } from './MobileToolbar';
+import { useIsMobile } from '@/hooks/use-mobile';
+import { useTouchControls } from '@/hooks/useTouchControls';
+import { useHapticFeedback } from '@/hooks/useHapticFeedback';
+import { offlineManager } from '@/services/offlineManager';
 
 interface SimpleMeasurementCanvasProps {
   satelliteImageUrl: string;
@@ -62,6 +69,11 @@ export function SimpleMeasurementCanvas({
   const [currentZoom, setCurrentZoom] = useState(zoom);
   const [zoomAdjustment, setZoomAdjustment] = useState(0);
   const [isRegenerating, setIsRegenerating] = useState(false);
+  const [isOffline, setIsOffline] = useState(!navigator.onLine);
+  const [fabricZoomLevel, setFabricZoomLevel] = useState(1);
+
+  const isMobile = useIsMobile();
+  const { vibrate, isSupported: hapticSupported } = useHapticFeedback();
 
   const {
     polygons,
@@ -102,6 +114,7 @@ export function SimpleMeasurementCanvas({
       height,
       backgroundColor: '#1a1a1a',
       selection: false,
+      allowTouchScrolling: isMobile, // Enable touch scrolling on mobile
     });
 
     fabricCanvasRef.current = canvas;
@@ -109,37 +122,65 @@ export function SimpleMeasurementCanvas({
     return () => {
       canvas.dispose();
     };
-  }, [width, height]);
+  }, [width, height, isMobile]);
 
-  // Load satellite image
+  // Load satellite image with offline caching
   useEffect(() => {
     if (!fabricCanvasRef.current || !satelliteImageUrl) return;
 
-    setIsLoadingImage(true);
-    
-    FabricImage.fromURL(satelliteImageUrl, {
-      crossOrigin: 'anonymous',
-    }).then((img) => {
-      if (!fabricCanvasRef.current) return;
-
-      img.scaleToWidth(width);
-      img.scaleToHeight(height);
-      img.set({ selectable: false, evented: false });
+    const loadImage = async () => {
+      setIsLoadingImage(true);
       
-      fabricCanvasRef.current.backgroundImage = img;
-      fabricCanvasRef.current.renderAll();
-      setIsLoadingImage(false);
+      try {
+        // Try to get cached image first
+        let imageUrl = satelliteImageUrl;
+        if (propertyId && offlineManager.isOnline()) {
+          const cached = await offlineManager.getCachedSatelliteImage(propertyId, Math.round(currentZoom));
+          if (cached) {
+            imageUrl = cached;
+            console.log('Loaded satellite image from cache');
+          } else {
+            // Cache the new image for offline use
+            const cachedUrl = await offlineManager.cacheSatelliteImage(
+              satelliteImageUrl,
+              propertyId,
+              centerLat,
+              centerLng,
+              Math.round(currentZoom)
+            );
+            if (cachedUrl) {
+              imageUrl = cachedUrl;
+              console.log('Cached satellite image for offline use');
+            }
+          }
+        }
 
-      // Calculate approximate pixels per foot based on zoom
-      // At zoom 20, 1 pixel ≈ 0.3 feet
-      const feetPerPixel = Math.pow(2, 20 - zoom) * 0.3;
-      setPixelsPerFoot(1 / feetPerPixel);
-    }).catch((error) => {
-      console.error('Error loading satellite image:', error);
-      toast.error('Failed to load satellite image');
-      setIsLoadingImage(false);
-    });
-  }, [satelliteImageUrl, width, height, zoom]);
+        const img = await FabricImage.fromURL(imageUrl, {
+          crossOrigin: 'anonymous',
+        });
+        
+        if (!fabricCanvasRef.current) return;
+
+        img.scaleToWidth(width);
+        img.scaleToHeight(height);
+        img.set({ selectable: false, evented: false });
+        
+        fabricCanvasRef.current.backgroundImage = img;
+        fabricCanvasRef.current.renderAll();
+        setIsLoadingImage(false);
+
+        // Calculate approximate pixels per foot based on zoom
+        const feetPerPixel = Math.pow(2, 20 - currentZoom) * 0.3;
+        setPixelsPerFoot(1 / feetPerPixel);
+      } catch (error) {
+        console.error('Error loading satellite image:', error);
+        toast.error('Failed to load satellite image');
+        setIsLoadingImage(false);
+      }
+    };
+
+    loadImage();
+  }, [satelliteImageUrl, width, height, currentZoom, propertyId, centerLat, centerLng]);
 
   // Handle canvas clicks for drawing
   useEffect(() => {
@@ -394,7 +435,12 @@ export function SimpleMeasurementCanvas({
   const handleStartDrawing = () => {
     setMode('draw');
     startDrawing();
-    toast.info('Click to add corners. Click first point or double-click to close polygon.');
+    if (isMobile) {
+      vibrate('light');
+      toast.info('Tap to add corners. Double-tap to close polygon.');
+    } else {
+      toast.info('Click to add corners. Click first point or double-click to close polygon.');
+    }
   };
 
   const handleApplySplit = useCallback((splitLine: any) => {
@@ -490,6 +536,106 @@ export function SimpleMeasurementCanvas({
     handleRegenerateSatellite(0);
   };
 
+  // Mobile touch controls integration
+  const { useMobileMeasurementControls } = require('./SimpleMeasurementCanvas.touch');
+  if (isMobile) {
+    useMobileMeasurementControls(
+      fabricCanvasRef.current,
+      mode,
+      isDrawing,
+      addPoint,
+      completePolygon,
+      setFabricZoomLevel
+    );
+  }
+
+  // Network status monitoring
+  useEffect(() => {
+    const handleOnline = () => setIsOffline(false);
+    const handleOffline = () => setIsOffline(true);
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
+  }, []);
+
+  // Render mobile toolbar if on mobile
+  if (isMobile) {
+    return (
+      <>
+        <div className="flex flex-col gap-4 pb-24">
+          {/* Offline indicator */}
+          {isOffline && (
+            <Card className="p-3 bg-destructive/10 border-destructive">
+              <div className="flex items-center gap-2 text-destructive">
+                <WifiOff className="h-4 w-4" />
+                <span className="text-sm font-medium">Offline Mode - Changes will sync when online</span>
+              </div>
+            </Card>
+          )}
+
+          {/* Live Measurements */}
+          <Card className="p-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="text-sm text-muted-foreground">Facets</div>
+                <div className="text-2xl font-bold">{polygons.length}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Total Area</div>
+                <div className="text-2xl font-bold text-primary">
+                  {getTotalArea().toFixed(0)} sf
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          {/* Canvas */}
+          <Card className="relative overflow-hidden touch-none">
+            {isLoadingImage && (
+              <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
+                <div className="flex flex-col items-center gap-2">
+                  <Loader2 className="w-8 h-8 animate-spin text-primary" />
+                  <p className="text-sm text-muted-foreground">Loading...</p>
+                </div>
+              </div>
+            )}
+            
+            <canvas ref={canvasRef} className="w-full touch-none" />
+          </Card>
+        </div>
+
+        {/* Mobile Toolbar */}
+        <MobileToolbar
+          mode={mode}
+          isDrawing={isDrawing}
+          canUndo={canUndo}
+          canRedo={canRedo}
+          currentArea={getCurrentArea()}
+          totalArea={getTotalArea()}
+          facetCount={polygons.length}
+          showLinearFeatures={showLinearFeatures}
+          isDetectingBuilding={isDetectingBuilding}
+          onStartDrawing={handleStartDrawing}
+          onUndo={undo}
+          onRedo={redo}
+          onClear={clear}
+          onAutoDetect={handleAutoDetect}
+          onToggleLinearFeatures={() => setShowLinearFeatures(!showLinearFeatures)}
+          onZoomIn={handleZoomIn}
+          onZoomOut={handleZoomOut}
+          onZoomReset={handleZoomReset}
+          onCompletePolygon={completePolygon}
+        />
+      </>
+    );
+  }
+
+  // Desktop render
   return (
     <div className="flex flex-col gap-4">
       {/* Toolbar */}
@@ -732,5 +878,5 @@ export function SimpleMeasurementCanvas({
         </Card>
       )}
     </div>
-  );
+  ); // End desktop render
 }
