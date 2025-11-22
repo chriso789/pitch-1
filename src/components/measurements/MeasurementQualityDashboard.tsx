@@ -5,14 +5,16 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useMeasurementHealthMetrics } from "@/hooks/useMeasurementHealthMetrics";
 import { LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
-import { Download, RefreshCw, AlertTriangle, CheckCircle2, TrendingUp, Eye } from "lucide-react";
+import { Download, RefreshCw, AlertTriangle, CheckCircle2, TrendingUp, Eye, Zap } from "lucide-react";
 import { format } from "date-fns";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useState } from "react";
 
 export function MeasurementQualityDashboard() {
   const navigate = useNavigate();
+  const [isAutoFixing, setIsAutoFixing] = useState(false);
   const {
     metrics,
     accuracyTrend,
@@ -40,6 +42,70 @@ export function MeasurementQualityDashboard() {
     } catch (error: any) {
       toast.error(`Failed to regenerate: ${error.message}`, { id: measurementId });
     }
+  };
+
+  const handleAutoFixAllProblems = async () => {
+    if (!problemMeasurements) return;
+
+    // Filter for critical measurements with >50m coordinate mismatch
+    const criticalMeasurements = problemMeasurements.filter(
+      m => m.coordinate_mismatch_distance > 50
+    );
+
+    if (criticalMeasurements.length === 0) {
+      toast.info("No critical problems to fix (all offsets are under 50m)");
+      return;
+    }
+
+    setIsAutoFixing(true);
+    const toastId = `auto-fix-${Date.now()}`;
+    
+    toast.loading(`Auto-fixing ${criticalMeasurements.length} critical measurements...`, { 
+      id: toastId,
+      duration: Infinity 
+    });
+
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < criticalMeasurements.length; i++) {
+      const measurement = criticalMeasurements[i];
+      
+      try {
+        const { error } = await supabase.functions.invoke('generate-measurement-visualization', {
+          body: { 
+            measurementId: measurement.id, 
+            propertyId: measurement.property_id 
+          }
+        });
+
+        if (error) throw error;
+        successCount++;
+        
+        toast.loading(
+          `Processing ${i + 1}/${criticalMeasurements.length} (${successCount} fixed)`, 
+          { id: toastId }
+        );
+      } catch (error: any) {
+        failCount++;
+        console.error(`Failed to regenerate ${measurement.id}:`, error);
+      }
+
+      // Small delay to avoid overwhelming the API
+      await new Promise(resolve => setTimeout(resolve, 500));
+    }
+
+    setIsAutoFixing(false);
+    
+    if (failCount === 0) {
+      toast.success(`Successfully fixed all ${successCount} critical measurements!`, { id: toastId });
+    } else {
+      toast.warning(`Fixed ${successCount} measurements, ${failCount} failed`, { id: toastId });
+    }
+
+    // Refresh dashboard data
+    refetchProblems();
+    refetchMetrics();
   };
 
   if (isLoading) {
@@ -72,6 +138,15 @@ export function MeasurementQualityDashboard() {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="default"
+            size="sm"
+            onClick={handleAutoFixAllProblems}
+            disabled={isAutoFixing || !problemMeasurements || problemMeasurements.filter(m => m.coordinate_mismatch_distance > 50).length === 0}
+          >
+            <Zap className="h-4 w-4 mr-2" />
+            {isAutoFixing ? 'Fixing...' : 'Auto-Fix All Problems'}
+          </Button>
           <Button
             variant="outline"
             size="sm"
