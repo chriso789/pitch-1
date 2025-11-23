@@ -1201,24 +1201,25 @@ serve(async (req) => {
           
           if (contact?.verified_address?.lat && contact?.verified_address?.lng) {
             // Priority 1: Google-verified coordinates (most accurate)
-            verifiedLat = contact.verified_address.lat;
-            verifiedLng = contact.verified_address.lng;
+            // Round to 7 decimal places to prevent Google Maps API errors
+            verifiedLat = Math.round(contact.verified_address.lat * 10000000) / 10000000;
+            verifiedLng = Math.round(contact.verified_address.lng * 10000000) / 10000000;
             console.log('✅ Using Google-verified coordinates from contact:', { verifiedLat, verifiedLng });
           } else if (contact?.latitude && contact?.longitude) {
             // Priority 2: Legacy contact coordinates
-            verifiedLat = contact.latitude;
-            verifiedLng = contact.longitude;
+            verifiedLat = Math.round(contact.latitude * 10000000) / 10000000;
+            verifiedLng = Math.round(contact.longitude * 10000000) / 10000000;
             console.log('⚠️ Using legacy contact coordinates:', { verifiedLat, verifiedLng });
           } else {
             // Priority 3: Pipeline metadata (fallback only)
             const metadata = (pipelineData as any)?.metadata;
             if (metadata?.verified_address?.geometry?.location) {
-              verifiedLat = metadata.verified_address.geometry.location.lat;
-              verifiedLng = metadata.verified_address.geometry.location.lng;
+              verifiedLat = Math.round(metadata.verified_address.geometry.location.lat * 10000000) / 10000000;
+              verifiedLng = Math.round(metadata.verified_address.geometry.location.lng * 10000000) / 10000000;
               console.log('⚠️ Using pipeline metadata coordinates (fallback):', { verifiedLat, verifiedLng });
             } else if (metadata?.verified_address?.lat && metadata?.verified_address?.lng) {
-              verifiedLat = metadata.verified_address.lat;
-              verifiedLng = metadata.verified_address.lng;
+              verifiedLat = Math.round(metadata.verified_address.lat * 10000000) / 10000000;
+              verifiedLng = Math.round(metadata.verified_address.lng * 10000000) / 10000000;
               console.log('⚠️ Using pipeline metadata coordinates (alt format):', { verifiedLat, verifiedLng });
             }
           }
