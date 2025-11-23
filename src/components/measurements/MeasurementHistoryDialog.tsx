@@ -43,6 +43,8 @@ interface HistoryRecord {
     first_name: string;
     last_name: string;
   };
+  supersedes_version?: number;
+  is_active: boolean;
 }
 
 export function MeasurementHistoryDialog({
@@ -81,6 +83,8 @@ export function MeasurementHistoryDialog({
         tags: m.tags || {},
         notes: m.source ? `Pulled from ${m.source}` : undefined,
         created_at: m.created_at,
+        is_active: m.is_active || false,
+        supersedes_version: undefined,
       }));
       
       setHistory(historyRecords);

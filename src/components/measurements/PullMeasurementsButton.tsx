@@ -6,6 +6,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Satellite, Loader2, CheckCircle2 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { MeasurementVerificationDialog } from './MeasurementVerificationDialog';
+import { useImageCache } from '@/contexts/ImageCacheContext';
 
 interface PullMeasurementsButtonProps {
   propertyId: string;
@@ -24,6 +25,7 @@ export function PullMeasurementsButton({
 }: PullMeasurementsButtonProps) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const imageCache = useImageCache();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [verificationData, setVerificationData] = useState<{
@@ -179,35 +181,52 @@ export function PullMeasurementsButton({
           }
         }
         
-        try {
-          const { data: imageData, error: imageError } = await supabase.functions.invoke('google-maps-proxy', {
-            body: { 
-              endpoint: 'satellite',
-              params: {
-                center: `${centerLat},${centerLng}`,
-                zoom: '21',
-                size: '640x640', // Google Static Maps max size when using scale=2
-                maptype: 'satellite',
-                scale: '2'
+        // Generate cache key from coordinates and zoom
+        const cacheKey = `gmaps_sat_${centerLat.toFixed(6)}_${centerLng.toFixed(6)}_z21`;
+        
+        // Check cache first
+        const cachedImageUrl = imageCache.getImage(cacheKey);
+        if (cachedImageUrl) {
+          satelliteImageUrl = cachedImageUrl;
+          console.log('[Image Cache] ✅ Cache HIT - Using cached Google Maps satellite image');
+        } else {
+          // Cache miss - fetch from API
+          console.log('[Image Cache] ❌ Cache MISS - Fetching from Google Maps API...');
+          
+          try {
+            const { data: imageData, error: imageError } = await supabase.functions.invoke('google-maps-proxy', {
+              body: { 
+                endpoint: 'satellite',
+                params: {
+                  center: `${centerLat},${centerLng}`,
+                  zoom: '21',
+                  size: '1280x1280',
+                  maptype: 'satellite',
+                  scale: '2'
+                }
               }
-            }
-          });
+            });
 
-          if (imageError) {
-            console.error('Google Maps proxy error:', imageError);
-          } else if (imageData?.image_url) {
-            // Use cached URL directly
-            satelliteImageUrl = imageData.image_url;
-            console.log(`Google Maps ${imageData.cached ? 'cached' : 'fresh'} image loaded successfully`);
-          } else if (imageData?.image) {
-            // Fallback to base64 if caching didn't work
-            satelliteImageUrl = `data:image/png;base64,${imageData.image}`;
-            console.log('Google Maps fallback image loaded successfully');
-          } else {
-            console.warn('Google Maps proxy returned no image data');
+            if (imageError) {
+              console.error('Google Maps proxy error:', imageError);
+            } else if (imageData?.image_url) {
+              satelliteImageUrl = imageData.image_url;
+              // Store in cache
+              imageCache.setImage(cacheKey, satelliteImageUrl);
+              const stats = imageCache.getCacheStats();
+              console.log(`[Image Cache] 💾 Cached new Google Maps URL (${stats.currentSize}/${stats.maxSize})`);
+            } else if (imageData?.image) {
+              satelliteImageUrl = `data:image/png;base64,${imageData.image}`;
+              // Store base64 in cache
+              imageCache.setImage(cacheKey, satelliteImageUrl);
+              const stats = imageCache.getCacheStats();
+              console.log(`[Image Cache] 💾 Cached base64 Google Maps image (${stats.currentSize}/${stats.maxSize})`);
+            } else {
+              console.warn('Google Maps proxy returned no image data');
+            }
+          } catch (imgError) {
+            console.error('Failed to fetch satellite image:', imgError);
           }
-        } catch (imgError) {
-          console.error('Failed to fetch satellite image:', imgError);
         }
       }
       
