@@ -35,23 +35,63 @@ export async function saveMeasurementWithOfflineSupport(
     return { success: true };
   }
 
-  // Online - save directly
+  // Online - save with versioning
   try {
-    const { error: measurementError } = await supabase
+    console.log('[Measurement Save] Attempting online save with versioning...');
+    
+    // Step 1: Get current active measurement to determine version
+    const { data: currentMeasurement } = await supabase
       .from('measurements')
-      .update({
+      .select('id, version')
+      .eq('property_id', payload.propertyId)
+      .eq('is_active', true)
+      .maybeSingle();
+
+    console.log('[Measurement Save] Current active version:', currentMeasurement);
+
+    // Step 2: Mark current version as inactive if it exists
+    if (currentMeasurement) {
+      const { error: deactivateError } = await supabase
+        .from('measurements')
+        .update({ is_active: false })
+        .eq('id', currentMeasurement.id);
+
+      if (deactivateError) {
+        console.error('[Measurement Save] Error deactivating old version:', deactivateError);
+        throw deactivateError;
+      }
+      console.log(`[Measurement Save] Deactivated version ${currentMeasurement.version}`);
+    }
+
+    // Step 3: Create new version
+    const newVersion = currentMeasurement ? (currentMeasurement.version || 1) + 1 : 1;
+    const { data: newMeasurement, error: insertError } = await supabase
+      .from('measurements')
+      .insert({
+        property_id: payload.propertyId,
+        source: 'manual_adjustment',
+        faces: payload.facets,
+        linear_features: payload.linearFeatures,
         summary: payload.summary,
+        version: newVersion,
+        supersedes: currentMeasurement?.id,
+        is_active: true,
         visualization_metadata: {
           ...payload.metadata,
           last_updated: new Date().toISOString(),
         },
-        updated_at: new Date().toISOString(),
       })
-      .eq('id', payload.measurementId);
+      .select()
+      .maybeSingle();
 
-    if (measurementError) throw measurementError;
+    if (insertError) {
+      console.error('[Measurement Save] Error inserting new version:', insertError);
+      throw insertError;
+    }
 
-    // Fetch existing pipeline metadata to merge
+    console.log(`[Measurement Save] ✅ Created version ${newVersion} (supersedes ${currentMeasurement?.id || 'none'})`);
+
+    // Step 4: Update pipeline_entries metadata
     const { data: pipelineData } = await supabase
       .from('pipeline_entries')
       .select('metadata')
@@ -76,11 +116,15 @@ export async function saveMeasurementWithOfflineSupport(
       })
       .eq('id', payload.propertyId);
 
-    if (pipelineError) throw pipelineError;
+    if (pipelineError) {
+      console.error('[Measurement Save] Error updating pipeline metadata:', pipelineError);
+      throw pipelineError;
+    }
 
+    console.log('[Measurement Save] ✅ Online save successful with versioning');
     return { success: true };
   } catch (error: any) {
-    console.error('Failed to save measurement:', error);
+    console.error('[Measurement Save] Failed to save measurement:', error);
     
     // Queue for retry
     await offlineManager.queueActivity({
