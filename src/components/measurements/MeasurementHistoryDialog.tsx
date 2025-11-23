@@ -66,25 +66,40 @@ export function MeasurementHistoryDialog({
   const fetchHistory = async () => {
     setLoading(true);
     try {
-      // Query measurements table directly for now
+      // Query measurements with proper version ordering and related data
       const { data, error } = await supabase
         .from('measurements')
-        .select('*')
+        .select(`
+          *,
+          created_by_profile:created_by(first_name, last_name),
+          supersedes_measurement:supersedes(version)
+        `)
         .eq('property_id', currentMeasurement.property_id)
-        .order('created_at', { ascending: false });
+        .order('version', { ascending: false });
 
       if (error) throw error;
       
-      // Transform to history format
-      const historyRecords: HistoryRecord[] = (data || []).map((m: any, index: number) => ({
+      console.log('📊 Measurement version chain loaded:', {
+        totalVersions: data?.length || 0,
+        versions: data?.map(m => ({
+          id: m.id,
+          version: m.version,
+          is_active: m.is_active,
+          supersedes: m.supersedes,
+        }))
+      });
+      
+      // Transform to history format using actual version field
+      const historyRecords: HistoryRecord[] = (data || []).map((m: any) => ({
         id: m.id,
-        version_number: data.length - index,
+        version_number: m.version || 1,
         data: m,
         tags: m.tags || {},
         notes: m.source ? `Pulled from ${m.source}` : undefined,
         created_at: m.created_at,
+        created_by: m.created_by_profile || undefined,
         is_active: m.is_active || false,
-        supersedes_version: undefined,
+        supersedes_version: m.supersedes_measurement?.version || undefined,
       }));
       
       setHistory(historyRecords);
@@ -105,14 +120,58 @@ export function MeasurementHistoryDialog({
       const version = history.find(h => h.id === versionId);
       if (!version) return;
 
-      toast.success('Reverted to previous version', {
-        description: `Now using measurements from version ${versionNumber}. Note: Full revert functionality requires database migration.`,
+      console.log('🔄 Reverting measurement:', {
+        targetVersion: versionNumber,
+        targetId: versionId,
+        currentActiveVersion: history.find(h => h.is_active)?.version_number,
       });
 
-      // Note: Full revert functionality will be implemented after database migration
-      fetchHistory();
+      // Step 1: Mark all versions >= selected version as inactive
+      const { error: deactivateError } = await supabase
+        .from('measurements')
+        .update({ is_active: false } as any)
+        .eq('property_id', currentMeasurement.property_id)
+        .gte('version', versionNumber);
+
+      if (deactivateError) throw deactivateError;
+
+      // Step 2: Mark selected version as active
+      const { error: activateError } = await supabase
+        .from('measurements')
+        .update({ is_active: true } as any)
+        .eq('id', versionId);
+
+      if (activateError) throw activateError;
+
+      // Step 3: Update pipeline_entries.metadata with reverted measurement data
+      const updatedMetadata = {
+        ...(currentMeasurement.pipeline_metadata || {}),
+        comprehensive_measurements: version.data,
+        roof_area_sq_ft: version.data?.summary?.total_area_sqft,
+        roof_pitch: version.data?.summary?.pitch,
+      };
+      
+      // @ts-ignore - Deep type instantiation issue with Supabase
+      const metadataResult: any = await supabase
+        .from('pipeline_entries')
+        .update({ metadata: updatedMetadata })
+        .eq('property_id', currentMeasurement.property_id);
+      
+      const metadataError = metadataResult.error;
+
+      if (metadataError) throw metadataError;
+
+      console.log('✅ Measurement reverted successfully to version', versionNumber);
+
+      toast.success('Reverted to previous version', {
+        description: `Successfully restored measurements from version ${versionNumber}`,
+      });
+
+      // Refresh history and close dialog
+      await fetchHistory();
+      onOpenChange(false);
     } catch (error: any) {
-      console.error('Error reverting:', error);
+      console.error('❌ Error reverting measurement:', error);
       toast.error('Failed to revert', {
         description: error.message,
       });
@@ -294,11 +353,16 @@ export function MeasurementHistoryDialog({
                     <Card key={record.id} className="p-4">
                       <div className="flex items-start justify-between">
                         <div className="space-y-2 flex-1">
-                          <div className="flex items-center gap-2">
-                            <Badge variant={index === 0 ? 'default' : 'outline'}>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <Badge variant={record.is_active ? 'default' : 'outline'}>
                               Version {record.version_number}
                             </Badge>
-                            {index === 0 && <Badge variant="secondary">Current</Badge>}
+                            {record.is_active && <Badge variant="secondary">Active</Badge>}
+                            {record.supersedes_version && (
+                              <Badge variant="outline" className="text-xs">
+                                Supersedes v{record.supersedes_version}
+                              </Badge>
+                            )}
                           </div>
 
                           <div className="grid grid-cols-3 gap-4 text-sm">
@@ -339,12 +403,15 @@ export function MeasurementHistoryDialog({
                           <Button
                             variant="outline"
                             size="sm"
-                            onClick={() => handleCompare(record.version_number, history[0].version_number)}
+                            onClick={() => {
+                              const activeVersion = history.find(h => h.is_active)?.version_number || history[0].version_number;
+                              handleCompare(record.version_number, activeVersion);
+                            }}
                           >
                             <GitCompare className="h-3 w-3 mr-1" />
                             Compare
                           </Button>
-                          {index !== 0 && (
+                          {!record.is_active && (
                             <Button
                               variant="ghost"
                               size="sm"
