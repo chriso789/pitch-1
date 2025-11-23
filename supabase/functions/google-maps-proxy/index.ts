@@ -171,7 +171,13 @@ serve(async (req) => {
         
         const imageResponse = await fetch(url);
         if (!imageResponse.ok) {
-          throw new Error('Failed to fetch satellite image');
+          const errorText = await imageResponse.text();
+          console.error('Google Maps API Error:', {
+            status: imageResponse.status,
+            statusText: imageResponse.statusText,
+            errorBody: errorText
+          });
+          throw new Error(`Failed to fetch satellite image: ${imageResponse.status} ${imageResponse.statusText} - ${errorText}`);
         }
         
         const imageBuffer = await imageResponse.arrayBuffer();
