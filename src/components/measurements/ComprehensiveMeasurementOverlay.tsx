@@ -32,6 +32,8 @@ interface ComprehensiveMeasurementOverlayProps {
   onMeasurementUpdate: (updatedMeasurement: any, updatedTags: Record<string, any>) => void;
   canvasWidth?: number;
   canvasHeight?: number;
+  recenterMode?: boolean;
+  onRecenterClick?: (normalizedX: number, normalizedY: number) => void;
 }
 
 type EditMode = 'select' | 'add-ridge' | 'add-hip' | 'add-valley' | 'add-facet' | 'delete' | 'add-marker' | 'add-note' | 'add-damage';
@@ -54,6 +56,8 @@ export function ComprehensiveMeasurementOverlay({
   onMeasurementUpdate,
   canvasWidth = 640,
   canvasHeight = 480,
+  recenterMode = false,
+  onRecenterClick,
 }: ComprehensiveMeasurementOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
@@ -169,11 +173,19 @@ export function ComprehensiveMeasurementOverlay({
   useEffect(() => {
     if (!fabricCanvas) return;
 
-      const handleMouseDown = (event: any) => {
-      if (editMode === 'select') return;
-
+    const handleMouseDown = (event: any) => {
       const pointer = fabricCanvas.getPointer(event.e);
       const point = { x: pointer.x, y: pointer.y };
+
+      // Priority: Recenter mode takes precedence over all other modes
+      if (recenterMode && onRecenterClick) {
+        const normalizedX = Math.min(Math.max(point.x / canvasWidth, 0), 1);
+        const normalizedY = Math.min(Math.max(point.y / canvasHeight, 0), 1);
+        onRecenterClick(normalizedX, normalizedY);
+        return;
+      }
+
+      if (editMode === 'select') return;
 
       if (editMode === 'delete') {
         const target = fabricCanvas.findTarget(event.e);
@@ -204,7 +216,7 @@ export function ComprehensiveMeasurementOverlay({
     return () => {
       fabricCanvas.off('mouse:down', handleMouseDown);
     };
-  }, [fabricCanvas, editMode, drawPoints]);
+  }, [fabricCanvas, editMode, drawPoints, recenterMode, onRecenterClick, canvasWidth, canvasHeight]);
 
   const drawAllMeasurements = () => {
     if (!fabricCanvas) return;
