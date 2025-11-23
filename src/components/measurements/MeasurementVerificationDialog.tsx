@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Home, ArrowRight as ArrowRightIcon, ZoomIn, ZoomOut, Scissors, Info, ChevronDown } from 'lucide-react';
+import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Home, ArrowRight as ArrowRightIcon, ZoomIn, ZoomOut, Scissors, Info, ChevronDown, Move } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PolygonEditor } from './PolygonEditor';
@@ -82,6 +82,7 @@ export function MeasurementVerificationDialog({
   const [verifiedAddressLng, setVerifiedAddressLng] = useState<number | null>(null);
   const [coordinateMismatchDistance, setCoordinateMismatchDistance] = useState<number>(0);
   const [hasAutoFixedMismatch, setHasAutoFixedMismatch] = useState(false);
+  const [recenterMode, setRecenterMode] = useState(false);
   
   const manualVerify = useManualVerification();
   
@@ -557,6 +558,30 @@ export function MeasurementVerificationDialog({
     });
   };
 
+  const handleCanvasRecenterClick = (normalizedX: number, normalizedY: number) => {
+    // normalizedX / Y are in [0, 1], center is (0.5, 0.5)
+    const offsetX = normalizedX - 0.5; // positive => clicked right
+    const offsetY = normalizedY - 0.5; // positive => clicked down
+
+    // Tune this base delta: about ~15–20 meters for clicking at extreme edge
+    const maxDeltaDegrees = 0.00018; // ≈ 20m at mid-latitudes
+
+    const deltaLng = offsetX * 2 * maxDeltaDegrees;
+    const deltaLat = -offsetY * 2 * maxDeltaDegrees; // screen Y down = lat decreases
+
+    const newLat = adjustedCenterLat + deltaLat;
+    const newLng = adjustedCenterLng + deltaLng;
+
+    setAdjustedCenterLat(newLat);
+    setAdjustedCenterLng(newLng);
+
+    // Regenerate visualization at new center
+    handleRegenerateVisualization(newLat, newLng, manualZoom);
+
+    // Auto-turn off recenter mode after a click
+    setRecenterMode(false);
+  };
+
   const handleRegenerateVisualization = async (lat?: number, lng?: number, zoomAdjust?: number) => {
     if (!measurement?.id) {
       toast({
@@ -727,6 +752,8 @@ export function MeasurementVerificationDialog({
                   }}
                   canvasWidth={640}
                   canvasHeight={480}
+                  recenterMode={recenterMode}
+                  onRecenterClick={handleCanvasRecenterClick}
                 />
               ) : (
                 <PolygonEditor
@@ -882,6 +909,26 @@ export function MeasurementVerificationDialog({
                         <ArrowRight className="h-4 w-4" />
                       </Button>
                     </div>
+                  </div>
+                </div>
+                
+                {/* Click to Recenter Mode */}
+                <div className="p-3 bg-muted/50 rounded-lg">
+                  <div className="flex flex-col gap-2">
+                    <Button
+                      variant={recenterMode ? "default" : "outline"}
+                      size="sm"
+                      onClick={() => setRecenterMode(prev => !prev)}
+                      className="w-full"
+                    >
+                      <Move className="h-4 w-4 mr-2" />
+                      {recenterMode ? "Recenter Mode Active" : "Click to Recenter"}
+                    </Button>
+                    {recenterMode && (
+                      <p className="text-xs text-muted-foreground text-center">
+                        Click on the image to shift the satellite view toward that point
+                      </p>
+                    )}
                   </div>
                 </div>
                 
