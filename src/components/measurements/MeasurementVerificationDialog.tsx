@@ -83,6 +83,7 @@ export function MeasurementVerificationDialog({
   const [coordinateMismatchDistance, setCoordinateMismatchDistance] = useState<number>(0);
   const [hasAutoFixedMismatch, setHasAutoFixedMismatch] = useState(false);
   const [recenterMode, setRecenterMode] = useState(false);
+  const [regenerationError, setRegenerationError] = useState<string | null>(null);
   
   const manualVerify = useManualVerification();
   
@@ -150,12 +151,17 @@ export function MeasurementVerificationDialog({
             const distanceMeters = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff) * 111000;
             setCoordinateMismatchDistance(distanceMeters);
             
+            // Auto-enable recenter mode if mismatch > 30m
+            if (distanceMeters > 30 && !recenterMode) {
+              setRecenterMode(true);
+            }
+            
             // Show warning if coordinate mismatch > 30 meters
             if (distanceMeters > 30) {
               const severity = distanceMeters > 50 ? 'destructive' : 'default';
               toast({
                 title: "⚠️ Coordinate Mismatch Detected",
-                description: `Visualization is ${Math.round(distanceMeters)}m off from verified address. ${distanceMeters > 50 ? 'House may not be visible.' : 'Click "Re-center on Address" to fix.'}`,
+                description: `Visualization is ${Math.round(distanceMeters)}m off from verified address. ${distanceMeters > 50 ? 'House may not be visible.' : 'Click on the house to recenter.'}`,
                 variant: severity as any,
                 duration: distanceMeters > 50 ? 15000 : 10000,
               });
@@ -591,8 +597,14 @@ export function MeasurementVerificationDialog({
       });
       return;
     }
+    
+    if (!isOnline) {
+      setRegenerationError("Cannot update satellite view while offline");
+      return;
+    }
 
     setIsRegenerating(true);
+    setRegenerationError(null);
 
     try {
       toast({
@@ -653,9 +665,11 @@ export function MeasurementVerificationDialog({
 
     } catch (err: any) {
       console.error('Regenerate visualization error:', err);
+      const errorMsg = err.message || "Could not regenerate visualization";
+      setRegenerationError(errorMsg);
       toast({
         title: "Regeneration Failed",
-        description: err.message || "Could not regenerate visualization",
+        description: errorMsg,
         variant: "destructive",
       });
     } finally {
@@ -735,38 +749,159 @@ export function MeasurementVerificationDialog({
           {/* Left Panel: Visual Editor */}
           {satelliteImageUrl && (measurement?.faces || buildingPolygon.length > 0) && (
             <div className="space-y-4">
-              {measurement?.faces ? (
-                <ComprehensiveMeasurementOverlay
-                  satelliteImageUrl={satelliteImageUrl}
-                  measurement={measurement}
-                  tags={tags}
-                  centerLng={centerLng}
-                  centerLat={centerLat}
-                  zoom={20}
-                  onMeasurementUpdate={(updatedMeasurement, updatedTags) => {
-                    Object.assign(measurement, updatedMeasurement);
-                    Object.assign(tags, updatedTags);
-                    // Re-detect roof type on changes
-                    const detection = detectRoofType(updatedMeasurement, updatedTags);
-                    setDetectedRoofType(detection);
-                  }}
-                  canvasWidth={640}
-                  canvasHeight={480}
-                  recenterMode={recenterMode}
-                  onRecenterClick={handleCanvasRecenterClick}
-                />
-              ) : (
-                <PolygonEditor
-                  satelliteImageUrl={satelliteImageUrl}
-                  buildingPolygon={buildingPolygon}
-                  centerLng={centerLng}
-                  centerLat={centerLat}
-                  zoom={20}
-                  onPolygonChange={handlePolygonChange}
-                  canvasWidth={640}
-                  canvasHeight={480}
-                />
-              )}
+              {/* Satellite Image with Floating Controls */}
+              <div className="relative">
+                {measurement?.faces ? (
+                  <ComprehensiveMeasurementOverlay
+                    satelliteImageUrl={satelliteImageUrl}
+                    measurement={measurement}
+                    tags={tags}
+                    centerLng={adjustedCenterLng}
+                    centerLat={adjustedCenterLat}
+                    zoom={20}
+                    onMeasurementUpdate={(updatedMeasurement, updatedTags) => {
+                      Object.assign(measurement, updatedMeasurement);
+                      Object.assign(tags, updatedTags);
+                      // Re-detect roof type on changes
+                      const detection = detectRoofType(updatedMeasurement, updatedTags);
+                      setDetectedRoofType(detection);
+                    }}
+                    canvasWidth={640}
+                    canvasHeight={480}
+                    recenterMode={recenterMode}
+                    onRecenterClick={handleCanvasRecenterClick}
+                  />
+                ) : (
+                  <PolygonEditor
+                    satelliteImageUrl={satelliteImageUrl}
+                    buildingPolygon={buildingPolygon}
+                    centerLng={adjustedCenterLng}
+                    centerLat={adjustedCenterLat}
+                    zoom={20}
+                    onPolygonChange={handlePolygonChange}
+                    canvasWidth={640}
+                    canvasHeight={480}
+                  />
+                )}
+                
+                {/* Floating Control Toolbar */}
+                <div className="absolute top-2 left-2 flex flex-col gap-2">
+                  {/* Pan Controls */}
+                  <div className="bg-background/95 backdrop-blur border rounded-lg shadow-lg p-1">
+                    <div className="flex flex-col items-center gap-1">
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => handlePan('up')}
+                        disabled={isRegenerating || !isOnline}
+                        className="h-7 w-7 p-0"
+                        title="Pan up"
+                      >
+                        <ArrowUp className="h-4 w-4" />
+                      </Button>
+                      <div className="flex gap-1">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handlePan('left')}
+                          disabled={isRegenerating || !isOnline}
+                          className="h-7 w-7 p-0"
+                          title="Pan left"
+                        >
+                          <ArrowLeft className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handlePan('down')}
+                          disabled={isRegenerating || !isOnline}
+                          className="h-7 w-7 p-0"
+                          title="Pan down"
+                        >
+                          <ArrowDown className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handlePan('right')}
+                          disabled={isRegenerating || !isOnline}
+                          className="h-7 w-7 p-0"
+                          title="Pan right"
+                        >
+                          <ArrowRight className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                  
+                  {/* Zoom Controls */}
+                  <div className="bg-background/95 backdrop-blur border rounded-lg shadow-lg p-1.5 flex flex-col gap-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleZoomAdjust('in')}
+                      disabled={isRegenerating || manualZoom >= 2 || !isOnline}
+                      className="h-7 w-7 p-0"
+                      title="Zoom in"
+                    >
+                      <ZoomIn className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleZoomAdjust('reset')}
+                      disabled={isRegenerating || manualZoom === 0 || !isOnline}
+                      className="h-7 w-7 p-0"
+                      title="Reset zoom"
+                    >
+                      <Home className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => handleZoomAdjust('out')}
+                      disabled={isRegenerating || manualZoom <= -1 || !isOnline}
+                      className="h-7 w-7 p-0"
+                      title="Zoom out"
+                    >
+                      <ZoomOut className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  
+                  {/* Recenter Button */}
+                  <Button
+                    variant={recenterMode ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setRecenterMode(prev => !prev)}
+                    disabled={!isOnline}
+                    className="bg-background/95 backdrop-blur shadow-lg"
+                    title={recenterMode ? "Click mode active" : "Click to recenter"}
+                  >
+                    <Move className="h-4 w-4" />
+                  </Button>
+                </div>
+                
+                {/* Recenter Mode Hint */}
+                {recenterMode && isOnline && (
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-3 py-1.5 rounded-full text-xs font-medium shadow-lg animate-pulse">
+                    👆 Click on the house to shift the satellite view toward it
+                  </div>
+                )}
+                
+                {/* Offline Banner */}
+                {!isOnline && (
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-destructive text-destructive-foreground px-3 py-1.5 rounded-lg text-xs font-medium shadow-lg">
+                    🔴 Offline: cannot move satellite view until connection is restored
+                  </div>
+                )}
+                
+                {/* API Error Banner */}
+                {regenerationError && isOnline && (
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-destructive/90 backdrop-blur text-destructive-foreground px-3 py-1.5 rounded-lg text-xs font-medium shadow-lg max-w-md">
+                    ⚠️ {regenerationError} — Last good image shown
+                  </div>
+                )}
+              </div>
               
               {/* Smart Roof Type Detection Display */}
               {detectedRoofType && (
@@ -829,155 +964,26 @@ export function MeasurementVerificationDialog({
                   )}
                 </div>
                 
-                {/* Regenerate Visualization Buttons */}
-                <div className="grid grid-cols-2 gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setAdjustedCenterLat(centerLat);
-                      setAdjustedCenterLng(centerLng);
-                      setManualZoom(0);
-                      handleRegenerateVisualization(centerLat, centerLng, 0);
-                    }}
-                    disabled={isRegenerating}
-                    title="Re-center satellite image on verified address"
-                  >
-                    <Home className="h-4 w-4 mr-2" />
-                    Re-center
-                  </Button>
-                  
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleRegenerateVisualization()}
-                    disabled={isRegenerating || !measurement?.id}
-                  >
-                    {isRegenerating ? (
-                      <>
-                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                        Regenerating...
-                      </>
-                    ) : (
-                      <>
-                        <RefreshCw className="h-4 w-4 mr-2" />
-                        Regenerate
-                      </>
-                    )}
-                  </Button>
-                </div>
-                
-                {/* Manual Pan Controls */}
-                <div className="p-3 bg-muted/50 rounded-lg">
-                  <div className="text-xs text-muted-foreground mb-2 text-center">Fine-tune Center Position</div>
-                  <div className="flex flex-col items-center gap-1">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handlePan('up')}
-                      disabled={isRegenerating}
-                      className="h-8 w-8 p-0"
-                    >
-                      <ArrowUp className="h-4 w-4" />
-                    </Button>
-                    <div className="flex gap-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handlePan('left')}
-                        disabled={isRegenerating}
-                        className="h-8 w-8 p-0"
-                      >
-                        <ArrowLeft className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handlePan('down')}
-                        disabled={isRegenerating}
-                        className="h-8 w-8 p-0"
-                      >
-                        <ArrowDown className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handlePan('right')}
-                        disabled={isRegenerating}
-                        className="h-8 w-8 p-0"
-                      >
-                        <ArrowRight className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-                
-                {/* Click to Recenter Mode */}
-                <div className="p-3 bg-muted/50 rounded-lg">
-                  <div className="flex flex-col gap-2">
-                    <Button
-                      variant={recenterMode ? "default" : "outline"}
-                      size="sm"
-                      onClick={() => setRecenterMode(prev => !prev)}
-                      className="w-full"
-                    >
-                      <Move className="h-4 w-4 mr-2" />
-                      {recenterMode ? "Recenter Mode Active" : "Click to Recenter"}
-                    </Button>
-                    {recenterMode && (
-                      <p className="text-xs text-muted-foreground text-center">
-                        Click on the image to shift the satellite view toward that point
-                      </p>
-                    )}
-                  </div>
-                </div>
-                
-                {/* Manual Zoom Controls */}
-                <div className="p-3 bg-muted/50 rounded-lg">
-                  <div className="text-xs text-muted-foreground mb-2 text-center flex items-center justify-center gap-2">
-                    Zoom Level
-                    <Badge variant="outline" className="font-mono">
-                      {manualZoom > 0 ? `+${manualZoom}` : manualZoom}
-                    </Badge>
-                  </div>
-                  <div className="grid grid-cols-3 gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleZoomAdjust('out')}
-                      disabled={isRegenerating || manualZoom <= -1}
-                      className="w-full"
-                    >
-                      <ZoomOut className="h-4 w-4 mr-1" />
-                      Out
-                    </Button>
-                    
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleZoomAdjust('reset')}
-                      disabled={isRegenerating || manualZoom === 0}
-                      className="w-full"
-                    >
-                      <Home className="h-4 w-4 mr-1" />
-                      Reset
-                    </Button>
-                    
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => handleZoomAdjust('in')}
-                      disabled={isRegenerating || manualZoom >= 2}
-                      className="w-full"
-                    >
-                      <ZoomIn className="h-4 w-4 mr-1" />
-                      In
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2 text-center">
-                    -1 (wider) to +2 (closer)
-                  </p>
-                </div>
+                {/* Regenerate Visualization Button */}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleRegenerateVisualization()}
+                  disabled={isRegenerating || !measurement?.id || !isOnline}
+                  className="w-full"
+                >
+                  {isRegenerating ? (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                      Regenerating...
+                    </>
+                  ) : (
+                    <>
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Refresh Satellite View
+                    </>
+                  )}
+                </Button>
               </div>
             </div>
           )}
