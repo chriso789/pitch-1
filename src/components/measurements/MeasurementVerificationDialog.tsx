@@ -96,6 +96,12 @@ export function MeasurementVerificationDialog({
     }
   }, [measurement, tags]);
   
+  // PHASE 1: Generate clean Google Maps fallback URL (no baked overlays)
+  const googleMapsFallback = `https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/google-maps-proxy?endpoint=satellite&lat=${verifiedAddressLat || centerLat}&lng=${verifiedAddressLng || centerLng}&zoom=21&size=1280x1280`;
+  
+  // Force use of clean Google Maps satellite imagery
+  const cleanSatelliteImageUrl = googleMapsFallback;
+  
   // Update satellite image URL when prop changes
   useEffect(() => {
     setSatelliteImageUrl(initialSatelliteImageUrl);
@@ -832,11 +838,11 @@ export function MeasurementVerificationDialog({
               <div className="relative">
                 {measurement?.faces ? (
                   <ComprehensiveMeasurementOverlay
-                    satelliteImageUrl={satelliteImageUrl}
+                    satelliteImageUrl={cleanSatelliteImageUrl}
                     measurement={measurement}
                     tags={tags}
-                    centerLng={adjustedCenterLng}
-                    centerLat={adjustedCenterLat}
+                    centerLng={verifiedAddressLng || adjustedCenterLng}
+                    centerLat={verifiedAddressLat || adjustedCenterLat}
                     zoom={20}
                     onMeasurementUpdate={(updatedMeasurement, updatedTags) => {
                       Object.assign(measurement, updatedMeasurement);
