@@ -173,11 +173,12 @@ export function ComprehensiveMeasurementOverlay({
   const [editMode, setEditMode] = useState<EditMode>('select');
   // WARNING: Facets disabled - Google Solar API provides same building footprint for all facets
   // Individual facet boundaries cannot be visualized without manual drawing
+  // PHASE 3: Re-enable ridge and valley layers with fixed coordinate system
   const [layers, setLayers] = useState({
     facets: false,
-    ridges: false,
+    ridges: true,   // Re-enabled with verified center coordinates
     hips: false,
-    valleys: false,
+    valleys: true,  // Re-enabled with verified center coordinates
     perimeter: false,
     annotations: false,
   });
@@ -366,28 +367,29 @@ export function ComprehensiveMeasurementOverlay({
     };
   }, [canvasWidth, canvasHeight]);
   
-  /**
-   * Full pipeline: geographic lat/lng → normalized → canvas pixels
-   */
-  const geoToCanvas = useCallback((lat: number, lng: number): Point => {
-    const norm = geoToNormalized(lat, lng);
-    const canvas = normalizedToCanvas(norm);
-    
-    // Diagnostic logging for transformation (only log first few to avoid spam)
-    if (Math.random() < 0.05) { // Log ~5% of transformations
-      console.log('🔄 Coordinate Transform:', {
-        input: { lat, lng },
-        normalized: { x: norm.x.toFixed(4), y: norm.y.toFixed(4) },
-        canvas: { x: canvas.x.toFixed(1), y: canvas.y.toFixed(1) },
-        bounds: {
-          latRange: `${geoBounds.minLat.toFixed(6)} to ${geoBounds.maxLat.toFixed(6)}`,
-          lngRange: `${geoBounds.minLng.toFixed(6)} to ${geoBounds.maxLng.toFixed(6)}`,
-        }
-      });
-    }
-    
-    return canvas;
-  }, [geoToNormalized, normalizedToCanvas, geoBounds]);
+   /**
+    * PHASE 2: Fixed coordinate transformation using verified address as center
+    * This ensures measurement overlays align with the satellite image
+    */
+   const geoToCanvas = useCallback((lat: number, lng: number): Point => {
+     // Use verified address as reference point (satellite image center)
+     const refLat = verifiedAddressLat || centerLat;
+     const refLng = verifiedAddressLng || centerLng;
+     
+     // Calculate offset from center in meters
+     const latOffsetMeters = (lat - refLat) * 111320; // 1 degree lat ≈ 111.32km
+     const lngOffsetMeters = (lng - refLng) * 111320 * Math.cos(refLat * Math.PI / 180);
+     
+     // Convert meters to pixels (Google Maps zoom 21 ≈ 0.298m per pixel)
+     const metersPerPixel = 0.298;
+     const canvasCenterX = canvasWidth / 2;
+     const canvasCenterY = canvasHeight / 2;
+     
+     const x = canvasCenterX + (lngOffsetMeters / metersPerPixel);
+     const y = canvasCenterY - (latOffsetMeters / metersPerPixel); // Flip Y axis for canvas
+     
+     return { x, y };
+   }, [centerLat, centerLng, verifiedAddressLat, verifiedAddressLng, canvasWidth, canvasHeight]);
 
   // Auto-save with database persistence
   const handleAutoSave = async () => {
@@ -1609,72 +1611,26 @@ export function ComprehensiveMeasurementOverlay({
   const drawFeatureLines = (type: string, lines: any[], color: string) => {
     if (!fabricCanvas) return;
 
-    console.group(`🎨 DIAGNOSTIC: Drawing ${type.toUpperCase()} Lines (${lines.length} total)`);
+    console.group(`🎨 Drawing ${type.toUpperCase()} Lines (${lines.length} total)`);
 
-    const proximityThreshold = 100; // meters - INCREASED for debugging
-    const centerLatitude = verifiedAddressLat || centerLat;
-    const centerLongitude = verifiedAddressLng || centerLng;
+    // PHASE 3: Remove proximity filtering - render all measurement data
+    const filteredFeatures = lines; // Use all features without filtering
 
-    console.log(`📍 Reference Center: ${centerLatitude.toFixed(6)}, ${centerLongitude.toFixed(6)}`);
-    console.log(`📏 Proximity Threshold: ${proximityThreshold}m`);
-
-    let renderedCount = 0;
-    let filteredCount = 0;
-
-    lines.forEach((lineData: any, index: number) => {
+    filteredFeatures.forEach((lineData: any, index: number) => {
       let startPoint: Point;
       let endPoint: Point;
       
       // Check if line has WKT format
       if (lineData.wkt) {
-        console.log(`\n📏 ${type.toUpperCase()} Line ${index}:`);
-        console.log('  Raw WKT:', lineData.wkt);
-        
         const coords = parseWKTLineString(lineData.wkt);
         if (coords.length < 2) {
-          console.warn(`  ❌ Invalid WKT - insufficient coordinates`);
+          console.warn(`Invalid WKT for ${type} line ${index}`);
           return;
         }
         
-        console.log('  Parsed Coords:', {
-          start: { lat: coords[0][0], lng: coords[0][1] },
-          end: { lat: coords[1][0], lng: coords[1][1] },
-        });
-        
-        // Calculate line midpoint for proximity check
-        const midLat = (coords[0][0] + coords[coords.length - 1][0]) / 2;
-        const midLng = (coords[0][1] + coords[coords.length - 1][1]) / 2;
-        
-        const distance = calculateDistance(
-          centerLatitude, centerLongitude,
-          midLat, midLng
-        );
-        
-        console.log('  Proximity Check:', {
-          midpoint: { lat: midLat, lng: midLng },
-          targetCenter: { lat: centerLatitude, lng: centerLongitude },
-          distance: distance.toFixed(1) + 'm',
-          threshold: proximityThreshold + 'm',
-          passed: distance < proximityThreshold
-        });
-        
-        // Skip lines that are too far from target building
-        if (distance >= proximityThreshold) {
-          console.log(`  ⛔ FILTERED OUT - distance ${distance.toFixed(1)}m exceeds ${proximityThreshold}m threshold`);
-          filteredCount++;
-          return;
-        }
-        
+        // Transform geographic coordinates to canvas pixels using verified center
         startPoint = geoToCanvas(coords[0][0], coords[0][1]);
         endPoint = geoToCanvas(coords[1][0], coords[1][1]);
-        
-        console.log('  Transformed Canvas Coords:', {
-          start: { x: startPoint.x.toFixed(1), y: startPoint.y.toFixed(1) },
-          end: { x: endPoint.x.toFixed(1), y: endPoint.y.toFixed(1) },
-          canvasSize: { width: canvasWidth, height: canvasHeight }
-        });
-        console.log('  ✅ PASSED proximity check - will render');
-        renderedCount++;
       } else {
         // Fallback to normalized coordinates (legacy format)
         const start = lineData.start || lineData[0];
@@ -1743,19 +1699,6 @@ export function ComprehensiveMeasurementOverlay({
       (label as any).data = { type: 'label' };
       fabricCanvas.add(label);
     });
-    
-    // Summary logging
-    console.log(`\n📊 SUMMARY for ${type.toUpperCase()}:`);
-    console.log(`   Total lines: ${lines.length}`);
-    console.log(`   Rendered: ${renderedCount} ✅`);
-    console.log(`   Filtered: ${filteredCount} ⛔`);
-    
-    // FALLBACK: If all features were filtered out but we have data, warn and consider disabling filter
-    if (renderedCount === 0 && lines.length > 0) {
-      console.error(`\n🚨 CRITICAL: All ${lines.length} ${type} lines were filtered out!`);
-      console.error(`   This suggests proximity filtering is too strict or coordinates are misaligned.`);
-      console.error(`   Consider: increasing threshold, checking satellite center coords, or disabling proximity filter.`);
-    }
     
     console.groupEnd();
   };
