@@ -174,12 +174,12 @@ export function ComprehensiveMeasurementOverlay({
   // WARNING: Facets disabled - Google Solar API provides same building footprint for all facets
   // Individual facet boundaries cannot be visualized without manual drawing
   const [layers, setLayers] = useState({
-    facets: false,        // Disabled: All facets share same WKT boundary (API limitation)
-    ridges: true,         // Start with ridges only for verification
-    hips: false,          // Enable after ridge verification
-    valleys: false,       // Enable after ridge verification
-    perimeter: false,     // Disabled: redundant with facet boundaries
-    annotations: false,   // Disabled: reduces clutter
+    facets: false,
+    ridges: false,
+    hips: false,
+    valleys: false,
+    perimeter: false,
+    annotations: false,
   });
   const [drawPoints, setDrawPoints] = useState<Point[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
@@ -2316,38 +2316,6 @@ export function ComprehensiveMeasurementOverlay({
       {/* Canvas */}
       <div className="border border-border rounded-lg overflow-hidden bg-muted relative">
         <canvas ref={canvasRef} />
-        
-        {/* Coordinate Diagnostics Panel (Development Only) */}
-        {process.env.NODE_ENV === 'development' && (
-          <div className="absolute top-2 left-2 bg-black/80 text-white text-xs p-3 rounded max-w-md space-y-1 font-mono z-50">
-            <div className="font-bold text-yellow-400 mb-2">🔍 COORDINATE DIAGNOSTICS</div>
-            <div><strong>Satellite Center:</strong> {centerLat.toFixed(6)}, {centerLng.toFixed(6)}</div>
-            <div><strong>Verified Address:</strong> {verifiedAddressLat?.toFixed(6) || 'N/A'}, {verifiedAddressLng?.toFixed(6) || 'N/A'}</div>
-            <div><strong>Using Verified:</strong> {verifiedAddressLat ? '✅ Yes' : '❌ No'}</div>
-            <div className="border-t border-gray-600 pt-1 mt-1">
-              <strong>GeoBounds:</strong>
-              <div className="pl-2">
-                Lat: {geoBounds.minLat.toFixed(6)} to {geoBounds.maxLat.toFixed(6)}
-              </div>
-              <div className="pl-2">
-                Lng: {geoBounds.minLng.toFixed(6)} to {geoBounds.maxLng.toFixed(6)}
-              </div>
-              <div className="pl-2">
-                Span: {((geoBounds.maxLat - geoBounds.minLat) * 111320).toFixed(1)}m × {((geoBounds.maxLng - geoBounds.minLng) * 111320 * Math.cos(centerLat * Math.PI / 180)).toFixed(1)}m
-              </div>
-            </div>
-            <div className="border-t border-gray-600 pt-1 mt-1">
-              <strong>Ridge Lines:</strong> {(tags['ridge_lines'] || []).length} total
-              {' | '}
-              <strong>Hips:</strong> {(tags['hip_lines'] || []).length} total
-              {' | '}
-              <strong>Valleys:</strong> {(tags['valley_lines'] || []).length} total
-            </div>
-            <div className="text-yellow-300 text-[10px] mt-2">
-              💡 Check browser console for detailed coordinate logs & filtering results
-            </div>
-          </div>
-        )}
         
         {/* Measurement Summary HUD */}
         <div className="absolute top-4 right-4 bg-background/95 backdrop-blur-sm border rounded-lg shadow-lg z-10 min-w-[200px]">
