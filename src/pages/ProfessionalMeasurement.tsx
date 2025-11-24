@@ -6,10 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
-import { ArrowRight, Ruler, Edit, FileText, Calculator, Home } from 'lucide-react';
+import { ArrowRight, Ruler, Edit, FileText, Calculator, Home, History } from 'lucide-react';
 import { SimpleMeasurementCanvas } from '@/components/measurements/SimpleMeasurementCanvas';
 import { ProfessionalMeasurementReport } from '@/components/measurements/ProfessionalMeasurementReport';
 import { ComprehensiveMeasurementOverlay } from '@/components/measurements/ComprehensiveMeasurementOverlay';
+import { MeasurementHistoryDialog } from '@/components/measurements/MeasurementHistoryDialog';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 import { toast } from 'sonner';
 
@@ -29,6 +30,7 @@ export default function ProfessionalMeasurement() {
   const { id } = useParams();
   const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('draw');
+  const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   
   // Measurement state
   const [facets, setFacets] = useState<Facet[]>([]);
@@ -37,6 +39,7 @@ export default function ProfessionalMeasurement() {
   const [overlayImageUrl, setOverlayImageUrl] = useState<string>('');
   const [comprehensiveMeasurement, setComprehensiveMeasurement] = useState<any>(null);
   const [adjustedMeasurement, setAdjustedMeasurement] = useState<any>(null);
+  const [currentMeasurementId, setCurrentMeasurementId] = useState<string | undefined>();
   
   // Adjustment state (for Review tab)
   const [wastePercentage, setWastePercentage] = useState(10);
@@ -53,6 +56,7 @@ export default function ProfessionalMeasurement() {
     setComprehensiveMeasurement(measurement);
     setAdjustedMeasurement(measurement); // Initialize with same data
     setSatelliteImageUrl(measurement.satelliteImageUrl || satelliteImageUrl);
+    setCurrentMeasurementId(measurement.id);
     
     // Also update facets for backward compatibility
     const newFacets: Facet[] = measurement.faces.map((face: any, index: number) => ({
@@ -196,7 +200,18 @@ export default function ProfessionalMeasurement() {
                 <div className="h-full flex flex-col">
                   {/* Header with adjustment controls */}
                   <div className="border-b bg-muted/30 p-4 space-y-4">
-                    <h2 className="text-lg font-semibold">Review & Edit Measurements</h2>
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-lg font-semibold">Review & Edit Measurements</h2>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setShowHistoryDialog(true)}
+                        className="gap-2"
+                      >
+                        <History className="h-4 w-4" />
+                        View History
+                      </Button>
+                    </div>
                     
                     <div className="grid grid-cols-3 gap-4">
                       {/* Waste Factor */}
@@ -250,6 +265,9 @@ export default function ProfessionalMeasurement() {
                         canvasWidth={adjustedMeasurement.canvasWidth || 1200}
                         canvasHeight={adjustedMeasurement.canvasHeight || 800}
                         onMeasurementUpdate={handleMeasurementUpdate}
+                        measurementId={currentMeasurementId}
+                        propertyId={id}
+                        pipelineEntryId={id}
                       />
                     )}
                   </div>
@@ -353,6 +371,16 @@ export default function ProfessionalMeasurement() {
             </div>
           </Tabs>
         </div>
+        
+        {/* Measurement History Dialog */}
+        {currentMeasurementId && adjustedMeasurement && (
+          <MeasurementHistoryDialog
+            open={showHistoryDialog}
+            onOpenChange={setShowHistoryDialog}
+            measurementId={currentMeasurementId}
+            currentMeasurement={adjustedMeasurement}
+          />
+        )}
       </div>
     </GlobalLayout>
   );
