@@ -107,10 +107,9 @@ export function RidgeLineVisualizer({
             points[i + 1].y,
           ], {
             stroke: '#10b981',
-            strokeWidth: 3,
+            strokeWidth: 4,
             selectable: false,
             evented: false,
-            strokeDashArray: [8, 4],
           });
           (line as any).customType = 'linear-feature';
           canvas.add(line);
@@ -175,7 +174,7 @@ export function RidgeLineVisualizer({
             points[i + 1].y,
           ], {
             stroke: '#3b82f6',
-            strokeWidth: 3,
+            strokeWidth: 4,
             selectable: false,
             evented: false,
             strokeDashArray: [8, 4],
@@ -221,7 +220,7 @@ export function RidgeLineVisualizer({
             points[i + 1].y,
           ], {
             stroke: '#ef4444',
-            strokeWidth: 3,
+            strokeWidth: 4,
             selectable: false,
             evented: false,
             strokeDashArray: [8, 4],
