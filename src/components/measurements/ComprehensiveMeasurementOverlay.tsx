@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Canvas as FabricCanvas, Line, Polygon, Circle, Text as FabricText, FabricObject, FabricImage, Point as FabricPoint } from "fabric";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +56,57 @@ interface ComprehensiveMeasurementOverlayProps {
   measurementId?: string;
   propertyId?: string;
   pipelineEntryId?: string;
+  verifiedAddressLat?: number;
+  verifiedAddressLng?: number;
+}
+
+// ============= WKT Parsing Utilities =============
+
+/**
+ * Parse WKT POLYGON string to array of [lat, lng] coordinates
+ * Format: "POLYGON((lng1 lat1, lng2 lat2, ...))"
+ */
+const parseWKTPolygon = (wkt: string): [number, number][] => {
+  if (!wkt || typeof wkt !== 'string') return [];
+  
+  const match = wkt.match(/POLYGON\(\(([^)]+)\)\)/);
+  if (!match) return [];
+  
+  const coords = match[1].split(',').map(pair => {
+    const [lng, lat] = pair.trim().split(' ').map(Number);
+    return [lat, lng] as [number, number]; // Return as [lat, lng] tuple for consistency
+  }).filter(coord => !isNaN(coord[0]) && !isNaN(coord[1]));
+  
+  return coords;
+};
+
+/**
+ * Parse WKT LINESTRING string to array of [lat, lng] coordinates
+ * Format: "LINESTRING(lng1 lat1, lng2 lat2)"
+ */
+const parseWKTLineString = (wkt: string): [number, number][] => {
+  if (!wkt || typeof wkt !== 'string') return [];
+  
+  const match = wkt.match(/LINESTRING\(([^)]+)\)/);
+  if (!match) return [];
+  
+  const coords = match[1].split(',').map(pair => {
+    const [lng, lat] = pair.trim().split(' ').map(Number);
+    return [lat, lng] as [number, number]; // Return as [lat, lng] tuple
+  }).filter(coord => !isNaN(coord[0]) && !isNaN(coord[1]));
+  
+  return coords;
+};
+
+// ============= Geographic Bounds & Transformation =============
+
+interface GeoBounds {
+  minLat: number;
+  maxLat: number;
+  minLng: number;
+  maxLng: number;
+  centerLat: number;
+  centerLng: number;
 }
 
 type EditMode = 'select' | 'add-ridge' | 'add-hip' | 'add-valley' | 'add-facet' | 'delete' | 'add-marker' | 'add-note' | 'add-damage' | 'split-facet' | 'merge-facets';
@@ -95,6 +146,8 @@ export function ComprehensiveMeasurementOverlay({
   measurementId,
   propertyId,
   pipelineEntryId,
+  verifiedAddressLat,
+  verifiedAddressLng,
 }: ComprehensiveMeasurementOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
@@ -143,6 +196,104 @@ export function ComprehensiveMeasurementOverlay({
   // Mobile/tablet optimization hooks
   const { vibrate } = useHapticFeedback();
   const [currentZoom, setCurrentZoom] = useState(1);
+
+  // ============= Calculate Geographic Bounds from Measurement Data =============
+  
+  const geoBounds = useMemo<GeoBounds>(() => {
+    let minLat = Infinity, maxLat = -Infinity;
+    let minLng = Infinity, maxLng = -Infinity;
+    
+    // Extract coordinates from all facets (WKT polygons)
+    if (measurement?.faces) {
+      measurement.faces.forEach((face: any) => {
+        const coords = parseWKTPolygon(face.wkt || '');
+        coords.forEach(([lat, lng]) => {
+          minLat = Math.min(minLat, lat);
+          maxLat = Math.max(maxLat, lat);
+          minLng = Math.min(minLng, lng);
+          maxLng = Math.max(maxLng, lng);
+        });
+      });
+    }
+    
+    // Extract coordinates from linear features (ridges, hips, valleys)
+    const linearFeatures = [
+      ...(tags['ridge_lines'] || []),
+      ...(tags['hip_lines'] || []),
+      ...(tags['valley_lines'] || []),
+    ];
+    
+    linearFeatures.forEach((line: any) => {
+      if (line.wkt) {
+        const coords = parseWKTLineString(line.wkt);
+        coords.forEach(([lat, lng]) => {
+          minLat = Math.min(minLat, lat);
+          maxLat = Math.max(maxLat, lat);
+          minLng = Math.min(minLng, lng);
+          maxLng = Math.max(maxLng, lng);
+        });
+      }
+    });
+    
+    // Use verified address as center if available, otherwise use calculated center
+    const centerLatitude = verifiedAddressLat || (minLat + maxLat) / 2;
+    const centerLongitude = verifiedAddressLng || (minLng + maxLng) / 2;
+    
+    // If no data found, use provided center coordinates
+    if (!isFinite(minLat) || !isFinite(maxLat) || !isFinite(minLng) || !isFinite(maxLng)) {
+      return {
+        minLat: centerLat - 0.001,
+        maxLat: centerLat + 0.001,
+        minLng: centerLng - 0.001,
+        maxLng: centerLng + 0.001,
+        centerLat: centerLat,
+        centerLng: centerLng,
+      };
+    }
+    
+    // Add padding to bounds (10%)
+    const latPadding = (maxLat - minLat) * 0.1;
+    const lngPadding = (maxLng - minLng) * 0.1;
+    
+    return {
+      minLat: minLat - latPadding,
+      maxLat: maxLat + latPadding,
+      minLng: minLng - lngPadding,
+      maxLng: maxLng + lngPadding,
+      centerLat: centerLatitude,
+      centerLng: centerLongitude,
+    };
+  }, [measurement, tags, centerLat, centerLng, verifiedAddressLat, verifiedAddressLng]);
+
+  // ============= Coordinate Transformation Functions =============
+  
+  /**
+   * Convert geographic lat/lng to normalized 0-1 coordinates within bounds
+   */
+  const geoToNormalized = useCallback((lat: number, lng: number): { x: number; y: number } => {
+    return {
+      x: (lng - geoBounds.minLng) / (geoBounds.maxLng - geoBounds.minLng),
+      y: 1 - (lat - geoBounds.minLat) / (geoBounds.maxLat - geoBounds.minLat), // Invert Y for canvas
+    };
+  }, [geoBounds]);
+  
+  /**
+   * Convert normalized 0-1 coordinates to canvas pixels
+   */
+  const normalizedToCanvas = useCallback((norm: { x: number; y: number }): Point => {
+    return {
+      x: norm.x * canvasWidth,
+      y: norm.y * canvasHeight,
+    };
+  }, [canvasWidth, canvasHeight]);
+  
+  /**
+   * Full pipeline: geographic lat/lng → normalized → canvas pixels
+   */
+  const geoToCanvas = useCallback((lat: number, lng: number): Point => {
+    const norm = geoToNormalized(lat, lng);
+    return normalizedToCanvas(norm);
+  }, [geoToNormalized, normalizedToCanvas]);
 
   // Auto-save with database persistence
   const handleAutoSave = async () => {
@@ -936,12 +1087,15 @@ export function ComprehensiveMeasurementOverlay({
     if (!fabricCanvas || !measurement?.faces) return;
 
     measurement.faces.forEach((face: any, index: number) => {
-      if (!face.boundary || face.boundary.length < 3) return;
+      // Parse WKT polygon to get lat/lng coordinates
+      const geoCoords = parseWKTPolygon(face.wkt || '');
+      if (geoCoords.length < 3) {
+        console.warn(`Facet ${index} has insufficient WKT coordinates:`, face.wkt);
+        return;
+      }
 
-      const points = face.boundary.map((coord: number[]) => ({
-        x: coord[0] * canvasWidth,
-        y: coord[1] * canvasHeight,
-      }));
+      // Transform geographic coordinates to canvas pixels
+      const points = geoCoords.map(([lat, lng]) => geoToCanvas(lat, lng));
 
       const color = face.color || FACET_COLOR_PALETTE[index % FACET_COLOR_PALETTE.length];
       const label = face.label || `Facet ${index + 1}`;
@@ -1342,18 +1496,31 @@ export function ComprehensiveMeasurementOverlay({
     if (!fabricCanvas) return;
 
     lines.forEach((lineData: any, index: number) => {
-      const start = lineData.start || lineData[0];
-      const end = lineData.end || lineData[1];
+      let startPoint: Point;
+      let endPoint: Point;
       
-      if (!start || !end) return;
+      // Check if line has WKT format
+      if (lineData.wkt) {
+        const coords = parseWKTLineString(lineData.wkt);
+        if (coords.length < 2) {
+          console.warn(`${type} line ${index} has invalid WKT:`, lineData.wkt);
+          return;
+        }
+        startPoint = geoToCanvas(coords[0][0], coords[0][1]);
+        endPoint = geoToCanvas(coords[1][0], coords[1][1]);
+      } else {
+        // Fallback to normalized coordinates (legacy format)
+        const start = lineData.start || lineData[0];
+        const end = lineData.end || lineData[1];
+        
+        if (!start || !end) return;
+        
+        startPoint = { x: start[0] * canvasWidth, y: start[1] * canvasHeight };
+        endPoint = { x: end[0] * canvasWidth, y: end[1] * canvasHeight };
+      }
 
       const line = new Line(
-        [
-          start[0] * canvasWidth,
-          start[1] * canvasHeight,
-          end[0] * canvasWidth,
-          end[1] * canvasHeight,
-        ],
+        [startPoint.x, startPoint.y, endPoint.x, endPoint.y],
         {
           stroke: color,
           strokeWidth: 3,
@@ -1391,9 +1558,9 @@ export function ComprehensiveMeasurementOverlay({
       fabricCanvas.add(line);
 
       // Add length label
-      const length = lineData.length || calculateLineLength(start, end);
-      const midX = ((start[0] + end[0]) / 2) * canvasWidth;
-      const midY = ((start[1] + end[1]) / 2) * canvasHeight;
+      const length = lineData.length || 0;
+      const midX = (startPoint.x + endPoint.x) / 2;
+      const midY = (startPoint.y + endPoint.y) / 2;
 
       const label = new FabricText(`${Math.round(length)} ft ${type}`, {
         left: midX,

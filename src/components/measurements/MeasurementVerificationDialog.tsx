@@ -847,6 +847,8 @@ export function MeasurementVerificationDialog({
                     }}
                     canvasWidth={640}
                     canvasHeight={480}
+                    verifiedAddressLat={verifiedAddressLat}
+                    verifiedAddressLng={verifiedAddressLng}
                   />
                 ) : (
                   <PolygonEditor
