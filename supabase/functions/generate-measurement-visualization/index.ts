@@ -362,8 +362,8 @@ function buildGeoJSONOverlay(measurement: MeasurementData) {
             coordinates: [coords],
           },
           properties: {
-            fill: '#64c8ff',
-            'fill-opacity': 0.4,
+            fill: 'transparent',
+            'fill-opacity': 0,
             stroke: '#007cbf',
             'stroke-width': 2,
             'stroke-opacity': 0.9,
