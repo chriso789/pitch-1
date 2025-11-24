@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Calculator, Plus, Trash2, FileText, DollarSign, Target, TrendingUp, MapPin, Satellite, Loader2, AlertTriangle, RefreshCw, Clock } from 'lucide-react';
+import { Calculator, Plus, Trash2, FileText, DollarSign, Target, TrendingUp, MapPin, Satellite, Loader2, AlertTriangle, RefreshCw, Clock, Edit } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -114,6 +114,77 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const [pullingSolarMeasurements, setPullingSolarMeasurements] = useState(false);
   const [solarMeasurementData, setSolarMeasurementData] = useState<any>(null);
   const [coordinates, setCoordinates] = useState<{lat: number, lng: number} | null>(null);
+
+  // Add measurement summary card near line items
+  const MeasurementSummaryCard = () => {
+    if (!measurementData) return null;
+
+    const measurements = measurementData.comprehensive_measurements || measurementData;
+    const summary = measurements.summary || {};
+    
+    return (
+      <Card className="mb-4">
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Satellite className="h-4 w-4" />
+              Measurement Summary
+            </CardTitle>
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => {
+                // Reopen verification dialog
+                if (pipelineEntryId) {
+                  window.location.href = `/professional-measurement/${pipelineEntryId}`;
+                }
+              }}
+            >
+              <Edit className="h-4 w-4 mr-2" />
+              Re-verify
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-4 gap-4 text-sm">
+            <div>
+              <span className="text-muted-foreground">Total Area:</span>
+              <p className="font-semibold">{(summary.total_area_sqft || 0).toFixed(0)} sq ft</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Adjusted Squares:</span>
+              <p className="font-semibold">{(summary.total_squares || 0).toFixed(2)}</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Waste Factor:</span>
+              <p className="font-semibold">{summary.waste_pct || 10}%</p>
+            </div>
+            <div>
+              <span className="text-muted-foreground">Roof Pitch:</span>
+              <p className="font-semibold">{summary.pitch || '6/12'}</p>
+            </div>
+          </div>
+          
+          {measurementData.tags && (
+            <div className="mt-4 grid grid-cols-3 gap-4 text-sm">
+              <div>
+                <span className="text-muted-foreground">Ridge:</span>
+                <p className="font-semibold">{(measurementData.tags['lf.ridge'] || 0).toFixed(0)} ft</p>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Hip:</span>
+                <p className="font-semibold">{(measurementData.tags['lf.hip'] || 0).toFixed(0)} ft</p>
+              </div>
+              <div>
+                <span className="text-muted-foreground">Valley:</span>
+                <p className="font-semibold">{(measurementData.tags['lf.valley'] || 0).toFixed(0)} ft</p>
+              </div>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
+  };
 
   useEffect(() => {
     loadTemplates();
@@ -1219,6 +1290,9 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 
             </CardContent>
           </Card>
+
+          {/* Measurement Summary Card */}
+          <MeasurementSummaryCard />
 
           {/* Line Items - Only show after template is selected */}
           {templateId && (

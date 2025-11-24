@@ -9,6 +9,7 @@ import { Label } from '@/components/ui/label';
 import { ArrowRight, Ruler, Edit, FileText, Calculator, Home } from 'lucide-react';
 import { SimpleMeasurementCanvas } from '@/components/measurements/SimpleMeasurementCanvas';
 import { ProfessionalMeasurementReport } from '@/components/measurements/ProfessionalMeasurementReport';
+import { ComprehensiveMeasurementOverlay } from '@/components/measurements/ComprehensiveMeasurementOverlay';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 import { toast } from 'sonner';
 
@@ -34,6 +35,8 @@ export default function ProfessionalMeasurement() {
   const [totalArea, setTotalArea] = useState(0);
   const [satelliteImageUrl, setSatelliteImageUrl] = useState<string>('');
   const [overlayImageUrl, setOverlayImageUrl] = useState<string>('');
+  const [comprehensiveMeasurement, setComprehensiveMeasurement] = useState<any>(null);
+  const [adjustedMeasurement, setAdjustedMeasurement] = useState<any>(null);
   
   // Adjustment state (for Review tab)
   const [wastePercentage, setWastePercentage] = useState(10);
@@ -44,27 +47,45 @@ export default function ProfessionalMeasurement() {
   const [propertyAddress] = useState('123 Main St, City, ST 12345');
   const [customerName] = useState('John Doe');
 
-  const handleMeasurementsComplete = (measurements: any) => {
-    console.log('Measurements completed:', measurements);
+  const handleMeasurementsComplete = (measurement: any) => {
+    console.log('Measurements completed:', measurement);
     
-    // Convert measurements to facets format
-    const newFacets: Facet[] = measurements.polygons.map((polygon: any, index: number) => ({
-      id: polygon.id,
-      label: `Facet ${index + 1}`,
-      area: polygon.area,
-      perimeter: polygon.perimeter,
-      pitch: '6/12', // Default pitch
-      direction: 'N', // Default direction
+    setComprehensiveMeasurement(measurement);
+    setAdjustedMeasurement(measurement); // Initialize with same data
+    setSatelliteImageUrl(measurement.satelliteImageUrl || satelliteImageUrl);
+    
+    // Also update facets for backward compatibility
+    const newFacets: Facet[] = measurement.faces.map((face: any, index: number) => ({
+      id: face.id,
+      label: face.label || `Facet ${index + 1}`,
+      area: face.area_sqft,
+      perimeter: face.perimeter_ft,
+      pitch: face.pitch || '6/12',
+      direction: face.direction || 'N',
       ridgeLength: 0,
       hipLength: 0,
       valleyLength: 0,
     }));
     
     setFacets(newFacets);
-    setTotalArea(measurements.totalArea);
+    setTotalArea(measurement.summary.total_area_sqft);
     
-    toast.success('Measurements saved! Ready for review.');
+    toast.success('Measurements saved! Ready for interactive review.');
     setActiveTab('review');
+  };
+
+  const handleMeasurementUpdate = (updatedMeasurement: any, updatedTags: any) => {
+    console.log('Measurement updated:', { updatedMeasurement, updatedTags });
+    
+    setAdjustedMeasurement({
+      ...updatedMeasurement,
+      tags: updatedTags,
+      summary: {
+        ...updatedMeasurement.summary,
+        total_area_sqft: updatedMeasurement.faces.reduce((sum: number, f: any) => sum + f.area_sqft, 0),
+        total_squares: updatedMeasurement.faces.reduce((sum: number, f: any) => sum + f.area_sqft, 0) / 100,
+      },
+    });
   };
 
   const handleSatelliteImageLoaded = (imageUrl: string) => {
@@ -171,104 +192,74 @@ export default function ProfessionalMeasurement() {
               </TabsContent>
 
               {/* Tab 2: Review & Adjust */}
-              <TabsContent value="review" className="h-full m-0 p-6">
-                <div className="max-w-4xl mx-auto space-y-6">
-                  <Card className="p-6">
-                    <h2 className="text-xl font-semibold mb-6">Adjust Measurements & Parameters</h2>
+              <TabsContent value="review" className="h-full m-0 p-0">
+                <div className="h-full flex flex-col">
+                  {/* Header with adjustment controls */}
+                  <div className="border-b bg-muted/30 p-4 space-y-4">
+                    <h2 className="text-lg font-semibold">Review & Edit Measurements</h2>
                     
-                    <div className="space-y-6">
-                      {/* Waste Percentage */}
+                    <div className="grid grid-cols-3 gap-4">
+                      {/* Waste Factor */}
                       <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <Label>Waste Factor</Label>
-                          <Badge variant="secondary">{wastePercentage}%</Badge>
-                        </div>
+                        <Label className="text-sm">Waste Factor: {wastePercentage}%</Label>
                         <Slider
                           value={[wastePercentage]}
                           onValueChange={(value) => setWastePercentage(value[0])}
                           min={0}
                           max={25}
                           step={1}
-                          className="w-full"
                         />
-                        <p className="text-xs text-muted-foreground">
-                          Accounts for cuts, overlaps, and installation waste
-                        </p>
                       </div>
-
+                      
                       {/* Global Pitch */}
                       <div className="space-y-2">
-                        <Label>Global Roof Pitch</Label>
-                        <div className="grid grid-cols-6 gap-2">
-                          {pitchOptions.map((pitch) => (
-                            <Button
-                              key={pitch}
-                              variant={globalPitch === pitch ? 'default' : 'outline'}
-                              size="sm"
-                              onClick={() => setGlobalPitch(pitch)}
-                            >
-                              {pitch}
-                            </Button>
-                          ))}
-                        </div>
-                        <p className="text-xs text-muted-foreground">
-                          Apply this pitch to all facets (can be adjusted individually later)
-                        </p>
+                        <Label className="text-sm">Global Pitch: {globalPitch}</Label>
+                        <Slider
+                          value={[pitchOptions.indexOf(globalPitch)]}
+                          onValueChange={(value) => setGlobalPitch(pitchOptions[value[0]])}
+                          min={0}
+                          max={pitchOptions.length - 1}
+                          step={1}
+                        />
                       </div>
-
+                      
                       {/* Complexity Factor */}
                       <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <Label>Job Complexity Factor</Label>
-                          <Badge variant="secondary">{complexityFactor.toFixed(1)}x</Badge>
-                        </div>
+                        <Label className="text-sm">Complexity: {complexityFactor.toFixed(1)}x</Label>
                         <Slider
                           value={[complexityFactor]}
                           onValueChange={(value) => setComplexityFactor(value[0])}
                           min={0.5}
                           max={2.0}
                           step={0.1}
-                          className="w-full"
                         />
-                        <p className="text-xs text-muted-foreground">
-                          Adjusts labor estimates based on roof complexity and access difficulty
-                        </p>
-                      </div>
-
-                      {/* Live Material Calculations Preview */}
-                      <div className="bg-muted/50 rounded-lg p-4 space-y-2">
-                        <h3 className="font-semibold text-sm">Live Material Calculations</h3>
-                        <div className="grid grid-cols-2 gap-4 text-sm">
-                          <div>
-                            <span className="text-muted-foreground">Base Area:</span>
-                            <span className="ml-2 font-semibold">{totalArea.toFixed(0)} sq ft</span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">With Waste:</span>
-                            <span className="ml-2 font-semibold">
-                              {(totalArea * (1 + wastePercentage / 100)).toFixed(0)} sq ft
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Squares:</span>
-                            <span className="ml-2 font-semibold">
-                              {((totalArea * (1 + wastePercentage / 100)) / 100).toFixed(2)}
-                            </span>
-                          </div>
-                          <div>
-                            <span className="text-muted-foreground">Complexity:</span>
-                            <span className="ml-2 font-semibold">{complexityFactor.toFixed(1)}x</span>
-                          </div>
-                        </div>
                       </div>
                     </div>
-                  </Card>
-
-                  <div className="flex gap-3">
-                    <Button variant="outline" onClick={() => setActiveTab('draw')} className="flex-1">
+                  </div>
+                  
+                  {/* Interactive Overlay Editor */}
+                  <div className="flex-1 relative">
+                    {adjustedMeasurement && (
+                      <ComprehensiveMeasurementOverlay
+                        satelliteImageUrl={satelliteImageUrl}
+                        measurement={adjustedMeasurement}
+                        tags={adjustedMeasurement.tags || {}}
+                        centerLng={0}
+                        centerLat={0}
+                        zoom={20}
+                        canvasWidth={adjustedMeasurement.canvasWidth || 1200}
+                        canvasHeight={adjustedMeasurement.canvasHeight || 800}
+                        onMeasurementUpdate={handleMeasurementUpdate}
+                      />
+                    )}
+                  </div>
+                  
+                  {/* Footer with actions */}
+                  <div className="border-t bg-background p-4 flex justify-between">
+                    <Button variant="outline" onClick={() => setActiveTab('draw')}>
                       Back to Drawing
                     </Button>
-                    <Button onClick={handleReviewComplete} className="flex-1">
+                    <Button onClick={handleReviewComplete}>
                       Continue to Report <ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
                   </div>
