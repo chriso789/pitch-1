@@ -82,7 +82,6 @@ export function MeasurementVerificationDialog({
   const [verifiedAddressLng, setVerifiedAddressLng] = useState<number | null>(null);
   const [coordinateMismatchDistance, setCoordinateMismatchDistance] = useState<number>(0);
   const [hasAutoFixedMismatch, setHasAutoFixedMismatch] = useState(false);
-  const [recenterMode, setRecenterMode] = useState(false);
   const [regenerationError, setRegenerationError] = useState<string | null>(null);
   
   const manualVerify = useManualVerification();
@@ -177,11 +176,6 @@ export function MeasurementVerificationDialog({
             const lngDiff = Math.abs(vLng - centerLng);
             const distanceMeters = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff) * 111000;
             setCoordinateMismatchDistance(distanceMeters);
-            
-            // Auto-enable recenter mode if mismatch > 30m
-            if (distanceMeters > 30 && !recenterMode) {
-              setRecenterMode(true);
-            }
             
             // Show warning if coordinate mismatch > 30 meters
             if (distanceMeters > 30) {
@@ -581,11 +575,6 @@ export function MeasurementVerificationDialog({
           e.preventDefault();
           handleZoomAdjust('out');
           break;
-        case 'r':
-        case 'R':
-          e.preventDefault();
-          setRecenterMode(prev => !prev);
-          break;
         case 'h':
         case 'H':
           e.preventDefault();
@@ -659,45 +648,6 @@ export function MeasurementVerificationDialog({
       title: "Zoom Adjusted",
       description: `Zoom level: ${newZoom > 0 ? '+' : ''}${newZoom}`,
     });
-  };
-
-  const handleCanvasRecenterClick = (normalizedX: number, normalizedY: number) => {
-    // PHASE 2: Improved click-to-center math - clicked point becomes new center
-    // normalizedX / Y are in [0, 1], center is (0.5, 0.5)
-    const offsetX = normalizedX - 0.5; // positive => clicked right of center
-    const offsetY = normalizedY - 0.5; // positive => clicked below center
-
-    // FIXED: Remove *2 multiplier for intuitive behavior
-    const maxDeltaDegrees = 0.00018; // ≈ 20m at mid-latitudes for edge clicks
-
-    const deltaLng = offsetX * maxDeltaDegrees; // Proportional shift
-    const deltaLat = -offsetY * maxDeltaDegrees; // screen Y down = lat decreases
-
-    const newLat = adjustedCenterLat + deltaLat;
-    const newLng = adjustedCenterLng + deltaLng;
-
-    console.log('🎯 Recenter click:', {
-      clickPosition: { x: normalizedX, y: normalizedY },
-      offset: { x: offsetX, y: offsetY },
-      delta: { lat: deltaLat, lng: deltaLng },
-      newCenter: { lat: newLat, lng: newLng },
-      oldCenter: { lat: adjustedCenterLat, lng: adjustedCenterLng }
-    });
-
-    setAdjustedCenterLat(newLat);
-    setAdjustedCenterLng(newLng);
-
-    // Show improved feedback
-    toast({
-      title: "Moving map...",
-      description: "Shifting satellite view to clicked point",
-    });
-
-    // Regenerate visualization at new center
-    handleRegenerateVisualization(newLat, newLng, manualZoom);
-
-    // Keep recenter mode active until regeneration completes successfully
-    // (Will be turned off in handleRegenerateVisualization on success)
   };
 
   const handleRegenerateVisualization = async (lat?: number, lng?: number, zoomAdjust?: number) => {
@@ -783,9 +733,6 @@ export function MeasurementVerificationDialog({
       // Add cache buster to force reload
       const urlWithCacheBuster = `${newVisualizationUrl}?t=${Date.now()}`;
       setSatelliteImageUrl(urlWithCacheBuster);
-
-      // PHASE 2: Turn off recenter mode after successful regeneration
-      setRecenterMode(false);
 
       toast({
         title: "✅ Visualization Updated",
@@ -900,8 +847,6 @@ export function MeasurementVerificationDialog({
                     }}
                     canvasWidth={640}
                     canvasHeight={480}
-                    recenterMode={recenterMode}
-                    onRecenterClick={handleCanvasRecenterClick}
                   />
                 ) : (
                   <PolygonEditor
@@ -915,21 +860,6 @@ export function MeasurementVerificationDialog({
                     canvasHeight={480}
                   />
                 )}
-                
-                {/* Recenter Mode Control */}
-                <div className="absolute top-2 left-2">
-                  <Button
-                    variant={recenterMode ? "default" : "outline"}
-                    size="sm"
-                    onClick={() => setRecenterMode(prev => !prev)}
-                    disabled={isRegenerating}
-                    className="bg-background/95 backdrop-blur shadow-lg"
-                    title={recenterMode ? "Click mode active - click on house to recenter" : "Enable click to recenter"}
-                  >
-                    <Move className="h-4 w-4 mr-1.5" />
-                    {recenterMode ? 'Recenter Active' : 'Click to Recenter'}
-                  </Button>
-                </div>
                 
                 {/* Reset to Verified Address Button */}
                 {coordinateMismatchDistance > 20 && verifiedAddressLat && verifiedAddressLng && (
@@ -950,13 +880,6 @@ export function MeasurementVerificationDialog({
                       <Home className="h-4 w-4 mr-1.5" />
                       Reset to Home
                     </Button>
-                  </div>
-                )}
-                
-                {/* Recenter Mode Hint */}
-                {recenterMode && (
-                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-3 py-1.5 rounded-full text-xs font-medium shadow-lg animate-pulse">
-                    👆 Click on the house to regenerate centered view
                   </div>
                 )}
                 
