@@ -935,9 +935,9 @@ export function ComprehensiveMeasurementOverlay({
       const label = face.label || `Facet ${index + 1}`;
 
       const polygon = new Polygon(points, {
-        fill: `${color}33`, // 20% opacity
+        fill: 'transparent',
         stroke: color,
-        strokeWidth: 2,
+        strokeWidth: 3,
         selectable: editMode === 'select',
         hasControls: true,
         hasBorders: true,
@@ -955,8 +955,8 @@ export function ComprehensiveMeasurementOverlay({
       polygon.on('mouseover', () => {
         if (editMode === 'select') {
           polygon.set({ 
-            fill: `${color}59`, // 35% opacity
-            strokeWidth: 3,
+            fill: 'transparent',
+            strokeWidth: 4,
             shadow: { color: '#3b82f6', blur: 8, offsetX: 0, offsetY: 0 }
           });
           fabricCanvas.renderAll();
@@ -965,8 +965,8 @@ export function ComprehensiveMeasurementOverlay({
 
       polygon.on('mouseout', () => {
         polygon.set({ 
-          fill: `${color}33`, // 20% opacity
-          strokeWidth: 2,
+          fill: 'transparent',
+          strokeWidth: 3,
           shadow: undefined,
         });
         fabricCanvas.renderAll();
