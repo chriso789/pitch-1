@@ -96,11 +96,51 @@ export function MeasurementVerificationDialog({
     }
   }, [measurement, tags]);
   
-  // PHASE 1: Generate clean Google Maps fallback URL (no baked overlays)
-  const googleMapsFallback = `https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/google-maps-proxy?endpoint=satellite&lat=${verifiedAddressLat || centerLat}&lng=${verifiedAddressLng || centerLng}&zoom=21&size=1280x1280`;
+  // PHASE 1: Fetch clean Google Maps satellite image via proxy
+  const [cleanSatelliteImageUrl, setCleanSatelliteImageUrl] = useState<string>('');
+  const [isLoadingSatellite, setIsLoadingSatellite] = useState(false);
   
-  // Force use of clean Google Maps satellite imagery
-  const cleanSatelliteImageUrl = googleMapsFallback;
+  useEffect(() => {
+    const fetchCleanSatelliteImage = async () => {
+      const lat = verifiedAddressLat || centerLat;
+      const lng = verifiedAddressLng || centerLng;
+      
+      if (!lat || !lng) return;
+      
+      setIsLoadingSatellite(true);
+      try {
+        const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
+          body: {
+            endpoint: 'satellite',
+            params: {
+              center: `${lat},${lng}`,
+              zoom: '21',
+              size: '1280x1280',
+              maptype: 'satellite',
+              scale: '2'
+            }
+          }
+        });
+        
+        if (error) throw error;
+        
+        if (data?.image_url) {
+          setCleanSatelliteImageUrl(data.image_url);
+        }
+      } catch (error) {
+        console.error('Failed to fetch satellite image:', error);
+        toast({
+          title: 'Image Load Error',
+          description: 'Could not load satellite image',
+          variant: 'destructive'
+        });
+      } finally {
+        setIsLoadingSatellite(false);
+      }
+    };
+    
+    fetchCleanSatelliteImage();
+  }, [verifiedAddressLat, verifiedAddressLng, centerLat, centerLng]);
   
   // Update satellite image URL when prop changes
   useEffect(() => {

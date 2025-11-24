@@ -234,6 +234,8 @@ class OfflineManager {
     this.stopPingTest();
   };
 
+  private consecutiveFailures = 0;
+
   private startPingTest(): void {
     this.stopPingTest(); // Clear any existing interval
 
@@ -241,7 +243,7 @@ class OfflineManager {
       try {
         // Try to fetch from Supabase (lightweight endpoint)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout (increased from 5)
 
         const response = await fetch('https://alxelfrbjzkmtnsulcei.supabase.co/rest/v1/', {
           method: 'HEAD',
@@ -250,23 +252,28 @@ class OfflineManager {
 
         clearTimeout(timeoutId);
 
-        if (!response.ok && this.isOnlineState) {
-          // Network seems down
-          this.isOnlineState = false;
-          this.notifyNetworkChange(false);
-        } else if (response.ok && !this.isOnlineState) {
-          // Network is back
-          this.isOnlineState = true;
-          this.notifyNetworkChange(true);
+        if (response.ok) {
+          // Connection successful - reset failure counter
+          this.consecutiveFailures = 0;
+          if (!this.isOnlineState) {
+            this.isOnlineState = true;
+            this.notifyNetworkChange(true);
+          }
+        } else {
+          throw new Error('Bad response');
         }
       } catch (error) {
-        // Ping failed, mark as offline
-        if (this.isOnlineState) {
+        // Connection failed - increment failure counter
+        this.consecutiveFailures++;
+        console.log(`Ping test failed (${this.consecutiveFailures}/2)`);
+        
+        // Only mark offline after 2 consecutive failures
+        if (this.consecutiveFailures >= 2 && this.isOnlineState) {
           this.isOnlineState = false;
           this.notifyNetworkChange(false);
         }
       }
-    }, 30000); // Every 30 seconds
+    }, 60000); // Every 60 seconds (reduced from 30)
   }
 
   private stopPingTest(): void {
