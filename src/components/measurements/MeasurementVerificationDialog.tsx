@@ -102,18 +102,24 @@ export function MeasurementVerificationDialog({
   
   useEffect(() => {
     const fetchCleanSatelliteImage = async () => {
-      const lat = verifiedAddressLat || centerLat;
-      const lng = verifiedAddressLng || centerLng;
+      // ✅ Wait for verified coordinates to load first (PRIORITY #1)
+      const lat = verifiedAddressLat;
+      const lng = verifiedAddressLng;
       
-      if (!lat || !lng) return;
+      // Only fetch if we have verified coordinates
+      if (!lat || !lng) {
+        console.log('⏳ Waiting for verified address coordinates before fetching satellite...');
+        return;
+      }
       
+      console.log(`📍 Fetching satellite centered at verified address: ${lat}, ${lng}`);
       setIsLoadingSatellite(true);
       try {
         const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
           body: {
             endpoint: 'satellite',
             params: {
-              center: `${lat},${lng}`,
+              center: `${lat},${lng}`,  // ✅ Always uses verified address
               zoom: '20',
               size: '1280x1280',
               maptype: 'satellite',
@@ -126,6 +132,7 @@ export function MeasurementVerificationDialog({
         
         if (data?.image_url) {
           setCleanSatelliteImageUrl(data.image_url);
+          console.log('✅ Clean satellite image fetched successfully');
         }
       } catch (error) {
         console.error('Failed to fetch satellite image:', error);
@@ -140,7 +147,7 @@ export function MeasurementVerificationDialog({
     };
     
     fetchCleanSatelliteImage();
-  }, [verifiedAddressLat, verifiedAddressLng, centerLat, centerLng]);
+  }, [verifiedAddressLat, verifiedAddressLng]);  // ✅ Removed centerLat/centerLng dependency
   
   // Update satellite image URL when prop changes
   useEffect(() => {
