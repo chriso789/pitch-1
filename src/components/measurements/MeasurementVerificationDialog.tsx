@@ -916,116 +916,24 @@ export function MeasurementVerificationDialog({
                   />
                 )}
                 
-                {/* Floating Control Toolbar */}
-                <div className="absolute top-2 left-2 flex flex-col gap-2">
-                  {/* Pan Controls */}
-                  <div className="bg-background/95 backdrop-blur border rounded-lg shadow-lg p-1">
-                    <div className="flex flex-col items-center gap-1">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handlePan('up')}
-                        disabled={isRegenerating || !isOnline}
-                        className="h-7 w-7 p-0"
-                        title="Pan up"
-                      >
-                        <ArrowUp className="h-4 w-4" />
-                      </Button>
-                      <div className="flex gap-1">
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handlePan('left')}
-                          disabled={isRegenerating || !isOnline}
-                          className="h-7 w-7 p-0"
-                          title="Pan left"
-                        >
-                          <ArrowLeft className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handlePan('down')}
-                          disabled={isRegenerating || !isOnline}
-                          className="h-7 w-7 p-0"
-                          title="Pan down"
-                        >
-                          <ArrowDown className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => handlePan('right')}
-                          disabled={isRegenerating || !isOnline}
-                          className="h-7 w-7 p-0"
-                          title="Pan right"
-                        >
-                          <ArrowRight className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                  
-                  {/* Zoom Controls */}
-                  <div className="bg-background/95 backdrop-blur border rounded-lg shadow-lg p-1.5 flex flex-col gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleZoomAdjust('in')}
-                      disabled={isRegenerating || manualZoom >= 2 || !isOnline}
-                      className="h-7 w-7 p-0"
-                      title="Zoom in"
-                    >
-                      <ZoomIn className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleZoomAdjust('reset')}
-                      disabled={isRegenerating || manualZoom === 0 || !isOnline}
-                      className="h-7 w-7 p-0"
-                      title="Reset zoom"
-                    >
-                      <Home className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleZoomAdjust('out')}
-                      disabled={isRegenerating || manualZoom <= -1 || !isOnline}
-                      className="h-7 w-7 p-0"
-                      title="Zoom out"
-                    >
-                      <ZoomOut className="h-4 w-4" />
-                    </Button>
-                  </div>
-                  
-                  {/* Birds Eye View Button */}
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => handleZoomAdjust('in')}
-                    disabled={isRegenerating || !isOnline}
-                    className="bg-background/95 backdrop-blur shadow-lg"
-                    title="Birds eye overhead view"
-                  >
-                    <Maximize2 className="h-4 w-4" />
-                  </Button>
-                  
-                  {/* Recenter Button */}
+                {/* Recenter Mode Control */}
+                <div className="absolute top-2 left-2">
                   <Button
                     variant={recenterMode ? "default" : "outline"}
                     size="sm"
                     onClick={() => setRecenterMode(prev => !prev)}
-                    disabled={!isOnline}
+                    disabled={isRegenerating}
                     className="bg-background/95 backdrop-blur shadow-lg"
-                    title={recenterMode ? "Click mode active" : "Click to recenter"}
+                    title={recenterMode ? "Click mode active - click on house to recenter" : "Enable click to recenter"}
                   >
-                    <Move className="h-4 w-4" />
+                    <Move className="h-4 w-4 mr-1.5" />
+                    {recenterMode ? 'Recenter Active' : 'Click to Recenter'}
                   </Button>
-                  
-                  {/* PHASE 3: Reset to Verified Address Button */}
-                  {coordinateMismatchDistance > 20 && verifiedAddressLat && verifiedAddressLng && (
+                </div>
+                
+                {/* Reset to Verified Address Button */}
+                {coordinateMismatchDistance > 20 && verifiedAddressLat && verifiedAddressLng && (
+                  <div className="absolute top-2 right-2">
                     <Button
                       variant="default"
                       size="sm"
@@ -1039,22 +947,23 @@ export function MeasurementVerificationDialog({
                       className="bg-background/95 backdrop-blur shadow-lg"
                       title="Center on house address"
                     >
-                      <Home className="h-4 w-4" />
+                      <Home className="h-4 w-4 mr-1.5" />
+                      Reset to Home
                     </Button>
-                  )}
-                </div>
-                
-                {/* Recenter Mode Hint */}
-                {recenterMode && isOnline && (
-                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-3 py-1.5 rounded-full text-xs font-medium shadow-lg animate-pulse">
-                    👆 Click on the house to shift the satellite view toward it
                   </div>
                 )}
                 
-                {/* Offline Banner */}
+                {/* Recenter Mode Hint */}
+                {recenterMode && (
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-primary text-primary-foreground px-3 py-1.5 rounded-full text-xs font-medium shadow-lg animate-pulse">
+                    👆 Click on the house to regenerate centered view
+                  </div>
+                )}
+                
+                {/* Offline Notice */}
                 {!isOnline && (
-                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-destructive text-destructive-foreground px-3 py-1.5 rounded-lg text-xs font-medium shadow-lg">
-                    🔴 Offline: cannot move satellite view until connection is restored
+                  <div className="absolute bottom-2 left-1/2 -translate-x-1/2 bg-muted/90 backdrop-blur border px-3 py-1.5 rounded-lg text-xs font-medium shadow-lg">
+                    🔴 Offline — showing last saved view, cannot update satellite image
                   </div>
                 )}
                 
@@ -1064,6 +973,11 @@ export function MeasurementVerificationDialog({
                     ⚠️ {regenerationError} — Last good image shown
                   </div>
                 )}
+                
+                {/* Drag/Zoom Instructions */}
+                <div className="absolute bottom-2 right-2 bg-muted/90 backdrop-blur border px-2 py-1 rounded-lg text-[10px] font-medium shadow-lg">
+                  💡 Drag to pan • Scroll to zoom
+                </div>
               </div>
               
               {/* Smart Roof Type Detection Display */}

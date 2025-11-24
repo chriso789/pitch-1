@@ -465,6 +465,11 @@ export function ComprehensiveMeasurementOverlay({
     fabricCanvas.renderAll();
   }, [fabricCanvas, measurement, tags, layers]);
 
+  // Drag-to-pan and scroll-to-zoom state
+  const isPanningRef = useRef(false);
+  const lastPosXRef = useRef(0);
+  const lastPosYRef = useRef(0);
+
   // Handle canvas clicks for drawing mode
   useEffect(() => {
     if (!fabricCanvas) return;
@@ -489,6 +494,15 @@ export function ComprehensiveMeasurementOverlay({
         if (targetData?.type === 'ridge' || targetData?.type === 'hip' || targetData?.type === 'valley') {
           handleDeleteLine(targetData.type, targetData.lineIndex);
         }
+        return;
+      }
+
+      // Drag-to-pan: only when clicking on empty canvas in select mode
+      if (editMode === 'select' && !event.target) {
+        isPanningRef.current = true;
+        lastPosXRef.current = event.e.clientX;
+        lastPosYRef.current = event.e.clientY;
+        fabricCanvas.selection = false; // Disable selection while panning
         return;
       }
 
@@ -551,8 +565,23 @@ export function ComprehensiveMeasurementOverlay({
       setSelectedLineData(null);
     });
 
-    // Add mouse:move listener for edge highlighting during line drawing
+    // Add mouse:move listener for edge highlighting and panning
     const handleMouseMove = (event: any) => {
+      // Handle panning
+      if (isPanningRef.current) {
+        const evt = event.e;
+        const vpt = fabricCanvas.viewportTransform;
+        if (vpt) {
+          vpt[4] += evt.clientX - lastPosXRef.current;
+          vpt[5] += evt.clientY - lastPosYRef.current;
+          fabricCanvas.requestRenderAll();
+          lastPosXRef.current = evt.clientX;
+          lastPosYRef.current = evt.clientY;
+        }
+        return;
+      }
+      
+      // Edge highlighting during line drawing
       if (editMode !== 'add-ridge' && editMode !== 'add-hip' && editMode !== 'add-valley') return;
       
       const pointer = fabricCanvas.getPointer(event.e);
@@ -599,12 +628,37 @@ export function ComprehensiveMeasurementOverlay({
       fabricCanvas.renderAll();
     };
 
+    const handleMouseUp = () => {
+      if (isPanningRef.current) {
+        isPanningRef.current = false;
+        fabricCanvas.selection = editMode === 'select'; // Re-enable selection
+      }
+    };
+
+    const handleMouseWheel = (event: any) => {
+      event.e.preventDefault();
+      event.e.stopPropagation();
+      
+      const delta = event.e.deltaY;
+      let zoom = fabricCanvas.getZoom();
+      zoom *= 0.999 ** delta; // Smooth scroll zoom
+      zoom = Math.min(3, Math.max(0.5, zoom)); // Clamp between 0.5x and 3x
+      
+      fabricCanvas.zoomToPoint(new FabricPoint(event.e.offsetX, event.e.offsetY), zoom);
+      setCurrentZoom(zoom);
+      fabricCanvas.requestRenderAll();
+    };
+
     fabricCanvas.on('mouse:down', handleMouseDown);
     fabricCanvas.on('mouse:move', handleMouseMove);
+    fabricCanvas.on('mouse:up', handleMouseUp);
+    fabricCanvas.on('mouse:wheel', handleMouseWheel);
 
     return () => {
       fabricCanvas.off('mouse:down', handleMouseDown);
       fabricCanvas.off('mouse:move', handleMouseMove);
+      fabricCanvas.off('mouse:up', handleMouseUp);
+      fabricCanvas.off('mouse:wheel', handleMouseWheel);
       fabricCanvas.off('selection:created', handleObjectSelection);
       fabricCanvas.off('selection:updated', handleObjectSelection);
       fabricCanvas.off('selection:cleared');
