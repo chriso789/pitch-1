@@ -171,13 +171,15 @@ export function ComprehensiveMeasurementOverlay({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
   const [editMode, setEditMode] = useState<EditMode>('select');
+  // WARNING: Facets disabled - Google Solar API provides same building footprint for all facets
+  // Individual facet boundaries cannot be visualized without manual drawing
   const [layers, setLayers] = useState({
-    facets: true,
-    ridges: true,
-    hips: true,
-    valleys: true,
-    perimeter: false,  // Disabled: redundant with facet boundaries
-    annotations: true,
+    facets: false,        // Disabled: All facets share same WKT boundary (API limitation)
+    ridges: true,         // Start with ridges only for verification
+    hips: false,          // Enable after ridge verification
+    valleys: false,       // Enable after ridge verification
+    perimeter: false,     // Disabled: redundant with facet boundaries
+    annotations: false,   // Disabled: reduces clutter
   });
   const [drawPoints, setDrawPoints] = useState<Point[]>([]);
   const [hasChanges, setHasChanges] = useState(false);
@@ -1216,7 +1218,8 @@ export function ComprehensiveMeasurementOverlay({
 
       // Add facet label at center
       const center = getPolygonCenter(points);
-      const area = face.area || 0;
+      // Use database area value instead of recalculating (prevents coordinate transformation bugs)
+      const area = face.area_sqft || face.plan_area_sqft || 0;
       const facetLabel = new FabricText(label, {
         left: center.x,
         top: center.y - 10,
@@ -1266,7 +1269,9 @@ export function ComprehensiveMeasurementOverlay({
     }
   }, [fabricCanvas]);
 
-  // Phase 1: Debounced recalculation function (300ms delay)
+  // DISABLED: Area recalculation was broken (used normalized 0-1 coords instead of geo coords)
+  // This caused absurd area values like 92 billion sq ft
+  // Instead, we now use the original area_sqft from Google Solar API which is correct
   const debouncedRecalculation = useCallback(
     debounce((polygon: Polygon, faceIndex: number) => {
       const points = polygon.points;
@@ -1278,19 +1283,15 @@ export function ComprehensiveMeasurementOverlay({
         p.y / canvasHeight
       ]);
 
-      // Calculate new area using Turf.js
-      const closedPoints = [...normalizedPoints, normalizedPoints[0]];
-      const turfPolygon = turf.polygon([closedPoints]);
-      const areaMeters = turf.area(turfPolygon);
-      const areaSqft = areaMeters * 10.7639; // Convert m² to ft²
+      console.log(`📐 Facet ${faceIndex + 1} boundary updated (area NOT recalculated - using database value)`);
 
-      // Update the face in measurement data
+      // Update the face boundary only - preserve original area from database
       const updatedFaces = [...measurement.faces];
       updatedFaces[faceIndex] = {
         ...updatedFaces[faceIndex],
         boundary: normalizedPoints,
-        area: areaSqft,
-        plan_area_sqft: areaSqft,
+        // DO NOT recalculate area - use original from Google Solar API
+        // area_sqft: areaSqft,  // REMOVED - was causing incorrect calculations
       };
 
       const updatedMeasurement = {
@@ -1301,11 +1302,12 @@ export function ComprehensiveMeasurementOverlay({
       setHasChanges(true);
       onMeasurementUpdate(updatedMeasurement, tags);
       
-      // Update only the affected facet label (no full redraw)
-      updateFacetLabel(faceIndex, areaSqft);
+      // Update label with original area (not recalculated)
+      const originalArea = updatedFaces[faceIndex].area_sqft || updatedFaces[faceIndex].plan_area_sqft || 0;
+      updateFacetLabel(faceIndex, originalArea);
       
-      // Show toast only after debounce completes (drag ended)
-      toast.success(`Facet ${faceIndex + 1}: ${Math.round(areaSqft).toLocaleString()} sq ft`);
+      // Show toast with original area
+      toast.success(`Facet ${faceIndex + 1}: ${Math.round(originalArea).toLocaleString()} sq ft`);
     }, 300),
     [measurement, tags, canvasWidth, canvasHeight, updateFacetLabel]
   );
