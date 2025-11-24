@@ -98,6 +98,25 @@ const parseWKTLineString = (wkt: string): [number, number][] => {
   return coords;
 };
 
+/**
+ * Calculate distance between two lat/lng points using Haversine formula
+ * Returns distance in meters
+ */
+const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number): number => {
+  const R = 6371000; // Earth radius in meters
+  const φ1 = lat1 * Math.PI / 180;
+  const φ2 = lat2 * Math.PI / 180;
+  const Δφ = (lat2 - lat1) * Math.PI / 180;
+  const Δλ = (lng2 - lng1) * Math.PI / 180;
+  
+  const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
+            Math.cos(φ1) * Math.cos(φ2) *
+            Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  
+  return R * c; // Distance in meters
+};
+
 // ============= Geographic Bounds & Transformation =============
 
 interface GeoBounds {
@@ -203,20 +222,39 @@ export function ComprehensiveMeasurementOverlay({
     let minLat = Infinity, maxLat = -Infinity;
     let minLng = Infinity, maxLng = -Infinity;
     
-    // Extract coordinates from all facets (WKT polygons)
+    const proximityThreshold = 50; // meters - only include features within this distance
+    const centerLatitude = verifiedAddressLat || centerLat;
+    const centerLongitude = verifiedAddressLng || centerLng;
+    
+    // Filter and extract coordinates from facets within proximity threshold
     if (measurement?.faces) {
       measurement.faces.forEach((face: any) => {
         const coords = parseWKTPolygon(face.wkt || '');
-        coords.forEach(([lat, lng]) => {
-          minLat = Math.min(minLat, lat);
-          maxLat = Math.max(maxLat, lat);
-          minLng = Math.min(minLng, lng);
-          maxLng = Math.max(maxLng, lng);
-        });
+        if (coords.length < 3) return;
+        
+        // Calculate facet centroid
+        const centroidLat = coords.reduce((sum, [lat]) => sum + lat, 0) / coords.length;
+        const centroidLng = coords.reduce((sum, [, lng]) => sum + lng, 0) / coords.length;
+        
+        // Check proximity to verified address
+        const distance = calculateDistance(
+          centerLatitude, centerLongitude,
+          centroidLat, centroidLng
+        );
+        
+        // Only include facets within threshold
+        if (distance < proximityThreshold) {
+          coords.forEach(([lat, lng]) => {
+            minLat = Math.min(minLat, lat);
+            maxLat = Math.max(maxLat, lat);
+            minLng = Math.min(minLng, lng);
+            maxLng = Math.max(maxLng, lng);
+          });
+        }
       });
     }
     
-    // Extract coordinates from linear features (ridges, hips, valleys)
+    // Filter and extract coordinates from linear features within proximity threshold
     const linearFeatures = [
       ...(tags['ridge_lines'] || []),
       ...(tags['hip_lines'] || []),
@@ -226,18 +264,28 @@ export function ComprehensiveMeasurementOverlay({
     linearFeatures.forEach((line: any) => {
       if (line.wkt) {
         const coords = parseWKTLineString(line.wkt);
-        coords.forEach(([lat, lng]) => {
-          minLat = Math.min(minLat, lat);
-          maxLat = Math.max(maxLat, lat);
-          minLng = Math.min(minLng, lng);
-          maxLng = Math.max(maxLng, lng);
-        });
+        if (coords.length < 2) return;
+        
+        // Calculate line midpoint
+        const midLat = (coords[0][0] + coords[coords.length - 1][0]) / 2;
+        const midLng = (coords[0][1] + coords[coords.length - 1][1]) / 2;
+        
+        const distance = calculateDistance(
+          centerLatitude, centerLongitude,
+          midLat, midLng
+        );
+        
+        // Only include lines within threshold
+        if (distance < proximityThreshold) {
+          coords.forEach(([lat, lng]) => {
+            minLat = Math.min(minLat, lat);
+            maxLat = Math.max(maxLat, lat);
+            minLng = Math.min(minLng, lng);
+            maxLng = Math.max(maxLng, lng);
+          });
+        }
       }
     });
-    
-    // Use verified address as center if available, otherwise use calculated center
-    const centerLatitude = verifiedAddressLat || (minLat + maxLat) / 2;
-    const centerLongitude = verifiedAddressLng || (minLng + maxLng) / 2;
     
     // If no data found, use provided center coordinates
     if (!isFinite(minLat) || !isFinite(maxLat) || !isFinite(minLng) || !isFinite(maxLng)) {
@@ -1086,11 +1134,31 @@ export function ComprehensiveMeasurementOverlay({
   const drawRoofFacets = () => {
     if (!fabricCanvas || !measurement?.faces) return;
 
+    const proximityThreshold = 50; // meters
+    const centerLatitude = verifiedAddressLat || centerLat;
+    const centerLongitude = verifiedAddressLng || centerLng;
+
     measurement.faces.forEach((face: any, index: number) => {
       // Parse WKT polygon to get lat/lng coordinates
       const geoCoords = parseWKTPolygon(face.wkt || '');
       if (geoCoords.length < 3) {
         console.warn(`Facet ${index} has insufficient WKT coordinates:`, face.wkt);
+        return;
+      }
+
+      // Calculate facet centroid for proximity check
+      const centroidLat = geoCoords.reduce((sum, [lat]) => sum + lat, 0) / geoCoords.length;
+      const centroidLng = geoCoords.reduce((sum, [, lng]) => sum + lng, 0) / geoCoords.length;
+      
+      // Check distance from verified address
+      const distance = calculateDistance(
+        centerLatitude, centerLongitude,
+        centroidLat, centroidLng
+      );
+      
+      // Skip facets that are too far from target building
+      if (distance >= proximityThreshold) {
+        console.log(`🏠 Filtering out facet ${index} - ${distance.toFixed(1)}m from target`);
         return;
       }
 
@@ -1495,6 +1563,10 @@ export function ComprehensiveMeasurementOverlay({
   const drawFeatureLines = (type: string, lines: any[], color: string) => {
     if (!fabricCanvas) return;
 
+    const proximityThreshold = 50; // meters
+    const centerLatitude = verifiedAddressLat || centerLat;
+    const centerLongitude = verifiedAddressLng || centerLng;
+
     lines.forEach((lineData: any, index: number) => {
       let startPoint: Point;
       let endPoint: Point;
@@ -1506,6 +1578,22 @@ export function ComprehensiveMeasurementOverlay({
           console.warn(`${type} line ${index} has invalid WKT:`, lineData.wkt);
           return;
         }
+        
+        // Calculate line midpoint for proximity check
+        const midLat = (coords[0][0] + coords[coords.length - 1][0]) / 2;
+        const midLng = (coords[0][1] + coords[coords.length - 1][1]) / 2;
+        
+        const distance = calculateDistance(
+          centerLatitude, centerLongitude,
+          midLat, midLng
+        );
+        
+        // Skip lines that are too far from target building
+        if (distance >= proximityThreshold) {
+          console.log(`📏 Filtering out ${type} line ${index} - ${distance.toFixed(1)}m from target`);
+          return;
+        }
+        
         startPoint = geoToCanvas(coords[0][0], coords[0][1]);
         endPoint = geoToCanvas(coords[1][0], coords[1][1]);
       } else {
