@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { useImageCache } from "@/contexts/ImageCacheContext";
 import { snapToEdge } from "@/utils/measurementGeometry";
 import { EnhancedFacetPropertiesPanel } from "./EnhancedFacetPropertiesPanel";
+import { LinePropertiesPanel } from "./LinePropertiesPanel";
 import * as turf from '@turf/turf';
 
 interface Point {
@@ -79,6 +80,7 @@ export function ComprehensiveMeasurementOverlay({
   const [selectedFacetIndex, setSelectedFacetIndex] = useState<number | null>(null);
   const [selectedFacets, setSelectedFacets] = useState<number[]>([]);
   const [splitPoints, setSplitPoints] = useState<Point[]>([]);
+  const [selectedLineData, setSelectedLineData] = useState<{type: string, index: number} | null>(null);
   
   // Store original data for reset
   const originalDataRef = useRef({ measurement, tags });
@@ -189,6 +191,17 @@ export function ComprehensiveMeasurementOverlay({
         return;
       }
 
+      // Right-click delete for lines
+      if (event.button === 3) {
+        const target = fabricCanvas.findTarget(event.e);
+        const targetData = (target as any)?.data;
+        
+        if (targetData?.type === 'ridge' || targetData?.type === 'hip' || targetData?.type === 'valley') {
+          handleDeleteLine(targetData.type, targetData.lineIndex);
+        }
+        return;
+      }
+
       if (editMode === 'select') return;
 
       if (editMode === 'delete') {
@@ -233,6 +246,9 @@ export function ComprehensiveMeasurementOverlay({
           // Single select for properties panel
           setSelectedFacetIndex(targetData.faceIndex);
         }
+      } else if (targetData?.type === 'ridge' || targetData?.type === 'hip' || targetData?.type === 'valley') {
+        // Line selected - show line properties panel
+        setSelectedLineData({ type: targetData.type, index: targetData.lineIndex });
       }
     };
 
@@ -242,17 +258,68 @@ export function ComprehensiveMeasurementOverlay({
       if (editMode !== 'merge-facets') {
         setSelectedFacetIndex(null);
       }
+      setSelectedLineData(null);
     });
 
+    // Add mouse:move listener for edge highlighting during line drawing
+    const handleMouseMove = (event: any) => {
+      if (editMode !== 'add-ridge' && editMode !== 'add-hip' && editMode !== 'add-valley') return;
+      
+      const pointer = fabricCanvas.getPointer(event.e);
+      const point = { x: pointer.x, y: pointer.y };
+      
+      // Clear previous highlights
+      fabricCanvas.getObjects().forEach(obj => {
+        if ((obj as any).data?.type === 'edge-highlight') {
+          fabricCanvas.remove(obj);
+        }
+      });
+      
+      // Find and highlight nearby edges
+      if (measurement?.faces) {
+        measurement.faces.forEach((face: any) => {
+          if (!face.boundary || face.boundary.length < 3) return;
+          
+          const facePoints = face.boundary.map((coord: number[]) => ({
+            x: coord[0] * canvasWidth,
+            y: coord[1] * canvasHeight,
+          }));
+          
+          const { isPointNearLine } = require('@/utils/measurementGeometry');
+          
+          for (let i = 0; i < facePoints.length; i++) {
+            const start = facePoints[i];
+            const end = facePoints[(i + 1) % facePoints.length];
+            
+            if (isPointNearLine(point, start, end, 20)) {
+              const highlightLine = new Line([start.x, start.y, end.x, end.y], {
+                stroke: '#3b82f6',
+                strokeWidth: 4,
+                opacity: 0.5,
+                selectable: false,
+                evented: false,
+              });
+              (highlightLine as any).data = { type: 'edge-highlight' };
+              fabricCanvas.add(highlightLine);
+            }
+          }
+        });
+      }
+      
+      fabricCanvas.renderAll();
+    };
+
     fabricCanvas.on('mouse:down', handleMouseDown);
+    fabricCanvas.on('mouse:move', handleMouseMove);
 
     return () => {
       fabricCanvas.off('mouse:down', handleMouseDown);
+      fabricCanvas.off('mouse:move', handleMouseMove);
       fabricCanvas.off('selection:created', handleObjectSelection);
       fabricCanvas.off('selection:updated', handleObjectSelection);
       fabricCanvas.off('selection:cleared');
     };
-  }, [fabricCanvas, editMode, drawPoints, recenterMode, onRecenterClick, canvasWidth, canvasHeight, selectedFacets]);
+  }, [fabricCanvas, editMode, drawPoints, recenterMode, onRecenterClick, canvasWidth, canvasHeight, selectedFacets, measurement]);
 
   const drawAllMeasurements = () => {
     if (!fabricCanvas) return;
@@ -725,6 +792,56 @@ export function ComprehensiveMeasurementOverlay({
     onMeasurementUpdate(updatedMeasurement, tags);
   };
 
+  const handleDeleteLine = (type: string, lineIndex: number) => {
+    const lineKey = `${type}_lines`;
+    const lfKey = `lf.${type}`;
+    
+    const existingLines = tags[lineKey] || [];
+    const updatedLines = existingLines.filter((_: any, i: number) => i !== lineIndex);
+    const totalLength = updatedLines.reduce((sum: number, l: any) => sum + (l.length || 0), 0);
+    
+    const updatedTags = {
+      ...tags,
+      [lineKey]: updatedLines,
+      [lfKey]: totalLength,
+    };
+    
+    setHasChanges(true);
+    onMeasurementUpdate(measurement, updatedTags);
+    toast.success(`${type.charAt(0).toUpperCase() + type.slice(1)} line deleted`);
+  };
+
+  const handleChangeLineType = (oldType: string, lineIndex: number, newType: string) => {
+    const oldLineKey = `${oldType}_lines`;
+    const newLineKey = `${newType}_lines`;
+    const oldLfKey = `lf.${oldType}`;
+    const newLfKey = `lf.${newType}`;
+    
+    const oldLines = tags[oldLineKey] || [];
+    const line = oldLines[lineIndex];
+    
+    // Remove from old array
+    const updatedOldLines = oldLines.filter((_: any, i: number) => i !== lineIndex);
+    const oldTotal = updatedOldLines.reduce((sum: number, l: any) => sum + (l.length || 0), 0);
+    
+    // Add to new array
+    const newLines = [...(tags[newLineKey] || []), line];
+    const newTotal = newLines.reduce((sum: number, l: any) => sum + (l.length || 0), 0);
+    
+    const updatedTags = {
+      ...tags,
+      [oldLineKey]: updatedOldLines,
+      [newLineKey]: newLines,
+      [oldLfKey]: oldTotal,
+      [newLfKey]: newTotal,
+    };
+    
+    setHasChanges(true);
+    onMeasurementUpdate(measurement, updatedTags);
+    setSelectedLineData(null);
+    toast.success(`Converted ${oldType} to ${newType}`);
+  };
+
   const drawFeatureLines = (type: string, lines: any[], color: string) => {
     if (!fabricCanvas) return;
 
@@ -752,6 +869,29 @@ export function ComprehensiveMeasurementOverlay({
       );
 
       (line as any).data = { type, editable: true, lineIndex: index };
+      
+      // Add hover effects
+      line.on('mouseover', () => {
+        line.set({ 
+          strokeWidth: 5,
+          shadow: {
+            color: color,
+            blur: 10,
+            offsetX: 0,
+            offsetY: 0,
+          }
+        });
+        fabricCanvas.renderAll();
+      });
+
+      line.on('mouseout', () => {
+        line.set({ 
+          strokeWidth: 3,
+          shadow: undefined,
+        });
+        fabricCanvas.renderAll();
+      });
+      
       fabricCanvas.add(line);
 
       // Add length label
@@ -759,7 +899,7 @@ export function ComprehensiveMeasurementOverlay({
       const midX = ((start[0] + end[0]) / 2) * canvasWidth;
       const midY = ((start[1] + end[1]) / 2) * canvasHeight;
 
-      const label = new FabricText(`${Math.round(length)} ft`, {
+      const label = new FabricText(`${Math.round(length)} ft ${type}`, {
         left: midX,
         top: midY - 10,
         fontSize: 11,
@@ -1414,6 +1554,18 @@ export function ComprehensiveMeasurementOverlay({
           facetIndex={selectedFacetIndex}
           onUpdateFacet={handleUpdateFacetProperties}
           onClose={() => setSelectedFacetIndex(null)}
+        />
+      )}
+
+      {/* Line Properties Panel */}
+      {selectedLineData && editMode === 'select' && (
+        <LinePropertiesPanel
+          lineType={selectedLineData.type}
+          lineIndex={selectedLineData.index}
+          lineData={tags[`${selectedLineData.type}_lines`]?.[selectedLineData.index]}
+          onChangeType={handleChangeLineType}
+          onDelete={handleDeleteLine}
+          onClose={() => setSelectedLineData(null)}
         />
       )}
     </div>
