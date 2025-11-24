@@ -221,12 +221,23 @@ export function ComprehensiveMeasurementOverlay({
   // ============= Calculate Geographic Bounds from Measurement Data =============
   
   const geoBounds = useMemo<GeoBounds>(() => {
+    console.group('🗺️ DIAGNOSTIC: Calculating Geographic Bounds');
+    
     let minLat = Infinity, maxLat = -Infinity;
     let minLng = Infinity, maxLng = -Infinity;
     
     const proximityThreshold = 50; // meters - only include features within this distance
     const centerLatitude = verifiedAddressLat || centerLat;
     const centerLongitude = verifiedAddressLng || centerLng;
+    
+    console.log('📍 Satellite Image Center:', {
+      centerLat,
+      centerLng,
+      verifiedAddressLat,
+      verifiedAddressLng,
+      usingVerified: !!verifiedAddressLat,
+      effectiveCenter: { lat: centerLatitude, lng: centerLongitude }
+    });
     
     // Filter and extract coordinates from facets within proximity threshold
     if (measurement?.faces) {
@@ -305,7 +316,7 @@ export function ComprehensiveMeasurementOverlay({
     const latPadding = (maxLat - minLat) * 0.1;
     const lngPadding = (maxLng - minLng) * 0.1;
     
-    return {
+    const bounds = {
       minLat: minLat - latPadding,
       maxLat: maxLat + latPadding,
       minLng: minLng - lngPadding,
@@ -313,6 +324,24 @@ export function ComprehensiveMeasurementOverlay({
       centerLat: centerLatitude,
       centerLng: centerLongitude,
     };
+    
+    console.log('📐 Calculated GeoBounds:', {
+      bounds,
+      dimensions: {
+        latSpan: bounds.maxLat - bounds.minLat,
+        lngSpan: bounds.maxLng - bounds.minLng,
+        latSpanMeters: ((bounds.maxLat - bounds.minLat) * 111320).toFixed(1) + 'm',
+        lngSpanMeters: ((bounds.maxLng - bounds.minLng) * 111320 * Math.cos(centerLatitude * Math.PI / 180)).toFixed(1) + 'm',
+      },
+      padding: {
+        latPadding,
+        lngPadding,
+      }
+    });
+    
+    console.groupEnd();
+    
+    return bounds;
   }, [measurement, tags, centerLat, centerLng, verifiedAddressLat, verifiedAddressLng]);
 
   // ============= Coordinate Transformation Functions =============
@@ -342,8 +371,23 @@ export function ComprehensiveMeasurementOverlay({
    */
   const geoToCanvas = useCallback((lat: number, lng: number): Point => {
     const norm = geoToNormalized(lat, lng);
-    return normalizedToCanvas(norm);
-  }, [geoToNormalized, normalizedToCanvas]);
+    const canvas = normalizedToCanvas(norm);
+    
+    // Diagnostic logging for transformation (only log first few to avoid spam)
+    if (Math.random() < 0.05) { // Log ~5% of transformations
+      console.log('🔄 Coordinate Transform:', {
+        input: { lat, lng },
+        normalized: { x: norm.x.toFixed(4), y: norm.y.toFixed(4) },
+        canvas: { x: canvas.x.toFixed(1), y: canvas.y.toFixed(1) },
+        bounds: {
+          latRange: `${geoBounds.minLat.toFixed(6)} to ${geoBounds.maxLat.toFixed(6)}`,
+          lngRange: `${geoBounds.minLng.toFixed(6)} to ${geoBounds.maxLng.toFixed(6)}`,
+        }
+      });
+    }
+    
+    return canvas;
+  }, [geoToNormalized, normalizedToCanvas, geoBounds]);
 
   // Auto-save with database persistence
   const handleAutoSave = async () => {
@@ -1565,6 +1609,8 @@ export function ComprehensiveMeasurementOverlay({
   const drawFeatureLines = (type: string, lines: any[], color: string) => {
     if (!fabricCanvas) return;
 
+    console.group(`🎨 DIAGNOSTIC: Drawing ${type.toUpperCase()} Lines (${lines.length} total)`);
+
     const proximityThreshold = 50; // meters
     const centerLatitude = verifiedAddressLat || centerLat;
     const centerLongitude = verifiedAddressLng || centerLng;
@@ -1575,11 +1621,19 @@ export function ComprehensiveMeasurementOverlay({
       
       // Check if line has WKT format
       if (lineData.wkt) {
+        console.log(`\n📏 ${type.toUpperCase()} Line ${index}:`);
+        console.log('  Raw WKT:', lineData.wkt);
+        
         const coords = parseWKTLineString(lineData.wkt);
         if (coords.length < 2) {
-          console.warn(`${type} line ${index} has invalid WKT:`, lineData.wkt);
+          console.warn(`  ❌ Invalid WKT - insufficient coordinates`);
           return;
         }
+        
+        console.log('  Parsed Coords:', {
+          start: { lat: coords[0][0], lng: coords[0][1] },
+          end: { lat: coords[1][0], lng: coords[1][1] },
+        });
         
         // Calculate line midpoint for proximity check
         const midLat = (coords[0][0] + coords[coords.length - 1][0]) / 2;
@@ -1590,14 +1644,29 @@ export function ComprehensiveMeasurementOverlay({
           midLat, midLng
         );
         
+        console.log('  Proximity Check:', {
+          midpoint: { lat: midLat, lng: midLng },
+          targetCenter: { lat: centerLatitude, lng: centerLongitude },
+          distance: distance.toFixed(1) + 'm',
+          threshold: proximityThreshold + 'm',
+          passed: distance < proximityThreshold
+        });
+        
         // Skip lines that are too far from target building
         if (distance >= proximityThreshold) {
-          console.log(`📏 Filtering out ${type} line ${index} - ${distance.toFixed(1)}m from target`);
+          console.log(`  ⛔ FILTERED OUT - too far from target`);
           return;
         }
         
         startPoint = geoToCanvas(coords[0][0], coords[0][1]);
         endPoint = geoToCanvas(coords[1][0], coords[1][1]);
+        
+        console.log('  Transformed Canvas Coords:', {
+          start: { x: startPoint.x.toFixed(1), y: startPoint.y.toFixed(1) },
+          end: { x: endPoint.x.toFixed(1), y: endPoint.y.toFixed(1) },
+          canvasSize: { width: canvasWidth, height: canvasHeight }
+        });
+        console.log('  ✅ Line rendered on canvas');
       } else {
         // Fallback to normalized coordinates (legacy format)
         const start = lineData.start || lineData[0];
@@ -1666,6 +1735,8 @@ export function ComprehensiveMeasurementOverlay({
       (label as any).data = { type: 'label' };
       fabricCanvas.add(label);
     });
+    
+    console.groupEnd();
   };
 
   const drawPerimeter = () => {
@@ -2224,6 +2295,38 @@ export function ComprehensiveMeasurementOverlay({
       {/* Canvas */}
       <div className="border border-border rounded-lg overflow-hidden bg-muted relative">
         <canvas ref={canvasRef} />
+        
+        {/* Coordinate Diagnostics Panel (Development Only) */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="absolute top-2 left-2 bg-black/80 text-white text-xs p-3 rounded max-w-md space-y-1 font-mono z-50">
+            <div className="font-bold text-yellow-400 mb-2">🔍 COORDINATE DIAGNOSTICS</div>
+            <div><strong>Satellite Center:</strong> {centerLat.toFixed(6)}, {centerLng.toFixed(6)}</div>
+            <div><strong>Verified Address:</strong> {verifiedAddressLat?.toFixed(6) || 'N/A'}, {verifiedAddressLng?.toFixed(6) || 'N/A'}</div>
+            <div><strong>Using Verified:</strong> {verifiedAddressLat ? '✅ Yes' : '❌ No'}</div>
+            <div className="border-t border-gray-600 pt-1 mt-1">
+              <strong>GeoBounds:</strong>
+              <div className="pl-2">
+                Lat: {geoBounds.minLat.toFixed(6)} to {geoBounds.maxLat.toFixed(6)}
+              </div>
+              <div className="pl-2">
+                Lng: {geoBounds.minLng.toFixed(6)} to {geoBounds.maxLng.toFixed(6)}
+              </div>
+              <div className="pl-2">
+                Span: {((geoBounds.maxLat - geoBounds.minLat) * 111320).toFixed(1)}m × {((geoBounds.maxLng - geoBounds.minLng) * 111320 * Math.cos(centerLat * Math.PI / 180)).toFixed(1)}m
+              </div>
+            </div>
+            <div className="border-t border-gray-600 pt-1 mt-1">
+              <strong>Ridge Lines:</strong> {(tags['ridge_lines'] || []).length}
+              {' | '}
+              <strong>Hips:</strong> {(tags['hip_lines'] || []).length}
+              {' | '}
+              <strong>Valleys:</strong> {(tags['valley_lines'] || []).length}
+            </div>
+            <div className="text-yellow-300 text-[10px] mt-2">
+              💡 Check browser console for detailed coordinate logs
+            </div>
+          </div>
+        )}
         
         {/* Measurement Summary HUD */}
         <div className="absolute top-4 right-4 bg-background/95 backdrop-blur-sm border rounded-lg shadow-lg z-10 min-w-[200px]">
