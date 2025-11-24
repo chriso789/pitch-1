@@ -199,6 +199,27 @@ export function RidgeLineVisualizer({
           (circle as any).customType = 'linear-feature';
           canvas.add(circle);
         });
+
+        // Label for hip
+        const midPoint = points[Math.floor(points.length / 2)];
+        const lengthLabel = hip.length_ft 
+          ? `${Math.round(hip.length_ft)} ft` 
+          : 'Hip';
+        
+        const label = new Text(lengthLabel, {
+          left: midPoint.x,
+          top: midPoint.y - 20,
+          fontSize: 12,
+          fill: '#ffffff',
+          backgroundColor: '#3b82f6',
+          padding: 4,
+          originX: 'center',
+          originY: 'center',
+          selectable: false,
+          evented: false,
+        });
+        (label as any).customType = 'linear-feature';
+        canvas.add(label);
       });
     }
 
@@ -245,6 +266,27 @@ export function RidgeLineVisualizer({
           (circle as any).customType = 'linear-feature';
           canvas.add(circle);
         });
+
+        // Label for valley
+        const midPoint = points[Math.floor(points.length / 2)];
+        const lengthLabel = valley.length_ft 
+          ? `${Math.round(valley.length_ft)} ft` 
+          : 'Valley';
+        
+        const label = new Text(lengthLabel, {
+          left: midPoint.x,
+          top: midPoint.y - 20,
+          fontSize: 12,
+          fill: '#ffffff',
+          backgroundColor: '#ef4444',
+          padding: 4,
+          originX: 'center',
+          originY: 'center',
+          selectable: false,
+          evented: false,
+        });
+        (label as any).customType = 'linear-feature';
+        canvas.add(label);
       });
     }
 
