@@ -56,6 +56,10 @@ export function MeasurementHistoryDialog({
   const [history, setHistory] = useState<HistoryRecord[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedVersions, setSelectedVersions] = useState<[number, number] | null>(null);
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  
+  const VERSIONS_PER_PAGE = 10; // Pagination: load 10 versions at a time
 
   useEffect(() => {
     if (open) {
@@ -63,19 +67,24 @@ export function MeasurementHistoryDialog({
     }
   }, [open, measurementId]);
 
-  const fetchHistory = async () => {
+  const fetchHistory = async (loadMore = false) => {
     setLoading(true);
     try {
-      // Query measurements with proper version ordering and related data
-      const { data, error } = await supabase
+      const currentPage = loadMore ? page + 1 : 1;
+      const from = (currentPage - 1) * VERSIONS_PER_PAGE;
+      const to = from + VERSIONS_PER_PAGE - 1;
+      
+      // Query measurements with pagination
+      const { data, error, count } = await supabase
         .from('measurements')
         .select(`
           *,
           created_by_profile:created_by(first_name, last_name),
           supersedes_measurement:supersedes(version)
-        `)
+        `, { count: 'exact' })
         .eq('property_id', currentMeasurement.property_id)
-        .order('version', { ascending: false });
+        .order('version', { ascending: false })
+        .range(from, to);
 
       if (error) throw error;
       
@@ -102,7 +111,18 @@ export function MeasurementHistoryDialog({
         supersedes_version: m.supersedes_measurement?.version || undefined,
       }));
       
-      setHistory(historyRecords);
+      // Append or replace history based on loadMore flag
+      if (loadMore) {
+        setHistory(prev => [...prev, ...historyRecords]);
+        setPage(currentPage);
+      } else {
+        setHistory(historyRecords);
+        setPage(1);
+      }
+      
+      // Check if there are more versions to load
+      const totalVersions = count || 0;
+      setHasMore(historyRecords.length + (loadMore ? history.length : 0) < totalVersions);
     } catch (error: any) {
       console.error('Error fetching history:', error);
       toast.error('Failed to load measurement history');
@@ -425,6 +445,19 @@ export function MeasurementHistoryDialog({
                       </div>
                     </Card>
                   ))}
+                </div>
+              )}
+              
+              {/* Load More Button */}
+              {hasMore && !loading && history.length > 0 && (
+                <div className="text-center pt-4">
+                  <Button
+                    variant="outline"
+                    onClick={() => fetchHistory(true)}
+                    disabled={loading}
+                  >
+                    Load More Versions
+                  </Button>
                 </div>
               )}
             </ScrollArea>

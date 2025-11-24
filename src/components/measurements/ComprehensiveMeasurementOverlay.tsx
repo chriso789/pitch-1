@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { Canvas as FabricCanvas, Line, Polygon, Circle, Text as FabricText, FabricObject, FabricImage } from "fabric";
+import { useEffect, useRef, useState, useCallback } from "react";
+import { Canvas as FabricCanvas, Line, Polygon, Circle, Text as FabricText, FabricObject, FabricImage, Point as FabricPoint } from "fabric";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Move, Mountain, Triangle, ArrowDownUp, Square, Trash2, RotateCcw, Eye, EyeOff, MapPin, StickyNote, AlertTriangle, Scissors, Merge, ChevronDown, ChevronUp, Grid3x3 } from "lucide-react";
@@ -17,6 +17,11 @@ import { useImageCache } from "@/contexts/ImageCacheContext";
 import { snapToEdge } from "@/utils/measurementGeometry";
 import { EnhancedFacetPropertiesPanel } from "./EnhancedFacetPropertiesPanel";
 import { LinePropertiesPanel } from "./LinePropertiesPanel";
+import { useTabletControls } from "@/hooks/useTabletControls";
+import { useHapticFeedback } from "@/hooks/useHapticFeedback";
+import { validateMeasurement, ValidationResult } from "@/utils/measurementValidation";
+import { ValidationErrorDialog } from "./ValidationErrorDialog";
+import { featureFlags } from "@/config/featureFlags";
 import * as turf from '@turf/turf';
 
 interface Point {
@@ -118,10 +123,37 @@ export function ComprehensiveMeasurementOverlay({
   
   // Use global image cache
   const imageCache = useImageCache();
+  
+  // Validation state
+  const [showValidationDialog, setShowValidationDialog] = useState(false);
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+  
+  // Mobile/tablet optimization hooks
+  const { vibrate } = useHapticFeedback();
+  const [currentZoom, setCurrentZoom] = useState(1);
 
   // Auto-save with database persistence
   const handleAutoSave = async () => {
-    if (!propertyId || !measurement) return;
+    if (!propertyId || !measurement || !hasUnsavedChanges) return;
+    
+    // Validate before auto-save if validation is enabled
+    if (featureFlags.ENABLE_MEASUREMENT_VALIDATION) {
+      const validation = validateMeasurement(measurement);
+      
+      // Block save if strict validation is enabled and there are errors
+      if (featureFlags.ENABLE_STRICT_VALIDATION && !validation.isValid) {
+        console.warn('⚠️ Auto-save blocked due to validation errors:', validation.errors);
+        toast.error('Cannot auto-save: measurement has validation errors');
+        setValidationResult(validation);
+        setShowValidationDialog(true);
+        return;
+      }
+      
+      // Log warnings but allow save
+      if (validation.warnings.length > 0) {
+        console.warn('⚠️ Auto-save with warnings:', validation.warnings);
+      }
+    }
     
     try {
       const { saveMeasurementWithOfflineSupport } = await import('@/services/offlineMeasurementSync');
@@ -144,6 +176,11 @@ export function ComprehensiveMeasurementOverlay({
       
       setHasUnsavedChanges(false);
       setLastSaveTime(Date.now());
+      
+      // Haptic feedback on successful save
+      if (featureFlags.ENABLE_HAPTIC_FEEDBACK) {
+        vibrate('light');
+      }
       
       toast.success('Measurements auto-saved');
     } catch (error) {
@@ -177,6 +214,46 @@ export function ComprehensiveMeasurementOverlay({
   useEffect(() => {
     setHasUnsavedChanges(true);
   }, [measurement, tags]);
+  
+  // Tablet touch controls (pinch-to-zoom, two-finger pan, long-press)
+  useTabletControls({
+    canvas: fabricCanvas,
+    enabled: featureFlags.ENABLE_TABLET_TOUCH_CONTROLS,
+    onPinchZoom: (zoom, point) => {
+      if (!fabricCanvas) return;
+      setCurrentZoom(zoom);
+      fabricCanvas.zoomToPoint(new FabricPoint(point.x, point.y), zoom);
+      fabricCanvas.renderAll();
+      
+      if (featureFlags.ENABLE_HAPTIC_FEEDBACK) {
+        vibrate('light');
+      }
+    },
+    onTwoFingerPan: (deltaX, deltaY) => {
+      if (!fabricCanvas) return;
+      const vpt = fabricCanvas.viewportTransform;
+      if (vpt) {
+        vpt[4] += deltaX;
+        vpt[5] += deltaY;
+        fabricCanvas.requestRenderAll();
+      }
+    },
+    onLongPress: (x, y, target) => {
+      if (!target) return;
+      
+      // Show context menu for facets
+      if (target.get('type') === 'polygon') {
+        console.log('🖐️ Long press on facet:', target);
+        toast.info('Facet selected - use properties panel');
+        
+        if (featureFlags.ENABLE_HAPTIC_FEEDBACK) {
+          vibrate('medium');
+        }
+      }
+    },
+    minZoom: 0.5,
+    maxZoom: 3,
+  });
 
   // Push to undo stack helper
   const pushToUndoStack = () => {
@@ -1978,6 +2055,24 @@ export function ComprehensiveMeasurementOverlay({
           onChangeType={handleChangeLineType}
           onDelete={handleDeleteLine}
           onClose={() => setSelectedLineData(null)}
+        />
+      )}
+      
+      {/* Validation Error Dialog */}
+      {validationResult && (
+        <ValidationErrorDialog
+          open={showValidationDialog}
+          onOpenChange={setShowValidationDialog}
+          validationResult={validationResult}
+          canContinue={!featureFlags.ENABLE_STRICT_VALIDATION}
+          onContinueAnyway={() => {
+            setShowValidationDialog(false);
+            handleAutoSave();
+          }}
+          onFixErrors={() => {
+            setShowValidationDialog(false);
+            toast.info('Review and fix the highlighted errors');
+          }}
         />
       )}
     </div>
