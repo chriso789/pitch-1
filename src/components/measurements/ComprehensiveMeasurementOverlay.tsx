@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Canvas as FabricCanvas, Line, Polygon, Circle, Text as FabricText, FabricObject, FabricImage } from "fabric";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Move, Mountain, Triangle, ArrowDownUp, Square, Trash2, RotateCcw, Eye, EyeOff, MapPin, StickyNote, AlertTriangle, Scissors, Merge } from "lucide-react";
+import { Move, Mountain, Triangle, ArrowDownUp, Square, Trash2, RotateCcw, Eye, EyeOff, MapPin, StickyNote, AlertTriangle, Scissors, Merge, ChevronDown, ChevronUp, Grid3x3 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -39,6 +39,18 @@ interface ComprehensiveMeasurementOverlayProps {
 }
 
 type EditMode = 'select' | 'add-ridge' | 'add-hip' | 'add-valley' | 'add-facet' | 'delete' | 'add-marker' | 'add-note' | 'add-damage' | 'split-facet' | 'merge-facets';
+
+// Color palette for distinct facet colors
+const FACET_COLOR_PALETTE = [
+  '#3b82f6', // blue
+  '#10b981', // green
+  '#f59e0b', // amber
+  '#ef4444', // red
+  '#8b5cf6', // purple
+  '#ec4899', // pink
+  '#06b6d4', // cyan
+  '#f97316', // orange
+];
 
 interface Annotation {
   id: string;
@@ -87,6 +99,10 @@ export function ComprehensiveMeasurementOverlay({
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
   
+  // UI state
+  const [showSummaryHUD, setShowSummaryHUD] = useState(true);
+  const [showGrid, setShowGrid] = useState(false);
+  
   // Store original data for reset
   const originalDataRef = useRef({ measurement, tags });
   
@@ -122,6 +138,67 @@ export function ComprehensiveMeasurementOverlay({
   useEffect(() => {
     setHasUnsavedChanges(true);
   }, [measurement, tags]);
+
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Ignore if typing in input field
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+      
+      switch(e.key.toLowerCase()) {
+        case 's':
+          if (!e.ctrlKey && !e.metaKey) {
+            setEditMode('select');
+            toast.success('Select mode activated');
+          }
+          break;
+        case 'r':
+          setEditMode('add-ridge');
+          toast.success('Add ridge mode');
+          break;
+        case 'h':
+          setEditMode('add-hip');
+          toast.success('Add hip mode');
+          break;
+        case 'v':
+          setEditMode('add-valley');
+          toast.success('Add valley mode');
+          break;
+        case 'delete':
+        case 'backspace':
+          if (selectedFacetIndex !== null) {
+            const faces = [...(measurement.faces || [])];
+            faces.splice(selectedFacetIndex, 1);
+            const updatedMeasurement = { ...measurement, faces };
+            setHasChanges(true);
+            onMeasurementUpdate(updatedMeasurement, tags);
+            toast.success("Deleted roof facet");
+            setSelectedFacetIndex(null);
+          } else if (selectedLineData) {
+            handleDeleteLine(selectedLineData.type, selectedLineData.index);
+          }
+          break;
+        case 'escape':
+          setEditMode('select');
+          setDrawPoints([]);
+          setSplitPoints([]);
+          setSelectedFacets([]);
+          toast.info('Cancelled operation');
+          break;
+      }
+      
+      // Save (Ctrl+S)
+      if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        toast.success('Auto-save active - changes saved automatically');
+      }
+    };
+    
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [editMode, selectedFacetIndex, selectedLineData, measurement, tags, onMeasurementUpdate]);
 
   // Load and cache satellite image with LRU eviction
   useEffect(() => {
@@ -359,6 +436,11 @@ export function ComprehensiveMeasurementOverlay({
   const drawAllMeasurements = () => {
     if (!fabricCanvas) return;
 
+    // Draw grid overlay if enabled
+    if (showGrid) {
+      drawGrid();
+    }
+
     // Draw roof facets
     if (layers.facets && measurement?.faces) {
       drawRoofFacets();
@@ -392,8 +474,45 @@ export function ComprehensiveMeasurementOverlay({
     // Draw compass rose (north arrow)
     drawCompass();
 
+    // Draw scale bar
+    drawScaleBar();
+
     // Draw aggregate facet annotations
     drawAggregateFacetAnnotations();
+  };
+
+  const drawGrid = () => {
+    if (!fabricCanvas) return;
+    
+    const gridSpacing = 50; // pixels (represents ~10 feet)
+    
+    // Vertical lines
+    for (let x = 0; x < canvasWidth; x += gridSpacing) {
+      const line = new Line([x, 0, x, canvasHeight], {
+        stroke: 'hsl(var(--muted-foreground))',
+        strokeWidth: 1,
+        opacity: 0.2,
+        strokeDashArray: [5, 5],
+        selectable: false,
+        evented: false,
+      });
+      (line as any).data = { type: 'grid' };
+      fabricCanvas.add(line);
+    }
+    
+    // Horizontal lines
+    for (let y = 0; y < canvasHeight; y += gridSpacing) {
+      const line = new Line([0, y, canvasWidth, y], {
+        stroke: 'hsl(var(--muted-foreground))',
+        strokeWidth: 1,
+        opacity: 0.2,
+        strokeDashArray: [5, 5],
+        selectable: false,
+        evented: false,
+      });
+      (line as any).data = { type: 'grid' };
+      fabricCanvas.add(line);
+    }
   };
 
   const drawCompass = () => {
@@ -473,6 +592,51 @@ export function ComprehensiveMeasurementOverlay({
     });
   };
 
+  const drawScaleBar = () => {
+    if (!fabricCanvas) return;
+    
+    const scaleLength = 100; // pixels representing 30 feet
+    const x = 20;
+    const y = canvasHeight - 40;
+    
+    // Scale line
+    const line = new Line([x, y, x + scaleLength, y], {
+      stroke: 'hsl(var(--foreground))',
+      strokeWidth: 3,
+      selectable: false,
+      evented: false,
+    });
+    (line as any).data = { type: 'scale-bar' };
+    fabricCanvas.add(line);
+    
+    // Tick marks and labels
+    [0, 10, 20, 30].forEach((ft, i) => {
+      const tickX = x + (i * scaleLength / 3);
+      const tick = new Line([tickX, y - 5, tickX, y + 5], {
+        stroke: 'hsl(var(--foreground))',
+        strokeWidth: 2,
+        selectable: false,
+        evented: false,
+      });
+      (tick as any).data = { type: 'scale-bar' };
+      fabricCanvas.add(tick);
+      
+      const label = new FabricText(`${ft} ft`, {
+        left: tickX,
+        top: y + 10,
+        fontSize: 10,
+        fill: 'hsl(var(--foreground))',
+        backgroundColor: 'rgba(0,0,0,0.6)',
+        padding: 2,
+        originX: 'center',
+        selectable: false,
+        evented: false,
+      });
+      (label as any).data = { type: 'scale-bar' };
+      fabricCanvas.add(label);
+    });
+  };
+
   const drawAggregateFacetAnnotations = () => {
     if (!fabricCanvas || !measurement?.faces) return;
 
@@ -535,16 +699,18 @@ export function ComprehensiveMeasurementOverlay({
         y: coord[1] * canvasHeight,
       }));
 
+      const color = face.color || FACET_COLOR_PALETTE[index % FACET_COLOR_PALETTE.length];
+      const label = face.label || `Facet ${index + 1}`;
+
       const polygon = new Polygon(points, {
-        fill: `hsl(${(index * 60) % 360}, 50%, 50%, 0.2)`,
-        stroke: `hsl(${(index * 60) % 360}, 70%, 60%)`,
+        fill: `${color}33`, // 20% opacity
+        stroke: color,
         strokeWidth: 2,
         selectable: editMode === 'select',
         hasControls: true,
         hasBorders: true,
         cornerSize: 12,
-        cornerColor: 'white',
-        cornerStrokeColor: `hsl(${(index * 60) % 360}, 70%, 60%)`,
+        cornerColor: '#3b82f6',
         transparentCorners: false,
         lockRotation: true,
         lockScalingX: false,
@@ -552,6 +718,27 @@ export function ComprehensiveMeasurementOverlay({
       });
 
       (polygon as any).data = { type: 'facet', editable: true, faceIndex: index };
+      
+      // Hover effects
+      polygon.on('mouseover', () => {
+        if (editMode === 'select') {
+          polygon.set({ 
+            fill: `${color}59`, // 35% opacity
+            strokeWidth: 3,
+            shadow: { color: '#3b82f6', blur: 8, offsetX: 0, offsetY: 0 }
+          });
+          fabricCanvas.renderAll();
+        }
+      });
+
+      polygon.on('mouseout', () => {
+        polygon.set({ 
+          fill: `${color}33`, // 20% opacity
+          strokeWidth: 2,
+          shadow: undefined,
+        });
+        fabricCanvas.renderAll();
+      });
       
       // Enable interactive corner dragging
       if (editMode === 'select') {
@@ -561,21 +748,38 @@ export function ComprehensiveMeasurementOverlay({
       
       fabricCanvas.add(polygon);
 
-      // Add area label
+      // Add facet label at center
       const center = getPolygonCenter(points);
       const area = face.area || 0;
-      const label = new FabricText(`${area.toFixed(1)} sq ft`, {
+      const facetLabel = new FabricText(label, {
         left: center.x,
-        top: center.y,
-        fontSize: 12,
+        top: center.y - 10,
+        fontSize: 14,
         fill: 'white',
-        backgroundColor: 'rgba(0,0,0,0.6)',
+        fontWeight: 'bold',
+        backgroundColor: color,
+        padding: 4,
         originX: 'center',
         originY: 'center',
         selectable: false,
       });
-      (label as any).data = { type: 'label' };
-      fabricCanvas.add(label);
+      (facetLabel as any).data = { type: 'facet-label' };
+      fabricCanvas.add(facetLabel);
+
+      // Add area label below
+      const areaLabel = new FabricText(`${area.toFixed(1)} sq ft`, {
+        left: center.x,
+        top: center.y + 5,
+        fontSize: 12,
+        fill: 'white',
+        backgroundColor: 'rgba(0,0,0,0.7)',
+        padding: 2,
+        originX: 'center',
+        originY: 'center',
+        selectable: false,
+      });
+      (areaLabel as any).data = { type: 'label' };
+      fabricCanvas.add(areaLabel);
     });
   };
 
@@ -1365,6 +1569,10 @@ export function ComprehensiveMeasurementOverlay({
     }
   };
 
+  const getTotalArea = () => {
+    return measurement?.faces?.reduce((sum: number, face: any) => sum + (face.area || 0), 0) || 0;
+  };
+
   return (
     <div className="space-y-3">
       {/* Toolbar */}
@@ -1464,9 +1672,18 @@ export function ComprehensiveMeasurementOverlay({
           </Button>
         </div>
         
-        <Button size="sm" variant="outline" onClick={handleReset} disabled={!hasChanges}>
-          <RotateCcw className="h-4 w-4 mr-1" /> Reset
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            size="sm" 
+            variant={showGrid ? 'default' : 'outline'}
+            onClick={() => setShowGrid(!showGrid)}
+          >
+            <Grid3x3 className="h-4 w-4 mr-1" /> Grid
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleReset} disabled={!hasChanges}>
+            <RotateCcw className="h-4 w-4 mr-1" /> Reset
+          </Button>
+        </div>
       </div>
       
       {/* Layer toggles */}
@@ -1488,6 +1705,50 @@ export function ComprehensiveMeasurementOverlay({
       <div className="border border-border rounded-lg overflow-hidden bg-muted relative">
         <canvas ref={canvasRef} />
         
+        {/* Measurement Summary HUD */}
+        <div className="absolute top-4 right-4 bg-background/95 backdrop-blur-sm border rounded-lg shadow-lg z-10 min-w-[200px]">
+          <div className="flex items-center justify-between p-3 border-b">
+            <h3 className="text-sm font-semibold">Summary</h3>
+            <Button 
+              size="sm" 
+              variant="ghost" 
+              onClick={() => setShowSummaryHUD(!showSummaryHUD)}
+              className="h-6 w-6 p-0"
+            >
+              {showSummaryHUD ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+            </Button>
+          </div>
+          
+          {showSummaryHUD && (
+            <div className="p-3 space-y-1 text-xs">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Total Area:</span>
+                <span className="font-semibold">{getTotalArea().toFixed(0)} sq ft</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Squares:</span>
+                <span className="font-semibold">{(getTotalArea() / 100).toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Ridge:</span>
+                <span className="font-semibold">{(tags['lf.ridge'] || 0).toFixed(0)} ft</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Hip:</span>
+                <span className="font-semibold">{(tags['lf.hip'] || 0).toFixed(0)} ft</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Valley:</span>
+                <span className="font-semibold">{(tags['lf.valley'] || 0).toFixed(0)} ft</span>
+              </div>
+              <div className="flex justify-between border-t pt-1 mt-1">
+                <span className="text-muted-foreground">Facets:</span>
+                <span className="font-semibold">{measurement?.faces?.length || 0}</span>
+              </div>
+            </div>
+          )}
+        </div>
+        
         {/* Mode indicator */}
         <div className="absolute top-2 left-2">
           <Badge variant="default">
@@ -1495,15 +1756,24 @@ export function ComprehensiveMeasurementOverlay({
           </Badge>
         </div>
         
-        {hasChanges && (
-          <div className="absolute top-2 right-2">
-            <Badge variant="secondary">Modified</Badge>
+        {/* Auto-save status */}
+        {hasUnsavedChanges && (
+          <div className="absolute top-2 left-1/2 -translate-x-1/2">
+            <Badge variant="secondary">Unsaved Changes</Badge>
           </div>
         )}
         
         {/* Instructions */}
-        <div className="absolute bottom-2 right-2 bg-background/90 p-2 rounded text-xs max-w-xs">
+        <div className="absolute bottom-2 right-2 bg-background/90 backdrop-blur-sm p-2 rounded text-xs max-w-xs">
+          <div className="mb-1 font-semibold">Instructions:</div>
           {getModeInstructions(editMode)}
+          <div className="mt-2 pt-2 border-t border-border/50">
+            <div className="text-[10px] text-muted-foreground space-y-0.5">
+              <div><kbd className="px-1 bg-muted rounded">S</kbd> Select</div>
+              <div><kbd className="px-1 bg-muted rounded">R</kbd> Ridge <kbd className="px-1 bg-muted rounded">H</kbd> Hip <kbd className="px-1 bg-muted rounded">V</kbd> Valley</div>
+              <div><kbd className="px-1 bg-muted rounded">Del</kbd> Delete <kbd className="px-1 bg-muted rounded">Esc</kbd> Cancel</div>
+            </div>
+          </div>
         </div>
       </div>
       
