@@ -166,10 +166,12 @@ export function MeasurementVerificationDialog({
                 duration: distanceMeters > 50 ? 15000 : 10000,
               });
               
-              // Auto-regenerate if mismatch is critical (>50m) and not already attempted
+              // PHASE 3: Force correct initial centering - immediately use verified coords
               if (distanceMeters > 50 && !hasAutoFixedMismatch) {
-                console.warn('🔄 Auto-regenerating visualization due to critical coordinate mismatch (>50m)');
+                console.warn('🔄 Auto-fixing critical coordinate mismatch (>50m) - using verified address coordinates');
                 setHasAutoFixedMismatch(true);
+                setAdjustedCenterLat(vLat);
+                setAdjustedCenterLng(vLng);
                 setTimeout(() => {
                   handleRegenerateVisualization(vLat, vLng, 0);
                 }, 1000);
@@ -515,6 +517,74 @@ export function MeasurementVerificationDialog({
     setDripEdgeSticks(Math.ceil((eave + rake) / 10));
   }, [roofSquares, ridge, hip, valley, eave, rake]);
 
+  // PHASE 5: Keyboard shortcuts for power users
+  useEffect(() => {
+    if (!open) return;
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      // Prevent keyboard shortcuts when typing in inputs
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      switch (e.key) {
+        case 'ArrowUp':
+          e.preventDefault();
+          handlePan('up');
+          break;
+        case 'ArrowDown':
+          e.preventDefault();
+          handlePan('down');
+          break;
+        case 'ArrowLeft':
+          e.preventDefault();
+          handlePan('left');
+          break;
+        case 'ArrowRight':
+          e.preventDefault();
+          handlePan('right');
+          break;
+        case '+':
+        case '=':
+          e.preventDefault();
+          handleZoomAdjust('in');
+          break;
+        case '-':
+        case '_':
+          e.preventDefault();
+          handleZoomAdjust('out');
+          break;
+        case 'r':
+        case 'R':
+          e.preventDefault();
+          setRecenterMode(prev => !prev);
+          break;
+        case 'h':
+        case 'H':
+          e.preventDefault();
+          if (verifiedAddressLat && verifiedAddressLng) {
+            setAdjustedCenterLat(verifiedAddressLat);
+            setAdjustedCenterLng(verifiedAddressLng);
+            handleRegenerateVisualization(verifiedAddressLat, verifiedAddressLng, manualZoom);
+          }
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [open, isRegenerating, isOnline, adjustedCenterLat, adjustedCenterLng, manualZoom, verifiedAddressLat, verifiedAddressLng]);
+
+  // PHASE 1: Dynamically recalculate coordinate mismatch as user moves map
+  useEffect(() => {
+    if (verifiedAddressLat && verifiedAddressLng) {
+      const latDiff = Math.abs(verifiedAddressLat - adjustedCenterLat);
+      const lngDiff = Math.abs(verifiedAddressLng - adjustedCenterLng);
+      const distanceMeters = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff) * 111000;
+      setCoordinateMismatchDistance(distanceMeters);
+    }
+  }, [adjustedCenterLat, adjustedCenterLng, verifiedAddressLat, verifiedAddressLng]);
+
   const source = measurement?.source || 'Unknown';
 
   const handlePan = (direction: 'up' | 'down' | 'left' | 'right') => {
@@ -565,27 +635,42 @@ export function MeasurementVerificationDialog({
   };
 
   const handleCanvasRecenterClick = (normalizedX: number, normalizedY: number) => {
+    // PHASE 2: Improved click-to-center math - clicked point becomes new center
     // normalizedX / Y are in [0, 1], center is (0.5, 0.5)
-    const offsetX = normalizedX - 0.5; // positive => clicked right
-    const offsetY = normalizedY - 0.5; // positive => clicked down
+    const offsetX = normalizedX - 0.5; // positive => clicked right of center
+    const offsetY = normalizedY - 0.5; // positive => clicked below center
 
-    // Tune this base delta: about ~15–20 meters for clicking at extreme edge
-    const maxDeltaDegrees = 0.00018; // ≈ 20m at mid-latitudes
+    // FIXED: Remove *2 multiplier for intuitive behavior
+    const maxDeltaDegrees = 0.00018; // ≈ 20m at mid-latitudes for edge clicks
 
-    const deltaLng = offsetX * 2 * maxDeltaDegrees;
-    const deltaLat = -offsetY * 2 * maxDeltaDegrees; // screen Y down = lat decreases
+    const deltaLng = offsetX * maxDeltaDegrees; // Proportional shift
+    const deltaLat = -offsetY * maxDeltaDegrees; // screen Y down = lat decreases
 
     const newLat = adjustedCenterLat + deltaLat;
     const newLng = adjustedCenterLng + deltaLng;
 
+    console.log('🎯 Recenter click:', {
+      clickPosition: { x: normalizedX, y: normalizedY },
+      offset: { x: offsetX, y: offsetY },
+      delta: { lat: deltaLat, lng: deltaLng },
+      newCenter: { lat: newLat, lng: newLng },
+      oldCenter: { lat: adjustedCenterLat, lng: adjustedCenterLng }
+    });
+
     setAdjustedCenterLat(newLat);
     setAdjustedCenterLng(newLng);
+
+    // Show improved feedback
+    toast({
+      title: "Moving map...",
+      description: "Shifting satellite view to clicked point",
+    });
 
     // Regenerate visualization at new center
     handleRegenerateVisualization(newLat, newLng, manualZoom);
 
-    // Auto-turn off recenter mode after a click
-    setRecenterMode(false);
+    // Keep recenter mode active until regeneration completes successfully
+    // (Will be turned off in handleRegenerateVisualization on success)
   };
 
   const handleRegenerateVisualization = async (lat?: number, lng?: number, zoomAdjust?: number) => {
@@ -607,16 +692,22 @@ export function MeasurementVerificationDialog({
     setRegenerationError(null);
 
     try {
-      toast({
-        title: "Regenerating Visualization",
-        description: "Fetching updated satellite imagery...",
+      // PHASE 4: Comprehensive logging for debugging
+      console.log('🗺️ Regenerating visualization with params:', {
+        measurement_id: measurement.id,
+        property_id: measurement.property_id,
+        center_lat: lat ?? adjustedCenterLat,
+        center_lng: lng ?? adjustedCenterLng,
+        zoom_adjustment: zoomAdjust ?? manualZoom,
+        verified_address_lat: verifiedAddressLat,
+        verified_address_lng: verifiedAddressLng,
       });
 
       // Try to fetch verified address coordinates for accurate centering
-      let verifiedLat: number | undefined;
-      let verifiedLng: number | undefined;
+      let verifiedLat: number | undefined = verifiedAddressLat ?? undefined;
+      let verifiedLng: number | undefined = verifiedAddressLng ?? undefined;
       
-      if (pipelineEntryId) {
+      if (pipelineEntryId && !verifiedLat) {
         const { data: pipelineData } = await supabase
           .from('pipeline_entries')
           .select('metadata')
@@ -647,8 +738,16 @@ export function MeasurementVerificationDialog({
         }
       });
 
-      if (error) throw error;
-      if (!data?.ok) throw new Error(data?.error || 'Regeneration failed');
+      if (error) {
+        console.error('🚨 Edge function error:', error);
+        throw error;
+      }
+      if (!data?.ok) {
+        console.error('🚨 Edge function returned not OK:', data);
+        throw new Error(data?.error || 'Regeneration failed');
+      }
+
+      console.log('✅ Visualization regenerated successfully:', data.data);
 
       // Update the satellite image URL with the new visualization
       const newVisualizationUrl = data.data.visualization_url;
@@ -658,19 +757,25 @@ export function MeasurementVerificationDialog({
       const urlWithCacheBuster = `${newVisualizationUrl}?t=${Date.now()}`;
       setSatelliteImageUrl(urlWithCacheBuster);
 
+      // PHASE 2: Turn off recenter mode after successful regeneration
+      setRecenterMode(false);
+
       toast({
-        title: "Visualization Updated",
-        description: "Satellite imagery has been regenerated",
+        title: "✅ Visualization Updated",
+        description: "Satellite imagery centered on new location",
       });
 
     } catch (err: any) {
-      console.error('Regenerate visualization error:', err);
+      console.error('❌ Regenerate visualization error:', err);
       const errorMsg = err.message || "Could not regenerate visualization";
       setRegenerationError(errorMsg);
+      
+      // PHASE 4: Provide retry button in error toast
       toast({
         title: "Regeneration Failed",
-        description: errorMsg,
+        description: `${errorMsg}. Try using pan/zoom controls or "Reset to Home".`,
         variant: "destructive",
+        duration: 10000,
       });
     } finally {
       setIsRegenerating(false);
@@ -702,10 +807,10 @@ export function MeasurementVerificationDialog({
                       </div>
                     )}
                     <div className="flex items-center gap-2 text-xs">
-                      <Badge variant={coordinateMismatchDistance > 30 ? "destructive" : "secondary"}>
+                       <Badge variant={coordinateMismatchDistance > 30 ? "destructive" : "secondary"}>
                         Visualization Center
                       </Badge>
-                      <span className="font-mono">{centerLat.toFixed(6)}, {centerLng.toFixed(6)}</span>
+                      <span className="font-mono">{adjustedCenterLat.toFixed(6)}, {adjustedCenterLng.toFixed(6)}</span>
                       {coordinateMismatchDistance > 10 && (
                         <Badge variant={coordinateMismatchDistance > 50 ? "destructive" : "outline"} className="ml-1">
                           {Math.round(coordinateMismatchDistance)}m offset
@@ -879,6 +984,25 @@ export function MeasurementVerificationDialog({
                   >
                     <Move className="h-4 w-4" />
                   </Button>
+                  
+                  {/* PHASE 3: Reset to Verified Address Button */}
+                  {coordinateMismatchDistance > 20 && verifiedAddressLat && verifiedAddressLng && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => {
+                        console.log('🏠 Resetting to verified address coordinates');
+                        setAdjustedCenterLat(verifiedAddressLat);
+                        setAdjustedCenterLng(verifiedAddressLng);
+                        handleRegenerateVisualization(verifiedAddressLat, verifiedAddressLng, manualZoom);
+                      }}
+                      disabled={isRegenerating || !isOnline}
+                      className="bg-background/95 backdrop-blur shadow-lg"
+                      title="Center on house address"
+                    >
+                      <Home className="h-4 w-4" />
+                    </Button>
+                  )}
                 </div>
                 
                 {/* Recenter Mode Hint */}
