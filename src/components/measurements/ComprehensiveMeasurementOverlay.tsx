@@ -36,6 +36,9 @@ interface ComprehensiveMeasurementOverlayProps {
   canvasHeight?: number;
   recenterMode?: boolean;
   onRecenterClick?: (normalizedX: number, normalizedY: number) => void;
+  measurementId?: string;
+  propertyId?: string;
+  pipelineEntryId?: string;
 }
 
 type EditMode = 'select' | 'add-ridge' | 'add-hip' | 'add-valley' | 'add-facet' | 'delete' | 'add-marker' | 'add-note' | 'add-damage' | 'split-facet' | 'merge-facets';
@@ -72,6 +75,9 @@ export function ComprehensiveMeasurementOverlay({
   canvasHeight = 480,
   recenterMode = false,
   onRecenterClick,
+  measurementId,
+  propertyId,
+  pipelineEntryId,
 }: ComprehensiveMeasurementOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
@@ -103,15 +109,52 @@ export function ComprehensiveMeasurementOverlay({
   const [showSummaryHUD, setShowSummaryHUD] = useState(true);
   const [showGrid, setShowGrid] = useState(false);
   
+  // Undo/Redo stacks
+  const undoStack = useRef<Array<{ measurement: any; tags: any }>>([]);
+  const redoStack = useRef<Array<{ measurement: any; tags: any }>>([]);
+  
   // Store original data for reset
   const originalDataRef = useRef({ measurement, tags });
   
   // Use global image cache
   const imageCache = useImageCache();
 
+  // Auto-save with database persistence
+  const handleAutoSave = async () => {
+    if (!propertyId || !measurement) return;
+    
+    try {
+      const { saveMeasurementWithOfflineSupport } = await import('@/services/offlineMeasurementSync');
+      
+      await saveMeasurementWithOfflineSupport({
+        measurementId: measurementId || '',
+        propertyId,
+        facets: measurement.faces || [],
+        linearFeatures: measurement.linear_features || [],
+        summary: measurement.summary || {
+          total_area_sqft: 0,
+          total_squares: 0,
+          waste_pct: 10,
+          pitch: '6/12',
+          perimeter: 0,
+          stories: 1,
+        },
+        metadata: tags,
+      });
+      
+      setHasUnsavedChanges(false);
+      setLastSaveTime(Date.now());
+      
+      toast.success('Measurements auto-saved');
+    } catch (error) {
+      console.error('Auto-save failed:', error);
+      toast.error('Failed to auto-save measurements');
+    }
+  };
+
   // Auto-save effect
   useEffect(() => {
-    if (!hasUnsavedChanges) return;
+    if (!hasUnsavedChanges || !propertyId) return;
     
     // Clear existing timer
     if (saveTimerRef.current) {
@@ -120,11 +163,7 @@ export function ComprehensiveMeasurementOverlay({
     
     // Set new timer for 30 seconds
     saveTimerRef.current = setTimeout(() => {
-      console.log('Auto-saving measurements...');
-      setHasUnsavedChanges(false);
-      setLastSaveTime(Date.now());
-      
-      toast.success('Measurements auto-saved');
+      handleAutoSave();
     }, 30000); // 30 seconds
     
     return () => {
@@ -132,12 +171,64 @@ export function ComprehensiveMeasurementOverlay({
         clearTimeout(saveTimerRef.current);
       }
     };
-  }, [hasUnsavedChanges]);
+  }, [hasUnsavedChanges, propertyId, measurement, tags]);
 
   // Mark changes as unsaved whenever measurement updates
   useEffect(() => {
     setHasUnsavedChanges(true);
   }, [measurement, tags]);
+
+  // Push to undo stack helper
+  const pushToUndoStack = () => {
+    undoStack.current.push({
+      measurement: JSON.parse(JSON.stringify(measurement)),
+      tags: JSON.parse(JSON.stringify(tags)),
+    });
+    redoStack.current = []; // Clear redo on new action
+    
+    // Limit stack size
+    if (undoStack.current.length > 50) {
+      undoStack.current.shift();
+    }
+  };
+
+  const handleUndo = () => {
+    if (undoStack.current.length === 0) {
+      toast.info('Nothing to undo');
+      return;
+    }
+    
+    // Push current state to redo
+    redoStack.current.push({
+      measurement: JSON.parse(JSON.stringify(measurement)),
+      tags: JSON.parse(JSON.stringify(tags)),
+    });
+    
+    // Pop from undo
+    const previousState = undoStack.current.pop()!;
+    onMeasurementUpdate(previousState.measurement, previousState.tags);
+    
+    toast.success('Undid last change');
+  };
+
+  const handleRedo = () => {
+    if (redoStack.current.length === 0) {
+      toast.info('Nothing to redo');
+      return;
+    }
+    
+    // Push current to undo
+    undoStack.current.push({
+      measurement: JSON.parse(JSON.stringify(measurement)),
+      tags: JSON.parse(JSON.stringify(tags)),
+    });
+    
+    // Pop from redo
+    const nextState = redoStack.current.pop()!;
+    onMeasurementUpdate(nextState.measurement, nextState.tags);
+    
+    toast.success('Redid change');
+  };
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -187,6 +278,16 @@ export function ComprehensiveMeasurementOverlay({
           setSelectedFacets([]);
           toast.info('Cancelled operation');
           break;
+      }
+      
+      // Undo/Redo (Ctrl+Z / Ctrl+Shift+Z)
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        handleUndo();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key === 'z' && e.shiftKey) {
+        e.preventDefault();
+        handleRedo();
       }
       
       // Save (Ctrl+S)
@@ -1292,10 +1393,12 @@ export function ComprehensiveMeasurementOverlay({
   };
 
   const addNewLine = (type: 'ridge' | 'hip' | 'valley', line: { start: Point; end: Point }) => {
+    pushToUndoStack(); // Save undo state before change
+    
     const normalizedStart = [line.start.x / canvasWidth, line.start.y / canvasHeight];
     const normalizedEnd = [line.end.x / canvasWidth, line.end.y / canvasHeight];
     const length = calculateLineLength(normalizedStart, normalizedEnd);
-
+    
     const lineKey = `${type}_lines`;
     const lfKey = `lf.${type}`;
     
@@ -1316,6 +1419,8 @@ export function ComprehensiveMeasurementOverlay({
   };
 
   const addNewFacet = (points: Point[]) => {
+    pushToUndoStack(); // Save undo state before change
+    
     const normalizedPoints = points.map(p => [p.x / canvasWidth, p.y / canvasHeight]);
     const area = calculatePolygonArea(normalizedPoints);
 
@@ -1460,6 +1565,8 @@ export function ComprehensiveMeasurementOverlay({
   const handleDeleteObject = (target: FabricObject) => {
     const targetData = (target as any).data;
     if (!targetData?.editable) return;
+
+    pushToUndoStack(); // Save undo state before delete
 
     const { type, lineIndex, faceIndex, annotationIndex } = targetData;
 
