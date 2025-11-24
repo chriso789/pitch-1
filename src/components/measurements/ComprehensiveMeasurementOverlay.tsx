@@ -24,6 +24,18 @@ import { ValidationErrorDialog } from "./ValidationErrorDialog";
 import { featureFlags } from "@/config/featureFlags";
 import * as turf from '@turf/turf';
 
+// Debounce utility for performance optimization
+function debounce<T extends (...args: any[]) => any>(
+  func: T,
+  wait: number
+): (...args: Parameters<T>) => void {
+  let timeout: NodeJS.Timeout | null = null;
+  return function(...args: Parameters<T>) {
+    if (timeout) clearTimeout(timeout);
+    timeout = setTimeout(() => func(...args), wait);
+  };
+}
+
 interface Point {
   x: number;
   y: number;
@@ -975,7 +987,7 @@ export function ComprehensiveMeasurementOverlay({
       // Enable interactive corner dragging
       if (editMode === 'select') {
         polygon.on('modified', () => handleFacetModified(polygon, index));
-        polygon.on('moving', () => handleFacetModified(polygon, index));
+        // Removed 'moving' event to prevent excessive recalculation during drag
       }
       
       fabricCanvas.add(polygon);
@@ -1010,62 +1022,75 @@ export function ComprehensiveMeasurementOverlay({
         originY: 'center',
         selectable: false,
       });
-      (areaLabel as any).data = { type: 'label' };
+      (areaLabel as any).data = { type: 'label', faceIndex: index };
       fabricCanvas.add(areaLabel);
     });
   };
 
+  // Phase 2: Incremental label update function
+  const updateFacetLabel = useCallback((faceIndex: number, areaSqft: number) => {
+    if (!fabricCanvas) return;
+    
+    // Find the area label for this facet
+    const objects = fabricCanvas.getObjects();
+    const areaLabel = objects.find(obj => {
+      const data = (obj as any).data;
+      return data?.type === 'label' && data?.faceIndex === faceIndex;
+    });
+    
+    if (areaLabel && areaLabel instanceof FabricText) {
+      areaLabel.set('text', `${areaSqft.toFixed(1)} sq ft`);
+      fabricCanvas.renderAll();
+    }
+  }, [fabricCanvas]);
+
+  // Phase 1: Debounced recalculation function (300ms delay)
+  const debouncedRecalculation = useCallback(
+    debounce((polygon: Polygon, faceIndex: number) => {
+      const points = polygon.points;
+      if (!points || points.length < 3) return;
+
+      // Normalize coordinates back to 0-1 range
+      const normalizedPoints = points.map((p: any) => [
+        p.x / canvasWidth,
+        p.y / canvasHeight
+      ]);
+
+      // Calculate new area using Turf.js
+      const closedPoints = [...normalizedPoints, normalizedPoints[0]];
+      const turfPolygon = turf.polygon([closedPoints]);
+      const areaMeters = turf.area(turfPolygon);
+      const areaSqft = areaMeters * 10.7639; // Convert m² to ft²
+
+      // Update the face in measurement data
+      const updatedFaces = [...measurement.faces];
+      updatedFaces[faceIndex] = {
+        ...updatedFaces[faceIndex],
+        boundary: normalizedPoints,
+        area: areaSqft,
+        plan_area_sqft: areaSqft,
+      };
+
+      const updatedMeasurement = {
+        ...measurement,
+        faces: updatedFaces,
+      };
+
+      setHasChanges(true);
+      onMeasurementUpdate(updatedMeasurement, tags);
+      
+      // Update only the affected facet label (no full redraw)
+      updateFacetLabel(faceIndex, areaSqft);
+      
+      // Show toast only after debounce completes (drag ended)
+      toast.success(`Facet ${faceIndex + 1}: ${Math.round(areaSqft).toLocaleString()} sq ft`);
+    }, 300),
+    [measurement, tags, canvasWidth, canvasHeight, updateFacetLabel]
+  );
+
   const handleFacetModified = (polygon: Polygon, faceIndex: number) => {
-    // Get updated points from the polygon
-    const points = polygon.points;
-    if (!points || points.length < 3) return;
-
-    // Normalize coordinates back to 0-1 range
-    const normalizedPoints = points.map((p: any) => [
-      p.x / canvasWidth,
-      p.y / canvasHeight
-    ]);
-
-    // Calculate new area using Turf.js
-    const closedPoints = [...normalizedPoints, normalizedPoints[0]];
-    const turfPolygon = turf.polygon([closedPoints]);
-    const areaMeters = turf.area(turfPolygon);
-    const areaSqft = areaMeters * 10.7639; // Convert m² to ft²
-
-    // Update the face in measurement data
-    const updatedFaces = [...measurement.faces];
-    updatedFaces[faceIndex] = {
-      ...updatedFaces[faceIndex],
-      boundary: normalizedPoints,
-      area: areaSqft,
-      plan_area_sqft: areaSqft,
-    };
-
-    const updatedMeasurement = {
-      ...measurement,
-      faces: updatedFaces,
-    };
-
-    setHasChanges(true);
-    onMeasurementUpdate(updatedMeasurement, tags);
-    
-    // Show live area update toast
-    toast.success(`Facet ${faceIndex + 1} updated: ${Math.round(areaSqft).toLocaleString()} sq ft`);
-    
-    // Redraw to show updated label
-    setTimeout(() => {
-      if (fabricCanvas) {
-        const objects = fabricCanvas.getObjects();
-        objects.forEach(obj => {
-          const objData = (obj as any).data;
-          if (objData?.type !== 'background') {
-            fabricCanvas.remove(obj);
-          }
-        });
-        drawAllMeasurements();
-        fabricCanvas.renderAll();
-      }
-    }, 100);
+    // Trigger debounced recalculation (waits 300ms after drag ends)
+    debouncedRecalculation(polygon, faceIndex);
   };
 
   const handleSplitFacetClick = (point: Point) => {
