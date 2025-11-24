@@ -1611,9 +1611,15 @@ export function ComprehensiveMeasurementOverlay({
 
     console.group(`🎨 DIAGNOSTIC: Drawing ${type.toUpperCase()} Lines (${lines.length} total)`);
 
-    const proximityThreshold = 50; // meters
+    const proximityThreshold = 100; // meters - INCREASED for debugging
     const centerLatitude = verifiedAddressLat || centerLat;
     const centerLongitude = verifiedAddressLng || centerLng;
+
+    console.log(`📍 Reference Center: ${centerLatitude.toFixed(6)}, ${centerLongitude.toFixed(6)}`);
+    console.log(`📏 Proximity Threshold: ${proximityThreshold}m`);
+
+    let renderedCount = 0;
+    let filteredCount = 0;
 
     lines.forEach((lineData: any, index: number) => {
       let startPoint: Point;
@@ -1654,7 +1660,8 @@ export function ComprehensiveMeasurementOverlay({
         
         // Skip lines that are too far from target building
         if (distance >= proximityThreshold) {
-          console.log(`  ⛔ FILTERED OUT - too far from target`);
+          console.log(`  ⛔ FILTERED OUT - distance ${distance.toFixed(1)}m exceeds ${proximityThreshold}m threshold`);
+          filteredCount++;
           return;
         }
         
@@ -1666,7 +1673,8 @@ export function ComprehensiveMeasurementOverlay({
           end: { x: endPoint.x.toFixed(1), y: endPoint.y.toFixed(1) },
           canvasSize: { width: canvasWidth, height: canvasHeight }
         });
-        console.log('  ✅ Line rendered on canvas');
+        console.log('  ✅ PASSED proximity check - will render');
+        renderedCount++;
       } else {
         // Fallback to normalized coordinates (legacy format)
         const start = lineData.start || lineData[0];
@@ -1735,6 +1743,19 @@ export function ComprehensiveMeasurementOverlay({
       (label as any).data = { type: 'label' };
       fabricCanvas.add(label);
     });
+    
+    // Summary logging
+    console.log(`\n📊 SUMMARY for ${type.toUpperCase()}:`);
+    console.log(`   Total lines: ${lines.length}`);
+    console.log(`   Rendered: ${renderedCount} ✅`);
+    console.log(`   Filtered: ${filteredCount} ⛔`);
+    
+    // FALLBACK: If all features were filtered out but we have data, warn and consider disabling filter
+    if (renderedCount === 0 && lines.length > 0) {
+      console.error(`\n🚨 CRITICAL: All ${lines.length} ${type} lines were filtered out!`);
+      console.error(`   This suggests proximity filtering is too strict or coordinates are misaligned.`);
+      console.error(`   Consider: increasing threshold, checking satellite center coords, or disabling proximity filter.`);
+    }
     
     console.groupEnd();
   };
@@ -2316,14 +2337,14 @@ export function ComprehensiveMeasurementOverlay({
               </div>
             </div>
             <div className="border-t border-gray-600 pt-1 mt-1">
-              <strong>Ridge Lines:</strong> {(tags['ridge_lines'] || []).length}
+              <strong>Ridge Lines:</strong> {(tags['ridge_lines'] || []).length} total
               {' | '}
-              <strong>Hips:</strong> {(tags['hip_lines'] || []).length}
+              <strong>Hips:</strong> {(tags['hip_lines'] || []).length} total
               {' | '}
-              <strong>Valleys:</strong> {(tags['valley_lines'] || []).length}
+              <strong>Valleys:</strong> {(tags['valley_lines'] || []).length} total
             </div>
             <div className="text-yellow-300 text-[10px] mt-2">
-              💡 Check browser console for detailed coordinate logs
+              💡 Check browser console for detailed coordinate logs & filtering results
             </div>
           </div>
         )}
