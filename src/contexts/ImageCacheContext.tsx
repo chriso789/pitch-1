@@ -12,7 +12,11 @@ interface ImageCacheContextType {
 const ImageCacheContext = createContext<ImageCacheContextType | undefined>(undefined);
 
 export function ImageCacheProvider({ children }: { children: ReactNode }) {
-  const imageCache = useLRUImageCache({ maxSize: 10 });
+  // Increase cache size to 50 images for production
+  // Average satellite image ~1MB = ~50MB total memory
+  const imageCache = useLRUImageCache({ 
+    maxSize: 50,
+  });
 
   return (
     <ImageCacheContext.Provider value={imageCache}>
