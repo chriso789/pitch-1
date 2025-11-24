@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Canvas as FabricCanvas, Line, Polygon, Circle, Text as FabricText, FabricObject, FabricImage } from "fabric";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Move, Mountain, Triangle, ArrowDownUp, Square, Trash2, RotateCcw, Eye, EyeOff, MapPin, StickyNote, AlertTriangle } from "lucide-react";
+import { Move, Mountain, Triangle, ArrowDownUp, Square, Trash2, RotateCcw, Eye, EyeOff, MapPin, StickyNote, AlertTriangle, Scissors, Merge } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -15,6 +15,7 @@ import {
 import { toast } from "sonner";
 import { useImageCache } from "@/contexts/ImageCacheContext";
 import { snapToEdge } from "@/utils/measurementGeometry";
+import { EnhancedFacetPropertiesPanel } from "./EnhancedFacetPropertiesPanel";
 import * as turf from '@turf/turf';
 
 interface Point {
@@ -36,7 +37,7 @@ interface ComprehensiveMeasurementOverlayProps {
   onRecenterClick?: (normalizedX: number, normalizedY: number) => void;
 }
 
-type EditMode = 'select' | 'add-ridge' | 'add-hip' | 'add-valley' | 'add-facet' | 'delete' | 'add-marker' | 'add-note' | 'add-damage';
+type EditMode = 'select' | 'add-ridge' | 'add-hip' | 'add-valley' | 'add-facet' | 'delete' | 'add-marker' | 'add-note' | 'add-damage' | 'split-facet' | 'merge-facets';
 
 interface Annotation {
   id: string;
@@ -75,6 +76,9 @@ export function ComprehensiveMeasurementOverlay({
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [pendingAnnotation, setPendingAnnotation] = useState<{ position: Point; type: 'note' | 'damage' } | null>(null);
   const [noteText, setNoteText] = useState('');
+  const [selectedFacetIndex, setSelectedFacetIndex] = useState<number | null>(null);
+  const [selectedFacets, setSelectedFacets] = useState<number[]>([]);
+  const [splitPoints, setSplitPoints] = useState<Point[]>([]);
   
   // Store original data for reset
   const originalDataRef = useRef({ measurement, tags });
@@ -208,15 +212,47 @@ export function ComprehensiveMeasurementOverlay({
       } else if (editMode === 'add-damage') {
         setPendingAnnotation({ position: point, type: 'damage' });
         setNoteDialogOpen(true);
+      } else if (editMode === 'split-facet') {
+        handleSplitFacetClick(point);
       }
     };
+
+    const handleObjectSelection = (event: any) => {
+      const target = event.selected?.[0];
+      const targetData = (target as any)?.data;
+      
+      if (targetData?.type === 'facet' && targetData?.faceIndex !== undefined) {
+        if (editMode === 'merge-facets') {
+          // Multi-select for merging
+          if (selectedFacets.includes(targetData.faceIndex)) {
+            setSelectedFacets(prev => prev.filter(i => i !== targetData.faceIndex));
+          } else {
+            setSelectedFacets(prev => [...prev, targetData.faceIndex]);
+          }
+        } else {
+          // Single select for properties panel
+          setSelectedFacetIndex(targetData.faceIndex);
+        }
+      }
+    };
+
+    fabricCanvas.on('selection:created', handleObjectSelection);
+    fabricCanvas.on('selection:updated', handleObjectSelection);
+    fabricCanvas.on('selection:cleared', () => {
+      if (editMode !== 'merge-facets') {
+        setSelectedFacetIndex(null);
+      }
+    });
 
     fabricCanvas.on('mouse:down', handleMouseDown);
 
     return () => {
       fabricCanvas.off('mouse:down', handleMouseDown);
+      fabricCanvas.off('selection:created', handleObjectSelection);
+      fabricCanvas.off('selection:updated', handleObjectSelection);
+      fabricCanvas.off('selection:cleared');
     };
-  }, [fabricCanvas, editMode, drawPoints, recenterMode, onRecenterClick, canvasWidth, canvasHeight]);
+  }, [fabricCanvas, editMode, drawPoints, recenterMode, onRecenterClick, canvasWidth, canvasHeight, selectedFacets]);
 
   const drawAllMeasurements = () => {
     if (!fabricCanvas) return;
@@ -453,11 +489,10 @@ export function ComprehensiveMeasurementOverlay({
     ]);
 
     // Calculate new area using Turf.js
-    const turfPolygon = turf.polygon([[...normalizedPoints.map((p: number[]) => [p[0], p[1]]), normalizedPoints[0]]]);
-    const areaInDegrees = turf.area(turfPolygon);
-    
-    // Convert to square feet (approximate, depends on location)
-    const areaSqft = areaInDegrees * 10763910.4; // 1 degree^2 ≈ 10.76M sq ft at equator
+    const closedPoints = [...normalizedPoints, normalizedPoints[0]];
+    const turfPolygon = turf.polygon([closedPoints]);
+    const areaMeters = turf.area(turfPolygon);
+    const areaSqft = areaMeters * 10.7639; // Convert m² to ft²
 
     // Update the face in measurement data
     const updatedFaces = [...measurement.faces];
@@ -476,6 +511,9 @@ export function ComprehensiveMeasurementOverlay({
     setHasChanges(true);
     onMeasurementUpdate(updatedMeasurement, tags);
     
+    // Show live area update toast
+    toast.success(`Facet ${faceIndex + 1} updated: ${Math.round(areaSqft).toLocaleString()} sq ft`);
+    
     // Redraw to show updated label
     setTimeout(() => {
       if (fabricCanvas) {
@@ -490,6 +528,201 @@ export function ComprehensiveMeasurementOverlay({
         fabricCanvas.renderAll();
       }
     }, 100);
+  };
+
+  const handleSplitFacetClick = (point: Point) => {
+    setSplitPoints(prev => {
+      const newPoints = [...prev, point];
+      
+      // Need 2 points to draw split line
+      if (newPoints.length === 2) {
+        // Draw temporary line
+        const line = new Line([newPoints[0].x, newPoints[0].y, newPoints[1].x, newPoints[1].y], {
+          stroke: 'yellow',
+          strokeWidth: 3,
+          strokeDashArray: [5, 5],
+          selectable: false,
+        });
+        (line as any).data = { type: 'temp-split-line' };
+        fabricCanvas?.add(line);
+        fabricCanvas?.renderAll();
+        
+        // Execute split
+        setTimeout(() => handleExecuteSplit(newPoints[0], newPoints[1]), 100);
+        return [];
+      }
+      
+      // Draw temporary point
+      const circle = new Circle({
+        left: point.x,
+        top: point.y,
+        radius: 5,
+        fill: 'yellow',
+        originX: 'center',
+        originY: 'center',
+        selectable: false,
+      });
+      (circle as any).data = { type: 'temp-split-point' };
+      fabricCanvas?.add(circle);
+      fabricCanvas?.renderAll();
+      
+      return newPoints;
+    });
+  };
+
+  const handleExecuteSplit = (start: Point, end: Point) => {
+    // Find which facet the split line intersects
+    const target = fabricCanvas?.findTarget({ clientX: (start.x + end.x) / 2, clientY: (start.y + end.y) / 2 } as any);
+    const targetData = (target as any)?.data;
+    
+    if (!targetData || targetData.type !== 'facet') {
+      toast.error('Split line must cross a facet');
+      // Clean up temp objects
+      fabricCanvas?.getObjects().forEach(obj => {
+        const objData = (obj as any).data;
+        if (objData?.type?.startsWith('temp-')) {
+          fabricCanvas?.remove(obj);
+        }
+      });
+      fabricCanvas?.renderAll();
+      return;
+    }
+    
+    const faceIndex = targetData.faceIndex;
+    const face = measurement.faces[faceIndex];
+    
+    // Convert points to normalized coordinates
+    const normalizedStart: [number, number] = [start.x / canvasWidth, start.y / canvasHeight];
+    const normalizedEnd: [number, number] = [end.x / canvasWidth, end.y / canvasHeight];
+    
+    // Import splitPolygonByLine from utils
+    const { splitPolygonByLine } = require('@/utils/polygonSplitting');
+    const result = splitPolygonByLine(face.boundary, { start: normalizedStart, end: normalizedEnd });
+    
+    if (!result) {
+      toast.error('Invalid split line - must intersect facet at exactly 2 points');
+      fabricCanvas?.getObjects().forEach(obj => {
+        const objData = (obj as any).data;
+        if (objData?.type?.startsWith('temp-')) {
+          fabricCanvas?.remove(obj);
+        }
+      });
+      fabricCanvas?.renderAll();
+      return;
+    }
+    
+    // Calculate areas for new facets
+    const { calculatePolygonArea } = require('@/utils/polygonSplitting');
+    const area1 = calculatePolygonArea(result.facet1);
+    const area2 = calculatePolygonArea(result.facet2);
+    
+    // Create two new facets
+    const updatedFaces = [...measurement.faces];
+    updatedFaces[faceIndex] = {
+      ...face,
+      boundary: result.facet1,
+      area: area1,
+      plan_area_sqft: area1,
+    };
+    
+    // Add new facet
+    updatedFaces.push({
+      ...face,
+      boundary: result.facet2,
+      area: area2,
+      plan_area_sqft: area2,
+    });
+    
+    const updatedMeasurement = {
+      ...measurement,
+      faces: updatedFaces,
+    };
+    
+    setHasChanges(true);
+    onMeasurementUpdate(updatedMeasurement, tags);
+    
+    toast.success(`Facet split into 2 planes: ${Math.round(area1)} sq ft + ${Math.round(area2)} sq ft`);
+    
+    // Clean up temp objects and redraw
+    fabricCanvas?.getObjects().forEach(obj => {
+      const objData = (obj as any).data;
+      if (objData?.type?.startsWith('temp-')) {
+        fabricCanvas?.remove(obj);
+      }
+    });
+    
+    // Reset mode
+    setEditMode('select');
+    setSplitPoints([]);
+  };
+
+  const handleMergeFacets = () => {
+    if (selectedFacets.length < 2) {
+      toast.error('Select at least 2 facets to merge');
+      return;
+    }
+    
+    // Get facets to merge
+    const facets = selectedFacets.map(index => measurement.faces[index]);
+    
+    // Merge all selected facets
+    let mergedPoints: [number, number][] = [];
+    let totalArea = 0;
+    
+    facets.forEach(face => {
+      mergedPoints = [...mergedPoints, ...face.boundary];
+      totalArea += face.area || 0;
+    });
+    
+    // Remove duplicates
+    const uniquePoints = mergedPoints.filter((point, index, self) => {
+      return index === self.findIndex(p => 
+        Math.abs(p[0] - point[0]) < 0.001 && Math.abs(p[1] - point[1]) < 0.001
+      );
+    });
+    
+    // Keep properties from first facet
+    const firstFacet = facets[0];
+    
+    // Create merged facet
+    const mergedFacet = {
+      ...firstFacet,
+      boundary: uniquePoints,
+      area: totalArea,
+      plan_area_sqft: totalArea,
+    };
+    
+    // Remove merged facets and add new one
+    const updatedFaces = measurement.faces.filter((_, index) => !selectedFacets.includes(index));
+    updatedFaces.push(mergedFacet);
+    
+    const updatedMeasurement = {
+      ...measurement,
+      faces: updatedFaces,
+    };
+    
+    setHasChanges(true);
+    onMeasurementUpdate(updatedMeasurement, tags);
+    setSelectedFacets([]);
+    setEditMode('select');
+    
+    toast.success(`${selectedFacets.length} facets merged: ${Math.round(totalArea).toLocaleString()} sq ft`);
+  };
+
+  const handleUpdateFacetProperties = (faceIndex: number, updates: Partial<any>) => {
+    const updatedFaces = [...measurement.faces];
+    updatedFaces[faceIndex] = {
+      ...updatedFaces[faceIndex],
+      ...updates,
+    };
+    
+    const updatedMeasurement = {
+      ...measurement,
+      faces: updatedFaces,
+    };
+    
+    setHasChanges(true);
+    onMeasurementUpdate(updatedMeasurement, tags);
   };
 
   const drawFeatureLines = (type: string, lines: any[], color: string) => {
@@ -931,7 +1164,11 @@ export function ComprehensiveMeasurementOverlay({
   const getModeInstructions = (mode: EditMode): string => {
     switch (mode) {
       case 'select':
-        return 'Click and drag objects to move them. Use handles to resize.';
+        return 'Click and drag facet corners to adjust. Select objects to view properties.';
+      case 'split-facet':
+        return 'Click 2 points across a facet to split it into two planes.';
+      case 'merge-facets':
+        return 'Select 2+ facets then click "Merge Selected" to combine them.';
       case 'add-ridge':
         return 'Click to place start point, then click again for end point.';
       case 'add-hip':
@@ -993,6 +1230,35 @@ export function ComprehensiveMeasurementOverlay({
           >
             <Square className="h-4 w-4 mr-1" /> Facet
           </Button>
+          <Button 
+            size="sm" 
+            variant={editMode === 'split-facet' ? 'default' : 'outline'} 
+            onClick={() => {
+              setEditMode('split-facet');
+              setSplitPoints([]);
+            }}
+          >
+            <Scissors className="h-4 w-4 mr-1" /> Split
+          </Button>
+          <Button 
+            size="sm" 
+            variant={editMode === 'merge-facets' ? 'default' : 'outline'} 
+            onClick={() => {
+              setEditMode('merge-facets');
+              setSelectedFacets([]);
+            }}
+          >
+            <Merge className="h-4 w-4 mr-1" /> Merge
+          </Button>
+          {editMode === 'merge-facets' && selectedFacets.length >= 2 && (
+            <Button 
+              size="sm" 
+              variant="default" 
+              onClick={handleMergeFacets}
+            >
+              Merge Selected ({selectedFacets.length})
+            </Button>
+          )}
           <Button 
             size="sm" 
             variant={editMode === 'add-marker' ? 'default' : 'outline'} 
@@ -1140,6 +1406,16 @@ export function ComprehensiveMeasurementOverlay({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Facet Properties Panel */}
+      {selectedFacetIndex !== null && measurement?.faces?.[selectedFacetIndex] && editMode === 'select' && (
+        <EnhancedFacetPropertiesPanel
+          facet={measurement.faces[selectedFacetIndex]}
+          facetIndex={selectedFacetIndex}
+          onUpdateFacet={handleUpdateFacetProperties}
+          onClose={() => setSelectedFacetIndex(null)}
+        />
+      )}
     </div>
   );
 }
