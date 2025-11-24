@@ -380,8 +380,8 @@ export function ComprehensiveMeasurementOverlay({
      const latOffsetMeters = (lat - refLat) * 111320; // 1 degree lat ≈ 111.32km
      const lngOffsetMeters = (lng - refLng) * 111320 * Math.cos(refLat * Math.PI / 180);
      
-      // Convert meters to pixels (Google Maps zoom 18 ≈ 2.387m per pixel)
-      const metersPerPixel = 2.387;
+     // Convert meters to pixels (Google Maps zoom 20 ≈ 0.596m per pixel)
+     const metersPerPixel = 0.596;
      const canvasCenterX = canvasWidth / 2;
      const canvasCenterY = canvasHeight / 2;
      

@@ -114,7 +114,7 @@ export function MeasurementVerificationDialog({
             endpoint: 'satellite',
             params: {
               center: `${lat},${lng}`,
-              zoom: '18',
+              zoom: '20',
               size: '1280x1280',
               maptype: 'satellite',
               scale: '2'
