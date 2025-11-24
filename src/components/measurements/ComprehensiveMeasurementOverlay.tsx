@@ -176,7 +176,7 @@ export function ComprehensiveMeasurementOverlay({
     ridges: true,
     hips: true,
     valleys: true,
-    perimeter: true,
+    perimeter: false,  // Disabled: redundant with facet boundaries
     annotations: true,
   });
   const [drawPoints, setDrawPoints] = useState<Point[]>([]);
