@@ -52,9 +52,9 @@ serve(async (req) => {
     const body = await req.json();
     const { measurement_id, property_id, measurement, center_lat, center_lng, verified_address_lat, verified_address_lng } = body;
     
-    // Apply default zoom adjustment for initial pulls (wider view)
+    // Apply default zoom adjustment for initial pulls (tighter birds-eye view)
     const isInitialPull = body.zoom_adjustment === undefined;
-    const defaultZoomAdjustment = isInitialPull ? -2 : 0;
+    const defaultZoomAdjustment = isInitialPull ? -1 : 0;
     const zoom_adjustment = (body.zoom_adjustment || 0) + defaultZoomAdjustment;
 
     if (!MAPBOX_TOKEN) {

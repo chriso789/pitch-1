@@ -6,7 +6,7 @@ import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Home, ArrowRight as ArrowRightIcon, ZoomIn, ZoomOut, Scissors, Info, ChevronDown, Move } from 'lucide-react';
+import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Home, ArrowRight as ArrowRightIcon, ZoomIn, ZoomOut, Scissors, Info, ChevronDown, Move, Maximize2 } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PolygonEditor } from './PolygonEditor';
@@ -123,6 +123,33 @@ export function MeasurementVerificationDialog({
           if (contact?.verified_address?.lat && contact?.verified_address?.lng) {
             vLat = contact.verified_address.lat;
             vLng = contact.verified_address.lng;
+            
+            // Validate verified address against contact coordinates
+            if (contact?.latitude && contact?.longitude) {
+              const latDiff = Math.abs(vLat - contact.latitude);
+              const lngDiff = Math.abs(vLng - contact.longitude);
+              const distanceMeters = Math.sqrt(latDiff * latDiff + lngDiff * lngDiff) * 111000;
+              
+              if (distanceMeters > 100) {
+                console.warn('⚠️ Verified address coordinates significantly different from contact coordinates:', {
+                  verifiedAddress: { lat: vLat, lng: vLng },
+                  contactCoords: { lat: contact.latitude, lng: contact.longitude },
+                  distance: Math.round(distanceMeters) + 'm',
+                  action: 'Using contact coordinates instead'
+                });
+                
+                // Override with contact coordinates
+                vLat = contact.latitude;
+                vLng = contact.longitude;
+                
+                toast({
+                  title: "Coordinate Discrepancy Detected",
+                  description: `Verified address is ${Math.round(distanceMeters)}m from contact coordinates. Using contact coordinates for accuracy.`,
+                  variant: "default",
+                  duration: 8000,
+                });
+              }
+            }
           } 
           // Priority #2: contact.latitude/longitude (legacy fallback)
           else if (contact?.latitude && contact?.longitude) {
@@ -972,6 +999,18 @@ export function MeasurementVerificationDialog({
                       <ZoomOut className="h-4 w-4" />
                     </Button>
                   </div>
+                  
+                  {/* Birds Eye View Button */}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => handleZoomAdjust('in')}
+                    disabled={isRegenerating || !isOnline}
+                    className="bg-background/95 backdrop-blur shadow-lg"
+                    title="Birds eye overhead view"
+                  >
+                    <Maximize2 className="h-4 w-4" />
+                  </Button>
                   
                   {/* Recenter Button */}
                   <Button
