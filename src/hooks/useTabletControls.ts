@@ -145,6 +145,12 @@ export function useTabletControls({
 
     const canvasElement = canvas.lowerCanvasEl;
     
+    // Ensure canvasElement exists before attaching listeners
+    if (!canvasElement) {
+      console.warn('useTabletControls: Canvas element not ready yet');
+      return;
+    }
+    
     canvasElement.addEventListener('touchstart', handleTouchStart, { passive: false });
     canvasElement.addEventListener('touchmove', handleTouchMove, { passive: false });
     canvasElement.addEventListener('touchend', handleTouchEnd);
