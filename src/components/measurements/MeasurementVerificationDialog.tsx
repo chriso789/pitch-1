@@ -903,6 +903,67 @@ export function MeasurementVerificationDialog({
                 </div>
               </div>
               
+              {/* Coordinate Accuracy Panel */}
+              {verifiedAddressLat && verifiedAddressLng && (
+                <div className={`p-3 rounded-lg border ${
+                  coordinateMismatchDistance > 50 
+                    ? 'bg-destructive/10 border-destructive' 
+                    : coordinateMismatchDistance > 30
+                    ? 'bg-yellow-500/10 border-yellow-500'
+                    : 'bg-green-500/10 border-green-500'
+                }`}>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="flex items-center gap-2">
+                      <Satellite className="h-4 w-4" />
+                      <span className="text-sm font-semibold">Coordinate Accuracy</span>
+                    </div>
+                    <Badge variant={
+                      coordinateMismatchDistance > 50 
+                        ? 'destructive' 
+                        : coordinateMismatchDistance > 30
+                        ? 'secondary'
+                        : 'default'
+                    }>
+                      {coordinateMismatchDistance < 10 
+                        ? '✓ Accurate'
+                        : coordinateMismatchDistance < 30
+                        ? 'Good'
+                        : coordinateMismatchDistance < 50
+                        ? '⚠ Offset Detected'
+                        : '⚠ Critical Offset'
+                      }
+                    </Badge>
+                  </div>
+                  <div className="text-xs text-muted-foreground space-y-1">
+                    <div className="flex justify-between">
+                      <span>Distance from verified address:</span>
+                      <span className="font-medium">{Math.round(coordinateMismatchDistance)}m ({Math.round(coordinateMismatchDistance * 3.28084)}ft)</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Source:</span>
+                      <span className="font-medium">Google-verified coordinates</span>
+                    </div>
+                  </div>
+                  {coordinateMismatchDistance > 30 && (
+                    <Button
+                      variant="default"
+                      size="sm"
+                      onClick={() => {
+                        console.log('🔧 Auto-correcting coordinates to verified address');
+                        setAdjustedCenterLat(verifiedAddressLat);
+                        setAdjustedCenterLng(verifiedAddressLng);
+                        handleRegenerateVisualization(verifiedAddressLat, verifiedAddressLng, 0);
+                      }}
+                      disabled={isRegenerating || !isOnline}
+                      className="w-full mt-2"
+                    >
+                      <Home className="h-4 w-4 mr-1.5" />
+                      Auto-Correct to Verified Address
+                    </Button>
+                  )}
+                </div>
+              )}
+              
               {/* Smart Roof Type Detection Display */}
               {detectedRoofType && (
                 <div className="p-3 bg-muted/50 rounded-lg">
