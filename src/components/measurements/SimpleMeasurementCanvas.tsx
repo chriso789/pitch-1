@@ -35,6 +35,18 @@ import { useTouchControls } from '@/hooks/useTouchControls';
 import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 import { offlineManager } from '@/services/offlineManager';
 
+// Color palette for polygons
+const POLYGON_COLORS = [
+  '#3b82f6', // blue
+  '#10b981', // green
+  '#f59e0b', // amber
+  '#ef4444', // red
+  '#8b5cf6', // purple
+  '#ec4899', // pink
+  '#14b8a6', // teal
+  '#f97316', // orange
+];
+
 interface SimpleMeasurementCanvasProps {
   satelliteImageUrl: string;
   propertyId?: string;
@@ -419,20 +431,39 @@ export function SimpleMeasurementCanvas({
   }, [address, centerLat, centerLng, propertyId, zoom, width, height, importBuildingOutline]);
 
   const updateMeasurements = useCallback(() => {
-    const measurements = {
-      polygons: polygons.map(p => ({
-        id: p.id,
-        label: p.label,
-        points: p.points,
-        area: calculatePolygonArea(p.points, pixelsPerFoot),
-        perimeter: calculatePolygonPerimeter(p.points, pixelsPerFoot),
-      })),
-      totalArea: getTotalArea(),
-      facetCount: polygons.length,
+    // Convert polygons to comprehensive measurement format
+    const faces = polygons.map((p, index) => ({
+      id: p.id,
+      label: p.label || `Facet ${index + 1}`,
+      boundary: p.points.map(pt => [pt.x / width, pt.y / height]), // Normalized 0-1
+      area_sqft: calculatePolygonArea(p.points, pixelsPerFoot),
+      plan_area_sqft: calculatePolygonArea(p.points, pixelsPerFoot),
+      perimeter_ft: calculatePolygonPerimeter(p.points, pixelsPerFoot),
+      pitch: '6/12', // default
+      direction: 'N', // default
+      color: p.color || POLYGON_COLORS[index % POLYGON_COLORS.length],
+    }));
+
+    const comprehensiveMeasurement = {
+      faces,
+      linear_features: detectedLinearFeatures || { ridges: [], hips: [], valleys: [] },
+      summary: {
+        total_area_sqft: getTotalArea(),
+        total_squares: getTotalArea() / 100,
+        perimeter_ft: polygons.reduce((sum, p) => sum + calculatePolygonPerimeter(p.points, pixelsPerFoot), 0),
+        facet_count: polygons.length,
+        pitch: '6/12', // default global pitch
+        waste_pct: 10, // default waste
+      },
+      tags: {}, // Will be populated with ridge/hip/valley data
+      buildingFootprint: buildingPolygon,
+      canvasWidth: width,
+      canvasHeight: height,
+      satelliteImageUrl,
     };
     
-    onMeasurementsChange?.(measurements);
-  }, [polygons, pixelsPerFoot, getTotalArea, onMeasurementsChange]);
+    onMeasurementsChange?.(comprehensiveMeasurement);
+  }, [polygons, pixelsPerFoot, getTotalArea, detectedLinearFeatures, buildingPolygon, width, height, satelliteImageUrl, onMeasurementsChange]);
 
   const handleStartDrawing = () => {
     setMode('draw');

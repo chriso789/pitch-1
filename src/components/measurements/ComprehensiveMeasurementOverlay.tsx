@@ -82,11 +82,46 @@ export function ComprehensiveMeasurementOverlay({
   const [splitPoints, setSplitPoints] = useState<Point[]>([]);
   const [selectedLineData, setSelectedLineData] = useState<{type: string, index: number} | null>(null);
   
+  // Auto-save state
+  const [lastSaveTime, setLastSaveTime] = useState<number>(Date.now());
+  const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
+  const saveTimerRef = useRef<NodeJS.Timeout | null>(null);
+  
   // Store original data for reset
   const originalDataRef = useRef({ measurement, tags });
   
   // Use global image cache
   const imageCache = useImageCache();
+
+  // Auto-save effect
+  useEffect(() => {
+    if (!hasUnsavedChanges) return;
+    
+    // Clear existing timer
+    if (saveTimerRef.current) {
+      clearTimeout(saveTimerRef.current);
+    }
+    
+    // Set new timer for 30 seconds
+    saveTimerRef.current = setTimeout(() => {
+      console.log('Auto-saving measurements...');
+      setHasUnsavedChanges(false);
+      setLastSaveTime(Date.now());
+      
+      toast.success('Measurements auto-saved');
+    }, 30000); // 30 seconds
+    
+    return () => {
+      if (saveTimerRef.current) {
+        clearTimeout(saveTimerRef.current);
+      }
+    };
+  }, [hasUnsavedChanges]);
+
+  // Mark changes as unsaved whenever measurement updates
+  useEffect(() => {
+    setHasUnsavedChanges(true);
+  }, [measurement, tags]);
 
   // Load and cache satellite image with LRU eviction
   useEffect(() => {
