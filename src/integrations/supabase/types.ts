@@ -5413,6 +5413,36 @@ export type Database = {
         }
         Relationships: []
       }
+      material_categories: {
+        Row: {
+          code: string
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          order_index: number | null
+        }
+        Insert: {
+          code: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          order_index?: number | null
+        }
+        Update: {
+          code?: string
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          order_index?: number | null
+        }
+        Relationships: []
+      }
       material_costs: {
         Row: {
           brand: string | null
@@ -5478,6 +5508,71 @@ export type Database = {
           waste_factor_percent?: number | null
         }
         Relationships: []
+      }
+      materials: {
+        Row: {
+          active: boolean | null
+          attributes: Json | null
+          base_cost: number | null
+          category_id: string | null
+          code: string
+          coverage_per_unit: number | null
+          created_at: string | null
+          default_markup_pct: number | null
+          description: string | null
+          id: string
+          is_taxable: boolean | null
+          name: string
+          supplier_sku: string | null
+          tags: string[] | null
+          uom: string
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          attributes?: Json | null
+          base_cost?: number | null
+          category_id?: string | null
+          code: string
+          coverage_per_unit?: number | null
+          created_at?: string | null
+          default_markup_pct?: number | null
+          description?: string | null
+          id?: string
+          is_taxable?: boolean | null
+          name: string
+          supplier_sku?: string | null
+          tags?: string[] | null
+          uom?: string
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          attributes?: Json | null
+          base_cost?: number | null
+          category_id?: string | null
+          code?: string
+          coverage_per_unit?: number | null
+          created_at?: string | null
+          default_markup_pct?: number | null
+          description?: string | null
+          id?: string
+          is_taxable?: boolean | null
+          name?: string
+          supplier_sku?: string | null
+          tags?: string[] | null
+          uom?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "materials_category_id_fkey"
+            columns: ["category_id"]
+            isOneToOne: false
+            referencedRelation: "material_categories"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       measure_jobs: {
         Row: {
@@ -11278,6 +11373,92 @@ export type Database = {
         }
         Relationships: []
       }
+      supplier_catalog_items: {
+        Row: {
+          active: boolean | null
+          attributes: Json | null
+          base_price: number | null
+          brand: string | null
+          catalog_id: string | null
+          category: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          model: string | null
+          package_size: string | null
+          price_effective_date: string | null
+          sku: string
+          uom: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          attributes?: Json | null
+          base_price?: number | null
+          brand?: string | null
+          catalog_id?: string | null
+          category?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          model?: string | null
+          package_size?: string | null
+          price_effective_date?: string | null
+          sku: string
+          uom?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          attributes?: Json | null
+          base_price?: number | null
+          brand?: string | null
+          catalog_id?: string | null
+          category?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          model?: string | null
+          package_size?: string | null
+          price_effective_date?: string | null
+          sku?: string
+          uom?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplier_catalog_items_catalog_id_fkey"
+            columns: ["catalog_id"]
+            isOneToOne: false
+            referencedRelation: "supplier_catalogs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      supplier_catalogs: {
+        Row: {
+          active: boolean | null
+          created_at: string | null
+          id: string
+          last_sync_at: string | null
+          region: string | null
+          supplier_name: string
+        }
+        Insert: {
+          active?: boolean | null
+          created_at?: string | null
+          id?: string
+          last_sync_at?: string | null
+          region?: string | null
+          supplier_name: string
+        }
+        Update: {
+          active?: boolean | null
+          created_at?: string | null
+          id?: string
+          last_sync_at?: string | null
+          region?: string | null
+          supplier_name?: string
+        }
+        Relationships: []
+      }
       supplier_price_sync_logs: {
         Row: {
           completed_at: string | null
@@ -13053,6 +13234,10 @@ export type Database = {
         }
         Returns: boolean
       }
+      api_bulk_import_materials: {
+        Args: { p_materials: Json }
+        Returns: number
+      }
       api_capout_refresh: { Args: { p_job_id: string }; Returns: Json }
       api_create_material_order_from_estimate: {
         Args: {
@@ -13121,6 +13306,36 @@ export type Database = {
       api_estimate_status_get: {
         Args: { p_estimate_id: string }
         Returns: Json
+      }
+      api_get_material_categories: {
+        Args: never
+        Returns: {
+          code: string
+          description: string
+          id: string
+          name: string
+          order_index: number
+        }[]
+      }
+      api_get_materials: {
+        Args: never
+        Returns: {
+          active: boolean
+          base_cost: number
+          category_code: string
+          category_id: string
+          category_name: string
+          code: string
+          coverage_per_unit: number
+          default_markup_pct: number
+          description: string
+          id: string
+          is_taxable: boolean
+          name: string
+          supplier_sku: string
+          tags: string[]
+          uom: string
+        }[]
       }
       api_job_budgets_get: {
         Args: { p_job_id: string }
@@ -13248,6 +13463,7 @@ export type Database = {
           precap_id: string
         }[]
       }
+      api_sunniland_catalog_id: { Args: never; Returns: string }
       api_template_get_full: { Args: { p_template_id: string }; Returns: Json }
       api_template_items_get: {
         Args: { p_template_id: string }
@@ -13272,6 +13488,22 @@ export type Database = {
           p_labor: Json
           p_name: string
           p_overhead: Json
+        }
+        Returns: string
+      }
+      api_upsert_material: {
+        Args: {
+          p_attributes?: Json
+          p_base_cost?: number
+          p_category_id?: string
+          p_code: string
+          p_coverage_per_unit?: number
+          p_default_markup_pct?: number
+          p_description?: string
+          p_name: string
+          p_supplier_sku?: string
+          p_tags?: string[]
+          p_uom?: string
         }
         Returns: string
       }
