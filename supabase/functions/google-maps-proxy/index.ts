@@ -9,6 +9,7 @@ const corsHeaders = {
 // Initialize Supabase client for caching
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
 // Generate cache key from satellite image parameters
@@ -124,6 +125,47 @@ serve(async (req) => {
   }
 
   try {
+    // Verify JWT authentication
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Authorization required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Validate user token
+    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    const { data: { user }, error: userError } = await userSupabase.auth.getUser();
+    if (userError || !user) {
+      return new Response(
+        JSON.stringify({ error: 'Invalid or expired token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Check rate limit (100 requests per hour per user)
+    const { data: rateLimit } = await supabase.rpc('check_rate_limit', {
+      p_user_id: user.id,
+      p_resource: 'google_maps_proxy',
+      p_limit: 100,
+      p_window_minutes: 60
+    });
+
+    if (rateLimit && !rateLimit.allowed) {
+      return new Response(
+        JSON.stringify({ 
+          error: 'Rate limit exceeded', 
+          remaining: rateLimit.remaining,
+          limit: rateLimit.limit 
+        }),
+        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const { endpoint, params } = await req.json();
     const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
     
