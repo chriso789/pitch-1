@@ -3,7 +3,6 @@ import { corsHeaders } from '../_shared/cors.ts';
 
 interface ApprovalRequest {
   po_id: string;
-  requested_by?: string;
 }
 
 Deno.serve(async (req) => {
@@ -13,36 +12,107 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // ========== AUTHENTICATION ==========
+    // Extract and verify the authenticated user from JWT
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      console.error('Missing Authorization header');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Authorization header required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Create auth client to verify JWT and get user
+    const supabaseAuth = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    );
+
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    );
+
+    if (authError || !user) {
+      console.error('Auth verification failed:', authError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid or expired authentication token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Use authenticated user ID as the requester - NEVER trust request body
+    const requested_by = user.id;
+    console.log('Authenticated user requesting approval:', requested_by);
+
+    // Service role client for database operations
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { po_id, requested_by }: ApprovalRequest = await req.json();
+    // ========== INPUT VALIDATION ==========
+    const { po_id }: ApprovalRequest = await req.json();
     console.log('Requesting approval for PO:', po_id);
 
     if (!po_id) {
-      throw new Error('Purchase order ID is required');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Purchase order ID is required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // ========== AUTHORIZATION ==========
+    // Get user's profile to verify tenant access
+    const { data: userProfile, error: profileError } = await supabase
+      .from('profiles')
+      .select('id, tenant_id, role')
+      .eq('id', requested_by)
+      .single();
+
+    if (profileError || !userProfile) {
+      console.error('User profile not found:', profileError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'User profile not found' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Get the purchase order details
     const { data: order, error: orderError } = await supabase
       .from('purchase_orders')
-      .select('id, tenant_id, total_amount, status')
+      .select('id, tenant_id, total_amount, status, created_by')
       .eq('id', po_id)
       .single();
 
     if (orderError) throw orderError;
-    if (!order) throw new Error('Purchase order not found');
+    if (!order) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Purchase order not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Verify user belongs to the same tenant as the order
+    if (userProfile.tenant_id !== order.tenant_id) {
+      console.warn(`Cross-tenant approval request attempt by user ${requested_by} for order in tenant ${order.tenant_id}`);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Access denied' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     console.log('Order total:', order.total_amount);
 
     // Check if order is in a valid state for approval
     if (!['draft', 'submitted'].includes(order.status)) {
-      throw new Error(`Order cannot be approved in ${order.status} status`);
+      return new Response(
+        JSON.stringify({ success: false, error: `Order cannot be submitted for approval in ${order.status} status` }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    // Determine approval requirements based on order amount
+    // ========== DETERMINE APPROVAL REQUIREMENTS ==========
     const { data: rules, error: rulesError } = await supabase
       .rpc('determine_approval_requirements', {
         p_tenant_id: order.tenant_id,
@@ -97,10 +167,13 @@ Deno.serve(async (req) => {
       .eq('po_id', po_id);
 
     if (existingApprovals && existingApprovals.length > 0) {
-      throw new Error('Approval request already exists for this order');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Approval request already exists for this order' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
-    // Create approval requests based on rule
+    // ========== CREATE APPROVAL REQUESTS ==========
     const approvers = rule.required_approvers as string[];
     const approvalRecords = [];
 
@@ -125,12 +198,12 @@ Deno.serve(async (req) => {
 
         if (usersWithRole && usersWithRole.length > 0) {
           // Create approval request for each user with the role
-          for (const user of usersWithRole) {
+          for (const roleUser of usersWithRole) {
             approvalRecords.push({
               tenant_id: order.tenant_id,
               po_id,
               rule_id: rule.rule_id,
-              required_approver_id: user.id,
+              required_approver_id: roleUser.id,
               required_approver_role: approver,
               status: 'pending',
               approval_level: i + 1,
@@ -151,7 +224,10 @@ Deno.serve(async (req) => {
     }
 
     if (approvalRecords.length === 0) {
-      throw new Error('No approvers found for the approval rule');
+      return new Response(
+        JSON.stringify({ success: false, error: 'No approvers found for the approval rule' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Insert approval requests
@@ -181,7 +257,7 @@ Deno.serve(async (req) => {
         },
       });
 
-    console.log(`Created ${approvalRecords.length} approval requests`);
+    console.log(`Created ${approvalRecords.length} approval requests by user ${requested_by}`);
 
     return new Response(
       JSON.stringify({

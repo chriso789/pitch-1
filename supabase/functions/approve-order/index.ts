@@ -5,7 +5,6 @@ interface ApprovalAction {
   approval_id: string;
   action: 'approve' | 'reject';
   comments?: string;
-  approver_id: string;
 }
 
 Deno.serve(async (req) => {
@@ -15,22 +14,64 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // ========== AUTHENTICATION ==========
+    // Extract and verify the authenticated user from JWT
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      console.error('Missing Authorization header');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Authorization header required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Create auth client to verify JWT and get user
+    const supabaseAuth = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
+    );
+
+    const { data: { user }, error: authError } = await supabaseAuth.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    );
+
+    if (authError || !user) {
+      console.error('Auth verification failed:', authError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid or expired authentication token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Use authenticated user ID as the approver - NEVER trust request body
+    const approver_id = user.id;
+    console.log('Authenticated user for approval:', approver_id);
+
+    // Service role client for database operations
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { approval_id, action, comments, approver_id }: ApprovalAction = await req.json();
+    // ========== INPUT VALIDATION ==========
+    const { approval_id, action, comments }: ApprovalAction = await req.json();
     console.log('Processing approval action:', { approval_id, action, approver_id });
 
-    if (!approval_id || !action || !approver_id) {
-      throw new Error('Approval ID, action, and approver ID are required');
+    if (!approval_id || !action) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Approval ID and action are required' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     if (!['approve', 'reject'].includes(action)) {
-      throw new Error('Action must be either "approve" or "reject"');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Action must be either "approve" or "reject"' }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
+    // ========== AUTHORIZATION ==========
     // Get the approval record
     const { data: approval, error: approvalError } = await supabase
       .from('purchase_order_approvals')
@@ -39,29 +80,52 @@ Deno.serve(async (req) => {
       .single();
 
     if (approvalError) throw approvalError;
-    if (!approval) throw new Error('Approval request not found');
+    if (!approval) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Approval request not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
-    // Verify the user is authorized to approve
-    if (approval.required_approver_id !== approver_id) {
+    // Verify the authenticated user is authorized to approve
+    // Check 1: Is the user the specific required approver?
+    let isAuthorized = approval.required_approver_id === approver_id;
+
+    // Check 2: Does the user have the required approver role?
+    if (!isAuthorized && approval.required_approver_role) {
       const { data: profile } = await supabase
         .from('profiles')
-        .select('role')
+        .select('role, tenant_id')
         .eq('id', approver_id)
         .single();
 
-      if (!profile || profile.role !== approval.required_approver_role) {
-        throw new Error('User is not authorized to approve this request');
+      if (profile) {
+        // Must be same tenant AND have the required role
+        isAuthorized = profile.tenant_id === approval.purchase_orders.tenant_id &&
+                       profile.role === approval.required_approver_role;
       }
+    }
+
+    if (!isAuthorized) {
+      console.warn(`Unauthorized approval attempt by user ${approver_id} for approval ${approval_id}`);
+      return new Response(
+        JSON.stringify({ success: false, error: 'You are not authorized to approve this request' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     // Check if already responded
     if (approval.status !== 'pending') {
-      throw new Error(`Approval request already ${approval.status}`);
+      return new Response(
+        JSON.stringify({ success: false, error: `Approval request already ${approval.status}` }),
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
     }
 
     const order = approval.purchase_orders;
     const newStatus = action === 'approve' ? 'approved' : 'rejected';
 
+    // ========== PROCESS APPROVAL ==========
     // Update the approval record
     const { error: updateError } = await supabase
       .from('purchase_order_approvals')
@@ -114,7 +178,7 @@ Deno.serve(async (req) => {
         : 'Order rejected';
     }
 
-    // Update order status (trigger will also update it, but we do it explicitly here too)
+    // Update order status
     await supabase
       .from('purchase_orders')
       .update({ status: orderStatus })
@@ -123,6 +187,7 @@ Deno.serve(async (req) => {
     console.log('Approval processed successfully:', {
       po_number: order.po_number,
       action,
+      approver_id,
       new_status: orderStatus,
     });
 

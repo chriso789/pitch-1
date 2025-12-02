@@ -232,10 +232,10 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.request-order-approval]
-verify_jwt = false
+verify_jwt = true
 
 [functions.approve-order]
-verify_jwt = false
+verify_jwt = true
 
 [functions.generate-measurement-visualization]
 verify_jwt = true
