@@ -72,6 +72,7 @@ import PublicReportViewer from "./pages/PublicReportViewer";
 import MeasurementCorrectionPage from "./pages/MeasurementCorrectionPage";
 import MeasurementAnalyticsPage from "./pages/MeasurementAnalyticsPage";
 import SmartTemplateEditorPage from "./pages/SmartTemplateEditorPage";
+import TestRoofMeasurement from "./pages/TestRoofMeasurement";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -192,6 +193,7 @@ const AppContent = () => {
         <Route path="/roof-measure" element={<RoofMeasure />} />
         <Route path="/measurements/:id/corrections" element={<MeasurementCorrectionPage />} />
         <Route path="/measurement-analytics" element={<MeasurementAnalyticsPage />} />
+        <Route path="/test-roof-measurement" element={<TestRoofMeasurement />} />
         <Route path="/templates/smart-editor" element={<SmartTemplateEditorPage />} />
         <Route path="/templates/smart-editor/:templateId" element={<SmartTemplateEditorPage />} />
         
