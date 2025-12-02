@@ -8767,6 +8767,105 @@ export type Database = {
           },
         ]
       }
+      roof_ai_model_performance: {
+        Row: {
+          ai_predicted_area_sqft: number | null
+          ai_predicted_facet_count: number | null
+          ai_predicted_pitch: string | null
+          ai_predicted_squares: number | null
+          api_calls_made: number | null
+          area_accuracy_percent: number | null
+          correction_count: number | null
+          facet_accuracy_percent: number | null
+          final_area_sqft: number | null
+          final_facet_count: number | null
+          final_pitch: string | null
+          final_squares: number | null
+          geographic_region: string | null
+          id: string
+          image_quality_score: number | null
+          linear_accuracy_percent: number | null
+          logged_at: string | null
+          measurement_id: string
+          pitch_accuracy: boolean | null
+          processing_time_seconds: number | null
+          property_type: string | null
+          required_manual_corrections: boolean | null
+          roof_complexity: string | null
+          total_cost_usd: number | null
+          user_satisfaction_rating: number | null
+        }
+        Insert: {
+          ai_predicted_area_sqft?: number | null
+          ai_predicted_facet_count?: number | null
+          ai_predicted_pitch?: string | null
+          ai_predicted_squares?: number | null
+          api_calls_made?: number | null
+          area_accuracy_percent?: number | null
+          correction_count?: number | null
+          facet_accuracy_percent?: number | null
+          final_area_sqft?: number | null
+          final_facet_count?: number | null
+          final_pitch?: string | null
+          final_squares?: number | null
+          geographic_region?: string | null
+          id?: string
+          image_quality_score?: number | null
+          linear_accuracy_percent?: number | null
+          logged_at?: string | null
+          measurement_id: string
+          pitch_accuracy?: boolean | null
+          processing_time_seconds?: number | null
+          property_type?: string | null
+          required_manual_corrections?: boolean | null
+          roof_complexity?: string | null
+          total_cost_usd?: number | null
+          user_satisfaction_rating?: number | null
+        }
+        Update: {
+          ai_predicted_area_sqft?: number | null
+          ai_predicted_facet_count?: number | null
+          ai_predicted_pitch?: string | null
+          ai_predicted_squares?: number | null
+          api_calls_made?: number | null
+          area_accuracy_percent?: number | null
+          correction_count?: number | null
+          facet_accuracy_percent?: number | null
+          final_area_sqft?: number | null
+          final_facet_count?: number | null
+          final_pitch?: string | null
+          final_squares?: number | null
+          geographic_region?: string | null
+          id?: string
+          image_quality_score?: number | null
+          linear_accuracy_percent?: number | null
+          logged_at?: string | null
+          measurement_id?: string
+          pitch_accuracy?: boolean | null
+          processing_time_seconds?: number | null
+          property_type?: string | null
+          required_manual_corrections?: boolean | null
+          roof_complexity?: string | null
+          total_cost_usd?: number | null
+          user_satisfaction_rating?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_ai_model_performance_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roof_ai_model_performance_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       roof_facets: {
         Row: {
           area_sqft: number
@@ -8828,6 +8927,520 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      roof_image_cache: {
+        Row: {
+          access_count: number | null
+          address_hash: string
+          captured_date: string | null
+          created_at: string | null
+          expires_at: string | null
+          gps_coordinates: Json
+          id: string
+          image_data: string | null
+          image_quality_score: number | null
+          image_size: string | null
+          image_source: string
+          image_url: string | null
+          last_accessed_at: string | null
+          zoom_level: number | null
+        }
+        Insert: {
+          access_count?: number | null
+          address_hash: string
+          captured_date?: string | null
+          created_at?: string | null
+          expires_at?: string | null
+          gps_coordinates: Json
+          id?: string
+          image_data?: string | null
+          image_quality_score?: number | null
+          image_size?: string | null
+          image_source: string
+          image_url?: string | null
+          last_accessed_at?: string | null
+          zoom_level?: number | null
+        }
+        Update: {
+          access_count?: number | null
+          address_hash?: string
+          captured_date?: string | null
+          created_at?: string | null
+          expires_at?: string | null
+          gps_coordinates?: Json
+          id?: string
+          image_data?: string | null
+          image_quality_score?: number | null
+          image_size?: string | null
+          image_source?: string
+          image_url?: string | null
+          last_accessed_at?: string | null
+          zoom_level?: number | null
+        }
+        Relationships: []
+      }
+      roof_measurement_corrections: {
+        Row: {
+          corrected_by: string | null
+          corrected_value: Json
+          correction_method: string | null
+          correction_notes: string | null
+          correction_reason: string | null
+          correction_type: string
+          created_at: string | null
+          facet_id: string | null
+          field_name: string
+          id: string
+          measurement_id: string
+          original_value: Json
+          tags: string[] | null
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          corrected_by?: string | null
+          corrected_value: Json
+          correction_method?: string | null
+          correction_notes?: string | null
+          correction_reason?: string | null
+          correction_type: string
+          created_at?: string | null
+          facet_id?: string | null
+          field_name: string
+          id?: string
+          measurement_id: string
+          original_value: Json
+          tags?: string[] | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          corrected_by?: string | null
+          corrected_value?: Json
+          correction_method?: string | null
+          correction_notes?: string | null
+          correction_reason?: string | null
+          correction_type?: string
+          created_at?: string | null
+          facet_id?: string | null
+          field_name?: string
+          id?: string
+          measurement_id?: string
+          original_value?: Json
+          tags?: string[] | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_measurement_corrections_facet_id_fkey"
+            columns: ["facet_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_facets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roof_measurement_corrections_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roof_measurement_corrections_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      roof_measurement_facets: {
+        Row: {
+          adjacent_facet_ids: string[] | null
+          area_adjusted_sqft: number
+          area_flat_sqft: number
+          azimuth_degrees: number | null
+          centroid: Json | null
+          chimney_count: number | null
+          created_at: string | null
+          detection_confidence: number | null
+          eave_length: number | null
+          facet_number: number
+          has_chimney: boolean | null
+          has_skylight: boolean | null
+          hip_length: number | null
+          id: string
+          measurement_id: string
+          penetration_count: number | null
+          pitch: string
+          pitch_multiplier: number
+          polygon_points: Json
+          primary_direction: string | null
+          rake_length: number | null
+          ridge_length: number | null
+          shape_type: string | null
+          skylight_count: number | null
+          step_flashing_length: number | null
+          valley_length: number | null
+          vent_count: number | null
+          wall_flashing_length: number | null
+        }
+        Insert: {
+          adjacent_facet_ids?: string[] | null
+          area_adjusted_sqft: number
+          area_flat_sqft: number
+          azimuth_degrees?: number | null
+          centroid?: Json | null
+          chimney_count?: number | null
+          created_at?: string | null
+          detection_confidence?: number | null
+          eave_length?: number | null
+          facet_number: number
+          has_chimney?: boolean | null
+          has_skylight?: boolean | null
+          hip_length?: number | null
+          id?: string
+          measurement_id: string
+          penetration_count?: number | null
+          pitch: string
+          pitch_multiplier: number
+          polygon_points: Json
+          primary_direction?: string | null
+          rake_length?: number | null
+          ridge_length?: number | null
+          shape_type?: string | null
+          skylight_count?: number | null
+          step_flashing_length?: number | null
+          valley_length?: number | null
+          vent_count?: number | null
+          wall_flashing_length?: number | null
+        }
+        Update: {
+          adjacent_facet_ids?: string[] | null
+          area_adjusted_sqft?: number
+          area_flat_sqft?: number
+          azimuth_degrees?: number | null
+          centroid?: Json | null
+          chimney_count?: number | null
+          created_at?: string | null
+          detection_confidence?: number | null
+          eave_length?: number | null
+          facet_number?: number
+          has_chimney?: boolean | null
+          has_skylight?: boolean | null
+          hip_length?: number | null
+          id?: string
+          measurement_id?: string
+          penetration_count?: number | null
+          pitch?: string
+          pitch_multiplier?: number
+          polygon_points?: Json
+          primary_direction?: string | null
+          rake_length?: number | null
+          ridge_length?: number | null
+          shape_type?: string | null
+          skylight_count?: number | null
+          step_flashing_length?: number | null
+          valley_length?: number | null
+          vent_count?: number | null
+          wall_flashing_length?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_measurement_facets_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roof_measurement_facets_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      roof_measurement_validation_tests: {
+        Row: {
+          actual_results: Json | null
+          created_at: string | null
+          executed_at: string | null
+          executed_by: string | null
+          expected_results: Json
+          failed_metrics: string[] | null
+          id: string
+          measurement_id: string | null
+          overall_accuracy_score: number | null
+          passed_metrics: string[] | null
+          test_address: string
+          test_name: string
+          test_notes: string | null
+          test_status: string | null
+          variance_metrics: Json | null
+          warnings: string[] | null
+        }
+        Insert: {
+          actual_results?: Json | null
+          created_at?: string | null
+          executed_at?: string | null
+          executed_by?: string | null
+          expected_results: Json
+          failed_metrics?: string[] | null
+          id?: string
+          measurement_id?: string | null
+          overall_accuracy_score?: number | null
+          passed_metrics?: string[] | null
+          test_address: string
+          test_name: string
+          test_notes?: string | null
+          test_status?: string | null
+          variance_metrics?: Json | null
+          warnings?: string[] | null
+        }
+        Update: {
+          actual_results?: Json | null
+          created_at?: string | null
+          executed_at?: string | null
+          executed_by?: string | null
+          expected_results?: Json
+          failed_metrics?: string[] | null
+          id?: string
+          measurement_id?: string | null
+          overall_accuracy_score?: number | null
+          passed_metrics?: string[] | null
+          test_address?: string
+          test_name?: string
+          test_notes?: string | null
+          test_status?: string | null
+          variance_metrics?: Json | null
+          warnings?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_measurement_validation_tests_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roof_measurement_validation_tests_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      roof_measurements: {
+        Row: {
+          ai_detection_data: Json
+          ai_model_version: string | null
+          api_variance_percent: number | null
+          complexity_rating: string | null
+          created_at: string | null
+          customer_id: string | null
+          detection_confidence: number | null
+          detection_timestamp: string | null
+          facet_count: number | null
+          google_maps_image_url: string | null
+          google_maps_zoom_level: number | null
+          gps_coordinates: Json
+          id: string
+          image_quality_score: number | null
+          is_archived: boolean | null
+          mapbox_image_url: string | null
+          material_calculations: Json | null
+          measured_by: string | null
+          measurement_confidence: number | null
+          notes: string | null
+          organization_id: string | null
+          pitch_degrees: number | null
+          pitch_multiplier: number | null
+          pixels_per_foot: number | null
+          predominant_pitch: string | null
+          property_address: string
+          property_city: string | null
+          property_state: string | null
+          property_zip: string | null
+          report_generated_at: string | null
+          report_pdf_url: string | null
+          requires_manual_review: boolean | null
+          roof_type: string | null
+          scale_confidence: string | null
+          scale_method: string | null
+          selected_image_source: string | null
+          solar_api_available: boolean | null
+          solar_api_response: Json | null
+          solar_building_footprint_sqft: number | null
+          solar_panel_count: number | null
+          tags: string[] | null
+          total_area_adjusted_sqft: number | null
+          total_area_flat_sqft: number | null
+          total_eave_length: number | null
+          total_hip_length: number | null
+          total_rake_length: number | null
+          total_ridge_length: number | null
+          total_squares: number | null
+          total_squares_with_waste: number | null
+          total_step_flashing_length: number | null
+          total_unspecified_length: number | null
+          total_valley_length: number | null
+          total_wall_flashing_length: number | null
+          updated_at: string | null
+          validation_notes: string | null
+          validation_status: string | null
+          waste_factor_percent: number | null
+        }
+        Insert: {
+          ai_detection_data: Json
+          ai_model_version?: string | null
+          api_variance_percent?: number | null
+          complexity_rating?: string | null
+          created_at?: string | null
+          customer_id?: string | null
+          detection_confidence?: number | null
+          detection_timestamp?: string | null
+          facet_count?: number | null
+          google_maps_image_url?: string | null
+          google_maps_zoom_level?: number | null
+          gps_coordinates: Json
+          id?: string
+          image_quality_score?: number | null
+          is_archived?: boolean | null
+          mapbox_image_url?: string | null
+          material_calculations?: Json | null
+          measured_by?: string | null
+          measurement_confidence?: number | null
+          notes?: string | null
+          organization_id?: string | null
+          pitch_degrees?: number | null
+          pitch_multiplier?: number | null
+          pixels_per_foot?: number | null
+          predominant_pitch?: string | null
+          property_address: string
+          property_city?: string | null
+          property_state?: string | null
+          property_zip?: string | null
+          report_generated_at?: string | null
+          report_pdf_url?: string | null
+          requires_manual_review?: boolean | null
+          roof_type?: string | null
+          scale_confidence?: string | null
+          scale_method?: string | null
+          selected_image_source?: string | null
+          solar_api_available?: boolean | null
+          solar_api_response?: Json | null
+          solar_building_footprint_sqft?: number | null
+          solar_panel_count?: number | null
+          tags?: string[] | null
+          total_area_adjusted_sqft?: number | null
+          total_area_flat_sqft?: number | null
+          total_eave_length?: number | null
+          total_hip_length?: number | null
+          total_rake_length?: number | null
+          total_ridge_length?: number | null
+          total_squares?: number | null
+          total_squares_with_waste?: number | null
+          total_step_flashing_length?: number | null
+          total_unspecified_length?: number | null
+          total_valley_length?: number | null
+          total_wall_flashing_length?: number | null
+          updated_at?: string | null
+          validation_notes?: string | null
+          validation_status?: string | null
+          waste_factor_percent?: number | null
+        }
+        Update: {
+          ai_detection_data?: Json
+          ai_model_version?: string | null
+          api_variance_percent?: number | null
+          complexity_rating?: string | null
+          created_at?: string | null
+          customer_id?: string | null
+          detection_confidence?: number | null
+          detection_timestamp?: string | null
+          facet_count?: number | null
+          google_maps_image_url?: string | null
+          google_maps_zoom_level?: number | null
+          gps_coordinates?: Json
+          id?: string
+          image_quality_score?: number | null
+          is_archived?: boolean | null
+          mapbox_image_url?: string | null
+          material_calculations?: Json | null
+          measured_by?: string | null
+          measurement_confidence?: number | null
+          notes?: string | null
+          organization_id?: string | null
+          pitch_degrees?: number | null
+          pitch_multiplier?: number | null
+          pixels_per_foot?: number | null
+          predominant_pitch?: string | null
+          property_address?: string
+          property_city?: string | null
+          property_state?: string | null
+          property_zip?: string | null
+          report_generated_at?: string | null
+          report_pdf_url?: string | null
+          requires_manual_review?: boolean | null
+          roof_type?: string | null
+          scale_confidence?: string | null
+          scale_method?: string | null
+          selected_image_source?: string | null
+          solar_api_available?: boolean | null
+          solar_api_response?: Json | null
+          solar_building_footprint_sqft?: number | null
+          solar_panel_count?: number | null
+          tags?: string[] | null
+          total_area_adjusted_sqft?: number | null
+          total_area_flat_sqft?: number | null
+          total_eave_length?: number | null
+          total_hip_length?: number | null
+          total_rake_length?: number | null
+          total_ridge_length?: number | null
+          total_squares?: number | null
+          total_squares_with_waste?: number | null
+          total_step_flashing_length?: number | null
+          total_unspecified_length?: number | null
+          total_valley_length?: number | null
+          total_wall_flashing_length?: number | null
+          updated_at?: string | null
+          validation_notes?: string | null
+          validation_status?: string | null
+          waste_factor_percent?: number | null
+        }
+        Relationships: []
+      }
+      roof_pitch_multipliers: {
+        Row: {
+          degrees: number
+          multiplier: number
+          pitch: string
+          rise: number
+          run: number | null
+          typical_regions: string[] | null
+        }
+        Insert: {
+          degrees: number
+          multiplier: number
+          pitch: string
+          rise: number
+          run?: number | null
+          typical_regions?: string[] | null
+        }
+        Update: {
+          degrees?: number
+          multiplier?: number
+          pitch?: string
+          rise?: number
+          run?: number | null
+          typical_regions?: string[] | null
+        }
+        Relationships: []
       }
       roof_waste_calculations: {
         Row: {
@@ -12110,6 +12723,34 @@ export type Database = {
           f_table_schema?: unknown
           srid?: number | null
           type?: string | null
+        }
+        Relationships: []
+      }
+      roof_daily_performance_metrics: {
+        Row: {
+          avg_accuracy: number | null
+          avg_processing_time: number | null
+          corrections_needed: number | null
+          date: string | null
+          total_cost: number | null
+          total_measurements: number | null
+        }
+        Relationships: []
+      }
+      roof_measurement_summary: {
+        Row: {
+          area_accuracy_percent: number | null
+          correction_count: number | null
+          created_at: string | null
+          facet_count: number | null
+          id: string | null
+          measurement_confidence: number | null
+          predominant_pitch: string | null
+          property_address: string | null
+          total_area_adjusted_sqft: number | null
+          total_squares: number | null
+          user_satisfaction_rating: number | null
+          validation_status: string | null
         }
         Relationships: []
       }
