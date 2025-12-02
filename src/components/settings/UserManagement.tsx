@@ -210,7 +210,7 @@ export const UserManagement = () => {
           companyName: newUser.company_name,
           title: newUser.title,
           isDeveloper: newUser.is_developer,
-          payStructure: ['admin', 'manager'].includes(newUser.role) ? payStructure : undefined
+          payStructure: ['sales_manager', 'regional_manager'].includes(newUser.role) ? payStructure : undefined
         }
       });
 
