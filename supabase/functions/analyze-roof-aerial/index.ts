@@ -2,7 +2,7 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { encode as base64Encode } from 'https://deno.land/std@0.168.0/encoding/base64.ts'
 
-const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY')!
+const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!
 const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY')!
 const GOOGLE_SOLAR_API_KEY = Deno.env.get('GOOGLE_SOLAR_API_KEY')!
 const MAPBOX_PUBLIC_TOKEN = Deno.env.get('MAPBOX_PUBLIC_TOKEN')!
@@ -190,22 +190,21 @@ Analyze this image and provide ONLY valid JSON in this EXACT format (no markdown
 
 CRITICAL: Respond ONLY with valid JSON. No text before or after. No markdown formatting.`
 
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+  const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
+    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${LOVABLE_API_KEY}` },
     body: JSON.stringify({
-      model: 'gpt-4o',
-      messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: imageUrl, detail: 'high' } }] }],
-      max_tokens: 4000,
-      temperature: 0.1
+      model: 'google/gemini-2.5-pro',
+      messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: imageUrl } }] }],
+      max_completion_tokens: 4000
     })
   })
 
   const data = await response.json()
   
   if (!data.choices || !data.choices[0]) {
-    console.error('OpenAI response:', JSON.stringify(data))
-    throw new Error(data.error?.message || 'OpenAI API returned no choices')
+    console.error('Lovable AI response:', JSON.stringify(data))
+    throw new Error(data.error?.message || 'Lovable AI returned no choices')
   }
   
   let content = data.choices[0].message.content
