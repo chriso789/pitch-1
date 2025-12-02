@@ -290,7 +290,7 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
       currentUser?.last_name?.toLowerCase().includes('brien')
     );
     
-    const isCurrentUserManagerOrAbove = ['manager', 'admin', 'master'].includes(currentUser?.role);
+    const isCurrentUserManagerOrAbove = ['sales_manager', 'regional_manager', 'office_admin', 'corporate', 'master'].includes(currentUser?.role);
     
     return isCurrentUserChrisVariant && isCurrentUserManagerOrAbove;
   };
