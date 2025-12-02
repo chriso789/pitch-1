@@ -1233,6 +1233,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                       propertyId={pipelineEntryId || ''}
                       lat={coordinates?.lat || 0}
                       lng={coordinates?.lng || 0}
+                      address={propertyDetails.customer_address}
                       onSuccess={(measurement, tags) => {
                         setPropertyDetails(prev => ({
                           ...prev,
