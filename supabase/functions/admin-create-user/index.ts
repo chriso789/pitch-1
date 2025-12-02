@@ -79,6 +79,15 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
+    // Validate role against allowed enum values
+    const validRoles = ['master', 'corporate', 'office_admin', 'regional_manager', 'sales_manager', 'project_manager'];
+    if (!validRoles.includes(role)) {
+      return new Response(
+        JSON.stringify({ error: `Invalid role: "${role}". Must be one of: ${validRoles.join(', ')}` }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
     // Initialize admin client
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
@@ -136,7 +145,7 @@ const handler = async (req: Request): Promise<Response> => {
     };
 
     // Add pay structure for sales reps/managers
-    if (payStructure && ['admin', 'manager'].includes(role)) {
+    if (payStructure && ['sales_manager', 'regional_manager'].includes(role)) {
       profileData.overhead_rate = payStructure.overhead_rate;
       profileData.commission_structure = payStructure.commission_structure;
       profileData.commission_rate = payStructure.commission_rate;
