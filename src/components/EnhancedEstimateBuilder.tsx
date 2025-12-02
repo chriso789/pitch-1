@@ -483,8 +483,8 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const loadTemplates = async () => {
     try {
       const { data, error } = await supabase
-        .from('estimate_calculation_templates')
-        .select('*')
+        .from('estimate_templates')
+        .select('id, name, roof_type, template_data, is_active')
         .eq('is_active', true)
         .order('name');
 
@@ -492,6 +492,77 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       setTemplates(data || []);
     } catch (error: any) {
       console.error('Error loading templates:', error);
+    }
+  };
+
+  // Auto-populate line items when template is selected
+  const handleTemplateSelect = (selectedTemplateId: string) => {
+    setTemplateId(selectedTemplateId);
+    
+    if (!selectedTemplateId) return;
+    
+    const template = templates.find((t: any) => t.id === selectedTemplateId);
+    if (!template?.template_data) return;
+    
+    const templateData = template.template_data as any;
+    const roofArea = propertyDetails.roof_area_sq_ft || 0;
+    
+    // Helper to evaluate formula with roof_area
+    const evaluateFormula = (formula: string, roofAreaSqFt: number): number => {
+      try {
+        // Replace roof_area with actual value and evaluate
+        const expression = formula.replace(/roof_area/g, roofAreaSqFt.toString());
+        // Safe eval for simple math expressions
+        return Function(`"use strict"; return (${expression})`)();
+      } catch {
+        return 0;
+      }
+    };
+    
+    const newLineItems: LineItem[] = [];
+    
+    // Add materials
+    if (templateData.materials && Array.isArray(templateData.materials)) {
+      templateData.materials.forEach((material: any) => {
+        newLineItems.push({
+          item_category: 'material',
+          item_name: material.item || material.name || 'Material',
+          description: `${material.item || material.name} (${template.name})`,
+          quantity: evaluateFormula(material.formula || '0', roofArea),
+          unit_cost: material.unit_cost || 0,
+          unit_type: material.unit || 'each',
+          markup_percent: 25,
+          sku: '',
+          last_price_updated: new Date().toISOString()
+        });
+      });
+    }
+    
+    // Add labor
+    if (templateData.labor && Array.isArray(templateData.labor)) {
+      templateData.labor.forEach((labor: any) => {
+        newLineItems.push({
+          item_category: 'labor',
+          item_name: labor.task || labor.name || 'Labor',
+          description: `${labor.task || labor.name} (${template.name})`,
+          quantity: evaluateFormula(labor.formula || '0', roofArea),
+          unit_cost: labor.rate || 0,
+          unit_type: labor.unit || 'hour',
+          markup_percent: 0,
+          sku: '',
+          last_price_updated: new Date().toISOString()
+        });
+      });
+    }
+    
+    if (newLineItems.length > 0) {
+      setLineItems(newLineItems);
+      if (editingEstimateId) setHasUnsavedChanges(true);
+      
+      toast({
+        title: "Template Applied",
+        description: `${newLineItems.length} items loaded from "${template.name}"`,
+      });
     }
   };
 
@@ -522,19 +593,33 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
           estimate_number,
           selling_price,
           actual_profit_percent,
-          roof_type,
+          property_details,
           status,
           created_at,
-          template_id,
-          estimate_calculation_templates (
-            name
-          )
+          template_id
         `)
         .eq('pipeline_entry_id', pipelineEntryId)
         .order('created_at', { ascending: false });
         
       if (!error && data) {
-        setSavedEstimates(data);
+        // Enrich with template names from estimate_templates
+        const enrichedData = await Promise.all(data.map(async (estimate: any) => {
+          let templateName = null;
+          if (estimate.template_id) {
+            const { data: template } = await supabase
+              .from('estimate_templates')
+              .select('name')
+              .eq('id', estimate.template_id)
+              .single();
+            templateName = template?.name;
+          }
+          return { 
+            ...estimate, 
+            template_name: templateName,
+            roof_type: estimate.property_details?.roof_type 
+          };
+        }));
+        setSavedEstimates(enrichedData);
       }
     } catch (error: any) {
       console.error('Error loading saved estimates:', error);
@@ -1468,18 +1553,21 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
             <CardContent className="pt-4 pb-3">
               <div className="space-y-2">
                 <Label htmlFor="template" className="text-sm">Template</Label>
-                <Select value={templateId} onValueChange={setTemplateId}>
+                <Select value={templateId} onValueChange={handleTemplateSelect}>
                   <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Select template (optional)" />
+                    <SelectValue placeholder="Select template to auto-populate items" />
                   </SelectTrigger>
                   <SelectContent>
                     {templates.map((template: any) => (
                       <SelectItem key={template.id} value={template.id}>
-                        {template.name}
+                        {template.name} {template.roof_type && `(${template.roof_type})`}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                {templates.length === 0 && (
+                  <p className="text-xs text-muted-foreground">No templates available</p>
+                )}
               </div>
             </CardContent>
           </Card>
