@@ -2,11 +2,11 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
-import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, ArrowUp, ArrowDown, ArrowLeft, ArrowRight, Home, ArrowRight as ArrowRightIcon, ZoomIn, ZoomOut, Scissors, Info, ChevronDown, Move, Maximize2 } from 'lucide-react';
+import { ScrollArea } from '@/components/ui/scroll-area';
+import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Scissors, Info } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PolygonEditor } from './PolygonEditor';
@@ -809,106 +809,72 @@ export function MeasurementVerificationDialog({
     }
   };
 
+  // Collapsible section states
+  const [geometryOpen, setGeometryOpen] = useState(false);
+  const [linearOpen, setLinearOpen] = useState(false);
+  const [penetrationsOpen, setPenetrationsOpen] = useState(false);
+  const [materialsOpen, setMaterialsOpen] = useState(false);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[90vw] max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <div className="flex items-start justify-between">
-            <div className="space-y-2">
-              <DialogTitle className="flex items-center gap-2 flex-col items-start">
-                <div className="flex items-center gap-2">
-                  <Satellite className="h-5 w-5" />
-                  Verify Measurements
-                </div>
-                <div className="text-sm font-normal text-muted-foreground">
-                  <span className="max-w-[300px] truncate block mb-2">{tags['prop.address'] || 'Unknown Address'}</span>
-                  
-                  {/* Coordinate Display */}
-                  <div className="space-y-1">
-                    {verifiedAddressLat && verifiedAddressLng && (
-                      <div className="flex items-center gap-2 text-xs">
-                        <Badge variant="outline" className="bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20">
-                          Verified Address
-                        </Badge>
-                        <span className="font-mono">{verifiedAddressLat.toFixed(6)}, {verifiedAddressLng.toFixed(6)}</span>
-                      </div>
-                    )}
-                    <div className="flex items-center gap-2 text-xs">
-                       <Badge variant={coordinateMismatchDistance > 30 ? "destructive" : "secondary"}>
-                        Visualization Center
-                      </Badge>
-                      <span className="font-mono">{adjustedCenterLat.toFixed(6)}, {adjustedCenterLng.toFixed(6)}</span>
-                      {coordinateMismatchDistance > 10 && (
-                        <Badge variant={coordinateMismatchDistance > 50 ? "destructive" : "outline"} className="ml-1">
-                          {Math.round(coordinateMismatchDistance)}m offset
-                        </Badge>
-                      )}
-                    </div>
-                  </div>
-                </div>
+      <DialogContent className="max-w-5xl max-h-[85vh] p-0 gap-0 overflow-hidden">
+        {/* Compact Header */}
+        <DialogHeader className="px-4 py-3 border-b bg-muted/30">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-3 min-w-0">
+              <Satellite className="h-4 w-4 shrink-0" />
+              <DialogTitle className="text-base truncate">
+                {tags['prop.address'] || 'Verify Measurements'}
               </DialogTitle>
-              <div className="flex items-center gap-2 flex-wrap">
-                <Badge variant="secondary" className="flex items-center gap-1">
-                  <Satellite className="h-3 w-3" />
-                  AI Pull - Aggregate Data
-                </Badge>
-                {detectedRoofType && (
-                  <>
-                    <Badge variant="outline" className="flex items-center gap-1">
-                      <Home className="h-3 w-3" />
-                      {detectedRoofType.type} Roof
-                    </Badge>
-                    <span className="text-xs text-muted-foreground">
-                      {Math.round(detectedRoofType.confidence * 100)}% confidence
-                    </span>
-                  </>
-                )}
-                <Badge variant={isOnline ? 'default' : 'destructive'} className="ml-auto">
-                  {isOnline ? '🟢 Online' : '🔴 Offline - Changes will sync later'}
-                </Badge>
-              </div>
             </div>
-            <Badge variant={confidence.variant}>
-              {confidence.label} Confidence
-            </Badge>
+            <div className="flex items-center gap-2 shrink-0">
+              {detectedRoofType && (
+                <Badge variant="outline" className="text-xs">
+                  {detectedRoofType.type} • {Math.round(detectedRoofType.confidence * 100)}%
+                </Badge>
+              )}
+              <Badge variant={confidence.variant} className="text-xs">
+                {confidence.label}
+              </Badge>
+              <Badge variant={isOnline ? 'secondary' : 'destructive'} className="text-xs">
+                {isOnline ? 'Online' : 'Offline'}
+              </Badge>
+            </div>
           </div>
-          <p className="text-sm text-muted-foreground">
-            Google Solar API provides building-level data. Individual roof facet boundaries are approximate.
-          </p>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 lg:grid-cols-[1.2fr,1fr] gap-6">
-          {/* Left Panel: Visual Editor */}
-          {satelliteImageUrl && (measurement?.faces || buildingPolygon.length > 0) && (
-            <div className="space-y-4">
-              {/* Satellite Image with Floating Controls */}
-              <div className="relative">
-                {measurement?.faces ? (
-                  <ComprehensiveMeasurementOverlay
-                    satelliteImageUrl={cleanSatelliteImageUrl}
-                    measurement={measurement}
-                    tags={tags}
-                    centerLng={verifiedAddressLng || adjustedCenterLng}
-                    centerLat={verifiedAddressLat || adjustedCenterLat}
-                    zoom={20}
-                    onMeasurementUpdate={(updatedMeasurement, updatedTags) => {
-                      Object.assign(measurement, updatedMeasurement);
-                      Object.assign(tags, updatedTags);
-                      // Re-detect roof type on changes
-                      const detection = detectRoofType(updatedMeasurement, updatedTags);
-                      setDetectedRoofType(detection);
-                    }}
-                    canvasWidth={640}
-                    canvasHeight={480}
-                    verifiedAddressLat={verifiedAddressLat}
-                    verifiedAddressLng={verifiedAddressLng}
-                  />
-                ) : (
-                  <PolygonEditor
-                    satelliteImageUrl={satelliteImageUrl}
-                    buildingPolygon={buildingPolygon}
-                    centerLng={adjustedCenterLng}
-                    centerLat={adjustedCenterLat}
+        <ScrollArea className="flex-1 overflow-auto">
+          <div className="grid grid-cols-1 lg:grid-cols-[1fr,340px] gap-4 p-4">
+            {/* Left Panel: Visual Editor */}
+            {satelliteImageUrl && (measurement?.faces || buildingPolygon.length > 0) && (
+              <div className="space-y-3">
+                {/* Satellite Image */}
+                <div className="relative rounded-lg overflow-hidden border">
+                  {measurement?.faces ? (
+                    <ComprehensiveMeasurementOverlay
+                      satelliteImageUrl={cleanSatelliteImageUrl}
+                      measurement={measurement}
+                      tags={tags}
+                      centerLng={verifiedAddressLng || adjustedCenterLng}
+                      centerLat={verifiedAddressLat || adjustedCenterLat}
+                      zoom={20}
+                      onMeasurementUpdate={(updatedMeasurement, updatedTags) => {
+                        Object.assign(measurement, updatedMeasurement);
+                        Object.assign(tags, updatedTags);
+                        const detection = detectRoofType(updatedMeasurement, updatedTags);
+                        setDetectedRoofType(detection);
+                      }}
+                      canvasWidth={500}
+                      canvasHeight={350}
+                      verifiedAddressLat={verifiedAddressLat}
+                      verifiedAddressLng={verifiedAddressLng}
+                    />
+                  ) : (
+                    <PolygonEditor
+                      satelliteImageUrl={satelliteImageUrl}
+                      buildingPolygon={buildingPolygon}
+                      centerLng={adjustedCenterLng}
+                      centerLat={adjustedCenterLat}
                     zoom={20}
                     onPolygonChange={handlePolygonChange}
                     canvasWidth={640}
@@ -1104,251 +1070,145 @@ export function MeasurementVerificationDialog({
             </div>
           )}
 
-          {/* Right Panel: Measurement Details */}
-          <div className="space-y-6">
-
-            {/* Overview Cards */}
-            <div className="grid grid-cols-4 gap-3">
-              <Card className="p-3 text-center">
-                <div className="text-xl font-bold text-primary">{planArea.toFixed(0)}</div>
-                <div className="text-xs text-muted-foreground mt-1">Plan Area (sq ft)</div>
-              </Card>
-              <Card className="p-3 text-center">
-                <div className="text-xl font-bold text-primary">{roofAreaNoWaste.toFixed(0)}</div>
-                <div className="text-xs text-muted-foreground mt-1">Roof Area (sq ft)</div>
-                {adjustedArea && (
-                  <Badge variant="secondary" className="mt-1 text-xs">Adjusted</Badge>
-                )}
-              </Card>
-              <Card className="p-3 text-center">
-                <div className="text-xl font-bold text-primary">{totalAreaWithWaste.toFixed(0)}</div>
-                <div className="text-xs text-muted-foreground mt-1">Total w/ Waste</div>
-              </Card>
-              <Card className="p-3 text-center">
-                <div className="text-xl font-bold text-primary">{roofSquares.toFixed(1)}</div>
-                <div className="text-xs text-muted-foreground mt-1">Squares</div>
-              </Card>
-            </div>
-
-            {/* Adjustments Section */}
-            <div className="border border-primary/20 rounded-lg p-4 bg-primary/5">
-              <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
-                ⚙️ Adjustments
-                <Badge variant="outline" className="text-xs">Editable</Badge>
-              </h3>
-              
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <label className="text-sm text-muted-foreground">Roof Pitch:</label>
-                  <Select value={selectedPitch} onValueChange={handlePitchChange}>
-                    <SelectTrigger className="w-[140px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="flat">Flat (1.000)</SelectItem>
-                      <SelectItem value="1/12">1/12 (1.004)</SelectItem>
-                      <SelectItem value="2/12">2/12 (1.014)</SelectItem>
-                      <SelectItem value="3/12">3/12 (1.031)</SelectItem>
-                      <SelectItem value="4/12">4/12 (1.054)</SelectItem>
-                      <SelectItem value="5/12">5/12 (1.083)</SelectItem>
-                      <SelectItem value="6/12">6/12 (1.118)</SelectItem>
-                      <SelectItem value="7/12">7/12 (1.158)</SelectItem>
-                      <SelectItem value="8/12">8/12 (1.202)</SelectItem>
-                      <SelectItem value="9/12">9/12 (1.250)</SelectItem>
-                      <SelectItem value="10/12">10/12 (1.302)</SelectItem>
-                      <SelectItem value="11/12">11/12 (1.357)</SelectItem>
-                      <SelectItem value="12/12">12/12 (1.414)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <label className="text-sm text-muted-foreground">Waste Factor:</label>
-                  <Select 
-                    value={wastePercent.toString()} 
-                    onValueChange={(value) => setWastePercent(Number(value))}
-                  >
-                    <SelectTrigger className="w-[120px]">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-popover z-50">
-                      <SelectItem value="10">10%</SelectItem>
-                      <SelectItem value="12">12%</SelectItem>
-                      <SelectItem value="15">15%</SelectItem>
-                      <SelectItem value="20">20%</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                
-                <div className="flex items-center justify-between">
-                  <label className="text-sm text-muted-foreground">Number of Stories:</label>
-                  <Input
-                    type="number"
-                    value={numberOfStories}
-                    onChange={(e) => setNumberOfStories(parseInt(e.target.value) || 1)}
-                    className="w-[80px]"
-                    min="1"
-                    max="5"
-                    step="1"
-                  />
-                </div>
-                
-                <div className="flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Pitch Multiplier:</span>
-                  <span className="font-mono">{pitchFactor.toFixed(4)}</span>
-                </div>
+            {/* Right Panel: Measurement Details */}
+            <div className="space-y-3">
+              {/* Compact Overview - Inline badges */}
+              <div className="flex flex-wrap gap-2">
+                <Badge variant="secondary" className="text-sm py-1">
+                  {planArea.toFixed(0)} sq ft plan
+                </Badge>
+                <Badge variant="secondary" className="text-sm py-1">
+                  {roofSquares.toFixed(1)} squares
+                </Badge>
+                <Badge variant="outline" className="text-sm py-1">
+                  {selectedPitch} pitch
+                </Badge>
+                <Badge variant="outline" className="text-sm py-1">
+                  {wastePercent}% waste
+                </Badge>
               </div>
-            </div>
 
-            {/* Roof Geometry */}
-            <div>
-              <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
-                📐 Roof Geometry
-              </h3>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between py-1.5 border-b">
-                  <span className="text-muted-foreground">Flat/Plan Area (≤2/12 pitch):</span>
-                  <span className="font-medium">{flatArea.toFixed(0)} sq ft</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b">
-                  <span className="text-muted-foreground">Roof Area (no waste):</span>
-                  <span className="font-medium">{roofAreaNoWaste.toFixed(0)} sq ft</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b">
-                  <span className="text-muted-foreground">Total Area (with waste):</span>
-                  <span className="font-medium">{totalAreaWithWaste.toFixed(0)} sq ft</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b">
-                  <span className="text-muted-foreground">Perimeter:</span>
-                  <span className="font-medium">{perimeter.toFixed(0)} ft</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b">
-                  <span className="text-muted-foreground">Pitch:</span>
-                  <span className="font-medium">{selectedPitch} (×{pitchFactor.toFixed(3)})</span>
-                </div>
-                <div className="flex justify-between py-1.5">
-                  <span className="text-muted-foreground">Roof Facets:</span>
-                  <div className="flex items-center gap-2">
-                    <Input
-                      type="number"
-                      value={faceCount}
-                      onChange={(e) => setFaceCount(Number(e.target.value))}
-                      className="w-[60px] h-7"
-                      min="1"
-                      max="20"
-                    />
-                    <span className="text-xs text-muted-foreground">planes</span>
-                    {faceCount > 4 && (
-                      <Badge variant="outline" className="text-xs">Complex</Badge>
-                    )}
+              {/* Adjustments Section - Always visible */}
+              <Card className="p-3 bg-primary/5 border-primary/20">
+                <h4 className="text-xs font-semibold mb-2 uppercase tracking-wide text-muted-foreground">Adjustments</h4>
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-xs text-muted-foreground">Pitch</label>
+                    <Select value={selectedPitch} onValueChange={handlePitchChange}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {Object.keys(PITCH_MULTIPLIERS).map(p => (
+                          <SelectItem key={p} value={p}>{p}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Waste</label>
+                    <Select value={wastePercent.toString()} onValueChange={(v) => setWastePercent(Number(v))}>
+                      <SelectTrigger className="h-8 text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="10">10%</SelectItem>
+                        <SelectItem value="12">12%</SelectItem>
+                        <SelectItem value="15">15%</SelectItem>
+                        <SelectItem value="20">20%</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Stories</label>
+                    <Input type="number" value={numberOfStories} onChange={(e) => setNumberOfStories(parseInt(e.target.value) || 1)} className="h-8 text-xs" min="1" max="5" />
+                  </div>
+                  <div>
+                    <label className="text-xs text-muted-foreground">Facets</label>
+                    <Input type="number" value={faceCount} onChange={(e) => setFaceCount(Number(e.target.value))} className="h-8 text-xs" min="1" max="20" />
                   </div>
                 </div>
-              </div>
+              </Card>
+
+              {/* Collapsible: Roof Geometry */}
+              <Collapsible open={geometryOpen} onOpenChange={setGeometryOpen}>
+                <CollapsibleTrigger className="flex items-center justify-between w-full p-2 rounded-md hover:bg-muted/50 text-sm font-medium">
+                  <span>📐 Roof Geometry</span>
+                  {geometryOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-1 text-xs pt-1">
+                  <div className="flex justify-between py-1 border-b"><span className="text-muted-foreground">Plan Area:</span><span>{planArea.toFixed(0)} sq ft</span></div>
+                  <div className="flex justify-between py-1 border-b"><span className="text-muted-foreground">Roof Area:</span><span>{roofAreaNoWaste.toFixed(0)} sq ft</span></div>
+                  <div className="flex justify-between py-1 border-b"><span className="text-muted-foreground">With Waste:</span><span>{totalAreaWithWaste.toFixed(0)} sq ft</span></div>
+                  <div className="flex justify-between py-1 border-b"><span className="text-muted-foreground">Perimeter:</span><span>{perimeter.toFixed(0)} ft</span></div>
+                  <div className="flex justify-between py-1"><span className="text-muted-foreground">Flat Area (≤2/12):</span><span>{flatArea.toFixed(0)} sq ft</span></div>
+                </CollapsibleContent>
+              </Collapsible>
+
+              {/* Collapsible: Linear Features */}
+              <Collapsible open={linearOpen} onOpenChange={setLinearOpen}>
+                <CollapsibleTrigger className="flex items-center justify-between w-full p-2 rounded-md hover:bg-muted/50 text-sm font-medium">
+                  <span>📏 Linear Features</span>
+                  {linearOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </CollapsibleTrigger>
+                <CollapsibleContent className="grid grid-cols-3 gap-1 pt-1">
+                  {[{ l: 'Ridge', v: ridge }, { l: 'Hip', v: hip }, { l: 'Valley', v: valley }, { l: 'Eave', v: eave }, { l: 'Rake', v: rake }, { l: 'Step', v: step }].map(({ l, v }) => (
+                    <div key={l} className="p-2 bg-muted/30 rounded text-center">
+                      <div className="text-sm font-semibold">{v.toFixed(0)}'</div>
+                      <div className="text-[10px] text-muted-foreground">{l}</div>
+                    </div>
+                  ))}
+                </CollapsibleContent>
+              </Collapsible>
+
+              {/* Collapsible: Penetrations */}
+              <Collapsible open={penetrationsOpen} onOpenChange={setPenetrationsOpen}>
+                <CollapsibleTrigger className="flex items-center justify-between w-full p-2 rounded-md hover:bg-muted/50 text-sm font-medium">
+                  <span>🔧 Penetrations</span>
+                  {penetrationsOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </CollapsibleTrigger>
+                <CollapsibleContent className="grid grid-cols-2 gap-2 pt-1">
+                  {[
+                    { label: 'Pipes', value: pipeVents, setter: setPipeVents },
+                    { label: 'Skylights', value: skylights, setter: setSkylights },
+                    { label: 'Chimneys', value: chimneys, setter: setChimneys },
+                    { label: 'HVAC', value: hvacUnits, setter: setHvacUnits },
+                  ].map(({ label, value, setter }) => (
+                    <div key={label} className="flex items-center justify-between text-xs">
+                      <span className="text-muted-foreground">{label}</span>
+                      <Input type="number" value={value} onChange={(e) => setter(Number(e.target.value))} className="w-14 h-6 text-xs" min="0" />
+                    </div>
+                  ))}
+                </CollapsibleContent>
+              </Collapsible>
+
+              {/* Collapsible: Materials */}
+              <Collapsible open={materialsOpen} onOpenChange={setMaterialsOpen}>
+                <CollapsibleTrigger className="flex items-center justify-between w-full p-2 rounded-md hover:bg-muted/50 text-sm font-medium">
+                  <span>📦 Materials</span>
+                  {materialsOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </CollapsibleTrigger>
+                <CollapsibleContent className="space-y-1 text-xs pt-1">
+                  <div className="flex justify-between py-1 border-b"><span className="text-muted-foreground">Shingles:</span><span>{shingleBundles} bundles</span></div>
+                  <div className="flex justify-between py-1 border-b"><span className="text-muted-foreground">Ridge Cap:</span><span>{ridgeCapBundles} bundles</span></div>
+                  <div className="flex justify-between py-1 border-b"><span className="text-muted-foreground">Valley:</span><span>{valleyRolls} rolls</span></div>
+                  <div className="flex justify-between py-1"><span className="text-muted-foreground">Drip Edge:</span><span>{dripEdgeSticks} sticks</span></div>
+                </CollapsibleContent>
+              </Collapsible>
+
+              {/* Warning for low confidence */}
+              {confidence.dots < 3 && (
+                <div className="flex items-center gap-2 p-2 bg-destructive/10 border border-destructive/20 rounded text-xs">
+                  <AlertCircle className="h-3 w-3 text-destructive shrink-0" />
+                  <span className="text-destructive">Low confidence - verify manually</span>
+                  <Button size="sm" variant="outline" className="ml-auto h-6 text-xs" onClick={() => setShowManualEditor(true)}>
+                    <Edit3 className="h-3 w-3 mr-1" />Edit
+                  </Button>
+                </div>
+              )}
             </div>
-
-            {/* Linear Features */}
-            <div>
-              <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
-                📏 Linear Features
-              </h3>
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { label: 'Ridge', value: ridge },
-                  { label: 'Hip', value: hip },
-                  { label: 'Valley', value: valley },
-                  { label: 'Eave', value: eave },
-                  { label: 'Rake', value: rake },
-                  { label: 'Step', value: step },
-                ].map(({ label, value }) => (
-                  <div key={label} className="p-3 bg-muted/30 rounded-lg border border-muted">
-                    <div className="text-lg font-bold">{value.toFixed(0)} ft</div>
-                    <div className="text-xs text-muted-foreground uppercase tracking-wide">{label}</div>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            <Separator />
-
-            {/* Penetrations */}
-            <div className="border border-primary/20 rounded-lg p-4 bg-primary/5">
-              <h3 className="font-semibold text-sm mb-3 flex items-center gap-2">
-                🔧 Roof Penetrations
-                <Badge variant="outline" className="text-xs">Editable</Badge>
-              </h3>
-              <div className="grid grid-cols-2 gap-3">
-                {[
-                  { label: 'Pipe Vents', value: pipeVents, setter: setPipeVents },
-                  { label: 'Skylights', value: skylights, setter: setSkylights },
-                  { label: 'Chimneys', value: chimneys, setter: setChimneys },
-                  { label: 'HVAC Units', value: hvacUnits, setter: setHvacUnits },
-                  { label: 'Other', value: otherPenetrations, setter: setOtherPenetrations },
-                ].map(({ label, value, setter }) => (
-                  <div key={label} className="flex items-center justify-between">
-                    <label className="text-sm text-muted-foreground">{label}:</label>
-                    <Input
-                      type="number"
-                      value={value}
-                      onChange={(e) => setter(Number(e.target.value))}
-                      className="w-[80px] h-8"
-                      min="0"
-                      max="100"
-                    />
-                  </div>
-                ))}
-              </div>
-            </div>
-
-
-            {/* Material Quantities */}
-            <div>
-              <h3 className="font-semibold text-sm mb-2 flex items-center gap-2">
-                📦 Material Quantities
-                <Badge variant="outline" className="text-xs">Auto-calc</Badge>
-              </h3>
-              <div className="space-y-1 text-sm">
-                <div className="flex justify-between py-1.5 border-b">
-                  <span className="text-muted-foreground">Shingle Bundles:</span>
-                  <span className="font-medium">{shingleBundles} bundles</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b">
-                  <span className="text-muted-foreground">Ridge Cap:</span>
-                  <span className="font-medium">{ridgeCapBundles} bundles</span>
-                </div>
-                <div className="flex justify-between py-1.5 border-b">
-                  <span className="text-muted-foreground">Valley Roll:</span>
-                  <span className="font-medium">{valleyRolls} rolls</span>
-                </div>
-                <div className="flex justify-between py-1.5">
-                  <span className="text-muted-foreground">Drip Edge:</span>
-                  <span className="font-medium">{dripEdgeSticks} sticks</span>
-                </div>
-              </div>
-            </div>
-
-            {/* Warning for low confidence */}
-            {confidence.dots < 3 && (
-              <div className="flex items-start gap-2 p-2 bg-destructive/10 border border-destructive/20 rounded-lg">
-                <AlertCircle className="h-4 w-4 text-destructive mt-0.5" />
-                <div className="text-sm flex-1">
-                  <p className="font-medium text-destructive">Low Confidence</p>
-                  <p className="text-muted-foreground mt-1 text-xs">
-                    The automated measurement may have missed important roof features.
-                  </p>
-                </div>
-                <Button 
-                  size="sm" 
-                  variant="outline"
-                  onClick={() => setShowManualEditor(true)}
-                  className="shrink-0"
-                >
-                  <Edit3 className="h-3 w-3 mr-1" />
-                  Verify Manually
-                </Button>
-              </div>
-            )}
           </div>
-        </div>
+        </ScrollArea>
 
         <DialogFooter className="gap-2">
           <Button
