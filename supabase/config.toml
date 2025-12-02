@@ -245,3 +245,6 @@ verify_jwt = true
 
 [functions.log-auth-activity]
 verify_jwt = false
+
+[functions.analyze-roof-aerial]
+verify_jwt = true
