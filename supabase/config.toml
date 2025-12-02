@@ -248,3 +248,6 @@ verify_jwt = false
 
 [functions.analyze-roof-aerial]
 verify_jwt = true
+
+[functions.generate-roof-report]
+verify_jwt = true
