@@ -6,18 +6,20 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 )
 
-function validateSession(sessionToken: string) {
+// Secure token validation using database lookup
+async function validateSession(sessionToken: string): Promise<{ userId: string; tenantId: string } | null> {
   try {
-    const decoded = atob(sessionToken);
-    const [repId, timestamp] = decoded.split(':');
+    const { data, error } = await supabase
+      .rpc('validate_canvass_token', { p_token: sessionToken });
     
-    const tokenAge = Date.now() - parseInt(timestamp);
-    if (tokenAge > 24 * 60 * 60 * 1000) {
+    if (error || !data || data.length === 0) {
+      console.log('Token validation failed:', error?.message || 'No session found');
       return null;
     }
     
-    return repId;
-  } catch {
+    return { userId: data[0].user_id, tenantId: data[0].tenant_id };
+  } catch (err) {
+    console.error('Token validation error:', err);
     return null;
   }
 }
@@ -30,19 +32,21 @@ Deno.serve(async (req) => {
   try {
     const { session_token, contact_id, estimate_data } = await req.json();
     
-    // Validate session
-    const repId = validateSession(session_token);
-    if (!repId) {
+    // Validate session using secure database lookup
+    const session = await validateSession(session_token);
+    if (!session) {
       return new Response(
         JSON.stringify({ error: 'Invalid or expired session' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
+    const { userId: repId, tenantId } = session;
+
     // Get rep info
     const { data: rep, error: repError } = await supabase
       .from('profiles')
-      .select('tenant_id, first_name, last_name')
+      .select('first_name, last_name')
       .eq('id', repId)
       .single();
 
@@ -58,7 +62,7 @@ Deno.serve(async (req) => {
       .from('contacts')
       .select('id, tenant_id, first_name, last_name, address_street, address_city, address_state, address_zip')
       .eq('id', contact_id)
-      .eq('tenant_id', rep.tenant_id)
+      .eq('tenant_id', tenantId)
       .single();
 
     if (contactError || !contact) {
@@ -73,7 +77,7 @@ Deno.serve(async (req) => {
       .from('pipeline_entries')
       .select('id, metadata')
       .eq('contact_id', contact_id)
-      .eq('tenant_id', rep.tenant_id)
+      .eq('tenant_id', tenantId)
       .single();
 
     if (pipelineError || !pipelineEntry) {
@@ -81,7 +85,7 @@ Deno.serve(async (req) => {
       const { data: newPipelineEntry, error: createError } = await supabase
         .from('pipeline_entries')
         .insert({
-          tenant_id: rep.tenant_id,
+          tenant_id: tenantId,
           contact_id: contact_id,
           status: 'estimate',
           lead_quality_score: 80,
@@ -111,7 +115,7 @@ Deno.serve(async (req) => {
 
     // Create estimate record
     const estimateRecord = {
-      tenant_id: rep.tenant_id,
+      tenant_id: tenantId,
       pipeline_entry_id: pipelineEntry!.id,
       estimate_number: estimateNumber,
       customer_name: `${contact.first_name} ${contact.last_name}`,

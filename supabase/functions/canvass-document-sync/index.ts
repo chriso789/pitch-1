@@ -6,18 +6,20 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 )
 
-function validateSession(sessionToken: string) {
+// Secure token validation using database lookup
+async function validateSession(sessionToken: string): Promise<{ userId: string; tenantId: string } | null> {
   try {
-    const decoded = atob(sessionToken);
-    const [repId, timestamp] = decoded.split(':');
+    const { data, error } = await supabase
+      .rpc('validate_canvass_token', { p_token: sessionToken });
     
-    const tokenAge = Date.now() - parseInt(timestamp);
-    if (tokenAge > 24 * 60 * 60 * 1000) {
+    if (error || !data || data.length === 0) {
+      console.log('Token validation failed:', error?.message || 'No session found');
       return null;
     }
     
-    return repId;
-  } catch {
+    return { userId: data[0].user_id, tenantId: data[0].tenant_id };
+  } catch (err) {
+    console.error('Token validation error:', err);
     return null;
   }
 }
@@ -34,30 +36,16 @@ Deno.serve(async (req) => {
     const documentType = formData.get('document_type') as string || 'canvass_report';
     const description = formData.get('description') as string || '';
     
-    // Validate session
-    const repId = validateSession(sessionToken);
-    if (!repId) {
+    // Validate session using secure database lookup
+    const session = await validateSession(sessionToken);
+    if (!session) {
       return new Response(
         JSON.stringify({ error: 'Invalid or expired session' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Get rep's active tenant (supports multi-company switching)
-    const { data: rep, error: repError } = await supabase
-      .from('profiles')
-      .select('active_tenant_id, tenant_id')
-      .eq('id', repId)
-      .single();
-
-    if (repError || !rep) {
-      return new Response(
-        JSON.stringify({ error: 'Representative not found' }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const tenantId = rep.active_tenant_id || rep.tenant_id;
+    const { userId: repId, tenantId } = session;
 
     // Verify contact exists and belongs to rep's tenant
     const { data: contact, error: contactError } = await supabase

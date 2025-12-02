@@ -67,12 +67,40 @@ Deno.serve(async (req) => {
       console.error('Error fetching dispositions:', dispError);
     }
 
-    // Generate session token (simple approach using rep ID + timestamp)
-    const sessionToken = btoa(`${rep.id}:${Date.now()}`);
+    // Generate cryptographically secure session token
+    const sessionToken = crypto.randomUUID() + '-' + crypto.randomUUID();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000); // 24 hours
+
+    // Get request metadata
+    const ipAddress = req.headers.get('x-forwarded-for') || 
+                      req.headers.get('cf-connecting-ip') || 
+                      req.headers.get('x-real-ip');
+    const userAgent = req.headers.get('user-agent');
+
+    // Store session token in database
+    const { error: sessionError } = await supabase
+      .from('canvass_sessions')
+      .insert({
+        user_id: rep.id,
+        tenant_id: rep.tenant_id,
+        token: sessionToken,
+        expires_at: expiresAt.toISOString(),
+        ip_address: ipAddress,
+        user_agent: userAgent
+      });
+
+    if (sessionError) {
+      console.error('Error creating session:', sessionError);
+      return new Response(
+        JSON.stringify({ error: 'Failed to create session' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
 
     const response = {
       success: true,
       session_token: sessionToken,
+      expires_at: expiresAt.toISOString(),
       rep: {
         id: rep.id,
         name: `${rep.first_name} ${rep.last_name}`,

@@ -1456,6 +1456,42 @@ export type Database = {
         }
         Relationships: []
       }
+      canvass_sessions: {
+        Row: {
+          created_at: string | null
+          expires_at: string
+          id: string
+          ip_address: unknown
+          last_used_at: string | null
+          tenant_id: string
+          token: string
+          user_agent: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          expires_at: string
+          id?: string
+          ip_address?: unknown
+          last_used_at?: string | null
+          tenant_id: string
+          token: string
+          user_agent?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          expires_at?: string
+          id?: string
+          ip_address?: unknown
+          last_used_at?: string | null
+          tenant_id?: string
+          token?: string
+          user_agent?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       change_order_line_items: {
         Row: {
           change_order_id: string
@@ -8587,6 +8623,30 @@ export type Database = {
         }
         Relationships: []
       }
+      rate_limits: {
+        Row: {
+          id: string
+          request_count: number | null
+          resource: string
+          user_id: string
+          window_start: string | null
+        }
+        Insert: {
+          id?: string
+          request_count?: number | null
+          resource: string
+          user_id: string
+          window_start?: string | null
+        }
+        Update: {
+          id?: string
+          request_count?: number | null
+          resource?: string
+          user_id?: string
+          window_start?: string | null
+        }
+        Relationships: []
+      }
       recipients: {
         Row: {
           agreement_instance_id: string
@@ -12483,10 +12543,20 @@ export type Database = {
         }
         Returns: boolean
       }
+      check_rate_limit: {
+        Args: {
+          p_limit: number
+          p_resource: string
+          p_user_id: string
+          p_window_minutes: number
+        }
+        Returns: Json
+      }
       check_subcontractor_capacity: {
         Args: { check_date: string; sub_id: string; tenant_id_param: string }
         Returns: boolean
       }
+      cleanup_expired_canvass_sessions: { Args: never; Returns: undefined }
       cleanup_old_rate_limits: { Args: never; Returns: undefined }
       complete_presentation_session: {
         Args: { p_session_id: string; p_signature_data?: Json }
@@ -13505,6 +13575,13 @@ export type Database = {
           table_name: string
         }
         Returns: string
+      }
+      validate_canvass_token: {
+        Args: { p_token: string }
+        Returns: {
+          tenant_id: string
+          user_id: string
+        }[]
       }
       validate_presentation_token: {
         Args: { p_presentation_id: string; p_token: string }

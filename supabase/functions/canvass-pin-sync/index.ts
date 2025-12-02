@@ -6,19 +6,20 @@ const supabase = createClient(
   Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
 )
 
-function validateSession(sessionToken: string) {
+// Secure token validation using database lookup
+async function validateSession(sessionToken: string): Promise<{ userId: string; tenantId: string } | null> {
   try {
-    const decoded = atob(sessionToken);
-    const [repId, timestamp] = decoded.split(':');
+    const { data, error } = await supabase
+      .rpc('validate_canvass_token', { p_token: sessionToken });
     
-    // Token expires after 24 hours
-    const tokenAge = Date.now() - parseInt(timestamp);
-    if (tokenAge > 24 * 60 * 60 * 1000) {
+    if (error || !data || data.length === 0) {
+      console.log('Token validation failed:', error?.message || 'No session found');
       return null;
     }
     
-    return repId;
-  } catch {
+    return { userId: data[0].user_id, tenantId: data[0].tenant_id };
+  } catch (err) {
+    console.error('Token validation error:', err);
     return null;
   }
 }
@@ -32,16 +33,18 @@ Deno.serve(async (req) => {
   try {
     const { session_token, pins } = await req.json();
     
-    // Validate session
-    const repId = validateSession(session_token);
-    if (!repId) {
+    // Validate session using secure database lookup
+    const session = await validateSession(session_token);
+    if (!session) {
       return new Response(
         JSON.stringify({ error: 'Invalid or expired session' }),
         { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
-    // Get rep info and tenant
+    const { userId: repId, tenantId } = session;
+
+    // Get rep info
     const { data: rep, error: repError } = await supabase
       .from('profiles')
       .select('id, tenant_id, first_name, last_name')
@@ -72,7 +75,7 @@ Deno.serve(async (req) => {
 
         // Create contact record
         const contactData = {
-          tenant_id: rep.tenant_id,
+          tenant_id: tenantId,
           first_name: property_details.homeowner_first_name || 'Canvass',
           last_name: property_details.homeowner_last_name || 'Lead',
           address_street: address?.street || '',
@@ -131,10 +134,10 @@ Deno.serve(async (req) => {
             // Create pipeline entry for positive dispositions
             if (disposition.is_positive) {
               const pipelineData = {
-                tenant_id: rep.tenant_id,
+                tenant_id: tenantId,
                 contact_id: contact.id,
                 status: 'lead',
-                lead_quality_score: 75, // Default score for canvassed leads
+                lead_quality_score: 75,
                 assigned_to: repId,
                 metadata: {
                   source: 'canvassing',

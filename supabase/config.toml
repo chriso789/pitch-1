@@ -19,7 +19,7 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.export-job-analytics]
-verify_jwt = false
+verify_jwt = true
 
 [functions.qbo-worker]
 verify_jwt = false
@@ -106,7 +106,7 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.google-maps-proxy]
-verify_jwt = false
+verify_jwt = true
 
 [functions.material-pricing-api]
 verify_jwt = true
@@ -208,7 +208,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.text-to-speech-enhanced]
-verify_jwt = false
+verify_jwt = true
 
 [functions.voice-inbound]
 verify_jwt = false

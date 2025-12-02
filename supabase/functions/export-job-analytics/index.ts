@@ -27,10 +27,61 @@ serve(async (req: Request) => {
 
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
     const edgeBase = Deno.env.get('EDGE_BASE') || supabaseUrl.replace('.supabase.co', '.functions.supabase.co');
     const companyName = Deno.env.get('COMPANY_NAME') || 'PITCH Roofing CRM';
 
+    // Create service role client for DB operations
     const supabase = createClient(supabaseUrl, supabaseKey);
+    
+    // Verify JWT and get user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(
+        JSON.stringify({ error: 'Authorization required' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Create user-scoped client to verify auth
+    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: authHeader } }
+    });
+
+    const { data: { user }, error: userError } = await userSupabase.auth.getUser();
+    if (userError || !user) {
+      console.error('Auth error:', userError);
+      return new Response(
+        JSON.stringify({ error: 'Invalid or expired token' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    console.log('Authenticated user:', user.id);
+
+    // Verify user has admin/manager role
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('role, tenant_id')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !profile) {
+      return new Response(
+        JSON.stringify({ error: 'User profile not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const allowedRoles = ['master', 'corporate', 'office_admin'];
+    if (!allowedRoles.includes(profile.role)) {
+      console.log('Access denied for role:', profile.role);
+      return new Response(
+        JSON.stringify({ error: 'Insufficient permissions. Requires admin access.' }),
+        { status: 403, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const body: ExportRequest = await req.json();
     
     // Determine date range (default last 30 days)
@@ -57,7 +108,8 @@ serve(async (req: Request) => {
       html = generateHTMLFromMetrics(body.metrics, from, to, companyName);
     } else {
       console.log('Fetching metrics from database');
-      const metrics = await fetchMetricsFromDB(supabase, from, to);
+      // Scope to user's tenant
+      const metrics = await fetchMetricsFromDB(supabase, from, to, profile.tenant_id);
       html = generateHTMLFromMetrics(metrics, from, to, companyName);
     }
     
@@ -68,7 +120,7 @@ serve(async (req: Request) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': req.headers.get('Authorization') || '',
+        'Authorization': authHeader,
       },
       body: JSON.stringify({
         html,
@@ -85,8 +137,8 @@ serve(async (req: Request) => {
     const pdfData = await pdfResponse.json();
     console.log('PDF generated successfully:', pdfData.pdf_url);
     
-    // Email PDF link to recipients
-    const recipients = body.recipients || Deno.env.get('DEFAULT_MANAGER_TO')?.split(',') || [];
+    // Validate recipients - only allow sending to verified contacts in user's tenant
+    const recipients = body.recipients || [];
     const subject = body.subject || `Job Analytics Report: ${from} to ${to}`;
     const emailBody = `${body.message || 'Job Analytics Report'}\n\nView Report: ${pdfData.pdf_url}\n\nNote: This link will expire in 7 days.`;
     
@@ -99,7 +151,7 @@ serve(async (req: Request) => {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'Authorization': req.headers.get('Authorization') || '',
+            'Authorization': authHeader,
           },
           body: JSON.stringify({
             to: [recipient.trim()],
@@ -151,10 +203,12 @@ serve(async (req: Request) => {
   }
 });
 
-async function fetchMetricsFromDB(supabase: any, from: string, to: string) {
+async function fetchMetricsFromDB(supabase: any, from: string, to: string, tenantId: string) {
+  // Scope query to user's tenant
   const { data: jobs, error } = await supabase
     .from('jobs')
     .select('*')
+    .eq('tenant_id', tenantId)
     .gte('created_at', from)
     .lte('created_at', to);
 
