@@ -4073,6 +4073,47 @@ export type Database = {
           },
         ]
       }
+      estimate_template_groups: {
+        Row: {
+          created_at: string | null
+          group_type: string
+          id: string
+          name: string
+          sort_order: number
+          template_id: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          group_type?: string
+          id?: string
+          name: string
+          sort_order?: number
+          template_id: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          group_type?: string
+          id?: string
+          name?: string
+          sort_order?: number
+          template_id?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_template_groups_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       estimate_templates: {
         Row: {
           created_at: string | null
@@ -11479,8 +11520,15 @@ export type Database = {
         Row: {
           active: boolean
           created_at: string
+          description: string | null
+          estimate_item_name: string | null
+          fixed_price: number | null
+          group_id: string | null
           id: string
           item_name: string
+          item_type: string | null
+          measurement_type: string | null
+          pricing_type: string | null
           qty_formula: string
           sort_order: number
           template_id: string
@@ -11492,8 +11540,15 @@ export type Database = {
         Insert: {
           active?: boolean
           created_at?: string
+          description?: string | null
+          estimate_item_name?: string | null
+          fixed_price?: number | null
+          group_id?: string | null
           id?: string
           item_name: string
+          item_type?: string | null
+          measurement_type?: string | null
+          pricing_type?: string | null
           qty_formula: string
           sort_order?: number
           template_id: string
@@ -11505,8 +11560,15 @@ export type Database = {
         Update: {
           active?: boolean
           created_at?: string
+          description?: string | null
+          estimate_item_name?: string | null
+          fixed_price?: number | null
+          group_id?: string | null
           id?: string
           item_name?: string
+          item_type?: string | null
+          measurement_type?: string | null
+          pricing_type?: string | null
           qty_formula?: string
           sort_order?: number
           template_id?: string
@@ -11516,6 +11578,13 @@ export type Database = {
           waste_pct?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "template_items_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "estimate_template_groups"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "template_items_template_id_fkey"
             columns: ["template_id"]
@@ -11527,37 +11596,55 @@ export type Database = {
       }
       templates: {
         Row: {
+          available_trades: string[] | null
           created_at: string
           currency: string
           id: string
           labor: Json
           name: string
           overhead: Json
+          profit_margin_percent: number | null
           status: string
+          supplier_id: string | null
+          template_description: string | null
+          template_type: string | null
           tenant_id: string
           updated_at: string
+          use_for: string | null
         }
         Insert: {
+          available_trades?: string[] | null
           created_at?: string
           currency?: string
           id?: string
           labor?: Json
           name: string
           overhead?: Json
+          profit_margin_percent?: number | null
           status?: string
+          supplier_id?: string | null
+          template_description?: string | null
+          template_type?: string | null
           tenant_id: string
           updated_at?: string
+          use_for?: string | null
         }
         Update: {
+          available_trades?: string[] | null
           created_at?: string
           currency?: string
           id?: string
           labor?: Json
           name?: string
           overhead?: Json
+          profit_margin_percent?: number | null
           status?: string
+          supplier_id?: string | null
+          template_description?: string | null
+          template_type?: string | null
           tenant_id?: string
           updated_at?: string
+          use_for?: string | null
         }
         Relationships: []
       }
