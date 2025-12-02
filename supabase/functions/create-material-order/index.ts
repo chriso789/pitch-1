@@ -27,15 +27,61 @@ Deno.serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
-    );
+    // Extract and verify JWT token
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      console.error('Missing or invalid Authorization header');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Authentication required' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
+    // Create Supabase client with user's JWT to respect RLS
+    const supabaseUrl = Deno.env.get('SUPABASE_URL') ?? '';
+    const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY') ?? '';
+    const token = authHeader.replace('Bearer ', '');
+    
+    const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+      global: { headers: { Authorization: `Bearer ${token}` } }
+    });
+
+    // Verify the user and get their identity
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) {
+      console.error('Invalid token or user not found:', authError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Invalid authentication token' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
+    console.log('Authenticated user:', user.id);
+
+    // Get user's tenant_id from their profile
+    const { data: profile, error: profileError } = await supabase
+      .from('profiles')
+      .select('tenant_id')
+      .eq('id', user.id)
+      .single();
+
+    if (profileError || !profile?.tenant_id) {
+      console.error('Could not get user tenant:', profileError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'User tenant not found' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
+      );
+    }
+
+    const tenant_id = profile.tenant_id;
+    console.log('User tenant_id:', tenant_id);
 
     const orderRequest: MaterialOrderRequest = await req.json();
     console.log('Creating material order:', { 
       vendor_id: orderRequest.vendor_id, 
-      item_count: orderRequest.materials?.length 
+      item_count: orderRequest.materials?.length,
+      user_id: user.id,
+      tenant_id
     });
 
     // Validate required fields
@@ -47,19 +93,49 @@ Deno.serve(async (req) => {
       throw new Error('Materials list is required and cannot be empty');
     }
 
-    // Get project_id from pipeline entry if provided
+    // Verify vendor belongs to user's tenant
+    const { data: vendor, error: vendorError } = await supabase
+      .from('vendors')
+      .select('id, tenant_id')
+      .eq('id', orderRequest.vendor_id)
+      .single();
+
+    if (vendorError || !vendor) {
+      console.error('Vendor not found:', vendorError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Vendor not found' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 404 }
+      );
+    }
+
+    if (vendor.tenant_id !== tenant_id) {
+      console.error('Vendor tenant mismatch:', { vendor_tenant: vendor.tenant_id, user_tenant: tenant_id });
+      return new Response(
+        JSON.stringify({ success: false, error: 'Access denied: Vendor not in your organization' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
+      );
+    }
+
+    // Get project_id from pipeline entry if provided and verify tenant access
     let project_id = null;
     if (orderRequest.pipeline_entry_id) {
       const { data: pipelineEntry, error: pipelineError } = await supabase
         .from('pipeline_entries')
-        .select('project_id')
+        .select('project_id, tenant_id')
         .eq('id', orderRequest.pipeline_entry_id)
         .single();
 
       if (pipelineError) {
         console.error('Error fetching pipeline entry:', pipelineError);
-      } else {
-        project_id = pipelineEntry?.project_id;
+      } else if (pipelineEntry) {
+        if (pipelineEntry.tenant_id !== tenant_id) {
+          console.error('Pipeline entry tenant mismatch');
+          return new Response(
+            JSON.stringify({ success: false, error: 'Access denied: Pipeline entry not in your organization' }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 403 }
+          );
+        }
+        project_id = pipelineEntry.project_id;
       }
     }
 
@@ -76,7 +152,7 @@ Deno.serve(async (req) => {
 
     console.log('Generated PO number:', po_number);
 
-    // Create purchase order
+    // Create purchase order with tenant isolation
     const { data: order, error: orderError } = await supabase
       .from('purchase_orders')
       .insert({
@@ -92,6 +168,8 @@ Deno.serve(async (req) => {
         total_amount,
         delivery_address: orderRequest.delivery_address,
         notes: orderRequest.notes,
+        tenant_id, // Explicit tenant isolation
+        created_by: user.id, // Track who created the order
       })
       .select()
       .single();
@@ -144,6 +222,23 @@ Deno.serve(async (req) => {
         console.error('Error linking order to measurement:', linkError);
       }
     }
+
+    // Log to audit trail
+    await supabase.from('audit_log').insert({
+      action: 'create',
+      table_name: 'purchase_orders',
+      record_id: order.id,
+      changed_by: user.id,
+      tenant_id,
+      new_values: {
+        po_number,
+        vendor_id: orderRequest.vendor_id,
+        total_amount,
+        item_count: orderItems.length
+      }
+    }).then(({ error }) => {
+      if (error) console.error('Audit log error:', error);
+    });
 
     return new Response(
       JSON.stringify({
