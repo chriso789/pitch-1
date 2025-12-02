@@ -108,26 +108,32 @@ export default function StormCanvassPro() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-3 gap-2">
+            <div className="flex flex-wrap gap-2">
               <Button 
                 variant="outline"
+                size="sm"
+                className="whitespace-nowrap"
                 onClick={() => navigate('/storm-canvass/map')}
               >
-                <Map className="h-4 w-4 mr-2" />
+                <Map className="h-4 w-4 mr-1.5" />
                 Map
               </Button>
               <Button 
                 variant="outline"
+                size="sm"
+                className="whitespace-nowrap"
                 onClick={() => navigate('/storm-canvass/dashboard')}
               >
-                <BarChart className="h-4 w-4 mr-2" />
+                <BarChart className="h-4 w-4 mr-1.5" />
                 Dashboard
               </Button>
               <Button 
                 variant="outline"
+                size="sm"
+                className="whitespace-nowrap"
                 onClick={() => navigate('/storm-canvass/leaderboard')}
               >
-                <Trophy className="h-4 w-4 mr-2" />
+                <Trophy className="h-4 w-4 mr-1.5" />
                 Leaderboard
               </Button>
             </div>
