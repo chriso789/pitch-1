@@ -565,23 +565,30 @@ export function MeasurementVerificationDialog({
     return flatArea;
   };
 
-  // Calculate measurements (use adjusted values if available)
-  const planArea = adjustedArea || tags['roof.plan_sqft'] || 0;
+  // Calculate measurements (use adjusted values if available, with comprehensive fallbacks)
+  const planArea = adjustedArea 
+    || tags['roof.plan_area'] 
+    || tags['roof.plan_sqft'] 
+    || measurement?.summary?.total_area_sqft 
+    || measurement?.summary?.plan_area_sqft
+    || measurement?.total_area_sqft
+    || 0;
   const flatArea = calculateFlatArea();
   const roofAreaNoWaste = planArea * pitchFactor;
   const totalAreaWithWaste = roofAreaNoWaste * (1 + wastePercent / 100);
   const roofSquares = totalAreaWithWaste / 100;
+  
+  // Linear features with fallbacks to measurement.linear_features and measurement.summary
+  const ridge = tags['lf.ridge'] || measurement?.linear_features?.ridge || measurement?.summary?.ridge_ft || 0;
+  const hip = tags['lf.hip'] || measurement?.linear_features?.hip || measurement?.summary?.hip_ft || 0;
+  const valley = tags['lf.valley'] || measurement?.linear_features?.valley || measurement?.summary?.valley_ft || 0;
+  const eave = tags['lf.eave'] || measurement?.linear_features?.eave || measurement?.summary?.eave_ft || 0;
+  const rake = tags['lf.rake'] || measurement?.linear_features?.rake || measurement?.summary?.rake_ft || 0;
+  const step = tags['lf.step'] || measurement?.linear_features?.step || measurement?.summary?.step_ft || 0;
+  
   const perimeter = buildingPolygon.length > 0 
     ? calculatePerimeterFt(adjustedPolygon || buildingPolygon)
-    : (tags['lf.eave'] || 0) + (tags['lf.rake'] || 0) + (tags['lf.ridge'] || 0) + (tags['lf.hip'] || 0) + (tags['lf.valley'] || 0) + (tags['lf.step'] || 0);
-
-  // Linear features (use 'lf.' prefix for tag keys)
-  const ridge = tags['lf.ridge'] || 0;
-  const hip = tags['lf.hip'] || 0;
-  const valley = tags['lf.valley'] || 0;
-  const eave = tags['lf.eave'] || 0;
-  const rake = tags['lf.rake'] || 0;
-  const step = tags['lf.step'] || 0;
+    : (eave + rake + ridge + hip + valley + step);
 
   // Recalculate materials when measurements change
   useEffect(() => {
