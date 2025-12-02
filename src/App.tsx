@@ -69,6 +69,8 @@ import TerritoryMapPage from "./pages/storm-canvass/TerritoryMapPage";
 import CanvasserDashboard from "./pages/storm-canvass/CanvasserDashboard";
 import LeaderboardPage from "./pages/storm-canvass/LeaderboardPage";
 import PublicReportViewer from "./pages/PublicReportViewer";
+import MeasurementCorrectionPage from "./pages/MeasurementCorrectionPage";
+import MeasurementAnalyticsPage from "./pages/MeasurementAnalyticsPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -187,6 +189,8 @@ const AppContent = () => {
         <Route path="/measurement-workflow" element={<MeasurementWorkflowDemo />} />
         <Route path="/roof-measure/:id" element={<RoofMeasure />} />
         <Route path="/roof-measure" element={<RoofMeasure />} />
+        <Route path="/measurements/:id/corrections" element={<MeasurementCorrectionPage />} />
+        <Route path="/measurement-analytics" element={<MeasurementAnalyticsPage />} />
         
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
