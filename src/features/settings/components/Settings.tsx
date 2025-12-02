@@ -4,6 +4,9 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Badge } from "@/components/ui/badge";
+import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
 import { AutomationManager } from "@/components/AutomationManager";
 import { SmartDocumentEditor } from "@/components/SmartDocumentEditor";
 import { DynamicTagManager } from "@/components/DynamicTagManager";
@@ -56,6 +59,7 @@ export const Settings = () => {
   const [tabConfig, setTabConfig] = useState<SettingsTab[]>([]);
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const { toast } = useToast();
+  const { companies, activeCompany, activeCompanyId, loading: companiesLoading, switchCompany } = useCompanySwitcher();
 
   useEffect(() => {
     if (currentUser) {
@@ -107,6 +111,44 @@ export const Settings = () => {
           </p>
         </div>
         <div className="flex items-center gap-4">
+          {/* Company Profile Dropdown - Always visible */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="gap-2">
+                <LucideIcons.Building2 className="h-4 w-4" />
+                <span className="max-w-[200px] truncate">
+                  {companiesLoading ? 'Loading...' : (activeCompany?.tenant_name || 'Select Company')}
+                </span>
+                <LucideIcons.ChevronDown className="h-4 w-4 opacity-50" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-72">
+              <DropdownMenuLabel>Company Profile</DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              {companies.length === 0 ? (
+                <DropdownMenuItem disabled>No companies available</DropdownMenuItem>
+              ) : (
+                companies.map((company) => (
+                  <DropdownMenuItem 
+                    key={company.tenant_id}
+                    onClick={() => switchCompany(company.tenant_id)}
+                    className="flex items-center justify-between cursor-pointer"
+                  >
+                    <div className="flex flex-col">
+                      <span className="font-medium">{company.tenant_name}</span>
+                      <span className="text-xs text-muted-foreground">
+                        {company.location_count} location{company.location_count !== 1 ? 's' : ''}
+                      </span>
+                    </div>
+                    {company.tenant_id === activeCompanyId && (
+                      <LucideIcons.Check className="h-4 w-4 text-primary" />
+                    )}
+                  </DropdownMenuItem>
+                ))
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+
           {currentUser?.role === 'master' && (
             <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
               <DialogTrigger asChild>
@@ -192,6 +234,33 @@ export const Settings = () => {
         </TabsContent>
 
         <TabsContent value="company" className="space-y-6">
+          {/* Company Header Card */}
+          <Card className="bg-primary/5 border-primary/20">
+            <CardContent className="py-6">
+              <div className="flex items-center gap-4">
+                <div className="h-16 w-16 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <LucideIcons.Building2 className="h-8 w-8 text-primary" />
+                </div>
+                <div className="flex-1">
+                  <h2 className="text-2xl font-bold">{activeCompany?.tenant_name || 'No Company Selected'}</h2>
+                  <p className="text-muted-foreground">{activeCompany?.tenant_subdomain || ''}</p>
+                  <div className="flex items-center gap-2 mt-1">
+                    <Badge variant="secondary">
+                      <LucideIcons.MapPin className="h-3 w-3 mr-1" />
+                      {activeCompany?.location_count || 0} Location{(activeCompany?.location_count || 0) !== 1 ? 's' : ''}
+                    </Badge>
+                    {activeCompany?.is_active && (
+                      <Badge variant="default" className="bg-green-500/20 text-green-700 border-green-500/30">
+                        Active
+                      </Badge>
+                    )}
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Locations Under This Company */}
           <LocationManagement />
         </TabsContent>
 
