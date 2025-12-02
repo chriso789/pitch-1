@@ -139,7 +139,8 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log('User created successfully, creating profile:', newUser.user.id);
 
-    // Create profile
+    // Create profile data - explicitly log to verify role value
+    console.log('Building profileData with role:', role, 'type:', typeof role);
     const profileData: any = {
       id: newUser.user.id,
       email,
@@ -152,6 +153,7 @@ const handler = async (req: Request): Promise<Response> => {
       is_active: true,
       tenant_id: profile.tenant_id
     };
+    console.log('ProfileData role value:', profileData.role, 'Full profileData:', JSON.stringify(profileData));
 
     // Add pay structure for sales reps/managers
     if (payStructure && ['sales_manager', 'regional_manager'].includes(role)) {
