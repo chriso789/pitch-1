@@ -8,7 +8,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { LeadForm } from "@/features/contacts/components/LeadForm";
+import ContactFormDialog from "@/components/ContactFormDialog";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { useQuery } from "@tanstack/react-query";
@@ -38,7 +38,7 @@ import { exportToCSV } from "@/lib/export-utils";
 import { toast } from "sonner";
 
 const Dashboard = () => {
-  const [showLeadForm, setShowLeadForm] = useState(false);
+  
   const navigate = useNavigate();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
@@ -447,16 +447,20 @@ const Dashboard = () => {
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <Card 
-          className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-primary"
-          onClick={() => setShowLeadForm(true)}
-        >
-          <CardContent className="p-6 text-center text-white">
-            <Plus className="h-8 w-8 mx-auto mb-2" />
-            <h3 className="font-semibold mb-1">New Lead</h3>
-            <p className="text-sm opacity-90">Add a new customer lead</p>
-          </CardContent>
-        </Card>
+        <ContactFormDialog
+          trigger={
+            <Card className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-primary">
+              <CardContent className="p-6 text-center text-white">
+                <Plus className="h-8 w-8 mx-auto mb-2" />
+                <h3 className="font-semibold mb-1">New Contact</h3>
+                <p className="text-sm opacity-90">Add a new customer contact</p>
+              </CardContent>
+            </Card>
+          }
+          onContactCreated={() => {
+            console.log('New contact created');
+          }}
+        />
         
         <Card className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-secondary">
           <CardContent className="p-6 text-center text-white">
@@ -603,15 +607,6 @@ const Dashboard = () => {
         </CardContent>
       </Card>
 
-      {/* Lead Form Dialog */}
-      <LeadForm 
-        open={showLeadForm} 
-        onOpenChange={setShowLeadForm}
-        onLeadCreated={() => {
-          // Refresh dashboard data if needed
-          console.log('New lead created');
-        }}
-      />
     </div>
   );
 };
