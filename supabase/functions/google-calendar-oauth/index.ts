@@ -26,9 +26,21 @@ serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(
+    // Client for auth verification
+    const supabaseAuth = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      {
+        auth: {
+          persistSession: false,
+        },
+      }
+    );
+
+    // Admin client for database operations (bypasses RLS)
+    const supabaseAdmin = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
       {
         auth: {
           persistSession: false,
@@ -42,7 +54,7 @@ serve(async (req) => {
     }
 
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: userError } = await supabase.auth.getUser(token);
+    const { data: { user }, error: userError } = await supabaseAuth.auth.getUser(token);
 
     if (userError || !user) {
       throw new Error('Unauthorized');
@@ -62,22 +74,22 @@ serve(async (req) => {
     // Get user's active tenant (supports multi-company switching)
     console.log('Fetching profile for user:', user.id);
     
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('active_tenant_id, tenant_id')
       .eq('id', user.id)
-      .single();
+      .maybeSingle();
 
     console.log('Profile query result:', { profile, profileError });
 
     if (profileError) {
       console.error('Failed to fetch profile:', profileError);
-      throw new Error(`User profile not found: ${profileError.message}`);
+      throw new Error(`Database error fetching profile: ${profileError.message}`);
     }
 
     if (!profile) {
-      console.error('Profile query succeeded but returned null/undefined');
-      throw new Error('User profile does not exist');
+      console.error('No profile found for user:', user.id);
+      throw new Error('User profile not found. Please contact an administrator to set up your profile.');
     }
 
     const tenantId = profile.active_tenant_id || profile.tenant_id;
@@ -165,7 +177,7 @@ serve(async (req) => {
         const expiresAt = new Date(Date.now() + (tokens.expires_in * 1000));
 
         // Store connection in database
-        const { error: upsertError } = await supabase
+        const { error: upsertError } = await supabaseAdmin
           .from('google_calendar_connections')
           .upsert({
             user_id: user.id,
@@ -200,7 +212,7 @@ serve(async (req) => {
 
       case 'disconnect': {
         // Get current connection
-        const { data: connection } = await supabase
+        const { data: connection } = await supabaseAdmin
           .from('google_calendar_connections')
           .select('access_token_encrypted')
           .eq('user_id', user.id)
@@ -218,7 +230,7 @@ serve(async (req) => {
         }
 
         // Mark as inactive in database
-        const { error: updateError } = await supabase
+        const { error: updateError } = await supabaseAdmin
           .from('google_calendar_connections')
           .update({ is_active: false })
           .eq('user_id', user.id)
@@ -238,7 +250,7 @@ serve(async (req) => {
 
       case 'status': {
         // Get connection status
-        const { data: connection } = await supabase
+        const { data: connection } = await supabaseAdmin
           .from('google_calendar_connections')
           .select('calendar_name, calendar_id, connected_at, last_synced_at, is_active, token_expires_at')
           .eq('user_id', user.id)
