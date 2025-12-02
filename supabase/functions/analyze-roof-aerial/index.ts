@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { encode as base64Encode } from 'https://deno.land/std@0.168.0/encoding/base64.ts'
 
 const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY')!
 const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY')!
@@ -73,7 +74,8 @@ serve(async (req) => {
           wasteFactor: measurements.wasteFactor,
           facets: measurements.facets,
           linear: measurements.linearMeasurements,
-          materials: measurements.materials
+          materials: measurements.materials,
+          predominantPitch: measurements.predominantPitch
         },
         confidence: {
           score: confidence.score,
@@ -101,11 +103,21 @@ serve(async (req) => {
 })
 
 async function fetchGoogleStaticMap(coords: any) {
-  const url = `https://maps.googleapis.com/maps/api/staticmap?center=${coords.lat},${coords.lng}&zoom=20&size=640x640&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`
-  const response = await fetch(url)
-  const buffer = await response.arrayBuffer()
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)))
-  return { url: `data:image/png;base64,${base64}`, source: 'google_maps', resolution: '640x640', quality: 8 }
+  try {
+    const url = `https://maps.googleapis.com/maps/api/staticmap?center=${coords.lat},${coords.lng}&zoom=20&size=640x640&maptype=satellite&key=${GOOGLE_MAPS_API_KEY}`
+    const response = await fetch(url)
+    if (!response.ok) {
+      console.error('Google Maps fetch failed:', response.status)
+      return { url: null, source: 'google_maps', resolution: '640x640', quality: 0 }
+    }
+    const buffer = await response.arrayBuffer()
+    // Use Deno's base64 encoding to avoid stack overflow with large images
+    const base64 = base64Encode(new Uint8Array(buffer))
+    return { url: `data:image/png;base64,${base64}`, source: 'google_maps', resolution: '640x640', quality: 8 }
+  } catch (err) {
+    console.error('Google Maps error:', err)
+    return { url: null, source: 'google_maps', resolution: '640x640', quality: 0 }
+  }
 }
 
 async function fetchGoogleSolarData(coords: any) {
@@ -130,14 +142,28 @@ async function fetchGoogleSolarData(coords: any) {
 }
 
 async function fetchMapboxSatellite(coords: any) {
-  const url = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${coords.lng},${coords.lat},20,0/640x640@2x?access_token=${MAPBOX_PUBLIC_TOKEN}`
-  const response = await fetch(url)
-  const buffer = await response.arrayBuffer()
-  const base64 = btoa(String.fromCharCode(...new Uint8Array(buffer)))
-  return { url: `data:image/png;base64,${base64}`, source: 'mapbox', resolution: '1280x1280', quality: 9 }
+  try {
+    const url = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${coords.lng},${coords.lat},20,0/640x640@2x?access_token=${MAPBOX_PUBLIC_TOKEN}`
+    const response = await fetch(url)
+    if (!response.ok) {
+      console.error('Mapbox fetch failed:', response.status)
+      return { url: null, source: 'mapbox', resolution: '1280x1280', quality: 0 }
+    }
+    const buffer = await response.arrayBuffer()
+    // Use Deno's base64 encoding to avoid stack overflow with large images
+    const base64 = base64Encode(new Uint8Array(buffer))
+    return { url: `data:image/png;base64,${base64}`, source: 'mapbox', resolution: '1280x1280', quality: 9 }
+  } catch (err) {
+    console.error('Mapbox error:', err)
+    return { url: null, source: 'mapbox', resolution: '1280x1280', quality: 0 }
+  }
 }
 
 async function analyzeRoofWithAI(imageUrl: string, address: string) {
+  if (!imageUrl) {
+    throw new Error('No satellite image available for AI analysis')
+  }
+
   const prompt = `You are a professional roof measurement technician analyzing aerial imagery of ${address}.
 
 Analyze this image and provide ONLY valid JSON in this EXACT format (no markdown, no backticks, just JSON):
@@ -168,7 +194,7 @@ CRITICAL: Respond ONLY with valid JSON. No text before or after. No markdown for
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${OPENAI_API_KEY}` },
     body: JSON.stringify({
-      model: 'gpt-4-vision-preview',
+      model: 'gpt-4o',
       messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: imageUrl, detail: 'high' } }] }],
       max_tokens: 4000,
       temperature: 0.1
@@ -176,11 +202,23 @@ CRITICAL: Respond ONLY with valid JSON. No text before or after. No markdown for
   })
 
   const data = await response.json()
+  
+  if (!data.choices || !data.choices[0]) {
+    console.error('OpenAI response:', JSON.stringify(data))
+    throw new Error(data.error?.message || 'OpenAI API returned no choices')
+  }
+  
   let content = data.choices[0].message.content
   content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-  const aiAnalysis = JSON.parse(content)
-  if (!aiAnalysis.facets || aiAnalysis.facets.length === 0) throw new Error('AI failed to detect facets')
-  return aiAnalysis
+  
+  try {
+    const aiAnalysis = JSON.parse(content)
+    if (!aiAnalysis.facets || aiAnalysis.facets.length === 0) throw new Error('AI failed to detect facets')
+    return aiAnalysis
+  } catch (parseError) {
+    console.error('Failed to parse AI response:', content)
+    throw new Error('AI returned invalid JSON response')
+  }
 }
 
 function calculateScale(solarData: any, image: any, aiAnalysis: any) {
@@ -375,25 +413,24 @@ async function saveMeasurementToDatabase(supabase: any, data: any) {
     pitch: facet.pitch,
     pitch_multiplier: facet.pitchMultiplier,
     area_adjusted_sqft: facet.adjustedAreaSqft,
-    primary_direction: facet.orientation,
-    eave_length: facet.edges.eave,
-    rake_length: facet.edges.rake,
-    hip_length: facet.edges.hip,
-    valley_length: facet.edges.valley,
-    ridge_length: facet.edges.ridge,
-    chimney_count: facet.features.chimneys,
-    skylight_count: facet.features.skylights,
-    vent_count: facet.features.vents,
+    edge_eave_length: facet.edges.eave || 0,
+    edge_rake_length: facet.edges.rake || 0,
+    edge_hip_length: facet.edges.hip || 0,
+    edge_valley_length: facet.edges.valley || 0,
+    edge_ridge_length: facet.edges.ridge || 0,
+    orientation: facet.orientation,
     detection_confidence: facet.confidence === 'high' ? 90 : facet.confidence === 'medium' ? 70 : 50
   }))
 
-  const { error: facetsError } = await supabase.from('roof_measurement_facets').insert(facetInserts)
-  if (facetsError) throw facetsError
+  if (facetInserts.length > 0) {
+    await supabase.from('roof_facets').insert(facetInserts)
+  }
 
   return measurementRecord
 }
 
 function mostCommon(arr: string[]): string {
-  const counts = arr.reduce((acc: any, val) => { acc[val] = (acc[val] || 0) + 1; return acc }, {})
-  return Object.keys(counts).reduce((a, b) => counts[a] > counts[b] ? a : b)
+  const counts: { [key: string]: number } = {}
+  arr.forEach(item => { counts[item] = (counts[item] || 0) + 1 })
+  return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || '6/12'
 }
