@@ -243,7 +243,7 @@ class OfflineManager {
       try {
         // Try to fetch from Supabase (lightweight endpoint)
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout (increased from 5)
+        const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
         const response = await fetch('https://alxelfrbjzkmtnsulcei.supabase.co/rest/v1/', {
           method: 'HEAD',
@@ -252,28 +252,32 @@ class OfflineManager {
 
         clearTimeout(timeoutId);
 
-        if (response.ok) {
+        // 401/403 means we reached the server (just unauthorized) - that's still ONLINE
+        // Only truly offline if we get a network error (caught below)
+        if (response.ok || response.status === 401 || response.status === 403) {
           // Connection successful - reset failure counter
           this.consecutiveFailures = 0;
           if (!this.isOnlineState) {
             this.isOnlineState = true;
             this.notifyNetworkChange(true);
           }
-        } else {
-          throw new Error('Bad response');
+        } else if (response.status >= 500) {
+          // Server error - might be temporary, don't immediately mark offline
+          throw new Error('Server error');
         }
+        // Other 4xx errors (except 401/403) are valid responses - we're online
       } catch (error) {
-        // Connection failed - increment failure counter
+        // Only network errors should increment failure counter
         this.consecutiveFailures++;
-        console.log(`Ping test failed (${this.consecutiveFailures}/2)`);
         
-        // Only mark offline after 2 consecutive failures
+        // Only mark offline after 2 consecutive failures (reduce log spam)
         if (this.consecutiveFailures >= 2 && this.isOnlineState) {
+          console.log('Network appears offline after multiple failed pings');
           this.isOnlineState = false;
           this.notifyNetworkChange(false);
         }
       }
-    }, 60000); // Every 60 seconds (reduced from 30)
+    }, 60000); // Every 60 seconds
   }
 
   private stopPingTest(): void {

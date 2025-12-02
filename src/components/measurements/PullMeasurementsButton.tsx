@@ -82,7 +82,7 @@ function transformNewMeasurementToLegacyFormat(newData: any) {
   const pitchStr = measurements?.predominantPitch || aiAnalysis?.pitch || '6/12';
   const pitchMultiplier = PITCH_MULTIPLIERS[pitchStr] || 1.118;
 
-  // Transform to legacy "tags" format
+  // Transform to legacy "tags" format - use correct 'lf.' prefix for linear features
   const tags: Record<string, any> = {
     'roof.plan_area': measurements?.totalFlatArea || measurements?.totalAreaSqft || 0,
     'roof.total_area': measurements?.totalAdjustedArea || measurements?.totalAreaSqft || 0,
@@ -91,6 +91,13 @@ function transformNewMeasurementToLegacyFormat(newData: any) {
     'roof.waste_pct': ((measurements?.wasteFactor || 1.12) - 1) * 100,
     'roof.faces_count': aiAnalysis?.facetCount || measurements?.facets?.length || 0,
     'roof.perimeter': (measurements?.linear?.eave || 0) + (measurements?.linear?.rake || 0),
+    // Use 'lf.' prefix for linear features (ComprehensiveMeasurementOverlay expects this)
+    'lf.ridge': measurements?.linear?.ridge || 0,
+    'lf.hip': measurements?.linear?.hip || 0,
+    'lf.valley': measurements?.linear?.valley || 0,
+    'lf.eave': measurements?.linear?.eave || 0,
+    'lf.rake': measurements?.linear?.rake || 0,
+    // Also keep roof.* versions for backward compatibility
     'roof.ridge': measurements?.linear?.ridge || 0,
     'roof.hip': measurements?.linear?.hip || 0,
     'roof.valley': measurements?.linear?.valley || 0,

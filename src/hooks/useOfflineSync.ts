@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { offlineManager, QueuedActivity } from '@/services/offlineManager';
 import { useToast } from '@/hooks/use-toast';
 
@@ -18,26 +18,42 @@ export const useOfflineSync = (): UseOfflineSyncResult => {
   const [isSyncing, setIsSyncing] = useState(false);
   const [lastSyncAt, setLastSyncAt] = useState<Date | null>(null);
   const { toast } = useToast();
+  
+  // Track consecutive failed pings - require 2 failures before marking offline
+  const consecutiveFailures = useRef(0);
+  const FAILURES_REQUIRED = 2;
 
-  // Watch network status
+  // Watch network status with improved detection
   useEffect(() => {
     const unwatch = offlineManager.watchNetworkStatus((online) => {
-      const wasOffline = !isOnline;
-      setIsOnline(online);
+      if (online) {
+        // Reset failure counter on successful connection
+        consecutiveFailures.current = 0;
+        
+        const wasOffline = !isOnline;
+        setIsOnline(true);
 
-      if (online && wasOffline) {
-        // Coming back online - auto-sync
-        toast({
-          title: 'Back Online',
-          description: 'Syncing queued activities...',
-        });
-        syncNow();
-      } else if (!online) {
-        toast({
-          title: 'You\'re Offline',
-          description: 'Activities will be queued and synced when connection is restored',
-          variant: 'default',
-        });
+        if (wasOffline) {
+          // Coming back online - auto-sync
+          toast({
+            title: 'Back Online',
+            description: 'Syncing queued activities...',
+          });
+          syncNow();
+        }
+      } else {
+        // Increment failure counter
+        consecutiveFailures.current += 1;
+        
+        // Only mark offline after FAILURES_REQUIRED consecutive failures
+        if (consecutiveFailures.current >= FAILURES_REQUIRED && isOnline) {
+          setIsOnline(false);
+          toast({
+            title: 'You\'re Offline',
+            description: 'Activities will be queued and synced when connection is restored',
+            variant: 'default',
+          });
+        }
       }
     });
 
