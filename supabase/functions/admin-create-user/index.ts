@@ -100,7 +100,16 @@ const handler = async (req: Request): Promise<Response> => {
       }
     );
 
-    console.log('Creating user with admin API:', email);
+    console.log('Creating user with admin API:', email, 'with role:', role, '(validated against:', validRoles.join(', '), ')');
+
+    // Double-check the role is correct before proceeding
+    if (role === 'admin' || !validRoles.includes(role)) {
+      console.error('CRITICAL: Invalid role detected after validation:', role);
+      return new Response(
+        JSON.stringify({ error: `Invalid role detected: "${role}". This should not happen.` }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
 
     // Create user with admin API (bypasses rate limits)
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
@@ -153,9 +162,10 @@ const handler = async (req: Request): Promise<Response> => {
       profileData.pay_structure_created_at = new Date().toISOString();
     }
 
+    // Use upsert since trigger may have created a profile already
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
-      .insert(profileData);
+      .upsert(profileData, { onConflict: 'id' });
 
     if (profileError) {
       console.error('Error creating profile:', profileError);
@@ -165,6 +175,24 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     console.log('Profile created successfully');
+
+    // Create user_roles entry for secure role-based access
+    const { error: roleError } = await supabaseAdmin
+      .from('user_roles')
+      .insert({
+        user_id: newUser.user.id,
+        tenant_id: profile.tenant_id,
+        role,
+        created_by: user.id
+      });
+
+    if (roleError) {
+      console.error('Error creating user role:', roleError);
+      // Don't fail the whole request, profile was created successfully
+      console.warn('User created but role assignment failed - user may need manual role assignment');
+    } else {
+      console.log('User role created successfully');
+    }
 
     // Send welcome email (without password)
     try {
