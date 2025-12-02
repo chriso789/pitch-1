@@ -629,7 +629,7 @@ export const UserManagement = () => {
                     )}
 
                     {/* Pay Structure Configuration for Sales Reps */}
-                    {['admin', 'manager'].includes(newUser.role) && (
+                    {['sales_manager', 'regional_manager'].includes(newUser.role) && (
                       <RepPayStructureConfig
                         role={newUser.role}
                         onChange={setPayStructure}
