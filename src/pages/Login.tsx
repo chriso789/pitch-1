@@ -230,7 +230,7 @@ const Login: React.FC = () => {
         });
         
         // Immediately navigate to dashboard
-        navigate('/');
+        navigate('/dashboard');
       }
     } catch (error: any) {
       clearTimeout(timeoutId);
