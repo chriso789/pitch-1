@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Satellite, Loader2, CheckCircle2, Pencil } from 'lucide-react';
+import { Satellite, Loader2, CheckCircle2, Pencil, Brain } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { MeasurementVerificationDialog } from './MeasurementVerificationDialog';
 import { useImageCache } from '@/contexts/ImageCacheContext';
@@ -15,12 +15,101 @@ import {
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
+// Pitch multipliers for area adjustment
+const PITCH_MULTIPLIERS: Record<string, number> = {
+  '0/12': 1.0, '1/12': 1.003, '2/12': 1.014, '3/12': 1.031,
+  '4/12': 1.054, '5/12': 1.083, '6/12': 1.118, '7/12': 1.158,
+  '8/12': 1.202, '9/12': 1.250, '10/12': 1.302, '11/12': 1.357,
+  '12/12': 1.414
+};
+
 interface PullMeasurementsButtonProps {
   propertyId: string;
   lat: number;
   lng: number;
   address?: string;
   onSuccess?: (measurement: any, tags: Record<string, any>) => void;
+}
+
+/**
+ * Transform new analyze-roof-aerial response to legacy format for MeasurementVerificationDialog
+ */
+function transformNewMeasurementToLegacyFormat(newData: any) {
+  const { measurements, aiAnalysis, confidence, images } = newData;
+  
+  // Transform to legacy "measurement" object
+  const measurement = {
+    id: null, // Will be set from measurementId
+    faces: measurements?.facets?.map((f: any, i: number) => ({
+      id: i + 1,
+      facet_number: f.facetNumber || i + 1,
+      pitch: f.pitch || '6/12',
+      plan_area_sqft: f.flatAreaSqft || f.area || 0,
+      area_sqft: f.adjustedAreaSqft || f.area || 0,
+      shape: f.shape || 'rectangle',
+      orientation: f.orientation || 'unknown',
+      wkt: null,
+    })) || [],
+    linear_features: measurements?.linear || {
+      ridge: 0,
+      hip: 0,
+      valley: 0,
+      eave: 0,
+      rake: 0,
+    },
+    mapbox_visualization_url: images?.mapbox?.url || null,
+    google_image_url: images?.google?.url || null,
+    roof_type: aiAnalysis?.roofType || measurements?.roofType || 'unknown',
+    predominant_pitch: measurements?.predominantPitch || aiAnalysis?.pitch || '6/12',
+    confidence_score: confidence?.score || 0,
+    requires_review: confidence?.requiresReview || false,
+    // Include summary for MeasurementVerificationDialog
+    summary: {
+      total_area_sqft: measurements?.totalAdjustedArea || measurements?.totalAreaSqft || 0,
+      total_squares: measurements?.totalSquares || 0,
+      waste_pct: ((measurements?.wasteFactor || 1.12) - 1) * 100,
+      pitch: measurements?.predominantPitch || aiAnalysis?.pitch || '6/12',
+      perimeter_ft: (measurements?.linear?.eave || 0) + (measurements?.linear?.rake || 0),
+      stories: measurements?.stories || 1,
+    },
+    // AI-specific fields
+    aiAnalysis: aiAnalysis || null,
+    confidence: confidence || null,
+  };
+
+  // Get pitch multiplier
+  const pitchStr = measurements?.predominantPitch || aiAnalysis?.pitch || '6/12';
+  const pitchMultiplier = PITCH_MULTIPLIERS[pitchStr] || 1.118;
+
+  // Transform to legacy "tags" format
+  const tags: Record<string, any> = {
+    'roof.plan_area': measurements?.totalFlatArea || measurements?.totalAreaSqft || 0,
+    'roof.total_area': measurements?.totalAdjustedArea || measurements?.totalAreaSqft || 0,
+    'roof.squares': measurements?.totalSquares || 0,
+    'roof.pitch_factor': pitchMultiplier,
+    'roof.waste_pct': ((measurements?.wasteFactor || 1.12) - 1) * 100,
+    'roof.faces_count': aiAnalysis?.facetCount || measurements?.facets?.length || 0,
+    'roof.perimeter': (measurements?.linear?.eave || 0) + (measurements?.linear?.rake || 0),
+    'roof.ridge': measurements?.linear?.ridge || 0,
+    'roof.hip': measurements?.linear?.hip || 0,
+    'roof.valley': measurements?.linear?.valley || 0,
+    'roof.eave': measurements?.linear?.eave || 0,
+    'roof.rake': measurements?.linear?.rake || 0,
+    'materials.shingle_bundles': measurements?.materials?.shingleBundles || 0,
+    'materials.ridge_cap_bundles': measurements?.materials?.hipRidgeBundles || 0,
+    'materials.valley_rolls': measurements?.materials?.valleyMetalSheets || 0,
+    'materials.drip_edge_sheets': measurements?.materials?.dripEdgeSheets || 0,
+    'materials.starter_bundles': measurements?.materials?.starterStripBundles || 0,
+    'materials.ice_water_rolls': measurements?.materials?.iceWaterShieldRolls || 0,
+    'materials.underlayment_rolls': measurements?.materials?.underlaymentRolls || 0,
+    // AI-specific tags
+    'ai.confidence': confidence?.score || 0,
+    'ai.rating': confidence?.rating || 'unknown',
+    'ai.roof_type': aiAnalysis?.roofType || 'unknown',
+    'ai.complexity': aiAnalysis?.complexity || 'moderate',
+  };
+
+  return { measurement, tags };
 }
 
 export function PullMeasurementsButton({
@@ -59,9 +148,12 @@ export function PullMeasurementsButton({
 
     // 📊 Performance Monitoring: Start timing
     const pullStartTime = Date.now();
-    console.log('⏱️ Measurement pull started:', { propertyId, lat, lng, timestamp: new Date().toISOString() });
+    console.log('⏱️ AI Measurement analysis started:', { propertyId, lat, lng, timestamp: new Date().toISOString() });
 
     try {
+      // Get current user for the request
+      const { data: { user } } = await supabase.auth.getUser();
+
       // ✅ Coordinate Validation: Check against verified address from contacts table (PRIORITY #1)
       const { data: pipelineData } = await supabase
         .from('pipeline_entries')
@@ -120,94 +212,77 @@ export function PullMeasurementsButton({
       }
 
       toast({
-        title: "Pulling Measurements",
-        description: "Fetching roof data from satellite imagery...",
+        title: "🤖 AI Analysis Started",
+        description: "Analyzing roof with GPT-4 Vision + Google Solar API...",
       });
 
-      const { data, error } = await supabase.functions.invoke('measure', {
+      // 🚀 Call the NEW analyze-roof-aerial edge function
+      const { data, error } = await supabase.functions.invoke('analyze-roof-aerial', {
         body: {
-          action: 'pull',
-          propertyId,
-          lat,
-          lng,
-          address
+          address: address || 'Unknown Address',
+          coordinates: { lat, lng },
+          customerId: propertyId,
+          userId: user?.id
         }
       });
 
-      if (error) throw error;
-      if (!data?.ok) throw new Error(data?.error || 'Pull failed');
+      if (error) {
+        console.error('Edge function error:', error);
+        throw error;
+      }
+      
+      if (!data?.success) {
+        // Check for specific error types
+        if (data?.error?.includes('OPENAI') || data?.error?.includes('API key')) {
+          toast({
+            title: "API Key Missing",
+            description: "OpenAI API key not configured. Contact your administrator.",
+            variant: "destructive"
+          });
+          setLoading(false);
+          return;
+        }
+        throw new Error(data?.error || 'AI analysis failed');
+      }
       
       // 📊 Performance Monitoring: Record pull time
       const pullEndTime = Date.now();
       const pullDuration = pullEndTime - pullStartTime;
-      console.log(`⏱️ Measurement pull completed in ${pullDuration}ms`, {
+      console.log(`⏱️ AI analysis completed in ${pullDuration}ms`, {
         propertyId,
         duration: pullDuration,
-        target: 5000,
-        status: pullDuration < 5000 ? 'PASS' : 'SLOW'
+        target: 15000,
+        status: pullDuration < 15000 ? 'PASS' : 'SLOW',
+        confidence: data.data?.confidence?.score
       });
-      
-      if (pullDuration > 5000) {
-        console.warn(`⚠️ Slow measurement pull: ${pullDuration}ms (target: <5000ms)`);
-      }
 
-      const { measurement, tags } = data.data;
+      // Transform new format to legacy format for backward compatibility
+      const { measurement, tags } = transformNewMeasurementToLegacyFormat(data.data);
+      measurement.id = data.measurementId;
 
-      // Try to use Mapbox visualization URL first, then fallback to Google Maps
-      let satelliteImageUrl: string | undefined;
-      
-      if (measurement.mapbox_visualization_url) {
-        // Use the pre-generated Mapbox visualization with overlays
-        satelliteImageUrl = measurement.mapbox_visualization_url;
-        console.log('Using Mapbox visualization:', satelliteImageUrl);
-      } else {
-        // Fallback to Google Maps satellite image (ALWAYS provide fallback)
-        console.log('Mapbox visualization not available, using Google Maps fallback');
+      // Get satellite image URL from the new system
+      let satelliteImageUrl: string | undefined = 
+        data.data?.images?.mapbox?.url || 
+        data.data?.images?.google?.url;
+
+      // If no satellite image from the new system, try Google Maps fallback
+      if (!satelliteImageUrl) {
+        console.log('No satellite image from AI system, using Google Maps fallback');
         
-        // Calculate measurement center if faces are available for better framing
-        let centerLat = lat;
-        let centerLng = lng;
-        if (measurement.faces && measurement.faces.length > 0) {
-          let sumLat = 0, sumLng = 0, pointCount = 0;
-          measurement.faces.forEach((face: any) => {
-            const match = face.wkt?.match(/POLYGON\(\(([^)]+)\)\)/);
-            if (match) {
-              match[1].split(',').forEach((pair: string) => {
-                const [lng, lat] = pair.trim().split(' ').map(Number);
-                if (!isNaN(lat) && !isNaN(lng)) {
-                  sumLat += lat;
-                  sumLng += lng;
-                  pointCount++;
-                }
-              });
-            }
-          });
-          if (pointCount > 0) {
-            centerLat = sumLat / pointCount;
-            centerLng = sumLng / pointCount;
-            console.log('Using calculated measurement center:', { centerLat, centerLng });
-          }
-        }
-        
-        // Generate cache key from coordinates and zoom
-        const cacheKey = `gmaps_sat_${centerLat.toFixed(6)}_${centerLng.toFixed(6)}_z21`;
-        
-        // Check cache first
+        const cacheKey = `gmaps_sat_${lat.toFixed(6)}_${lng.toFixed(6)}_z20`;
         const cachedImageUrl = imageCache.getImage(cacheKey);
+        
         if (cachedImageUrl) {
           satelliteImageUrl = cachedImageUrl;
-          console.log('[Image Cache] ✅ Cache HIT - Using cached Google Maps satellite image');
+          console.log('[Image Cache] ✅ Cache HIT');
         } else {
-          // Cache miss - fetch from API
-          console.log('[Image Cache] ❌ Cache MISS - Fetching from Google Maps API...');
-          
           try {
             const { data: imageData, error: imageError } = await supabase.functions.invoke('google-maps-proxy', {
               body: { 
                 endpoint: 'satellite',
                 params: {
-                  center: `${centerLat},${centerLng}`,
-                  zoom: '21',
+                  center: `${lat},${lng}`,
+                  zoom: '20',
                   size: '1280x1280',
                   maptype: 'satellite',
                   scale: '2'
@@ -215,50 +290,44 @@ export function PullMeasurementsButton({
               }
             });
 
-            if (imageError) {
-              console.error('Google Maps proxy error:', imageError);
-            } else if (imageData?.image_url) {
+            if (!imageError && imageData?.image_url) {
               satelliteImageUrl = imageData.image_url;
-              // Store in cache
               imageCache.setImage(cacheKey, satelliteImageUrl);
-              const stats = imageCache.getCacheStats();
-              console.log(`[Image Cache] 💾 Cached new Google Maps URL (${stats.currentSize}/${stats.maxSize})`);
-            } else if (imageData?.image) {
+            } else if (!imageError && imageData?.image) {
               satelliteImageUrl = `data:image/png;base64,${imageData.image}`;
-              // Store base64 in cache
               imageCache.setImage(cacheKey, satelliteImageUrl);
-              const stats = imageCache.getCacheStats();
-              console.log(`[Image Cache] 💾 Cached base64 Google Maps image (${stats.currentSize}/${stats.maxSize})`);
-            } else {
-              console.warn('Google Maps proxy returned no image data');
             }
           } catch (imgError) {
             console.error('Failed to fetch satellite image:', imgError);
           }
         }
       }
-      
-      // Log final satellite image status
-      if (satelliteImageUrl) {
-        console.log('Satellite image ready for verification dialog');
-      } else {
-        console.warn('No satellite image available - verification will be limited');
-      }
 
-      // Show verification dialog instead of immediately applying
+      // Show verification dialog
       setVerificationData({ measurement, tags, satelliteImageUrl });
       setShowVerificationDialog(true);
       
+      // Show confidence-based toast
+      const confidenceScore = data.data?.confidence?.score || 0;
+      const confidenceRating = data.data?.confidence?.rating || 'unknown';
+      
       toast({
-        title: "Measurements Pulled",
-        description: "Review and adjust measurements before applying",
+        title: "🎯 AI Measurements Complete",
+        description: (
+          <div className="space-y-1">
+            <p>Confidence: {confidenceScore}% ({confidenceRating})</p>
+            <p className="text-muted-foreground text-xs">
+              {measurement.summary?.total_squares?.toFixed(1)} squares detected
+            </p>
+          </div>
+        ),
       });
 
     } catch (err: any) {
-      console.error('Pull measurement error:', err);
+      console.error('AI measurement analysis error:', err);
       toast({
-        title: "Pull Failed",
-        description: err.message || "Could not fetch measurements. Try manual mode.",
+        title: "Analysis Failed",
+        description: err.message || "Could not analyze roof. Try manual mode.",
         variant: "destructive",
       });
     } finally {
@@ -346,7 +415,7 @@ export function PullMeasurementsButton({
               {loading ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Pulling...
+                  AI Analyzing...
                 </>
               ) : success ? (
                 <>
@@ -355,16 +424,16 @@ export function PullMeasurementsButton({
                 </>
               ) : (
                 <>
-                  <Satellite className="h-4 w-4 mr-2" />
-                  Measurements
+                  <Brain className="h-4 w-4 mr-2" />
+                  AI Measurements
                 </>
               )}
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-48">
             <DropdownMenuItem onClick={handlePull} disabled={loading}>
-              <Satellite className="h-4 w-4 mr-2" />
-              Pull from Satellite
+              <Brain className="h-4 w-4 mr-2" />
+              AI Analysis (GPT-4)
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleOpenManualTool}>
               <Pencil className="h-4 w-4 mr-2" />
