@@ -1,0 +1,18 @@
+-- Add missing columns to tenants table
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS logo_url TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS primary_color TEXT DEFAULT '#2563eb';
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS secondary_color TEXT DEFAULT '#1e40af';
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS phone TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS email TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS address_street TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS address_city TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS address_state TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS address_zip TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS website TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS license_number TEXT;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS onboarded_at TIMESTAMPTZ;
+ALTER TABLE tenants ADD COLUMN IF NOT EXISTS onboarded_by UUID;
+
+-- Add is_primary to locations table
+ALTER TABLE locations ADD COLUMN IF NOT EXISTS is_primary BOOLEAN DEFAULT false;

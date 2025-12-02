@@ -5268,6 +5268,7 @@ export type Database = {
           email: string | null
           id: string
           is_active: boolean
+          is_primary: boolean | null
           manager_id: string | null
           name: string
           phone: string | null
@@ -5285,6 +5286,7 @@ export type Database = {
           email?: string | null
           id?: string
           is_active?: boolean
+          is_primary?: boolean | null
           manager_id?: string | null
           name: string
           phone?: string | null
@@ -5302,6 +5304,7 @@ export type Database = {
           email?: string | null
           id?: string
           is_active?: boolean
+          is_primary?: boolean | null
           manager_id?: string | null
           name?: string
           phone?: string | null
@@ -11700,28 +11703,70 @@ export type Database = {
       }
       tenants: {
         Row: {
+          address_city: string | null
+          address_state: string | null
+          address_street: string | null
+          address_zip: string | null
           created_at: string | null
+          email: string | null
           id: string
+          is_active: boolean | null
+          license_number: string | null
+          logo_url: string | null
           name: string
+          onboarded_at: string | null
+          onboarded_by: string | null
+          phone: string | null
+          primary_color: string | null
+          secondary_color: string | null
           settings: Json | null
           subdomain: string | null
           updated_at: string | null
+          website: string | null
         }
         Insert: {
+          address_city?: string | null
+          address_state?: string | null
+          address_street?: string | null
+          address_zip?: string | null
           created_at?: string | null
+          email?: string | null
           id?: string
+          is_active?: boolean | null
+          license_number?: string | null
+          logo_url?: string | null
           name: string
+          onboarded_at?: string | null
+          onboarded_by?: string | null
+          phone?: string | null
+          primary_color?: string | null
+          secondary_color?: string | null
           settings?: Json | null
           subdomain?: string | null
           updated_at?: string | null
+          website?: string | null
         }
         Update: {
+          address_city?: string | null
+          address_state?: string | null
+          address_street?: string | null
+          address_zip?: string | null
           created_at?: string | null
+          email?: string | null
           id?: string
+          is_active?: boolean | null
+          license_number?: string | null
+          logo_url?: string | null
           name?: string
+          onboarded_at?: string | null
+          onboarded_by?: string | null
+          phone?: string | null
+          primary_color?: string | null
+          secondary_color?: string | null
           settings?: Json | null
           subdomain?: string | null
           updated_at?: string | null
+          website?: string | null
         }
         Relationships: []
       }

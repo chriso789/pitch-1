@@ -33,6 +33,7 @@ import { CacheManagement } from "@/components/settings/CacheManagement";
 import { CompanyManagement } from "@/features/settings/components/CompanyManagement";
 import { CompanyActivityLog } from "@/features/settings/components/CompanyActivityLog";
 import { PriceManagementDashboard } from "@/components/pricing/PriceManagementDashboard";
+import { PlatformAdmin } from "@/components/settings/PlatformAdmin";
 import { BatchRegenerationPanel } from "@/components/measurements/BatchRegenerationPanel";
 import { MeasurementQualityDashboard } from "@/components/measurements/MeasurementQualityDashboard";
 import { supabase } from "@/integrations/supabase/client";
@@ -271,6 +272,10 @@ export const Settings = () => {
 
         <TabsContent value="quality-monitoring" className="space-y-6">
           <MeasurementQualityDashboard />
+        </TabsContent>
+
+        <TabsContent value="platform-admin" className="space-y-6">
+          <PlatformAdmin />
         </TabsContent>
       </Tabs>
     </div>
