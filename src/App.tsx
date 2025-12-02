@@ -10,7 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ImageCacheProvider } from "@/contexts/ImageCacheContext";
 import { initSessionPersistence } from "@/utils/sessionPersistence";
-import Index from "./pages/Index";
+import LandingPage from "./pages/LandingPage";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import ConfirmEmail from "./pages/ConfirmEmail";
@@ -92,11 +92,12 @@ const AppContent = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUserId(session?.user?.id || null);
       
-      // Redirect to login if signed out (except if already on public pages)
+      // Redirect to landing if signed out (except if already on public pages)
       if (event === 'SIGNED_OUT') {
-        const publicPaths = ['/login', '/demo-request', '/reset-password', '/auth/confirm-email'];
-        if (!publicPaths.includes(window.location.pathname)) {
-          navigate('/login');
+        const publicPaths = ['/', '/login', '/signup', '/demo-request', '/reset-password', '/auth/confirm-email', '/reports'];
+        const isPublicPath = publicPaths.some(p => window.location.pathname === p || window.location.pathname.startsWith('/reports/'));
+        if (!isPublicPath) {
+          navigate('/');
         }
       }
     });
@@ -121,7 +122,10 @@ const AppContent = () => {
         />
       )}
       <Routes>
+        {/* Public routes */}
+        <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<Login initialTab="signup" />} />
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/auth/confirm-email" element={<ConfirmEmail />} />
         <Route path="/demo-request" element={<DemoRequest />} />
@@ -184,7 +188,6 @@ const AppContent = () => {
         <Route path="/roof-measure/:id" element={<RoofMeasure />} />
         <Route path="/roof-measure" element={<RoofMeasure />} />
         
-        <Route path="/" element={<Index />} />
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
       </Routes>

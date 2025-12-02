@@ -10,12 +10,16 @@ import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, AlertCircle, Eye, EyeOff, Wifi, WifiOff, Shield, UserPlus, KeyRound, ArrowLeft, CheckCircle } from 'lucide-react';
 
-const Login: React.FC = () => {
+interface LoginProps {
+  initialTab?: 'login' | 'signup' | 'forgot';
+}
+
+const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [activeTab, setActiveTab] = useState('login');
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [resetLoading, setResetLoading] = useState(false);
   const [resetEmail, setResetEmail] = useState('');
   const [connectionStatus, setConnectionStatus] = useState<'online' | 'offline' | 'checking'>('checking');
@@ -432,7 +436,7 @@ const Login: React.FC = () => {
               </Alert>
             )}
 
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
+            <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'login' | 'signup' | 'forgot')} className="space-y-4">
               <TabsList className="grid w-full grid-cols-3">
                 <TabsTrigger value="login">
                   <Shield className="h-4 w-4 mr-2" />
