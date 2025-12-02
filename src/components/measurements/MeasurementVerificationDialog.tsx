@@ -6,7 +6,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Scissors, Info } from 'lucide-react';
+import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Scissors, Info, MapPin } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PolygonEditor } from './PolygonEditor';
@@ -86,6 +86,10 @@ export function MeasurementVerificationDialog({
   
   const manualVerify = useManualVerification();
   
+  // Database measurement fallback - loads from DB when AI returns empty values
+  const [dbMeasurement, setDbMeasurement] = useState<any>(null);
+  const [isLoadingDbMeasurement, setIsLoadingDbMeasurement] = useState(false);
+  
   // Smart roof type detection
   const [detectedRoofType, setDetectedRoofType] = useState<ReturnType<typeof detectRoofType> | null>(null);
   
@@ -95,6 +99,51 @@ export function MeasurementVerificationDialog({
       setDetectedRoofType(detection);
     }
   }, [measurement, tags]);
+  
+  // Load measurement from database when AI returns empty/zero values
+  useEffect(() => {
+    const loadMeasurementFromDatabase = async () => {
+      if (!pipelineEntryId || !open) return;
+      
+      // Check if we already have good data
+      const currentArea = tags['roof.plan_area'] || tags['roof.plan_sqft'] || measurement?.summary?.total_area_sqft || 0;
+      if (currentArea > 0 && !isLoadingDbMeasurement) return;
+      
+      setIsLoadingDbMeasurement(true);
+      console.log('📊 Loading measurement from database as fallback...');
+      
+      try {
+        // Try measurements table - primary source of measurement data
+        const measurementResult: any = await supabase
+          .from('measurements')
+          .select('*')
+          .eq('property_id', pipelineEntryId)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        const measurementData = measurementResult?.data;
+        const summary = measurementData?.summary;
+        if (summary?.total_area_sqft) {
+          console.log('✅ Found measurement in database:', summary);
+          setDbMeasurement(measurementData);
+          toast({
+            title: "Loaded from Database",
+            description: `Found ${summary.total_area_sqft.toFixed(0)} sq ft measurement`,
+          });
+        } else {
+          console.log('⚠️ No measurement found in database for property:', pipelineEntryId);
+        }
+      } catch (error) {
+        console.error('Failed to load measurement from database:', error);
+      } finally {
+        setIsLoadingDbMeasurement(false);
+      }
+    };
+    
+    loadMeasurementFromDatabase();
+  }, [open, pipelineEntryId, tags, measurement?.summary?.total_area_sqft]);
   
   // PHASE 1: Fetch clean Google Maps satellite image via proxy
   const [cleanSatelliteImageUrl, setCleanSatelliteImageUrl] = useState<string>('');
@@ -120,7 +169,7 @@ export function MeasurementVerificationDialog({
             endpoint: 'satellite',
             params: {
               center: `${lat},${lng}`,  // ✅ Always uses verified address
-              zoom: '20',
+              zoom: '21',  // Increased for closer house framing
               size: '1280x1280',
               maptype: 'satellite',
               scale: '2'
@@ -565,26 +614,28 @@ export function MeasurementVerificationDialog({
     return flatArea;
   };
 
-  // Calculate measurements (use adjusted values if available, with comprehensive fallbacks)
+  // Calculate measurements (use adjusted values if available, with comprehensive fallbacks including database)
   const planArea = adjustedArea 
     || tags['roof.plan_area'] 
     || tags['roof.plan_sqft'] 
     || measurement?.summary?.total_area_sqft 
     || measurement?.summary?.plan_area_sqft
     || measurement?.total_area_sqft
+    || dbMeasurement?.summary?.total_area_sqft  // Database fallback
+    || dbMeasurement?.total_area_sqft
     || 0;
   const flatArea = calculateFlatArea();
   const roofAreaNoWaste = planArea * pitchFactor;
   const totalAreaWithWaste = roofAreaNoWaste * (1 + wastePercent / 100);
   const roofSquares = totalAreaWithWaste / 100;
   
-  // Linear features with fallbacks to measurement.linear_features and measurement.summary
-  const ridge = tags['lf.ridge'] || measurement?.linear_features?.ridge || measurement?.summary?.ridge_ft || 0;
-  const hip = tags['lf.hip'] || measurement?.linear_features?.hip || measurement?.summary?.hip_ft || 0;
-  const valley = tags['lf.valley'] || measurement?.linear_features?.valley || measurement?.summary?.valley_ft || 0;
-  const eave = tags['lf.eave'] || measurement?.linear_features?.eave || measurement?.summary?.eave_ft || 0;
-  const rake = tags['lf.rake'] || measurement?.linear_features?.rake || measurement?.summary?.rake_ft || 0;
-  const step = tags['lf.step'] || measurement?.linear_features?.step || measurement?.summary?.step_ft || 0;
+  // Linear features with fallbacks to measurement.linear_features, measurement.summary, and database
+  const ridge = tags['lf.ridge'] || measurement?.linear_features?.ridge || measurement?.summary?.ridge_ft || dbMeasurement?.summary?.ridge_ft || dbMeasurement?.linear_features?.ridge || 0;
+  const hip = tags['lf.hip'] || measurement?.linear_features?.hip || measurement?.summary?.hip_ft || dbMeasurement?.summary?.hip_ft || dbMeasurement?.linear_features?.hip || 0;
+  const valley = tags['lf.valley'] || measurement?.linear_features?.valley || measurement?.summary?.valley_ft || dbMeasurement?.summary?.valley_ft || dbMeasurement?.linear_features?.valley || 0;
+  const eave = tags['lf.eave'] || measurement?.linear_features?.eave || measurement?.summary?.eave_ft || dbMeasurement?.summary?.eave_ft || dbMeasurement?.linear_features?.eave || 0;
+  const rake = tags['lf.rake'] || measurement?.linear_features?.rake || measurement?.summary?.rake_ft || dbMeasurement?.summary?.rake_ft || dbMeasurement?.linear_features?.rake || 0;
+  const step = tags['lf.step'] || measurement?.linear_features?.step || measurement?.summary?.step_ft || dbMeasurement?.summary?.step_ft || dbMeasurement?.linear_features?.step || 0;
   
   const perimeter = buildingPolygon.length > 0 
     ? calculatePerimeterFt(adjustedPolygon || buildingPolygon)
