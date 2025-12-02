@@ -1,12 +1,19 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Satellite, Loader2, CheckCircle2 } from 'lucide-react';
+import { Satellite, Loader2, CheckCircle2, Pencil } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { MeasurementVerificationDialog } from './MeasurementVerificationDialog';
 import { useImageCache } from '@/contexts/ImageCacheContext';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface PullMeasurementsButtonProps {
   propertyId: string;
@@ -26,6 +33,7 @@ export function PullMeasurementsButton({
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const imageCache = useImageCache();
+  const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState(false);
   const [verificationData, setVerificationData] = useState<{
@@ -316,38 +324,59 @@ export function PullMeasurementsButton({
     });
   };
 
+  const handleOpenManualTool = () => {
+    const params = new URLSearchParams();
+    if (lat) params.set('lat', lat.toString());
+    if (lng) params.set('lng', lng.toString());
+    if (address) params.set('address', address);
+    navigate(`/roof-measure/${propertyId}?${params.toString()}`);
+  };
+
   return (
     <>
       <div className="flex items-center gap-2">
-      <Button
-        onClick={handlePull}
-        disabled={loading}
-        variant="outline"
-        size="sm"
-        className="w-full"
-      >
-        {loading ? (
-          <>
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            Pulling...
-          </>
-        ) : success ? (
-          <>
-            <CheckCircle2 className="h-4 w-4 mr-2 text-green-600" />
-            Measurements Ready
-          </>
-        ) : (
-          <>
-            <Satellite className="h-4 w-4 mr-2" />
-            Pull Measurements
-          </>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              disabled={loading}
+              variant="outline"
+              size="sm"
+              className="w-full"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Pulling...
+                </>
+              ) : success ? (
+                <>
+                  <CheckCircle2 className="h-4 w-4 mr-2 text-green-600" />
+                  Measurements Ready
+                </>
+              ) : (
+                <>
+                  <Satellite className="h-4 w-4 mr-2" />
+                  Measurements
+                </>
+              )}
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="w-48">
+            <DropdownMenuItem onClick={handlePull} disabled={loading}>
+              <Satellite className="h-4 w-4 mr-2" />
+              Pull from Satellite
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={handleOpenManualTool}>
+              <Pencil className="h-4 w-4 mr-2" />
+              Draw Manually
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        {success && (
+          <Badge variant="outline" className="text-green-600 border-green-600">
+            ✓ Tags Ready
+          </Badge>
         )}
-      </Button>
-      {success && (
-        <Badge variant="outline" className="text-green-600 border-green-600">
-          ✓ Tags Ready
-        </Badge>
-      )}
       </div>
 
       {/* Verification Dialog */}
@@ -366,6 +395,7 @@ export function PullMeasurementsButton({
           satelliteImageUrl={verificationData.satelliteImageUrl}
           centerLat={lat}
           centerLng={lng}
+          pipelineEntryId={propertyId}
           onAccept={handleAcceptMeasurements}
           onReject={handleRejectMeasurements}
         />
