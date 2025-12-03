@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useCallback } from 'react';
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -44,15 +44,14 @@ export const AddressValidation: React.FC<AddressValidationProps> = ({
   const [validated, setValidated] = useState(false);
   const [validationStatus, setValidationStatus] = useState<'valid' | 'partial' | 'invalid' | 'unverified'>('unverified');
   const inputRef = useRef<HTMLInputElement>(null);
+  const debounceRef = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
 
-  const handleInputChange = async (value: string) => {
-    setInputValue(value);
-    setValidated(false);
-    setValidationStatus('unverified');
-
+  // Debounced API call - allows typing while verifying
+  const fetchSuggestions = useCallback(async (value: string) => {
     if (value.length < 3) {
       setSuggestions([]);
+      setLoading(false);
       return;
     }
 
@@ -86,6 +85,22 @@ export const AddressValidation: React.FC<AddressValidationProps> = ({
     } finally {
       setLoading(false);
     }
+  }, []);
+
+  const handleInputChange = (value: string) => {
+    setInputValue(value);
+    setValidated(false);
+    setValidationStatus('unverified');
+
+    // Clear previous debounce
+    if (debounceRef.current) {
+      clearTimeout(debounceRef.current);
+    }
+
+    // Debounce API call by 300ms - allows continuous typing
+    debounceRef.current = setTimeout(() => {
+      fetchSuggestions(value);
+    }, 300);
   };
 
   const selectAddress = async (prediction: any) => {
@@ -261,7 +276,6 @@ export const AddressValidation: React.FC<AddressValidationProps> = ({
               : 'border-yellow-500 focus:border-yellow-500'
             : ''
           }
-          disabled={loading}
         />
         {loading && (
           <div className="absolute right-3 top-1/2 -translate-y-1/2">
