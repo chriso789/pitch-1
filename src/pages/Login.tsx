@@ -368,7 +368,7 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center gradient-hero p-4">
+    <div className="min-h-screen min-h-[100dvh] flex items-center justify-center gradient-hero p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
       <div className="w-full max-w-md space-y-6">
         <div className="text-center">
           <h1 className="text-4xl font-bold text-white mb-2">

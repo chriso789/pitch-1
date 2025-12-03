@@ -223,6 +223,13 @@
     padding-top: env(safe-area-inset-top);
   }
 
+  .safe-area-inset {
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
+  }
+
   /* Prevent text selection during touch interactions */
   .touch-none {
     user-select: none;
@@ -230,11 +237,28 @@
     -webkit-touch-callout: none;
   }
 
+  /* Mobile viewport fix for iOS Safari */
+  @supports (-webkit-touch-callout: none) {
+    .min-h-screen {
+      min-height: -webkit-fill-available;
+    }
+  }
+
   /* Smooth scroll for mobile */
   @media (max-width: 768px) {
     html {
       scroll-behavior: smooth;
       -webkit-overflow-scrolling: touch;
+    }
+    
+    /* Larger touch targets on mobile */
+    input, button, select, textarea {
+      font-size: 16px; /* Prevents iOS zoom on input focus */
+    }
+    
+    /* Better button sizing for touch */
+    button:not(.compact) {
+      min-height: 44px;
     }
   }
 }
