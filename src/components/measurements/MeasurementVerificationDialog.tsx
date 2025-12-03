@@ -6,7 +6,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Input } from '@/components/ui/input';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Split, Info, MapPin } from 'lucide-react';
+import { Slider } from '@/components/ui/slider';
+import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Split, Info, MapPin, ZoomIn } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PolygonEditor } from './PolygonEditor';
@@ -83,6 +84,7 @@ export function MeasurementVerificationDialog({
   const [coordinateMismatchDistance, setCoordinateMismatchDistance] = useState<number>(0);
   const [hasAutoFixedMismatch, setHasAutoFixedMismatch] = useState(false);
   const [regenerationError, setRegenerationError] = useState<string | null>(null);
+  const [satelliteZoom, setSatelliteZoom] = useState(20); // Range 18-21, default 20 for closer view
   
   const manualVerify = useManualVerification();
   
@@ -150,7 +152,7 @@ export function MeasurementVerificationDialog({
   const [isLoadingSatellite, setIsLoadingSatellite] = useState(false);
   
   useEffect(() => {
-    const fetchCleanSatelliteImage = async () => {
+    const fetchMapboxSatelliteImage = async () => {
       // ✅ Wait for verified coordinates to load first (PRIORITY #1)
       const lat = verifiedAddressLat;
       const lng = verifiedAddressLng;
@@ -161,33 +163,26 @@ export function MeasurementVerificationDialog({
         return;
       }
       
-      console.log(`📍 Fetching satellite centered at verified address: ${lat}, ${lng}`);
+      console.log(`📍 Fetching Mapbox satellite at zoom ${satelliteZoom}: ${lat}, ${lng}`);
       setIsLoadingSatellite(true);
       try {
-        const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
-          body: {
-            endpoint: 'satellite',
-            params: {
-              center: `${lat},${lng}`,  // ✅ Always uses verified address
-              zoom: '19',  // Zoom 19 provides less pixelation
-              size: '1280x1280',
-              maptype: 'satellite',
-              scale: '2'
-            }
-          }
-        });
+        // Fetch Mapbox token from edge function
+        const { data: tokenData, error: tokenError } = await supabase.functions.invoke('get-mapbox-token');
         
-        if (error) throw error;
-        
-        if (data?.image_url) {
-          setCleanSatelliteImageUrl(data.image_url);
-          console.log('✅ Clean satellite image fetched successfully');
+        if (tokenError || !tokenData?.token) {
+          throw new Error('Failed to get Mapbox token');
         }
+        
+        // Build Mapbox Static API URL with @2x retina for sharper imagery
+        const mapboxUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${satelliteZoom},0/640x500@2x?access_token=${tokenData.token}`;
+        
+        setCleanSatelliteImageUrl(mapboxUrl);
+        console.log(`✅ Mapbox satellite image URL generated (zoom ${satelliteZoom}, @2x retina)`);
       } catch (error) {
-        console.error('Failed to fetch satellite image:', error);
+        console.error('Failed to fetch Mapbox satellite image:', error);
         toast({
           title: 'Image Load Error',
-          description: 'Could not load satellite image',
+          description: 'Could not load satellite image from Mapbox',
           variant: 'destructive'
         });
       } finally {
@@ -195,8 +190,8 @@ export function MeasurementVerificationDialog({
       }
     };
     
-    fetchCleanSatelliteImage();
-  }, [verifiedAddressLat, verifiedAddressLng]);  // ✅ Removed centerLat/centerLng dependency
+    fetchMapboxSatelliteImage();
+  }, [verifiedAddressLat, verifiedAddressLng, satelliteZoom]);  // ✅ Re-fetch when zoom changes
   
   // Update satellite image URL when prop changes
   useEffect(() => {
@@ -906,6 +901,29 @@ export function MeasurementVerificationDialog({
             {/* Left Panel: Visual Editor */}
             {satelliteImageUrl && (measurement?.faces || buildingPolygon.length > 0) && (
               <div className="space-y-3">
+                {/* Zoom Control Toolbar */}
+                <div className="flex items-center gap-4 p-2 bg-muted/50 rounded-lg border">
+                  <div className="flex items-center gap-2">
+                    <ZoomIn className="h-4 w-4 text-muted-foreground" />
+                    <span className="text-sm font-medium">Zoom</span>
+                  </div>
+                  <Slider
+                    value={[satelliteZoom]}
+                    onValueChange={(value) => setSatelliteZoom(value[0])}
+                    min={18}
+                    max={21}
+                    step={1}
+                    className="flex-1 max-w-[200px]"
+                    disabled={isLoadingSatellite}
+                  />
+                  <Badge variant="secondary" className="text-xs min-w-[40px] justify-center">
+                    {satelliteZoom}
+                  </Badge>
+                  {isLoadingSatellite && (
+                    <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
+                  )}
+                </div>
+                
                 {/* Satellite Image */}
                 <div className="relative rounded-lg overflow-hidden border">
                   {measurement?.faces ? (
@@ -915,7 +933,7 @@ export function MeasurementVerificationDialog({
                       tags={tags}
                       centerLng={verifiedAddressLng || adjustedCenterLng}
                       centerLat={verifiedAddressLat || adjustedCenterLat}
-                      zoom={20}
+                      zoom={satelliteZoom}
                       onMeasurementUpdate={(updatedMeasurement, updatedTags) => {
                         Object.assign(measurement, updatedMeasurement);
                         Object.assign(tags, updatedTags);
@@ -933,7 +951,7 @@ export function MeasurementVerificationDialog({
                       buildingPolygon={buildingPolygon}
                       centerLng={adjustedCenterLng}
                       centerLat={adjustedCenterLat}
-                    zoom={20}
+                    zoom={satelliteZoom}
                     onPolygonChange={handlePolygonChange}
                     canvasWidth={640}
                     canvasHeight={480}
