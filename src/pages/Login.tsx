@@ -158,14 +158,42 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
     }
 
     setLoading(true);
+    console.log('[Login] Starting login attempt for:', loginForm.email);
 
     try {
-      const { data, error } = await supabase.auth.signInWithPassword({
+      // Create auth promise
+      const authPromise = supabase.auth.signInWithPassword({
         email: loginForm.email,
         password: loginForm.password
       });
+      
+      // 10-second timeout that checks session directly if promise hangs
+      const timeoutPromise = new Promise<{ data: any; error: any }>((resolve) => {
+        setTimeout(async () => {
+          console.log('[Login] Timeout reached, checking session directly...');
+          try {
+            const { data: { session } } = await supabase.auth.getSession();
+            if (session?.user) {
+              console.log('[Login] Session found via timeout fallback!');
+              resolve({ data: { user: session.user, session }, error: null });
+            } else {
+              console.log('[Login] No session found after timeout');
+              resolve({ data: { user: null, session: null }, error: { message: 'Login timeout - please try again' } });
+            }
+          } catch (e) {
+            console.log('[Login] Session check failed:', e);
+            resolve({ data: { user: null, session: null }, error: { message: 'Login timeout - please try again' } });
+          }
+        }, 10000);
+      });
+
+      // Race between auth call and timeout
+      console.log('[Login] Awaiting auth response...');
+      const { data, error } = await Promise.race([authPromise, timeoutPromise]);
+      console.log('[Login] Auth response received:', { hasUser: !!data?.user, hasError: !!error });
 
       if (error) {
+        console.log('[Login] Auth error:', error.message);
         if (error.message.includes('Invalid login credentials')) {
           setErrors({ general: 'Invalid email or password' });
         } else if (error.message.includes('Email not confirmed')) {
@@ -174,7 +202,7 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
           setErrors({ general: error.message });
         }
         
-        // Non-blocking: Log failed login attempt in background
+        // Non-blocking: Log failed login attempt
         supabase.functions.invoke('log-auth-activity', {
           body: {
             email: loginForm.email,
@@ -188,11 +216,22 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
         return;
       }
 
-      if (data.user) {
+      if (data?.user) {
+        console.log('[Login] User authenticated:', data.user.id);
+        
+        // Verify session is actually stored
+        const { data: { session } } = await supabase.auth.getSession();
+        console.log('[Login] Session verification:', { hasSession: !!session });
+        
+        if (!session) {
+          console.log('[Login] No session found, attempting refresh...');
+          await supabase.auth.refreshSession();
+        }
+        
         // Save remember me preference
         localStorage.setItem('pitch_remember_me', rememberMe.toString());
         
-        // Non-blocking background tasks - don't wait for these
+        // Non-blocking background tasks
         ensureUserProfile(data.user).catch(console.warn);
         supabase.functions.invoke('log-auth-activity', {
           body: {
@@ -208,11 +247,14 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
           description: "Redirecting to dashboard...",
         });
         
-        // Navigate immediately - don't wait for profile or logging
+        console.log('[Login] Navigating to dashboard...');
         navigate('/dashboard');
+      } else {
+        console.log('[Login] No user in response, no error - unexpected state');
+        setErrors({ general: 'Login failed - please try again' });
       }
     } catch (error: any) {
-      console.error('Login error:', error);
+      console.error('[Login] Caught error:', error);
       setErrors({ general: 'Connection error - please try again' });
     } finally {
       setLoading(false);
