@@ -5262,55 +5262,73 @@ export type Database = {
           address_city: string | null
           address_state: string | null
           address_street: string | null
+          address_verified_at: string | null
           address_zip: string | null
           created_at: string
           created_by: string | null
           email: string | null
+          formatted_address: string | null
           id: string
           is_active: boolean
           is_primary: boolean | null
+          latitude: number | null
+          longitude: number | null
           manager_id: string | null
           name: string
           phone: string | null
+          place_id: string | null
           qbo_location_ref: string | null
           tenant_id: string
           updated_at: string
+          verified_address: Json | null
         }
         Insert: {
           address_city?: string | null
           address_state?: string | null
           address_street?: string | null
+          address_verified_at?: string | null
           address_zip?: string | null
           created_at?: string
           created_by?: string | null
           email?: string | null
+          formatted_address?: string | null
           id?: string
           is_active?: boolean
           is_primary?: boolean | null
+          latitude?: number | null
+          longitude?: number | null
           manager_id?: string | null
           name: string
           phone?: string | null
+          place_id?: string | null
           qbo_location_ref?: string | null
           tenant_id: string
           updated_at?: string
+          verified_address?: Json | null
         }
         Update: {
           address_city?: string | null
           address_state?: string | null
           address_street?: string | null
+          address_verified_at?: string | null
           address_zip?: string | null
           created_at?: string
           created_by?: string | null
           email?: string | null
+          formatted_address?: string | null
           id?: string
           is_active?: boolean
           is_primary?: boolean | null
+          latitude?: number | null
+          longitude?: number | null
           manager_id?: string | null
           name?: string
           phone?: string | null
+          place_id?: string | null
           qbo_location_ref?: string | null
           tenant_id?: string
           updated_at?: string
+          verified_address?: Json | null
         }
         Relationships: []
       }
