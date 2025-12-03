@@ -33,80 +33,31 @@ import { SMSComposerDialog } from '@/components/communication/SMSComposerDialog'
 import { FloatingEmailComposer } from '@/components/messaging/FloatingEmailComposer';
 import { BackButton } from '@/shared/components/BackButton';
 import { useSendSMS } from '@/hooks/useSendSMS';
-
-interface LeadDetailsData {
-  id: string;
-  status: string;
-  roof_type?: string;
-  priority: string;
-  estimated_value?: number;
-  notes?: string;
-  metadata?: any;
-  verified_address?: {
-    formatted_address: string;
-    geometry?: {
-      location?: {
-        lat: number;
-        lng: number;
-      };
-    };
-  };
-  contact?: {
-    id: string;
-    first_name: string;
-    last_name: string;
-    email?: string;
-    phone?: string;
-    address_street?: string;
-    address_city?: string;
-    address_state?: string;
-    address_zip?: string;
-    latitude?: number;
-    longitude?: number;
-    verified_address?: {
-      lat: number;
-      lng: number;
-      formatted_address?: string;
-      [key: string]: any;
-    };
-  };
-  assigned_rep?: {
-    id: string;
-    first_name: string;
-    last_name: string;
-  };
-  created_at: string;
-  updated_at: string;
-}
-
-interface ApprovalRequirements {
-  hasContract: boolean;
-  hasEstimate: boolean;
-  hasMaterials: boolean;
-  hasLabor: boolean;
-  allComplete: boolean;
-}
+import { useLeadDetails, LeadDetailsData, ApprovalRequirements } from '@/hooks/useLeadDetails';
+import { LeadDetailsSkeleton } from '@/components/lead-details/LeadDetailsSkeleton';
 
 const LeadDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [lead, setLead] = useState<LeadDetailsData | null>(null);
-  const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'overview');
-  const [productionStage, setProductionStage] = useState<string | null>(null);
   const [estimateCalculations, setEstimateCalculations] = useState<any>(null);
   const [measurementReadiness, setMeasurementReadiness] = useState({ isReady: false, data: null });
-  const [requirements, setRequirements] = useState<ApprovalRequirements>({
-    hasContract: false,
-    hasEstimate: false,
-    hasMaterials: false,
-    hasLabor: false,
-    allComplete: false
-  });
-  const [photos, setPhotos] = useState<any[]>([]);
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [showFullScreenPhoto, setShowFullScreenPhoto] = useState(false);
+  
+  // Use optimized hook with parallel queries and caching
+  const { 
+    lead, 
+    requirements, 
+    photos, 
+    productionStage, 
+    salesReps: availableSalesReps,
+    isLoading: loading,
+    refetchRequirements,
+    refetchPhotos,
+    refetchLead
+  } = useLeadDetails(id);
   
   // Fetch measurement data
   const { data: measurementData, isLoading: measurementLoading, refetch: refetchMeasurements } = useLatestMeasurement(id);
@@ -116,7 +67,6 @@ const LeadDetails = () => {
   const [activeCall, setActiveCall] = useState<any>(null);
   const [showDispositionDialog, setShowDispositionDialog] = useState(false);
   const [availablePhoneNumbers, setAvailablePhoneNumbers] = useState<any[]>([]);
-  const [availableSalesReps, setAvailableSalesReps] = useState<any[]>([]);
   const [isEditingSalesRep, setIsEditingSalesRep] = useState(false);
   
   // Communication states
@@ -139,32 +89,6 @@ const LeadDetails = () => {
     }
   }, [searchParams]);
 
-  useEffect(() => {
-    if (id) {
-      fetchLeadDetails();
-      checkApprovalRequirements();
-      fetchPhotos();
-      fetchProductionStage();
-      loadSalesReps();
-    }
-  }, [id]);
-
-  const loadSalesReps = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('profiles')
-        .select('id, first_name, last_name')
-        .in('role', ['sales_manager', 'regional_manager', 'corporate'])
-        .eq('is_active', true)
-        .order('first_name');
-      
-      if (error) throw error;
-      setAvailableSalesReps(data || []);
-    } catch (error) {
-      console.error('Error loading sales reps:', error);
-    }
-  };
-
   const handleSalesRepUpdate = async (repId: string) => {
     try {
       const { error } = await supabase
@@ -175,7 +99,7 @@ const LeadDetails = () => {
       if (error) throw error;
       
       toast({ title: "Sales rep updated successfully" });
-      fetchLeadDetails();
+      refetchLead();
       setIsEditingSalesRep(false);
     } catch (error) {
       console.error('Error updating sales rep:', error);
@@ -183,151 +107,6 @@ const LeadDetails = () => {
         title: "Error updating sales rep", 
         variant: "destructive" 
       });
-    }
-  };
-
-  const fetchProductionStage = async () => {
-    try {
-      // First check if there's a project for this pipeline entry
-      const { data: project } = await supabase
-        .from('projects')
-        .select('id')
-        .eq('pipeline_entry_id', id)
-        .maybeSingle();
-
-      if (!project) return;
-
-      // Fetch production workflow for this project
-      const { data: workflow } = await supabase
-        .from('production_workflows')
-        .select('current_stage')
-        .eq('project_id', project.id)
-        .maybeSingle();
-
-      if (workflow) {
-        setProductionStage(workflow.current_stage);
-      }
-    } catch (error) {
-      console.error('Error fetching production stage:', error);
-    }
-  };
-
-  const fetchLeadDetails = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('pipeline_entries')
-        .select(`
-          *,
-          contact:contacts(*),
-          assigned_rep:profiles!pipeline_entries_assigned_to_fkey(id, first_name, last_name)
-        `)
-        .eq('id', id)
-        .maybeSingle();
-
-      if (error) throw error;
-      if (data) {
-        // Extract verified address from metadata
-        const metadata = data.metadata as any;
-        const leadData = {
-          ...data,
-          verified_address: metadata?.verified_address || null
-        };
-        setLead(leadData as any);
-      }
-    } catch (error) {
-      console.error('Error fetching lead details:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to load lead details',
-        variant: 'destructive'
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const fetchPhotos = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('documents')
-        .select('*')
-        .eq('pipeline_entry_id', id)
-        .eq('document_type', 'inspection_photo')
-        .order('created_at', { ascending: false });
-
-      if (error) throw error;
-      setPhotos(data || []);
-    } catch (error) {
-      console.error('Error fetching photos:', error);
-    }
-  };
-
-  const checkApprovalRequirements = async () => {
-    try {
-      // Check for contract
-      const { data: contracts } = await supabase
-        .from('documents')
-        .select('id')
-        .eq('pipeline_entry_id', id)
-        .eq('document_type', 'contract')
-        .limit(1);
-
-      // Check for enhanced estimates
-      const { data: estimateData } = await supabase
-        .from('enhanced_estimates')
-        .select('id, selling_price, material_cost, labor_cost')
-        .eq('pipeline_entry_id', id)
-        .order('created_at', { ascending: false })
-        .limit(1);
-
-      // Check if a selected estimate exists in metadata
-      const { data: pipelineEntry } = await supabase
-        .from('pipeline_entries')
-        .select('metadata')
-        .eq('id', id)
-        .maybeSingle();
-
-      const metadata = pipelineEntry?.metadata as Record<string, any> | null;
-      const selectedEstimateId = metadata?.selected_estimate_id || estimateData?.[0]?.id;
-
-      // Check for materials and labor if estimate is selected
-      let materials: any[] = [];
-      let labor: any[] = [];
-      
-      if (selectedEstimateId) {
-        const { data: materialData } = await supabase
-          .from('estimate_line_items')
-          .select('id')
-          .eq('estimate_id', selectedEstimateId)
-          .eq('item_category', 'material')
-          .limit(1);
-          
-        const { data: laborData } = await supabase
-          .from('estimate_line_items')
-          .select('id')
-          .eq('estimate_id', selectedEstimateId)
-          .eq('item_category', 'labor')
-          .limit(1);
-          
-        materials = materialData || [];
-        labor = laborData || [];
-      }
-
-      const hasContract = (contracts?.length || 0) > 0;
-      const hasEstimate = !!selectedEstimateId;
-      const hasMaterials = (materials?.length || 0) > 0;
-      const hasLabor = (labor?.length || 0) > 0;
-      const allComplete = hasContract && hasEstimate && hasMaterials && hasLabor;
-
-      setRequirements({
-        hasContract,
-        hasEstimate,
-        hasMaterials,
-        hasLabor,
-        allComplete
-      });
-    } catch (error) {
-      console.error('Error checking approval requirements:', error);
     }
   };
 
@@ -387,7 +166,7 @@ const LeadDetails = () => {
         return (
           <DocumentsTab 
             pipelineEntryId={id!}
-            onUploadComplete={checkApprovalRequirements}
+            onUploadComplete={refetchRequirements}
           />
         );
       case 'estimate':
@@ -396,7 +175,7 @@ const LeadDetails = () => {
             pipelineEntryId={id!}
             onCalculationsUpdate={(calculations) => {
               console.log('Template calculations updated:', calculations);
-              checkApprovalRequirements();
+              refetchRequirements();
             }}
           />
         );
@@ -426,7 +205,7 @@ const LeadDetails = () => {
                   title: "Measurements Saved",
                   description: `Property measurements saved successfully. Area: ${measurements.adjustedArea} sq ft`,
                 });
-                checkApprovalRequirements();
+                refetchRequirements();
                 refetchMeasurements();
               }}
             />
@@ -536,7 +315,7 @@ const LeadDetails = () => {
             pipelineEntryId={id}
             contactId={lead?.contact?.id}
             onEstimateCreated={(estimate) => {
-              checkApprovalRequirements();
+              refetchRequirements();
               toast({
                 title: 'Estimate Created',
                 description: 'Excel-style estimate created successfully',
@@ -548,14 +327,7 @@ const LeadDetails = () => {
   };
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="flex items-center space-x-2">
-          <Loader2 className="h-6 w-6 animate-spin" />
-          <span>Loading lead details...</span>
-        </div>
-      </div>
-    );
+    return <LeadDetailsSkeleton />;
   }
 
   if (!lead) {
@@ -769,7 +541,7 @@ const LeadDetails = () => {
             requirements={requirements}
             onApprove={handleApproveToProject}
             pipelineEntryId={id}
-            onUploadComplete={checkApprovalRequirements}
+            onUploadComplete={refetchRequirements}
           />
         </CardContent>
       </Card>

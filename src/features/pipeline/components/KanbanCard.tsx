@@ -12,6 +12,7 @@ import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { CLJBadge } from '@/components/CLJBadge';
+import { usePrefetchLeadDetails } from '@/hooks/useLeadDetails';
 
 interface KanbanCardProps {
   id: string;
@@ -60,6 +61,8 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   const [daysSinceLastComm, setDaysSinceLastComm] = useState<number>(0);
   const [generating, setGenerating] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const prefetchLeadDetails = usePrefetchLeadDetails();
+  const prefetchTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (entry.contact_id) {
@@ -285,6 +288,20 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
     }
   };
 
+  // Prefetch lead details on hover (with 150ms delay to avoid unnecessary prefetches)
+  const handleMouseEnter = () => {
+    prefetchTimeoutRef.current = setTimeout(() => {
+      prefetchLeadDetails(entry.id);
+    }, 150);
+  };
+
+  const handleMouseLeave = () => {
+    if (prefetchTimeoutRef.current) {
+      clearTimeout(prefetchTimeoutRef.current);
+      prefetchTimeoutRef.current = null;
+    }
+  };
+
   return (
     <Card 
       ref={setNodeRef} 
@@ -301,6 +318,8 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
         isSortableDragging ? 'cursor-grabbing' : 'cursor-grab'
       )}
       onClick={handleCardClick}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
       role="button"
       tabIndex={0}
       aria-label={`${displayNumber}, ${lastName}, ${daysInStatus} days in status, last contact ${daysSinceLastComm} days ago`}
