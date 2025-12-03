@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { useMarketingTracking } from '@/lib/analytics/usePageTracking';
 import { ConsentBanner } from '@/components/ConsentBanner';
+import DashboardMockup from '@/components/landing/DashboardMockup';
+import { PowerDialerMockup, EstimateMockup, PipelineMockup, AnalyticsMockup } from '@/components/landing/FeatureMockups';
 
 const LandingPage = () => {
   const navigate = useNavigate();
@@ -225,13 +227,7 @@ const LandingPage = () => {
                 </div>
                 <div className="text-sm text-slate-600 ml-4">pitch-crm.ai/dashboard</div>
               </div>
-              <div className="bg-slate-900 min-h-[500px]">
-                <img 
-                  src="/dashboard-screenshot.png" 
-                  alt="PITCH CRM Dashboard - Sales pipeline, metrics, and team management interface"
-                  className="w-full h-full object-cover object-top"
-                />
-              </div>
+              <DashboardMockup />
             </Card>
           </div>
         </div>
@@ -322,12 +318,7 @@ const LandingPage = () => {
                 <Phone className="w-8 h-8 mb-2" />
                 <h3 className="text-xl font-bold">Power Dialer</h3>
               </div>
-              <div className="bg-white p-8 min-h-[300px] flex items-center justify-center">
-                <div className="text-center text-slate-400">
-                  <Phone className="w-16 h-16 mx-auto mb-4 opacity-20" />
-                  <p className="text-sm">Power Dialer Screenshot</p>
-                </div>
-              </div>
+              <PowerDialerMockup />
             </Card>
 
             {/* Estimates Screenshot */}
@@ -336,12 +327,7 @@ const LandingPage = () => {
                 <FileText className="w-8 h-8 mb-2" />
                 <h3 className="text-xl font-bold">Professional Estimates</h3>
               </div>
-              <div className="bg-white p-8 min-h-[300px] flex items-center justify-center">
-                <div className="text-center text-slate-400">
-                  <FileText className="w-16 h-16 mx-auto mb-4 opacity-20" />
-                  <p className="text-sm">Estimate Builder Screenshot</p>
-                </div>
-              </div>
+              <EstimateMockup />
             </Card>
 
             {/* Pipeline Screenshot */}
@@ -350,12 +336,7 @@ const LandingPage = () => {
                 <TrendingUp className="w-8 h-8 mb-2" />
                 <h3 className="text-xl font-bold">Pipeline Management</h3>
               </div>
-              <div className="bg-white p-8 min-h-[300px] flex items-center justify-center">
-                <div className="text-center text-slate-400">
-                  <TrendingUp className="w-16 h-16 mx-auto mb-4 opacity-20" />
-                  <p className="text-sm">Pipeline Dashboard Screenshot</p>
-                </div>
-              </div>
+              <PipelineMockup />
             </Card>
 
             {/* Analytics Screenshot */}
@@ -364,12 +345,7 @@ const LandingPage = () => {
                 <BarChart3 className="w-8 h-8 mb-2" />
                 <h3 className="text-xl font-bold">Real-Time Analytics</h3>
               </div>
-              <div className="bg-white p-8 min-h-[300px] flex items-center justify-center">
-                <div className="text-center text-slate-400">
-                  <BarChart3 className="w-16 h-16 mx-auto mb-4 opacity-20" />
-                  <p className="text-sm">Analytics Dashboard Screenshot</p>
-                </div>
-              </div>
+              <AnalyticsMockup />
             </Card>
           </div>
         </div>
