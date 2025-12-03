@@ -16,9 +16,18 @@ import {
   Shield,
   TrendingUp
 } from 'lucide-react';
+import { useMarketingTracking } from '@/lib/analytics/usePageTracking';
+import { ConsentBanner } from '@/components/ConsentBanner';
 
 const LandingPage = () => {
   const navigate = useNavigate();
+  const { 
+    trackNavLogin, 
+    trackNavSignup, 
+    trackHeroStartTrial, 
+    trackHeroBookDemo,
+    trackCTAClick 
+  } = useMarketingTracking();
 
   const features = [
     {
@@ -132,11 +141,11 @@ const LandingPage = () => {
               <Button variant="ghost" className="hidden md:inline-flex">
                 Pricing
               </Button>
-              <Button variant="outline" onClick={() => navigate('/login')}>
+              <Button variant="outline" onClick={() => { trackNavLogin(); navigate('/login'); }}>
                 Log In
               </Button>
               <Button 
-                onClick={() => navigate('/signup')}
+                onClick={() => { trackNavSignup(); navigate('/signup'); }}
                 className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
               >
                 Start Free Trial
@@ -170,12 +179,17 @@ const LandingPage = () => {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4 mb-12">
             <Button 
               size="lg" 
-              onClick={() => navigate('/signup')}
+              onClick={() => { trackHeroStartTrial(); navigate('/signup'); }}
               className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-lg px-8 py-6"
             >
               Start Free Trial <ArrowRight className="ml-2 w-5 h-5" />
             </Button>
-            <Button size="lg" variant="outline" className="text-lg px-8 py-6">
+            <Button 
+              size="lg" 
+              variant="outline" 
+              className="text-lg px-8 py-6"
+              onClick={() => trackHeroBookDemo()}
+            >
               Watch Demo
             </Button>
           </div>
@@ -415,12 +429,17 @@ const LandingPage = () => {
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Button 
               size="lg" 
-              onClick={() => navigate('/signup')}
+              onClick={() => { trackCTAClick('cta_start_trial', 'Start Free Trial'); navigate('/signup'); }}
               className="bg-white text-blue-600 hover:bg-slate-100 text-lg px-8 py-6"
             >
               Start Free Trial <ArrowRight className="ml-2 w-5 h-5" />
             </Button>
-            <Button size="lg" variant="outline" className="border-2 border-white text-white hover:bg-white/10 text-lg px-8 py-6">
+            <Button 
+              size="lg" 
+              variant="outline" 
+              className="border-2 border-white text-white hover:bg-white/10 text-lg px-8 py-6"
+              onClick={() => trackCTAClick('cta_schedule_demo', 'Schedule Demo')}
+            >
               Schedule Demo
             </Button>
           </div>
@@ -477,6 +496,9 @@ const LandingPage = () => {
           </div>
         </div>
       </footer>
+
+      {/* Consent Banner */}
+      <ConsentBanner />
     </div>
   );
 };
