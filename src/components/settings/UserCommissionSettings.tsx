@@ -7,7 +7,7 @@ import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { DollarSign, Calculator, Save } from "lucide-react";
+import { Calculator, Save, Building2 } from "lucide-react";
 
 interface UserCommissionSettingsProps {
   userId: string;
@@ -24,6 +24,7 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
   const [saving, setSaving] = useState(false);
   const [commissionType, setCommissionType] = useState<string>('percentage_selling_price');
   const [commissionRate, setCommissionRate] = useState<number>(10);
+  const [companyOverheadRate, setCompanyOverheadRate] = useState<number>(15);
   const [includeOverhead, setIncludeOverhead] = useState<boolean>(false);
   const [existingPlanId, setExistingPlanId] = useState<string | null>(null);
   const { toast } = useToast();
@@ -35,6 +36,22 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
   const loadUserCommission = async () => {
     try {
       setLoading(true);
+      
+      const { data: authUser } = await supabase.auth.getUser();
+      const tenantId = authUser.user?.user_metadata?.tenant_id;
+
+      // Load company overhead from tenant
+      if (tenantId) {
+        const { data: tenant } = await supabase
+          .from('tenants')
+          .select('company_overhead_rate')
+          .eq('id', tenantId)
+          .single();
+        
+        if (tenant?.company_overhead_rate) {
+          setCompanyOverheadRate(Number(tenant.company_overhead_rate));
+        }
+      }
       
       // Load user's commission plan from user_commission_plans
       const { data: userPlan, error } = await supabase
@@ -86,6 +103,14 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
       
       const { data: authUser } = await supabase.auth.getUser();
       const tenantId = authUser.user?.user_metadata?.tenant_id;
+
+      // Save company overhead to tenant
+      if (tenantId) {
+        await supabase
+          .from('tenants')
+          .update({ company_overhead_rate: companyOverheadRate })
+          .eq('id', tenantId);
+      }
 
       // Create or update commission plan for this user
       const planName = `${user.first_name} ${user.last_name} - Commission Plan`;
@@ -160,18 +185,35 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
     }
   };
 
-  // Calculate example commission
+  // Calculate example commission with full breakdown
   const exampleContractValue = 50000;
-  const calculateExampleCommission = () => {
+  const materialLaborRate = 0.30; // 30% material/labor costs
+  
+  const calculateProfitBreakdown = () => {
+    const materialCosts = exampleContractValue * materialLaborRate;
+    const companyOverhead = exampleContractValue * (companyOverheadRate / 100);
+    const repOverhead = includeOverhead ? exampleContractValue * ((user?.personal_overhead_rate || 0) / 100) : 0;
+    
+    const netProfit = exampleContractValue - materialCosts - companyOverhead - repOverhead;
+    
+    let commission = 0;
     if (commissionType === 'percentage_selling_price') {
-      return (exampleContractValue * commissionRate) / 100;
+      commission = (exampleContractValue * commissionRate) / 100;
     } else {
-      // Profit split - assume 30% costs
-      const assumedCosts = exampleContractValue * 0.3;
-      const profit = exampleContractValue - assumedCosts;
-      return (profit * commissionRate) / 100;
+      commission = (netProfit * commissionRate) / 100;
     }
+    
+    return {
+      contractValue: exampleContractValue,
+      materialCosts,
+      companyOverhead,
+      repOverhead,
+      netProfit,
+      commission
+    };
   };
+
+  const breakdown = calculateProfitBreakdown();
 
   if (loading) {
     return <div className="text-center py-4">Loading commission settings...</div>;
@@ -198,7 +240,7 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
           <p className="text-sm text-muted-foreground">
             {commissionType === 'percentage_selling_price' 
               ? 'Commission calculated as a percentage of total contract value'
-              : 'Commission calculated as a percentage of profit (Selling Price - Costs)'}
+              : 'Commission calculated as a percentage of profit (after costs & overhead)'}
           </p>
         </div>
 
@@ -216,6 +258,26 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
           />
         </div>
 
+        <div className="space-y-2">
+          <Label htmlFor="company-overhead" className="flex items-center gap-2">
+            <Building2 className="h-4 w-4" />
+            Company Overhead Rate (%)
+          </Label>
+          <Input
+            id="company-overhead"
+            type="number"
+            step="0.5"
+            min="0"
+            max="100"
+            value={companyOverheadRate}
+            onChange={(e) => setCompanyOverheadRate(parseFloat(e.target.value) || 0)}
+            disabled={!canEdit}
+          />
+          <p className="text-sm text-muted-foreground">
+            Company-level overhead (rent, insurance, admin costs)
+          </p>
+        </div>
+
         <div className="flex items-center space-x-2">
           <Switch
             id="include-overhead"
@@ -227,12 +289,12 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
         </div>
         {includeOverhead && (
           <p className="text-sm text-muted-foreground">
-            Rep's personal overhead rate ({user.personal_overhead_rate || 0}%) will be deducted before commission calculation
+            Rep's personal overhead rate ({user?.personal_overhead_rate || 0}%) will be deducted before commission calculation
           </p>
         )}
       </div>
 
-      {/* Example Calculation */}
+      {/* Example Calculation with Full Breakdown */}
       <Card className="bg-muted/30">
         <CardContent className="p-4">
           <div className="flex items-center gap-2 mb-3">
@@ -242,28 +304,45 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
           <div className="space-y-2 text-sm">
             <div className="flex justify-between">
               <span className="text-muted-foreground">Contract Value:</span>
-              <span className="font-medium">${exampleContractValue.toLocaleString()}</span>
+              <span className="font-medium">${breakdown.contractValue.toLocaleString()}</span>
             </div>
-            {commissionType === 'profit_split' && (
-              <>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Est. Costs (30%):</span>
-                  <span className="font-medium">-${(exampleContractValue * 0.3).toLocaleString()}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span className="text-muted-foreground">Est. Profit:</span>
-                  <span className="font-medium">${(exampleContractValue * 0.7).toLocaleString()}</span>
-                </div>
-              </>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Material/Labor (30%):</span>
+              <span className="font-medium text-destructive">-${breakdown.materialCosts.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Company Overhead ({companyOverheadRate}%):</span>
+              <span className="font-medium text-destructive">-${breakdown.companyOverhead.toLocaleString()}</span>
+            </div>
+            {includeOverhead && breakdown.repOverhead > 0 && (
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Rep Overhead ({user?.personal_overhead_rate || 0}%):</span>
+                <span className="font-medium text-destructive">-${breakdown.repOverhead.toLocaleString()}</span>
+              </div>
             )}
+            <hr className="border-border" />
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Net Profit:</span>
+              <span className="font-medium">${breakdown.netProfit.toLocaleString()}</span>
+            </div>
             <div className="flex justify-between">
               <span className="text-muted-foreground">Commission Rate:</span>
               <span className="font-medium">{commissionRate}%</span>
             </div>
+            {commissionType === 'profit_split' && (
+              <p className="text-xs text-muted-foreground italic">
+                (Applied to Net Profit)
+              </p>
+            )}
+            {commissionType === 'percentage_selling_price' && (
+              <p className="text-xs text-muted-foreground italic">
+                (Applied to Contract Value)
+              </p>
+            )}
             <hr className="border-border" />
             <div className="flex justify-between text-base">
               <span className="font-medium">Commission Earned:</span>
-              <span className="font-bold text-primary">${calculateExampleCommission().toLocaleString()}</span>
+              <span className="font-bold text-primary">${breakdown.commission.toLocaleString()}</span>
             </div>
           </div>
         </CardContent>

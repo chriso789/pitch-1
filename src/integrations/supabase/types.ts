@@ -11984,6 +11984,7 @@ export type Database = {
           address_state: string | null
           address_street: string | null
           address_zip: string | null
+          company_overhead_rate: number | null
           created_at: string | null
           email: string | null
           id: string
@@ -12006,6 +12007,7 @@ export type Database = {
           address_state?: string | null
           address_street?: string | null
           address_zip?: string | null
+          company_overhead_rate?: number | null
           created_at?: string | null
           email?: string | null
           id?: string
@@ -12028,6 +12030,7 @@ export type Database = {
           address_state?: string | null
           address_street?: string | null
           address_zip?: string | null
+          company_overhead_rate?: number | null
           created_at?: string | null
           email?: string | null
           id?: string
