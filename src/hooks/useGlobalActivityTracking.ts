@@ -1,90 +1,102 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { activityTracker } from '@/services/activityTracker';
+
+// Feature flag - disable in development for performance
+const ENABLE_ACTIVITY_TRACKING = import.meta.env.PROD;
 
 /**
  * Global activity tracking hook that tracks:
  * - Page views on route changes
- * - Keystrokes across the entire application
- * - Button clicks (via event delegation)
+ * - Keystrokes (throttled/batched)
+ * - Button clicks (debounced)
  * 
+ * Optimized for performance with throttling and debouncing.
  * Should be used at the app root level (App.tsx)
  */
 export const useGlobalActivityTracking = () => {
   const location = useLocation();
   const keystrokeCount = useRef(0);
   const lastFlush = useRef(Date.now());
+  const lastClickTime = useRef(0);
+  const clickDebounceMs = 300; // Debounce clicks by 300ms
 
   // Track page views on route changes
   useEffect(() => {
+    if (!ENABLE_ACTIVITY_TRACKING) return;
+    
     const pageName = getPageNameFromPath(location.pathname);
     activityTracker.trackPageView(location.pathname, pageName);
-    console.log(`[ActivityTracking] Page view: ${location.pathname} (${pageName})`);
   }, [location.pathname]);
 
-  // Track keystrokes globally
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      // Skip tracking for modifier keys alone
-      if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock'].includes(event.key)) {
-        return;
-      }
+  // Throttled keystroke handler - only track batches, not individual keystrokes
+  const handleKeyDown = useCallback((event: KeyboardEvent) => {
+    if (!ENABLE_ACTIVITY_TRACKING) return;
+    
+    // Skip tracking for modifier keys alone
+    if (['Shift', 'Control', 'Alt', 'Meta', 'CapsLock', 'Tab', 'Escape'].includes(event.key)) {
+      return;
+    }
 
-      keystrokeCount.current++;
+    keystrokeCount.current++;
+
+    // Only flush every 100 keystrokes or every 60 seconds (much less frequent)
+    const now = Date.now();
+    if (keystrokeCount.current >= 100 || now - lastFlush.current > 60000) {
       activityTracker.trackKeystroke();
-
-      // Log every 50 keystrokes or every 30 seconds
-      const now = Date.now();
-      if (keystrokeCount.current >= 50 || now - lastFlush.current > 30000) {
-        console.log(`[ActivityTracking] Keystrokes batch: ${keystrokeCount.current}`);
-        keystrokeCount.current = 0;
-        lastFlush.current = now;
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
+      keystrokeCount.current = 0;
+      lastFlush.current = now;
+    }
   }, []);
 
-  // Track button clicks via event delegation
-  useEffect(() => {
-    const handleClick = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      
-      // Find if click was on a button or link
-      const button = target.closest('button');
-      const link = target.closest('a');
-      
-      if (button) {
-        const buttonId = button.id || button.getAttribute('data-track-id') || 
-                         button.textContent?.slice(0, 30) || 'unknown-button';
+  // Debounced click handler - only track actual interactive elements
+  const handleClick = useCallback((event: MouseEvent) => {
+    if (!ENABLE_ACTIVITY_TRACKING) return;
+    
+    const now = Date.now();
+    // Debounce rapid clicks
+    if (now - lastClickTime.current < clickDebounceMs) return;
+    lastClickTime.current = now;
+
+    const target = event.target as HTMLElement;
+    
+    // Only track actual interactive elements (buttons, links with meaningful actions)
+    const button = target.closest('button');
+    const link = target.closest('a[href]');
+    
+    if (button) {
+      // Only track buttons with IDs or data-track-id (explicit tracking)
+      const buttonId = button.id || button.getAttribute('data-track-id');
+      if (buttonId) {
         activityTracker.trackButtonClick(buttonId, {
-          className: button.className?.slice(0, 100),
           path: location.pathname,
         });
-      } else if (link) {
-        const linkId = link.id || link.getAttribute('data-track-id') || 
-                       link.textContent?.slice(0, 30) || link.href?.slice(0, 50) || 'unknown-link';
+      }
+    } else if (link) {
+      // Only track internal navigation links
+      const href = link.getAttribute('href');
+      if (href && href.startsWith('/')) {
+        const linkId = link.id || link.getAttribute('data-track-id') || href;
         activityTracker.trackButtonClick(linkId, {
           type: 'link',
-          href: link.href?.slice(0, 100),
           path: location.pathname,
         });
       }
-    };
-
-    document.addEventListener('click', handleClick, { capture: true });
-    return () => document.removeEventListener('click', handleClick, { capture: true });
+    }
   }, [location.pathname]);
 
-  // Flush on unmount
+  // Set up event listeners with passive option for better performance
   useEffect(() => {
+    if (!ENABLE_ACTIVITY_TRACKING) return;
+
+    document.addEventListener('keydown', handleKeyDown, { passive: true });
+    document.addEventListener('click', handleClick, { capture: true, passive: true });
+    
     return () => {
-      if (keystrokeCount.current > 0) {
-        console.log(`[ActivityTracking] Final flush: ${keystrokeCount.current} keystrokes`);
-      }
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('click', handleClick, { capture: true });
     };
-  }, []);
+  }, [handleKeyDown, handleClick]);
 };
 
 /**
