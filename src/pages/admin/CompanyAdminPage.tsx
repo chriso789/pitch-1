@@ -340,6 +340,10 @@ const CompanyAdminPage = () => {
           address_state: formData.address_state || null,
           address_zip: formData.address_zip || null,
           license_number: formData.license_number || null,
+          owner_name: formData.owner_name || null,
+          owner_email: formData.owner_email || null,
+          owner_phone: formData.owner_phone || null,
+          subscription_tier: formData.subscription_tier || null,
         })
         .eq('id', selectedCompany.id);
 
@@ -962,6 +966,47 @@ const CompanyAdminPage = () => {
                       <div className="text-muted-foreground text-center py-8">
                         Feature access management coming soon
                       </div>
+                    </CardContent>
+                  </Card>
+
+                  {/* Company Status */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Company Status</CardTitle>
+                      <CardDescription>Activate or deactivate this company</CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-center justify-between p-4 border rounded-lg">
+                        <div>
+                          <p className="font-medium">Current Status</p>
+                          <p className="text-sm text-muted-foreground">
+                            {selectedCompany.is_active 
+                              ? 'This company is currently active and can use all features'
+                              : 'This company is deactivated and cannot access the system'
+                            }
+                          </p>
+                        </div>
+                        <Badge variant={selectedCompany.is_active ? "default" : "secondary"}>
+                          {selectedCompany.is_active ? 'Active' : 'Inactive'}
+                        </Badge>
+                      </div>
+                      <Button 
+                        variant={selectedCompany.is_active ? "outline" : "default"}
+                        className="mt-4"
+                        onClick={() => toggleCompanyStatus(selectedCompany)}
+                      >
+                        {selectedCompany.is_active ? (
+                          <>
+                            <X className="h-4 w-4 mr-2" />
+                            Deactivate Company
+                          </>
+                        ) : (
+                          <>
+                            <Check className="h-4 w-4 mr-2" />
+                            Activate Company
+                          </>
+                        )}
+                      </Button>
                     </CardContent>
                   </Card>
 

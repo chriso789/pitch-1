@@ -2736,6 +2736,48 @@ export type Database = {
         }
         Relationships: []
       }
+      demo_requests: {
+        Row: {
+          company_name: string
+          created_at: string | null
+          email: string
+          email_error: string | null
+          email_sent: boolean | null
+          first_name: string
+          id: string
+          job_title: string | null
+          last_name: string
+          message: string | null
+          phone: string | null
+        }
+        Insert: {
+          company_name: string
+          created_at?: string | null
+          email: string
+          email_error?: string | null
+          email_sent?: boolean | null
+          first_name: string
+          id?: string
+          job_title?: string | null
+          last_name: string
+          message?: string | null
+          phone?: string | null
+        }
+        Update: {
+          company_name?: string
+          created_at?: string | null
+          email?: string
+          email_error?: string | null
+          email_sent?: boolean | null
+          first_name?: string
+          id?: string
+          job_title?: string | null
+          last_name?: string
+          message?: string | null
+          phone?: string | null
+        }
+        Relationships: []
+      }
       developer_access_grants: {
         Row: {
           access_type: string | null
@@ -12518,6 +12560,9 @@ export type Database = {
           name: string
           onboarded_at: string | null
           onboarded_by: string | null
+          owner_email: string | null
+          owner_name: string | null
+          owner_phone: string | null
           phone: string | null
           primary_color: string | null
           secondary_color: string | null
@@ -12543,6 +12588,9 @@ export type Database = {
           name: string
           onboarded_at?: string | null
           onboarded_by?: string | null
+          owner_email?: string | null
+          owner_name?: string | null
+          owner_phone?: string | null
           phone?: string | null
           primary_color?: string | null
           secondary_color?: string | null
@@ -12568,6 +12616,9 @@ export type Database = {
           name?: string
           onboarded_at?: string | null
           onboarded_by?: string | null
+          owner_email?: string | null
+          owner_name?: string | null
+          owner_phone?: string | null
           phone?: string | null
           primary_color?: string | null
           secondary_color?: string | null
