@@ -123,34 +123,14 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
       setActiveTab('forgot');
     }
 
-    const checkConnection = async () => {
-      try {
-        // Add 5-second timeout to prevent hanging
-        const timeoutPromise = new Promise((_, reject) => 
-          setTimeout(() => reject(new Error('Connection check timeout')), 5000)
-        );
-        const sessionPromise = supabase.auth.getSession();
-        
-        await Promise.race([sessionPromise, timeoutPromise]);
-        setConnectionStatus('online');
-      } catch (error) {
-        console.error('Connection check failed:', error);
-        setConnectionStatus('offline');
-        // Retry once after 2 seconds
-        setTimeout(async () => {
-          try {
-            await supabase.auth.getSession();
-            setConnectionStatus('online');
-          } catch {
-            // Keep offline status
-          }
-        }, 2000);
-      } finally {
-        setSessionCheckComplete(true);
-      }
-    };
-
-    checkConnection();
+    // Non-blocking connection check - assume online, verify in background
+    setConnectionStatus('online');
+    setSessionCheckComplete(true);
+    
+    // Silent background connection verification
+    supabase.auth.getSession()
+      .then(() => setConnectionStatus('online'))
+      .catch(() => setConnectionStatus('offline'));
   }, [navigate]);
 
   const validateEmail = (email: string) => {
@@ -178,11 +158,6 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
     }
 
     setLoading(true);
-    
-    const timeoutId = setTimeout(() => {
-      setLoading(false);
-      setErrors({ general: 'Login timeout - please check your connection and try again' });
-    }, 15000);
 
     try {
       const { data, error } = await supabase.auth.signInWithPassword({
@@ -190,47 +165,35 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
         password: loginForm.password
       });
 
-      clearTimeout(timeoutId);
-
       if (error) {
         if (error.message.includes('Invalid login credentials')) {
           setErrors({ general: 'Invalid email or password' });
-          
-          // Log failed login attempt
-          supabase.functions.invoke('log-auth-activity', {
-            body: {
-              email: loginForm.email,
-              event_type: 'login_failed',
-              success: false,
-              error_message: 'Invalid credentials'
-            }
-          }).catch(err => console.error('Failed to log activity:', err));
-          
         } else if (error.message.includes('Email not confirmed')) {
           setErrors({ general: 'Please check your email and click the confirmation link before signing in' });
         } else {
           setErrors({ general: error.message });
-          
-          // Log failed login attempt
-          supabase.functions.invoke('log-auth-activity', {
-            body: {
-              email: loginForm.email,
-              event_type: 'login_failed',
-              success: false,
-              error_message: error.message
-            }
-          }).catch(err => console.error('Failed to log activity:', err));
         }
+        
+        // Non-blocking: Log failed login attempt in background
+        supabase.functions.invoke('log-auth-activity', {
+          body: {
+            email: loginForm.email,
+            event_type: 'login_failed',
+            success: false,
+            error_message: error.message
+          }
+        }).catch(console.warn);
+        
+        setLoading(false);
         return;
       }
 
       if (data.user) {
-        console.log('Login successful, redirecting to dashboard');
-        
         // Save remember me preference
         localStorage.setItem('pitch_remember_me', rememberMe.toString());
         
-        // Log successful login
+        // Non-blocking background tasks - don't wait for these
+        ensureUserProfile(data.user).catch(console.warn);
         supabase.functions.invoke('log-auth-activity', {
           body: {
             user_id: data.user.id,
@@ -238,23 +201,19 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
             event_type: 'login_success',
             success: true
           }
-        }).catch(err => console.error('Failed to log activity:', err));
+        }).catch(console.warn);
         
-        await ensureUserProfile(data.user);
         toast({
           title: "Login successful",
-          description: rememberMe 
-            ? "You'll stay signed in on this device" 
-            : "Redirecting to dashboard...",
+          description: "Redirecting to dashboard...",
         });
         
-        // Immediately navigate to dashboard
+        // Navigate immediately - don't wait for profile or logging
         navigate('/dashboard');
       }
     } catch (error: any) {
-      clearTimeout(timeoutId);
       console.error('Login error:', error);
-      setErrors({ general: 'Connection error - please check your internet and try again' });
+      setErrors({ general: 'Connection error - please try again' });
     } finally {
       setLoading(false);
     }
