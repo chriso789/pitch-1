@@ -125,14 +125,29 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
 
     const checkConnection = async () => {
       try {
-        // Simple connection test
-        await supabase.auth.getSession();
+        // Add 5-second timeout to prevent hanging
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Connection check timeout')), 5000)
+        );
+        const sessionPromise = supabase.auth.getSession();
+        
+        await Promise.race([sessionPromise, timeoutPromise]);
         setConnectionStatus('online');
       } catch (error) {
         console.error('Connection check failed:', error);
         setConnectionStatus('offline');
+        // Retry once after 2 seconds
+        setTimeout(async () => {
+          try {
+            await supabase.auth.getSession();
+            setConnectionStatus('online');
+          } catch {
+            // Keep offline status
+          }
+        }, 2000);
+      } finally {
+        setSessionCheckComplete(true);
       }
-      setSessionCheckComplete(true);
     };
 
     checkConnection();
@@ -427,14 +442,6 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
               </Alert>
             )}
 
-            {!sessionCheckComplete && (
-              <Alert className="mb-4 border-primary/50 bg-primary/10">
-                <Loader2 className="h-4 w-4 animate-spin" />
-                <AlertDescription>
-                  Checking your session... This may take a moment.
-                </AlertDescription>
-              </Alert>
-            )}
 
             <Tabs value={activeTab} onValueChange={(value) => setActiveTab(value as 'login' | 'signup' | 'forgot')} className="space-y-4">
               <TabsList className="grid w-full grid-cols-3">
