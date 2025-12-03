@@ -928,6 +928,27 @@ export type Database = {
         }
         Relationships: []
       }
+      blocked_email_domains: {
+        Row: {
+          created_at: string | null
+          domain: string
+          id: string
+          reason: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          domain: string
+          id?: string
+          reason?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          domain?: string
+          id?: string
+          reason?: string | null
+        }
+        Relationships: []
+      }
       building_footprints: {
         Row: {
           building_polygon: Json
@@ -6683,6 +6704,104 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      onboarding_analytics: {
+        Row: {
+          completed: boolean | null
+          created_at: string | null
+          dropped_off: boolean | null
+          id: string
+          step_id: string
+          step_number: number
+          tenant_id: string | null
+          time_spent: number | null
+          updated_at: string | null
+          user_id: string | null
+          video_watch_percent: number | null
+          video_watched: boolean | null
+        }
+        Insert: {
+          completed?: boolean | null
+          created_at?: string | null
+          dropped_off?: boolean | null
+          id?: string
+          step_id: string
+          step_number: number
+          tenant_id?: string | null
+          time_spent?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+          video_watch_percent?: number | null
+          video_watched?: boolean | null
+        }
+        Update: {
+          completed?: boolean | null
+          created_at?: string | null
+          dropped_off?: boolean | null
+          id?: string
+          step_id?: string
+          step_number?: number
+          tenant_id?: string | null
+          time_spent?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+          video_watch_percent?: number | null
+          video_watched?: boolean | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "onboarding_analytics_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      onboarding_videos: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          display_order: number | null
+          duration_seconds: number | null
+          id: string
+          is_active: boolean | null
+          step_key: string
+          thumbnail_url: string | null
+          title: string
+          updated_at: string | null
+          video_id: string
+          video_type: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          display_order?: number | null
+          duration_seconds?: number | null
+          id?: string
+          is_active?: boolean | null
+          step_key: string
+          thumbnail_url?: string | null
+          title: string
+          updated_at?: string | null
+          video_id: string
+          video_type: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          display_order?: number | null
+          duration_seconds?: number | null
+          id?: string
+          is_active?: boolean | null
+          step_key?: string
+          thumbnail_url?: string | null
+          title?: string
+          updated_at?: string | null
+          video_id?: string
+          video_type?: string
+        }
+        Relationships: []
       }
       outbox_events: {
         Row: {
@@ -13582,6 +13701,47 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      verified_company_domains: {
+        Row: {
+          created_at: string | null
+          dns_txt_record: string | null
+          domain: string
+          id: string
+          tenant_id: string | null
+          verification_method: string | null
+          verification_status: string | null
+          verified_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          dns_txt_record?: string | null
+          domain: string
+          id?: string
+          tenant_id?: string | null
+          verification_method?: string | null
+          verification_status?: string | null
+          verified_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          dns_txt_record?: string | null
+          domain?: string
+          id?: string
+          tenant_id?: string | null
+          verification_method?: string | null
+          verification_status?: string | null
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "verified_company_domains_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       visitor_consents: {
         Row: {

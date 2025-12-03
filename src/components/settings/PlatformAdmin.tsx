@@ -17,7 +17,8 @@ import {
   Eye,
   Power,
   Shield,
-  ExternalLink
+  ExternalLink,
+  BarChart3
 } from "lucide-react";
 import { EnhancedCompanyOnboarding } from "./EnhancedCompanyOnboarding";
 import { LocationUserAssignment } from "./LocationUserAssignment";
@@ -25,6 +26,7 @@ import { DeletionHistoryTab } from "./DeletionHistoryTab";
 import { PatentResearchDashboard } from "./PatentResearchDashboard";
 import { BackupStatusDashboard } from "./BackupStatusDashboard";
 import { BackupRestorePanel } from "./BackupRestorePanel";
+import { OnboardingAnalyticsDashboard } from "./OnboardingAnalyticsDashboard";
 
 interface Company {
   id: string;
@@ -233,7 +235,7 @@ export const PlatformAdmin = () => {
 
       {/* Companies Tabs */}
       <Tabs defaultValue="active">
-        <TabsList>
+        <TabsList className="flex-wrap">
           <TabsTrigger value="active">
             Active ({activeCompanies.length})
           </TabsTrigger>
@@ -242,6 +244,10 @@ export const PlatformAdmin = () => {
           </TabsTrigger>
           <TabsTrigger value="all">
             All ({filteredCompanies.length})
+          </TabsTrigger>
+          <TabsTrigger value="onboarding-analytics" className="gap-1">
+            <BarChart3 className="h-3 w-3" />
+            Onboarding Analytics
           </TabsTrigger>
           <TabsTrigger value="deletion-history">
             Deletion History
@@ -291,6 +297,10 @@ export const PlatformAdmin = () => {
               setDetailsOpen(true);
             }}
           />
+        </TabsContent>
+
+        <TabsContent value="onboarding-analytics" className="mt-4">
+          <OnboardingAnalyticsDashboard />
         </TabsContent>
 
         <TabsContent value="deletion-history" className="mt-4">

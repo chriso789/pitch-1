@@ -18,6 +18,31 @@ import { AddressValidation } from '@/shared/components/forms/AddressValidation';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { DomainValidationDisplay } from '@/components/onboarding/DomainVerificationBadge';
+import { useState as useStateHook, useEffect as useEffectHook } from 'react';
+
+// Email domain validation component
+function EmailDomainValidator({ email }: { email: string }) {
+  const [isBlocked, setIsBlocked] = useStateHook(false);
+  const [reason, setReason] = useStateHook('');
+
+  useEffectHook(() => {
+    const checkDomain = async () => {
+      try {
+        const { data } = await supabase.functions.invoke('verify-company-domain', {
+          body: { email, action: 'validate' }
+        });
+        setIsBlocked(data?.blocked || false);
+        setReason(data?.reason || '');
+      } catch (err) {
+        console.error('Domain validation error:', err);
+      }
+    };
+    if (email.includes('@')) checkDomain();
+  }, [email]);
+
+  return <DomainValidationDisplay email={email} isBlocked={isBlocked} blockedReason={reason} />;
+}
 
 interface OnboardingLocation {
   name: string;
@@ -589,7 +614,7 @@ export function EnhancedCompanyOnboarding({ open, onOpenChange, onComplete }: En
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="admin-email">Email *</Label>
+              <Label htmlFor="admin-email">Email * (must be a company email)</Label>
               <Input
                 id="admin-email"
                 type="email"
@@ -597,6 +622,9 @@ export function EnhancedCompanyOnboarding({ open, onOpenChange, onComplete }: En
                 value={adminUser.email}
                 onChange={(e) => setAdminUser({ ...adminUser, email: e.target.value })}
               />
+              {adminUser.email && adminUser.email.includes('@') && (
+                <EmailDomainValidator email={adminUser.email} />
+              )}
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

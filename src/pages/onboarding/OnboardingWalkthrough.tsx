@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { 
   Lock, User, Palette, FileText, Rocket, CheckCircle2, 
   Eye, EyeOff, Loader2, AlertCircle, ArrowRight, ArrowLeft,
-  Upload, Building2, LayoutDashboard, Users, Calendar, FileSpreadsheet
+  Upload, Building2, LayoutDashboard, Users, Calendar, FileSpreadsheet, Play
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -13,6 +13,8 @@ import { Progress } from '@/components/ui/progress';
 import { Badge } from '@/components/ui/badge';
 import { Separator } from '@/components/ui/separator';
 import { LogoUploader } from '@/components/settings/LogoUploader';
+import { InlineVideo } from '@/components/onboarding/VideoTutorialPlayer';
+import { useOnboardingAnalytics } from '@/hooks/useOnboardingAnalytics';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import confetti from 'canvas-confetti';
@@ -38,6 +40,15 @@ interface TenantInfo {
   secondary_color: string;
 }
 
+interface OnboardingVideo {
+  step_key: string;
+  video_type: 'youtube' | 'loom';
+  video_id: string;
+  title: string;
+  description?: string;
+  duration_seconds?: number;
+}
+
 const STEPS = [
   { key: 'password', label: 'Set Password', icon: Lock },
   { key: 'profile', label: 'Your Profile', icon: User },
@@ -57,6 +68,13 @@ export default function OnboardingWalkthrough() {
   const [error, setError] = useState<string | null>(null);
   const [currentStep, setCurrentStep] = useState(0);
   const [saving, setSaving] = useState(false);
+  const [videos, setVideos] = useState<OnboardingVideo[]>([]);
+  
+  // Analytics tracking
+  const analytics = useOnboardingAnalytics(
+    tokenData?.tenant_id,
+    tokenData?.user_id || undefined
+  );
   
   // Form states
   const [password, setPassword] = useState('');
@@ -78,7 +96,43 @@ export default function OnboardingWalkthrough() {
 
   useEffect(() => {
     validateToken();
+    loadVideos();
   }, [token]);
+
+  // Track step changes
+  useEffect(() => {
+    if (tokenData) {
+      const stepKey = STEPS[currentStep]?.key;
+      if (stepKey) {
+        analytics.trackStepEntry(stepKey, currentStep);
+      }
+    }
+  }, [currentStep, tokenData]);
+
+  // Track dropoff on unmount
+  useEffect(() => {
+    return () => {
+      if (tokenData && currentStep < STEPS.length - 1) {
+        analytics.trackDropoff();
+      }
+    };
+  }, [tokenData, currentStep]);
+
+  const loadVideos = async () => {
+    try {
+      const { data } = await (supabase.from('onboarding_videos') as any)
+        .select('*')
+        .eq('is_active', true)
+        .order('display_order');
+      setVideos(data || []);
+    } catch (err) {
+      console.error('Failed to load videos:', err);
+    }
+  };
+
+  const getVideoForStep = (stepKey: string): OnboardingVideo | undefined => {
+    return videos.find(v => v.step_key === stepKey);
+  };
 
   const validateToken = async () => {
     if (!token) {
@@ -302,6 +356,12 @@ export default function OnboardingWalkthrough() {
   };
 
   const nextStep = () => {
+    // Track step completion before moving
+    const stepKey = STEPS[currentStep]?.key;
+    if (stepKey) {
+      analytics.trackStepComplete(stepKey, currentStep);
+    }
+    
     const next = Math.min(currentStep + 1, STEPS.length - 1);
     setCurrentStep(next);
     saveProgress(next);
@@ -558,6 +618,17 @@ export default function OnboardingWalkthrough() {
                 <p className="text-muted-foreground">
                   Smart Docs is where you manage contracts, proposals, and company documents with smart auto-fill capabilities.
                 </p>
+                
+                {/* Video Tutorial */}
+                {getVideoForStep('smartdocs') && (
+                  <div className="mb-4">
+                    <InlineVideo
+                      videoType={getVideoForStep('smartdocs')!.video_type}
+                      videoId={getVideoForStep('smartdocs')!.video_id}
+                      title={getVideoForStep('smartdocs')!.title}
+                    />
+                  </div>
+                )}
                 
                 <div className="grid gap-4">
                   <Card className="p-4 border-primary/20 bg-primary/5">
