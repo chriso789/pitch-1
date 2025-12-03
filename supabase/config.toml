@@ -1,5 +1,8 @@
 project_id = "alxelfrbjzkmtnsulcei"
 
+[functions.verify-company-domain]
+verify_jwt = false
+
 [functions.get-mapbox-token]
 verify_jwt = true
 
