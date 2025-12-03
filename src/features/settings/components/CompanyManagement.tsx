@@ -111,11 +111,49 @@ export const CompanyManagement = () => {
     const locationsToCreate = validLocations.length > 0 ? validLocations : ['Main Office'];
 
     setCreating(true);
+    
+    // Timeout protection - 30 seconds max
+    const timeoutId = setTimeout(() => {
+      console.error('[CompanyManagement] Operation timed out after 30 seconds');
+      setCreating(false);
+      toast({
+        title: "Operation Timed Out",
+        description: "Company creation is taking too long. Please try again.",
+        variant: "destructive",
+      });
+    }, 30000);
+
     try {
       // Generate subdomain from name
       const subdomain = newCompanyName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
+      console.log('[CompanyManagement] Creating company:', { name: newCompanyName, subdomain, locations: locationsToCreate });
+
+      // Check if subdomain already exists
+      const { data: existingTenant, error: checkError } = await supabase
+        .from('tenants')
+        .select('id')
+        .eq('subdomain', subdomain)
+        .maybeSingle();
+
+      if (checkError) {
+        console.error('[CompanyManagement] Error checking subdomain:', checkError);
+        throw checkError;
+      }
+
+      if (existingTenant) {
+        console.warn('[CompanyManagement] Subdomain already exists:', subdomain);
+        clearTimeout(timeoutId);
+        setCreating(false);
+        toast({
+          title: "Subdomain Already Exists",
+          description: `A company with subdomain "${subdomain}" already exists. Please use a different company name.`,
+          variant: "destructive",
+        });
+        return;
+      }
 
       // Create tenant
+      console.log('[CompanyManagement] Inserting tenant...');
       const { data: tenant, error: tenantError } = await supabase
         .from('tenants')
         .insert({
@@ -133,9 +171,14 @@ export const CompanyManagement = () => {
         .select()
         .single();
 
-      if (tenantError) throw tenantError;
+      if (tenantError) {
+        console.error('[CompanyManagement] Tenant insert error:', tenantError);
+        throw tenantError;
+      }
+      console.log('[CompanyManagement] Tenant created:', tenant.id);
 
       // Create all locations (uses locationsToCreate which defaults to 'Main Office')
+      console.log('[CompanyManagement] Creating locations...');
       const locationInserts = locationsToCreate.map(name => ({
         tenant_id: tenant.id,
         name: name.trim(),
@@ -146,9 +189,14 @@ export const CompanyManagement = () => {
         .from('locations')
         .insert(locationInserts);
 
-      if (locationError) throw locationError;
+      if (locationError) {
+        console.error('[CompanyManagement] Location insert error:', locationError);
+        throw locationError;
+      }
+      console.log('[CompanyManagement] Locations created:', locationsToCreate.length);
 
       // Grant current user full access to new company
+      console.log('[CompanyManagement] Granting user access...');
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
         const { error: accessError } = await (supabase as any)
@@ -160,9 +208,15 @@ export const CompanyManagement = () => {
             granted_by: user.id,
           });
         
-        if (accessError) console.error('Error granting access:', accessError);
+        if (accessError) {
+          console.error('[CompanyManagement] Error granting access:', accessError);
+        } else {
+          console.log('[CompanyManagement] User access granted');
+        }
       }
 
+      clearTimeout(timeoutId);
+      
       toast({
         title: "Company Created",
         description: `${newCompanyName} has been created with ${locationsToCreate.length} location(s)`,
@@ -180,9 +234,11 @@ export const CompanyManagement = () => {
       fetchCompanies();
       refetchCompanies();
     } catch (error: any) {
+      clearTimeout(timeoutId);
+      console.error('[CompanyManagement] Error creating company:', error);
       toast({
         title: "Error Creating Company",
-        description: error.message,
+        description: error.message || error.code || 'Unknown error occurred. Check console for details.',
         variant: "destructive",
       });
     } finally {
