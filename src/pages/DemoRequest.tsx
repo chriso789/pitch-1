@@ -101,7 +101,7 @@ const DemoRequest: React.FC = () => {
 
   if (submitted) {
     return (
-      <div className="min-h-screen flex items-center justify-center gradient-hero p-4">
+      <div className="min-h-screen min-h-[100dvh] flex items-center justify-center gradient-hero p-4 pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))]">
         <div className="w-full max-w-md">
           <Card className="shadow-strong border-0 bg-white/95 backdrop-blur-sm">
             <CardHeader className="text-center">
@@ -158,158 +158,164 @@ const DemoRequest: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center gradient-hero p-4">
-      <div className="w-full max-w-2xl">
-        <div className="text-center mb-6">
-          <Button
-            variant="ghost"
-            onClick={() => navigate('/login')}
-            className="text-white/80 hover:text-white hover:bg-white/10 mb-4"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Back to Login
-          </Button>
-          <h1 className="text-4xl font-bold text-white mb-2">
-            Request PITCH Demo
-          </h1>
-          <p className="text-white/90 text-lg">
-            Get a personalized demonstration of our roofing CRM platform
-          </p>
+    <div className="min-h-screen min-h-[100dvh] gradient-hero overflow-auto">
+      {/* Safe area padding container */}
+      <div className="pt-[max(1rem,env(safe-area-inset-top))] pb-[max(1rem,env(safe-area-inset-bottom))] px-4">
+        <div className="w-full max-w-2xl mx-auto py-4">
+          <div className="text-center mb-6">
+            <Button
+              variant="ghost"
+              onClick={() => navigate('/login')}
+              className="text-white/80 hover:text-white hover:bg-white/10 mb-4"
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back to Login
+            </Button>
+            <h1 className="text-3xl sm:text-4xl font-bold text-white mb-2">
+              Request PITCH Demo
+            </h1>
+            <p className="text-white/90 text-base sm:text-lg">
+              Get a personalized demonstration of our roofing CRM platform
+            </p>
+          </div>
+
+          <Card className="shadow-strong border-0 bg-white/95 backdrop-blur-sm">
+            <CardHeader className="text-center pb-4">
+              <CardTitle className="text-xl sm:text-2xl font-semibold">Demo Request Form</CardTitle>
+              <CardDescription className="text-sm sm:text-base">
+                Fill out the form below and we'll contact you to schedule your demo
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="firstName" className="text-sm">
+                      <User className="h-4 w-4 inline mr-2" />
+                      First Name *
+                    </Label>
+                    <Input
+                      id="firstName"
+                      type="text"
+                      placeholder="Enter your first name"
+                      value={formData.firstName}
+                      onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                      className={`h-12 text-base ${errors.firstName ? 'border-destructive' : ''}`}
+                    />
+                    {errors.firstName && <p className="text-sm text-destructive">{errors.firstName}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="lastName" className="text-sm">Last Name *</Label>
+                    <Input
+                      id="lastName"
+                      type="text"
+                      placeholder="Enter your last name"
+                      value={formData.lastName}
+                      onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                      className={`h-12 text-base ${errors.lastName ? 'border-destructive' : ''}`}
+                    />
+                    {errors.lastName && <p className="text-sm text-destructive">{errors.lastName}</p>}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="email" className="text-sm">
+                    <Mail className="h-4 w-4 inline mr-2" />
+                    Email Address *
+                  </Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    placeholder="Enter your business email"
+                    value={formData.email}
+                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                    className={`h-12 text-base ${errors.email ? 'border-destructive' : ''}`}
+                  />
+                  {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="phone" className="text-sm">
+                    <Phone className="h-4 w-4 inline mr-2" />
+                    Phone Number
+                  </Label>
+                  <Input
+                    id="phone"
+                    type="tel"
+                    placeholder="Enter your phone number"
+                    value={formData.phone}
+                    onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                    className="h-12 text-base"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="companyName" className="text-sm">
+                      <Building className="h-4 w-4 inline mr-2" />
+                      Company Name *
+                    </Label>
+                    <Input
+                      id="companyName"
+                      type="text"
+                      placeholder="Enter your company name"
+                      value={formData.companyName}
+                      onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
+                      className={`h-12 text-base ${errors.companyName ? 'border-destructive' : ''}`}
+                    />
+                    {errors.companyName && <p className="text-sm text-destructive">{errors.companyName}</p>}
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="jobTitle" className="text-sm">Job Title</Label>
+                    <Input
+                      id="jobTitle"
+                      type="text"
+                      placeholder="e.g., Owner, Sales Manager"
+                      value={formData.jobTitle}
+                      onChange={(e) => setFormData({ ...formData, jobTitle: e.target.value })}
+                      className="h-12 text-base"
+                    />
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="message" className="text-sm">Additional Information</Label>
+                  <Textarea
+                    id="message"
+                    placeholder="Tell us about your roofing business and what you're looking for in a CRM..."
+                    rows={4}
+                    value={formData.message}
+                    onChange={(e) => setFormData({ ...formData, message: e.target.value })}
+                    className="text-base"
+                  />
+                </div>
+
+                <Alert className="bg-blue-50 border-blue-200">
+                  <Mail className="h-4 w-4 text-blue-600" />
+                  <AlertDescription className="text-sm">
+                    Your demo request will be sent to <strong>chris.obfla@gmail.com</strong> and we'll respond within 24 hours.
+                  </AlertDescription>
+                </Alert>
+
+                <Button type="submit" className="w-full h-12 text-base" disabled={loading}>
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Submitting Request...
+                    </>
+                  ) : (
+                    <>
+                      <Mail className="mr-2 h-4 w-4" />
+                      Submit Demo Request
+                    </>
+                  )}
+                </Button>
+              </form>
+            </CardContent>
+          </Card>
         </div>
-
-        <Card className="shadow-strong border-0 bg-white/95 backdrop-blur-sm">
-          <CardHeader className="text-center">
-            <CardTitle className="text-2xl font-semibold">Demo Request Form</CardTitle>
-            <CardDescription className="text-base">
-              Fill out the form below and we'll contact you to schedule your demo
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="firstName">
-                    <User className="h-4 w-4 inline mr-2" />
-                    First Name *
-                  </Label>
-                  <Input
-                    id="firstName"
-                    type="text"
-                    placeholder="Enter your first name"
-                    value={formData.firstName}
-                    onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
-                    className={errors.firstName ? 'border-destructive' : ''}
-                  />
-                  {errors.firstName && <p className="text-sm text-destructive">{errors.firstName}</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="lastName">Last Name *</Label>
-                  <Input
-                    id="lastName"
-                    type="text"
-                    placeholder="Enter your last name"
-                    value={formData.lastName}
-                    onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
-                    className={errors.lastName ? 'border-destructive' : ''}
-                  />
-                  {errors.lastName && <p className="text-sm text-destructive">{errors.lastName}</p>}
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="email">
-                  <Mail className="h-4 w-4 inline mr-2" />
-                  Email Address *
-                </Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="Enter your business email"
-                  value={formData.email}
-                  onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                  className={errors.email ? 'border-destructive' : ''}
-                />
-                {errors.email && <p className="text-sm text-destructive">{errors.email}</p>}
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="phone">
-                  <Phone className="h-4 w-4 inline mr-2" />
-                  Phone Number
-                </Label>
-                <Input
-                  id="phone"
-                  type="tel"
-                  placeholder="Enter your phone number"
-                  value={formData.phone}
-                  onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="companyName">
-                    <Building className="h-4 w-4 inline mr-2" />
-                    Company Name *
-                  </Label>
-                  <Input
-                    id="companyName"
-                    type="text"
-                    placeholder="Enter your company name"
-                    value={formData.companyName}
-                    onChange={(e) => setFormData({ ...formData, companyName: e.target.value })}
-                    className={errors.companyName ? 'border-destructive' : ''}
-                  />
-                  {errors.companyName && <p className="text-sm text-destructive">{errors.companyName}</p>}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="jobTitle">Job Title</Label>
-                  <Input
-                    id="jobTitle"
-                    type="text"
-                    placeholder="e.g., Owner, Sales Manager"
-                    value={formData.jobTitle}
-                    onChange={(e) => setFormData({ ...formData, jobTitle: e.target.value })}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="message">Additional Information</Label>
-                <Textarea
-                  id="message"
-                  placeholder="Tell us about your roofing business and what you're looking for in a CRM..."
-                  rows={4}
-                  value={formData.message}
-                  onChange={(e) => setFormData({ ...formData, message: e.target.value })}
-                />
-              </div>
-
-              <Alert>
-                <Mail className="h-4 w-4" />
-                <AlertDescription>
-                  Your demo request will be sent to <strong>chris.obfla@gmail.com</strong> and we'll respond within 24 hours.
-                </AlertDescription>
-              </Alert>
-
-              <Button type="submit" className="w-full" disabled={loading}>
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Submitting Request...
-                  </>
-                ) : (
-                  <>
-                    <Mail className="mr-2 h-4 w-4" />
-                    Submit Demo Request
-                  </>
-                )}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
       </div>
     </div>
   );

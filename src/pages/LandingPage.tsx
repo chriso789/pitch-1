@@ -123,32 +123,33 @@ const LandingPage = () => {
   ];
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      {/* Navigation */}
-      <nav className="fixed top-0 w-full bg-white/80 backdrop-blur-md border-b border-slate-200 z-50">
-        <div className="container mx-auto px-4 py-4">
+    <div className="min-h-screen min-h-[100dvh] bg-gradient-to-b from-slate-50 to-white">
+      {/* Navigation - Mobile Safe Area */}
+      <nav className="fixed top-0 w-full bg-white/80 backdrop-blur-md border-b border-slate-200 z-50 pt-[env(safe-area-inset-top)]">
+        <div className="container mx-auto px-4 py-3 sm:py-4">
           <div className="flex items-center justify-between">
             <div className="flex items-center space-x-2">
-              <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
-                <Zap className="w-5 h-5 text-white" />
+              <div className="w-7 h-7 sm:w-8 sm:h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
+                <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               </div>
-              <span className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
+              <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                 PITCH CRM
               </span>
             </div>
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-2 sm:space-x-4">
               <Button variant="ghost" className="hidden md:inline-flex" onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}>
                 Features
               </Button>
               <Button variant="ghost" className="hidden md:inline-flex" onClick={() => navigate('/pricing')}>
                 Pricing
               </Button>
-              <Button variant="outline" onClick={() => { trackNavLogin(); navigate('/login'); }}>
+              <Button variant="outline" size="sm" className="text-xs sm:text-sm" onClick={() => { trackNavLogin(); navigate('/login'); }}>
                 Log In
               </Button>
               <Button 
+                size="sm"
                 onClick={() => { trackNavSignup(); navigate('/signup'); }}
-                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700"
+                className="bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 text-xs sm:text-sm hidden sm:inline-flex"
               >
                 Start Free Trial
               </Button>
@@ -157,8 +158,8 @@ const LandingPage = () => {
         </div>
       </nav>
 
-      {/* Hero Section */}
-      <section className="pt-32 pb-20 px-4">
+      {/* Hero Section - Account for nav height + safe area */}
+      <section className="pt-24 sm:pt-32 pb-12 sm:pb-20 px-4 mt-[env(safe-area-inset-top)]">
         <div className="container mx-auto max-w-6xl text-center">
           <div className="inline-flex items-center space-x-2 bg-blue-50 text-blue-700 px-4 py-2 rounded-full mb-6">
             <Shield className="w-4 h-4" />
