@@ -1,6 +1,7 @@
-import React, { useState, useEffect } from "react";
+import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useAuth } from "@/contexts/AuthContext";
 import { 
   Home, 
   Users, 
@@ -50,14 +51,32 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
   const location = useLocation();
   const navigate = useNavigate();
   const { user: currentUser, loading: userLoading, refetch: refetchUser } = useCurrentUser();
-  const [currentTenant, setCurrentTenant] = useState<any>(null);
+  const { user: authUser } = useAuth();
   
-  // Force refetch on mount if user data is not loaded
-  useEffect(() => {
-    if (!currentUser && !userLoading) {
-      refetchUser();
+  // Instant display name from auth user_metadata (no loading state)
+  const getInstantDisplayName = () => {
+    if (currentUser?.first_name && currentUser?.last_name) {
+      return `${currentUser.first_name} ${currentUser.last_name}`;
     }
-  }, [currentUser, userLoading, refetchUser]);
+    // Fallback to auth user_metadata (instant, no DB call)
+    if (authUser?.user_metadata?.first_name) {
+      return `${authUser.user_metadata.first_name} ${authUser.user_metadata.last_name || ''}`.trim();
+    }
+    if (currentUser?.email) {
+      return currentUser.email.split('@')[0];
+    }
+    if (authUser?.email) {
+      return authUser.email.split('@')[0];
+    }
+    return 'User';
+  };
+
+  // Instant initials from any available source
+  const getInstantInitials = () => {
+    const first = currentUser?.first_name?.[0] || authUser?.user_metadata?.first_name?.[0] || authUser?.email?.[0] || 'U';
+    const last = currentUser?.last_name?.[0] || authUser?.user_metadata?.last_name?.[0] || '';
+    return `${first}${last}`.toUpperCase();
+  };
   
   // Derive active section from current route
   const getActiveSection = () => {
@@ -371,31 +390,19 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
             >
               <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
                 <span className="text-sm font-bold text-primary-foreground">
-                  {currentUser?.first_name?.[0] || 'U'}{currentUser?.last_name?.[0] || ''}
+                  {getInstantInitials()}
                 </span>
               </div>
               {!isCollapsed && (
                 <div className="flex-1 min-w-0 text-left">
                   <div className="text-sm font-medium truncate">
-                    {userLoading ? (
-                      'Loading...'
-                    ) : currentUser?.first_name && currentUser?.last_name ? (
-                      <>
-                        {currentUser.first_name} {currentUser.last_name}
-                        {currentUser.is_developer && (
-                          <Code className="inline h-3 w-3 ml-1 text-destructive" />
-                        )}
-                      </>
-                    ) : currentUser?.email ? (
-                      currentUser.email.split('@')[0]
-                    ) : (
-                      'User'
+                    {getInstantDisplayName()}
+                    {currentUser?.is_developer && (
+                      <Code className="inline h-3 w-3 ml-1 text-destructive" />
                     )}
                   </div>
                   <div className="text-xs text-muted-foreground truncate">
-                    {userLoading ? (
-                      'Loading...'
-                    ) : currentUser?.title ? (
+                    {currentUser?.title ? (
                       currentUser.title.charAt(0).toUpperCase() + currentUser.title.slice(1)
                     ) : currentUser?.role ? (
                       getRoleDisplayName(currentUser.role)
