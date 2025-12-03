@@ -12,8 +12,7 @@ import {
   Settings,
   Upload,
   Download,
-  FileText,
-  Trophy
+  FileText
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -93,93 +92,24 @@ export default function StormCanvassPro() {
       </div>
 
       {/* Main Features Grid */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {/* Territory Management */}
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2">
+        {/* Field Canvassing - Merged Territory + Lead Capture */}
         <Card className="hover:shadow-lg transition-shadow">
           <CardHeader>
             <div className="flex items-center gap-2">
               <div className="p-2 bg-primary/10 rounded-lg">
                 <Map className="h-5 w-5 text-primary" />
               </div>
-              <CardTitle className="text-lg">Territory Management</CardTitle>
+              <CardTitle className="text-lg">Field Canvassing</CardTitle>
             </div>
             <CardDescription>
-              Define and assign canvassing territories with geo-fencing
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              <Button 
-                variant="outline"
-                size="sm"
-                className="whitespace-nowrap"
-                onClick={() => navigate('/storm-canvass/map')}
-              >
-                <Map className="h-4 w-4 mr-1.5" />
-                Map
-              </Button>
-              <Button 
-                variant="outline"
-                size="sm"
-                className="whitespace-nowrap"
-                onClick={() => navigate('/storm-canvass/dashboard')}
-              >
-                <BarChart className="h-4 w-4 mr-1.5" />
-                Dashboard
-              </Button>
-              <Button 
-                variant="outline"
-                size="sm"
-                className="whitespace-nowrap"
-                onClick={() => navigate('/storm-canvass/leaderboard')}
-              >
-                <Trophy className="h-4 w-4 mr-1.5" />
-                Leaderboard
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Canvasser Dashboard */}
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <div className="p-2 bg-primary/10 rounded-lg">
-                <Users className="h-5 w-5 text-primary" />
-              </div>
-              <CardTitle className="text-lg">Canvasser Dashboard</CardTitle>
-            </div>
-            <CardDescription>
-              Real-time tracking and performance monitoring
+              Territory mapping with real-time GPS tracking and mobile-optimized lead capture
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Button 
               className="w-full" 
-              variant="outline"
-              onClick={() => navigate('/storm-canvass/dashboard')}
-            >
-              View Dashboard
-            </Button>
-          </CardContent>
-        </Card>
-
-        {/* Lead Capture */}
-        <Card className="hover:shadow-lg transition-shadow">
-          <CardHeader>
-            <div className="flex items-center gap-2">
-              <div className="p-2 bg-primary/10 rounded-lg">
-                <ClipboardCheck className="h-5 w-5 text-primary" />
-              </div>
-              <CardTitle className="text-lg">Lead Capture</CardTitle>
-            </div>
-            <CardDescription>
-              Mobile-optimized lead capture with damage assessment
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button 
-              className="w-full" 
+              size="lg"
               onClick={() => navigate('/storm-canvass/live')}
             >
               <Map className="h-4 w-4 mr-2" />
@@ -222,7 +152,11 @@ export default function StormCanvassPro() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button className="w-full" variant="outline">
+            <Button 
+              className="w-full" 
+              variant="outline"
+              onClick={() => navigate('/storm-canvass/dashboard')}
+            >
               View Reports
             </Button>
           </CardContent>
