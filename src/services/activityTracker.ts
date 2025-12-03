@@ -10,28 +10,32 @@ interface ActivityEvent {
 class ActivityTracker {
   private queue: ActivityEvent[] = [];
   private flushInterval: NodeJS.Timeout | null = null;
-  private sessionId: string;
+  private sessionId: string | null = null;
   private tenantId: string | null = null;
   private userId: string | null = null;
   private keystrokeCount = 0;
   private lastKeystrokeTime = 0;
   private keystrokeFlushTimeout: NodeJS.Timeout | null = null;
+  private initialized = false;
 
   constructor() {
-    this.sessionId = this.generateSessionId();
-    this.initializeUser();
-    this.startAutoFlush();
+    // Lazy initialization - don't start anything in constructor
   }
 
   private generateSessionId(): string {
     return `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
   }
 
-  private async initializeUser() {
+  private async ensureInitialized() {
+    if (this.initialized) return;
+    this.initialized = true;
+    
+    this.sessionId = this.generateSessionId();
+    
+    // Get current user once
     const { data: { user } } = await supabase.auth.getUser();
     if (user) {
       this.userId = user.id;
-      // Get tenant ID from profile
       const { data: profile } = await supabase
         .from('profiles')
         .select('tenant_id')
@@ -42,32 +46,12 @@ class ActivityTracker {
       }
     }
 
-    // Listen for auth changes
-    supabase.auth.onAuthStateChange(async (event, session) => {
-      if (session?.user) {
-        this.userId = session.user.id;
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('tenant_id')
-          .eq('id', session.user.id)
-          .single();
-        if (profile) {
-          this.tenantId = profile.tenant_id;
-        }
-      } else {
-        this.userId = null;
-        this.tenantId = null;
-      }
-    });
-  }
-
-  private startAutoFlush() {
-    // Flush every 30 seconds
+    // Start auto-flush only after initialization (every 60 seconds instead of 30)
     this.flushInterval = setInterval(() => {
       this.flush();
-    }, 30000);
+    }, 60000);
 
-    // Also flush on page unload
+    // Flush on page unload
     if (typeof window !== 'undefined') {
       window.addEventListener('beforeunload', () => {
         this.flush();
@@ -75,7 +59,8 @@ class ActivityTracker {
     }
   }
 
-  trackPageView(path: string, pageName?: string) {
+  async trackPageView(path: string, pageName?: string) {
+    await this.ensureInitialized();
     this.addEvent({
       action_type: 'page_view',
       action_category: 'navigation',
@@ -84,7 +69,8 @@ class ActivityTracker {
     });
   }
 
-  trackButtonClick(elementId: string, context?: Record<string, any>) {
+  async trackButtonClick(elementId: string, context?: Record<string, any>) {
+    await this.ensureInitialized();
     this.addEvent({
       action_type: 'button_click',
       action_category: 'interaction',
@@ -93,7 +79,8 @@ class ActivityTracker {
     });
   }
 
-  trackFormSubmit(formType: string, success: boolean, context?: Record<string, any>) {
+  async trackFormSubmit(formType: string, success: boolean, context?: Record<string, any>) {
+    await this.ensureInitialized();
     this.addEvent({
       action_type: 'form_submit',
       action_category: 'form',
@@ -102,7 +89,8 @@ class ActivityTracker {
     });
   }
 
-  trackDataChange(table: string, operation: 'create' | 'update' | 'delete', recordId?: string) {
+  async trackDataChange(table: string, operation: 'create' | 'update' | 'delete', recordId?: string) {
+    await this.ensureInitialized();
     this.addEvent({
       action_type: 'data_change',
       action_category: 'crm',
@@ -112,20 +100,22 @@ class ActivityTracker {
   }
 
   trackKeystroke() {
+    // Just increment counter - no async initialization needed for simple counting
     this.keystrokeCount++;
     this.lastKeystrokeTime = Date.now();
 
-    // Debounce keystroke batching - flush after 5 seconds of inactivity
+    // Debounce keystroke batching - flush after 10 seconds of inactivity
     if (this.keystrokeFlushTimeout) {
       clearTimeout(this.keystrokeFlushTimeout);
     }
     this.keystrokeFlushTimeout = setTimeout(() => {
       this.flushKeystrokes();
-    }, 5000);
+    }, 10000);
   }
 
-  private flushKeystrokes() {
+  private async flushKeystrokes() {
     if (this.keystrokeCount > 0) {
+      await this.ensureInitialized();
       this.addEvent({
         action_type: 'keystroke_batch',
         action_category: 'input',
@@ -139,7 +129,8 @@ class ActivityTracker {
     }
   }
 
-  trackSearch(query: string, resultsCount: number) {
+  async trackSearch(query: string, resultsCount: number) {
+    await this.ensureInitialized();
     this.addEvent({
       action_type: 'search',
       action_category: 'navigation',
@@ -152,15 +143,15 @@ class ActivityTracker {
     if (!this.userId || !this.tenantId) return;
     this.queue.push(event);
 
-    // Auto-flush if queue gets too large
-    if (this.queue.length >= 50) {
+    // Auto-flush if queue gets too large (increased threshold)
+    if (this.queue.length >= 100) {
       this.flush();
     }
   }
 
   async flush() {
     // Also flush any pending keystrokes
-    this.flushKeystrokes();
+    await this.flushKeystrokes();
 
     if (this.queue.length === 0 || !this.userId || !this.tenantId) return;
 
@@ -186,13 +177,11 @@ class ActivityTracker {
 
       if (error) {
         console.error('Error logging activity:', error);
-        // Put events back in queue for retry
-        this.queue = [...events, ...this.queue];
+        // Don't retry - just drop failed events to avoid memory buildup
       }
     } catch (error) {
       console.error('Error flushing activity:', error);
-      // Put events back in queue
-      this.queue = [...events, ...this.queue];
+      // Don't retry - just drop failed events
     }
   }
 

@@ -16,8 +16,8 @@ export const SESSION_CONFIG = {
   // Warning shown before session expires (5 minutes)
   WARNING_BEFORE_EXPIRY: 5 * 60 * 1000,
   
-  // Check interval for session expiry (every minute)
-  CHECK_INTERVAL: 60 * 1000,
+  // Check interval for session expiry (every 5 minutes - reduced frequency for performance)
+  CHECK_INTERVAL: 5 * 60 * 1000,
 } as const;
 
 // Storage keys

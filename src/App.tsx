@@ -10,7 +10,6 @@ import { supabase } from "@/integrations/supabase/client";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { UserProfileProvider } from "@/contexts/UserProfileContext";
 import { ImageCacheProvider } from "@/contexts/ImageCacheContext";
-import { initSessionPersistence } from "@/utils/sessionPersistence";
 import { useGlobalActivityTracking } from "@/hooks/useGlobalActivityTracking";
 import { SessionExpiryHandler } from "@/components/auth/SessionExpiryHandler";
 import LandingPage from "./pages/LandingPage";
@@ -115,12 +114,8 @@ const AppContent = () => {
       }
     });
 
-    // Initialize session persistence
-    const cleanup = initSessionPersistence();
-
     return () => {
       subscription.unsubscribe();
-      cleanup();
     };
   }, [navigate]);
 
