@@ -160,44 +160,78 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
     setLoading(true);
     console.log('[Login] Starting login attempt for:', loginForm.email);
 
+    // Flag to prevent duplicate navigation
+    let hasNavigated = false;
+    
+    const navigateToApp = () => {
+      if (hasNavigated) return;
+      hasNavigated = true;
+      
+      console.log('[Login] Navigating to dashboard...');
+      localStorage.setItem('pitch_remember_me', rememberMe.toString());
+      
+      toast({
+        title: "Login successful",
+        description: "Welcome back!"
+      });
+      
+      setLoading(false);
+      navigate('/dashboard');
+    };
+    
+    // Set up ONE-TIME auth state listener that fires on SIGNED_IN
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[Login] Auth state change:', event, session?.user?.id);
+      if (event === 'SIGNED_IN' && session?.user) {
+        subscription.unsubscribe(); // Clean up immediately
+        
+        // Background tasks (non-blocking)
+        const user = session.user;
+        const email = loginForm.email;
+        setTimeout(() => {
+          ensureUserProfile(user).catch(console.warn);
+          supabase.functions.invoke('log-auth-activity', {
+            body: {
+              user_id: user.id,
+              email: email,
+              event_type: 'login_success',
+              success: true
+            }
+          }).catch(console.warn);
+        }, 0);
+        
+        navigateToApp();
+      }
+    });
+    
+    // 3-second fallback: check session directly if listener doesn't fire
+    const fallbackTimeout = setTimeout(async () => {
+      console.log('[Login] Fallback: checking session directly...');
+      const { data: { session } } = await supabase.auth.getSession();
+      if (session?.user) {
+        console.log('[Login] Fallback found session!');
+        subscription.unsubscribe();
+        navigateToApp();
+      }
+    }, 3000);
+    
+    // Fire the auth call (don't fully await - just catch errors)
     try {
-      // Create auth promise
-      const authPromise = supabase.auth.signInWithPassword({
+      const { error } = await supabase.auth.signInWithPassword({
         email: loginForm.email,
         password: loginForm.password
       });
       
-      // 10-second timeout that checks session directly if promise hangs
-      const timeoutPromise = new Promise<{ data: any; error: any }>((resolve) => {
-        setTimeout(async () => {
-          console.log('[Login] Timeout reached, checking session directly...');
-          try {
-            const { data: { session } } = await supabase.auth.getSession();
-            if (session?.user) {
-              console.log('[Login] Session found via timeout fallback!');
-              resolve({ data: { user: session.user, session }, error: null });
-            } else {
-              console.log('[Login] No session found after timeout');
-              resolve({ data: { user: null, session: null }, error: { message: 'Login timeout - please try again' } });
-            }
-          } catch (e) {
-            console.log('[Login] Session check failed:', e);
-            resolve({ data: { user: null, session: null }, error: { message: 'Login timeout - please try again' } });
-          }
-        }, 10000);
-      });
-
-      // Race between auth call and timeout
-      console.log('[Login] Awaiting auth response...');
-      const { data, error } = await Promise.race([authPromise, timeoutPromise]);
-      console.log('[Login] Auth response received:', { hasUser: !!data?.user, hasError: !!error });
-
       if (error) {
-        console.log('[Login] Auth error:', error.message);
+        clearTimeout(fallbackTimeout);
+        subscription.unsubscribe();
+        setLoading(false);
+        
+        // Handle specific errors
         if (error.message.includes('Invalid login credentials')) {
           setErrors({ general: 'Invalid email or password' });
         } else if (error.message.includes('Email not confirmed')) {
-          setErrors({ general: 'Please check your email and click the confirmation link before signing in' });
+          setErrors({ general: 'Please check your email and click the confirmation link' });
         } else {
           setErrors({ general: error.message });
         }
@@ -212,51 +246,23 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
           }
         }).catch(console.warn);
         
-        setLoading(false);
         return;
       }
-
-      if (data?.user) {
-        console.log('[Login] User authenticated:', data.user.id);
-        
-        // Save remember me preference (sync - fast)
-        localStorage.setItem('pitch_remember_me', rememberMe.toString());
-        
-        toast({
-          title: "Login successful",
-          description: "Redirecting to dashboard...",
-        });
-        
-        // Navigate IMMEDIATELY - don't wait for anything else
-        console.log('[Login] Navigating to dashboard...');
-        setLoading(false);
-        navigate('/dashboard');
-        
-        // Non-blocking background tasks AFTER navigation starts
-        const user = data.user;
-        const email = loginForm.email;
-        setTimeout(() => {
-          ensureUserProfile(user).catch(console.warn);
-          supabase.functions.invoke('log-auth-activity', {
-            body: {
-              user_id: user.id,
-              email: email,
-              event_type: 'login_success',
-              success: true
-            }
-          }).catch(console.warn);
-        }, 0);
-        
-        return; // Exit early, don't hit finally block
-      } else {
-        console.log('[Login] No user in response, no error - unexpected state');
-        setErrors({ general: 'Login failed - please try again' });
-      }
+      
+      // If promise resolved without error but listener hasn't fired, wait a moment more
+      setTimeout(() => {
+        if (!hasNavigated) {
+          clearTimeout(fallbackTimeout);
+          subscription.unsubscribe();
+          navigateToApp();
+        }
+      }, 500);
+      
     } catch (error: any) {
-      console.error('[Login] Caught error:', error);
-      setErrors({ general: 'Connection error - please try again' });
-    } finally {
+      clearTimeout(fallbackTimeout);
+      subscription.unsubscribe();
       setLoading(false);
+      setErrors({ general: error.message || 'Connection error - please try again' });
     }
   };
 
