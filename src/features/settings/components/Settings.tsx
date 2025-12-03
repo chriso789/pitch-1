@@ -146,6 +146,24 @@ export const Settings = () => {
                   </DropdownMenuItem>
                 ))
               )}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem 
+                onClick={() => window.location.href = '/admin/companies'}
+                className="cursor-pointer"
+              >
+                <LucideIcons.Settings className="h-4 w-4 mr-2" />
+                Manage All Companies
+              </DropdownMenuItem>
+              <DropdownMenuItem 
+                onClick={() => {
+                  // Trigger create company dialog - navigate to admin page with create param
+                  window.location.href = '/admin/companies?action=create';
+                }}
+                className="cursor-pointer text-primary"
+              >
+                <LucideIcons.Plus className="h-4 w-4 mr-2" />
+                Add New Company
+              </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
 
