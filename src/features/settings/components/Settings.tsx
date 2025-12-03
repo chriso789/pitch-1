@@ -21,7 +21,7 @@ import { LocationManagement } from "@/components/settings/LocationManagement";
 import { CommissionManagement } from "@/components/settings/CommissionManagement";
 import { ProductCatalogManager } from "@/components/settings/ProductCatalogManager";
 import SupplierManagement from "./SupplierManagement";
-import { default as VoiceInterface } from "@/features/communication/components/VoiceInterface";
+import { VoiceAssistantSettings } from "@/components/settings/VoiceAssistantSettings";
 import ErrorReportsManager from "./ErrorReportsManager";
 import EnhancedErrorReportsManager from "./EnhancedErrorReportsManager";
 import ManagerApprovalQueue from "@/components/ManagerApprovalQueue";
@@ -190,12 +190,6 @@ export const Settings = () => {
               </DialogContent>
             </Dialog>
           )}
-          <VoiceInterface 
-            onTranscription={(text) => {
-              console.log('Voice transcription:', text);
-            }} 
-            className="flex items-center gap-2"
-          />
         </div>
       </div>
 
@@ -368,6 +362,10 @@ export const Settings = () => {
 
         <TabsContent value="edge-functions" className="space-y-6">
           <EdgeFunctionHealthDashboard />
+        </TabsContent>
+
+        <TabsContent value="voice-assistant" className="space-y-6">
+          <VoiceAssistantSettings />
         </TabsContent>
       </Tabs>
     </div>
