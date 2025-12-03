@@ -4801,6 +4801,66 @@ export type Database = {
           },
         ]
       }
+      industry_patents: {
+        Row: {
+          abstract: string | null
+          assignee: string | null
+          category: string | null
+          country: string | null
+          created_at: string | null
+          expiration_date: string | null
+          filing_date: string | null
+          grant_date: string | null
+          id: string
+          notes: string | null
+          patent_number: string
+          pdf_url: string | null
+          relevance_to_pitch: string | null
+          risk_level: string | null
+          status: string | null
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          abstract?: string | null
+          assignee?: string | null
+          category?: string | null
+          country?: string | null
+          created_at?: string | null
+          expiration_date?: string | null
+          filing_date?: string | null
+          grant_date?: string | null
+          id?: string
+          notes?: string | null
+          patent_number: string
+          pdf_url?: string | null
+          relevance_to_pitch?: string | null
+          risk_level?: string | null
+          status?: string | null
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          abstract?: string | null
+          assignee?: string | null
+          category?: string | null
+          country?: string | null
+          created_at?: string | null
+          expiration_date?: string | null
+          filing_date?: string | null
+          grant_date?: string | null
+          id?: string
+          notes?: string | null
+          patent_number?: string
+          pdf_url?: string | null
+          relevance_to_pitch?: string | null
+          risk_level?: string | null
+          status?: string | null
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
       invoice_ar_mirror: {
         Row: {
           balance: number
@@ -6928,6 +6988,51 @@ export type Database = {
           stage_order?: number
           tenant_id?: string
           updated_at?: string | null
+        }
+        Relationships: []
+      }
+      pitch_patent_applications: {
+        Row: {
+          application_number: string | null
+          attorney_notes: string | null
+          category: string
+          created_at: string | null
+          description: string | null
+          filed_date: string | null
+          id: string
+          key_claims: string[] | null
+          priority_level: string | null
+          status: string | null
+          updated_at: string | null
+          working_title: string
+        }
+        Insert: {
+          application_number?: string | null
+          attorney_notes?: string | null
+          category: string
+          created_at?: string | null
+          description?: string | null
+          filed_date?: string | null
+          id?: string
+          key_claims?: string[] | null
+          priority_level?: string | null
+          status?: string | null
+          updated_at?: string | null
+          working_title: string
+        }
+        Update: {
+          application_number?: string | null
+          attorney_notes?: string | null
+          category?: string
+          created_at?: string | null
+          description?: string | null
+          filed_date?: string | null
+          id?: string
+          key_claims?: string[] | null
+          priority_level?: string | null
+          status?: string | null
+          updated_at?: string | null
+          working_title?: string
         }
         Relationships: []
       }
