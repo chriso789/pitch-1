@@ -129,7 +129,8 @@ serve(async (req) => {
       { data: profiles },
       { data: locations },
       { data: documents },
-      { data: measurements }
+      { data: measurements },
+      { data: settingsTabs }
     ] = await Promise.all([
       supabase.from('contacts').select('*').eq('tenant_id', companyId),
       supabase.from('pipeline_entries').select('*').eq('tenant_id', companyId),
@@ -138,7 +139,8 @@ serve(async (req) => {
       supabase.from('profiles').select('*').eq('tenant_id', companyId),
       supabase.from('locations').select('*').eq('tenant_id', companyId),
       supabase.from('documents').select('*').eq('tenant_id', companyId),
-      supabase.from('measurements').select('*').eq('tenant_id', companyId)
+      supabase.from('measurements').select('*').eq('tenant_id', companyId),
+      supabase.from('settings_tabs').select('*').eq('tenant_id', companyId)
     ]);
 
     // Create backup object
@@ -152,6 +154,7 @@ serve(async (req) => {
       locations: locations || [],
       documents: documents || [],
       measurements: measurements || [],
+      settings_tabs: settingsTabs || [],
       deleted_at: new Date().toISOString(),
       deleted_by: userId
     };
@@ -164,7 +167,8 @@ serve(async (req) => {
       profiles: profiles?.length || 0,
       locations: locations?.length || 0,
       documents: documents?.length || 0,
-      measurements: measurements?.length || 0
+      measurements: measurements?.length || 0,
+      settings_tabs: settingsTabs?.length || 0
     };
 
     // Store backup in Supabase Storage
@@ -220,6 +224,16 @@ serve(async (req) => {
 
     if (logError) {
       console.error('[delete-company] Failed to log deletion:', logError);
+    }
+
+    // Explicitly delete settings_tabs before tenant deletion (safety measure)
+    const { error: settingsDeleteError } = await supabase
+      .from('settings_tabs')
+      .delete()
+      .eq('tenant_id', companyId);
+
+    if (settingsDeleteError) {
+      console.log('[delete-company] Warning: Could not delete settings_tabs:', settingsDeleteError);
     }
 
     // Delete the company (cascades to related data)
