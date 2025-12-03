@@ -60,6 +60,51 @@ serve(async (req) => {
       console.log(`[initialize-company] Created ${results.pipeline_stages} pipeline stages`);
     }
 
+    // 1b. Create default job types
+    const jobTypes = [
+      { tenant_id, name: 'Roofing - Shingle', description: 'Asphalt shingle roofing', is_active: true },
+      { tenant_id, name: 'Roofing - Metal', description: 'Metal roofing installation', is_active: true },
+      { tenant_id, name: 'Roofing - Tile', description: 'Tile roofing installation', is_active: true },
+      { tenant_id, name: 'Roofing - Flat', description: 'Flat/low-slope roofing', is_active: true },
+      { tenant_id, name: 'Siding', description: 'Siding installation and repair', is_active: true },
+      { tenant_id, name: 'Gutters', description: 'Gutter installation and repair', is_active: true },
+      { tenant_id, name: 'Windows', description: 'Window replacement', is_active: true },
+      { tenant_id, name: 'Storm Damage', description: 'Storm damage restoration', is_active: true },
+      { tenant_id, name: 'Insurance Claim', description: 'Insurance claim project', is_active: true },
+    ];
+
+    const { error: jobTypesError } = await supabase
+      .from('job_types')
+      .insert(jobTypes);
+
+    if (jobTypesError) {
+      console.log('[initialize-company] Job types note:', jobTypesError.message);
+    } else {
+      console.log(`[initialize-company] Created ${jobTypes.length} job types`);
+    }
+
+    // 1c. Create default tags
+    const defaultTags = [
+      { tenant_id, name: 'Hot Lead', color: '#ef4444', tag_type: 'contact' },
+      { tenant_id, name: 'Referral', color: '#22c55e', tag_type: 'contact' },
+      { tenant_id, name: 'Insurance', color: '#3b82f6', tag_type: 'contact' },
+      { tenant_id, name: 'Cash Deal', color: '#f59e0b', tag_type: 'contact' },
+      { tenant_id, name: 'VIP', color: '#8b5cf6', tag_type: 'contact' },
+      { tenant_id, name: 'Follow Up', color: '#ec4899', tag_type: 'contact' },
+      { tenant_id, name: 'Urgent', color: '#ef4444', tag_type: 'project' },
+      { tenant_id, name: 'Priority', color: '#f59e0b', tag_type: 'project' },
+    ];
+
+    const { error: tagsError } = await supabase
+      .from('tags')
+      .insert(defaultTags);
+
+    if (tagsError) {
+      console.log('[initialize-company] Tags note:', tagsError.message);
+    } else {
+      console.log(`[initialize-company] Created ${defaultTags.length} tags`);
+    }
+
     // 2. Create default commission plan
     const defaultCommissionPlan = {
       tenant_id,
