@@ -3,9 +3,6 @@ project_id = "alxelfrbjzkmtnsulcei"
 [functions.get-mapbox-token]
 verify_jwt = true
 
-[functions.asterisk-sms-send]
-verify_jwt = true
-
 [functions.asterisk-sms-inbound]
 verify_jwt = false
 
@@ -14,9 +11,6 @@ verify_jwt = false
 
 [functions.asterisk-call-events]
 verify_jwt = false
-
-[functions.asterisk-email-send]
-verify_jwt = true
 
 [functions.asterisk-email-inbound]
 verify_jwt = false
@@ -165,8 +159,6 @@ verify_jwt = true
 [functions.skip-trace-lookup]
 verify_jwt = true
 
-[functions.enhanced-roof-measurement]
-verify_jwt = true
 
 [functions.qbo-oauth-connect]
 verify_jwt = true
@@ -204,8 +196,6 @@ verify_jwt = true
 [functions.admin-delete-user]
 verify_jwt = true
 
-[functions.google-solar-measurements]
-verify_jwt = true
 
 [functions.srs-pricelist-importer]
 verify_jwt = true
