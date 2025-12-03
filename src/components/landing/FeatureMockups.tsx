@@ -19,7 +19,16 @@ import {
   ArrowDownRight,
   FileText,
   Send,
-  Pen
+  Pen,
+  MapPin,
+  Mail,
+  MessageSquare,
+  Play,
+  Pause,
+  ChevronRight,
+  Ruler,
+  Home,
+  Users
 } from 'lucide-react';
 
 // Power Dialer Mockup
@@ -306,6 +315,277 @@ export const AnalyticsMockup = () => {
               </div>
             </div>
           </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// AI Measurement Mockup
+export const MeasurementMockup = () => {
+  return (
+    <div className="bg-slate-900 rounded-lg p-4 h-full min-h-[280px]">
+      <div className="flex gap-4 h-full">
+        {/* Satellite View */}
+        <div className="flex-1 bg-slate-800 rounded-lg overflow-hidden relative">
+          {/* Simulated satellite image with roof overlay */}
+          <div className="absolute inset-0 bg-gradient-to-br from-emerald-900 via-emerald-800 to-green-900">
+            {/* House shape */}
+            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+              <svg width="160" height="120" viewBox="0 0 160 120">
+                {/* Roof facets */}
+                <polygon 
+                  points="10,60 80,10 150,60" 
+                  fill="rgba(59, 130, 246, 0.3)" 
+                  stroke="#3b82f6" 
+                  strokeWidth="2"
+                />
+                <polygon 
+                  points="10,60 80,60 80,110 10,110" 
+                  fill="rgba(168, 85, 247, 0.3)" 
+                  stroke="#a855f7" 
+                  strokeWidth="2"
+                />
+                <polygon 
+                  points="80,60 150,60 150,110 80,110" 
+                  fill="rgba(34, 197, 94, 0.3)" 
+                  stroke="#22c55e" 
+                  strokeWidth="2"
+                />
+                {/* Ridge line */}
+                <line x1="10" y1="60" x2="150" y2="60" stroke="#10b981" strokeWidth="3" strokeDasharray="5,3" />
+              </svg>
+            </div>
+          </div>
+          
+          {/* Overlay badge */}
+          <div className="absolute top-2 left-2 bg-blue-500 text-white text-xs px-2 py-1 rounded">
+            AI Detected: 3 Facets
+          </div>
+          <div className="absolute bottom-2 right-2 bg-slate-900/80 text-white text-xs px-2 py-1 rounded">
+            Zoom: 20 | Pitch: 6/12
+          </div>
+        </div>
+
+        {/* Measurement Data */}
+        <div className="w-36 space-y-2">
+          <div className="bg-slate-800 rounded-lg p-3">
+            <div className="text-xs text-slate-400">Total Area</div>
+            <div className="text-xl font-bold text-white">3,245</div>
+            <div className="text-xs text-slate-500">sq ft</div>
+          </div>
+          <div className="bg-slate-800 rounded-lg p-3">
+            <div className="text-xs text-slate-400">Total Squares</div>
+            <div className="text-lg font-bold text-green-400">32.5</div>
+          </div>
+          <div className="bg-slate-800 rounded-lg p-3">
+            <div className="text-xs text-slate-400">Ridge Length</div>
+            <div className="text-lg font-bold text-blue-400">68 LF</div>
+          </div>
+          <div className="bg-slate-800 rounded-lg p-3">
+            <div className="text-xs text-slate-400">Confidence</div>
+            <div className="text-lg font-bold text-emerald-400">94%</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Territory Map Mockup
+export const TerritoryMockup = () => {
+  const pins = [
+    { x: 20, y: 30, status: 'interested', label: 'J' },
+    { x: 45, y: 25, status: 'not_interested', label: 'W' },
+    { x: 70, y: 35, status: 'follow_up', label: 'D' },
+    { x: 30, y: 55, status: 'interested', label: 'R' },
+    { x: 55, y: 60, status: 'new', label: 'C' },
+    { x: 80, y: 50, status: 'interested', label: 'T' },
+    { x: 25, y: 75, status: 'not_interested', label: 'M' },
+    { x: 60, y: 80, status: 'follow_up', label: 'A' },
+  ];
+
+  const getStatusColor = (status: string) => {
+    switch (status) {
+      case 'interested': return 'bg-green-500';
+      case 'not_interested': return 'bg-red-500';
+      case 'follow_up': return 'bg-yellow-500';
+      default: return 'bg-slate-500';
+    }
+  };
+
+  return (
+    <div className="bg-slate-900 rounded-lg p-4 h-full min-h-[280px]">
+      <div className="flex gap-4 h-full">
+        {/* Map Area */}
+        <div className="flex-1 bg-slate-800 rounded-lg overflow-hidden relative">
+          {/* Map grid background */}
+          <div className="absolute inset-0 opacity-20" style={{
+            backgroundImage: 'linear-gradient(rgba(255,255,255,.05) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.05) 1px, transparent 1px)',
+            backgroundSize: '20px 20px'
+          }} />
+          
+          {/* Pins */}
+          {pins.map((pin, i) => (
+            <div 
+              key={i}
+              className={`absolute w-6 h-6 ${getStatusColor(pin.status)} rounded-full flex items-center justify-center text-white text-xs font-bold shadow-lg transform -translate-x-1/2 -translate-y-1/2 cursor-pointer hover:scale-110 transition-transform`}
+              style={{ left: `${pin.x}%`, top: `${pin.y}%` }}
+            >
+              {pin.label}
+            </div>
+          ))}
+          
+          {/* Current location pulse */}
+          <div className="absolute left-[50%] top-[45%] transform -translate-x-1/2 -translate-y-1/2">
+            <div className="w-4 h-4 bg-blue-500 rounded-full animate-ping absolute" />
+            <div className="w-4 h-4 bg-blue-500 rounded-full relative" />
+          </div>
+          
+          {/* Legend */}
+          <div className="absolute bottom-2 left-2 bg-slate-900/90 rounded p-2 text-xs">
+            <div className="flex items-center gap-3">
+              <span className="flex items-center"><span className="w-2 h-2 bg-green-500 rounded-full mr-1"></span>Interested</span>
+              <span className="flex items-center"><span className="w-2 h-2 bg-yellow-500 rounded-full mr-1"></span>Follow-up</span>
+              <span className="flex items-center"><span className="w-2 h-2 bg-red-500 rounded-full mr-1"></span>Not Int.</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Stats Sidebar */}
+        <div className="w-28 space-y-2">
+          <div className="bg-slate-800 rounded-lg p-2 text-center">
+            <div className="text-xl font-bold text-white">47</div>
+            <div className="text-[10px] text-slate-400">Doors Today</div>
+          </div>
+          <div className="bg-slate-800 rounded-lg p-2 text-center">
+            <div className="text-xl font-bold text-green-400">12</div>
+            <div className="text-[10px] text-slate-400">Interested</div>
+          </div>
+          <div className="bg-slate-800 rounded-lg p-2 text-center">
+            <div className="text-xl font-bold text-blue-400">3</div>
+            <div className="text-[10px] text-slate-400">Appointments</div>
+          </div>
+          <div className="bg-slate-800 rounded-lg p-2 text-center">
+            <div className="text-xl font-bold text-purple-400">2.3</div>
+            <div className="text-[10px] text-slate-400">Miles Walked</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Email/SMS Automation Mockup
+export const AutomationMockup = () => {
+  const sequences = [
+    { name: 'New Lead Welcome', status: 'active', sent: 156, opened: 89, clicked: 34 },
+    { name: 'Estimate Follow-up', status: 'active', sent: 78, opened: 52, clicked: 21 },
+    { name: 'Appointment Reminder', status: 'paused', sent: 234, opened: 198, clicked: 0 },
+  ];
+
+  return (
+    <div className="bg-slate-900 rounded-lg p-4 h-full min-h-[280px]">
+      {/* Sequence List */}
+      <div className="space-y-3 mb-4">
+        {sequences.map((seq, i) => (
+          <div key={i} className="bg-slate-800 rounded-lg p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center space-x-2">
+                <div className={`w-2 h-2 rounded-full ${seq.status === 'active' ? 'bg-green-500' : 'bg-yellow-500'}`} />
+                <span className="text-sm font-medium text-white">{seq.name}</span>
+              </div>
+              <button className="text-slate-400 hover:text-white">
+                {seq.status === 'active' ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4" />}
+              </button>
+            </div>
+            <div className="flex items-center space-x-4 text-xs">
+              <span className="text-slate-400">Sent: <span className="text-white">{seq.sent}</span></span>
+              <span className="text-slate-400">Opened: <span className="text-green-400">{Math.round((seq.opened/seq.sent)*100)}%</span></span>
+              <span className="text-slate-400">Clicked: <span className="text-blue-400">{Math.round((seq.clicked/seq.sent)*100)}%</span></span>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Quick Stats */}
+      <div className="grid grid-cols-3 gap-2">
+        <div className="bg-slate-800 rounded-lg p-2 text-center">
+          <Mail className="w-4 h-4 text-blue-400 mx-auto mb-1" />
+          <div className="text-lg font-bold text-white">468</div>
+          <div className="text-[10px] text-slate-400">Emails Sent</div>
+        </div>
+        <div className="bg-slate-800 rounded-lg p-2 text-center">
+          <MessageSquare className="w-4 h-4 text-green-400 mx-auto mb-1" />
+          <div className="text-lg font-bold text-white">234</div>
+          <div className="text-[10px] text-slate-400">SMS Sent</div>
+        </div>
+        <div className="bg-slate-800 rounded-lg p-2 text-center">
+          <TrendingUp className="w-4 h-4 text-purple-400 mx-auto mb-1" />
+          <div className="text-lg font-bold text-white">67%</div>
+          <div className="text-[10px] text-slate-400">Open Rate</div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// Calendar/Scheduling Mockup
+export const CalendarMockup = () => {
+  const appointments = [
+    { time: '9:00 AM', name: 'Mike Rodriguez', type: 'Inspection', address: 'Valrico, FL' },
+    { time: '11:30 AM', name: 'Sarah Chen', type: 'Estimate Review', address: 'Tampa, FL' },
+    { time: '2:00 PM', name: 'James Taylor', type: 'Contract Signing', address: 'Brandon, FL' },
+  ];
+
+  return (
+    <div className="bg-slate-900 rounded-lg p-4 h-full min-h-[280px]">
+      <div className="flex gap-4 h-full">
+        {/* Mini Calendar */}
+        <div className="w-40 bg-slate-800 rounded-lg p-3">
+          <div className="text-center mb-2">
+            <div className="text-xs text-slate-400">December 2024</div>
+          </div>
+          <div className="grid grid-cols-7 gap-1 text-[10px] text-center">
+            {['S', 'M', 'T', 'W', 'T', 'F', 'S'].map((d, i) => (
+              <div key={i} className="text-slate-500">{d}</div>
+            ))}
+            {Array.from({ length: 31 }, (_, i) => (
+              <div 
+                key={i} 
+                className={`p-1 rounded ${i === 2 ? 'bg-blue-500 text-white' : i === 5 || i === 12 || i === 19 ? 'bg-green-500/20 text-green-400' : 'text-slate-400 hover:bg-slate-700'}`}
+              >
+                {i + 1}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Today's Schedule */}
+        <div className="flex-1 space-y-2">
+          <div className="flex items-center justify-between mb-2">
+            <div className="text-sm font-medium text-white">Today's Schedule</div>
+            <div className="text-xs text-slate-400">Dec 3</div>
+          </div>
+          
+          {appointments.map((apt, i) => (
+            <div key={i} className="bg-slate-800 rounded-lg p-3 border-l-2 border-blue-500">
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-xs text-blue-400 font-medium">{apt.time}</span>
+                <span className="text-[10px] bg-slate-700 px-2 py-0.5 rounded text-slate-300">{apt.type}</span>
+              </div>
+              <div className="text-sm font-medium text-white">{apt.name}</div>
+              <div className="text-xs text-slate-400 flex items-center">
+                <MapPin className="w-3 h-3 mr-1" />
+                {apt.address}
+              </div>
+            </div>
+          ))}
+          
+          <button className="w-full py-2 bg-blue-500/20 text-blue-400 rounded-lg text-xs flex items-center justify-center hover:bg-blue-500/30">
+            <Calendar className="w-3 h-3 mr-1" />
+            Add Appointment
+          </button>
         </div>
       </div>
     </div>

@@ -201,7 +201,7 @@ export default function Pricing() {
         <div className="container mx-auto px-4 text-center">
           <h2 className="text-2xl font-bold mb-8">Replace All These Tools</h2>
           <div className="flex flex-wrap justify-center gap-4 max-w-4xl mx-auto">
-            {["Mojo Dialer", "HubSpot", "ZoomInfo", "Apollo.io", "Joist", "ServiceTitan", "Buildertrend"].map((tool) => (
+            {["Your Dialer Software", "Your CRM System", "Your Contact Database", "Your Lead Intelligence", "Your Estimate Software", "Your Project Management", "Your Field Service App"].map((tool) => (
               <Badge key={tool} variant="secondary" className="text-sm py-2 px-4">
                 {tool}
               </Badge>
