@@ -1,5 +1,8 @@
 project_id = "alxelfrbjzkmtnsulcei"
 
+[functions.get-mapbox-token]
+verify_jwt = true
+
 [functions.asterisk-sms-send]
 verify_jwt = true
 
