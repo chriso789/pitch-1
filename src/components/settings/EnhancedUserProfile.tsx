@@ -12,6 +12,7 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { UserCommissionSettings } from "./UserCommissionSettings";
 import { 
   User, 
   Phone, 
@@ -432,10 +433,14 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
       </div>
 
       <Tabs defaultValue="profile" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="profile" className="flex items-center gap-2">
             <User className="h-4 w-4" />
             Profile
+          </TabsTrigger>
+          <TabsTrigger value="commission" className="flex items-center gap-2">
+            <DollarSign className="h-4 w-4" />
+            Commission
           </TabsTrigger>
           <TabsTrigger value="security" className="flex items-center gap-2">
             <Shield className="h-4 w-4" />
@@ -603,6 +608,24 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
                   </div>
                 </>
               )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="commission">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <DollarSign className="h-5 w-5" />
+                Commission Settings
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <UserCommissionSettings 
+                userId={userId} 
+                user={user}
+                canEdit={canEditProfile()}
+              />
             </CardContent>
           </Card>
         </TabsContent>

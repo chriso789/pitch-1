@@ -267,10 +267,8 @@ export const CommissionManagement = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="gross_percent">Gross Percent</SelectItem>
-                      <SelectItem value="net_percent">Net Percent</SelectItem>
-                      <SelectItem value="tiered_margin">Tiered Margin</SelectItem>
-                      <SelectItem value="flat_fee">Flat Fee</SelectItem>
+                      <SelectItem value="gross_percent">Percent of Selling Price</SelectItem>
+                      <SelectItem value="net_percent">Profit Split</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -315,44 +313,19 @@ export const CommissionManagement = () => {
                 </div>
               )}
 
-              {newPlan.commission_type === 'tiered_margin' && (
+              {newPlan.commission_type === 'net_percent' && (
                 <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <Label>Commission Tiers</Label>
-                    <Button type="button" variant="outline" size="sm" onClick={addTierRate}>
-                      <Plus className="h-4 w-4 mr-1" />
-                      Add Tier
-                    </Button>
-                  </div>
-                  <div className="space-y-2">
-                    {newPlan.tier_rates.map((tier, index) => (
-                      <div key={index} className="flex items-center gap-2">
-                        <Input
-                          type="number"
-                          placeholder="Threshold ($)"
-                          value={tier.threshold}
-                          onChange={(e) => updateTierRate(index, 'threshold', parseFloat(e.target.value) || 0)}
-                        />
-                        <Input
-                          type="number"
-                          placeholder="Rate (%)"
-                          step="0.1"
-                          value={tier.rate}
-                          onChange={(e) => updateTierRate(index, 'rate', parseFloat(e.target.value) || 0)}
-                        />
-                        {newPlan.tier_rates.length > 1 && (
-                          <Button 
-                            type="button" 
-                            variant="outline" 
-                            size="sm"
-                            onClick={() => removeTierRate(index)}
-                          >
-                            Remove
-                          </Button>
-                        )}
-                      </div>
-                    ))}
-                  </div>
+                  <Label htmlFor="profit-split-rate">Profit Split Rate (%)</Label>
+                  <Input
+                    id="profit-split-rate"
+                    type="number"
+                    step="0.1"
+                    value={newPlan.commission_rate}
+                    onChange={(e) => setNewPlan(prev => ({ ...prev, commission_rate: parseFloat(e.target.value) || 0 }))}
+                  />
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Percentage of profit (Selling Price - Costs) paid as commission
+                  </p>
                 </div>
               )}
 
@@ -443,15 +416,10 @@ export const CommissionManagement = () => {
                         <strong>Rate:</strong> {plan.plan_config?.commission_rate || 0}%
                       </p>
                     )}
-                    {plan.commission_type === 'tiered_margin' && (
-                      <div className="space-y-1">
-                        <p className="text-sm font-medium">Tier Structure:</p>
-                        {(plan.plan_config?.tier_rates || []).map((tier: any, index: number) => (
-                          <p key={index} className="text-sm">
-                            ${tier.threshold}+: {tier.rate}%
-                          </p>
-                        ))}
-                      </div>
+                    {plan.commission_type === 'net_percent' && (
+                      <p className="text-sm">
+                        <strong>Profit Split Rate:</strong> {plan.plan_config?.commission_rate || 0}%
+                      </p>
                     )}
                   </div>
                 </CardContent>
