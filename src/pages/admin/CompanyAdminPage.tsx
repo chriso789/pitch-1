@@ -32,6 +32,7 @@ import { useToast } from '@/hooks/use-toast';
 import { useSearchParams } from 'react-router-dom';
 import { LocationManagement } from '@/components/settings/LocationManagement';
 import { WebsitePreview } from '@/components/settings/WebsitePreview';
+import { AddressValidation } from '@/shared/components/forms/AddressValidation';
 import { activityTracker } from '@/services/activityTracker';
 
 interface Company {
@@ -85,6 +86,7 @@ const CompanyAdminPage = () => {
   const [locationNames, setLocationNames] = useState<string[]>(['']);
   const [websiteData, setWebsiteData] = useState<WebsiteData | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+  const [billingAddressData, setBillingAddressData] = useState<any>(null);
 
   // Form state (removed subdomain)
   const [formData, setFormData] = useState({
@@ -351,6 +353,7 @@ const CompanyAdminPage = () => {
     setLocationCount('1');
     setLocationNames(['']);
     setWebsiteData(null);
+    setBillingAddressData(null);
   };
 
   const handleLocationNameChange = (index: number, value: string) => {
@@ -574,29 +577,28 @@ const CompanyAdminPage = () => {
 
               <div className="space-y-2">
                 <Label>Billing Address</Label>
-                <Input
-                  placeholder="Street Address"
-                  value={formData.address_street}
-                  onChange={(e) => setFormData({ ...formData, address_street: e.target.value })}
-                  className="mb-2"
+                <AddressValidation
+                  label=""
+                  placeholder="Start typing billing address..."
+                  onAddressSelected={(structuredAddress) => {
+                    setBillingAddressData(structuredAddress);
+                    if (structuredAddress) {
+                      setFormData({
+                        ...formData,
+                        address_street: `${structuredAddress.street_number || ''} ${structuredAddress.route || ''}`.trim(),
+                        address_city: structuredAddress.locality || '',
+                        address_state: structuredAddress.administrative_area_level_1 || '',
+                        address_zip: structuredAddress.postal_code || '',
+                      });
+                    }
+                  }}
                 />
-                <div className="grid grid-cols-3 gap-2">
-                  <Input
-                    placeholder="City"
-                    value={formData.address_city}
-                    onChange={(e) => setFormData({ ...formData, address_city: e.target.value })}
-                  />
-                  <Input
-                    placeholder="State"
-                    value={formData.address_state}
-                    onChange={(e) => setFormData({ ...formData, address_state: e.target.value })}
-                  />
-                  <Input
-                    placeholder="ZIP"
-                    value={formData.address_zip}
-                    onChange={(e) => setFormData({ ...formData, address_zip: e.target.value })}
-                  />
-                </div>
+                {billingAddressData && (
+                  <Badge variant="outline" className="text-green-600 border-green-600">
+                    <Check className="h-3 w-3 mr-1" />
+                    Address Verified
+                  </Badge>
+                )}
               </div>
 
               <div className="space-y-2">

@@ -48,6 +48,7 @@ interface CompanyData {
   phone: string;
   email: string;
   license_number: string;
+  billing_address: any | null;
 }
 
 interface BrandingData {
@@ -104,6 +105,7 @@ export function EnhancedCompanyOnboarding({ open, onOpenChange, onComplete }: En
     phone: '',
     email: '',
     license_number: '',
+    billing_address: null,
   });
 
   const [branding, setBranding] = useState<BrandingData>({
@@ -226,6 +228,7 @@ export function EnhancedCompanyOnboarding({ open, onOpenChange, onComplete }: En
 
     try {
       // 1. Create tenant
+      const billingAddr = company.billing_address;
       const { data: tenant, error: tenantError } = await supabase
         .from('tenants')
         .insert({
@@ -238,11 +241,16 @@ export function EnhancedCompanyOnboarding({ open, onOpenChange, onComplete }: En
           email: company.email || null,
           website: company.website || null,
           license_number: company.license_number || null,
+          address_street: billingAddr ? `${billingAddr.street_number || ''} ${billingAddr.route || ''}`.trim() : null,
+          address_city: billingAddr?.locality || null,
+          address_state: billingAddr?.administrative_area_level_1 || null,
+          address_zip: billingAddr?.postal_code || null,
           settings: {
             timezone: settings.timezone,
             features_enabled: settings.features_enabled,
             auto_assign_leads: settings.auto_assign_leads,
             notifications_enabled: settings.notifications_enabled,
+            billing_verified_address: billingAddr || null,
           },
         })
         .select()
@@ -315,7 +323,7 @@ export function EnhancedCompanyOnboarding({ open, onOpenChange, onComplete }: En
 
       // Reset form
       setCurrentStep('company');
-      setCompany({ name: '', website: '', phone: '', email: '', license_number: '' });
+      setCompany({ name: '', website: '', phone: '', email: '', license_number: '', billing_address: null });
       setBranding({ logo_url: null, primary_color: '#16a34a', secondary_color: '#ca8a04' });
       setLocations([{ name: 'Main Office', address: '', verificationData: null }]);
       setAdminUser({ first_name: '', last_name: '', email: '', password: '', password_confirm: '', role: 'office_admin', title: 'Administrator' });
@@ -386,6 +394,20 @@ export function EnhancedCompanyOnboarding({ open, onOpenChange, onComplete }: En
                 value={company.license_number}
                 onChange={(e) => setCompany({ ...company, license_number: e.target.value })}
               />
+            </div>
+            <div className="space-y-2">
+              <Label>Billing Address</Label>
+              <AddressValidation
+                label=""
+                placeholder="Start typing billing address..."
+                onAddressSelected={(addr) => setCompany({ ...company, billing_address: addr })}
+              />
+              {company.billing_address && (
+                <Badge variant="outline" className="text-green-600 border-green-600">
+                  <Check className="h-3 w-3 mr-1" />
+                  Address Verified
+                </Badge>
+              )}
             </div>
           </div>
         );
