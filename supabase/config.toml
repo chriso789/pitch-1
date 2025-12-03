@@ -254,3 +254,9 @@ verify_jwt = true
 
 [functions.crm-ai-agent]
 verify_jwt = true
+
+[functions.verify-website]
+verify_jwt = false
+
+[functions.log-activity]
+verify_jwt = true

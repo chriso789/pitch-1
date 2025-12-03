@@ -6,8 +6,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
-import { Building2, MapPin, Users, Plus, Info, Settings as SettingsIcon } from 'lucide-react';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Building2, MapPin, Users, Plus, Info, Settings as SettingsIcon, Globe, Loader2 } from 'lucide-react';
 import { LocationManagement } from '@/components/settings/LocationManagement';
+import { WebsitePreview } from '@/components/settings/WebsitePreview';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
@@ -16,14 +18,26 @@ interface Company {
   id: string;
   name: string;
   subdomain: string;
+  website?: string;
+  website_verified?: boolean;
   is_active: boolean;
   created_at: string;
   settings: any;
 }
 
+interface WebsiteData {
+  verified: boolean;
+  url?: string;
+  domain?: string;
+  title?: string;
+  favicon?: string;
+  description?: string;
+}
+
 export const CompanyManagement = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
+  const [creating, setCreating] = useState(false);
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [detailsDialogOpen, setDetailsDialogOpen] = useState(false);
@@ -32,19 +46,32 @@ export const CompanyManagement = () => {
 
   // Form state for creating new company
   const [newCompanyName, setNewCompanyName] = useState('');
-  const [newCompanySubdomain, setNewCompanySubdomain] = useState('');
-  const [newLocationName, setNewLocationName] = useState('');
+  const [newCompanyWebsite, setNewCompanyWebsite] = useState('');
+  const [websiteData, setWebsiteData] = useState<WebsiteData | null>(null);
+  const [locationCount, setLocationCount] = useState('1');
+  const [locationNames, setLocationNames] = useState<string[]>(['Main Office']);
 
   useEffect(() => {
     fetchCompanies();
   }, []);
 
+  // Update location names array when count changes
+  useEffect(() => {
+    const count = parseInt(locationCount);
+    setLocationNames(prev => {
+      const newNames = [...prev];
+      while (newNames.length < count) {
+        newNames.push(`Office ${newNames.length + 1}`);
+      }
+      return newNames.slice(0, count);
+    });
+  }, [locationCount]);
+
   const fetchCompanies = async () => {
     try {
-      // @ts-ignore - Column not yet in generated types
       const { data, error }: any = await supabase
         .from('tenants')
-        .select('id, name, subdomain, is_active, created_at, settings')
+        .select('id, name, subdomain, website, website_verified, is_active, created_at, settings')
         .eq('is_active', true)
         .order('name');
 
@@ -61,20 +88,38 @@ export const CompanyManagement = () => {
     }
   };
 
+  const handleLocationNameChange = (index: number, value: string) => {
+    setLocationNames(prev => {
+      const newNames = [...prev];
+      newNames[index] = value;
+      return newNames;
+    });
+  };
+
   const handleCreateCompany = async () => {
-    if (!newCompanyName.trim() || !newLocationName.trim()) {
+    if (!newCompanyName.trim()) {
       toast({
         title: "Validation Error",
-        description: "Company name and initial location are required",
+        description: "Company name is required",
         variant: "destructive",
       });
       return;
     }
 
+    const validLocations = locationNames.filter(name => name.trim());
+    if (validLocations.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "At least one location is required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setCreating(true);
     try {
-      // Generate subdomain from name if not provided
-      const subdomain = newCompanySubdomain.trim() || 
-        newCompanyName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
+      // Generate subdomain from name
+      const subdomain = newCompanyName.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
 
       // Create tenant
       const { data: tenant, error: tenantError } = await supabase
@@ -82,6 +127,13 @@ export const CompanyManagement = () => {
         .insert({
           name: newCompanyName.trim(),
           subdomain: subdomain,
+          website: websiteData?.url || newCompanyWebsite || null,
+          website_verified: websiteData?.verified || false,
+          website_metadata: websiteData ? {
+            title: websiteData.title,
+            favicon: websiteData.favicon,
+            domain: websiteData.domain,
+          } : {},
           is_active: true,
         })
         .select()
@@ -89,21 +141,22 @@ export const CompanyManagement = () => {
 
       if (tenantError) throw tenantError;
 
-      // Create initial location
+      // Create all locations
+      const locationInserts = validLocations.map(name => ({
+        tenant_id: tenant.id,
+        name: name.trim(),
+        is_active: true,
+      }));
+
       const { error: locationError } = await supabase
         .from('locations')
-        .insert({
-          tenant_id: tenant.id,
-          name: newLocationName.trim(),
-          is_active: true,
-        });
+        .insert(locationInserts);
 
       if (locationError) throw locationError;
 
       // Grant current user full access to new company
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        // @ts-ignore - Table not yet in generated types
         const { error: accessError } = await (supabase as any)
           .from('user_company_access')
           .insert({
@@ -118,13 +171,15 @@ export const CompanyManagement = () => {
 
       toast({
         title: "Company Created",
-        description: `${newCompanyName} has been created successfully`,
+        description: `${newCompanyName} has been created with ${validLocations.length} location(s)`,
       });
 
       // Reset form and close dialog
       setNewCompanyName('');
-      setNewCompanySubdomain('');
-      setNewLocationName('');
+      setNewCompanyWebsite('');
+      setWebsiteData(null);
+      setLocationCount('1');
+      setLocationNames(['Main Office']);
       setCreateDialogOpen(false);
 
       // Refresh lists
@@ -136,6 +191,8 @@ export const CompanyManagement = () => {
         description: error.message,
         variant: "destructive",
       });
+    } finally {
+      setCreating(false);
     }
   };
 
@@ -164,7 +221,7 @@ export const CompanyManagement = () => {
               Create Company
             </Button>
           </DialogTrigger>
-          <DialogContent>
+          <DialogContent className="max-w-lg">
             <DialogHeader>
               <DialogTitle>Create New Company</DialogTitle>
             </DialogHeader>
@@ -178,30 +235,64 @@ export const CompanyManagement = () => {
                   onChange={(e) => setNewCompanyName(e.target.value)}
                 />
               </div>
+
               <div className="space-y-2">
-                <Label htmlFor="subdomain">Subdomain</Label>
+                <Label htmlFor="website">
+                  <Globe className="h-4 w-4 inline mr-1" />
+                  Company Website
+                </Label>
                 <Input
-                  id="subdomain"
-                  placeholder="abc-roofing (optional, auto-generated)"
-                  value={newCompanySubdomain}
-                  onChange={(e) => setNewCompanySubdomain(e.target.value)}
+                  id="website"
+                  placeholder="www.example.com"
+                  value={newCompanyWebsite}
+                  onChange={(e) => setNewCompanyWebsite(e.target.value)}
+                />
+                <WebsitePreview 
+                  url={newCompanyWebsite} 
+                  onVerified={setWebsiteData}
                 />
               </div>
+
               <div className="space-y-2">
-                <Label htmlFor="location-name">Initial Location Name *</Label>
-                <Input
-                  id="location-name"
-                  placeholder="Main Office"
-                  value={newLocationName}
-                  onChange={(e) => setNewLocationName(e.target.value)}
-                />
+                <Label htmlFor="location-count">Number of Locations *</Label>
+                <Select value={locationCount} onValueChange={setLocationCount}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select number of locations" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
+                      <SelectItem key={num} value={num.toString()}>
+                        {num} {num === 1 ? 'Location' : 'Locations'}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-3">
+                <Label>Location Names *</Label>
+                <div className="space-y-2 max-h-[200px] overflow-y-auto">
+                  {locationNames.map((name, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <div className="flex-shrink-0 w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-sm font-medium text-primary">
+                        {index + 1}
+                      </div>
+                      <Input
+                        placeholder={`Location ${index + 1} Name`}
+                        value={name}
+                        onChange={(e) => handleLocationNameChange(index, e.target.value)}
+                      />
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
                 Cancel
               </Button>
-              <Button onClick={handleCreateCompany}>
+              <Button onClick={handleCreateCompany} disabled={creating}>
+                {creating && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
                 Create Company
               </Button>
             </DialogFooter>
@@ -226,7 +317,15 @@ export const CompanyManagement = () => {
                 )}
               </div>
               <CardTitle className="text-lg">{company.name}</CardTitle>
-              <CardDescription>{company.subdomain}</CardDescription>
+              {company.website && (
+                <CardDescription className="flex items-center gap-1">
+                  <Globe className="h-3 w-3" />
+                  {company.website.replace(/^https?:\/\//, '')}
+                  {company.website_verified && (
+                    <Badge variant="secondary" className="text-xs ml-1">Verified</Badge>
+                  )}
+                </CardDescription>
+              )}
             </CardHeader>
             <CardContent>
               <div className="flex items-center gap-4 text-sm text-muted-foreground">
@@ -288,10 +387,20 @@ export const CompanyManagement = () => {
                     <Label>Company Name</Label>
                     <p className="text-sm text-muted-foreground mt-1">{selectedCompany.name}</p>
                   </div>
-                  <div>
-                    <Label>Subdomain</Label>
-                    <p className="text-sm text-muted-foreground mt-1">{selectedCompany.subdomain}</p>
-                  </div>
+                  {selectedCompany.website && (
+                    <div>
+                      <Label>Website</Label>
+                      <p className="text-sm text-muted-foreground mt-1 flex items-center gap-2">
+                        <Globe className="h-4 w-4" />
+                        <a href={selectedCompany.website} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline">
+                          {selectedCompany.website}
+                        </a>
+                        {selectedCompany.website_verified && (
+                          <Badge variant="secondary" className="text-xs">Verified</Badge>
+                        )}
+                      </p>
+                    </div>
+                  )}
                   <div>
                     <Label>Created</Label>
                     <p className="text-sm text-muted-foreground mt-1">
