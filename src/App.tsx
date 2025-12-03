@@ -72,6 +72,7 @@ import PublicReportViewer from "./pages/PublicReportViewer";
 import MeasurementCorrectionPage from "./pages/MeasurementCorrectionPage";
 import MeasurementAnalyticsPage from "./pages/MeasurementAnalyticsPage";
 import SmartTemplateEditorPage from "./pages/SmartTemplateEditorPage";
+import CompanyAdminPage from "./pages/admin/CompanyAdminPage";
 import TestRoofMeasurement from "./pages/TestRoofMeasurement";
 
 const queryClient = new QueryClient({
@@ -196,6 +197,9 @@ const AppContent = () => {
         <Route path="/test-roof-measurement" element={<TestRoofMeasurement />} />
         <Route path="/templates/smart-editor" element={<SmartTemplateEditorPage />} />
         <Route path="/templates/smart-editor/:templateId" element={<SmartTemplateEditorPage />} />
+        
+        {/* Admin routes */}
+        <Route path="/admin/companies" element={<CompanyAdminPage />} />
         
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />

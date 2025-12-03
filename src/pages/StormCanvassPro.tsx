@@ -9,10 +9,7 @@ import {
   ClipboardCheck, 
   Camera, 
   BarChart, 
-  Settings,
-  Upload,
-  Download,
-  FileText
+  Settings
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -93,7 +90,7 @@ export default function StormCanvassPro() {
 
       {/* Main Features Grid */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-2">
-        {/* Field Canvassing - Merged Territory + Lead Capture */}
+        {/* Field Canvassing */}
         <Card className="hover:shadow-lg transition-shadow">
           <CardHeader>
             <div className="flex items-center gap-2">
@@ -182,60 +179,6 @@ export default function StormCanvassPro() {
           </CardContent>
         </Card>
       </div>
-
-      {/* Integration Section */}
-      <Card className="border-dashed border-2">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Upload className="h-5 w-5" />
-            Full Application Integration
-          </CardTitle>
-          <CardDescription>
-            Storm Canvass Pro is ready to be integrated. This is a placeholder for the full canvassing application.
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="bg-muted/50 p-4 rounded-lg space-y-2">
-            <h4 className="font-semibold text-sm">Features Coming Soon:</h4>
-            <ul className="text-sm text-muted-foreground space-y-1">
-              <li className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                Mobile-first canvassing interface with offline support
-              </li>
-              <li className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                GPS tracking and territory geo-fencing
-              </li>
-              <li className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                Automated lead routing to sales pipeline
-              </li>
-              <li className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                Storm damage assessment tools and checklists
-              </li>
-              <li className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                Real-time team performance dashboards
-              </li>
-              <li className="flex items-center gap-2">
-                <div className="w-1.5 h-1.5 rounded-full bg-primary" />
-                Integrated photo documentation and annotation
-              </li>
-            </ul>
-          </div>
-          <div className="flex gap-2">
-            <Button className="flex-1">
-              <Download className="mr-2 h-4 w-4" />
-              Import Canvass Data
-            </Button>
-            <Button variant="outline" className="flex-1">
-              <FileText className="mr-2 h-4 w-4" />
-              View Documentation
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }
