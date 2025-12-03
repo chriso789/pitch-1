@@ -160,11 +160,48 @@ const CompanyAdminPage = () => {
     const locationsToCreate = validLocationNames.length > 0 ? validLocationNames : ['Main Office'];
 
     setIsCreating(true);
+    
+    // Timeout protection - 30 seconds max
+    const timeoutId = setTimeout(() => {
+      console.error('[CompanyAdmin] Operation timed out after 30 seconds');
+      setIsCreating(false);
+      toast({
+        title: "Operation Timed Out",
+        description: "Company creation is taking too long. Please try again.",
+        variant: "destructive",
+      });
+    }, 30000);
 
     try {
       // Auto-generate subdomain from company name
       const subdomain = formData.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
+      console.log('[CompanyAdmin] Creating company:', { name: formData.name, subdomain, locations: locationsToCreate });
 
+      // Check if subdomain already exists
+      const { data: existingTenant, error: checkError } = await supabase
+        .from('tenants')
+        .select('id')
+        .eq('subdomain', subdomain)
+        .maybeSingle();
+
+      if (checkError) {
+        console.error('[CompanyAdmin] Error checking subdomain:', checkError);
+        throw checkError;
+      }
+
+      if (existingTenant) {
+        console.warn('[CompanyAdmin] Subdomain already exists:', subdomain);
+        clearTimeout(timeoutId);
+        setIsCreating(false);
+        toast({
+          title: "Subdomain Already Exists",
+          description: `A company with subdomain "${subdomain}" already exists. Please use a different company name.`,
+          variant: "destructive",
+        });
+        return;
+      }
+
+      console.log('[CompanyAdmin] Inserting tenant...');
       const { data: tenant, error: tenantError } = await supabase
         .from('tenants')
         .insert({
@@ -191,14 +228,17 @@ const CompanyAdminPage = () => {
         .single();
 
       if (tenantError) {
+        console.error('[CompanyAdmin] Tenant insert error:', tenantError);
         // Check for RLS policy error
         if (tenantError.message.includes('row-level security') || tenantError.code === '42501') {
           throw new Error('Permission denied. You do not have permission to create companies. Please contact an administrator.');
         }
         throw tenantError;
       }
+      console.log('[CompanyAdmin] Tenant created:', tenant.id);
 
       // Create all locations (uses locationsToCreate which defaults to 'Main Office')
+      console.log('[CompanyAdmin] Creating locations...');
       const locationInserts = locationsToCreate.map(name => ({
         tenant_id: tenant.id,
         name: name.trim(),
@@ -207,18 +247,26 @@ const CompanyAdminPage = () => {
       
       const { error: locationsError } = await supabase.from('locations').insert(locationInserts);
       if (locationsError) {
-        console.error('Error creating locations:', locationsError);
+        console.error('[CompanyAdmin] Error creating locations:', locationsError);
+      } else {
+        console.log('[CompanyAdmin] Locations created:', locationsToCreate.length);
       }
 
       // Grant current user access
+      console.log('[CompanyAdmin] Granting user access...');
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
-        await (supabase as any).from('user_company_access').insert({
+        const { error: accessError } = await (supabase as any).from('user_company_access').insert({
           user_id: user.id,
           tenant_id: tenant.id,
           access_level: 'full',
           granted_by: user.id,
         });
+        if (accessError) {
+          console.error('[CompanyAdmin] Error granting access:', accessError);
+        } else {
+          console.log('[CompanyAdmin] User access granted');
+        }
       }
 
       // Initialize CRM skeleton with timeout to prevent hanging
@@ -230,10 +278,10 @@ const CompanyAdminPage = () => {
             created_by: user?.id 
           }
         });
-        const timeoutPromise = new Promise((_, reject) => 
+        const initTimeoutPromise = new Promise((_, reject) => 
           setTimeout(() => reject(new Error('Initialization timeout')), 10000)
         );
-        const { data: initResult, error: initError } = await Promise.race([initPromise, timeoutPromise]) as any;
+        const { data: initResult, error: initError } = await Promise.race([initPromise, initTimeoutPromise]) as any;
 
         if (initError) {
           console.error('[CompanyAdmin] Error initializing company:', initError);
@@ -247,6 +295,8 @@ const CompanyAdminPage = () => {
       // Track activity
       activityTracker.trackDataChange('tenants', 'create', tenant.id);
 
+      clearTimeout(timeoutId);
+      
       toast({ 
         title: "Company Created Successfully",
         description: `${formData.name} created with ${locationsToCreate.length} location(s).`
@@ -255,10 +305,11 @@ const CompanyAdminPage = () => {
       setCreateDialogOpen(false);
       fetchCompanies();
     } catch (error: any) {
+      clearTimeout(timeoutId);
       console.error('[CompanyAdmin] Error creating company:', error);
       toast({
         title: "Error Creating Company",
-        description: error.message,
+        description: error.message || error.code || 'Unknown error occurred. Check console for details.',
         variant: "destructive",
       });
     } finally {
