@@ -446,8 +446,8 @@ const Dashboard = () => {
         </div>
       </div>
 
-      {/* AI Assistant */}
-      <DashboardAIAssistant className="shadow-soft border-0" />
+      {/* Floating AI Assistant */}
+      <DashboardAIAssistant />
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
