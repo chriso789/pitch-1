@@ -226,6 +226,16 @@ export function EnhancedCompanyOnboarding({ open, onOpenChange, onComplete }: En
   const handleCreateCompany = async () => {
     setIsCreating(true);
 
+    // Timeout protection - 30 seconds max
+    const timeoutId = setTimeout(() => {
+      setIsCreating(false);
+      toast({
+        title: 'Operation Timed Out',
+        description: 'Company creation is taking too long. Please try again.',
+        variant: 'destructive',
+      });
+    }, 30000);
+
     try {
       // 1. Create tenant
       const billingAddr = company.billing_address;
@@ -283,16 +293,18 @@ export function EnhancedCompanyOnboarding({ open, onOpenChange, onComplete }: En
         await supabase.from('locations').insert(locationData);
       }
 
-      // 3. Create admin user via edge function
+      // 3. Create admin user via edge function (use camelCase params)
       const { data: userData, error: userError } = await supabase.functions.invoke('admin-create-user', {
         body: {
           email: adminUser.email,
           password: adminUser.password,
-          first_name: adminUser.first_name,
-          last_name: adminUser.last_name,
+          firstName: adminUser.first_name,
+          lastName: adminUser.last_name,
           role: adminUser.role,
           title: adminUser.title,
           tenant_id: tenantId,
+          companyName: company.name,
+          isDeveloper: false,
         }
       });
 
@@ -313,6 +325,8 @@ export function EnhancedCompanyOnboarding({ open, onOpenChange, onComplete }: En
         console.error('Initialization error:', initError);
       }
 
+      clearTimeout(timeoutId);
+
       toast({
         title: 'Company created successfully!',
         description: `${company.name} has been set up with ${locations.length} location(s) and CRM initialized.`,
@@ -330,6 +344,7 @@ export function EnhancedCompanyOnboarding({ open, onOpenChange, onComplete }: En
       setSettings({ timezone: 'America/Chicago', features_enabled: ['crm', 'estimates', 'calendar', 'pipeline'], auto_assign_leads: false, notifications_enabled: true });
 
     } catch (error: any) {
+      clearTimeout(timeoutId);
       console.error('Company creation error:', error);
       toast({
         title: 'Creation failed',

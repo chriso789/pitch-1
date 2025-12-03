@@ -131,26 +131,44 @@ serve(async (req) => {
 
     console.log('Verifying website:', normalizedUrl, '| Hostname:', parsedUrl.hostname);
 
-    // Fetch the website with increased timeout (15s)
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 15000);
+    // Fetch with retry logic and increased timeout (20s)
+    const fetchWithRetry = async (url: string, retries = 2): Promise<Response> => {
+      for (let attempt = 0; attempt <= retries; attempt++) {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 20000);
+
+        try {
+          const response = await fetch(url, {
+            signal: controller.signal,
+            headers: {
+              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+              'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
+              'Accept-Language': 'en-US,en;q=0.5',
+              'Cache-Control': 'no-cache',
+            },
+            redirect: 'follow',
+          });
+          clearTimeout(timeoutId);
+          return response;
+        } catch (error: any) {
+          clearTimeout(timeoutId);
+          console.log(`Attempt ${attempt + 1} failed for ${url}:`, error.message);
+          if (attempt === retries) throw error;
+          // Wait before retry
+          await new Promise(resolve => setTimeout(resolve, 1000 * (attempt + 1)));
+        }
+      }
+      throw new Error('All retries failed');
+    };
 
     let response: Response;
     try {
-      response = await fetch(normalizedUrl, {
-        signal: controller.signal,
-        headers: {
-          'User-Agent': 'Mozilla/5.0 (compatible; PitchCRM/1.0; Website Verification)',
-          'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-        },
-        redirect: 'follow',
-      });
-      clearTimeout(timeoutId);
+      response = await fetchWithRetry(normalizedUrl);
     } catch (fetchError: any) {
       console.error('Fetch error for', normalizedUrl, ':', fetchError.message);
       return new Response(
         JSON.stringify({ 
-          error: fetchError.name === 'AbortError' ? 'Website took too long to respond' : 'Could not reach website', 
+          error: fetchError.name === 'AbortError' ? 'Website took too long to respond' : 'Could not reach website. Please check the URL and try again.', 
           verified: false,
           domain: parsedUrl.hostname 
         }),
