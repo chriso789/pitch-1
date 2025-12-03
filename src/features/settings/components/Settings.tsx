@@ -40,6 +40,7 @@ import { PlatformAdmin } from "@/components/settings/PlatformAdmin";
 import { BatchRegenerationPanel } from "@/components/measurements/BatchRegenerationPanel";
 import { MeasurementQualityDashboard } from "@/components/measurements/MeasurementQualityDashboard";
 import { EdgeFunctionHealthDashboard } from "@/components/settings/EdgeFunctionHealthDashboard";
+import { SubscriptionManagement } from "@/components/settings/SubscriptionManagement";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -363,6 +364,10 @@ export const Settings = () => {
 
         <TabsContent value="voice-assistant" className="space-y-6">
           <VoiceAssistantSettings />
+        </TabsContent>
+
+        <TabsContent value="subscription" className="space-y-6">
+          <SubscriptionManagement />
         </TabsContent>
       </Tabs>
     </div>

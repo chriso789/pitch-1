@@ -110,6 +110,7 @@ const CompanyAdminPage = () => {
     owner_email: '',
     owner_phone: '',
     subscription_tier: 'starter',
+    logo_url: '',
   });
 
   // Update location names array when count changes
@@ -343,7 +344,8 @@ const CompanyAdminPage = () => {
           owner_name: formData.owner_name || null,
           owner_email: formData.owner_email || null,
           owner_phone: formData.owner_phone || null,
-          subscription_tier: formData.subscription_tier || null,
+          subscription_tier: formData.subscription_tier || 'starter',
+          logo_url: formData.logo_url || null,
         })
         .eq('id', selectedCompany.id);
 
@@ -392,6 +394,7 @@ const CompanyAdminPage = () => {
       owner_email: company.owner_email || '',
       owner_phone: company.owner_phone || '',
       subscription_tier: company.subscription_tier || 'starter',
+      logo_url: company.logo_url || '',
     });
     setEditDialogOpen(true);
   };
@@ -411,6 +414,7 @@ const CompanyAdminPage = () => {
       owner_email: '',
       owner_phone: '',
       subscription_tier: 'starter',
+      logo_url: '',
     });
     setLocationCount('1');
     setLocationNames(['']);
