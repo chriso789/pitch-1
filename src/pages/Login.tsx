@@ -219,36 +219,35 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
       if (data?.user) {
         console.log('[Login] User authenticated:', data.user.id);
         
-        // Verify session is actually stored
-        const { data: { session } } = await supabase.auth.getSession();
-        console.log('[Login] Session verification:', { hasSession: !!session });
-        
-        if (!session) {
-          console.log('[Login] No session found, attempting refresh...');
-          await supabase.auth.refreshSession();
-        }
-        
-        // Save remember me preference
+        // Save remember me preference (sync - fast)
         localStorage.setItem('pitch_remember_me', rememberMe.toString());
-        
-        // Non-blocking background tasks
-        ensureUserProfile(data.user).catch(console.warn);
-        supabase.functions.invoke('log-auth-activity', {
-          body: {
-            user_id: data.user.id,
-            email: loginForm.email,
-            event_type: 'login_success',
-            success: true
-          }
-        }).catch(console.warn);
         
         toast({
           title: "Login successful",
           description: "Redirecting to dashboard...",
         });
         
+        // Navigate IMMEDIATELY - don't wait for anything else
         console.log('[Login] Navigating to dashboard...');
+        setLoading(false);
         navigate('/dashboard');
+        
+        // Non-blocking background tasks AFTER navigation starts
+        const user = data.user;
+        const email = loginForm.email;
+        setTimeout(() => {
+          ensureUserProfile(user).catch(console.warn);
+          supabase.functions.invoke('log-auth-activity', {
+            body: {
+              user_id: user.id,
+              email: email,
+              event_type: 'login_success',
+              success: true
+            }
+          }).catch(console.warn);
+        }, 0);
+        
+        return; // Exit early, don't hit finally block
       } else {
         console.log('[Login] No user in response, no error - unexpected state');
         setErrors({ general: 'Login failed - please try again' });
