@@ -49,7 +49,7 @@ export const CompanyManagement = () => {
   const [newCompanyWebsite, setNewCompanyWebsite] = useState('');
   const [websiteData, setWebsiteData] = useState<WebsiteData | null>(null);
   const [locationCount, setLocationCount] = useState('1');
-  const [locationNames, setLocationNames] = useState<string[]>(['Main Office']);
+  const [locationNames, setLocationNames] = useState<string[]>(['']);
 
   useEffect(() => {
     fetchCompanies();
@@ -61,7 +61,7 @@ export const CompanyManagement = () => {
     setLocationNames(prev => {
       const newNames = [...prev];
       while (newNames.length < count) {
-        newNames.push(`Office ${newNames.length + 1}`);
+        newNames.push('');
       }
       return newNames.slice(0, count);
     });
@@ -106,15 +106,9 @@ export const CompanyManagement = () => {
       return;
     }
 
+    // Auto-create default location if none provided
     const validLocations = locationNames.filter(name => name.trim());
-    if (validLocations.length === 0) {
-      toast({
-        title: "Validation Error",
-        description: "At least one location is required",
-        variant: "destructive",
-      });
-      return;
-    }
+    const locationsToCreate = validLocations.length > 0 ? validLocations : ['Main Office'];
 
     setCreating(true);
     try {
@@ -141,8 +135,8 @@ export const CompanyManagement = () => {
 
       if (tenantError) throw tenantError;
 
-      // Create all locations
-      const locationInserts = validLocations.map(name => ({
+      // Create all locations (uses locationsToCreate which defaults to 'Main Office')
+      const locationInserts = locationsToCreate.map(name => ({
         tenant_id: tenant.id,
         name: name.trim(),
         is_active: true,
@@ -171,7 +165,7 @@ export const CompanyManagement = () => {
 
       toast({
         title: "Company Created",
-        description: `${newCompanyName} has been created with ${validLocations.length} location(s)`,
+        description: `${newCompanyName} has been created with ${locationsToCreate.length} location(s)`,
       });
 
       // Reset form and close dialog
@@ -179,7 +173,7 @@ export const CompanyManagement = () => {
       setNewCompanyWebsite('');
       setWebsiteData(null);
       setLocationCount('1');
-      setLocationNames(['Main Office']);
+      setLocationNames(['']);
       setCreateDialogOpen(false);
 
       // Refresh lists
@@ -254,7 +248,7 @@ export const CompanyManagement = () => {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="location-count">Number of Locations *</Label>
+                <Label htmlFor="location-count">Number of Locations</Label>
                 <Select value={locationCount} onValueChange={setLocationCount}>
                   <SelectTrigger>
                     <SelectValue placeholder="Select number of locations" />
@@ -267,10 +261,11 @@ export const CompanyManagement = () => {
                     ))}
                   </SelectContent>
                 </Select>
+                <p className="text-xs text-muted-foreground">Leave blank to create a default "Main Office" location</p>
               </div>
 
               <div className="space-y-3">
-                <Label>Location Names *</Label>
+                <Label>Location Names <span className="text-muted-foreground font-normal">(optional)</span></Label>
                 <div className="space-y-2 max-h-[200px] overflow-y-auto">
                   {locationNames.map((name, index) => (
                     <div key={index} className="flex items-center gap-2">
