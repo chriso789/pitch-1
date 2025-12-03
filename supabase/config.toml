@@ -260,3 +260,6 @@ verify_jwt = false
 
 [functions.log-activity]
 verify_jwt = true
+
+[functions.initialize-company]
+verify_jwt = true

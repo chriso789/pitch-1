@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { CheckCircle2, Loader2, AlertCircle, Globe } from 'lucide-react';
+import { CheckCircle2, Loader2, AlertCircle, Globe, Clock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { cn } from '@/lib/utils';
 
@@ -18,10 +18,32 @@ interface WebsitePreviewProps {
   onVerified?: (data: WebsiteData) => void;
 }
 
+// Check if URL has a valid TLD (supports .com, .org, .net, .io, country codes, etc.)
+const hasValidTLD = (url: string): boolean => {
+  // Match common TLDs including .org, .com, .net, .io, .co, country codes, etc.
+  const tldPattern = /\.[a-z]{2,}(\/|$|\?|#)/i;
+  const endsWithTLD = /\.[a-z]{2,}$/i;
+  return tldPattern.test(url) || endsWithTLD.test(url);
+};
+
+// Normalize URL for verification
+const normalizeUrl = (url: string): string => {
+  let normalized = url.trim();
+  if (!normalized) return '';
+  
+  // Add https:// if no protocol
+  if (!normalized.match(/^https?:\/\//i)) {
+    normalized = 'https://' + normalized;
+  }
+  
+  return normalized;
+};
+
 export const WebsitePreview = ({ url, onVerified }: WebsitePreviewProps) => {
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<WebsiteData | null>(null);
   const [debounceTimer, setDebounceTimer] = useState<NodeJS.Timeout | null>(null);
+  const [waitingForComplete, setWaitingForComplete] = useState(false);
 
   useEffect(() => {
     // Clear previous timer
@@ -32,13 +54,25 @@ export const WebsitePreview = ({ url, onVerified }: WebsitePreviewProps) => {
     // Don't verify empty or very short URLs
     if (!url || url.length < 4) {
       setData(null);
+      setWaitingForComplete(false);
       return;
     }
 
-    // Debounce the verification
+    const normalizedUrl = normalizeUrl(url);
+    
+    // Check if URL appears complete (has a valid TLD)
+    if (!hasValidTLD(normalizedUrl)) {
+      setWaitingForComplete(true);
+      setData(null);
+      return;
+    }
+
+    setWaitingForComplete(false);
+
+    // Debounce the verification with longer delay
     const timer = setTimeout(() => {
-      verifyWebsite(url);
-    }, 500);
+      verifyWebsite(normalizedUrl);
+    }, 800);
 
     setDebounceTimer(timer);
 
@@ -49,16 +83,21 @@ export const WebsitePreview = ({ url, onVerified }: WebsitePreviewProps) => {
 
   const verifyWebsite = async (websiteUrl: string) => {
     setLoading(true);
+    console.log('[WebsitePreview] Verifying URL:', websiteUrl);
+    
     try {
       const { data: result, error } = await supabase.functions.invoke('verify-website', {
         body: { url: websiteUrl }
       });
+
+      console.log('[WebsitePreview] Verification result:', result, 'Error:', error);
 
       if (error) throw error;
 
       setData(result);
       onVerified?.(result);
     } catch (error: any) {
+      console.error('[WebsitePreview] Verification error:', error);
       setData({ verified: false, error: error.message });
     } finally {
       setLoading(false);
@@ -66,6 +105,18 @@ export const WebsitePreview = ({ url, onVerified }: WebsitePreviewProps) => {
   };
 
   if (!url || url.length < 4) return null;
+
+  // Show waiting message while user is typing incomplete URL
+  if (waitingForComplete) {
+    return (
+      <div className="flex items-center gap-2 p-3 bg-muted/30 rounded-lg border border-border">
+        <Clock className="h-4 w-4 text-muted-foreground" />
+        <span className="text-sm text-muted-foreground">
+          Waiting for complete URL (e.g., example.com or example.org)...
+        </span>
+      </div>
+    );
+  }
 
   if (loading) {
     return (

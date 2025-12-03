@@ -24,7 +24,8 @@ import {
   Phone,
   Mail,
   Globe,
-  FileText
+  FileText,
+  Loader2
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -83,6 +84,7 @@ const CompanyAdminPage = () => {
   const [locationCount, setLocationCount] = useState('1');
   const [locationNames, setLocationNames] = useState<string[]>(['']);
   const [websiteData, setWebsiteData] = useState<WebsiteData | null>(null);
+  const [isCreating, setIsCreating] = useState(false);
 
   // Form state (removed subdomain)
   const [formData, setFormData] = useState({
@@ -162,6 +164,8 @@ const CompanyAdminPage = () => {
       return;
     }
 
+    setIsCreating(true);
+
     try {
       // Auto-generate subdomain from company name
       const subdomain = formData.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
@@ -191,7 +195,13 @@ const CompanyAdminPage = () => {
         .select()
         .single();
 
-      if (tenantError) throw tenantError;
+      if (tenantError) {
+        // Check for RLS policy error
+        if (tenantError.message.includes('row-level security') || tenantError.code === '42501') {
+          throw new Error('Permission denied. You do not have permission to create companies. Please contact an administrator.');
+        }
+        throw tenantError;
+      }
 
       // Create all locations
       const locationInserts = validLocationNames.map(name => ({
@@ -200,7 +210,10 @@ const CompanyAdminPage = () => {
         is_active: true,
       }));
       
-      await supabase.from('locations').insert(locationInserts);
+      const { error: locationsError } = await supabase.from('locations').insert(locationInserts);
+      if (locationsError) {
+        console.error('Error creating locations:', locationsError);
+      }
 
       // Grant current user access
       const { data: { user } } = await supabase.auth.getUser();
@@ -213,19 +226,41 @@ const CompanyAdminPage = () => {
         });
       }
 
+      // Initialize CRM skeleton for the new company
+      console.log('[CompanyAdmin] Initializing CRM skeleton for tenant:', tenant.id);
+      const { data: initResult, error: initError } = await supabase.functions.invoke('initialize-company', {
+        body: { 
+          tenant_id: tenant.id,
+          created_by: user?.id 
+        }
+      });
+
+      if (initError) {
+        console.error('[CompanyAdmin] Error initializing company:', initError);
+        // Don't fail the whole operation, just log
+      } else {
+        console.log('[CompanyAdmin] Company initialization result:', initResult);
+      }
+
       // Track activity
       activityTracker.trackDataChange('tenants', 'create', tenant.id);
 
-      toast({ title: `Company created with ${validLocationNames.length} location(s)` });
+      toast({ 
+        title: "Company Created Successfully",
+        description: `${formData.name} created with ${validLocationNames.length} location(s) and CRM skeleton initialized.`
+      });
       resetForm();
       setCreateDialogOpen(false);
       fetchCompanies();
     } catch (error: any) {
+      console.error('[CompanyAdmin] Error creating company:', error);
       toast({
         title: "Error Creating Company",
         description: error.message,
         variant: "destructive",
       });
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -574,11 +609,22 @@ const CompanyAdminPage = () => {
               </div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => { resetForm(); setCreateDialogOpen(false); }}>
+              <Button 
+                variant="outline" 
+                onClick={() => { resetForm(); setCreateDialogOpen(false); }}
+                disabled={isCreating}
+              >
                 Cancel
               </Button>
-              <Button onClick={handleCreateCompany}>
-                Create Company
+              <Button onClick={handleCreateCompany} disabled={isCreating}>
+                {isCreating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Creating Company...
+                  </>
+                ) : (
+                  'Create Company'
+                )}
               </Button>
             </DialogFooter>
           </DialogContent>

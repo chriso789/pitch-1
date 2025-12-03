@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { ImageCacheProvider } from "@/contexts/ImageCacheContext";
 import { initSessionPersistence } from "@/utils/sessionPersistence";
+import { useGlobalActivityTracking } from "@/hooks/useGlobalActivityTracking";
 import LandingPage from "./pages/LandingPage";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
@@ -88,6 +89,9 @@ const AppContent = () => {
   const [userId, setUserId] = useState<string | null>(null);
   const [activeLocationId, setActiveLocationId] = useState<string | null>(null);
   const navigate = useNavigate();
+
+  // Enable global activity tracking (keystrokes, page views, clicks)
+  useGlobalActivityTracking();
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
