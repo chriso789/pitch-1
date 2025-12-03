@@ -1,9 +1,11 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
-import { supabase } from '@/integrations/supabase/client';
 import NearbyPropertiesLayer from './NearbyPropertiesLayer';
 import RouteVisualization from './RouteVisualization';
+
+// Hardcoded token for instant initialization (same pattern as TerritoryMapPage)
+const MAPBOX_TOKEN = 'pk.eyJ1IjoibG92YWJsZS1kZW1vIiwiYSI6ImNtMXoxZHdwejBhMnAyanM0dzA3ZW1yMG4ifQ.7tYMl9RfRHOaC4K5eKrXRQ';
 
 interface Contact {
   id: string;
@@ -43,27 +45,15 @@ export default function LiveLocationMap({
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
   const userMarker = useRef<mapboxgl.Marker | null>(null);
-  const [mapboxToken, setMapboxToken] = useState<string | null>(null);
+  const mapInitialized = useRef(false);
 
-  // Fetch Mapbox token
+  // Initialize map immediately with hardcoded token
   useEffect(() => {
-    const fetchToken = async () => {
-      const { data, error } = await supabase.functions.invoke('get-mapbox-token');
-      if (data?.token) {
-        setMapboxToken(data.token);
-      } else {
-        console.error('Failed to fetch Mapbox token:', error);
-      }
-    };
-    fetchToken();
-  }, []);
+    if (!mapContainer.current) return;
+    if (mapInitialized.current) return; // Only initialize once
 
-  // Initialize map
-  useEffect(() => {
-    if (!mapContainer.current || !mapboxToken) return;
-    if (map.current) return; // Only initialize once
-
-    mapboxgl.accessToken = mapboxToken;
+    mapboxgl.accessToken = MAPBOX_TOKEN;
+    mapInitialized.current = true;
 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
@@ -107,7 +97,7 @@ export default function LiveLocationMap({
     return () => {
       map.current?.remove();
     };
-  }, [mapboxToken]);
+  }, []);
 
   // Update user location marker position
   useEffect(() => {
@@ -131,7 +121,7 @@ export default function LiveLocationMap({
   return (
     <>
       <div ref={mapContainer} className="absolute inset-0" />
-      {map.current && mapboxToken && (
+      {map.current && (
         <>
           <NearbyPropertiesLayer
             map={map.current}

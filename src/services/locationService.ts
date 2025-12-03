@@ -19,22 +19,23 @@ class LocationService {
 
   /**
    * Get current user location
+   * @param options.skipGeocoding - If true, resolves immediately without waiting for address
    */
-  async getCurrentLocation(): Promise<LocationData> {
+  async getCurrentLocation(options?: { skipGeocoding?: boolean }): Promise<LocationData> {
     return new Promise((resolve, reject) => {
       if (!navigator.geolocation) {
         reject(new Error("Geolocation is not supported by this browser"));
         return;
       }
 
-      const options = {
+      const geoOptions = {
         enableHighAccuracy: true,
         timeout: 10000,
         maximumAge: 300000, // 5 minutes
       };
 
       navigator.geolocation.getCurrentPosition(
-        async (position) => {
+        (position) => {
           const locationData: LocationData = {
             lat: position.coords.latitude,
             lng: position.coords.longitude,
@@ -42,20 +43,35 @@ class LocationService {
             timestamp: new Date().toISOString(),
           };
 
-          // Try to get address from coordinates
-          try {
-            const address = await this.reverseGeocode(locationData.lat, locationData.lng);
-            locationData.address = address;
-          } catch (error) {
-            console.warn("Failed to reverse geocode location:", error);
+          // Resolve immediately if skipGeocoding is true
+          if (options?.skipGeocoding) {
+            resolve(locationData);
+            // Fetch address in background (non-blocking)
+            this.reverseGeocode(locationData.lat, locationData.lng)
+              .then(address => {
+                locationData.address = address;
+              })
+              .catch(error => {
+                console.warn("Background geocode failed:", error);
+              });
+            return;
           }
 
-          resolve(locationData);
+          // Otherwise, wait for address (original behavior)
+          this.reverseGeocode(locationData.lat, locationData.lng)
+            .then(address => {
+              locationData.address = address;
+              resolve(locationData);
+            })
+            .catch(error => {
+              console.warn("Failed to reverse geocode location:", error);
+              resolve(locationData); // Resolve anyway without address
+            });
         },
         (error) => {
           reject(new Error(`Geolocation error: ${error.message}`));
         },
-        options
+        geoOptions
       );
     });
   }

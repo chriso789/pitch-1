@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Navigation } from 'lucide-react';
+import { ArrowLeft } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import LiveLocationMap from '@/components/storm-canvass/LiveLocationMap';
 import QuickActivityPanel from '@/components/storm-canvass/QuickActivityPanel';
@@ -10,10 +10,14 @@ import LiveStatsOverlay from '@/components/storm-canvass/LiveStatsOverlay';
 import MobileDispositionPanel from '@/components/storm-canvass/MobileDispositionPanel';
 import AddressSearchBar from '@/components/storm-canvass/AddressSearchBar';
 import NavigationPanel from '@/components/storm-canvass/NavigationPanel';
+import GPSAcquiringOverlay from '@/components/storm-canvass/GPSAcquiringOverlay';
 import { locationService } from '@/services/locationService';
 import { useToast } from '@/hooks/use-toast';
 import { useStormCanvass } from '@/hooks/useStormCanvass';
 import { supabase } from '@/integrations/supabase/client';
+
+// Default location (Tampa, FL) for instant map load before GPS acquires
+const DEFAULT_LOCATION = { lat: 27.9506, lng: -82.4572 };
 
 interface Contact {
   id: string;
@@ -43,8 +47,10 @@ export default function LiveCanvassingPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { getDispositions } = useStormCanvass();
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [currentAddress, setCurrentAddress] = useState<string>('Loading location...');
+  // Start with default location for instant map load
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>(DEFAULT_LOCATION);
+  const [hasGPS, setHasGPS] = useState(false);
+  const [currentAddress, setCurrentAddress] = useState<string>('Acquiring location...');
   const [isTracking, setIsTracking] = useState(false);
   const [distanceTraveled, setDistanceTraveled] = useState(0);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
@@ -60,6 +66,7 @@ export default function LiveCanvassingPage() {
     polyline: string;
   } | null>(null);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
+  const previousLocation = useRef<{ lat: number; lng: number } | null>(null);
 
   useEffect(() => {
     // Load dispositions
@@ -71,18 +78,24 @@ export default function LiveCanvassingPage() {
   }, []);
 
   useEffect(() => {
-    // Request initial location
-    locationService.getCurrentLocation()
+    // Request initial location with skipGeocoding for faster response
+    locationService.getCurrentLocation({ skipGeocoding: true })
       .then((location) => {
         setUserLocation({ lat: location.lat, lng: location.lng });
-        setCurrentAddress(location.address || 'Address unavailable');
+        setHasGPS(true);
         setIsTracking(true);
+        previousLocation.current = { lat: location.lat, lng: location.lng };
+        
+        // Fetch address in background (non-blocking)
+        locationService['reverseGeocode'](location.lat, location.lng)
+          .then(address => setCurrentAddress(address))
+          .catch(() => setCurrentAddress('Address unavailable'));
       })
       .catch((error) => {
         console.error('Location error:', error);
         toast({
           title: 'Location Error',
-          description: 'Unable to access your location. Please enable location services.',
+          description: 'Unable to access your location. Using default location.',
           variant: 'destructive',
         });
       });
@@ -94,10 +107,10 @@ export default function LiveCanvassingPage() {
         const newLng = location.lng;
 
         // Calculate distance traveled if we have previous location
-        if (userLocation) {
+        if (previousLocation.current) {
           const distance = locationService.calculateDistance(
-            userLocation.lat,
-            userLocation.lng,
+            previousLocation.current.lat,
+            previousLocation.current.lng,
             newLat,
             newLng,
             'miles'
@@ -106,6 +119,8 @@ export default function LiveCanvassingPage() {
         }
 
         setUserLocation({ lat: newLat, lng: newLng });
+        previousLocation.current = { lat: newLat, lng: newLng };
+        setHasGPS(true);
         
         if (location.address) {
           setCurrentAddress(location.address);
@@ -262,15 +277,13 @@ export default function LiveCanvassingPage() {
           </div>
         </div>
         
-        {/* Search Bar */}
-        {userLocation && (
-          <div className="px-4 pb-4">
-            <AddressSearchBar
-              userLocation={userLocation}
-              onAddressSelect={handleAddressSelect}
-            />
-          </div>
-        )}
+        {/* Search Bar - Always show */}
+        <div className="px-4 pb-4">
+          <AddressSearchBar
+            userLocation={userLocation}
+            onAddressSelect={handleAddressSelect}
+          />
+        </div>
       </Card>
 
       {/* Navigation Panel */}
@@ -284,48 +297,36 @@ export default function LiveCanvassingPage() {
         />
       )}
 
-      {/* Map Container */}
+      {/* Map Container - Always render map immediately */}
       <div className="flex-1 relative">
-        {userLocation ? (
-          <>
-            <LiveLocationMap
-              userLocation={userLocation}
-              currentAddress={currentAddress}
-              onContactSelect={setSelectedContact}
-              routeData={routeData}
-              destination={destination}
-            />
-            <LiveStatsOverlay distanceTraveled={distanceTraveled} />
-          </>
-        ) : (
-          <div className="h-full flex items-center justify-center">
-            <div className="text-center">
-              <Navigation className="h-12 w-12 mx-auto mb-4 text-muted-foreground animate-pulse" />
-              <p className="text-muted-foreground">Getting your location...</p>
-            </div>
-          </div>
-        )}
+        <LiveLocationMap
+          userLocation={userLocation}
+          currentAddress={currentAddress}
+          onContactSelect={setSelectedContact}
+          routeData={routeData}
+          destination={destination}
+        />
+        <LiveStatsOverlay distanceTraveled={distanceTraveled} />
+        
+        {/* GPS Acquiring Overlay - show while waiting for real GPS */}
+        {!hasGPS && <GPSAcquiringOverlay />}
       </div>
 
       {/* Quick Activity Panel */}
-      {userLocation && (
-        <QuickActivityPanel userLocation={userLocation} />
-      )}
+      <QuickActivityPanel userLocation={userLocation} />
 
       {/* Mobile Disposition Panel */}
-      {userLocation && (
-        <MobileDispositionPanel
-          contact={selectedContact}
-          userLocation={userLocation}
-          dispositions={dispositions}
-          onClose={() => setSelectedContact(null)}
-          onUpdate={() => {
-            // Refresh map/markers after disposition update
-            setSelectedContact(null);
-          }}
-          onNavigate={handleNavigateToContact}
-        />
-      )}
+      <MobileDispositionPanel
+        contact={selectedContact}
+        userLocation={userLocation}
+        dispositions={dispositions}
+        onClose={() => setSelectedContact(null)}
+        onUpdate={() => {
+          // Refresh map/markers after disposition update
+          setSelectedContact(null);
+        }}
+        onNavigate={handleNavigateToContact}
+      />
     </div>
   );
 }
