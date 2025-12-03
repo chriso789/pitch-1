@@ -8,6 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/contexts/AuthContext';
 import { Loader2, AlertCircle, Eye, EyeOff, Wifi, WifiOff, Shield, UserPlus, KeyRound, ArrowLeft, CheckCircle } from 'lucide-react';
 
 interface LoginProps {
@@ -17,6 +18,8 @@ interface LoginProps {
 const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user: authUser, session, loading: authLoading } = useAuth();
+  
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [activeTab, setActiveTab] = useState(initialTab);
@@ -24,8 +27,8 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
   const [resetEmail, setResetEmail] = useState('');
   const [connectionStatus, setConnectionStatus] = useState<'online' | 'offline' | 'checking'>('checking');
   const [sessionCheckComplete, setSessionCheckComplete] = useState(false);
+  const [loginAttempted, setLoginAttempted] = useState(false);
   const [rememberMe, setRememberMe] = useState(() => {
-    // Check if user previously selected remember me
     const saved = localStorage.getItem('pitch_remember_me');
     return saved === 'true';
   });
@@ -84,22 +87,45 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
     }
   };
 
+  // Watch AuthContext - navigate when session is ready after login attempt
   useEffect(() => {
-    // DISABLED: Auto-login check - allows users to access login page when already authenticated
-    // const checkAuth = async () => {
-    //   try {
-    //     const { data: { session } } = await supabase.auth.getSession();
-    //     if (session) {
-    //       console.log('User already authenticated, redirecting to dashboard');
-    //       navigate('/');
-    //       return;
-    //     }
-    //   } catch (error) {
-    //     console.error('Auth check error:', error);
-    //   }
-    // };
-    // checkAuth();
+    if (loginAttempted && session && authUser && !authLoading) {
+      console.log('[Login] AuthContext ready with session, navigating to dashboard');
+      localStorage.setItem('pitch_remember_me', rememberMe.toString());
+      
+      // Background tasks (non-blocking)
+      setTimeout(() => {
+        ensureUserProfile(authUser).catch(console.warn);
+        supabase.functions.invoke('log-auth-activity', {
+          body: {
+            user_id: authUser.id,
+            email: authUser.email,
+            event_type: 'login_success',
+            success: true
+          }
+        }).catch(console.warn);
+      }, 0);
+      
+      toast({
+        title: "Login successful",
+        description: "Welcome back!"
+      });
+      
+      setLoading(false);
+      setLoginAttempted(false);
+      navigate('/dashboard');
+    }
+  }, [session, authUser, authLoading, loginAttempted, navigate, toast, rememberMe]);
 
+  // Redirect if already authenticated (landing on /login while logged in)
+  useEffect(() => {
+    if (!authLoading && session && authUser && !loginAttempted) {
+      console.log('[Login] Already authenticated, redirecting to dashboard');
+      navigate('/dashboard');
+    }
+  }, [session, authUser, authLoading, loginAttempted, navigate]);
+
+  useEffect(() => {
     // Check URL params for password reset success message
     const urlParams = new URLSearchParams(window.location.search);
     const message = urlParams.get('message');
@@ -131,7 +157,7 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
     supabase.auth.getSession()
       .then(() => setConnectionStatus('online'))
       .catch(() => setConnectionStatus('offline'));
-  }, [navigate]);
+  }, [toast]);
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -139,7 +165,6 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
   };
 
   const validatePassword = (password: string) => {
-    // More lenient password validation - minimum 6 characters
     return password.length >= 6;
   };
 
@@ -158,64 +183,9 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
     }
 
     setLoading(true);
+    setLoginAttempted(true);
     console.log('[Login] Starting login attempt for:', loginForm.email);
 
-    // Flag to prevent duplicate navigation
-    let hasNavigated = false;
-    
-    const navigateToApp = () => {
-      if (hasNavigated) return;
-      hasNavigated = true;
-      
-      console.log('[Login] Navigating to dashboard...');
-      localStorage.setItem('pitch_remember_me', rememberMe.toString());
-      
-      toast({
-        title: "Login successful",
-        description: "Welcome back!"
-      });
-      
-      setLoading(false);
-      navigate('/dashboard');
-    };
-    
-    // Set up ONE-TIME auth state listener that fires on SIGNED_IN
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
-      console.log('[Login] Auth state change:', event, session?.user?.id);
-      if (event === 'SIGNED_IN' && session?.user) {
-        subscription.unsubscribe(); // Clean up immediately
-        
-        // Background tasks (non-blocking)
-        const user = session.user;
-        const email = loginForm.email;
-        setTimeout(() => {
-          ensureUserProfile(user).catch(console.warn);
-          supabase.functions.invoke('log-auth-activity', {
-            body: {
-              user_id: user.id,
-              email: email,
-              event_type: 'login_success',
-              success: true
-            }
-          }).catch(console.warn);
-        }, 0);
-        
-        navigateToApp();
-      }
-    });
-    
-    // 3-second fallback: check session directly if listener doesn't fire
-    const fallbackTimeout = setTimeout(async () => {
-      console.log('[Login] Fallback: checking session directly...');
-      const { data: { session } } = await supabase.auth.getSession();
-      if (session?.user) {
-        console.log('[Login] Fallback found session!');
-        subscription.unsubscribe();
-        navigateToApp();
-      }
-    }, 3000);
-    
-    // Fire the auth call (don't fully await - just catch errors)
     try {
       const { error } = await supabase.auth.signInWithPassword({
         email: loginForm.email,
@@ -223,9 +193,8 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
       });
       
       if (error) {
-        clearTimeout(fallbackTimeout);
-        subscription.unsubscribe();
         setLoading(false);
+        setLoginAttempted(false);
         
         // Handle specific errors
         if (error.message.includes('Invalid login credentials')) {
@@ -249,19 +218,13 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
         return;
       }
       
-      // If promise resolved without error but listener hasn't fired, wait a moment more
-      setTimeout(() => {
-        if (!hasNavigated) {
-          clearTimeout(fallbackTimeout);
-          subscription.unsubscribe();
-          navigateToApp();
-        }
-      }, 500);
+      // Success! AuthContext will detect the session change
+      // The useEffect watching session/authUser will handle navigation
+      console.log('[Login] signInWithPassword succeeded, waiting for AuthContext...');
       
     } catch (error: any) {
-      clearTimeout(fallbackTimeout);
-      subscription.unsubscribe();
       setLoading(false);
+      setLoginAttempted(false);
       setErrors({ general: error.message || 'Connection error - please try again' });
     }
   };
