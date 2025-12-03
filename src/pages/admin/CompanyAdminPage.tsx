@@ -146,8 +146,6 @@ const CompanyAdminPage = () => {
   };
 
   const handleCreateCompany = async () => {
-    const validLocationNames = locationNames.filter(n => n.trim());
-    
     if (!formData.name.trim()) {
       toast({
         title: "Validation Error",
@@ -156,15 +154,10 @@ const CompanyAdminPage = () => {
       });
       return;
     }
-    
-    if (validLocationNames.length === 0) {
-      toast({
-        title: "Validation Error",
-        description: "At least one location name is required",
-        variant: "destructive",
-      });
-      return;
-    }
+
+    // Auto-create default location if none provided
+    const validLocationNames = locationNames.filter(n => n.trim());
+    const locationsToCreate = validLocationNames.length > 0 ? validLocationNames : ['Main Office'];
 
     setIsCreating(true);
 
@@ -205,8 +198,8 @@ const CompanyAdminPage = () => {
         throw tenantError;
       }
 
-      // Create all locations
-      const locationInserts = validLocationNames.map(name => ({
+      // Create all locations (uses locationsToCreate which defaults to 'Main Office')
+      const locationInserts = locationsToCreate.map(name => ({
         tenant_id: tenant.id,
         name: name.trim(),
         is_active: true,
@@ -228,20 +221,27 @@ const CompanyAdminPage = () => {
         });
       }
 
-      // Initialize CRM skeleton for the new company
+      // Initialize CRM skeleton with timeout to prevent hanging
       console.log('[CompanyAdmin] Initializing CRM skeleton for tenant:', tenant.id);
-      const { data: initResult, error: initError } = await supabase.functions.invoke('initialize-company', {
-        body: { 
-          tenant_id: tenant.id,
-          created_by: user?.id 
-        }
-      });
+      try {
+        const initPromise = supabase.functions.invoke('initialize-company', {
+          body: { 
+            tenant_id: tenant.id,
+            created_by: user?.id 
+          }
+        });
+        const timeoutPromise = new Promise((_, reject) => 
+          setTimeout(() => reject(new Error('Initialization timeout')), 10000)
+        );
+        const { data: initResult, error: initError } = await Promise.race([initPromise, timeoutPromise]) as any;
 
-      if (initError) {
-        console.error('[CompanyAdmin] Error initializing company:', initError);
-        // Don't fail the whole operation, just log
-      } else {
-        console.log('[CompanyAdmin] Company initialization result:', initResult);
+        if (initError) {
+          console.error('[CompanyAdmin] Error initializing company:', initError);
+        } else {
+          console.log('[CompanyAdmin] Company initialization result:', initResult);
+        }
+      } catch (timeoutErr) {
+        console.warn('[CompanyAdmin] CRM initialization timed out, company created but skeleton may be incomplete');
       }
 
       // Track activity
@@ -249,7 +249,7 @@ const CompanyAdminPage = () => {
 
       toast({ 
         title: "Company Created Successfully",
-        description: `${formData.name} created with ${validLocationNames.length} location(s) and CRM skeleton initialized.`
+        description: `${formData.name} created with ${locationsToCreate.length} location(s).`
       });
       resetForm();
       setCreateDialogOpen(false);
