@@ -1,7 +1,7 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 
 interface AccessibleCompany {
   tenant_id: string;
@@ -14,45 +14,51 @@ interface AccessibleCompany {
 }
 
 export const useCompanySwitcher = () => {
-  const [companies, setCompanies] = useState<AccessibleCompany[]>([]);
   const [activeCompanyId, setActiveCompanyId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  useEffect(() => {
-    loadAccessibleCompanies();
-  }, []);
+  const { data: companiesData, isLoading: loading, refetch } = useQuery({
+    queryKey: ['accessible-companies'],
+    queryFn: async () => {
+      // Parallel execution of both calls
+      const [tenantsResult, userResult] = await Promise.all([
+        supabase.rpc('get_user_accessible_tenants'),
+        supabase.auth.getUser()
+      ]);
+      
+      if (tenantsResult.error) throw tenantsResult.error;
+      
+      const companies = (tenantsResult.data as AccessibleCompany[]) || [];
+      const user = userResult.data?.user;
+      
+      // Get active tenant from companies list (primary one)
+      let activeTenantId: string | null = null;
+      
+      if (user) {
+        const activeCompany = companies.find((c) => c.is_primary);
+        activeTenantId = activeCompany?.tenant_id || null;
+        
+        // If no primary found, try to get from profile
+        if (!activeTenantId) {
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('tenant_id')
+            .eq('id', user.id)
+            .single();
+          activeTenantId = profile?.tenant_id || null;
+        }
+      }
+      
+      return { companies, activeTenantId };
+    },
+    staleTime: 5 * 60 * 1000, // Cache for 5 minutes
+    gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
+  });
 
-  const loadAccessibleCompanies = async () => {
-    try {
-      // @ts-ignore - RPC function not yet in generated types
-      const { data, error } = await supabase.rpc('get_user_accessible_tenants');
-      
-      if (error) throw error;
-      
-      setCompanies((data as AccessibleCompany[]) || []);
-      
-      // Get current active tenant
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: profile }: any = await supabase
-        .from('profiles')
-        .select('tenant_id')
-        .eq('id', user.id)
-        .single();
-      
-      // Active tenant is tracked in the profile but we get it from companies list
-      const companiesData = (data as AccessibleCompany[]) || [];
-      const activeCompany = companiesData.find((c: any) => c.is_primary);
-      setActiveCompanyId(activeCompany?.tenant_id || profile?.tenant_id);
-    } catch (error) {
-      console.error('Error loading companies:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Update local state when data changes
+  const companies = companiesData?.companies || [];
+  const computedActiveCompanyId = activeCompanyId || companiesData?.activeTenantId || null;
 
   const switchCompany = async (tenantId: string) => {
     try {
@@ -90,14 +96,14 @@ export const useCompanySwitcher = () => {
     }
   };
 
-  const activeCompany = companies.find(c => c.tenant_id === activeCompanyId);
+  const activeCompany = companies.find(c => c.tenant_id === computedActiveCompanyId);
 
   return {
     companies,
     activeCompany,
-    activeCompanyId,
+    activeCompanyId: computedActiveCompanyId,
     loading,
     switchCompany,
-    refetch: loadAccessibleCompanies,
+    refetch,
   };
 };
