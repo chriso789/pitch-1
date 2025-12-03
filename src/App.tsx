@@ -78,6 +78,7 @@ import MeasurementAnalyticsPage from "./pages/MeasurementAnalyticsPage";
 import SmartTemplateEditorPage from "./pages/SmartTemplateEditorPage";
 import CompanyAdminPage from "./pages/admin/CompanyAdminPage";
 import TestRoofMeasurement from "./pages/TestRoofMeasurement";
+import OnboardingWalkthrough from "./pages/onboarding/OnboardingWalkthrough";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -143,6 +144,7 @@ const AppContent = () => {
         <Route path="/quickbooks/callback" element={<QuickBooksCallback />} />
         <Route path="/google-calendar/callback" element={<GoogleCalendarCallback />} />
         <Route path="/reports/:token" element={<PublicReportViewer />} />
+        <Route path="/onboarding/:token" element={<OnboardingWalkthrough />} />
         
         {/* Main application routes */}
         <Route path="/dashboard" element={<Dashboard />} />
