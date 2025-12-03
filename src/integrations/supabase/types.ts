@@ -12319,6 +12319,8 @@ export type Database = {
           subdomain: string | null
           updated_at: string | null
           website: string | null
+          website_metadata: Json | null
+          website_verified: boolean | null
         }
         Insert: {
           address_city?: string | null
@@ -12342,6 +12344,8 @@ export type Database = {
           subdomain?: string | null
           updated_at?: string | null
           website?: string | null
+          website_metadata?: Json | null
+          website_verified?: boolean | null
         }
         Update: {
           address_city?: string | null
@@ -12365,6 +12369,8 @@ export type Database = {
           subdomain?: string | null
           updated_at?: string | null
           website?: string | null
+          website_metadata?: Json | null
+          website_verified?: boolean | null
         }
         Relationships: []
       }
@@ -12706,6 +12712,56 @@ export type Database = {
             columns: ["achievement_id"]
             isOneToOne: false
             referencedRelation: "canvass_achievements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_activity_log: {
+        Row: {
+          action_category: string | null
+          action_details: Json | null
+          action_type: string
+          created_at: string | null
+          id: string
+          ip_address: unknown
+          page_url: string | null
+          session_id: string | null
+          tenant_id: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          action_category?: string | null
+          action_details?: Json | null
+          action_type: string
+          created_at?: string | null
+          id?: string
+          ip_address?: unknown
+          page_url?: string | null
+          session_id?: string | null
+          tenant_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          action_category?: string | null
+          action_details?: Json | null
+          action_type?: string
+          created_at?: string | null
+          id?: string
+          ip_address?: unknown
+          page_url?: string | null
+          session_id?: string | null
+          tenant_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_activity_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
