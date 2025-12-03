@@ -68,9 +68,21 @@ export const CommissionManagement = () => {
     commission_rate: 5,
     tier_rates: [{ threshold: 0, rate: 5 }],
     include_overhead: false,
-    payment_method: 'percentage_selling_price',
+    payment_method: 'first_check',
     description: ''
   });
+
+  const formatPayRelease = (value: string) => {
+    const labels: Record<string, string> = {
+      'first_check': '1st Check',
+      'first_and_last_check': '1st Check & Last Check',
+      'final_check': 'Final Check',
+      // Backward compatibility
+      'percentage_selling_price': '1st Check',
+      'commission_after_costs': 'Final Check'
+    };
+    return labels[value] || value;
+  };
   const { toast } = useToast();
 
   useEffect(() => {
@@ -154,7 +166,7 @@ export const CommissionManagement = () => {
         commission_rate: 5,
         tier_rates: [{ threshold: 0, rate: 5 }],
         include_overhead: false,
-        payment_method: 'percentage_selling_price',
+        payment_method: 'first_check',
         description: ''
       });
       setShowNewPlan(false);
@@ -254,7 +266,7 @@ export const CommissionManagement = () => {
                     id="plan-name"
                     value={newPlan.name}
                     onChange={(e) => setNewPlan(prev => ({ ...prev, name: e.target.value }))}
-                    placeholder="e.g., Standard Sales Commission"
+                    placeholder="e.g., Standard Rep Plan, Manager Override"
                   />
                 </div>
                 <div>
@@ -284,7 +296,7 @@ export const CommissionManagement = () => {
                   <Label htmlFor="include-overhead">Include Rep Overhead</Label>
                 </div>
                 <div>
-                  <Label htmlFor="payment-method">Payment Method</Label>
+                  <Label htmlFor="pay-release">Pay Release</Label>
                   <Select 
                     value={newPlan.payment_method} 
                     onValueChange={(value) => setNewPlan(prev => ({ ...prev, payment_method: value }))}
@@ -293,41 +305,38 @@ export const CommissionManagement = () => {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="percentage_selling_price">% of Selling Price</SelectItem>
-                      <SelectItem value="commission_after_costs">Commission After Costs</SelectItem>
+                      <SelectItem value="first_check">1st Check</SelectItem>
+                      <SelectItem value="first_and_last_check">1st Check & Last Check</SelectItem>
+                      <SelectItem value="final_check">Final Check</SelectItem>
                     </SelectContent>
                   </Select>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    When commission is released to rep
+                  </p>
                 </div>
               </div>
 
-              {newPlan.commission_type === 'gross_percent' && (
-                <div>
-                  <Label htmlFor="commission-rate">Commission Rate (%)</Label>
-                  <Input
-                    id="commission-rate"
-                    type="number"
-                    step="0.1"
-                    value={newPlan.commission_rate}
-                    onChange={(e) => setNewPlan(prev => ({ ...prev, commission_rate: parseFloat(e.target.value) || 0 }))}
-                  />
-                </div>
-              )}
-
-              {newPlan.commission_type === 'net_percent' && (
-                <div>
-                  <Label htmlFor="profit-split-rate">Profit Split Rate (%)</Label>
-                  <Input
-                    id="profit-split-rate"
-                    type="number"
-                    step="0.1"
-                    value={newPlan.commission_rate}
-                    onChange={(e) => setNewPlan(prev => ({ ...prev, commission_rate: parseFloat(e.target.value) || 0 }))}
-                  />
-                  <p className="text-sm text-muted-foreground mt-1">
+              <div>
+                <Label htmlFor="commission-rate">Commission Rate</Label>
+                <Select 
+                  value={newPlan.commission_rate.toString()} 
+                  onValueChange={(value) => setNewPlan(prev => ({ ...prev, commission_rate: parseInt(value) }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[1,2,3,4,5,6,7,8,9,10,11,12,13,14,15].map(rate => (
+                      <SelectItem key={rate} value={rate.toString()}>{rate}%</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {newPlan.commission_type === 'net_percent' && (
+                  <p className="text-xs text-muted-foreground mt-1">
                     Percentage of profit (Selling Price - Costs) paid as commission
                   </p>
-                </div>
-              )}
+                )}
+              </div>
 
               <div>
                 <Label htmlFor="description">Description</Label>
@@ -370,8 +379,8 @@ export const CommissionManagement = () => {
                   <div className="flex items-start justify-between">
                     <div>
                       <h3 className="font-semibold text-lg">{plan.name}</h3>
-                      <p className="text-sm text-muted-foreground capitalize">
-                        {plan.commission_type.replace('_', ' ')} • {plan.payment_method.replace('_', ' ')}
+                      <p className="text-sm text-muted-foreground">
+                        {plan.commission_type === 'gross_percent' ? 'Percent of Selling Price' : 'Profit Split'} • {formatPayRelease(plan.payment_method)}
                       </p>
                       <div className="flex items-center gap-4 mt-2">
                         <Badge variant={plan.is_active ? "default" : "secondary"}>
@@ -411,16 +420,14 @@ export const CommissionManagement = () => {
                   
                   <div className="mt-4 p-4 bg-muted/30 rounded-lg">
                     <h4 className="font-medium mb-2">Plan Details</h4>
-                    {plan.commission_type === 'gross_percent' && (
-                      <p className="text-sm">
+                    <div className="space-y-1 text-sm">
+                      <p>
                         <strong>Rate:</strong> {plan.plan_config?.commission_rate || 0}%
                       </p>
-                    )}
-                    {plan.commission_type === 'net_percent' && (
-                      <p className="text-sm">
-                        <strong>Profit Split Rate:</strong> {plan.plan_config?.commission_rate || 0}%
+                      <p>
+                        <strong>Pay Release:</strong> {formatPayRelease(plan.payment_method)}
                       </p>
-                    )}
+                    </div>
                   </div>
                 </CardContent>
               </Card>
