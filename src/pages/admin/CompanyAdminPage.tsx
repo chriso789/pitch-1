@@ -25,7 +25,9 @@ import {
   Mail,
   Globe,
   FileText,
-  Loader2
+  Loader2,
+  AlertTriangle,
+  Trash2
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -34,6 +36,7 @@ import { LocationManagement } from '@/components/settings/LocationManagement';
 import { WebsitePreview } from '@/components/settings/WebsitePreview';
 import { AddressValidation } from '@/shared/components/forms/AddressValidation';
 import { activityTracker } from '@/services/activityTracker';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 interface Company {
   id: string;
@@ -78,7 +81,11 @@ const CompanyAdminPage = () => {
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [editDialogOpen, setEditDialogOpen] = useState(false);
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [deleteConfirmation, setDeleteConfirmation] = useState('');
+  const [isDeleting, setIsDeleting] = useState(false);
   const { toast } = useToast();
+  const { user: currentUser } = useCurrentUser();
   const [searchParams] = useSearchParams();
 
   // Multi-location state
@@ -405,6 +412,41 @@ const CompanyAdminPage = () => {
     setLocationNames(['']);
     setWebsiteData(null);
     setBillingAddressData(null);
+  };
+
+  const handleDeleteCompany = async () => {
+    if (!selectedCompany || deleteConfirmation !== selectedCompany.name) return;
+    
+    setIsDeleting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('delete-company', {
+        body: { 
+          company_id: selectedCompany.id,
+          company_name: selectedCompany.name 
+        }
+      });
+      
+      if (error) throw error;
+      if (data?.error) throw new Error(data.error);
+      
+      toast({
+        title: "Company Deleted",
+        description: `${selectedCompany.name} has been deleted. Backup created and stored.`,
+      });
+      
+      setDeleteDialogOpen(false);
+      setEditDialogOpen(false);
+      fetchCompanies();
+    } catch (error: any) {
+      toast({
+        title: "Deletion Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsDeleting(false);
+      setDeleteConfirmation('');
+    }
   };
 
   const handleLocationNameChange = (index: number, value: string) => {
@@ -807,34 +849,35 @@ const CompanyAdminPage = () => {
                     </CardContent>
                   </Card>
 
-                  {/* Billing Address */}
+                  {/* Billing Address - Google Verified */}
                   <Card>
                     <CardHeader>
                       <CardTitle className="text-base">Billing Address</CardTitle>
+                      <CardDescription>Start typing to search and verify with Google</CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                      <Input
-                        placeholder="Street Address"
-                        value={formData.address_street}
-                        onChange={(e) => setFormData({ ...formData, address_street: e.target.value })}
+                      <AddressValidation
+                        label=""
+                        placeholder="Start typing billing address..."
+                        defaultValue={formData.address_street ? 
+                          `${formData.address_street}, ${formData.address_city}, ${formData.address_state} ${formData.address_zip}` : ''}
+                        onAddressSelected={(addr) => {
+                          setFormData({
+                            ...formData,
+                            address_street: `${addr.street_number} ${addr.route}`.trim(),
+                            address_city: addr.locality,
+                            address_state: addr.administrative_area_level_1,
+                            address_zip: addr.postal_code,
+                          });
+                          setBillingAddressData(addr);
+                        }}
                       />
-                      <div className="grid grid-cols-3 gap-2">
-                        <Input
-                          placeholder="City"
-                          value={formData.address_city}
-                          onChange={(e) => setFormData({ ...formData, address_city: e.target.value })}
-                        />
-                        <Input
-                          placeholder="State"
-                          value={formData.address_state}
-                          onChange={(e) => setFormData({ ...formData, address_state: e.target.value })}
-                        />
-                        <Input
-                          placeholder="ZIP"
-                          value={formData.address_zip}
-                          onChange={(e) => setFormData({ ...formData, address_zip: e.target.value })}
-                        />
-                      </div>
+                      {billingAddressData?.validated && (
+                        <Badge variant="outline" className="text-green-600 border-green-600">
+                          <Check className="h-3 w-3 mr-1" />
+                          Google Verified
+                        </Badge>
+                      )}
                     </CardContent>
                   </Card>
 
@@ -921,9 +964,95 @@ const CompanyAdminPage = () => {
                       </div>
                     </CardContent>
                   </Card>
+
+                  {/* Danger Zone - Delete Company */}
+                  <Card className="border-destructive/50">
+                    <CardHeader>
+                      <CardTitle className="text-base text-destructive flex items-center gap-2">
+                        <AlertTriangle className="h-4 w-4" />
+                        Danger Zone
+                      </CardTitle>
+                      <CardDescription>
+                        Irreversible actions - proceed with extreme caution
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                      <div className="p-4 border border-destructive/30 rounded-lg bg-destructive/5">
+                        <p className="font-medium text-destructive">Delete this company</p>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          Once deleted, all company data (contacts, projects, estimates, photos) 
+                          will be permanently removed. A backup will be created and emailed before deletion.
+                        </p>
+                        <Button 
+                          variant="destructive" 
+                          className="mt-4"
+                          onClick={() => setDeleteDialogOpen(true)}
+                          disabled={currentUser?.role !== 'master'}
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete Company
+                        </Button>
+                        {currentUser?.role !== 'master' && (
+                          <p className="text-xs text-muted-foreground mt-2">
+                            Only master administrators can delete companies
+                          </p>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
                 </TabsContent>
               </Tabs>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Delete Confirmation Dialog */}
+        <Dialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+          <DialogContent className="sm:max-w-md">
+            <DialogHeader>
+              <DialogTitle className="text-destructive flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5" />
+                Delete {selectedCompany?.name}?
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              <p className="text-sm text-muted-foreground">
+                This action cannot be undone. All data including:
+              </p>
+              <ul className="text-sm list-disc list-inside text-muted-foreground">
+                <li>Contacts and leads</li>
+                <li>Projects and estimates</li>
+                <li>Photos and documents</li>
+                <li>All user associations</li>
+              </ul>
+              <p className="text-sm font-medium">
+                A backup will be created and stored before deletion.
+              </p>
+              <div className="space-y-2">
+                <Label>Type "{selectedCompany?.name}" to confirm:</Label>
+                <Input 
+                  value={deleteConfirmation}
+                  onChange={(e) => setDeleteConfirmation(e.target.value)}
+                  placeholder="Company name"
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => {
+                setDeleteDialogOpen(false);
+                setDeleteConfirmation('');
+              }}>
+                Cancel
+              </Button>
+              <Button 
+                variant="destructive" 
+                onClick={handleDeleteCompany}
+                disabled={deleteConfirmation !== selectedCompany?.name || isDeleting}
+              >
+                {isDeleting ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Trash2 className="h-4 w-4 mr-2" />}
+                Delete Forever
+              </Button>
+            </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>

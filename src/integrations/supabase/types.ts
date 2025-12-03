@@ -2153,6 +2153,107 @@ export type Database = {
           },
         ]
       }
+      company_backups: {
+        Row: {
+          backup_size_bytes: number | null
+          backup_storage_path: string
+          backup_type: string
+          company_name: string
+          created_at: string | null
+          data_summary: Json | null
+          error_message: string | null
+          id: string
+          initiated_by: string | null
+          status: string | null
+          tenant_id: string
+        }
+        Insert: {
+          backup_size_bytes?: number | null
+          backup_storage_path: string
+          backup_type: string
+          company_name: string
+          created_at?: string | null
+          data_summary?: Json | null
+          error_message?: string | null
+          id?: string
+          initiated_by?: string | null
+          status?: string | null
+          tenant_id: string
+        }
+        Update: {
+          backup_size_bytes?: number | null
+          backup_storage_path?: string
+          backup_type?: string
+          company_name?: string
+          created_at?: string | null
+          data_summary?: Json | null
+          error_message?: string | null
+          id?: string
+          initiated_by?: string | null
+          status?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_backups_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      company_deletion_backups: {
+        Row: {
+          backup_size_bytes: number | null
+          backup_storage_path: string | null
+          company_id: string
+          company_name: string
+          created_at: string | null
+          data_summary: Json | null
+          deleted_by: string | null
+          deleted_by_email: string | null
+          deleted_by_name: string | null
+          email_sent_at: string | null
+          email_sent_to: string | null
+          error_message: string | null
+          id: string
+          status: string | null
+        }
+        Insert: {
+          backup_size_bytes?: number | null
+          backup_storage_path?: string | null
+          company_id: string
+          company_name: string
+          created_at?: string | null
+          data_summary?: Json | null
+          deleted_by?: string | null
+          deleted_by_email?: string | null
+          deleted_by_name?: string | null
+          email_sent_at?: string | null
+          email_sent_to?: string | null
+          error_message?: string | null
+          id?: string
+          status?: string | null
+        }
+        Update: {
+          backup_size_bytes?: number | null
+          backup_storage_path?: string | null
+          company_id?: string
+          company_name?: string
+          created_at?: string | null
+          data_summary?: Json | null
+          deleted_by?: string | null
+          deleted_by_email?: string | null
+          deleted_by_name?: string | null
+          email_sent_at?: string | null
+          email_sent_to?: string | null
+          error_message?: string | null
+          id?: string
+          status?: string | null
+        }
+        Relationships: []
+      }
       competition_leaderboards: {
         Row: {
           competition_id: string

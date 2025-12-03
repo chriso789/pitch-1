@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { EnhancedCompanyOnboarding } from "./EnhancedCompanyOnboarding";
 import { LocationUserAssignment } from "./LocationUserAssignment";
+import { DeletionHistoryTab } from "./DeletionHistoryTab";
 import { PatentResearchDashboard } from "./PatentResearchDashboard";
 
 interface Company {
@@ -240,6 +241,9 @@ export const PlatformAdmin = () => {
           <TabsTrigger value="all">
             All ({filteredCompanies.length})
           </TabsTrigger>
+          <TabsTrigger value="deletion-history">
+            Deletion History
+          </TabsTrigger>
           <TabsTrigger value="patents">
             Patents & IP
           </TabsTrigger>
@@ -279,6 +283,10 @@ export const PlatformAdmin = () => {
               setDetailsOpen(true);
             }}
           />
+        </TabsContent>
+
+        <TabsContent value="deletion-history" className="mt-4">
+          <DeletionHistoryTab />
         </TabsContent>
 
         <TabsContent value="patents" className="mt-4">

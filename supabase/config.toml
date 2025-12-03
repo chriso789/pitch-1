@@ -159,7 +159,6 @@ verify_jwt = true
 [functions.skip-trace-lookup]
 verify_jwt = true
 
-
 [functions.qbo-oauth-connect]
 verify_jwt = true
 
@@ -195,7 +194,6 @@ verify_jwt = true
 
 [functions.admin-delete-user]
 verify_jwt = true
-
 
 [functions.srs-pricelist-importer]
 verify_jwt = true
@@ -267,4 +265,10 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.sync-user-metadata]
+verify_jwt = true
+
+[functions.delete-company]
+verify_jwt = true
+
+[functions.daily-company-backup]
 verify_jwt = true
