@@ -14,6 +14,7 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { DashboardAIAssistant } from "./DashboardAIAssistant";
 import { 
   DollarSign, 
   TrendingUp, 
@@ -444,6 +445,9 @@ const Dashboard = () => {
           </div>
         </div>
       </div>
+
+      {/* AI Assistant */}
+      <DashboardAIAssistant className="shadow-soft border-0" />
 
       {/* Quick Actions */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
