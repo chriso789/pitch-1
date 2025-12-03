@@ -7,7 +7,7 @@ import { useNavigate } from "react-router-dom";
 const plans = [
   {
     name: "Starter",
-    price: "$99",
+    price: "$199",
     period: "/month",
     description: "Perfect for small teams getting started",
     icon: Zap,
@@ -26,7 +26,7 @@ const plans = [
   },
   {
     name: "Professional",
-    price: "$249",
+    price: "$499",
     period: "/month",
     description: "For growing teams that need more power",
     icon: Rocket,
