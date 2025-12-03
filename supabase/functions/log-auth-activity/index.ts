@@ -5,15 +5,42 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface AuthActivityLog {
-  user_id?: string;
-  email: string;
-  event_type: 'login_success' | 'login_failed' | 'logout' | 'session_refresh' | 'password_reset_request';
-  ip_address?: string;
-  user_agent?: string;
-  device_info?: string;
-  location_info?: string;
-  success: boolean;
+// Valid event types - only accept known enum values
+const VALID_EVENT_TYPES = [
+  'login_success', 
+  'login_failed', 
+  'logout', 
+  'session_refresh', 
+  'password_reset_request'
+] as const;
+
+type EventType = typeof VALID_EVENT_TYPES[number];
+
+// Rate limiting store (in-memory, per function instance)
+const rateLimitMap = new Map<string, { count: number; resetAt: number }>();
+const RATE_LIMIT = 10; // requests per minute
+const RATE_WINDOW = 60000; // 1 minute in ms
+
+function checkRateLimit(userId: string): boolean {
+  const now = Date.now();
+  const userLimit = rateLimitMap.get(userId);
+  
+  if (!userLimit || now > userLimit.resetAt) {
+    rateLimitMap.set(userId, { count: 1, resetAt: now + RATE_WINDOW });
+    return true;
+  }
+  
+  if (userLimit.count >= RATE_LIMIT) {
+    return false;
+  }
+  
+  userLimit.count++;
+  return true;
+}
+
+interface AuthActivityRequest {
+  event_type: string;
+  success?: boolean;
   error_message?: string;
 }
 
@@ -24,31 +51,62 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Create client with forwarded auth (requires valid JWT)
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+      { 
+        global: { 
+          headers: { Authorization: req.headers.get('Authorization')! } 
+        } 
       }
     );
 
-    const body = await req.json() as AuthActivityLog;
+    // Get authenticated user from JWT - this is the secure way
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
     
+    if (authError || !user) {
+      console.warn('⚠️ Unauthenticated request to log-auth-activity');
+      return new Response(
+        JSON.stringify({ success: false, error: 'Authentication required' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 401 }
+      );
+    }
+
+    // Rate limiting check - prevent log flooding attacks
+    if (!checkRateLimit(user.id)) {
+      console.warn(`⚠️ Rate limit exceeded for user ${user.id}`);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Rate limit exceeded. Max 10 events per minute.' }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 429 }
+      );
+    }
+
+    const body = await req.json() as AuthActivityRequest;
+    
+    // Validate event_type against allowed enum values
+    if (!body.event_type || !VALID_EVENT_TYPES.includes(body.event_type as EventType)) {
+      console.warn(`⚠️ Invalid event_type: ${body.event_type}`);
+      return new Response(
+        JSON.stringify({ 
+          success: false, 
+          error: `Invalid event_type. Must be one of: ${VALID_EVENT_TYPES.join(', ')}` 
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
+      );
+    }
+
     console.log('📝 Logging auth activity:', {
-      email: body.email,
+      user_id: user.id,
+      email: user.email,
       event_type: body.event_type,
-      success: body.success,
       timestamp: new Date().toISOString()
     });
 
-    // Extract additional info from request
-    const user_agent = req.headers.get('user-agent') || body.user_agent || 'Unknown';
+    // Extract info from request headers (more reliable than body)
+    const user_agent = req.headers.get('user-agent') || 'Unknown';
     const ip_address = req.headers.get('x-forwarded-for')?.split(',')[0]?.trim() || 
                        req.headers.get('x-real-ip') || 
-                       body.ip_address || 
                        'Unknown';
 
     // Parse device info from user agent
@@ -59,48 +117,27 @@ Deno.serve(async (req) => {
       device_info = 'Tablet';
     }
 
-    // Get location from IP address using ip-api.com (free, no API key required)
-    let location_info = body.location_info || null;
-    if (ip_address && ip_address !== 'Unknown' && !location_info) {
-      try {
-        console.log('🌍 Looking up location for IP:', ip_address);
-        const geoResponse = await fetch(`http://ip-api.com/json/${ip_address}?fields=status,country,countryCode,region,regionName,city,zip,lat,lon,timezone`);
-        
-        if (geoResponse.ok) {
-          const geoData = await geoResponse.json();
-          
-          if (geoData.status === 'success') {
-            location_info = `${geoData.city || 'Unknown'}, ${geoData.regionName || geoData.region || ''}, ${geoData.country || 'Unknown'}`;
-            console.log('✅ Location resolved:', location_info);
-          } else {
-            console.log('⚠️ IP geolocation lookup failed:', geoData.message);
-          }
-        }
-      } catch (geoError) {
-        console.error('❌ Error fetching geolocation:', geoError);
-        // Continue without location info
-      }
-    }
-
-    // Prepare log entry
+    // Prepare log entry - IMPORTANT: use authenticated user's info from JWT, not body params
     const logEntry = {
-      user_id: body.user_id || null,
-      email: body.email,
-      event_type: body.event_type,
+      user_id: user.id,           // From JWT, NOT from request body
+      email: user.email,          // From JWT, NOT from request body
+      event_type: body.event_type as EventType,
       ip_address,
       user_agent,
       device_info,
-      location_info: location_info,
-      success: body.success,
-      error_message: body.error_message || null,
+      location_info: null,        // Skip external geolocation API for security
+      success: body.success ?? true,
+      error_message: typeof body.error_message === 'string' 
+        ? body.error_message.slice(0, 500)  // Limit error message length
+        : null,
       created_at: new Date().toISOString()
     };
 
-    // Insert into session_activity_log table
+    // Insert using RLS - user can only insert logs for themselves
     const { data, error } = await supabaseClient
       .from('session_activity_log')
       .insert(logEntry)
-      .select()
+      .select('id')
       .single();
 
     if (error) {
@@ -128,7 +165,7 @@ Deno.serve(async (req) => {
     return new Response(
       JSON.stringify({ 
         success: false, 
-        error: error.message 
+        error: 'Failed to log activity' 
       }),
       { 
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
