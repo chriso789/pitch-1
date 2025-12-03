@@ -8,6 +8,7 @@ import { ErrorTrackingProvider } from "@/hooks/useErrorTracking";
 import { LocationSelectionDialog } from "@/components/auth/LocationSelectionDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { AuthProvider } from "@/contexts/AuthContext";
+import { UserProfileProvider } from "@/contexts/UserProfileContext";
 import { ImageCacheProvider } from "@/contexts/ImageCacheContext";
 import { initSessionPersistence } from "@/utils/sessionPersistence";
 import { useGlobalActivityTracking } from "@/hooks/useGlobalActivityTracking";
@@ -218,15 +219,17 @@ const App = () => {
   return (
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
-        <ErrorTrackingProvider>
-          <TooltipProvider>
-            <ImageCacheProvider>
-              <BrowserRouter>
-                <AppContent />
-              </BrowserRouter>
-            </ImageCacheProvider>
-          </TooltipProvider>
-        </ErrorTrackingProvider>
+        <UserProfileProvider>
+          <ErrorTrackingProvider>
+            <TooltipProvider>
+              <ImageCacheProvider>
+                <BrowserRouter>
+                  <AppContent />
+                </BrowserRouter>
+              </ImageCacheProvider>
+            </TooltipProvider>
+          </ErrorTrackingProvider>
+        </UserProfileProvider>
       </AuthProvider>
     </QueryClientProvider>
   );
