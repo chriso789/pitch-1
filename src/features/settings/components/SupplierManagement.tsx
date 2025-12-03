@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
 import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
@@ -10,6 +10,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Loader2, Plus, RefreshCw, CheckCircle, XCircle, AlertCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { Skeleton } from '@/components/ui/skeleton';
 import type { Database } from '@/integrations/supabase/types';
 
 type SupplierAccount = Database['public']['Tables']['supplier_accounts']['Row'];
@@ -26,9 +28,6 @@ interface SyncLog {
 }
 
 const SupplierManagement: React.FC = () => {
-  const [suppliers, setSuppliers] = useState<SupplierAccount[]>([]);
-  const [syncLogs, setSyncLogs] = useState<SyncLog[]>([]);
-  const [loading, setLoading] = useState(true);
   const [isAddDialogOpen, setIsAddDialogOpen] = useState(false);
   const [newSupplier, setNewSupplier] = useState({
     supplier_name: '',
@@ -38,49 +37,36 @@ const SupplierManagement: React.FC = () => {
   const [connectingSupplier, setConnectingSupplier] = useState<string | null>(null);
   const [syncingSupplier, setSyncingSupplier] = useState<string | null>(null);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    loadSuppliers();
-    loadSyncLogs();
-  }, []);
+  // React Query for suppliers and sync logs - parallel calls
+  const { data: supplierData, isLoading: loading } = useQuery({
+    queryKey: ['supplier-management'],
+    queryFn: async () => {
+      const [suppliersResult, logsResult] = await Promise.all([
+        supabase.from('supplier_accounts').select('*').order('created_at', { ascending: false }),
+        supabase.from('supplier_price_sync_logs').select(`*, supplier_accounts(supplier_name)`).order('started_at', { ascending: false }).limit(20)
+      ]);
 
-  const loadSuppliers = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('supplier_accounts')
-        .select('*')
-        .order('created_at', { ascending: false });
+      if (suppliersResult.error) throw suppliersResult.error;
 
-      if (error) throw error;
-      setSuppliers((data as SupplierAccount[]) || []);
-    } catch (error) {
-      console.error('Error loading suppliers:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load suppliers",
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
-    }
+      return {
+        suppliers: (suppliersResult.data as SupplierAccount[]) || [],
+        syncLogs: logsResult.data || []
+      };
+    },
+    staleTime: 60 * 1000, // 1 minute cache
+  });
+
+  const suppliers = supplierData?.suppliers || [];
+  const syncLogs = supplierData?.syncLogs || [];
+
+  const loadSuppliers = () => {
+    queryClient.invalidateQueries({ queryKey: ['supplier-management'] });
   };
 
-  const loadSyncLogs = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('supplier_price_sync_logs')
-        .select(`
-          *,
-          supplier_accounts(supplier_name)
-        `)
-        .order('started_at', { ascending: false })
-        .limit(20);
-
-      if (error) throw error;
-      setSyncLogs(data || []);
-    } catch (error) {
-      console.error('Error loading sync logs:', error);
-    }
+  const loadSyncLogs = () => {
+    queryClient.invalidateQueries({ queryKey: ['supplier-management'] });
   };
 
   const handleAddSupplier = async () => {
@@ -209,9 +195,34 @@ const SupplierManagement: React.FC = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center p-8">
-        <Loader2 className="w-6 h-6 animate-spin mr-2" />
-        Loading suppliers...
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-48" />
+            <Skeleton className="h-4 w-72" />
+          </div>
+          <Skeleton className="h-10 w-32" />
+        </div>
+        <Skeleton className="h-10 w-64" />
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <Card key={i}>
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <Skeleton className="h-6 w-32" />
+                  <Skeleton className="h-6 w-24" />
+                </div>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-3">
+                  <Skeleton className="h-4 w-48" />
+                  <Skeleton className="h-4 w-40" />
+                  <Skeleton className="h-9 w-28" />
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
       </div>
     );
   }
@@ -393,8 +404,8 @@ const SupplierManagement: React.FC = () => {
                         <div className="text-sm font-medium capitalize">{log.sync_type}</div>
                         {log.error_details && (
                           <div className="text-xs text-destructive">
-                            {Array.isArray(log.error_details?.errors) 
-                              ? `${log.error_details.errors.length} errors`
+                            {Array.isArray((log.error_details as any)?.errors) 
+                              ? `${(log.error_details as any).errors.length} errors`
                               : 'Error occurred'
                             }
                           </div>

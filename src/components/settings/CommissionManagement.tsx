@@ -24,6 +24,7 @@ import {
   Clock,
   AlertTriangle
 } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface CommissionPlan {
   id: string;
@@ -235,7 +236,52 @@ export const CommissionManagement = () => {
   };
 
   if (loading) {
-    return <div className="text-center py-8">Loading commission management...</div>;
+    return (
+      <div className="space-y-6">
+        {/* Header Skeleton */}
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-64" />
+            <Skeleton className="h-4 w-96" />
+          </div>
+          <Skeleton className="h-10 w-44" />
+        </div>
+
+        {/* Tabs Skeleton */}
+        <Skeleton className="h-10 w-96" />
+
+        {/* Plans Cards Skeleton */}
+        <div className="grid gap-4">
+          {[1, 2].map((i) => (
+            <Card key={i}>
+              <CardContent className="p-6">
+                <div className="flex items-start justify-between">
+                  <div className="space-y-3">
+                    <Skeleton className="h-6 w-48" />
+                    <Skeleton className="h-4 w-64" />
+                    <div className="flex gap-2">
+                      <Skeleton className="h-6 w-16" />
+                      <Skeleton className="h-6 w-32" />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="h-6 w-12" />
+                    <Skeleton className="h-8 w-8" />
+                  </div>
+                </div>
+                <div className="mt-4 p-4 bg-muted/30 rounded-lg">
+                  <Skeleton className="h-5 w-24 mb-3" />
+                  <div className="space-y-2">
+                    <Skeleton className="h-4 w-32" />
+                    <Skeleton className="h-4 w-40" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -11,6 +11,8 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Plus, Search, Upload, Database, Pencil, Trash2, Package, DollarSign, Percent } from "lucide-react";
+import { Skeleton } from "@/components/ui/skeleton";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import Papa from "papaparse";
 
 interface Material {
@@ -40,42 +42,39 @@ interface Category {
 }
 
 export function MaterialCatalogManager() {
-  const [materials, setMaterials] = useState<Material[]>([]);
-  const [categories, setCategories] = useState<Category[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
-  const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  // React Query for materials and categories - parallel calls
+  const { data: catalogData, isLoading: loading } = useQuery({
+    queryKey: ['material-catalog'],
+    queryFn: async () => {
+      const [catResult, matResult] = await Promise.all([
+        supabase.rpc('api_get_material_categories' as any),
+        supabase.rpc('api_get_materials' as any)
+      ]);
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      // Load categories using RPC
-      const { data: catData, error: catError } = await supabase
-        .rpc('api_get_material_categories' as any);
-      
-      if (catError) throw catError;
-      setCategories((catData || []) as Category[]);
+      if (catResult.error) throw catResult.error;
+      if (matResult.error) throw matResult.error;
 
-      // Load materials using RPC
-      const { data: matData, error: matError } = await supabase
-        .rpc('api_get_materials' as any);
-      
-      if (matError) throw matError;
-      setMaterials((matData || []) as Material[]);
-    } catch (error: any) {
-      console.error('Error loading materials:', error);
-      toast.error('Failed to load materials: ' + error.message);
-    } finally {
-      setLoading(false);
-    }
+      return {
+        categories: (catResult.data || []) as Category[],
+        materials: (matResult.data || []) as Material[]
+      };
+    },
+    staleTime: 2 * 60 * 1000, // 2 minutes cache
+  });
+
+  const materials = catalogData?.materials || [];
+  const categories = catalogData?.categories || [];
+
+  const loadData = () => {
+    queryClient.invalidateQueries({ queryKey: ['material-catalog'] });
   };
 
   const filteredMaterials = materials.filter(m => {
@@ -158,7 +157,52 @@ export function MaterialCatalogManager() {
     : 35;
 
   if (loading) {
-    return <div className="flex items-center justify-center p-8">Loading catalog...</div>;
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-8 w-40" />
+            <Skeleton className="h-4 w-64" />
+          </div>
+          <div className="flex gap-2">
+            <Skeleton className="h-10 w-28" />
+            <Skeleton className="h-10 w-32" />
+          </div>
+        </div>
+        <div className="grid grid-cols-4 gap-4">
+          {[1, 2, 3, 4].map((i) => (
+            <Card key={i}>
+              <CardContent className="pt-4">
+                <div className="flex items-center gap-2">
+                  <Skeleton className="h-5 w-5" />
+                  <div className="space-y-1">
+                    <Skeleton className="h-7 w-12" />
+                    <Skeleton className="h-3 w-20" />
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+        <Skeleton className="h-10 w-64" />
+        <div className="border rounded-lg p-4 space-y-3">
+          {[1, 2, 3, 4, 5].map((i) => (
+            <div key={i} className="flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <Skeleton className="h-4 w-20" />
+                <Skeleton className="h-4 w-32" />
+                <Skeleton className="h-6 w-16" />
+              </div>
+              <div className="flex items-center gap-4">
+                <Skeleton className="h-4 w-16" />
+                <Skeleton className="h-4 w-12" />
+                <Skeleton className="h-8 w-16" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
   }
 
   return (

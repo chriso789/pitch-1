@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Settings, Moon, Sun, Bell, Calendar, Palette, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Skeleton } from "@/components/ui/skeleton";
 
 interface GoogleCalendarConnection {
   calendar_name: string;
@@ -28,15 +30,51 @@ export const GeneralSettings = () => {
     language: "en",
     timezone: "UTC"
   });
-  const [loading, setLoading] = useState(true);
-  const [googleCalendarConnection, setGoogleCalendarConnection] = useState<GoogleCalendarConnection | null>(null);
   const [connectingGoogleCalendar, setConnectingGoogleCalendar] = useState(false);
   const { toast } = useToast();
+  const queryClient = useQueryClient();
+
+  // React Query for settings and Google Calendar connection - parallel calls
+  const { data: settingsData, isLoading: loading } = useQuery({
+    queryKey: ['general-settings'],
+    queryFn: async () => {
+      const [settingsResult, calendarResult] = await Promise.allSettled([
+        supabase.from('app_settings').select('setting_key, setting_value').eq('setting_key', 'general_preferences'),
+        supabase.functions.invoke('google-calendar-oauth', { body: { action: 'status' } })
+      ]);
+
+      let savedSettings = null;
+      let calendarConnection = null;
+
+      if (settingsResult.status === 'fulfilled' && !settingsResult.value.error) {
+        const data = settingsResult.value.data;
+        if (data && data.length > 0 && data[0].setting_value) {
+          savedSettings = data[0].setting_value;
+        }
+      }
+
+      if (calendarResult.status === 'fulfilled' && !calendarResult.value.error) {
+        const data = calendarResult.value.data;
+        if (data?.connected && data?.connection) {
+          calendarConnection = data.connection;
+        }
+      }
+
+      return { savedSettings, calendarConnection };
+    },
+    staleTime: 2 * 60 * 1000, // 2 minutes cache
+  });
+
+  // Update local settings when data loads
+  useEffect(() => {
+    if (settingsData?.savedSettings) {
+      setSettings(prev => ({ ...prev, ...settingsData.savedSettings }));
+    }
+  }, [settingsData]);
+
+  const googleCalendarConnection = settingsData?.calendarConnection || null;
 
   useEffect(() => {
-    loadSettings();
-    loadGoogleCalendarConnection();
-
     // Listen for OAuth callback
     const handleMessage = (event: MessageEvent) => {
       if (event.origin !== window.location.origin) return;
@@ -56,42 +94,6 @@ export const GeneralSettings = () => {
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
   }, []);
-
-  const loadSettings = async () => {
-    try {
-      const { data, error } = await supabase
-        .from('app_settings')
-        .select('setting_key, setting_value')
-        .eq('setting_key', 'general_preferences');
-
-      if (error) throw error;
-
-      if (data && data.length > 0 && data[0].setting_value) {
-        const savedSettings = data[0].setting_value as any;
-        setSettings({ ...settings, ...savedSettings });
-      }
-    } catch (error) {
-      console.error('Error loading settings:', error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadGoogleCalendarConnection = async () => {
-    try {
-      const { data, error } = await supabase.functions.invoke('google-calendar-oauth', {
-        body: { action: 'status' }
-      });
-
-      if (error) throw error;
-
-      if (data?.connected && data?.connection) {
-        setGoogleCalendarConnection(data.connection);
-      }
-    } catch (error) {
-      console.error('Error loading Google Calendar connection:', error);
-    }
-  };
 
   const handleGoogleConnect = async () => {
     try {
@@ -140,7 +142,7 @@ export const GeneralSettings = () => {
         description: `Connected to ${data.calendarName}`,
       });
 
-      await loadGoogleCalendarConnection();
+      queryClient.invalidateQueries({ queryKey: ['general-settings'] });
     } catch (error: any) {
       console.error('Error completing OAuth:', error);
       toast({
@@ -161,7 +163,7 @@ export const GeneralSettings = () => {
 
       if (error) throw error;
 
-      setGoogleCalendarConnection(null);
+      queryClient.invalidateQueries({ queryKey: ['general-settings'] });
       updateSetting('calendarSync', false);
 
       toast({
@@ -222,13 +224,26 @@ export const GeneralSettings = () => {
 
   if (loading) {
     return (
-      <Card>
-        <CardContent className="pt-6">
-          <div className="text-center py-8 text-muted-foreground">
-            Loading settings...
-          </div>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        {[1, 2, 3, 4].map((i) => (
+          <Card key={i}>
+            <CardHeader>
+              <Skeleton className="h-6 w-32" />
+            </CardHeader>
+            <CardContent className="space-y-6">
+              {[1, 2].map((j) => (
+                <div key={j} className="flex items-center justify-between">
+                  <div className="space-y-2">
+                    <Skeleton className="h-5 w-24" />
+                    <Skeleton className="h-4 w-48" />
+                  </div>
+                  <Skeleton className="h-6 w-12" />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     );
   }
 
