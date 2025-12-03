@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, CheckCircle2, Pencil, Brain, MapPin, RefreshCw } from 'lucide-react';
+import { Loader2, CheckCircle2, Pencil, Brain, MapPin } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { MeasurementVerificationDialog } from './MeasurementVerificationDialog';
 import { useImageCache } from '@/contexts/ImageCacheContext';
@@ -12,7 +12,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu';
 
@@ -409,112 +408,6 @@ export function PullMeasurementsButton({
     navigate(`/roof-measure/${propertyId}?${params.toString()}`);
   };
 
-  const [reverifying, setReverifying] = useState(false);
-
-  const handleReverifyAddress = async () => {
-    if (!address) {
-      toast({
-        title: "No Address",
-        description: "No address available to re-verify.",
-        variant: "destructive"
-      });
-      return;
-    }
-
-    setReverifying(true);
-    
-    try {
-      // Call Google Maps proxy to geocode the address
-      const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
-        body: {
-          endpoint: 'geocode',
-          params: { address }
-        }
-      });
-
-      if (error) throw error;
-
-      const result = data?.results?.[0];
-      if (!result?.geometry?.location) {
-        throw new Error('Could not geocode address');
-      }
-
-      const newLat = result.geometry.location.lat;
-      const newLng = result.geometry.location.lng;
-
-      // Update pipeline_entries.metadata with new coordinates
-      const { data: pipelineData } = await supabase
-        .from('pipeline_entries')
-        .select('metadata')
-        .eq('id', propertyId)
-        .single();
-
-      const currentMetadata = (pipelineData?.metadata as Record<string, any>) || {};
-      
-      const updatedMetadata = {
-        ...currentMetadata,
-        verified_address: {
-          ...currentMetadata.verified_address,
-          lat: newLat,
-          lng: newLng,
-          formatted_address: result.formatted_address,
-          geometry: result.geometry,
-          address_components: result.address_components,
-          reverified_at: new Date().toISOString()
-        },
-        address_verified: true
-      };
-
-      const { error: updateError } = await supabase
-        .from('pipeline_entries')
-        .update({ metadata: updatedMetadata })
-        .eq('id', propertyId);
-
-      if (updateError) throw updateError;
-
-      // Also update contact if available
-      const contactId = currentMetadata.contact_id;
-      if (contactId) {
-        await supabase
-          .from('contacts')
-          .update({
-            latitude: newLat,
-            longitude: newLng,
-            verified_address: result.formatted_address
-          })
-          .eq('id', contactId);
-      }
-
-      toast({
-        title: "✅ Address Re-verified",
-        description: (
-          <div className="space-y-1 text-sm">
-            <p>{result.formatted_address}</p>
-            <p className="text-muted-foreground text-xs">
-              Coordinates: {newLat.toFixed(6)}, {newLng.toFixed(6)}
-            </p>
-          </div>
-        ),
-        duration: 5000
-      });
-
-      // Automatically trigger measurement pull with new coordinates
-      lat = newLat;
-      lng = newLng;
-      handlePull();
-
-    } catch (err: any) {
-      console.error('Re-verify address error:', err);
-      toast({
-        title: "Re-verification Failed",
-        description: err.message || "Could not re-verify address",
-        variant: "destructive"
-      });
-    } finally {
-      setReverifying(false);
-    }
-  };
-
   return (
     <>
       <div className="flex items-center gap-2">
@@ -545,22 +438,13 @@ export function PullMeasurementsButton({
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="start" className="w-48">
-            <DropdownMenuItem onClick={handlePull} disabled={loading || reverifying}>
+            <DropdownMenuItem onClick={handlePull} disabled={loading}>
               <Brain className="h-4 w-4 mr-2" />
               AI Analysis (GPT-4)
             </DropdownMenuItem>
             <DropdownMenuItem onClick={handleOpenManualTool}>
               <Pencil className="h-4 w-4 mr-2" />
               Draw Manually
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleReverifyAddress} disabled={loading || reverifying || !address}>
-              {reverifying ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4 mr-2" />
-              )}
-              Re-verify Address
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

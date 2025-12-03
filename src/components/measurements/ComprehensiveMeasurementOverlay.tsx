@@ -2125,7 +2125,20 @@ export function ComprehensiveMeasurementOverlay({
   };
 
   const getTotalArea = () => {
-    return measurement?.faces?.reduce((sum: number, face: any) => sum + (face.area || 0), 0) || 0;
+    // Try summing from faces first
+    const facesArea = measurement?.faces?.reduce((sum: number, face: any) => 
+      sum + (face.area_sqft || face.plan_area_sqft || face.area || 0), 0) || 0;
+    
+    if (facesArea > 0) return facesArea;
+    
+    // Fallback to tags
+    if (tags['roof.plan_area'] && tags['roof.plan_area'] > 0) return tags['roof.plan_area'];
+    if (tags['roof.total_area'] && tags['roof.total_area'] > 0) return tags['roof.total_area'];
+    
+    // Fallback to measurement summary
+    return measurement?.summary?.total_area_sqft || 
+           measurement?.summary?.plan_area_sqft ||
+           measurement?.total_area_sqft || 0;
   };
 
   return (
@@ -2286,15 +2299,15 @@ export function ComprehensiveMeasurementOverlay({
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Ridge:</span>
-                <span className="font-semibold">{(tags['lf.ridge'] || 0).toFixed(0)} ft</span>
+                <span className="font-semibold">{(tags['lf.ridge'] || tags['roof.ridge'] || measurement?.linear_features?.ridge || measurement?.summary?.ridge_ft || 0).toFixed(0)} ft</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Hip:</span>
-                <span className="font-semibold">{(tags['lf.hip'] || 0).toFixed(0)} ft</span>
+                <span className="font-semibold">{(tags['lf.hip'] || tags['roof.hip'] || measurement?.linear_features?.hip || measurement?.summary?.hip_ft || 0).toFixed(0)} ft</span>
               </div>
               <div className="flex justify-between">
                 <span className="text-muted-foreground">Valley:</span>
-                <span className="font-semibold">{(tags['lf.valley'] || 0).toFixed(0)} ft</span>
+                <span className="font-semibold">{(tags['lf.valley'] || tags['roof.valley'] || measurement?.linear_features?.valley || measurement?.summary?.valley_ft || 0).toFixed(0)} ft</span>
               </div>
               <div className="flex justify-between border-t pt-1 mt-1">
                 <span className="text-muted-foreground">Facets:</span>
