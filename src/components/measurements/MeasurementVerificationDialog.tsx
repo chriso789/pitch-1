@@ -169,7 +169,7 @@ export function MeasurementVerificationDialog({
             endpoint: 'satellite',
             params: {
               center: `${lat},${lng}`,  // ✅ Always uses verified address
-              zoom: '21',  // Increased for closer house framing
+              zoom: '20',  // Zoom 20 provides clearer image quality
               size: '1280x1280',
               maptype: 'satellite',
               scale: '2'
@@ -922,8 +922,8 @@ export function MeasurementVerificationDialog({
                         const detection = detectRoofType(updatedMeasurement, updatedTags);
                         setDetectedRoofType(detection);
                       }}
-                      canvasWidth={500}
-                      canvasHeight={350}
+                      canvasWidth={640}
+                      canvasHeight={500}
                       verifiedAddressLat={verifiedAddressLat}
                       verifiedAddressLng={verifiedAddressLng}
                     />
