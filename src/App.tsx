@@ -12,6 +12,7 @@ import { UserProfileProvider } from "@/contexts/UserProfileContext";
 import { ImageCacheProvider } from "@/contexts/ImageCacheContext";
 import { initSessionPersistence } from "@/utils/sessionPersistence";
 import { useGlobalActivityTracking } from "@/hooks/useGlobalActivityTracking";
+import { SessionExpiryHandler } from "@/components/auth/SessionExpiryHandler";
 import LandingPage from "./pages/LandingPage";
 import Pricing from "./pages/Pricing";
 import Features from "./pages/Features";
@@ -127,6 +128,7 @@ const AppContent = () => {
     <>
       <Toaster />
       <Sonner />
+      <SessionExpiryHandler />
       {userId && (
         <LocationSelectionDialog 
           userId={userId} 

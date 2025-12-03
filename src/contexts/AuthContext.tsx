@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
+import { checkSessionExpiry, clearAllSessionData } from '@/services/sessionManager';
 
 interface AuthContextType {
   session: Session | null;
@@ -22,6 +23,18 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   useEffect(() => {
     // Get initial session
     supabase.auth.getSession().then(({ data: { session } }) => {
+      // Check if session has expired based on our custom timeout
+      const sessionInfo = checkSessionExpiry();
+      if (session && sessionInfo.expiresAt !== null && !sessionInfo.isValid) {
+        console.log('[AuthContext] Session expired based on custom timeout, signing out');
+        clearAllSessionData();
+        supabase.auth.signOut();
+        setSession(null);
+        setUser(null);
+        setLoading(false);
+        return;
+      }
+      
       setSession(session);
       setUser(session?.user ?? null);
       setLoading(false);

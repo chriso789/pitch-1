@@ -41,6 +41,8 @@ import { useToast } from "@/components/ui/use-toast";
 import { useNavigate } from "react-router-dom";
 import { TEST_IDS } from "@/../tests/utils/test-ids";
 import { getRoleDisplayName } from "@/lib/roleUtils";
+import { clearAllSessionData } from "@/services/sessionManager";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface SidebarProps {
   isCollapsed?: boolean;
@@ -50,6 +52,7 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
   const { toast } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const { user: currentUser, loading: userLoading, refetch: refetchUser } = useCurrentUser();
   const { user: authUser } = useAuth();
   
@@ -101,6 +104,12 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
 
   const handleSignOut = async () => {
     try {
+      // Clear all session data (localStorage, sessionStorage, cookies)
+      clearAllSessionData();
+      
+      // Clear React Query cache
+      queryClient.clear();
+      
       const { error } = await supabase.auth.signOut();
       if (error) throw error;
       
@@ -109,8 +118,8 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
         description: "You have been logged out of the system.",
       });
       
-      // Navigate to login page
-      navigate('/login');
+      // Navigate to landing page
+      navigate('/', { replace: true });
     } catch (error: any) {
       console.error('Sign out error:', error);
       toast({
