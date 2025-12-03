@@ -39,6 +39,7 @@ import { PriceManagementDashboard } from "@/components/pricing/PriceManagementDa
 import { PlatformAdmin } from "@/components/settings/PlatformAdmin";
 import { BatchRegenerationPanel } from "@/components/measurements/BatchRegenerationPanel";
 import { MeasurementQualityDashboard } from "@/components/measurements/MeasurementQualityDashboard";
+import { EdgeFunctionHealthDashboard } from "@/components/settings/EdgeFunctionHealthDashboard";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -363,6 +364,10 @@ export const Settings = () => {
 
         <TabsContent value="platform-admin" className="space-y-6">
           <PlatformAdmin />
+        </TabsContent>
+
+        <TabsContent value="edge-functions" className="space-y-6">
+          <EdgeFunctionHealthDashboard />
         </TabsContent>
       </Tabs>
     </div>
