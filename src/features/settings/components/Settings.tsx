@@ -312,9 +312,6 @@ export const Settings = () => {
           </Tabs>
         </TabsContent>
 
-        <TabsContent value="approvals" className="space-y-6">
-          <ManagerApprovalQueue />
-        </TabsContent>
 
         <TabsContent value="health" className="space-y-6">
           <SystemHealthCheck />
