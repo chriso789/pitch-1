@@ -113,13 +113,13 @@ const LandingPage = () => {
   ];
 
   const replaces = [
-    'Mojo Dialer',
-    'HubSpot',
-    'ZoomInfo',
-    'Apollo.io',
-    'Joist',
-    'ServiceTitan',
-    'Buildertrend'
+    'Your Dialer Software',
+    'Your CRM System',
+    'Your Contact Database',
+    'Your Lead Intelligence',
+    'Your Estimate Software',
+    'Your Project Management',
+    'Your Field Service App'
   ];
 
   return (
@@ -270,7 +270,7 @@ const LandingPage = () => {
       </section>
 
       {/* Features Section */}
-      <section className="py-20 px-4">
+      <section id="features" className="py-20 px-4">
         <div className="container mx-auto max-w-6xl">
           <div className="text-center mb-16">
             <h2 className="text-4xl md:text-5xl font-bold text-slate-900 mb-4">
