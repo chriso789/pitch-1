@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Progress } from "@/components/ui/progress";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { 
   Calculator, 
   Plus, 
@@ -56,10 +57,6 @@ interface CommissionCalculation {
 }
 
 export const CommissionManagement = () => {
-  const [commissionPlans, setCommissionPlans] = useState<CommissionPlan[]>([]);
-  const [salesReps, setSalesReps] = useState<UserProfile[]>([]);
-  const [commissionCalculations, setCommissionCalculations] = useState<CommissionCalculation[]>([]);
-  const [loading, setLoading] = useState(true);
   const [showNewPlan, setShowNewPlan] = useState(false);
   const [editingPlan, setEditingPlan] = useState<CommissionPlan | null>(null);
   const [newPlan, setNewPlan] = useState({
@@ -84,48 +81,53 @@ export const CommissionManagement = () => {
     return labels[value] || value;
   };
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    loadData();
-  }, []);
+  // React Query for commission plans with caching
+  const { data: commissionPlans = [], isLoading: plansLoading } = useQuery({
+    queryKey: ['commission-plans'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('commission_plans')
+        .select('*')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 30 * 1000, // 30 seconds
+  });
 
-  const loadData = async () => {
-    try {
-      const [plansResult, repsResult, calculationsResult] = await Promise.all([
-        supabase
-          .from('commission_plans')
-          .select('*')
-          .order('created_at', { ascending: false }),
-        supabase
-          .from('profiles')
-          .select('id, first_name, last_name, email, role, personal_overhead_rate, photo_url')
-          .in('role', ['sales_manager', 'regional_manager', 'corporate'])
-          .eq('is_active', true),
-        supabase
-          .from('commission_calculations')
-          .select('*')
-          .order('calculated_at', { ascending: false })
-          .limit(10)
-      ]);
+  // React Query for sales reps with caching
+  const { data: salesReps = [], isLoading: repsLoading } = useQuery({
+    queryKey: ['sales-reps-commission'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, email, role, personal_overhead_rate, photo_url')
+        .in('role', ['sales_manager', 'regional_manager', 'corporate'])
+        .eq('is_active', true);
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 60 * 1000, // 1 minute
+  });
 
-      if (plansResult.error) throw plansResult.error;
-      if (repsResult.error) throw repsResult.error;
-      if (calculationsResult.error) throw calculationsResult.error;
+  // React Query for commission calculations with caching
+  const { data: commissionCalculations = [], isLoading: calcsLoading } = useQuery({
+    queryKey: ['commission-calculations'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('commission_calculations')
+        .select('*')
+        .order('calculated_at', { ascending: false })
+        .limit(10);
+      if (error) throw error;
+      return data || [];
+    },
+    staleTime: 30 * 1000, // 30 seconds
+  });
 
-      setCommissionPlans(plansResult.data || []);
-      setSalesReps(repsResult.data || []);
-      setCommissionCalculations(calculationsResult.data || []);
-    } catch (error) {
-      console.error('Error loading commission data:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load commission data",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
+  const loading = plansLoading || repsLoading || calcsLoading;
 
   const savePlan = async () => {
     try {
@@ -171,7 +173,7 @@ export const CommissionManagement = () => {
       });
       setShowNewPlan(false);
       setEditingPlan(null);
-      loadData();
+      queryClient.invalidateQueries({ queryKey: ['commission-plans'] });
     } catch (error) {
       console.error('Error saving plan:', error);
       toast({
@@ -196,7 +198,7 @@ export const CommissionManagement = () => {
         description: `Commission plan ${isActive ? 'activated' : 'deactivated'}`,
       });
 
-      loadData();
+      queryClient.invalidateQueries({ queryKey: ['commission-plans'] });
     } catch (error) {
       console.error('Error updating plan status:', error);
       toast({
@@ -401,14 +403,15 @@ export const CommissionManagement = () => {
                         size="sm"
                         onClick={() => {
                           setEditingPlan(plan);
+                          const config = plan.plan_config as any;
                           setNewPlan({
                             name: plan.name,
                             commission_type: plan.commission_type,
-                            commission_rate: plan.plan_config?.commission_rate || 5,
-                            tier_rates: plan.plan_config?.tier_rates || [{ threshold: 0, rate: 5 }],
+                            commission_rate: config?.commission_rate || 5,
+                            tier_rates: config?.tier_rates || [{ threshold: 0, rate: 5 }],
                             include_overhead: plan.include_overhead,
                             payment_method: plan.payment_method,
-                            description: plan.plan_config?.description || ''
+                            description: config?.description || ''
                           });
                           setShowNewPlan(true);
                         }}
@@ -422,7 +425,7 @@ export const CommissionManagement = () => {
                     <h4 className="font-medium mb-2">Plan Details</h4>
                     <div className="space-y-1 text-sm">
                       <p>
-                        <strong>Rate:</strong> {plan.plan_config?.commission_rate || 0}%
+                        <strong>Rate:</strong> {(plan.plan_config as any)?.commission_rate || 0}%
                       </p>
                       <p>
                         <strong>Pay Release:</strong> {formatPayRelease(plan.payment_method)}
