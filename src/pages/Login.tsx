@@ -96,6 +96,8 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
       // Background tasks (non-blocking)
       setTimeout(() => {
         ensureUserProfile(authUser).catch(console.warn);
+        // Sync user metadata from profiles to auth (fixes display name issues)
+        supabase.functions.invoke('sync-user-metadata').catch(console.warn);
         supabase.functions.invoke('log-auth-activity', {
           body: {
             user_id: authUser.id,

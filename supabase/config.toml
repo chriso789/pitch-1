@@ -275,3 +275,6 @@ verify_jwt = true
 
 [functions.supabase-health]
 verify_jwt = false
+
+[functions.sync-user-metadata]
+verify_jwt = true
