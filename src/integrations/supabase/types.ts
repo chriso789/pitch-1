@@ -12713,9 +12713,11 @@ export type Database = {
           address_state: string | null
           address_street: string | null
           address_zip: string | null
+          billing_email: string | null
           company_overhead_rate: number | null
           created_at: string | null
           email: string | null
+          features_enabled: string[] | null
           id: string
           is_active: boolean | null
           license_number: string | null
@@ -12730,7 +12732,12 @@ export type Database = {
           primary_color: string | null
           secondary_color: string | null
           settings: Json | null
+          stripe_customer_id: string | null
+          stripe_subscription_id: string | null
           subdomain: string | null
+          subscription_expires_at: string | null
+          subscription_status: string | null
+          subscription_tier: string | null
           updated_at: string | null
           website: string | null
           website_metadata: Json | null
@@ -12741,9 +12748,11 @@ export type Database = {
           address_state?: string | null
           address_street?: string | null
           address_zip?: string | null
+          billing_email?: string | null
           company_overhead_rate?: number | null
           created_at?: string | null
           email?: string | null
+          features_enabled?: string[] | null
           id?: string
           is_active?: boolean | null
           license_number?: string | null
@@ -12758,7 +12767,12 @@ export type Database = {
           primary_color?: string | null
           secondary_color?: string | null
           settings?: Json | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           subdomain?: string | null
+          subscription_expires_at?: string | null
+          subscription_status?: string | null
+          subscription_tier?: string | null
           updated_at?: string | null
           website?: string | null
           website_metadata?: Json | null
@@ -12769,9 +12783,11 @@ export type Database = {
           address_state?: string | null
           address_street?: string | null
           address_zip?: string | null
+          billing_email?: string | null
           company_overhead_rate?: number | null
           created_at?: string | null
           email?: string | null
+          features_enabled?: string[] | null
           id?: string
           is_active?: boolean | null
           license_number?: string | null
@@ -12786,7 +12802,12 @@ export type Database = {
           primary_color?: string | null
           secondary_color?: string | null
           settings?: Json | null
+          stripe_customer_id?: string | null
+          stripe_subscription_id?: string | null
           subdomain?: string | null
+          subscription_expires_at?: string | null
+          subscription_status?: string | null
+          subscription_tier?: string | null
           updated_at?: string | null
           website?: string | null
           website_metadata?: Json | null
