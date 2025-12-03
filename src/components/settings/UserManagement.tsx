@@ -12,6 +12,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Users, Plus, Edit2, Trash2, Shield, Settings, Eye, MapPin, EyeOff, Ban, CheckCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { Skeleton } from "@/components/ui/skeleton";
 import FeaturePermissions from './FeaturePermissions';
 import { EnhancedUserProfile } from './EnhancedUserProfile';
 import { UserLocationAssignments } from './UserLocationAssignments';
@@ -33,10 +35,7 @@ interface User {
 }
 
 export const UserManagement = () => {
-  const [users, setUsers] = useState<User[]>([]);
-  const [loading, setLoading] = useState(true);
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
-  const [currentUser, setCurrentUser] = useState<any>(null);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
@@ -63,84 +62,51 @@ export const UserManagement = () => {
     commission_rate: 50
   });
   const { toast } = useToast();
+  const queryClient = useQueryClient();
 
-  useEffect(() => {
-    loadUsers();
-    getCurrentUser();
-  }, []);
+  // React Query for user management data with parallel calls
+  const { data: userData, isLoading: loading } = useQuery({
+    queryKey: ['user-management-data'],
+    queryFn: async () => {
+      // Run all 3 calls in parallel
+      const [authResult, profilesResult, rolesResult] = await Promise.all([
+        supabase.auth.getUser(),
+        supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+        supabase.from('user_roles').select('user_id, role').order('role', { ascending: true })
+      ]);
 
-  const getCurrentUser = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
+      if (profilesResult.error) throw profilesResult.error;
+
+      const user = authResult.data?.user;
+      let currentUserData = null;
+
       if (user) {
-        // Fetch profile data
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', user.id)
-          .single();
-        
-        // Fetch user role from user_roles table (secure)
-        const { data: userRole } = await supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', user.id)
-          .order('role', { ascending: true })
-          .limit(1)
-          .single();
-        
-        setCurrentUser({
-          ...profile,
-          role: userRole?.role || profile?.role
-        });
-      }
-    } catch (error) {
-      console.error('Error getting current user:', error);
-    }
-  };
-
-  const loadUsers = async () => {
-    try {
-      // Fetch profiles
-      const { data: profiles, error: profilesError } = await supabase
-        .from('profiles')
-        .select('*')
-        .order('created_at', { ascending: false });
-
-      if (profilesError) throw profilesError;
-
-      // Fetch roles from user_roles table for all users
-      const { data: userRoles, error: rolesError } = await supabase
-        .from('user_roles')
-        .select('user_id, role')
-        .order('role', { ascending: true });
-
-      if (rolesError) {
-        console.warn('Error loading user roles, falling back to profiles.role:', rolesError);
+        // Find current user profile from already-fetched profiles
+        const currentProfile = profilesResult.data?.find(p => p.id === user.id);
+        const currentUserRole = rolesResult.data?.find(r => r.user_id === user.id);
+        currentUserData = {
+          ...currentProfile,
+          role: currentUserRole?.role || currentProfile?.role
+        };
       }
 
-      // Create a map of user_id to role from user_roles table
-      const roleMap = new Map(
-        userRoles?.map(ur => [ur.user_id, ur.role]) || []
-      );
-
-      // Merge profiles with roles from user_roles table
-      const usersWithRoles = profiles?.map(profile => ({
+      // Create role map and merge with profiles
+      const roleMap = new Map(rolesResult.data?.map(ur => [ur.user_id, ur.role]) || []);
+      const usersWithRoles = profilesResult.data?.map(profile => ({
         ...profile,
-        role: roleMap.get(profile.id) || profile.role // Fallback to profile.role if not in user_roles
+        role: roleMap.get(profile.id) || profile.role
       })) || [];
 
-      setUsers(usersWithRoles);
-    } catch (error) {
-      console.error('Error loading users:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load users.",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
+      return { users: usersWithRoles, currentUser: currentUserData };
+    },
+    staleTime: 60 * 1000, // 1 minute cache
+  });
+
+  const users = userData?.users || [];
+  const currentUser = userData?.currentUser;
+
+  const loadUsers = () => {
+    queryClient.invalidateQueries({ queryKey: ['user-management-data'] });
   };
 
   const validatePassword = (password: string): string | null => {
@@ -443,8 +409,29 @@ export const UserManagement = () => {
     return (
       <Card>
         <CardContent className="pt-6">
-          <div className="text-center py-8 text-muted-foreground">
-            Loading users...
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Skeleton className="h-8 w-40" />
+              <Skeleton className="h-10 w-28" />
+            </div>
+            <Skeleton className="h-10 w-80" />
+            <div className="space-y-3">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center gap-4">
+                    <Skeleton className="h-10 w-10 rounded-full" />
+                    <div className="space-y-2">
+                      <Skeleton className="h-5 w-32" />
+                      <Skeleton className="h-4 w-48" />
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Skeleton className="h-6 w-24" />
+                    <Skeleton className="h-8 w-8" />
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>
