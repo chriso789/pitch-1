@@ -3,7 +3,7 @@ import { Canvas as FabricCanvas, Line, Polygon, Circle, Text, FabricImage } from
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
-import { Scissors, X, Undo, Save, Lightbulb, Grid3x3, Download, Trash2, Redo } from 'lucide-react';
+import { Split, X, Undo, Save, Lightbulb, Grid3x3, Download, Trash2, Redo } from 'lucide-react';
 import { toast } from 'sonner';
 import { 
   splitPolygonByLine, calculatePolygonArea, getFacetColor, suggestSplitLines,
@@ -202,7 +202,7 @@ export function FacetSplitterOverlay({
               <div className="flex flex-wrap gap-2">
                 <Button size="sm" variant={isDrawing ? "default" : "outline"} 
                   onClick={() => { setIsDrawing(true); setRulerActive(false); toast.info('Click two points'); }}>
-                  <Scissors className="w-4 h-4 mr-2" />Draw Split
+                  <Split className="w-4 h-4 mr-2" />Draw Split
                 </Button>
                 <Button size="sm" variant="outline" onClick={undo} disabled={!canUndo}>
                   <Undo className="w-4 h-4 mr-2" />Undo

@@ -3,8 +3,7 @@ import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { 
   Split, 
-  GitBranch, 
-  Scissors,
+  GitBranch,
   Target,
   Sparkles,
   Info
@@ -98,7 +97,7 @@ export function FacetSplittingTools({
       <div className="space-y-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Scissors className="w-5 h-5 text-primary" />
+            <Split className="w-5 h-5 text-primary" />
             <h3 className="font-semibold">Facet Splitting Helpers</h3>
           </div>
           

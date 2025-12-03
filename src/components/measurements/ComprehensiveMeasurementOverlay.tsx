@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Canvas as FabricCanvas, Line, Polygon, Circle, Text as FabricText, FabricObject, FabricImage, Point as FabricPoint } from "fabric";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Move, Mountain, Triangle, ArrowDownUp, Square, Trash2, RotateCcw, Eye, EyeOff, MapPin, StickyNote, AlertTriangle, Scissors, Merge, ChevronDown, ChevronUp, Grid3x3 } from "lucide-react";
+import { Move, Mountain, Triangle, ArrowDownUp, Square, Trash2, RotateCcw, Eye, EyeOff, MapPin, StickyNote, AlertTriangle, Split, Merge, ChevronDown, ChevronUp, Grid3x3 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -2176,7 +2176,7 @@ export function ComprehensiveMeasurementOverlay({
               setSplitPoints([]);
             }}
           >
-            <Scissors className="h-4 w-4 mr-1" /> Split
+            <Split className="h-4 w-4 mr-1" /> Split
           </Button>
           <Button 
             size="sm" 
