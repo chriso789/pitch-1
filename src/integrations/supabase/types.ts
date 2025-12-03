@@ -245,6 +245,84 @@ export type Database = {
           },
         ]
       }
+      ai_chat_messages: {
+        Row: {
+          actions_taken: Json | null
+          content: string
+          created_at: string | null
+          id: string
+          role: string
+          session_id: string | null
+          tenant_id: string
+          voice_recording_id: string | null
+        }
+        Insert: {
+          actions_taken?: Json | null
+          content: string
+          created_at?: string | null
+          id?: string
+          role: string
+          session_id?: string | null
+          tenant_id: string
+          voice_recording_id?: string | null
+        }
+        Update: {
+          actions_taken?: Json | null
+          content?: string
+          created_at?: string | null
+          id?: string
+          role?: string
+          session_id?: string | null
+          tenant_id?: string
+          voice_recording_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_chat_messages_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "ai_chat_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_chat_messages_voice_recording_id_fkey"
+            columns: ["voice_recording_id"]
+            isOneToOne: false
+            referencedRelation: "voice_recordings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_chat_sessions: {
+        Row: {
+          context: Json | null
+          id: string
+          last_message_at: string | null
+          session_type: string | null
+          started_at: string | null
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          context?: Json | null
+          id?: string
+          last_message_at?: string | null
+          session_type?: string | null
+          started_at?: string | null
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          context?: Json | null
+          id?: string
+          last_message_at?: string | null
+          session_type?: string | null
+          started_at?: string | null
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       ai_insights: {
         Row: {
           action_taken: Json | null
@@ -12734,6 +12812,72 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      voice_recordings: {
+        Row: {
+          ai_summary: string | null
+          contact_id: string | null
+          created_at: string | null
+          duration_seconds: number | null
+          file_size_bytes: number | null
+          id: string
+          metadata: Json | null
+          pipeline_entry_id: string | null
+          recording_url: string
+          sentiment: string | null
+          tags: string[] | null
+          tenant_id: string
+          transcript: string | null
+          user_id: string
+        }
+        Insert: {
+          ai_summary?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          file_size_bytes?: number | null
+          id?: string
+          metadata?: Json | null
+          pipeline_entry_id?: string | null
+          recording_url: string
+          sentiment?: string | null
+          tags?: string[] | null
+          tenant_id: string
+          transcript?: string | null
+          user_id: string
+        }
+        Update: {
+          ai_summary?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          file_size_bytes?: number | null
+          id?: string
+          metadata?: Json | null
+          pipeline_entry_id?: string | null
+          recording_url?: string
+          sentiment?: string | null
+          tags?: string[] | null
+          tenant_id?: string
+          transcript?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voice_recordings_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voice_recordings_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       walkthrough_analytics: {
         Row: {

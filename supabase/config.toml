@@ -251,3 +251,6 @@ verify_jwt = true
 
 [functions.generate-roof-report]
 verify_jwt = true
+
+[functions.crm-ai-agent]
+verify_jwt = true
