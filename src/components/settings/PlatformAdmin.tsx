@@ -21,6 +21,7 @@ import {
 } from "lucide-react";
 import { EnhancedCompanyOnboarding } from "./EnhancedCompanyOnboarding";
 import { LocationUserAssignment } from "./LocationUserAssignment";
+import { PatentResearchDashboard } from "./PatentResearchDashboard";
 
 interface Company {
   id: string;
@@ -239,6 +240,9 @@ export const PlatformAdmin = () => {
           <TabsTrigger value="all">
             All ({filteredCompanies.length})
           </TabsTrigger>
+          <TabsTrigger value="patents">
+            Patents & IP
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="active" className="mt-4">
@@ -275,6 +279,10 @@ export const PlatformAdmin = () => {
               setDetailsOpen(true);
             }}
           />
+        </TabsContent>
+
+        <TabsContent value="patents" className="mt-4">
+          <PatentResearchDashboard />
         </TabsContent>
       </Tabs>
 

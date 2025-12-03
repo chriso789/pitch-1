@@ -225,14 +225,12 @@ const LandingPage = () => {
                 </div>
                 <div className="text-sm text-slate-600 ml-4">pitch-crm.ai/dashboard</div>
               </div>
-              <div className="bg-gradient-to-br from-slate-50 to-slate-100 p-8 min-h-[500px] flex items-center justify-center">
-                <div className="text-center">
-                  <div className="w-20 h-20 bg-gradient-to-br from-blue-600 to-purple-600 rounded-2xl mx-auto mb-4 flex items-center justify-center">
-                    <BarChart3 className="w-10 h-10 text-white" />
-                  </div>
-                  <p className="text-slate-500 text-sm">Dashboard Screenshot Preview</p>
-                  <p className="text-xs text-slate-400 mt-2">Replace with actual screenshot</p>
-                </div>
+              <div className="bg-slate-900 min-h-[500px]">
+                <img 
+                  src="/dashboard-screenshot.png" 
+                  alt="PITCH CRM Dashboard - Sales pipeline, metrics, and team management interface"
+                  className="w-full h-full object-cover object-top"
+                />
               </div>
             </Card>
           </div>
