@@ -130,25 +130,114 @@ serve(async (req) => {
   }
 });
 
-// Simple formula evaluator for basic calculations
+/**
+ * Safe mathematical expression parser using recursive descent
+ * Eliminates code injection risk by NOT using eval() or new Function()
+ * Only allows: numbers, +, -, *, /, parentheses, decimals
+ */
 function evaluateFormula(formula: string, parameters: Record<string, any>): number {
   try {
+    // Input validation
+    if (!formula || typeof formula !== 'string') return 0;
+    if (formula.length > 500) {
+      console.error('Formula too long (max 500 chars)');
+      return 0;
+    }
+    
     // Replace parameter names with values
     let expression = formula;
     for (const [key, value] of Object.entries(parameters)) {
-      expression = expression.replace(new RegExp(key, 'g'), value.toString());
+      const numValue = Number(value);
+      if (isNaN(numValue)) continue;
+      // Escape special regex characters in key
+      const escapedKey = key.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      expression = expression.replace(new RegExp(escapedKey, 'g'), numValue.toString());
     }
     
-    // Basic safety check - only allow numbers, operators, and parentheses
-    if (!/^[0-9+\-*/.() ]+$/.test(expression)) {
-      throw new Error('Invalid expression');
+    // Remove all whitespace
+    expression = expression.replace(/\s/g, '');
+    
+    // Strict validation - only allow numbers, operators, parentheses, decimals
+    if (!/^[0-9+\-*/.()]+$/.test(expression)) {
+      console.error('Invalid characters in expression:', expression);
+      return 0;
     }
     
-    // Use Function constructor for safe evaluation (limited scope)
-    const result = new Function(`return ${expression}`)();
+    // Parse and evaluate using safe recursive descent parser
+    const result = safeParse(expression);
     return typeof result === 'number' && isFinite(result) ? result : 0;
   } catch (error) {
     console.error('Formula evaluation error:', error);
     return 0;
   }
+}
+
+/**
+ * Recursive descent parser - completely safe, no eval/Function
+ * Grammar:
+ *   expression = term (('+' | '-') term)*
+ *   term = factor (('*' | '/') factor)*
+ *   factor = '-'? (number | '(' expression ')')
+ */
+function safeParse(expr: string): number {
+  let pos = 0;
+  
+  function parseExpression(): number {
+    let left = parseTerm();
+    while (pos < expr.length && (expr[pos] === '+' || expr[pos] === '-')) {
+      const op = expr[pos++];
+      const right = parseTerm();
+      left = op === '+' ? left + right : left - right;
+    }
+    return left;
+  }
+  
+  function parseTerm(): number {
+    let left = parseFactor();
+    while (pos < expr.length && (expr[pos] === '*' || expr[pos] === '/')) {
+      const op = expr[pos++];
+      const right = parseFactor();
+      if (op === '/') {
+        // Safe division by zero - return 0 instead of Infinity
+        left = right === 0 ? 0 : left / right;
+      } else {
+        left = left * right;
+      }
+    }
+    return left;
+  }
+  
+  function parseFactor(): number {
+    // Handle unary minus
+    if (expr[pos] === '-') {
+      pos++;
+      return -parseFactor();
+    }
+    
+    // Handle unary plus
+    if (expr[pos] === '+') {
+      pos++;
+      return parseFactor();
+    }
+    
+    // Handle parentheses
+    if (expr[pos] === '(') {
+      pos++; // skip '('
+      const result = parseExpression();
+      if (expr[pos] === ')') pos++; // skip ')'
+      return result;
+    }
+    
+    // Parse number (including decimals)
+    let numStr = '';
+    while (pos < expr.length && /[0-9.]/.test(expr[pos])) {
+      numStr += expr[pos++];
+    }
+    
+    const num = parseFloat(numStr);
+    return isNaN(num) ? 0 : num;
+  }
+  
+  const result = parseExpression();
+  return result;
 }
