@@ -19,7 +19,7 @@ import {
   Shield,
   ExternalLink
 } from "lucide-react";
-import { CompanyOnboarding } from "./CompanyOnboarding";
+import { EnhancedCompanyOnboarding } from "./EnhancedCompanyOnboarding";
 import { LocationUserAssignment } from "./LocationUserAssignment";
 
 interface Company {
@@ -145,25 +145,15 @@ export const PlatformAdmin = () => {
             Master-level access to manage all companies and onboarding
           </p>
         </div>
-        <Dialog open={onboardingOpen} onOpenChange={setOnboardingOpen}>
-          <DialogTrigger asChild>
-            <Button className="gap-2">
-              <Plus className="h-4 w-4" />
-              Onboard New Company
-            </Button>
-          </DialogTrigger>
-          <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
-            <DialogHeader>
-              <DialogTitle>Onboard New Company</DialogTitle>
-            </DialogHeader>
-            <CompanyOnboarding 
-              onComplete={() => {
-                setOnboardingOpen(false);
-                loadCompanies();
-              }}
-            />
-          </DialogContent>
-        </Dialog>
+        <Button className="gap-2" onClick={() => setOnboardingOpen(true)}>
+          <Plus className="h-4 w-4" />
+          Onboard New Company
+        </Button>
+        <EnhancedCompanyOnboarding
+          open={onboardingOpen}
+          onOpenChange={setOnboardingOpen}
+          onComplete={() => loadCompanies()}
+        />
       </div>
 
       {/* Stats Overview */}
