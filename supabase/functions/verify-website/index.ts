@@ -8,6 +8,76 @@ const corsHeaders = {
 // Valid TLDs including .org, .com, .net, etc.
 const VALID_TLD_REGEX = /\.[a-z]{2,}$/i;
 
+// Blocked hostnames - known dangerous/internal endpoints
+const BLOCKED_HOSTNAMES = new Set([
+  'localhost',
+  '127.0.0.1',
+  '0.0.0.0',
+  '::1',
+  'metadata.google.internal',
+  '169.254.169.254',
+  'metadata.internal',
+  'instance-data',
+  'metadata',
+]);
+
+// Check if IP is private/internal
+function isPrivateIP(ip: string): boolean {
+  const parts = ip.split('.').map(Number);
+  if (parts.length !== 4 || parts.some(p => isNaN(p) || p < 0 || p > 255)) {
+    return false;
+  }
+  
+  // 10.0.0.0/8 (Class A private)
+  if (parts[0] === 10) return true;
+  // 172.16.0.0/12 (Class B private)
+  if (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31) return true;
+  // 192.168.0.0/16 (Class C private)
+  if (parts[0] === 192 && parts[1] === 168) return true;
+  // 127.0.0.0/8 (loopback)
+  if (parts[0] === 127) return true;
+  // 169.254.0.0/16 (link-local / cloud metadata)
+  if (parts[0] === 169 && parts[1] === 254) return true;
+  // 0.0.0.0
+  if (parts.every(p => p === 0)) return true;
+  // 100.64.0.0/10 (Carrier-grade NAT)
+  if (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127) return true;
+  
+  return false;
+}
+
+// Validate URL before fetching - SSRF protection
+function validateUrl(url: URL): { valid: boolean; error?: string } {
+  const hostname = url.hostname.toLowerCase();
+  
+  // Block known dangerous hostnames
+  if (BLOCKED_HOSTNAMES.has(hostname)) {
+    return { valid: false, error: 'URL points to blocked host' };
+  }
+  
+  // Block direct IP addresses that are private
+  if (/^\d+\.\d+\.\d+\.\d+$/.test(hostname)) {
+    if (isPrivateIP(hostname)) {
+      return { valid: false, error: 'URL points to private network' };
+    }
+  }
+  
+  // Block internal hostname patterns
+  if (hostname.endsWith('.internal') || 
+      hostname.endsWith('.local') || 
+      hostname.endsWith('.localhost') ||
+      hostname.includes('.internal.')) {
+    return { valid: false, error: 'URL points to internal resource' };
+  }
+  
+  // Block file:// and other dangerous protocols
+  if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+    return { valid: false, error: 'Only HTTP/HTTPS protocols allowed' };
+  }
+  
+  return { valid: true };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -36,6 +106,16 @@ serve(async (req) => {
     } catch {
       return new Response(
         JSON.stringify({ error: 'Invalid URL format', verified: false }),
+        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // SSRF Protection: Validate URL before fetching
+    const validation = validateUrl(parsedUrl);
+    if (!validation.valid) {
+      console.log('SSRF blocked:', parsedUrl.hostname, validation.error);
+      return new Response(
+        JSON.stringify({ error: validation.error, verified: false }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
