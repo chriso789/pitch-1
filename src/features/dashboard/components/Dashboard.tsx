@@ -43,7 +43,7 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { user } = useCurrentUser();
   const [dateRange, setDateRange] = useState<DateRange>({
-    from: subDays(new Date(), 30),
+    from: subDays(new Date(), 90),
     to: new Date()
   });
 
@@ -145,20 +145,19 @@ const Dashboard = () => {
   });
 
   // Pipeline status counts - filtered by tenant and role (no date filter)
-  const { data: pipelineStatusCounts = {} } = useQuery({
-    queryKey: ['dashboard-pipeline-counts', user?.id, user?.tenant_id],
+  const { data: pipelineStatusCounts = {}, isError: pipelineError } = useQuery({
+    queryKey: ['dashboard-pipeline-counts', user?.id, user?.active_tenant_id || user?.tenant_id],
     queryFn: async () => {
       if (!user) return {};
       
-      // Get user's active tenant
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('active_tenant_id, tenant_id')
-        .eq('id', user.id)
-        .single();
+      // Use active_tenant_id from useCurrentUser (already fetched)
+      const tenantId = user.active_tenant_id || user.tenant_id;
+      if (!tenantId) {
+        console.warn('[Dashboard] No tenant_id available for pipeline query');
+        return {};
+      }
       
-      const tenantId = profile?.active_tenant_id || profile?.tenant_id;
-      if (!tenantId) return {};
+      console.log('[Dashboard] Fetching pipeline counts for tenant:', tenantId, 'user:', user.id, 'role:', user.role);
       
       // Build query - NO date range filter for pipeline status (shows current state)
       let query = supabase
@@ -172,7 +171,14 @@ const Dashboard = () => {
         query = query.or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`);
       }
       
-      const { data } = await query;
+      const { data, error } = await query;
+      
+      if (error) {
+        console.error('[Dashboard] Pipeline query error:', error);
+        throw error;
+      }
+      
+      console.log('[Dashboard] Pipeline entries fetched:', data?.length || 0);
       
       const counts: Record<string, number> = {
         lead: 0,
@@ -190,9 +196,11 @@ const Dashboard = () => {
         }
       });
       
+      console.log('[Dashboard] Pipeline counts:', counts);
       return counts;
     },
-    enabled: !!user
+    enabled: !!user && !!(user.active_tenant_id || user.tenant_id),
+    retry: 2
   });
 
   // Revenue and active projects
@@ -428,7 +436,7 @@ const Dashboard = () => {
         <div className="flex items-center gap-2 flex-wrap">
           <DateRangePicker
             value={dateRange}
-            onChange={(range) => setDateRange(range || { from: subDays(new Date(), 30), to: new Date() })}
+            onChange={(range) => setDateRange(range || { from: subDays(new Date(), 90), to: new Date() })}
             data-testid="dashboard-date-filter"
           />
           
