@@ -169,7 +169,7 @@ export function MeasurementVerificationDialog({
             endpoint: 'satellite',
             params: {
               center: `${lat},${lng}`,  // ✅ Always uses verified address
-              zoom: '20',  // Zoom 20 provides clearer image quality
+              zoom: '19',  // Zoom 19 provides less pixelation
               size: '1280x1280',
               maptype: 'satellite',
               scale: '2'

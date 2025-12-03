@@ -656,6 +656,16 @@ export function ComprehensiveMeasurementOverlay({
     FabricImage.fromURL(satelliteImageUrl, {
       crossOrigin: 'anonymous',
     }).then((img) => {
+      // Scale image to fit canvas while maintaining aspect ratio and center it
+      const scale = Math.min(canvasWidth / img.width!, canvasHeight / img.height!);
+      img.scale(scale);
+      img.set({
+        left: (canvasWidth - img.width! * scale) / 2,
+        top: (canvasHeight - img.height! * scale) / 2,
+        selectable: false,
+        evented: false,
+      });
+      
       // Cache the loaded image
       imageCache.setImage(satelliteImageUrl, img);
       
@@ -689,6 +699,15 @@ export function ComprehensiveMeasurementOverlay({
     const cachedImage = imageCache.getImage(satelliteImageUrl);
     if (cachedImage) {
       console.log('Applying cached image to new canvas');
+      // Scale cached image to fit canvas
+      const scale = Math.min(canvasWidth / cachedImage.width!, canvasHeight / cachedImage.height!);
+      cachedImage.scale(scale);
+      cachedImage.set({
+        left: (canvasWidth - cachedImage.width! * scale) / 2,
+        top: (canvasHeight - cachedImage.height! * scale) / 2,
+        selectable: false,
+        evented: false,
+      });
       canvas.backgroundImage = cachedImage;
       canvas.renderAll();
     }
