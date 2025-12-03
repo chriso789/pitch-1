@@ -95,6 +95,85 @@ export type Database = {
           },
         ]
       }
+      admin_access_logs: {
+        Row: {
+          action: string
+          admin_user_id: string
+          created_at: string | null
+          duration_ms: number | null
+          id: string
+          ip_address: unknown
+          method: string | null
+          request_metadata: Json | null
+          response_summary: string | null
+          route: string | null
+          status_code: number | null
+          target_id: string | null
+          target_resource: string | null
+          target_tenant_id: string | null
+          tenant_id: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          action: string
+          admin_user_id: string
+          created_at?: string | null
+          duration_ms?: number | null
+          id?: string
+          ip_address?: unknown
+          method?: string | null
+          request_metadata?: Json | null
+          response_summary?: string | null
+          route?: string | null
+          status_code?: number | null
+          target_id?: string | null
+          target_resource?: string | null
+          target_tenant_id?: string | null
+          tenant_id?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          action?: string
+          admin_user_id?: string
+          created_at?: string | null
+          duration_ms?: number | null
+          id?: string
+          ip_address?: unknown
+          method?: string | null
+          request_metadata?: Json | null
+          response_summary?: string | null
+          route?: string | null
+          status_code?: number | null
+          target_id?: string | null
+          target_resource?: string | null
+          target_tenant_id?: string | null
+          tenant_id?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "admin_access_logs_admin_user_id_fkey"
+            columns: ["admin_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_access_logs_target_tenant_id_fkey"
+            columns: ["target_tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "admin_access_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       agreement_instances: {
         Row: {
           completed_at: string | null
@@ -5509,6 +5588,127 @@ export type Database = {
         }
         Relationships: []
       }
+      marketing_sessions: {
+        Row: {
+          analytics_consent: boolean | null
+          channel: string
+          contact_id: string | null
+          converted: boolean | null
+          converted_at: string | null
+          created_at: string | null
+          device_hash: string | null
+          device_type: string | null
+          ended_at: string | null
+          events_count: number | null
+          id: string
+          ip_address: unknown
+          ip_country: string | null
+          landing_page: string | null
+          last_activity_at: string | null
+          marketing_consent: boolean | null
+          page_views: number | null
+          referrer: string | null
+          session_key: string
+          site_domain: string | null
+          started_at: string | null
+          tenant_id: string | null
+          updated_at: string | null
+          user_agent: string | null
+          user_id: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+        }
+        Insert: {
+          analytics_consent?: boolean | null
+          channel?: string
+          contact_id?: string | null
+          converted?: boolean | null
+          converted_at?: string | null
+          created_at?: string | null
+          device_hash?: string | null
+          device_type?: string | null
+          ended_at?: string | null
+          events_count?: number | null
+          id?: string
+          ip_address?: unknown
+          ip_country?: string | null
+          landing_page?: string | null
+          last_activity_at?: string | null
+          marketing_consent?: boolean | null
+          page_views?: number | null
+          referrer?: string | null
+          session_key: string
+          site_domain?: string | null
+          started_at?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+        }
+        Update: {
+          analytics_consent?: boolean | null
+          channel?: string
+          contact_id?: string | null
+          converted?: boolean | null
+          converted_at?: string | null
+          created_at?: string | null
+          device_hash?: string | null
+          device_type?: string | null
+          ended_at?: string | null
+          events_count?: number | null
+          id?: string
+          ip_address?: unknown
+          ip_country?: string | null
+          landing_page?: string | null
+          last_activity_at?: string | null
+          marketing_consent?: boolean | null
+          page_views?: number | null
+          referrer?: string | null
+          session_key?: string
+          site_domain?: string | null
+          started_at?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "marketing_sessions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_sessions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       material_categories: {
         Row: {
           code: string
@@ -10014,6 +10214,124 @@ export type Database = {
           },
         ]
       }
+      security_alerts: {
+        Row: {
+          acknowledged: boolean | null
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          alert_type: string
+          contact_id: string | null
+          created_at: string | null
+          details: Json | null
+          detected_at: string | null
+          id: string
+          ip_address: unknown
+          resolution_notes: string | null
+          resolved: boolean | null
+          resolved_at: string | null
+          resolved_by: string | null
+          session_id: string | null
+          severity: string
+          source: string
+          summary: string
+          tenant_id: string | null
+          updated_at: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          acknowledged?: boolean | null
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          alert_type: string
+          contact_id?: string | null
+          created_at?: string | null
+          details?: Json | null
+          detected_at?: string | null
+          id?: string
+          ip_address?: unknown
+          resolution_notes?: string | null
+          resolved?: boolean | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          session_id?: string | null
+          severity?: string
+          source: string
+          summary: string
+          tenant_id?: string | null
+          updated_at?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          acknowledged?: boolean | null
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          alert_type?: string
+          contact_id?: string | null
+          created_at?: string | null
+          details?: Json | null
+          detected_at?: string | null
+          id?: string
+          ip_address?: unknown
+          resolution_notes?: string | null
+          resolved?: boolean | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          session_id?: string | null
+          severity?: string
+          source?: string
+          summary?: string
+          tenant_id?: string | null
+          updated_at?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "security_alerts_acknowledged_by_fkey"
+            columns: ["acknowledged_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "security_alerts_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "security_alerts_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "security_alerts_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "security_alerts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "security_alerts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       session_activity_log: {
         Row: {
           created_at: string
@@ -12145,6 +12463,98 @@ export type Database = {
           },
         ]
       }
+      tracking_events: {
+        Row: {
+          channel: string
+          contact_id: string | null
+          created_at: string | null
+          element_id: string | null
+          element_text: string | null
+          event_type: string
+          id: string
+          ip_address: unknown
+          metadata: Json | null
+          occurred_at: string | null
+          path: string | null
+          referrer: string | null
+          scroll_depth: number | null
+          session_id: string | null
+          tenant_id: string | null
+          time_on_page: number | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          channel: string
+          contact_id?: string | null
+          created_at?: string | null
+          element_id?: string | null
+          element_text?: string | null
+          event_type: string
+          id?: string
+          ip_address?: unknown
+          metadata?: Json | null
+          occurred_at?: string | null
+          path?: string | null
+          referrer?: string | null
+          scroll_depth?: number | null
+          session_id?: string | null
+          tenant_id?: string | null
+          time_on_page?: number | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          channel?: string
+          contact_id?: string | null
+          created_at?: string | null
+          element_id?: string | null
+          element_text?: string | null
+          event_type?: string
+          id?: string
+          ip_address?: unknown
+          metadata?: Json | null
+          occurred_at?: string | null
+          path?: string | null
+          referrer?: string | null
+          scroll_depth?: number | null
+          session_id?: string | null
+          tenant_id?: string | null
+          time_on_page?: number | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tracking_events_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracking_events_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracking_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracking_events_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       transition_rules: {
         Row: {
           conditions: Json | null
@@ -12815,6 +13225,76 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      visitor_consents: {
+        Row: {
+          consent_type: string
+          contact_id: string | null
+          created_at: string | null
+          granted: boolean
+          granted_at: string | null
+          id: string
+          ip_address: unknown
+          revoked_at: string | null
+          session_id: string | null
+          source: string | null
+          user_agent: string | null
+          user_id: string | null
+          version: string | null
+        }
+        Insert: {
+          consent_type: string
+          contact_id?: string | null
+          created_at?: string | null
+          granted: boolean
+          granted_at?: string | null
+          id?: string
+          ip_address?: unknown
+          revoked_at?: string | null
+          session_id?: string | null
+          source?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+          version?: string | null
+        }
+        Update: {
+          consent_type?: string
+          contact_id?: string | null
+          created_at?: string | null
+          granted?: boolean
+          granted_at?: string | null
+          id?: string
+          ip_address?: unknown
+          revoked_at?: string | null
+          session_id?: string | null
+          source?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+          version?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "visitor_consents_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visitor_consents_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "marketing_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "visitor_consents_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       voice_recordings: {
         Row: {
