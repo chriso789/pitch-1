@@ -135,10 +135,10 @@ const LandingPage = () => {
               </span>
             </div>
             <div className="flex items-center space-x-4">
-              <Button variant="ghost" className="hidden md:inline-flex">
+              <Button variant="ghost" className="hidden md:inline-flex" onClick={() => document.getElementById('features')?.scrollIntoView({ behavior: 'smooth' })}>
                 Features
               </Button>
-              <Button variant="ghost" className="hidden md:inline-flex">
+              <Button variant="ghost" className="hidden md:inline-flex" onClick={() => navigate('/pricing')}>
                 Pricing
               </Button>
               <Button variant="outline" onClick={() => { trackNavLogin(); navigate('/login'); }}>

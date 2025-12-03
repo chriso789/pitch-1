@@ -12,6 +12,7 @@ import { ImageCacheProvider } from "@/contexts/ImageCacheContext";
 import { initSessionPersistence } from "@/utils/sessionPersistence";
 import { useGlobalActivityTracking } from "@/hooks/useGlobalActivityTracking";
 import LandingPage from "./pages/LandingPage";
+import Pricing from "./pages/Pricing";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
 import ConfirmEmail from "./pages/ConfirmEmail";
@@ -138,6 +139,7 @@ const AppContent = () => {
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/auth/confirm-email" element={<ConfirmEmail />} />
         <Route path="/demo-request" element={<DemoRequest />} />
+        <Route path="/pricing" element={<Pricing />} />
         <Route path="/quickbooks/callback" element={<QuickBooksCallback />} />
         <Route path="/google-calendar/callback" element={<GoogleCalendarCallback />} />
         <Route path="/reports/:token" element={<PublicReportViewer />} />
