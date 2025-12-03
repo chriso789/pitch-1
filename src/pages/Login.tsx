@@ -10,6 +10,7 @@ import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2, AlertCircle, Eye, EyeOff, Wifi, WifiOff, Shield, UserPlus, KeyRound, ArrowLeft, CheckCircle } from 'lucide-react';
+import { initSession, clearAllSessionData } from '@/services/sessionManager';
 
 interface LoginProps {
   initialTab?: 'login' | 'signup' | 'forgot';
@@ -91,7 +92,9 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
   useEffect(() => {
     if (loginAttempted && session && authUser && !authLoading) {
       console.log('[Login] AuthContext ready with session, navigating to dashboard');
-      localStorage.setItem('pitch_remember_me', rememberMe.toString());
+      
+      // Initialize session with configured timeout
+      initSession(rememberMe);
       
       // Background tasks (non-blocking)
       setTimeout(() => {
