@@ -30,6 +30,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useSearchParams } from 'react-router-dom';
 import { LocationManagement } from '@/components/settings/LocationManagement';
+import { WebsitePreview } from '@/components/settings/WebsitePreview';
+import { activityTracker } from '@/services/activityTracker';
 
 interface Company {
   id: string;
@@ -57,6 +59,16 @@ interface Company {
   settings?: any;
 }
 
+interface WebsiteData {
+  verified: boolean;
+  url?: string;
+  domain?: string;
+  title?: string;
+  favicon?: string;
+  description?: string;
+  error?: string;
+}
+
 const CompanyAdminPage = () => {
   const [companies, setCompanies] = useState<Company[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,10 +79,14 @@ const CompanyAdminPage = () => {
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
 
-  // Form state
+  // Multi-location state
+  const [locationCount, setLocationCount] = useState('1');
+  const [locationNames, setLocationNames] = useState<string[]>(['']);
+  const [websiteData, setWebsiteData] = useState<WebsiteData | null>(null);
+
+  // Form state (removed subdomain)
   const [formData, setFormData] = useState({
     name: '',
-    subdomain: '',
     phone: '',
     email: '',
     website: '',
@@ -83,8 +99,19 @@ const CompanyAdminPage = () => {
     owner_email: '',
     owner_phone: '',
     subscription_tier: 'starter',
-    initial_location: '',
   });
+
+  // Update location names array when count changes
+  useEffect(() => {
+    const count = parseInt(locationCount);
+    setLocationNames(prev => {
+      const newNames = [...prev];
+      while (newNames.length < count) {
+        newNames.push('');
+      }
+      return newNames.slice(0, count);
+    });
+  }, [locationCount]);
 
   useEffect(() => {
     fetchCompanies();
@@ -115,18 +142,29 @@ const CompanyAdminPage = () => {
   };
 
   const handleCreateCompany = async () => {
-    if (!formData.name.trim() || !formData.initial_location.trim()) {
+    const validLocationNames = locationNames.filter(n => n.trim());
+    
+    if (!formData.name.trim()) {
       toast({
         title: "Validation Error",
-        description: "Company name and initial location are required",
+        description: "Company name is required",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (validLocationNames.length === 0) {
+      toast({
+        title: "Validation Error",
+        description: "At least one location name is required",
         variant: "destructive",
       });
       return;
     }
 
     try {
-      const subdomain = formData.subdomain.trim() || 
-        formData.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
+      // Auto-generate subdomain from company name
+      const subdomain = formData.name.toLowerCase().replace(/[^a-z0-9]/g, '-').replace(/-+/g, '-');
 
       const { data: tenant, error: tenantError } = await supabase
         .from('tenants')
@@ -137,6 +175,13 @@ const CompanyAdminPage = () => {
           phone: formData.phone || null,
           email: formData.email || null,
           website: formData.website || null,
+          website_verified: websiteData?.verified || false,
+          website_metadata: websiteData ? {
+            title: websiteData.title,
+            favicon: websiteData.favicon,
+            domain: websiteData.domain,
+            description: websiteData.description,
+          } : null,
           address_street: formData.address_street || null,
           address_city: formData.address_city || null,
           address_state: formData.address_state || null,
@@ -148,12 +193,14 @@ const CompanyAdminPage = () => {
 
       if (tenantError) throw tenantError;
 
-      // Create initial location
-      await supabase.from('locations').insert({
+      // Create all locations
+      const locationInserts = validLocationNames.map(name => ({
         tenant_id: tenant.id,
-        name: formData.initial_location.trim(),
+        name: name.trim(),
         is_active: true,
-      });
+      }));
+      
+      await supabase.from('locations').insert(locationInserts);
 
       // Grant current user access
       const { data: { user } } = await supabase.auth.getUser();
@@ -166,7 +213,10 @@ const CompanyAdminPage = () => {
         });
       }
 
-      toast({ title: "Company created successfully" });
+      // Track activity
+      activityTracker.trackDataChange('tenants', 'create', tenant.id);
+
+      toast({ title: `Company created with ${validLocationNames.length} location(s)` });
       resetForm();
       setCreateDialogOpen(false);
       fetchCompanies();
@@ -231,7 +281,6 @@ const CompanyAdminPage = () => {
     setSelectedCompany(company);
     setFormData({
       name: company.name || '',
-      subdomain: company.subdomain || '',
       phone: company.phone || '',
       email: company.email || '',
       website: company.website || '',
@@ -244,7 +293,6 @@ const CompanyAdminPage = () => {
       owner_email: company.owner_email || '',
       owner_phone: company.owner_phone || '',
       subscription_tier: company.subscription_tier || 'starter',
-      initial_location: '',
     });
     setEditDialogOpen(true);
   };
@@ -252,7 +300,6 @@ const CompanyAdminPage = () => {
   const resetForm = () => {
     setFormData({
       name: '',
-      subdomain: '',
       phone: '',
       email: '',
       website: '',
@@ -265,7 +312,17 @@ const CompanyAdminPage = () => {
       owner_email: '',
       owner_phone: '',
       subscription_tier: 'starter',
-      initial_location: '',
+    });
+    setLocationCount('1');
+    setLocationNames(['']);
+    setWebsiteData(null);
+  };
+
+  const handleLocationNameChange = (index: number, value: string) => {
+    setLocationNames(prev => {
+      const updated = [...prev];
+      updated[index] = value;
+      return updated;
     });
   };
 
@@ -405,32 +462,59 @@ const CompanyAdminPage = () => {
               <DialogTitle>Create New Company</DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-4">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Company Name *</Label>
-                  <Input
-                    placeholder="ABC Roofing Co."
-                    value={formData.name}
-                    onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Subdomain</Label>
-                  <Input
-                    placeholder="abc-roofing (auto-generated)"
-                    value={formData.subdomain}
-                    onChange={(e) => setFormData({ ...formData, subdomain: e.target.value })}
-                  />
-                </div>
-              </div>
-              
               <div className="space-y-2">
-                <Label>Initial Location Name *</Label>
+                <Label>Company Name *</Label>
                 <Input
-                  placeholder="Main Office"
-                  value={formData.initial_location}
-                  onChange={(e) => setFormData({ ...formData, initial_location: e.target.value })}
+                  placeholder="ABC Roofing Co."
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 />
+              </div>
+
+              {/* Website with live verification */}
+              <div className="space-y-2">
+                <Label>Website</Label>
+                <Input
+                  placeholder="www.company.com"
+                  value={formData.website}
+                  onChange={(e) => setFormData({ ...formData, website: e.target.value })}
+                />
+                <WebsitePreview 
+                  url={formData.website} 
+                  onVerified={setWebsiteData}
+                />
+              </div>
+
+              {/* Number of Locations Dropdown */}
+              <div className="space-y-2">
+                <Label>Number of Locations *</Label>
+                <Select value={locationCount} onValueChange={setLocationCount}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select number of locations" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(num => (
+                      <SelectItem key={num} value={num.toString()}>
+                        {num} Location{num > 1 ? 's' : ''}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Dynamic Location Name Inputs */}
+              <div className="space-y-2">
+                <Label>Location Names *</Label>
+                <div className="space-y-2">
+                  {locationNames.map((name, index) => (
+                    <Input
+                      key={index}
+                      placeholder={`Location ${index + 1} Name (e.g., Main Office, Tampa Branch)`}
+                      value={name}
+                      onChange={(e) => handleLocationNameChange(index, e.target.value)}
+                    />
+                  ))}
+                </div>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -451,15 +535,6 @@ const CompanyAdminPage = () => {
                     onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                   />
                 </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Website</Label>
-                <Input
-                  placeholder="https://www.company.com"
-                  value={formData.website}
-                  onChange={(e) => setFormData({ ...formData, website: e.target.value })}
-                />
               </div>
 
               <div className="space-y-2">
