@@ -7,11 +7,12 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
-import { MapPin, Plus, Edit, Trash2, Building2, Users } from "lucide-react";
+import { MapPin, Plus, Edit, Trash2, Building2, CheckCircle } from "lucide-react";
 import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
+import AddressVerification from "@/shared/components/forms/AddressVerification";
 
 interface LocationManagementProps {
-  tenantId?: string; // If provided, manage locations for this specific tenant
+  tenantId?: string;
 }
 
 interface Location {
@@ -26,22 +27,52 @@ interface Location {
   manager_id?: string;
   is_active: boolean;
   created_at: string;
+  latitude?: number;
+  longitude?: number;
+  place_id?: string;
+  formatted_address?: string;
+  verified_address?: any;
+  address_verified_at?: string;
 }
+
+interface FormData {
+  name: string;
+  address_street: string;
+  address_city: string;
+  address_state: string;
+  address_zip: string;
+  phone: string;
+  email: string;
+  latitude: number | null;
+  longitude: number | null;
+  place_id: string;
+  formatted_address: string;
+  verified_address: any;
+  address_verified_at: string | null;
+}
+
+const initialFormData: FormData = {
+  name: '',
+  address_street: '',
+  address_city: '',
+  address_state: '',
+  address_zip: '',
+  phone: '',
+  email: '',
+  latitude: null,
+  longitude: null,
+  place_id: '',
+  formatted_address: '',
+  verified_address: null,
+  address_verified_at: null
+};
 
 export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) => {
   const [locations, setLocations] = useState<Location[]>([]);
   const [loading, setLoading] = useState(true);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingLocation, setEditingLocation] = useState<Location | null>(null);
-  const [formData, setFormData] = useState({
-    name: '',
-    address_street: '',
-    address_city: '',
-    address_state: '',
-    address_zip: '',
-    phone: '',
-    email: ''
-  });
+  const [formData, setFormData] = useState<FormData>(initialFormData);
   const { activeCompanyId } = useCompanySwitcher();
 
   useEffect(() => {
@@ -51,8 +82,6 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
   const fetchLocations = async () => {
     try {
       setLoading(true);
-      
-      // Use provided tenantId or active company
       const effectiveTenantId = tenantId || activeCompanyId;
       
       if (!effectiveTenantId) {
@@ -80,6 +109,22 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
     }
   };
 
+  const handleAddressVerified = (addressData: any, verificationData: any) => {
+    setFormData(prev => ({
+      ...prev,
+      address_street: addressData.street || '',
+      address_city: addressData.city || '',
+      address_state: addressData.state || '',
+      address_zip: addressData.zip || '',
+      latitude: addressData.lat || null,
+      longitude: addressData.lng || null,
+      place_id: addressData.place_id || '',
+      formatted_address: addressData.formatted_address || '',
+      verified_address: verificationData,
+      address_verified_at: new Date().toISOString()
+    }));
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
@@ -95,10 +140,26 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
 
       if (!profile) throw new Error('Profile not found');
 
+      const locationData = {
+        name: formData.name,
+        address_street: formData.address_street,
+        address_city: formData.address_city,
+        address_state: formData.address_state,
+        address_zip: formData.address_zip,
+        phone: formData.phone,
+        email: formData.email,
+        latitude: formData.latitude,
+        longitude: formData.longitude,
+        place_id: formData.place_id,
+        formatted_address: formData.formatted_address,
+        verified_address: formData.verified_address,
+        address_verified_at: formData.address_verified_at
+      };
+
       if (editingLocation) {
         const { error } = await supabase
           .from('locations')
-          .update(formData)
+          .update(locationData)
           .eq('id', editingLocation.id);
 
         if (error) throw error;
@@ -110,7 +171,7 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
         const { error } = await supabase
           .from('locations')
           .insert({
-            ...formData,
+            ...locationData,
             tenant_id: profile.tenant_id,
             created_by: user.id
           });
@@ -124,15 +185,7 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
 
       setDialogOpen(false);
       setEditingLocation(null);
-      setFormData({
-        name: '',
-        address_street: '',
-        address_city: '',
-        address_state: '',
-        address_zip: '',
-        phone: '',
-        email: ''
-      });
+      setFormData(initialFormData);
       fetchLocations();
     } catch (error) {
       console.error('Error saving location:', error);
@@ -153,7 +206,13 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
       address_state: location.address_state || '',
       address_zip: location.address_zip || '',
       phone: location.phone || '',
-      email: location.email || ''
+      email: location.email || '',
+      latitude: location.latitude || null,
+      longitude: location.longitude || null,
+      place_id: location.place_id || '',
+      formatted_address: location.formatted_address || '',
+      verified_address: location.verified_address || null,
+      address_verified_at: location.address_verified_at || null
     });
     setDialogOpen(true);
   };
@@ -184,6 +243,12 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
     }
   };
 
+  const resetForm = () => {
+    setDialogOpen(false);
+    setEditingLocation(null);
+    setFormData(initialFormData);
+  };
+
   if (loading) {
     return <div className="p-6">Loading locations...</div>;
   }
@@ -196,14 +261,17 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
             <Building2 className="h-5 w-5 text-primary" />
             Location Management
           </CardTitle>
-          <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <Dialog open={dialogOpen} onOpenChange={(open) => {
+            if (!open) resetForm();
+            else setDialogOpen(true);
+          }}>
             <DialogTrigger asChild>
               <Button className="flex items-center gap-2">
                 <Plus className="h-4 w-4" />
                 Add Location
               </Button>
             </DialogTrigger>
-            <DialogContent>
+            <DialogContent className="max-w-lg">
               <DialogHeader>
                 <DialogTitle>
                   {editingLocation ? 'Edit Location' : 'Add New Location'}
@@ -220,45 +288,24 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
                     placeholder="Main Office, Branch A, etc."
                   />
                 </div>
-                <div>
-                  <Label htmlFor="address_street">Street Address</Label>
-                  <Input
-                    id="address_street"
-                    value={formData.address_street}
-                    onChange={(e) => setFormData({ ...formData, address_street: e.target.value })}
-                    placeholder="123 Main St"
-                  />
-                </div>
+
+                {/* Google-Verified Address */}
+                <AddressVerification
+                  label="Location Address"
+                  onAddressVerified={handleAddressVerified}
+                  initialAddress={{
+                    street: formData.address_street,
+                    city: formData.address_city,
+                    state: formData.address_state,
+                    zip: formData.address_zip,
+                    lat: formData.latitude || undefined,
+                    lng: formData.longitude || undefined,
+                    place_id: formData.place_id || undefined,
+                    formatted_address: formData.formatted_address || undefined
+                  }}
+                />
+
                 <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="address_city">City</Label>
-                    <Input
-                      id="address_city"
-                      value={formData.address_city}
-                      onChange={(e) => setFormData({ ...formData, address_city: e.target.value })}
-                      placeholder="City"
-                    />
-                  </div>
-                  <div>
-                    <Label htmlFor="address_state">State</Label>
-                    <Input
-                      id="address_state"
-                      value={formData.address_state}
-                      onChange={(e) => setFormData({ ...formData, address_state: e.target.value })}
-                      placeholder="State"
-                    />
-                  </div>
-                </div>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <Label htmlFor="address_zip">ZIP Code</Label>
-                    <Input
-                      id="address_zip"
-                      value={formData.address_zip}
-                      onChange={(e) => setFormData({ ...formData, address_zip: e.target.value })}
-                      placeholder="12345"
-                    />
-                  </div>
                   <div>
                     <Label htmlFor="phone">Phone</Label>
                     <Input
@@ -268,35 +315,20 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
                       placeholder="(555) 123-4567"
                     />
                   </div>
+                  <div>
+                    <Label htmlFor="email">Email</Label>
+                    <Input
+                      id="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                      placeholder="location@company.com"
+                    />
+                  </div>
                 </div>
-                <div>
-                  <Label htmlFor="email">Email</Label>
-                  <Input
-                    id="email"
-                    type="email"
-                    value={formData.email}
-                    onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                    placeholder="location@company.com"
-                  />
-                </div>
-                <div className="flex justify-end gap-2">
-                  <Button 
-                    type="button" 
-                    variant="outline" 
-                    onClick={() => {
-                      setDialogOpen(false);
-                      setEditingLocation(null);
-                      setFormData({
-                        name: '',
-                        address_street: '',
-                        address_city: '',
-                        address_state: '',
-                        address_zip: '',
-                        phone: '',
-                        email: ''
-                      });
-                    }}
-                  >
+
+                <div className="flex justify-end gap-2 pt-4">
+                  <Button type="button" variant="outline" onClick={resetForm}>
                     Cancel
                   </Button>
                   <Button type="submit">
@@ -327,17 +359,29 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
                         <Badge variant={location.is_active ? "default" : "secondary"}>
                           {location.is_active ? "Active" : "Inactive"}
                         </Badge>
+                        {location.address_verified_at && (
+                          <Badge variant="outline" className="text-green-600 border-green-600">
+                            <CheckCircle className="h-3 w-3 mr-1" />
+                            Verified
+                          </Badge>
+                        )}
                       </div>
-                      {(location.address_street || location.address_city) && (
+                      {(location.formatted_address || location.address_street || location.address_city) && (
                         <div className="flex items-center gap-2 text-sm text-muted-foreground mb-1">
                           <MapPin className="h-4 w-4" />
                           <span>
-                            {[location.address_street, location.address_city, location.address_state]
-                              .filter(Boolean)
-                              .join(', ')}
-                            {location.address_zip && ` ${location.address_zip}`}
+                            {location.formatted_address || 
+                              [location.address_street, location.address_city, location.address_state]
+                                .filter(Boolean)
+                                .join(', ') + (location.address_zip ? ` ${location.address_zip}` : '')
+                            }
                           </span>
                         </div>
+                      )}
+                      {location.latitude && location.longitude && (
+                        <p className="text-xs text-muted-foreground mb-1">
+                          📍 {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
+                        </p>
                       )}
                       {location.phone && (
                         <p className="text-sm text-muted-foreground">📞 {location.phone}</p>
