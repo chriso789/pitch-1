@@ -7,6 +7,101 @@ const corsHeaders = {
   'Access-Control-Allow-Methods': 'POST, OPTIONS'
 };
 
+// Pre-deletion check: identify blocking FK constraints
+async function checkBlockingConstraints(supabase: any, companyId: string) {
+  const blockingRecords: { table: string; column: string; count: number; canAutoClear: boolean }[] = [];
+  
+  // Check profiles with active_tenant_id set to this company (from OTHER companies)
+  const { count: activeProfilesCount } = await supabase
+    .from('profiles')
+    .select('*', { count: 'exact', head: true })
+    .eq('active_tenant_id', companyId)
+    .neq('tenant_id', companyId);
+  
+  if (activeProfilesCount && activeProfilesCount > 0) {
+    blockingRecords.push({
+      table: 'profiles',
+      column: 'active_tenant_id',
+      count: activeProfilesCount,
+      canAutoClear: true // Safe to reset to null
+    });
+  }
+
+  // Check user_company_access for users with access to this company
+  const { count: companyAccessCount } = await supabase
+    .from('user_company_access')
+    .select('*', { count: 'exact', head: true })
+    .eq('tenant_id', companyId);
+
+  if (companyAccessCount && companyAccessCount > 0) {
+    blockingRecords.push({
+      table: 'user_company_access',
+      column: 'tenant_id',
+      count: companyAccessCount,
+      canAutoClear: true // Safe to delete access records
+    });
+  }
+  
+  return blockingRecords;
+}
+
+// Clear blocking records that are safe to auto-clear
+async function clearBlockingRecords(supabase: any, companyId: string) {
+  const cleared: string[] = [];
+  
+  // Reset active_tenant_id for users from other companies
+  const { error: profileError } = await supabase
+    .from('profiles')
+    .update({ active_tenant_id: null })
+    .eq('active_tenant_id', companyId)
+    .neq('tenant_id', companyId);
+    
+  if (!profileError) {
+    cleared.push('profiles.active_tenant_id');
+  } else {
+    console.log('[delete-company] Warning: Could not clear profiles.active_tenant_id:', profileError);
+  }
+
+  // Delete user_company_access records for this company
+  const { error: accessError } = await supabase
+    .from('user_company_access')
+    .delete()
+    .eq('tenant_id', companyId);
+
+  if (!accessError) {
+    cleared.push('user_company_access');
+  } else {
+    console.log('[delete-company] Warning: Could not clear user_company_access:', accessError);
+  }
+
+  // Delete settings_tabs for this company
+  const { error: settingsError } = await supabase
+    .from('settings_tabs')
+    .delete()
+    .eq('tenant_id', companyId);
+
+  if (!settingsError) {
+    cleared.push('settings_tabs');
+  } else {
+    console.log('[delete-company] Warning: Could not clear settings_tabs:', settingsError);
+  }
+
+  // Delete pipeline_stages for this company
+  const { error: stagesError } = await supabase
+    .from('pipeline_stages')
+    .delete()
+    .eq('tenant_id', companyId);
+
+  if (!stagesError) {
+    cleared.push('pipeline_stages');
+  } else {
+    console.log('[delete-company] Warning: Could not clear pipeline_stages:', stagesError);
+  }
+
+  console.log('[delete-company] Cleared blocking records:', cleared);
+  return cleared;
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -120,6 +215,34 @@ serve(async (req) => {
 
     console.log(`[delete-company] Starting deletion for company: ${companyName} (${companyId})`);
 
+    // PRE-DELETION CHECK: Identify blocking constraints
+    console.log('[delete-company] Running pre-deletion constraint check...');
+    const blockingRecords = await checkBlockingConstraints(supabase, companyId);
+    
+    if (blockingRecords.length > 0) {
+      console.log('[delete-company] Found blocking records:', blockingRecords);
+      
+      // Check if any blocking records cannot be auto-cleared
+      const unclearableBlocking = blockingRecords.filter(r => !r.canAutoClear);
+      if (unclearableBlocking.length > 0) {
+        await logAudit('DELETE_ATTEMPT_FAILED', false, { 
+          reason: 'Blocking foreign key constraints that cannot be auto-cleared', 
+          blocking_records: unclearableBlocking 
+        });
+        return new Response(JSON.stringify({ 
+          error: 'Cannot delete company due to blocking references',
+          blocking_records: unclearableBlocking
+        }), {
+          status: 409,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+    }
+
+    // Clear blocking records before proceeding
+    console.log('[delete-company] Clearing blocking records...');
+    const clearedRecords = await clearBlockingRecords(supabase, companyId);
+
     // Collect all company data for backup
     const [
       { data: contacts },
@@ -129,8 +252,9 @@ serve(async (req) => {
       { data: profiles },
       { data: locations },
       { data: documents },
-      { data: measurements },
-      { data: settingsTabs }
+      { data: settingsTabs },
+      { data: pipelineStages },
+      { data: userCompanyAccess }
     ] = await Promise.all([
       supabase.from('contacts').select('*').eq('tenant_id', companyId),
       supabase.from('pipeline_entries').select('*').eq('tenant_id', companyId),
@@ -139,8 +263,9 @@ serve(async (req) => {
       supabase.from('profiles').select('*').eq('tenant_id', companyId),
       supabase.from('locations').select('*').eq('tenant_id', companyId),
       supabase.from('documents').select('*').eq('tenant_id', companyId),
-      supabase.from('measurements').select('*').eq('tenant_id', companyId),
-      supabase.from('settings_tabs').select('*').eq('tenant_id', companyId)
+      supabase.from('settings_tabs').select('*').eq('tenant_id', companyId),
+      supabase.from('pipeline_stages').select('*').eq('tenant_id', companyId),
+      supabase.from('user_company_access').select('*').eq('tenant_id', companyId)
     ]);
 
     // Create backup object
@@ -153,8 +278,10 @@ serve(async (req) => {
       profiles: profiles || [],
       locations: locations || [],
       documents: documents || [],
-      measurements: measurements || [],
       settings_tabs: settingsTabs || [],
+      pipeline_stages: pipelineStages || [],
+      user_company_access: userCompanyAccess || [],
+      cleared_blocking_records: clearedRecords,
       deleted_at: new Date().toISOString(),
       deleted_by: userId
     };
@@ -167,8 +294,9 @@ serve(async (req) => {
       profiles: profiles?.length || 0,
       locations: locations?.length || 0,
       documents: documents?.length || 0,
-      measurements: measurements?.length || 0,
-      settings_tabs: settingsTabs?.length || 0
+      settings_tabs: settingsTabs?.length || 0,
+      pipeline_stages: pipelineStages?.length || 0,
+      user_company_access: userCompanyAccess?.length || 0
     };
 
     // Store backup in Supabase Storage
@@ -226,17 +354,7 @@ serve(async (req) => {
       console.error('[delete-company] Failed to log deletion:', logError);
     }
 
-    // Explicitly delete settings_tabs before tenant deletion (safety measure)
-    const { error: settingsDeleteError } = await supabase
-      .from('settings_tabs')
-      .delete()
-      .eq('tenant_id', companyId);
-
-    if (settingsDeleteError) {
-      console.log('[delete-company] Warning: Could not delete settings_tabs:', settingsDeleteError);
-    }
-
-    // Delete the company (cascades to related data)
+    // Delete the company (cascades to related data via FK constraints)
     const { error: deleteError } = await supabase
       .from('tenants')
       .delete()
@@ -249,7 +367,10 @@ serve(async (req) => {
         error: deleteError.message,
         backup_path: backupPath
       });
-      return new Response(JSON.stringify({ error: 'Failed to delete company' }), {
+      return new Response(JSON.stringify({ 
+        error: 'Failed to delete company',
+        details: deleteError.message 
+      }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
@@ -259,6 +380,7 @@ serve(async (req) => {
     await logAudit('DELETE', true, {
       backup_path: backupPath,
       data_summary: dataSummary,
+      cleared_blocking_records: clearedRecords,
       email_sent_to: 'chrisobrien91@gmail.com'
     });
 
@@ -268,7 +390,8 @@ serve(async (req) => {
       success: true, 
       message: `Company "${companyName}" deleted successfully`,
       backup_path: backupPath,
-      data_summary: dataSummary
+      data_summary: dataSummary,
+      cleared_blocking_records: clearedRecords
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     });
