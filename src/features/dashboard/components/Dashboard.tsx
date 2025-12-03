@@ -14,6 +14,7 @@ import { DateRangePicker } from "@/components/ui/date-range-picker";
 import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
+import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { DashboardAIAssistant } from "./DashboardAIAssistant";
 import { 
   DollarSign, 
@@ -39,8 +40,8 @@ import { exportToCSV } from "@/lib/export-utils";
 import { toast } from "sonner";
 
 const Dashboard = () => {
-  
   const navigate = useNavigate();
+  const { user } = useCurrentUser();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 30),
     to: new Date()
@@ -143,24 +144,37 @@ const Dashboard = () => {
     }
   });
 
-  // Pipeline status counts
+  // Pipeline status counts - filtered by tenant and role (no date filter)
   const { data: pipelineStatusCounts = {} } = useQuery({
-    queryKey: ['dashboard-pipeline-counts', dateRange],
+    queryKey: ['dashboard-pipeline-counts', user?.id, user?.tenant_id],
     queryFn: async () => {
+      if (!user) return {};
+      
+      // Get user's active tenant
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('active_tenant_id, tenant_id')
+        .eq('id', user.id)
+        .single();
+      
+      const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+      if (!tenantId) return {};
+      
+      // Build query - NO date range filter for pipeline status (shows current state)
       let query = supabase
         .from('pipeline_entries')
-        .select('status');
+        .select('status')
+        .eq('tenant_id', tenantId);
       
-      if (dateRange?.from) {
-        query = query.gte('created_at', dateRange.from.toISOString());
-      }
-      if (dateRange?.to) {
-        query = query.lte('created_at', dateRange.to.toISOString());
+      // For non-admin roles, only show their assigned/created entries
+      const adminRoles = ['master', 'corporate', 'office_admin'];
+      if (!adminRoles.includes(user.role)) {
+        query = query.or(`assigned_to.eq.${user.id},created_by.eq.${user.id}`);
       }
       
       const { data } = await query;
       
-      const counts: any = {
+      const counts: Record<string, number> = {
         lead: 0,
         legal_review: 0,
         contingency_signed: 0,
@@ -177,7 +191,8 @@ const Dashboard = () => {
       });
       
       return counts;
-    }
+    },
+    enabled: !!user
   });
 
   // Revenue and active projects
