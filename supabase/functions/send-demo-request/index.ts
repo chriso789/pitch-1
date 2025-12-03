@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { Resend } from "https://esm.sh/resend@4.0.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
@@ -26,8 +27,44 @@ const handler = async (req: Request): Promise<Response> => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  // Initialize Supabase client
+  const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+  const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+  const supabase = createClient(supabaseUrl, supabaseServiceKey);
+
+  let requestData: DemoRequestData | null = null;
+
   try {
-    const requestData: DemoRequestData = await req.json();
+    requestData = await req.json();
+    
+    console.log("[send-demo-request] Received demo request:", {
+      name: `${requestData.firstName} ${requestData.lastName}`,
+      email: requestData.email,
+      company: requestData.companyName,
+      timestamp: new Date().toISOString()
+    });
+
+    // First, log the request to database (even if email fails)
+    const { data: insertedRequest, error: insertError } = await supabase
+      .from('demo_requests')
+      .insert({
+        first_name: requestData.firstName,
+        last_name: requestData.lastName,
+        email: requestData.email,
+        phone: requestData.phone || null,
+        company_name: requestData.companyName,
+        job_title: requestData.jobTitle || null,
+        message: requestData.message || null,
+        email_sent: false,
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      console.error("[send-demo-request] Error inserting demo request:", insertError);
+    } else {
+      console.log("[send-demo-request] Demo request logged to database:", insertedRequest.id);
+    }
 
     const emailHtml = `
       <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
@@ -103,15 +140,26 @@ const handler = async (req: Request): Promise<Response> => {
       </div>
     `;
 
+    // Use Resend's verified domain (onboarding@resend.dev works without domain verification)
     const emailResponse = await resend.emails.send({
-      from: "PITCH CRM <noreply@pitch-crm.com>",
-      to: ["chris.obfla@gmail.com"],
+      from: "PITCH CRM <onboarding@resend.dev>",
+      to: ["chrisobrien91@gmail.com"],
       replyTo: requestData.email,
       subject: `Demo Request: ${requestData.firstName} ${requestData.lastName} from ${requestData.companyName}`,
       html: emailHtml,
     });
 
-    console.log("Demo request email sent successfully:", emailResponse);
+    console.log("[send-demo-request] Email sent successfully:", emailResponse);
+
+    // Update database record with email status
+    if (insertedRequest?.id) {
+      await supabase
+        .from('demo_requests')
+        .update({ 
+          email_sent: true,
+        })
+        .eq('id', insertedRequest.id);
+    }
 
     return new Response(JSON.stringify({ 
       success: true, 
@@ -125,7 +173,28 @@ const handler = async (req: Request): Promise<Response> => {
       },
     });
   } catch (error: any) {
-    console.error("Error in send-demo-request function:", error);
+    console.error("[send-demo-request] Error:", error);
+    
+    // Try to update database with error if we have a record
+    if (requestData) {
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const supabase = createClient(supabaseUrl, supabaseServiceKey);
+        
+        await supabase
+          .from('demo_requests')
+          .update({ 
+            email_error: error instanceof Error ? error.message : String(error),
+          })
+          .eq('email', requestData.email)
+          .order('created_at', { ascending: false })
+          .limit(1);
+      } catch (dbError) {
+        console.error("[send-demo-request] Error updating database with error:", dbError);
+      }
+    }
+    
     return new Response(
       JSON.stringify({ 
         error: error instanceof Error ? error.message : String(error),

@@ -23,6 +23,8 @@ import { EnhancedCompanyOnboarding } from "./EnhancedCompanyOnboarding";
 import { LocationUserAssignment } from "./LocationUserAssignment";
 import { DeletionHistoryTab } from "./DeletionHistoryTab";
 import { PatentResearchDashboard } from "./PatentResearchDashboard";
+import { BackupStatusDashboard } from "./BackupStatusDashboard";
+import { BackupRestorePanel } from "./BackupRestorePanel";
 
 interface Company {
   id: string;
@@ -244,6 +246,12 @@ export const PlatformAdmin = () => {
           <TabsTrigger value="deletion-history">
             Deletion History
           </TabsTrigger>
+          <TabsTrigger value="backups">
+            Backup Dashboard
+          </TabsTrigger>
+          <TabsTrigger value="restore">
+            Recovery
+          </TabsTrigger>
           <TabsTrigger value="patents">
             Patents & IP
           </TabsTrigger>
@@ -287,6 +295,14 @@ export const PlatformAdmin = () => {
 
         <TabsContent value="deletion-history" className="mt-4">
           <DeletionHistoryTab />
+        </TabsContent>
+
+        <TabsContent value="backups" className="mt-4">
+          <BackupStatusDashboard />
+        </TabsContent>
+
+        <TabsContent value="restore" className="mt-4">
+          <BackupRestorePanel />
         </TabsContent>
 
         <TabsContent value="patents" className="mt-4">

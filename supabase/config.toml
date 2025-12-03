@@ -271,4 +271,10 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.daily-company-backup]
+verify_jwt = false
+
+[functions.restore-company-backup]
+verify_jwt = true
+
+[functions.export-company-data]
 verify_jwt = true
