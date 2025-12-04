@@ -220,17 +220,18 @@ export function MeasurementVerificationDialog({
     }
   }, [measurement, tags]);
   
-  // Load measurement from database when AI returns empty/zero values
+  // ALWAYS load measurement from database to get complete linear features (ridges, hips, valleys)
+  // The API may return area but miss linear features - database has the complete picture
   useEffect(() => {
     const loadMeasurementFromDatabase = async () => {
       if (!pipelineEntryId || !open) return;
       
-      // Check if we already have good data
-      const currentArea = tags['roof.plan_area'] || tags['roof.plan_sqft'] || measurement?.summary?.total_area_sqft || 0;
-      if (currentArea > 0 && !isLoadingDbMeasurement) return;
+      // Don't skip just because we have area - we need linear features too!
+      // The bug was: returning early when currentArea > 0 prevented loading valleys/hips from DB
+      if (dbMeasurement || isLoadingDbMeasurement) return; // Only skip if already loaded
       
       setIsLoadingDbMeasurement(true);
-      console.log('📊 Loading measurement from database as fallback...');
+      console.log('📊 ALWAYS loading measurement from database to get complete linear features...');
       
       try {
         // Try measurements table - primary source of measurement data

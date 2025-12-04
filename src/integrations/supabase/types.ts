@@ -6215,6 +6215,148 @@ export type Database = {
           },
         ]
       }
+      measurement_accuracy_tracking: {
+        Row: {
+          ai_hip_ft: number | null
+          ai_ridge_ft: number | null
+          ai_total_area: number | null
+          ai_valley_ft: number | null
+          area_variance_pct: number | null
+          hip_variance_pct: number | null
+          id: string
+          manual_hip_ft: number | null
+          manual_ridge_ft: number | null
+          manual_total_area: number | null
+          manual_valley_ft: number | null
+          measurement_id: string | null
+          overall_accuracy_score: number | null
+          ridge_variance_pct: number | null
+          tenant_id: string
+          valley_variance_pct: number | null
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          ai_hip_ft?: number | null
+          ai_ridge_ft?: number | null
+          ai_total_area?: number | null
+          ai_valley_ft?: number | null
+          area_variance_pct?: number | null
+          hip_variance_pct?: number | null
+          id?: string
+          manual_hip_ft?: number | null
+          manual_ridge_ft?: number | null
+          manual_total_area?: number | null
+          manual_valley_ft?: number | null
+          measurement_id?: string | null
+          overall_accuracy_score?: number | null
+          ridge_variance_pct?: number | null
+          tenant_id: string
+          valley_variance_pct?: number | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          ai_hip_ft?: number | null
+          ai_ridge_ft?: number | null
+          ai_total_area?: number | null
+          ai_valley_ft?: number | null
+          area_variance_pct?: number | null
+          hip_variance_pct?: number | null
+          id?: string
+          manual_hip_ft?: number | null
+          manual_ridge_ft?: number | null
+          manual_total_area?: number | null
+          manual_valley_ft?: number | null
+          measurement_id?: string | null
+          overall_accuracy_score?: number | null
+          ridge_variance_pct?: number | null
+          tenant_id?: string
+          valley_variance_pct?: number | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "measurement_accuracy_tracking_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_accuracy_tracking_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_accuracy_tracking_verified_by_fkey"
+            columns: ["verified_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      measurement_remeasure_log: {
+        Row: {
+          created_at: string | null
+          error_message: string | null
+          id: string
+          new_imagery_date: string | null
+          new_values: Json | null
+          original_imagery_date: string | null
+          original_values: Json | null
+          pipeline_entry_id: string | null
+          status: string
+          triggered_by: string | null
+          variance_pct: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          new_imagery_date?: string | null
+          new_values?: Json | null
+          original_imagery_date?: string | null
+          original_values?: Json | null
+          pipeline_entry_id?: string | null
+          status?: string
+          triggered_by?: string | null
+          variance_pct?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          new_imagery_date?: string | null
+          new_values?: Json | null
+          original_imagery_date?: string | null
+          original_values?: Json | null
+          pipeline_entry_id?: string | null
+          status?: string
+          triggered_by?: string | null
+          variance_pct?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "measurement_remeasure_log_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_remeasure_log_triggered_by_fkey"
+            columns: ["triggered_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       measurement_tags: {
         Row: {
           created_at: string
@@ -6268,6 +6410,11 @@ export type Database = {
           linear_features: Json | null
           manual_override: boolean | null
           mapbox_visualization_url: string | null
+          obstruction_analysis: Json | null
+          obstruction_analyzed_at: string | null
+          obstruction_confidence: number | null
+          obstruction_detected: boolean | null
+          obstruction_type: string | null
           penetrations: Json
           property_id: string
           source: string
@@ -6295,6 +6442,11 @@ export type Database = {
           linear_features?: Json | null
           manual_override?: boolean | null
           mapbox_visualization_url?: string | null
+          obstruction_analysis?: Json | null
+          obstruction_analyzed_at?: string | null
+          obstruction_confidence?: number | null
+          obstruction_detected?: boolean | null
+          obstruction_type?: string | null
           penetrations?: Json
           property_id: string
           source: string
@@ -6322,6 +6474,11 @@ export type Database = {
           linear_features?: Json | null
           manual_override?: boolean | null
           mapbox_visualization_url?: string | null
+          obstruction_analysis?: Json | null
+          obstruction_analyzed_at?: string | null
+          obstruction_confidence?: number | null
+          obstruction_detected?: boolean | null
+          obstruction_type?: string | null
           penetrations?: Json
           property_id?: string
           source?: string
@@ -15070,6 +15227,11 @@ export type Database = {
           linear_features: Json | null
           manual_override: boolean | null
           mapbox_visualization_url: string | null
+          obstruction_analysis: Json | null
+          obstruction_analyzed_at: string | null
+          obstruction_confidence: number | null
+          obstruction_detected: boolean | null
+          obstruction_type: string | null
           penetrations: Json
           property_id: string
           source: string

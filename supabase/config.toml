@@ -287,3 +287,12 @@ verify_jwt = true
 
 [functions.historical-imagery-fetch]
 verify_jwt = true
+
+[functions.detect-roof-obstruction]
+verify_jwt = true
+
+[functions.batch-remeasure]
+verify_jwt = true
+
+[functions.track-measurement-accuracy]
+verify_jwt = true
