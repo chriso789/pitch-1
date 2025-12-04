@@ -16,8 +16,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { ArrowLeft, Save, Eye, Code, Smartphone, Monitor, Plus } from "lucide-react";
+import { ArrowLeft, Save, Eye, Code, Smartphone, Monitor, Plus, Blocks, LayoutTemplate } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { EmailBlockBuilder, TemplateGallery } from "./email-builder";
 
 interface EmailTemplate {
   id?: string;
@@ -39,6 +40,8 @@ interface EmailTemplateEditorProps {
 const TEMPLATE_TYPES = [
   { value: "onboarding", label: "Onboarding" },
   { value: "announcement", label: "Announcement" },
+  { value: "followup", label: "Follow-up" },
+  { value: "reminder", label: "Reminder" },
   { value: "feature", label: "Feature Update" },
   { value: "maintenance", label: "Maintenance Notice" },
   { value: "urgent", label: "Urgent Alert" },
@@ -54,6 +57,9 @@ const AVAILABLE_VARIABLES = [
   { key: "action_url", label: "Action URL", sample: "https://pitch-crm.ai" },
   { key: "maintenance_date", label: "Maintenance Date", sample: "December 15, 2025" },
   { key: "alert_title", label: "Alert Title", sample: "Important Update" },
+  { key: "appointment_date", label: "Appointment Date", sample: "December 15, 2025 at 2:00 PM" },
+  { key: "amount", label: "Amount", sample: "$249.00" },
+  { key: "due_date", label: "Due Date", sample: "December 20, 2025" },
 ];
 
 const DEFAULT_HTML = `<!DOCTYPE html>
@@ -105,7 +111,7 @@ export function EmailTemplateEditor({ template, onSave, onCancel }: EmailTemplat
   });
 
   const [previewMode, setPreviewMode] = useState<"desktop" | "mobile">("desktop");
-  const [activeTab, setActiveTab] = useState<"edit" | "preview">("edit");
+  const [editorMode, setEditorMode] = useState<"code" | "visual" | "gallery">("code");
 
   const saveMutation = useMutation({
     mutationFn: async (data: EmailTemplate) => {
@@ -271,47 +277,86 @@ export function EmailTemplateEditor({ template, onSave, onCancel }: EmailTemplat
           <Card>
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
-                <CardTitle className="text-base">Insert Variables</CardTitle>
-              </div>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {AVAILABLE_VARIABLES.map((variable) => (
+                <CardTitle className="text-base">Editor Mode</CardTitle>
+                <div className="flex gap-1 bg-muted rounded-md p-1">
                   <Button
-                    key={variable.key}
-                    variant="outline"
+                    variant={editorMode === "code" ? "secondary" : "ghost"}
                     size="sm"
-                    onClick={() => insertVariable(variable.key)}
-                    className="text-xs"
+                    onClick={() => setEditorMode("code")}
+                    className="h-7 px-3 text-xs"
                   >
-                    <Plus className="h-3 w-3 mr-1" />
-                    {`{{${variable.key}}}`}
+                    <Code className="h-3 w-3 mr-1" />
+                    Code
                   </Button>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground mt-3">
-                Click a variable to insert it at the cursor position in the HTML editor
-              </p>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="pb-3">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-base flex items-center gap-2">
-                  <Code className="h-4 w-4" />
-                  HTML Editor
-                </CardTitle>
+                  <Button
+                    variant={editorMode === "visual" ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => setEditorMode("visual")}
+                    className="h-7 px-3 text-xs"
+                  >
+                    <Blocks className="h-3 w-3 mr-1" />
+                    Visual
+                  </Button>
+                  <Button
+                    variant={editorMode === "gallery" ? "secondary" : "ghost"}
+                    size="sm"
+                    onClick={() => setEditorMode("gallery")}
+                    className="h-7 px-3 text-xs"
+                  >
+                    <LayoutTemplate className="h-3 w-3 mr-1" />
+                    Gallery
+                  </Button>
+                </div>
               </div>
             </CardHeader>
             <CardContent>
-              <Textarea
-                id="html-editor"
-                value={formData.html_body}
-                onChange={(e) => setFormData({ ...formData, html_body: e.target.value })}
-                className="font-mono text-xs h-[400px] resize-none"
-                placeholder="Paste or write your HTML email template here..."
-              />
+              {editorMode === "gallery" && (
+                <TemplateGallery
+                  onSelectTemplate={(t) => {
+                    setFormData({
+                      ...formData,
+                      html_body: t.html_body,
+                      subject: formData.subject || t.subject,
+                    });
+                    setEditorMode("code");
+                  }}
+                />
+              )}
+
+              {editorMode === "visual" && (
+                <EmailBlockBuilder
+                  onHtmlChange={(html) => setFormData({ ...formData, html_body: html })}
+                />
+              )}
+
+              {editorMode === "code" && (
+                <div className="space-y-4">
+                  <div>
+                    <Label className="text-xs mb-2 block">Insert Variables</Label>
+                    <div className="flex flex-wrap gap-1">
+                      {AVAILABLE_VARIABLES.map((variable) => (
+                        <Button
+                          key={variable.key}
+                          variant="outline"
+                          size="sm"
+                          onClick={() => insertVariable(variable.key)}
+                          className="text-xs h-6 px-2"
+                        >
+                          <Plus className="h-2 w-2 mr-1" />
+                          {variable.key}
+                        </Button>
+                      ))}
+                    </div>
+                  </div>
+                  <Textarea
+                    id="html-editor"
+                    value={formData.html_body}
+                    onChange={(e) => setFormData({ ...formData, html_body: e.target.value })}
+                    className="font-mono text-xs h-[400px] resize-none"
+                    placeholder="Paste or write your HTML email template here..."
+                  />
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
