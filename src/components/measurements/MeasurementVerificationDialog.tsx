@@ -56,6 +56,8 @@ const RESOLUTION_CONFIG: Record<ResolutionOption, { width: number; height: numbe
 };
 
 // Parse linear_features from array format (database) or object format (API)
+// FIX: Prioritize DATABASE values first (most reliable), then tags, then measurement prop
+// FIX: Use explicit > 0 checks instead of truthy to distinguish between 0 and undefined
 const extractLinearFeatures = (
   measurement: any, 
   dbMeasurement: any, 
@@ -69,73 +71,169 @@ const extractLinearFeatures = (
       .reduce((sum, f) => sum + (f.length_ft || f.length || 0), 0);
   };
   
-  // Priority order: tags → summary → parsed array → object fallback
+  // Helper to check if a value is valid (not undefined/null and > 0 for positive values, or explicitly 0)
+  const isValidValue = (val: any): val is number => {
+    return val !== undefined && val !== null && typeof val === 'number';
+  };
+  
+  // Helper to get a positive value (returns value if > 0, otherwise checks next source)
+  const getPositiveValue = (val: any): number | null => {
+    if (isValidValue(val) && val > 0) return val;
+    return null;
+  };
+  
   const dbLinear = dbMeasurement?.linear_features;
   const mLinear = measurement?.linear_features;
   
+  // FIXED PRIORITY ORDER: Database first (most reliable), then tags, then measurement prop
   const getRidge = () => {
-    if (tags['lf.ridge']) return tags['lf.ridge'];
-    if (measurement?.summary?.ridge_ft) return measurement.summary.ridge_ft;
-    if (dbMeasurement?.summary?.ridge_ft) return dbMeasurement.summary.ridge_ft;
-    if (Array.isArray(dbLinear)) return sumArrayByType(dbLinear, 'ridge');
-    if (Array.isArray(mLinear)) return sumArrayByType(mLinear, 'ridge');
-    if (typeof mLinear === 'object' && !Array.isArray(mLinear)) return mLinear?.ridge || 0;
-    if (typeof dbLinear === 'object' && !Array.isArray(dbLinear)) return dbLinear?.ridge || 0;
+    // Priority 1: Database summary (most reliable - verified data)
+    const dbSummary = getPositiveValue(dbMeasurement?.summary?.ridge_ft);
+    if (dbSummary !== null) return dbSummary;
+    
+    // Priority 2: Tags from fresh API call (only if > 0)
+    const tagValue = getPositiveValue(tags['lf.ridge']);
+    if (tagValue !== null) return tagValue;
+    
+    // Priority 3: Measurement prop summary
+    const mSummary = getPositiveValue(measurement?.summary?.ridge_ft);
+    if (mSummary !== null) return mSummary;
+    
+    // Priority 4: Parse from database linear_features array
+    if (Array.isArray(dbLinear)) {
+      const arrValue = sumArrayByType(dbLinear, 'ridge');
+      if (arrValue > 0) return arrValue;
+    }
+    
+    // Priority 5: Parse from measurement linear_features array
+    if (Array.isArray(mLinear)) {
+      const arrValue = sumArrayByType(mLinear, 'ridge');
+      if (arrValue > 0) return arrValue;
+    }
+    
+    // Priority 6: Object format fallbacks
+    if (typeof mLinear === 'object' && !Array.isArray(mLinear) && isValidValue(mLinear?.ridge) && mLinear.ridge > 0) return mLinear.ridge;
+    if (typeof dbLinear === 'object' && !Array.isArray(dbLinear) && isValidValue(dbLinear?.ridge) && dbLinear.ridge > 0) return dbLinear.ridge;
+    
     return 0;
   };
   
   const getHip = () => {
-    if (tags['lf.hip']) return tags['lf.hip'];
-    if (measurement?.summary?.hip_ft) return measurement.summary.hip_ft;
-    if (dbMeasurement?.summary?.hip_ft) return dbMeasurement.summary.hip_ft;
-    if (Array.isArray(dbLinear)) return sumArrayByType(dbLinear, 'hip');
-    if (Array.isArray(mLinear)) return sumArrayByType(mLinear, 'hip');
-    if (typeof mLinear === 'object' && !Array.isArray(mLinear)) return mLinear?.hip || 0;
-    if (typeof dbLinear === 'object' && !Array.isArray(dbLinear)) return dbLinear?.hip || 0;
+    const dbSummary = getPositiveValue(dbMeasurement?.summary?.hip_ft);
+    if (dbSummary !== null) return dbSummary;
+    
+    const tagValue = getPositiveValue(tags['lf.hip']);
+    if (tagValue !== null) return tagValue;
+    
+    const mSummary = getPositiveValue(measurement?.summary?.hip_ft);
+    if (mSummary !== null) return mSummary;
+    
+    if (Array.isArray(dbLinear)) {
+      const arrValue = sumArrayByType(dbLinear, 'hip');
+      if (arrValue > 0) return arrValue;
+    }
+    if (Array.isArray(mLinear)) {
+      const arrValue = sumArrayByType(mLinear, 'hip');
+      if (arrValue > 0) return arrValue;
+    }
+    if (typeof mLinear === 'object' && !Array.isArray(mLinear) && isValidValue(mLinear?.hip) && mLinear.hip > 0) return mLinear.hip;
+    if (typeof dbLinear === 'object' && !Array.isArray(dbLinear) && isValidValue(dbLinear?.hip) && dbLinear.hip > 0) return dbLinear.hip;
     return 0;
   };
   
   const getValley = () => {
-    if (tags['lf.valley']) return tags['lf.valley'];
-    if (measurement?.summary?.valley_ft) return measurement.summary.valley_ft;
-    if (dbMeasurement?.summary?.valley_ft) return dbMeasurement.summary.valley_ft;
-    if (Array.isArray(dbLinear)) return sumArrayByType(dbLinear, 'valley');
-    if (Array.isArray(mLinear)) return sumArrayByType(mLinear, 'valley');
-    if (typeof mLinear === 'object' && !Array.isArray(mLinear)) return mLinear?.valley || 0;
-    if (typeof dbLinear === 'object' && !Array.isArray(dbLinear)) return dbLinear?.valley || 0;
+    // CRITICAL FIX: Database summary first - this had valley_ft: 131.99 but was being ignored!
+    const dbSummary = getPositiveValue(dbMeasurement?.summary?.valley_ft);
+    if (dbSummary !== null) {
+      console.log('✅ Valley from DB summary:', dbSummary);
+      return dbSummary;
+    }
+    
+    const tagValue = getPositiveValue(tags['lf.valley']);
+    if (tagValue !== null) return tagValue;
+    
+    const mSummary = getPositiveValue(measurement?.summary?.valley_ft);
+    if (mSummary !== null) return mSummary;
+    
+    if (Array.isArray(dbLinear)) {
+      const arrValue = sumArrayByType(dbLinear, 'valley');
+      if (arrValue > 0) return arrValue;
+    }
+    if (Array.isArray(mLinear)) {
+      const arrValue = sumArrayByType(mLinear, 'valley');
+      if (arrValue > 0) return arrValue;
+    }
+    if (typeof mLinear === 'object' && !Array.isArray(mLinear) && isValidValue(mLinear?.valley) && mLinear.valley > 0) return mLinear.valley;
+    if (typeof dbLinear === 'object' && !Array.isArray(dbLinear) && isValidValue(dbLinear?.valley) && dbLinear.valley > 0) return dbLinear.valley;
     return 0;
   };
   
   const getEave = () => {
-    if (tags['lf.eave']) return tags['lf.eave'];
-    if (measurement?.summary?.eave_ft) return measurement.summary.eave_ft;
-    if (dbMeasurement?.summary?.eave_ft) return dbMeasurement.summary.eave_ft;
-    if (Array.isArray(dbLinear)) return sumArrayByType(dbLinear, 'eave');
-    if (Array.isArray(mLinear)) return sumArrayByType(mLinear, 'eave');
-    if (typeof mLinear === 'object' && !Array.isArray(mLinear)) return mLinear?.eave || 0;
-    if (typeof dbLinear === 'object' && !Array.isArray(dbLinear)) return dbLinear?.eave || 0;
+    const dbSummary = getPositiveValue(dbMeasurement?.summary?.eave_ft);
+    if (dbSummary !== null) return dbSummary;
+    
+    const tagValue = getPositiveValue(tags['lf.eave']);
+    if (tagValue !== null) return tagValue;
+    
+    const mSummary = getPositiveValue(measurement?.summary?.eave_ft);
+    if (mSummary !== null) return mSummary;
+    
+    if (Array.isArray(dbLinear)) {
+      const arrValue = sumArrayByType(dbLinear, 'eave');
+      if (arrValue > 0) return arrValue;
+    }
+    if (Array.isArray(mLinear)) {
+      const arrValue = sumArrayByType(mLinear, 'eave');
+      if (arrValue > 0) return arrValue;
+    }
+    if (typeof mLinear === 'object' && !Array.isArray(mLinear) && isValidValue(mLinear?.eave) && mLinear.eave > 0) return mLinear.eave;
+    if (typeof dbLinear === 'object' && !Array.isArray(dbLinear) && isValidValue(dbLinear?.eave) && dbLinear.eave > 0) return dbLinear.eave;
     return 0;
   };
   
   const getRake = () => {
-    if (tags['lf.rake']) return tags['lf.rake'];
-    if (measurement?.summary?.rake_ft) return measurement.summary.rake_ft;
-    if (dbMeasurement?.summary?.rake_ft) return dbMeasurement.summary.rake_ft;
-    if (Array.isArray(dbLinear)) return sumArrayByType(dbLinear, 'rake');
-    if (Array.isArray(mLinear)) return sumArrayByType(mLinear, 'rake');
-    if (typeof mLinear === 'object' && !Array.isArray(mLinear)) return mLinear?.rake || 0;
-    if (typeof dbLinear === 'object' && !Array.isArray(dbLinear)) return dbLinear?.rake || 0;
+    const dbSummary = getPositiveValue(dbMeasurement?.summary?.rake_ft);
+    if (dbSummary !== null) return dbSummary;
+    
+    const tagValue = getPositiveValue(tags['lf.rake']);
+    if (tagValue !== null) return tagValue;
+    
+    const mSummary = getPositiveValue(measurement?.summary?.rake_ft);
+    if (mSummary !== null) return mSummary;
+    
+    if (Array.isArray(dbLinear)) {
+      const arrValue = sumArrayByType(dbLinear, 'rake');
+      if (arrValue > 0) return arrValue;
+    }
+    if (Array.isArray(mLinear)) {
+      const arrValue = sumArrayByType(mLinear, 'rake');
+      if (arrValue > 0) return arrValue;
+    }
+    if (typeof mLinear === 'object' && !Array.isArray(mLinear) && isValidValue(mLinear?.rake) && mLinear.rake > 0) return mLinear.rake;
+    if (typeof dbLinear === 'object' && !Array.isArray(dbLinear) && isValidValue(dbLinear?.rake) && dbLinear.rake > 0) return dbLinear.rake;
     return 0;
   };
   
   const getStep = () => {
-    if (tags['lf.step']) return tags['lf.step'];
-    if (measurement?.summary?.step_ft) return measurement.summary.step_ft;
-    if (dbMeasurement?.summary?.step_ft) return dbMeasurement.summary.step_ft;
-    if (Array.isArray(dbLinear)) return sumArrayByType(dbLinear, 'step');
-    if (Array.isArray(mLinear)) return sumArrayByType(mLinear, 'step');
-    if (typeof mLinear === 'object' && !Array.isArray(mLinear)) return mLinear?.step || 0;
-    if (typeof dbLinear === 'object' && !Array.isArray(dbLinear)) return dbLinear?.step || 0;
+    const dbSummary = getPositiveValue(dbMeasurement?.summary?.step_ft);
+    if (dbSummary !== null) return dbSummary;
+    
+    const tagValue = getPositiveValue(tags['lf.step']);
+    if (tagValue !== null) return tagValue;
+    
+    const mSummary = getPositiveValue(measurement?.summary?.step_ft);
+    if (mSummary !== null) return mSummary;
+    
+    if (Array.isArray(dbLinear)) {
+      const arrValue = sumArrayByType(dbLinear, 'step');
+      if (arrValue > 0) return arrValue;
+    }
+    if (Array.isArray(mLinear)) {
+      const arrValue = sumArrayByType(mLinear, 'step');
+      if (arrValue > 0) return arrValue;
+    }
+    if (typeof mLinear === 'object' && !Array.isArray(mLinear) && isValidValue(mLinear?.step) && mLinear.step > 0) return mLinear.step;
+    if (typeof dbLinear === 'object' && !Array.isArray(dbLinear) && isValidValue(dbLinear?.step) && dbLinear.step > 0) return dbLinear.step;
     return 0;
   };
   
@@ -146,9 +244,12 @@ const extractLinearFeatures = (
   const rake = getRake();
   const step = getStep();
   
+  // Log extracted values for debugging
+  console.log('📏 Extracted linear features:', { ridge, hip, valley, eave, rake, step });
+  
   // Perimeter = eave + rake (or from summary if available)
-  const perimeter = measurement?.summary?.perimeter_ft || 
-                    dbMeasurement?.summary?.perimeter_ft || 
+  const perimeter = dbMeasurement?.summary?.perimeter_ft || 
+                    measurement?.summary?.perimeter_ft || 
                     (eave + rake);
   
   return { ridge, hip, valley, eave, rake, step, perimeter };
@@ -265,6 +366,52 @@ export function MeasurementVerificationDialog({
     
     loadMeasurementFromDatabase();
   }, [open, pipelineEntryId, tags, measurement?.summary?.total_area_sqft]);
+  
+  // Manual refresh measurements from database
+  const handleRefreshMeasurements = async () => {
+    if (!pipelineEntryId) return;
+    
+    setIsLoadingDbMeasurement(true);
+    console.log('🔄 Manually refreshing measurements from database...');
+    
+    try {
+      const measurementResult: any = await supabase
+        .from('measurements')
+        .select('*')
+        .eq('property_id', pipelineEntryId)
+        .eq('is_active', true)
+        .order('created_at', { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      
+      const measurementData = measurementResult?.data;
+      const summary = measurementData?.summary;
+      
+      if (summary) {
+        console.log('✅ Refreshed measurement from database:', summary);
+        setDbMeasurement(measurementData);
+        toast({
+          title: "Measurements Refreshed",
+          description: `Valley: ${summary.valley_ft?.toFixed(0) || 0}', Ridge: ${summary.ridge_ft?.toFixed(0) || 0}', Hip: ${summary.hip_ft?.toFixed(0) || 0}'`,
+        });
+      } else {
+        toast({
+          title: "No Data Found",
+          description: "No measurement data in database for this property",
+          variant: "destructive",
+        });
+      }
+    } catch (error) {
+      console.error('Failed to refresh measurements:', error);
+      toast({
+        title: "Refresh Failed",
+        description: "Could not load measurements from database",
+        variant: "destructive",
+      });
+    } finally {
+      setIsLoadingDbMeasurement(false);
+    }
+  };
   
   // PHASE 1: Fetch clean Google Maps satellite image via proxy
   const [cleanSatelliteImageUrl, setCleanSatelliteImageUrl] = useState<string>('');
@@ -1428,16 +1575,42 @@ export function MeasurementVerificationDialog({
               {/* Collapsible: Linear Features */}
               <Collapsible open={linearOpen} onOpenChange={setLinearOpen}>
                 <CollapsibleTrigger className="flex items-center justify-between w-full p-2 rounded-md hover:bg-muted/50 text-sm font-medium">
-                  <span>📏 Linear Features</span>
+                  <div className="flex items-center gap-2">
+                    <span>📏 Linear Features</span>
+                    {isLoadingDbMeasurement && (
+                      <RefreshCw className="h-3 w-3 animate-spin text-muted-foreground" />
+                    )}
+                  </div>
                   {linearOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
                 </CollapsibleTrigger>
-                <CollapsibleContent className="grid grid-cols-3 gap-1 pt-1">
-                  {[{ l: 'Ridge', v: ridge }, { l: 'Hip', v: hip }, { l: 'Valley', v: valley }, { l: 'Eave', v: eave }, { l: 'Rake', v: rake }, { l: 'Step', v: step }].map(({ l, v }) => (
-                    <div key={l} className="p-2 bg-muted/30 rounded text-center">
-                      <div className="text-sm font-semibold">{v.toFixed(0)}'</div>
-                      <div className="text-[10px] text-muted-foreground">{l}</div>
+                <CollapsibleContent className="space-y-2 pt-1">
+                  {isLoadingDbMeasurement ? (
+                    <div className="flex items-center justify-center gap-2 p-4 text-muted-foreground">
+                      <RefreshCw className="h-4 w-4 animate-spin" />
+                      <span className="text-xs">Loading measurements from database...</span>
                     </div>
-                  ))}
+                  ) : (
+                    <>
+                      <div className="grid grid-cols-3 gap-1">
+                        {[{ l: 'Ridge', v: ridge }, { l: 'Hip', v: hip }, { l: 'Valley', v: valley }, { l: 'Eave', v: eave }, { l: 'Rake', v: rake }, { l: 'Step', v: step }].map(({ l, v }) => (
+                          <div key={l} className={`p-2 rounded text-center ${v === 0 ? 'bg-yellow-500/10 border border-yellow-500/30' : 'bg-muted/30'}`}>
+                            <div className="text-sm font-semibold">{v.toFixed(0)}'</div>
+                            <div className="text-[10px] text-muted-foreground">{l}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleRefreshMeasurements}
+                        disabled={isLoadingDbMeasurement || !pipelineEntryId}
+                        className="w-full h-7 text-xs"
+                      >
+                        <RefreshCw className={`h-3 w-3 mr-1.5 ${isLoadingDbMeasurement ? 'animate-spin' : ''}`} />
+                        Refresh from Database
+                      </Button>
+                    </>
+                  )}
                 </CollapsibleContent>
               </Collapsible>
 
