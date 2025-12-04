@@ -364,8 +364,33 @@ serve(async (req: Request) => {
     const appUrl = Deno.env.get("APP_URL") || "https://pitch-crm.lovable.app";
     const onboardingUrl = `${appUrl}/onboarding/${token}`;
 
-    // Generate premium HTML
-    const emailHtml = generatePremiumEmailHtml(first_name, company_name, onboardingUrl);
+    // Try to fetch custom template from database
+    let emailHtml: string;
+    let emailSubject: string;
+    
+    const { data: customTemplate } = await supabase
+      .from('email_templates')
+      .select('subject, html_body')
+      .eq('template_type', 'onboarding')
+      .eq('is_active', true)
+      .eq('is_default', true)
+      .single();
+    
+    if (customTemplate?.html_body) {
+      console.log('Using custom onboarding template from database');
+      // Replace variables in template
+      emailHtml = customTemplate.html_body
+        .replace(/\{\{first_name\}\}/g, first_name)
+        .replace(/\{\{company_name\}\}/g, company_name)
+        .replace(/\{\{login_url\}\}/g, onboardingUrl);
+      emailSubject = customTemplate.subject
+        .replace(/\{\{first_name\}\}/g, first_name)
+        .replace(/\{\{company_name\}\}/g, company_name);
+    } else {
+      console.log('Using hardcoded premium onboarding template');
+      emailHtml = generatePremiumEmailHtml(first_name, company_name, onboardingUrl);
+      emailSubject = `🎉 Welcome to PITCH CRM — Complete Your ${company_name} Setup`;
+    }
 
     let resendMessageId = null;
 
@@ -376,7 +401,7 @@ serve(async (req: Request) => {
       const emailResult = await resend.emails.send({
         from: "PITCH CRM <onboarding@resend.dev>",
         to: [email],
-        subject: `🎉 Welcome to PITCH CRM — Complete Your ${company_name} Setup`,
+        subject: emailSubject,
         html: emailHtml,
       });
 
