@@ -338,23 +338,25 @@ export function EnhancedCompanyOnboarding({ open, onOpenChange, onComplete }: En
         // Continue even if user creation fails - company is created
       }
 
-      // 4. Send onboarding email to admin user
-      if (userData?.user?.id) {
-        try {
-          await supabase.functions.invoke('send-company-onboarding', {
-            body: {
-              tenant_id: tenantId,
-              user_id: userData.user.id,
-              email: adminUser.email,
-              first_name: adminUser.first_name,
-              last_name: adminUser.last_name,
-              company_name: company.name,
-            }
-          });
-          console.log('Onboarding email sent successfully');
-        } catch (emailErr) {
-          console.error('Failed to send onboarding email:', emailErr);
+      // 4. Send onboarding email (always, even if user creation failed)
+      try {
+        const emailResult = await supabase.functions.invoke('send-company-onboarding', {
+          body: {
+            tenant_id: tenantId,
+            user_id: userData?.user?.id || null,
+            email: userData?.user?.email || adminUser.email || company.email,
+            first_name: adminUser.first_name || 'Business',
+            last_name: adminUser.last_name || 'Owner',
+            company_name: company.name,
+          }
+        });
+        if (emailResult.error) {
+          console.error('Onboarding email error:', emailResult.error);
+        } else {
+          console.log('Onboarding email sent successfully to:', adminUser.email || company.email);
         }
+      } catch (emailErr) {
+        console.error('Failed to send onboarding email:', emailErr);
       }
 
       // 5. Initialize CRM skeleton
