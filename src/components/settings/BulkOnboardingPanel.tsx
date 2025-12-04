@@ -81,17 +81,18 @@ export const BulkOnboardingPanel = () => {
 
       // Get owner info for each tenant
       const companiesWithOwners = await Promise.all((tenants || []).map(async (tenant) => {
+        // Check for owner-level roles: master, corporate, office_admin
         const { data: owner } = await supabase
           .from('profiles')
           .select('first_name, last_name, email')
           .eq('tenant_id', tenant.id)
-          .eq('role', 'corporate')
+          .in('role', ['master', 'corporate', 'office_admin'])
           .limit(1)
           .maybeSingle();
 
         return {
           ...tenant,
-          owner_name: owner ? `${owner.first_name} ${owner.last_name}` : null,
+          owner_name: owner ? `${owner.first_name} ${owner.last_name}` : 'Business Owner',
           owner_email: owner?.email || tenant.email
         };
       }));
