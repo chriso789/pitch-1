@@ -6258,10 +6258,15 @@ export type Database = {
           created_at: string
           created_by: string | null
           faces: Json
+          flagged_for_review: boolean | null
+          flagged_reason: string | null
           geom_geog: unknown
           id: string
+          imagery_date: string | null
+          imagery_source: string | null
           is_active: boolean
           linear_features: Json | null
+          manual_override: boolean | null
           mapbox_visualization_url: string | null
           penetrations: Json
           property_id: string
@@ -6269,6 +6274,9 @@ export type Database = {
           summary: Json
           supersedes: string | null
           updated_at: string
+          validation_notes: string | null
+          validation_score: number | null
+          validation_status: string | null
           version: number
           visualization_generated_at: string | null
           visualization_metadata: Json | null
@@ -6277,10 +6285,15 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           faces?: Json
+          flagged_for_review?: boolean | null
+          flagged_reason?: string | null
           geom_geog?: unknown
           id?: string
+          imagery_date?: string | null
+          imagery_source?: string | null
           is_active?: boolean
           linear_features?: Json | null
+          manual_override?: boolean | null
           mapbox_visualization_url?: string | null
           penetrations?: Json
           property_id: string
@@ -6288,6 +6301,9 @@ export type Database = {
           summary: Json
           supersedes?: string | null
           updated_at?: string
+          validation_notes?: string | null
+          validation_score?: number | null
+          validation_status?: string | null
           version?: number
           visualization_generated_at?: string | null
           visualization_metadata?: Json | null
@@ -6296,10 +6312,15 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           faces?: Json
+          flagged_for_review?: boolean | null
+          flagged_reason?: string | null
           geom_geog?: unknown
           id?: string
+          imagery_date?: string | null
+          imagery_source?: string | null
           is_active?: boolean
           linear_features?: Json | null
+          manual_override?: boolean | null
           mapbox_visualization_url?: string | null
           penetrations?: Json
           property_id?: string
@@ -6307,6 +6328,9 @@ export type Database = {
           summary?: Json
           supersedes?: string | null
           updated_at?: string
+          validation_notes?: string | null
+          validation_score?: number | null
+          validation_status?: string | null
           version?: number
           visualization_generated_at?: string | null
           visualization_metadata?: Json | null
@@ -15036,10 +15060,15 @@ export type Database = {
           created_at: string
           created_by: string | null
           faces: Json
+          flagged_for_review: boolean | null
+          flagged_reason: string | null
           geom_geog: unknown
           id: string
+          imagery_date: string | null
+          imagery_source: string | null
           is_active: boolean
           linear_features: Json | null
+          manual_override: boolean | null
           mapbox_visualization_url: string | null
           penetrations: Json
           property_id: string
@@ -15047,6 +15076,9 @@ export type Database = {
           summary: Json
           supersedes: string | null
           updated_at: string
+          validation_notes: string | null
+          validation_score: number | null
+          validation_status: string | null
           version: number
           visualization_generated_at: string | null
           visualization_metadata: Json | null

@@ -10,7 +10,7 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Split, Info, MapPin, ZoomIn, Maximize2, Minimize2, ImageIcon } from 'lucide-react';
+import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Split, Info, MapPin, ZoomIn, Maximize2, Minimize2, ImageIcon, History } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PolygonEditor } from './PolygonEditor';
@@ -18,6 +18,9 @@ import { ComprehensiveMeasurementOverlay } from './ComprehensiveMeasurementOverl
 import { ManualMeasurementEditor } from './ManualMeasurementEditor';
 import { FacetSplitterOverlay } from './FacetSplitterOverlay';
 import { MeasurementSystemLimitations } from '@/components/documentation/MeasurementSystemLimitations';
+import { ImageryAgeWarning } from './ImageryAgeWarning';
+import { HistoricalImageryComparison } from './HistoricalImageryComparison';
+import { MeasurementValidationReport } from './MeasurementValidationReport';
 import { parseWKTPolygon, calculatePolygonAreaSqft, calculatePerimeterFt } from '@/utils/geoCoordinates';
 import { useManualVerification } from '@/hooks/useMeasurement';
 import { supabase } from '@/integrations/supabase/client';
@@ -197,6 +200,8 @@ export function MeasurementVerificationDialog({
   const [satelliteZoom, setSatelliteZoom] = useState(20); // Range 18-21, default 20 for closer view
   const [resolution, setResolution] = useState<ResolutionOption>('hd'); // Resolution selector
   const [isMaximized, setIsMaximized] = useState(false); // Fullscreen toggle
+  const [showHistoricalComparison, setShowHistoricalComparison] = useState(false); // Historical imagery dialog
+  const [validationOpen, setValidationOpen] = useState(false); // Validation report collapsible
   
   const manualVerify = useManualVerification();
   
@@ -1021,6 +1026,22 @@ export function MeasurementVerificationDialog({
 
         <ScrollArea className="flex-1 h-[calc(85vh-120px)]">
           <div className="grid grid-cols-1 lg:grid-cols-[1fr,340px] gap-4 p-4">
+            {/* Imagery Age Warning - Show at top if imagery is old */}
+            {(() => {
+              const imageryDate = measurement?.metadata?.imageryDate || 
+                                  measurement?.solar_api_response?.imageryDate ||
+                                  dbMeasurement?.solar_api_response?.imageryDate;
+              return imageryDate ? (
+                <div className="lg:col-span-2">
+                  <ImageryAgeWarning
+                    imageryDate={imageryDate}
+                    onDrawManually={() => setShowManualEditor(true)}
+                    onViewHistory={() => setShowHistoricalComparison(true)}
+                  />
+                </div>
+              ) : null;
+            })()}
+            
             {/* Left Panel: Visual Editor */}
             {satelliteImageUrl && (measurement?.faces || buildingPolygon.length > 0) && (
               <div className="space-y-3">
@@ -1421,6 +1442,33 @@ export function MeasurementVerificationDialog({
                 </CollapsibleContent>
               </Collapsible>
 
+              {/* Collapsible: Validation Report */}
+              <Collapsible open={validationOpen} onOpenChange={setValidationOpen}>
+                <CollapsibleTrigger className="flex items-center justify-between w-full p-2 rounded-md hover:bg-muted/50 text-sm font-medium">
+                  <span>📋 Validation Report</span>
+                  {validationOpen ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-1">
+                  <MeasurementValidationReport
+                    measurement={measurement}
+                    tags={tags}
+                    imageryDate={measurement?.metadata?.imageryDate || measurement?.solar_api_response?.imageryDate || dbMeasurement?.solar_api_response?.imageryDate}
+                    onDrawManually={() => setShowManualEditor(true)}
+                  />
+                </CollapsibleContent>
+              </Collapsible>
+
+              {/* View Historical Imagery Button */}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowHistoricalComparison(true)}
+                className="w-full gap-2"
+              >
+                <History className="h-4 w-4" />
+                Compare Historical Imagery
+              </Button>
+
               {/* Warning for low confidence */}
               {confidence.dots < 3 && (
                 <div className="flex items-center gap-2 p-2 bg-destructive/10 border border-destructive/20 rounded text-xs">
@@ -1572,6 +1620,22 @@ export function MeasurementVerificationDialog({
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Historical Imagery Comparison Dialog */}
+      <HistoricalImageryComparison
+        open={showHistoricalComparison}
+        onOpenChange={setShowHistoricalComparison}
+        lat={verifiedAddressLat || centerLat}
+        lng={verifiedAddressLng || centerLng}
+        baselineDate={measurement?.metadata?.imageryDate || measurement?.solar_api_response?.imageryDate || dbMeasurement?.solar_api_response?.imageryDate}
+        onFlagForReview={() => {
+          toast({
+            title: "Flagged for Review",
+            description: "This measurement has been flagged for manual review due to imagery discrepancy.",
+          });
+          setShowHistoricalComparison(false);
+        }}
+      />
     </Dialog>
   );
 }
