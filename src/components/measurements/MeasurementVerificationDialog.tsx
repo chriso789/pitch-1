@@ -173,11 +173,11 @@ export function MeasurementVerificationDialog({
           throw new Error('Failed to get Mapbox token');
         }
         
-        // Build Mapbox Static API URL with @2x retina for sharper imagery
-        const mapboxUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${satelliteZoom},0/640x500@2x?access_token=${tokenData.token}`;
+        // Build Mapbox Static API URL - native 640x500 for 1:1 pixel mapping (no scaling)
+        const mapboxUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${satelliteZoom},0/640x500?access_token=${tokenData.token}`;
         
         setCleanSatelliteImageUrl(mapboxUrl);
-        console.log(`✅ Mapbox satellite image URL generated (zoom ${satelliteZoom}, @2x retina)`);
+        console.log(`✅ Mapbox satellite image URL generated (zoom ${satelliteZoom}, native resolution)`);
       } catch (error) {
         console.error('Failed to fetch Mapbox satellite image:', error);
         toast({
@@ -869,7 +869,7 @@ export function MeasurementVerificationDialog({
   const [materialsOpen, setMaterialsOpen] = useState(false);
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
       <DialogContent className="max-w-5xl max-h-[85vh] p-0 gap-0 overflow-hidden">
         {/* Compact Header */}
         <DialogHeader className="px-4 py-3 border-b bg-muted/30">
