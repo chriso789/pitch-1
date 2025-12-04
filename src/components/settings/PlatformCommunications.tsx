@@ -24,9 +24,11 @@ import {
   Wrench,
   Bell,
   Users,
-  History
+  History,
+  FileText
 } from "lucide-react";
 import { BulkOnboardingPanel } from "./BulkOnboardingPanel";
+import { EmailTemplateManager } from "./EmailTemplateManager";
 import {
   Select,
   SelectContent,
@@ -261,6 +263,10 @@ export const PlatformCommunications = () => {
             <Send className="h-4 w-4" />
             Compose
           </TabsTrigger>
+          <TabsTrigger value="templates" className="gap-2">
+            <FileText className="h-4 w-4" />
+            Templates
+          </TabsTrigger>
           <TabsTrigger value="onboarding" className="gap-2">
             <Mail className="h-4 w-4" />
             Onboarding Invites
@@ -433,6 +439,11 @@ export const PlatformCommunications = () => {
               </Card>
             </div>
           </div>
+        </TabsContent>
+
+        {/* Templates Tab */}
+        <TabsContent value="templates" className="mt-6">
+          <EmailTemplateManager />
         </TabsContent>
 
         {/* Onboarding Tab */}

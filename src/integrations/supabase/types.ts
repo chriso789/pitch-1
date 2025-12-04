@@ -3740,6 +3740,59 @@ export type Database = {
         }
         Relationships: []
       }
+      email_templates: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          html_body: string
+          id: string
+          is_active: boolean | null
+          is_default: boolean | null
+          name: string
+          subject: string
+          template_type: string
+          tenant_id: string | null
+          updated_at: string | null
+          variables: Json | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          html_body: string
+          id?: string
+          is_active?: boolean | null
+          is_default?: boolean | null
+          name: string
+          subject: string
+          template_type: string
+          tenant_id?: string | null
+          updated_at?: string | null
+          variables?: Json | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          html_body?: string
+          id?: string
+          is_active?: boolean | null
+          is_default?: boolean | null
+          name?: string
+          subject?: string
+          template_type?: string
+          tenant_id?: string | null
+          updated_at?: string | null
+          variables?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       enhanced_estimates: {
         Row: {
           actual_profit_amount: number
