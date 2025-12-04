@@ -34,10 +34,12 @@ interface EmailTemplate {
 const TEMPLATE_TYPE_CONFIG: Record<string, { label: string; color: string; icon: string }> = {
   onboarding: { label: "Onboarding", color: "bg-emerald-500", icon: "🎉" },
   announcement: { label: "Announcement", color: "bg-blue-500", icon: "📢" },
-  feature: { label: "Feature", color: "bg-purple-500", icon: "🚀" },
-  maintenance: { label: "Maintenance", color: "bg-amber-500", icon: "🔧" },
+  followup: { label: "Follow-up", color: "bg-purple-500", icon: "📩" },
+  reminder: { label: "Reminder", color: "bg-amber-500", icon: "⏰" },
+  feature: { label: "Feature", color: "bg-indigo-500", icon: "🚀" },
+  maintenance: { label: "Maintenance", color: "bg-slate-500", icon: "🔧" },
   urgent: { label: "Urgent", color: "bg-red-500", icon: "⚠️" },
-  custom: { label: "Custom", color: "bg-slate-500", icon: "✉️" },
+  custom: { label: "Custom", color: "bg-gray-500", icon: "✉️" },
 };
 
 export function EmailTemplateManager() {
