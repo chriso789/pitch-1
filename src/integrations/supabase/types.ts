@@ -2792,6 +2792,135 @@ export type Database = {
           },
         ]
       }
+      customer_messages: {
+        Row: {
+          contact_id: string | null
+          created_at: string | null
+          id: string
+          is_read: boolean | null
+          message: string
+          project_id: string | null
+          read_at: string | null
+          sender_id: string | null
+          sender_type: string
+          tenant_id: string | null
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          message: string
+          project_id?: string | null
+          read_at?: string | null
+          sender_id?: string | null
+          sender_type: string
+          tenant_id?: string | null
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          message?: string
+          project_id?: string | null
+          read_at?: string | null
+          sender_id?: string | null
+          sender_type?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_messages_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_messages_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_portal_tokens: {
+        Row: {
+          access_count: number | null
+          contact_id: string | null
+          created_at: string | null
+          created_by: string | null
+          expires_at: string
+          id: string
+          last_accessed_at: string | null
+          project_id: string | null
+          tenant_id: string | null
+          token: string
+        }
+        Insert: {
+          access_count?: number | null
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          expires_at: string
+          id?: string
+          last_accessed_at?: string | null
+          project_id?: string | null
+          tenant_id?: string | null
+          token: string
+        }
+        Update: {
+          access_count?: number | null
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          expires_at?: string
+          id?: string
+          last_accessed_at?: string | null
+          project_id?: string | null
+          tenant_id?: string | null
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_portal_tokens_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_portal_tokens_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_portal_tokens_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_portal_tokens_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_reviews: {
         Row: {
           clj_number: string | null
@@ -8563,6 +8692,70 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      production_weather_alerts: {
+        Row: {
+          acknowledged_at: string | null
+          acknowledged_by: string | null
+          alert_type: string
+          created_at: string | null
+          id: string
+          is_acknowledged: boolean | null
+          message: string
+          project_id: string | null
+          severity: string
+          tenant_id: string | null
+          weather_data: Json | null
+        }
+        Insert: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          alert_type: string
+          created_at?: string | null
+          id?: string
+          is_acknowledged?: boolean | null
+          message: string
+          project_id?: string | null
+          severity: string
+          tenant_id?: string | null
+          weather_data?: Json | null
+        }
+        Update: {
+          acknowledged_at?: string | null
+          acknowledged_by?: string | null
+          alert_type?: string
+          created_at?: string | null
+          id?: string
+          is_acknowledged?: boolean | null
+          message?: string
+          project_id?: string | null
+          severity?: string
+          tenant_id?: string | null
+          weather_data?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_weather_alerts_acknowledged_by_fkey"
+            columns: ["acknowledged_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_weather_alerts_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_weather_alerts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       production_workflows: {
         Row: {
@@ -14504,31 +14697,34 @@ export type Database = {
       }
       weather_cache: {
         Row: {
-          cached_at: string
+          current_conditions: Json | null
           expires_at: string
+          fetched_at: string | null
+          forecast_data: Json
           id: string
-          risk_score: number
-          tenant_id: string
-          weather_data: Json
-          zip_code: string
+          latitude: number | null
+          location_key: string
+          longitude: number | null
         }
         Insert: {
-          cached_at?: string
-          expires_at?: string
+          current_conditions?: Json | null
+          expires_at: string
+          fetched_at?: string | null
+          forecast_data: Json
           id?: string
-          risk_score: number
-          tenant_id: string
-          weather_data: Json
-          zip_code: string
+          latitude?: number | null
+          location_key: string
+          longitude?: number | null
         }
         Update: {
-          cached_at?: string
+          current_conditions?: Json | null
           expires_at?: string
+          fetched_at?: string | null
+          forecast_data?: Json
           id?: string
-          risk_score?: number
-          tenant_id?: string
-          weather_data?: Json
-          zip_code?: string
+          latitude?: number | null
+          location_key?: string
+          longitude?: number | null
         }
         Relationships: []
       }
