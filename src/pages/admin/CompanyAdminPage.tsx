@@ -138,6 +138,7 @@ const CompanyAdminPage = () => {
       const { data, error } = await supabase
         .from('tenants')
         .select('*')
+        .eq('is_active', true)  // Only show active companies (soft-deleted companies are filtered out)
         .order('name');
 
       if (error) throw error;
