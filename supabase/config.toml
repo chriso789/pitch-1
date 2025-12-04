@@ -296,3 +296,6 @@ verify_jwt = true
 
 [functions.track-measurement-accuracy]
 verify_jwt = true
+
+[functions.send-platform-announcement]
+verify_jwt = true

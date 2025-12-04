@@ -18,7 +18,8 @@ import {
   Power,
   Shield,
   ExternalLink,
-  BarChart3
+  BarChart3,
+  Megaphone
 } from "lucide-react";
 import { EnhancedCompanyOnboarding } from "./EnhancedCompanyOnboarding";
 import { LocationUserAssignment } from "./LocationUserAssignment";
@@ -27,6 +28,7 @@ import { PatentResearchDashboard } from "./PatentResearchDashboard";
 import { BackupStatusDashboard } from "./BackupStatusDashboard";
 import { BackupRestorePanel } from "./BackupRestorePanel";
 import { OnboardingAnalyticsDashboard } from "./OnboardingAnalyticsDashboard";
+import { PlatformCommunications } from "./PlatformCommunications";
 
 interface Company {
   id: string;
@@ -245,15 +247,19 @@ export const PlatformAdmin = () => {
           <TabsTrigger value="all">
             All ({filteredCompanies.length})
           </TabsTrigger>
+          <TabsTrigger value="communications" className="gap-1">
+            <Megaphone className="h-3 w-3" />
+            Communications
+          </TabsTrigger>
           <TabsTrigger value="onboarding-analytics" className="gap-1">
             <BarChart3 className="h-3 w-3" />
-            Onboarding Analytics
+            Analytics
           </TabsTrigger>
           <TabsTrigger value="deletion-history">
             Deletion History
           </TabsTrigger>
           <TabsTrigger value="backups">
-            Backup Dashboard
+            Backups
           </TabsTrigger>
           <TabsTrigger value="restore">
             Recovery
@@ -297,6 +303,10 @@ export const PlatformAdmin = () => {
               setDetailsOpen(true);
             }}
           />
+        </TabsContent>
+
+        <TabsContent value="communications" className="mt-4">
+          <PlatformCommunications />
         </TabsContent>
 
         <TabsContent value="onboarding-analytics" className="mt-4">
