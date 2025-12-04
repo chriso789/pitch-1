@@ -35,6 +35,7 @@ import { useSearchParams } from 'react-router-dom';
 import { LocationManagement } from '@/components/settings/LocationManagement';
 import { WebsitePreview } from '@/components/settings/WebsitePreview';
 import { AddressValidation } from '@/shared/components/forms/AddressValidation';
+import { LogoUploader } from '@/components/settings/LogoUploader';
 import { activityTracker } from '@/services/activityTracker';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
@@ -760,19 +761,11 @@ const CompanyAdminPage = () => {
                       <CardTitle className="text-base">Company Logo</CardTitle>
                     </CardHeader>
                     <CardContent>
-                      <div className="flex items-center gap-4">
-                        <div className="h-20 w-20 rounded-lg border-2 border-dashed border-muted-foreground/25 flex items-center justify-center bg-muted">
-                          {selectedCompany.logo_url ? (
-                            <img src={selectedCompany.logo_url} alt="" className="h-16 w-16 object-contain" />
-                          ) : (
-                            <Upload className="h-8 w-8 text-muted-foreground" />
-                          )}
-                        </div>
-                        <Button variant="outline" size="sm">
-                          <Upload className="h-4 w-4 mr-2" />
-                          Upload Logo
-                        </Button>
-                      </div>
+                      <LogoUploader
+                        logoUrl={formData.logo_url || null}
+                        onLogoUploaded={(url) => setFormData({ ...formData, logo_url: url })}
+                        onLogoRemoved={() => setFormData({ ...formData, logo_url: '' })}
+                      />
                     </CardContent>
                   </Card>
 
