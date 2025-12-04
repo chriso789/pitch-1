@@ -80,6 +80,7 @@ import CompanyAdminPage from "./pages/admin/CompanyAdminPage";
 import TestRoofMeasurement from "./pages/TestRoofMeasurement";
 import OnboardingWalkthrough from "./pages/onboarding/OnboardingWalkthrough";
 import RequestSetupLink from "./pages/auth/RequestSetupLink";
+import CustomerPortalPublic from "./pages/CustomerPortalPublic";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -147,6 +148,7 @@ const AppContent = () => {
         <Route path="/google-calendar/callback" element={<GoogleCalendarCallback />} />
         <Route path="/reports/:token" element={<PublicReportViewer />} />
         <Route path="/onboarding/:token" element={<OnboardingWalkthrough />} />
+        <Route path="/customer/:token" element={<CustomerPortalPublic />} />
         
         {/* Main application routes */}
         <Route path="/dashboard" element={<Dashboard />} />

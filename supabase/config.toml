@@ -1,5 +1,11 @@
 project_id = "alxelfrbjzkmtnsulcei"
 
+[functions.weather-forecast]
+verify_jwt = true
+
+[functions.customer-portal-access]
+verify_jwt = false
+
 [functions.verify-company-domain]
 verify_jwt = false
 
