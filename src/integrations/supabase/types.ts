@@ -3740,6 +3740,59 @@ export type Database = {
         }
         Relationships: []
       }
+      email_engagement_events: {
+        Row: {
+          created_at: string | null
+          email_address: string | null
+          email_type: string
+          event_type: string
+          id: string
+          ip_address: string | null
+          link_url: string | null
+          raw_payload: Json | null
+          resend_message_id: string | null
+          tenant_id: string | null
+          timestamp: string | null
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email_address?: string | null
+          email_type?: string
+          event_type: string
+          id?: string
+          ip_address?: string | null
+          link_url?: string | null
+          raw_payload?: Json | null
+          resend_message_id?: string | null
+          tenant_id?: string | null
+          timestamp?: string | null
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email_address?: string | null
+          email_type?: string
+          event_type?: string
+          id?: string
+          ip_address?: string | null
+          link_url?: string | null
+          raw_payload?: Json | null
+          resend_message_id?: string | null
+          tenant_id?: string | null
+          timestamp?: string | null
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_engagement_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_templates: {
         Row: {
           created_at: string | null
@@ -7123,8 +7176,14 @@ export type Database = {
       }
       onboarding_email_log: {
         Row: {
+          bounced_at: string | null
+          clicks_count: number | null
+          delivered_at: string | null
           id: string
+          last_clicked_at: string | null
+          last_opened_at: string | null
           metadata: Json | null
+          opens_count: number | null
           recipient_email: string
           recipient_name: string | null
           resend_message_id: string | null
@@ -7134,8 +7193,14 @@ export type Database = {
           tenant_id: string | null
         }
         Insert: {
+          bounced_at?: string | null
+          clicks_count?: number | null
+          delivered_at?: string | null
           id?: string
+          last_clicked_at?: string | null
+          last_opened_at?: string | null
           metadata?: Json | null
+          opens_count?: number | null
           recipient_email: string
           recipient_name?: string | null
           resend_message_id?: string | null
@@ -7145,8 +7210,14 @@ export type Database = {
           tenant_id?: string | null
         }
         Update: {
+          bounced_at?: string | null
+          clicks_count?: number | null
+          delivered_at?: string | null
           id?: string
+          last_clicked_at?: string | null
+          last_opened_at?: string | null
           metadata?: Json | null
+          opens_count?: number | null
           recipient_email?: string
           recipient_name?: string | null
           resend_message_id?: string | null

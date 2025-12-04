@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, Link } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -497,15 +497,13 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
                     )}
                   </Button>
 
-                  <div className="text-center">
-                    <Button
-                      type="button"
-                      variant="link"
-                      className="text-sm text-muted-foreground hover:text-primary"
-                      onClick={() => setActiveTab('forgot')}
+                  <div className="text-center pt-2">
+                    <Link 
+                      to="/request-setup-link" 
+                      className="text-sm text-muted-foreground hover:text-primary transition-colors"
                     >
-                      Forgot your password?
-                    </Button>
+                      Need a new setup link? Request one here
+                    </Link>
                   </div>
                 </form>
               </TabsContent>

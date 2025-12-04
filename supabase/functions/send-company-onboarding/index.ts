@@ -283,7 +283,7 @@ const generatePremiumEmailHtml = (firstName: string, companyName: string, onboar
                     
                     <!-- Link expires notice -->
                     <p style="margin: 0 0 16px; color: #64748b; font-size: 13px;">
-                      This link expires in 48 hours. If you didn't request this, please ignore this email.
+                      ⚡ This link expires in 4 hours. If you didn't request this, please ignore this email.
                     </p>
                     
                     <!-- Gold Divider -->
@@ -337,9 +337,9 @@ serve(async (req: Request) => {
     // Generate unique token
     const token = crypto.randomUUID() + '-' + Date.now().toString(36);
     
-    // Token expires in 48 hours
+    // Token expires in 4 hours for security
     const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 48);
+    expiresAt.setHours(expiresAt.getHours() + 4);
 
     // Store token in database
     const { error: tokenError } = await supabase
@@ -398,11 +398,20 @@ serve(async (req: Request) => {
     if (resendApiKey) {
       const resend = new Resend(resendApiKey);
 
+      // Get verified domain from env or fallback to resend.dev for testing
+      const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
+      const fromAddress = `PITCH CRM <onboarding@${fromDomain}>`;
+      
       const emailResult = await resend.emails.send({
-        from: "PITCH CRM <onboarding@resend.dev>",
+        from: fromAddress,
         to: [email],
         subject: emailSubject,
         html: emailHtml,
+        tags: [
+          { name: "email_type", value: "onboarding" },
+          { name: "tenant_id", value: tenant_id },
+          { name: "campaign", value: "company_onboarding" }
+        ],
       });
 
       console.log('Premium onboarding email sent:', emailResult);

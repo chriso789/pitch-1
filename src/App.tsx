@@ -79,6 +79,7 @@ import SmartTemplateEditorPage from "./pages/SmartTemplateEditorPage";
 import CompanyAdminPage from "./pages/admin/CompanyAdminPage";
 import TestRoofMeasurement from "./pages/TestRoofMeasurement";
 import OnboardingWalkthrough from "./pages/onboarding/OnboardingWalkthrough";
+import RequestSetupLink from "./pages/auth/RequestSetupLink";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -139,6 +140,7 @@ const AppContent = () => {
         <Route path="/reset-password" element={<ResetPassword />} />
         <Route path="/auth/confirm-email" element={<ConfirmEmail />} />
         <Route path="/demo-request" element={<DemoRequest />} />
+        <Route path="/request-setup-link" element={<RequestSetupLink />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/features" element={<Features />} />
         <Route path="/quickbooks/callback" element={<QuickBooksCallback />} />
