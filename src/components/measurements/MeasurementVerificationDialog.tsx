@@ -9,7 +9,8 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Split, Info, MapPin, ZoomIn } from 'lucide-react';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
+import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Split, Info, MapPin, ZoomIn, Maximize2, Minimize2, ImageIcon } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PolygonEditor } from './PolygonEditor';
@@ -88,6 +89,7 @@ export function MeasurementVerificationDialog({
   const [regenerationError, setRegenerationError] = useState<string | null>(null);
   const [satelliteZoom, setSatelliteZoom] = useState(20); // Range 18-21, default 20 for closer view
   const [highResolution, setHighResolution] = useState(false); // HD toggle for 1280x1000 images
+  const [isMaximized, setIsMaximized] = useState(false); // Fullscreen toggle
   
   const manualVerify = useManualVerification();
   
@@ -875,7 +877,8 @@ export function MeasurementVerificationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
-      <DialogContent className="max-w-4xl max-h-[85vh] p-0 gap-0 overflow-hidden">
+      <DialogContent className={isMaximized ? "max-w-[95vw] w-[95vw] max-h-[95vh] h-[95vh] p-0 gap-0 overflow-hidden" : "max-w-4xl max-h-[85vh] p-0 gap-0 overflow-hidden"}>
+        <TooltipProvider>
         {/* Compact Header */}
         <DialogHeader className="px-4 py-3 border-b bg-muted/30">
           <div className="flex items-center justify-between gap-4">
@@ -897,6 +900,14 @@ export function MeasurementVerificationDialog({
               <Badge variant={isOnline ? 'secondary' : 'destructive'} className="text-xs">
                 {isOnline ? 'Online' : 'Offline'}
               </Badge>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsMaximized(!isMaximized)}>
+                    {isMaximized ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>{isMaximized ? 'Exit Fullscreen' : 'Fullscreen'}</TooltipContent>
+              </Tooltip>
             </div>
           </div>
         </DialogHeader>
@@ -907,31 +918,40 @@ export function MeasurementVerificationDialog({
             {satelliteImageUrl && (measurement?.faces || buildingPolygon.length > 0) && (
               <div className="space-y-3">
                 {/* Zoom Control Toolbar */}
-                <div className="flex items-center gap-4 p-2 bg-muted/50 rounded-lg border">
-                  <div className="flex items-center gap-2">
-                    <ZoomIn className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm font-medium">Zoom</span>
-                  </div>
+                <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg border">
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center">
+                        <ZoomIn className="h-4 w-4 text-muted-foreground" />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>Satellite Zoom Level</TooltipContent>
+                  </Tooltip>
                   <Slider
                     value={[satelliteZoom]}
                     onValueChange={(value) => setSatelliteZoom(value[0])}
                     min={18}
                     max={21}
                     step={1}
-                    className="flex-1 max-w-[200px]"
+                    className="flex-1 max-w-[160px]"
                     disabled={isLoadingSatellite}
                   />
-                  <Badge variant="secondary" className="text-xs min-w-[40px] justify-center">
+                  <Badge variant="secondary" className="text-xs min-w-[32px] justify-center">
                     {satelliteZoom}
                   </Badge>
-                  <div className="flex items-center gap-1.5 ml-2 pl-2 border-l">
-                    <Label className="text-xs text-muted-foreground">HD</Label>
-                    <Switch 
-                      checked={highResolution} 
-                      onCheckedChange={setHighResolution}
-                      disabled={isLoadingSatellite}
-                    />
-                  </div>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <div className="flex items-center gap-1.5 pl-2 border-l">
+                        <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
+                        <Switch 
+                          checked={highResolution} 
+                          onCheckedChange={setHighResolution}
+                          disabled={isLoadingSatellite}
+                        />
+                      </div>
+                    </TooltipTrigger>
+                    <TooltipContent>High Resolution (1280×1000)</TooltipContent>
+                  </Tooltip>
                   {isLoadingSatellite && (
                     <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
                   )}
@@ -1299,123 +1319,93 @@ export function MeasurementVerificationDialog({
           </div>
         </ScrollArea>
 
-        <DialogFooter className="gap-2">
-          <Button
-            variant="outline"
-            onClick={handleReject}
-            disabled={isAccepting}
-          >
-            <X className="h-4 w-4 mr-2" />
-            Cancel
+        <DialogFooter className="gap-1.5 px-4 py-3">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="icon" onClick={handleReject} disabled={isAccepting}>
+                <X className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Cancel</TooltipContent>
+          </Tooltip>
+          
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => {
+                  const lat = verifiedAddressLat ?? centerLat;
+                  const lng = verifiedAddressLng ?? centerLng;
+                  toast({
+                    title: "Force Regenerating Satellite View",
+                    description: `Using ${verifiedAddressLat ? 'verified address' : 'bounds center'} coordinates`,
+                  });
+                  setManualZoom(0);
+                  setAdjustedCenterLat(lat);
+                  setAdjustedCenterLng(lng);
+                  handleRegenerateVisualization(lat, lng, 0);
+                }}
+                disabled={isRegenerating}
+              >
+                <RefreshCw className={`h-4 w-4 ${isRegenerating ? 'animate-spin' : ''}`} />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Force Regenerate Satellite</TooltipContent>
+          </Tooltip>
+          
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => {
+                  if (!satelliteImageUrl) {
+                    toast({ title: "Satellite Image Required", variant: "destructive" });
+                    return;
+                  }
+                  setShowManualEditor(true);
+                }}
+                disabled={isAccepting || !satelliteImageUrl}
+              >
+                <Edit3 className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Verify Manually</TooltipContent>
+          </Tooltip>
+          
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => {
+                  if (!satelliteImageUrl) {
+                    toast({ title: "Satellite Image Required", variant: "destructive" });
+                    return;
+                  }
+                  setShowFacetSplitter(true);
+                }}
+                disabled={isAccepting || !satelliteImageUrl}
+              >
+                <Split className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Split Facets</TooltipContent>
+          </Tooltip>
+          
+          <div className="flex-1" />
+          
+          <Button onClick={handleAccept} disabled={isAccepting} variant="secondary" size="sm">
+            <CheckCircle2 className="h-4 w-4 mr-1.5" />
+            {isAccepting ? 'Applying...' : 'Accept'}
           </Button>
-          <div className="flex items-center gap-2">
-            <Button
-              variant="outline"
-              onClick={() => {
-                // Always use verified address coordinates if available
-                const lat = verifiedAddressLat ?? centerLat;
-                const lng = verifiedAddressLng ?? centerLng;
-                
-                toast({
-                  title: "Force Regenerating Satellite View",
-                  description: (
-                    <div className="space-y-1 text-xs">
-                      <div>📍 Coords: {lat.toFixed(6)}, {lng.toFixed(6)}</div>
-                      <div>🔍 Zoom: Default (wider view)</div>
-                      <div>📏 Source: {verifiedAddressLat ? 'Verified Address' : 'Bounds Center'}</div>
-                      {coordinateMismatchDistance > 10 && (
-                        <div className="text-yellow-500">
-                          ⚠️ Previous offset: {Math.round(coordinateMismatchDistance)}m
-                        </div>
-                      )}
-                    </div>
-                  ),
-                  duration: 5000,
-                });
-                
-                // Reset zoom to 0 to use new default wider view from edge function
-                setManualZoom(0);
-                setAdjustedCenterLat(lat);
-                setAdjustedCenterLng(lng);
-                
-                handleRegenerateVisualization(lat, lng, 0);
-              }}
-              disabled={isRegenerating}
-              className="border-primary/50"
-              title="Regenerate satellite image using verified address coordinates and default zoom. Use this to test coordinate/zoom fixes."
-            >
-              {isRegenerating ? (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
-                  Regenerating...
-                </>
-              ) : (
-                <>
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Force Regenerate
-                </>
-              )}
-            </Button>
-            {verifiedAddressLat && verifiedAddressLng && coordinateMismatchDistance > 30 && (
-              <Badge variant="destructive" className="text-xs">
-                <AlertCircle className="h-3 w-3 mr-1" />
-                Regenerate recommended
-              </Badge>
-            )}
-          </div>
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (!satelliteImageUrl) {
-                toast({
-                  title: "Satellite Image Required",
-                  description: "Click 'Regenerate Satellite View' above to generate an aerial photo, or use Google Maps fallback.",
-                  variant: "destructive"
-                });
-                return;
-              }
-              setShowManualEditor(true);
-            }}
-            disabled={isAccepting || !satelliteImageUrl}
-          >
-            <Edit3 className="h-4 w-4 mr-2" />
-            Verify Manually
-          </Button>
-          <Button
-            variant="outline"
-            onClick={() => {
-              if (!satelliteImageUrl) {
-                toast({
-                  title: "Satellite Image Required",
-                  description: "Click 'Regenerate Satellite View' above to generate an aerial photo.",
-                  variant: "destructive"
-                });
-                return;
-              }
-              setShowFacetSplitter(true);
-            }}
-            disabled={isAccepting || !satelliteImageUrl}
-          >
-            <Split className="h-4 w-4 mr-2" />
-            Split Facets
-          </Button>
-          <Button
-            onClick={handleAccept}
-            disabled={isAccepting}
-            variant="secondary"
-          >
-            <CheckCircle2 className="h-4 w-4 mr-2" />
-            {isAccepting ? 'Applying...' : 'Accept & Apply'}
-          </Button>
-          <Button
-            onClick={handleAcceptAndCreateEstimate}
-            disabled={isAccepting}
-            className="bg-primary"
-          >
-            <CheckCircle2 className="h-4 w-4 mr-2" />
-            {isAccepting ? 'Processing...' : 'Accept & Create Estimate'}
+          <Button onClick={handleAcceptAndCreateEstimate} disabled={isAccepting} size="sm">
+            <CheckCircle2 className="h-4 w-4 mr-1.5" />
+            {isAccepting ? 'Processing...' : 'Accept & Estimate'}
           </Button>
          </DialogFooter>
+         </TooltipProvider>
         
         {/* Documentation Section - Collapsible */}
         <div className="mt-4 px-6 pb-6">
