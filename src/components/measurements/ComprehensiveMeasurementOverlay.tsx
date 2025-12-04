@@ -2,7 +2,13 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Canvas as FabricCanvas, Line, Polygon, Circle, Text as FabricText, FabricObject, FabricImage, Point as FabricPoint } from "fabric";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Move, Mountain, Triangle, ArrowDownUp, Square, Trash2, RotateCcw, Eye, EyeOff, MapPin, StickyNote, AlertTriangle, Split, Merge, ChevronDown, ChevronUp, Grid3x3 } from "lucide-react";
+import { Move, Mountain, Triangle, ArrowDownUp, Square, Trash2, RotateCcw, Eye, EyeOff, MapPin, StickyNote, AlertTriangle, Split, Merge, ChevronDown, ChevronUp, Grid3x3, Layers } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuCheckboxItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -2273,20 +2279,27 @@ export function ComprehensiveMeasurementOverlay({
         </div>
       </div>
       
-      {/* Layer toggles */}
-      <div className="flex gap-2 flex-wrap">
-        {Object.entries(layers).map(([key, visible]) => (
-          <Badge 
-            key={key}
-            variant={visible ? 'default' : 'outline'}
-            className="cursor-pointer"
-            onClick={() => toggleLayer(key)}
-          >
-            {visible ? <Eye className="h-3 w-3 mr-1" /> : <EyeOff className="h-3 w-3 mr-1" />}
-            {key.charAt(0).toUpperCase() + key.slice(1)}
-          </Badge>
-        ))}
-      </div>
+      {/* Layer toggles dropdown */}
+      <DropdownMenu>
+        <DropdownMenuTrigger asChild>
+          <Button size="sm" variant="outline">
+            <Layers className="h-4 w-4 mr-1" />
+            Layers ({Object.values(layers).filter(Boolean).length})
+            <ChevronDown className="h-4 w-4 ml-1" />
+          </Button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent className="bg-background border z-50">
+          {Object.entries(layers).map(([key, visible]) => (
+            <DropdownMenuCheckboxItem
+              key={key}
+              checked={visible}
+              onCheckedChange={() => toggleLayer(key)}
+            >
+              {key.charAt(0).toUpperCase() + key.slice(1)}
+            </DropdownMenuCheckboxItem>
+          ))}
+        </DropdownMenuContent>
+      </DropdownMenu>
       
       {/* Canvas */}
       <div className="border border-border rounded-lg overflow-hidden bg-muted relative">

@@ -7,6 +7,8 @@ import { Input } from '@/components/ui/input';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Slider } from '@/components/ui/slider';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
 import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Split, Info, MapPin, ZoomIn } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -85,6 +87,7 @@ export function MeasurementVerificationDialog({
   const [hasAutoFixedMismatch, setHasAutoFixedMismatch] = useState(false);
   const [regenerationError, setRegenerationError] = useState<string | null>(null);
   const [satelliteZoom, setSatelliteZoom] = useState(20); // Range 18-21, default 20 for closer view
+  const [highResolution, setHighResolution] = useState(false); // HD toggle for 1280x1000 images
   
   const manualVerify = useManualVerification();
   
@@ -173,11 +176,13 @@ export function MeasurementVerificationDialog({
           throw new Error('Failed to get Mapbox token');
         }
         
-        // Build Mapbox Static API URL - native 640x500 for 1:1 pixel mapping (no scaling)
-        const mapboxUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${satelliteZoom},0/640x500?access_token=${tokenData.token}`;
+        // Build Mapbox Static API URL - dynamic resolution based on HD toggle
+        const imageWidth = highResolution ? 1280 : 640;
+        const imageHeight = highResolution ? 1000 : 500;
+        const mapboxUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${satelliteZoom},0/${imageWidth}x${imageHeight}?access_token=${tokenData.token}`;
         
         setCleanSatelliteImageUrl(mapboxUrl);
-        console.log(`✅ Mapbox satellite image URL generated (zoom ${satelliteZoom}, native resolution)`);
+        console.log(`✅ Mapbox satellite image URL generated (zoom ${satelliteZoom}, ${highResolution ? 'HD 1280x1000' : 'standard 640x500'})`);
       } catch (error) {
         console.error('Failed to fetch Mapbox satellite image:', error);
         toast({
@@ -191,7 +196,7 @@ export function MeasurementVerificationDialog({
     };
     
     fetchMapboxSatelliteImage();
-  }, [verifiedAddressLat, verifiedAddressLng, satelliteZoom]);  // ✅ Re-fetch when zoom changes
+  }, [verifiedAddressLat, verifiedAddressLng, satelliteZoom, highResolution]);  // ✅ Re-fetch when zoom or HD changes
   
   // Update satellite image URL when prop changes
   useEffect(() => {
@@ -870,7 +875,7 @@ export function MeasurementVerificationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
-      <DialogContent className="max-w-5xl max-h-[85vh] p-0 gap-0 overflow-hidden">
+      <DialogContent className="max-w-4xl max-h-[85vh] p-0 gap-0 overflow-hidden">
         {/* Compact Header */}
         <DialogHeader className="px-4 py-3 border-b bg-muted/30">
           <div className="flex items-center justify-between gap-4">
@@ -919,6 +924,14 @@ export function MeasurementVerificationDialog({
                   <Badge variant="secondary" className="text-xs min-w-[40px] justify-center">
                     {satelliteZoom}
                   </Badge>
+                  <div className="flex items-center gap-1.5 ml-2 pl-2 border-l">
+                    <Label className="text-xs text-muted-foreground">HD</Label>
+                    <Switch 
+                      checked={highResolution} 
+                      onCheckedChange={setHighResolution}
+                      disabled={isLoadingSatellite}
+                    />
+                  </div>
                   {isLoadingSatellite && (
                     <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
                   )}
@@ -940,8 +953,8 @@ export function MeasurementVerificationDialog({
                         const detection = detectRoofType(updatedMeasurement, updatedTags);
                         setDetectedRoofType(detection);
                       }}
-                      canvasWidth={640}
-                      canvasHeight={500}
+                      canvasWidth={highResolution ? 1280 : 640}
+                      canvasHeight={highResolution ? 1000 : 500}
                       verifiedAddressLat={verifiedAddressLat}
                       verifiedAddressLng={verifiedAddressLng}
                     />
