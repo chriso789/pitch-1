@@ -27,7 +27,8 @@ import {
   FileText,
   Loader2,
   AlertTriangle,
-  Trash2
+  Trash2,
+  Send
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -36,6 +37,7 @@ import { LocationManagement } from '@/components/settings/LocationManagement';
 import { WebsitePreview } from '@/components/settings/WebsitePreview';
 import { AddressValidation } from '@/shared/components/forms/AddressValidation';
 import { LogoUploader } from '@/components/settings/LogoUploader';
+import { EmailTemplateManager } from '@/components/settings/EmailTemplateManager';
 import { activityTracker } from '@/services/activityTracker';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
 
@@ -95,6 +97,7 @@ const CompanyAdminPage = () => {
   const [websiteData, setWebsiteData] = useState<WebsiteData | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [billingAddressData, setBillingAddressData] = useState<any>(null);
+  const [isSendingOnboarding, setIsSendingOnboarding] = useState(false);
 
   // Form state (removed subdomain)
   const [formData, setFormData] = useState({
@@ -747,9 +750,10 @@ const CompanyAdminPage = () => {
             
             {selectedCompany && (
               <Tabs defaultValue="profile" className="w-full">
-                <TabsList className="grid w-full grid-cols-4">
+                <TabsList className="grid w-full grid-cols-5">
                   <TabsTrigger value="profile">Profile</TabsTrigger>
                   <TabsTrigger value="locations">Locations</TabsTrigger>
+                  <TabsTrigger value="emails">Emails</TabsTrigger>
                   <TabsTrigger value="subscription">Subscription</TabsTrigger>
                   <TabsTrigger value="settings">Settings</TabsTrigger>
                 </TabsList>
@@ -911,6 +915,106 @@ const CompanyAdminPage = () => {
 
                 <TabsContent value="locations" className="mt-4">
                   <LocationManagement tenantId={selectedCompany.id} />
+                </TabsContent>
+
+                <TabsContent value="emails" className="space-y-4 mt-4">
+                  {/* Send Onboarding Email Section */}
+                  <Card className="border-primary/20">
+                    <CardHeader>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Send className="h-4 w-4" />
+                        Send Onboarding Email
+                      </CardTitle>
+                      <CardDescription>
+                        Send the welcome and setup email to the company owner
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
+                        <div>
+                          <p className="font-medium">{formData.owner_name || 'No owner set'}</p>
+                          <p className="text-sm text-muted-foreground">
+                            {formData.owner_email || 'No email configured'}
+                          </p>
+                        </div>
+                        <Button 
+                          onClick={async () => {
+                            if (!selectedCompany) return;
+                            
+                            const ownerEmail = formData.owner_email || selectedCompany.owner_email;
+                            const ownerName = formData.owner_name || selectedCompany.owner_name || 'Team';
+                            
+                            if (!ownerEmail) {
+                              toast({
+                                title: "Missing Owner Email",
+                                description: "Please add an owner email address in the Profile tab first",
+                                variant: "destructive"
+                              });
+                              return;
+                            }
+
+                            setIsSendingOnboarding(true);
+                            try {
+                              const { data, error } = await supabase.functions.invoke('send-company-onboarding', {
+                                body: {
+                                  tenant_id: selectedCompany.id,
+                                  email: ownerEmail,
+                                  first_name: ownerName.split(' ')[0] || 'Team',
+                                  company_name: selectedCompany.name
+                                }
+                              });
+
+                              if (error) throw error;
+
+                              toast({
+                                title: "Onboarding Email Sent!",
+                                description: `Email sent to ${ownerEmail}`,
+                              });
+                            } catch (error: any) {
+                              toast({
+                                title: "Failed to Send",
+                                description: error.message || 'An error occurred',
+                                variant: "destructive"
+                              });
+                            } finally {
+                              setIsSendingOnboarding(false);
+                            }
+                          }}
+                          disabled={!formData.owner_email || isSendingOnboarding}
+                        >
+                          {isSendingOnboarding ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Sending...
+                            </>
+                          ) : (
+                            <>
+                              <Send className="h-4 w-4 mr-2" />
+                              Send Onboarding Email
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                      {!formData.owner_email && (
+                        <p className="text-xs text-amber-600 mt-2">
+                          ⚠️ Add an owner email in the Profile tab to send onboarding emails
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* Email Templates Section */}
+                  <Card>
+                    <CardHeader>
+                      <CardTitle className="text-base">Email Templates</CardTitle>
+                      <CardDescription>
+                        Customize email templates used for platform communications
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <EmailTemplateManager />
+                    </CardContent>
+                  </Card>
                 </TabsContent>
 
                 <TabsContent value="subscription" className="space-y-4 mt-4">
