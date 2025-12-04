@@ -376,13 +376,35 @@ serve(async (req) => {
       });
     }
 
-    // Log successful deletion
-    await logAudit('DELETE', true, {
-      backup_path: backupPath,
-      data_summary: dataSummary,
-      cleared_blocking_records: clearedRecords,
-      email_sent_to: 'chrisobrien91@gmail.com'
-    });
+    // Log successful deletion - use null tenant_id since company no longer exists
+    // (company_deletion_backups already captures full audit trail)
+    try {
+      await supabase.from('audit_log').insert({
+        tenant_id: null, // Company no longer exists - FK would fail
+        table_name: 'tenants',
+        record_id: companyId,
+        action: 'DELETE',
+        changed_by: userId,
+        old_values: {
+          company_name: companyName,
+          attempt_type: 'company_deletion',
+          timestamp: new Date().toISOString(),
+          backup_path: backupPath,
+          data_summary: dataSummary,
+          cleared_blocking_records: clearedRecords,
+          email_sent_to: 'chrisobrien91@gmail.com'
+        },
+        new_values: {
+          status: 'deleted'
+        },
+        ip_address: ipAddress,
+        user_agent: userAgent,
+        session_id: `deletion-${Date.now()}`
+      });
+    } catch (auditErr) {
+      // Silent fail - company_deletion_backups already has full audit trail
+      console.log('[delete-company] Post-deletion audit log skipped (expected if FK constraint):', auditErr);
+    }
 
     console.log(`[delete-company] Successfully deleted company: ${companyName}`);
 
