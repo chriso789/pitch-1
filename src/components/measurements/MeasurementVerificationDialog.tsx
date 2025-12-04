@@ -26,7 +26,7 @@ import { detectRoofType } from '@/utils/measurementGeometry';
 import { saveMeasurementWithOfflineSupport } from '@/services/offlineMeasurementSync';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
 
-// Industry-standard roof pitch multipliers
+// Industry-standard roof pitch multipliers: slope_factor = sqrt(1 + (X/12)^2)
 const PITCH_MULTIPLIERS: Record<string, number> = {
   'flat': 1.0000,
   '1/12': 1.0035,
@@ -41,6 +41,113 @@ const PITCH_MULTIPLIERS: Record<string, number> = {
   '10/12': 1.3017,
   '11/12': 1.3566,
   '12/12': 1.4142,
+};
+
+// Resolution options for satellite imagery
+type ResolutionOption = 'standard' | 'hd' | 'ultra';
+const RESOLUTION_CONFIG: Record<ResolutionOption, { width: number; height: number; label: string }> = {
+  standard: { width: 640, height: 500, label: 'Standard' },
+  hd: { width: 1280, height: 1000, label: 'HD' },
+  ultra: { width: 1920, height: 1500, label: 'Ultra HD' },
+};
+
+// Parse linear_features from array format (database) or object format (API)
+const extractLinearFeatures = (
+  measurement: any, 
+  dbMeasurement: any, 
+  tags: Record<string, any>
+): { ridge: number; hip: number; valley: number; eave: number; rake: number; step: number; perimeter: number } => {
+  // Helper to sum array by type (database stores linear_features as array)
+  const sumArrayByType = (features: any[], type: string): number => {
+    if (!Array.isArray(features)) return 0;
+    return features
+      .filter(f => f.type?.toLowerCase() === type.toLowerCase())
+      .reduce((sum, f) => sum + (f.length_ft || f.length || 0), 0);
+  };
+  
+  // Priority order: tags → summary → parsed array → object fallback
+  const dbLinear = dbMeasurement?.linear_features;
+  const mLinear = measurement?.linear_features;
+  
+  const getRidge = () => {
+    if (tags['lf.ridge']) return tags['lf.ridge'];
+    if (measurement?.summary?.ridge_ft) return measurement.summary.ridge_ft;
+    if (dbMeasurement?.summary?.ridge_ft) return dbMeasurement.summary.ridge_ft;
+    if (Array.isArray(dbLinear)) return sumArrayByType(dbLinear, 'ridge');
+    if (Array.isArray(mLinear)) return sumArrayByType(mLinear, 'ridge');
+    if (typeof mLinear === 'object' && !Array.isArray(mLinear)) return mLinear?.ridge || 0;
+    if (typeof dbLinear === 'object' && !Array.isArray(dbLinear)) return dbLinear?.ridge || 0;
+    return 0;
+  };
+  
+  const getHip = () => {
+    if (tags['lf.hip']) return tags['lf.hip'];
+    if (measurement?.summary?.hip_ft) return measurement.summary.hip_ft;
+    if (dbMeasurement?.summary?.hip_ft) return dbMeasurement.summary.hip_ft;
+    if (Array.isArray(dbLinear)) return sumArrayByType(dbLinear, 'hip');
+    if (Array.isArray(mLinear)) return sumArrayByType(mLinear, 'hip');
+    if (typeof mLinear === 'object' && !Array.isArray(mLinear)) return mLinear?.hip || 0;
+    if (typeof dbLinear === 'object' && !Array.isArray(dbLinear)) return dbLinear?.hip || 0;
+    return 0;
+  };
+  
+  const getValley = () => {
+    if (tags['lf.valley']) return tags['lf.valley'];
+    if (measurement?.summary?.valley_ft) return measurement.summary.valley_ft;
+    if (dbMeasurement?.summary?.valley_ft) return dbMeasurement.summary.valley_ft;
+    if (Array.isArray(dbLinear)) return sumArrayByType(dbLinear, 'valley');
+    if (Array.isArray(mLinear)) return sumArrayByType(mLinear, 'valley');
+    if (typeof mLinear === 'object' && !Array.isArray(mLinear)) return mLinear?.valley || 0;
+    if (typeof dbLinear === 'object' && !Array.isArray(dbLinear)) return dbLinear?.valley || 0;
+    return 0;
+  };
+  
+  const getEave = () => {
+    if (tags['lf.eave']) return tags['lf.eave'];
+    if (measurement?.summary?.eave_ft) return measurement.summary.eave_ft;
+    if (dbMeasurement?.summary?.eave_ft) return dbMeasurement.summary.eave_ft;
+    if (Array.isArray(dbLinear)) return sumArrayByType(dbLinear, 'eave');
+    if (Array.isArray(mLinear)) return sumArrayByType(mLinear, 'eave');
+    if (typeof mLinear === 'object' && !Array.isArray(mLinear)) return mLinear?.eave || 0;
+    if (typeof dbLinear === 'object' && !Array.isArray(dbLinear)) return dbLinear?.eave || 0;
+    return 0;
+  };
+  
+  const getRake = () => {
+    if (tags['lf.rake']) return tags['lf.rake'];
+    if (measurement?.summary?.rake_ft) return measurement.summary.rake_ft;
+    if (dbMeasurement?.summary?.rake_ft) return dbMeasurement.summary.rake_ft;
+    if (Array.isArray(dbLinear)) return sumArrayByType(dbLinear, 'rake');
+    if (Array.isArray(mLinear)) return sumArrayByType(mLinear, 'rake');
+    if (typeof mLinear === 'object' && !Array.isArray(mLinear)) return mLinear?.rake || 0;
+    if (typeof dbLinear === 'object' && !Array.isArray(dbLinear)) return dbLinear?.rake || 0;
+    return 0;
+  };
+  
+  const getStep = () => {
+    if (tags['lf.step']) return tags['lf.step'];
+    if (measurement?.summary?.step_ft) return measurement.summary.step_ft;
+    if (dbMeasurement?.summary?.step_ft) return dbMeasurement.summary.step_ft;
+    if (Array.isArray(dbLinear)) return sumArrayByType(dbLinear, 'step');
+    if (Array.isArray(mLinear)) return sumArrayByType(mLinear, 'step');
+    if (typeof mLinear === 'object' && !Array.isArray(mLinear)) return mLinear?.step || 0;
+    if (typeof dbLinear === 'object' && !Array.isArray(dbLinear)) return dbLinear?.step || 0;
+    return 0;
+  };
+  
+  const ridge = getRidge();
+  const hip = getHip();
+  const valley = getValley();
+  const eave = getEave();
+  const rake = getRake();
+  const step = getStep();
+  
+  // Perimeter = eave + rake (or from summary if available)
+  const perimeter = measurement?.summary?.perimeter_ft || 
+                    dbMeasurement?.summary?.perimeter_ft || 
+                    (eave + rake);
+  
+  return { ridge, hip, valley, eave, rake, step, perimeter };
 };
 
 interface MeasurementVerificationDialogProps {
@@ -88,7 +195,7 @@ export function MeasurementVerificationDialog({
   const [hasAutoFixedMismatch, setHasAutoFixedMismatch] = useState(false);
   const [regenerationError, setRegenerationError] = useState<string | null>(null);
   const [satelliteZoom, setSatelliteZoom] = useState(20); // Range 18-21, default 20 for closer view
-  const [highResolution, setHighResolution] = useState(false); // HD toggle for 1280x1000 images
+  const [resolution, setResolution] = useState<ResolutionOption>('hd'); // Resolution selector
   const [isMaximized, setIsMaximized] = useState(false); // Fullscreen toggle
   
   const manualVerify = useManualVerification();
@@ -178,13 +285,12 @@ export function MeasurementVerificationDialog({
           throw new Error('Failed to get Mapbox token');
         }
         
-        // Build Mapbox Static API URL - dynamic resolution based on HD toggle
-        const imageWidth = highResolution ? 1280 : 640;
-        const imageHeight = highResolution ? 1000 : 500;
+        // Build Mapbox Static API URL - dynamic resolution based on resolution selector
+        const { width: imageWidth, height: imageHeight, label: resLabel } = RESOLUTION_CONFIG[resolution];
         const mapboxUrl = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},${satelliteZoom},0/${imageWidth}x${imageHeight}?access_token=${tokenData.token}`;
         
         setCleanSatelliteImageUrl(mapboxUrl);
-        console.log(`✅ Mapbox satellite image URL generated (zoom ${satelliteZoom}, ${highResolution ? 'HD 1280x1000' : 'standard 640x500'})`);
+        console.log(`✅ Mapbox satellite image URL generated (zoom ${satelliteZoom}, ${resLabel} ${imageWidth}x${imageHeight})`);
       } catch (error) {
         console.error('Failed to fetch Mapbox satellite image:', error);
         toast({
@@ -198,7 +304,7 @@ export function MeasurementVerificationDialog({
     };
     
     fetchMapboxSatelliteImage();
-  }, [verifiedAddressLat, verifiedAddressLng, satelliteZoom, highResolution]);  // ✅ Re-fetch when zoom or HD changes
+  }, [verifiedAddressLat, verifiedAddressLng, satelliteZoom, resolution]);  // ✅ Re-fetch when zoom or resolution changes
   
   // Update satellite image URL when prop changes
   useEffect(() => {
@@ -631,17 +737,18 @@ export function MeasurementVerificationDialog({
   const totalAreaWithWaste = roofAreaNoWaste * (1 + wastePercent / 100);
   const roofSquares = totalAreaWithWaste / 100;
   
-  // Linear features with fallbacks to measurement.linear_features, measurement.summary, and database
-  const ridge = tags['lf.ridge'] || measurement?.linear_features?.ridge || measurement?.summary?.ridge_ft || dbMeasurement?.summary?.ridge_ft || dbMeasurement?.linear_features?.ridge || 0;
-  const hip = tags['lf.hip'] || measurement?.linear_features?.hip || measurement?.summary?.hip_ft || dbMeasurement?.summary?.hip_ft || dbMeasurement?.linear_features?.hip || 0;
-  const valley = tags['lf.valley'] || measurement?.linear_features?.valley || measurement?.summary?.valley_ft || dbMeasurement?.summary?.valley_ft || dbMeasurement?.linear_features?.valley || 0;
-  const eave = tags['lf.eave'] || measurement?.linear_features?.eave || measurement?.summary?.eave_ft || dbMeasurement?.summary?.eave_ft || dbMeasurement?.linear_features?.eave || 0;
-  const rake = tags['lf.rake'] || measurement?.linear_features?.rake || measurement?.summary?.rake_ft || dbMeasurement?.summary?.rake_ft || dbMeasurement?.linear_features?.rake || 0;
-  const step = tags['lf.step'] || measurement?.linear_features?.step || measurement?.summary?.step_ft || dbMeasurement?.summary?.step_ft || dbMeasurement?.linear_features?.step || 0;
+  // Extract linear features using the comprehensive helper function
+  const extractedLinear = extractLinearFeatures(measurement, dbMeasurement, tags);
+  const ridge = extractedLinear.ridge;
+  const hip = extractedLinear.hip;
+  const valley = extractedLinear.valley;
+  const eave = extractedLinear.eave;
+  const rake = extractedLinear.rake;
+  const step = extractedLinear.step;
   
   const perimeter = buildingPolygon.length > 0 
     ? calculatePerimeterFt(adjustedPolygon || buildingPolygon)
-    : (eave + rake + ridge + hip + valley + step);
+    : extractedLinear.perimeter;
 
   // Recalculate materials when measurements change
   useEffect(() => {
@@ -912,7 +1019,7 @@ export function MeasurementVerificationDialog({
           </div>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 overflow-auto">
+        <ScrollArea className="flex-1 h-[calc(85vh-120px)]">
           <div className="grid grid-cols-1 lg:grid-cols-[1fr,340px] gap-4 p-4">
             {/* Left Panel: Visual Editor */}
             {satelliteImageUrl && (measurement?.faces || buildingPolygon.length > 0) && (
@@ -939,19 +1046,18 @@ export function MeasurementVerificationDialog({
                   <Badge variant="secondary" className="text-xs min-w-[32px] justify-center">
                     {satelliteZoom}
                   </Badge>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center gap-1.5 pl-2 border-l">
-                        <ImageIcon className="h-3.5 w-3.5 text-muted-foreground" />
-                        <Switch 
-                          checked={highResolution} 
-                          onCheckedChange={setHighResolution}
-                          disabled={isLoadingSatellite}
-                        />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>High Resolution (1280×1000)</TooltipContent>
-                  </Tooltip>
+                  <div className="flex items-center gap-1.5 pl-2 border-l">
+                    <Select value={resolution} onValueChange={(v) => setResolution(v as ResolutionOption)} disabled={isLoadingSatellite}>
+                      <SelectTrigger className="h-7 w-[90px] text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="standard">Standard</SelectItem>
+                        <SelectItem value="hd">HD</SelectItem>
+                        <SelectItem value="ultra">Ultra HD</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                   {isLoadingSatellite && (
                     <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
                   )}
@@ -973,8 +1079,8 @@ export function MeasurementVerificationDialog({
                         const detection = detectRoofType(updatedMeasurement, updatedTags);
                         setDetectedRoofType(detection);
                       }}
-                      canvasWidth={highResolution ? 1280 : 640}
-                      canvasHeight={highResolution ? 1000 : 500}
+                      canvasWidth={RESOLUTION_CONFIG[resolution].width}
+                      canvasHeight={RESOLUTION_CONFIG[resolution].height}
                       verifiedAddressLat={verifiedAddressLat}
                       verifiedAddressLng={verifiedAddressLng}
                     />
@@ -1181,21 +1287,31 @@ export function MeasurementVerificationDialog({
 
             {/* Right Panel: Measurement Details */}
             <div className="space-y-3">
-              {/* Compact Overview - Inline badges */}
-              <div className="flex flex-wrap gap-2">
-                <Badge variant="secondary" className="text-sm py-1">
-                  {planArea.toFixed(0)} sq ft plan
-                </Badge>
-                <Badge variant="secondary" className="text-sm py-1">
-                  {roofSquares.toFixed(1)} squares
-                </Badge>
-                <Badge variant="outline" className="text-sm py-1">
-                  {selectedPitch} pitch
-                </Badge>
-                <Badge variant="outline" className="text-sm py-1">
-                  {wastePercent}% waste
-                </Badge>
+              {/* PLAN vs SURFACE Area Cards */}
+              <div className="grid grid-cols-2 gap-2">
+                <Card className="p-2 bg-muted/30">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">PLAN Area (Footprint)</p>
+                  <p className="text-lg font-bold">{planArea.toFixed(0)} sq ft</p>
+                </Card>
+                <Card className="p-2 bg-muted/30">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-wide">SURFACE Area (Pitched)</p>
+                  <p className="text-lg font-bold">{roofAreaNoWaste.toFixed(0)} sq ft</p>
+                  <p className="text-[10px] text-muted-foreground">× {pitchFactor.toFixed(3)} slope factor</p>
+                </Card>
               </div>
+              
+              {/* Order Quantity Card */}
+              <Card className="p-3 bg-primary/10 border-primary/30">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-[10px] text-muted-foreground uppercase tracking-wide">Order Quantity (+{wastePercent}% waste)</p>
+                    <p className="text-2xl font-bold text-primary">{roofSquares.toFixed(1)} squares</p>
+                  </div>
+                  <Badge variant="secondary" className="text-xs">
+                    {selectedPitch} pitch
+                  </Badge>
+                </div>
+              </Card>
 
               {/* Adjustments Section - Always visible */}
               <Card className="p-3 bg-primary/5 border-primary/20">
