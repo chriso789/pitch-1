@@ -125,48 +125,57 @@ serve(async (req) => {
   }
 
   try {
-    // Verify JWT authentication
-    const authHeader = req.headers.get('Authorization');
-    if (!authHeader) {
-      return new Response(
-        JSON.stringify({ error: 'Authorization required' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Validate user token
-    const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
-      global: { headers: { Authorization: authHeader } }
-    });
-
-    const { data: { user }, error: userError } = await userSupabase.auth.getUser();
-    if (userError || !user) {
-      return new Response(
-        JSON.stringify({ error: 'Invalid or expired token' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    // Check rate limit (100 requests per hour per user)
-    const { data: rateLimit } = await supabase.rpc('check_rate_limit', {
-      p_user_id: user.id,
-      p_resource: 'google_maps_proxy',
-      p_limit: 100,
-      p_window_minutes: 60
-    });
-
-    if (rateLimit && !rateLimit.allowed) {
-      return new Response(
-        JSON.stringify({ 
-          error: 'Rate limit exceeded', 
-          remaining: rateLimit.remaining,
-          limit: rateLimit.limit 
-        }),
-        { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
     const { endpoint, params } = await req.json();
+    
+    // Define which endpoints require authentication
+    const publicEndpoints = ['geocode', 'autocomplete'];
+    const requiresAuth = !publicEndpoints.includes(endpoint);
+    
+    let user = null;
+    
+    // Verify JWT authentication for protected endpoints
+    const authHeader = req.headers.get('Authorization');
+    if (authHeader) {
+      // Try to validate user token
+      const userSupabase = createClient(supabaseUrl, supabaseAnonKey, {
+        global: { headers: { Authorization: authHeader } }
+      });
+
+      const { data: userData, error: userError } = await userSupabase.auth.getUser();
+      if (!userError && userData?.user) {
+        user = userData.user;
+      }
+    }
+    
+    // Require auth for protected endpoints
+    if (requiresAuth && !user) {
+      return new Response(
+        JSON.stringify({ error: 'Authentication required for this endpoint' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Check rate limit for authenticated users
+    if (user) {
+      const { data: rateLimit } = await supabase.rpc('check_rate_limit', {
+        p_user_id: user.id,
+        p_resource: 'google_maps_proxy',
+        p_limit: 100,
+        p_window_minutes: 60
+      });
+
+      if (rateLimit && !rateLimit.allowed) {
+        return new Response(
+          JSON.stringify({ 
+            error: 'Rate limit exceeded', 
+            remaining: rateLimit.remaining,
+            limit: rateLimit.limit 
+          }),
+          { status: 429, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+    }
+
     const apiKey = Deno.env.get('GOOGLE_MAPS_API_KEY');
     
     if (!apiKey) {

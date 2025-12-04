@@ -106,7 +106,7 @@ verify_jwt = true
 verify_jwt = false
 
 [functions.google-maps-proxy]
-verify_jwt = true
+verify_jwt = false
 
 [functions.google-address-validation]
 verify_jwt = true
