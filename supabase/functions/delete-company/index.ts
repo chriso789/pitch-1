@@ -354,22 +354,26 @@ serve(async (req) => {
       console.error('[delete-company] Failed to log deletion:', logError);
     }
 
-    // Delete the company (cascades to related data via FK constraints)
-    const { error: deleteError } = await supabase
+    // Soft delete the company (set is_active = false and deleted_at timestamp)
+    // This avoids FK constraint errors while preserving data for audit
+    const { error: softDeleteError } = await supabase
       .from('tenants')
-      .delete()
+      .update({ 
+        is_active: false,
+        deleted_at: new Date().toISOString()
+      })
       .eq('id', companyId);
 
-    if (deleteError) {
-      console.error('[delete-company] Delete failed:', deleteError);
+    if (softDeleteError) {
+      console.error('[delete-company] Soft delete failed:', softDeleteError);
       await logAudit('DELETE_ATTEMPT_FAILED', false, { 
-        reason: 'Database deletion failed', 
-        error: deleteError.message,
+        reason: 'Database soft delete failed', 
+        error: softDeleteError.message,
         backup_path: backupPath
       });
       return new Response(JSON.stringify({ 
         error: 'Failed to delete company',
-        details: deleteError.message 
+        details: softDeleteError.message 
       }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -395,7 +399,8 @@ serve(async (req) => {
           email_sent_to: 'chrisobrien91@gmail.com'
         },
         new_values: {
-          status: 'deleted'
+          status: 'soft_deleted',
+          deleted_at: new Date().toISOString()
         },
         ip_address: ipAddress,
         user_agent: userAgent,
@@ -406,11 +411,12 @@ serve(async (req) => {
       console.log('[delete-company] Post-deletion audit log skipped (expected if FK constraint):', auditErr);
     }
 
-    console.log(`[delete-company] Successfully deleted company: ${companyName}`);
+    console.log(`[delete-company] Successfully soft-deleted company: ${companyName}`);
 
     return new Response(JSON.stringify({ 
       success: true, 
       message: `Company "${companyName}" deleted successfully`,
+      deleted_at: new Date().toISOString(),
       backup_path: backupPath,
       data_summary: dataSummary,
       cleared_blocking_records: clearedRecords

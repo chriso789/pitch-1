@@ -13197,6 +13197,7 @@ export type Database = {
           billing_email: string | null
           company_overhead_rate: number | null
           created_at: string | null
+          deleted_at: string | null
           email: string | null
           features_enabled: string[] | null
           id: string
@@ -13232,6 +13233,7 @@ export type Database = {
           billing_email?: string | null
           company_overhead_rate?: number | null
           created_at?: string | null
+          deleted_at?: string | null
           email?: string | null
           features_enabled?: string[] | null
           id?: string
@@ -13267,6 +13269,7 @@ export type Database = {
           billing_email?: string | null
           company_overhead_rate?: number | null
           created_at?: string | null
+          deleted_at?: string | null
           email?: string | null
           features_enabled?: string[] | null
           id?: string
