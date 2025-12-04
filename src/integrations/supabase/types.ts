@@ -11178,6 +11178,7 @@ export type Database = {
           id: string
           ip_address: string | null
           location_info: string | null
+          metadata: Json | null
           success: boolean
           user_agent: string | null
           user_id: string | null
@@ -11191,6 +11192,7 @@ export type Database = {
           id?: string
           ip_address?: string | null
           location_info?: string | null
+          metadata?: Json | null
           success?: boolean
           user_agent?: string | null
           user_id?: string | null
@@ -11204,6 +11206,7 @@ export type Database = {
           id?: string
           ip_address?: string | null
           location_info?: string | null
+          metadata?: Json | null
           success?: boolean
           user_agent?: string | null
           user_id?: string | null
