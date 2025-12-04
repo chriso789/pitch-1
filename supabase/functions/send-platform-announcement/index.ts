@@ -26,7 +26,8 @@ const generateAnnouncementEmail = (
   title: string, 
   message: string, 
   type: string,
-  companyName: string
+  companyName: string,
+  recipientName: string
 ) => {
   const config = TYPE_CONFIG[type] || TYPE_CONFIG.general;
   
@@ -63,6 +64,11 @@ const generateAnnouncementEmail = (
           <!-- Content -->
           <tr>
             <td style="background: white; padding: 32px;">
+              <!-- Greeting -->
+              <p style="margin: 0 0 16px; color: #475569; font-size: 16px;">
+                Hi ${recipientName},
+              </p>
+              
               <!-- Type Badge -->
               <div style="display: inline-block; background: ${config.bgColor}; color: ${config.color}; padding: 6px 12px; border-radius: 20px; font-size: 13px; font-weight: 600; margin-bottom: 20px;">
                 ${config.emoji} ${type.charAt(0).toUpperCase() + type.slice(1)} Update
@@ -132,7 +138,7 @@ serve(async (req: Request) => {
     // Get target companies
     let companiesQuery = supabase
       .from('tenants')
-      .select('id, name, email')
+      .select('id, name, email, owner_email, owner_name')
       .eq('is_active', true);
 
     if (target_companies && target_companies.length > 0) {
@@ -154,35 +160,72 @@ serve(async (req: Request) => {
 
     console.log(`Found ${companies.length} target companies`);
 
+    // Get admin profiles for each company to find owner emails
+    const companyIds = companies.map(c => c.id);
+    const { data: adminProfiles, error: profilesError } = await supabase
+      .from('profiles')
+      .select('tenant_id, email, first_name, last_name')
+      .in('tenant_id', companyIds);
+
+    if (profilesError) {
+      console.warn(`Warning: Could not fetch profiles: ${profilesError.message}`);
+    }
+
+    // Create a map of tenant_id to admin profile
+    const profilesByTenant: Record<string, { email: string; first_name: string | null; last_name: string | null }> = {};
+    if (adminProfiles) {
+      for (const profile of adminProfiles) {
+        // Take the first profile found for each tenant (could be improved with role check)
+        if (profile.tenant_id && !profilesByTenant[profile.tenant_id] && profile.email) {
+          profilesByTenant[profile.tenant_id] = {
+            email: profile.email,
+            first_name: profile.first_name,
+            last_name: profile.last_name
+          };
+        }
+      }
+    }
+
     let sentCount = 0;
     let errorCount = 0;
+    const skippedCompanies: string[] = [];
 
     if (resendApiKey) {
       const resend = new Resend(resendApiKey);
 
       // Send to each company
       for (const company of companies) {
-        if (!company.email) {
-          console.warn(`Company ${company.name} has no email, skipping`);
+        // Priority: 1. Admin profile email, 2. owner_email field, 3. company email
+        const adminProfile = profilesByTenant[company.id];
+        const targetEmail = adminProfile?.email || company.owner_email || company.email;
+        
+        // Get recipient name
+        const recipientName = adminProfile?.first_name || company.owner_name?.split(' ')[0] || 'Team';
+
+        if (!targetEmail) {
+          console.warn(`Company ${company.name} has no email (checked: profile, owner_email, email), skipping`);
+          skippedCompanies.push(company.name);
           continue;
         }
 
         try {
-          const emailHtml = generateAnnouncementEmail(title, message, announcement_type, company.name);
+          const emailHtml = generateAnnouncementEmail(title, message, announcement_type, company.name, recipientName);
           
           const config = TYPE_CONFIG[announcement_type] || TYPE_CONFIG.general;
           
+          console.log(`Sending to ${company.name}: ${targetEmail} (source: ${adminProfile?.email ? 'profile' : company.owner_email ? 'owner_email' : 'company_email'})`);
+
           await resend.emails.send({
             from: "PITCH CRM <announcements@resend.dev>",
-            to: [company.email],
+            to: [targetEmail],
             subject: `${config.emoji} ${title}`,
             html: emailHtml,
           });
 
           sentCount++;
-          console.log(`Sent to ${company.email}`);
+          console.log(`✓ Sent to ${targetEmail}`);
         } catch (error: any) {
-          console.error(`Failed to send to ${company.email}:`, error.message);
+          console.error(`✗ Failed to send to ${targetEmail}:`, error.message);
           errorCount++;
         }
       }
@@ -195,7 +238,12 @@ serve(async (req: Request) => {
       await supabase
         .from('platform_announcements')
         .update({
-          read_by: [{ sent_count: sentCount, error_count: errorCount, sent_at: new Date().toISOString() }]
+          read_by: [{ 
+            sent_count: sentCount, 
+            error_count: errorCount, 
+            skipped: skippedCompanies,
+            sent_at: new Date().toISOString() 
+          }]
         })
         .eq('id', announcement_id);
     }
@@ -205,6 +253,7 @@ serve(async (req: Request) => {
         success: true, 
         sent: sentCount,
         errors: errorCount,
+        skipped: skippedCompanies,
         total_companies: companies.length
       }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" } }
