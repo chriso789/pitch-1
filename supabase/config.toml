@@ -284,3 +284,6 @@ verify_jwt = true
 
 [functions.send-company-onboarding]
 verify_jwt = true
+
+[functions.historical-imagery-fetch]
+verify_jwt = true

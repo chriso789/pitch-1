@@ -21,6 +21,7 @@ import { MeasurementSystemLimitations } from '@/components/documentation/Measure
 import { ImageryAgeWarning } from './ImageryAgeWarning';
 import { HistoricalImageryComparison } from './HistoricalImageryComparison';
 import { MeasurementValidationReport } from './MeasurementValidationReport';
+import { ObstructionDetectionWarning } from './ObstructionDetectionWarning';
 import { parseWKTPolygon, calculatePolygonAreaSqft, calculatePerimeterFt } from '@/utils/geoCoordinates';
 import { useManualVerification } from '@/hooks/useMeasurement';
 import { supabase } from '@/integrations/supabase/client';
@@ -1037,6 +1038,38 @@ export function MeasurementVerificationDialog({
                     imageryDate={imageryDate}
                     onDrawManually={() => setShowManualEditor(true)}
                     onViewHistory={() => setShowHistoricalComparison(true)}
+                  />
+                </div>
+              ) : null;
+            })()}
+            
+            {/* Obstruction Detection Warning - Show when hip=0 or ridge<40ft */}
+            {(() => {
+              const imageryDate = measurement?.metadata?.imageryDate || 
+                                  measurement?.solar_api_response?.imageryDate ||
+                                  dbMeasurement?.solar_api_response?.imageryDate;
+              const imageryYear = imageryDate?.year;
+              
+              return (hip === 0 || (ridge > 0 && ridge < 40)) ? (
+                <div className="lg:col-span-2">
+                  <ObstructionDetectionWarning
+                    hip={hip}
+                    ridge={ridge}
+                    imageryYear={imageryYear}
+                    onDrawHipManually={() => {
+                      toast({
+                        title: "Draw Hip Lines",
+                        description: "Use the manual editor to draw hip lines on the roof",
+                      });
+                      setShowManualEditor(true);
+                    }}
+                    onDrawRidgeManually={() => {
+                      toast({
+                        title: "Draw Ridge Lines",
+                        description: "Use the manual editor to draw ridge lines on the roof",
+                      });
+                      setShowManualEditor(true);
+                    }}
                   />
                 </div>
               ) : null;

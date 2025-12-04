@@ -183,7 +183,7 @@ export function ComprehensiveMeasurementOverlay({
   const [layers, setLayers] = useState({
     facets: false,
     ridges: true,   // Re-enabled with verified center coordinates
-    hips: false,
+    hips: true,     // Enabled by default for hip detection verification
     valleys: true,  // Re-enabled with verified center coordinates
     perimeter: false,
     annotations: false,
