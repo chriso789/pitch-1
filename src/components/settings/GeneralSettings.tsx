@@ -10,6 +10,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useTheme } from "next-themes";
 
 interface GoogleCalendarConnection {
   calendar_name: string;
@@ -20,6 +21,7 @@ interface GoogleCalendarConnection {
 }
 
 export const GeneralSettings = () => {
+  const { theme: currentTheme, setTheme } = useTheme();
   const [settings, setSettings] = useState({
     darkMode: false,
     notifications: true,
@@ -33,6 +35,11 @@ export const GeneralSettings = () => {
   const [connectingGoogleCalendar, setConnectingGoogleCalendar] = useState(false);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+
+  // Sync local dark mode state with next-themes
+  useEffect(() => {
+    setSettings(prev => ({ ...prev, darkMode: currentTheme === 'dark' }));
+  }, [currentTheme]);
 
   // React Query for settings and Google Calendar connection - parallel calls
   const { data: settingsData, isLoading: loading } = useQuery({
@@ -208,9 +215,9 @@ export const GeneralSettings = () => {
         description: "Your preferences have been saved.",
       });
 
-      // Apply dark mode immediately
+      // Apply dark mode immediately using next-themes
       if (key === 'darkMode') {
-        document.documentElement.classList.toggle('dark', value);
+        setTheme(value ? 'dark' : 'light');
       }
     } catch (error) {
       console.error('Error updating settings:', error);
