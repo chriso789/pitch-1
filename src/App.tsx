@@ -81,6 +81,7 @@ import TestRoofMeasurement from "./pages/TestRoofMeasurement";
 import OnboardingWalkthrough from "./pages/onboarding/OnboardingWalkthrough";
 import RequestSetupLink from "./pages/auth/RequestSetupLink";
 import CustomerPortalPublic from "./pages/CustomerPortalPublic";
+import PublicSignatureCapture from "./pages/PublicSignatureCapture";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -149,6 +150,7 @@ const AppContent = () => {
         <Route path="/reports/:token" element={<PublicReportViewer />} />
         <Route path="/onboarding/:token" element={<OnboardingWalkthrough />} />
         <Route path="/customer/:token" element={<CustomerPortalPublic />} />
+        <Route path="/sign/:token" element={<PublicSignatureCapture />} />
         
         {/* Main application routes */}
         <Route path="/dashboard" element={<Dashboard />} />
