@@ -824,10 +824,16 @@ const CompanyAdminPage = () => {
                     </CardContent>
                   </Card>
 
-                  {/* Owner Info */}
-                  <Card>
+                  {/* Owner Info - IMPORTANT: Platform announcements go here */}
+                  <Card className="border-primary/20 bg-primary/5">
                     <CardHeader>
-                      <CardTitle className="text-base">Owner Information</CardTitle>
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <Mail className="h-4 w-4 text-primary" />
+                        Owner Information
+                      </CardTitle>
+                      <CardDescription className="text-primary/80">
+                        Platform announcements and important updates will be sent to the owner email below
+                      </CardDescription>
                     </CardHeader>
                     <CardContent className="space-y-4">
                       <div className="space-y-2">
@@ -835,24 +841,34 @@ const CompanyAdminPage = () => {
                         <Input
                           value={formData.owner_name}
                           onChange={(e) => setFormData({ ...formData, owner_name: e.target.value })}
+                          placeholder="John Smith"
                         />
                       </div>
-                      <div className="grid grid-cols-2 gap-4">
-                        <div className="space-y-2">
-                          <Label>Owner Email</Label>
-                          <Input
-                            type="email"
-                            value={formData.owner_email}
-                            onChange={(e) => setFormData({ ...formData, owner_email: e.target.value })}
-                          />
-                        </div>
-                        <div className="space-y-2">
-                          <Label>Owner Phone</Label>
-                          <Input
-                            value={formData.owner_phone}
-                            onChange={(e) => setFormData({ ...formData, owner_phone: e.target.value })}
-                          />
-                        </div>
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-2">
+                          Owner Email
+                          <Badge variant="secondary" className="text-xs">
+                            📢 Receives Announcements
+                          </Badge>
+                        </Label>
+                        <Input
+                          type="email"
+                          value={formData.owner_email}
+                          onChange={(e) => setFormData({ ...formData, owner_email: e.target.value })}
+                          placeholder="owner@company.com"
+                          className="border-primary/30"
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          This email receives platform updates, new feature announcements, and important maintenance notices.
+                        </p>
+                      </div>
+                      <div className="space-y-2">
+                        <Label>Owner Phone</Label>
+                        <Input
+                          value={formData.owner_phone}
+                          onChange={(e) => setFormData({ ...formData, owner_phone: e.target.value })}
+                          placeholder="(555) 123-4567"
+                        />
                       </div>
                     </CardContent>
                   </Card>
