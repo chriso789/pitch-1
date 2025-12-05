@@ -3039,7 +3039,9 @@ export type Database = {
       }
       demo_requests: {
         Row: {
+          assigned_to: string | null
           company_name: string
+          contacted_at: string | null
           created_at: string | null
           email: string
           email_error: string | null
@@ -3049,10 +3051,14 @@ export type Database = {
           job_title: string | null
           last_name: string
           message: string | null
+          notes: string | null
           phone: string | null
+          status: string | null
         }
         Insert: {
+          assigned_to?: string | null
           company_name: string
+          contacted_at?: string | null
           created_at?: string | null
           email: string
           email_error?: string | null
@@ -3062,10 +3068,14 @@ export type Database = {
           job_title?: string | null
           last_name: string
           message?: string | null
+          notes?: string | null
           phone?: string | null
+          status?: string | null
         }
         Update: {
+          assigned_to?: string | null
           company_name?: string
+          contacted_at?: string | null
           created_at?: string | null
           email?: string
           email_error?: string | null
@@ -3075,9 +3085,19 @@ export type Database = {
           job_title?: string | null
           last_name?: string
           message?: string | null
+          notes?: string | null
           phone?: string | null
+          status?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "demo_requests_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       developer_access_grants: {
         Row: {
