@@ -65,10 +65,11 @@ export const Settings = () => {
   const { companies, activeCompany, activeCompanyId, loading: companiesLoading, switchCompany } = useCompanySwitcher();
 
   useEffect(() => {
-    if (currentUser) {
+    // Wait for full profile to load before filtering tabs by role
+    if (currentUser?.profileLoaded !== false) {
       loadTabConfiguration();
     }
-  }, [currentUser]);
+  }, [currentUser?.role, currentUser?.profileLoaded]);
 
   const loadTabConfiguration = async () => {
     try {
