@@ -4,18 +4,11 @@ import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, CheckCircle2, Pencil, Brain, MapPin, Crosshair } from 'lucide-react';
+import { Loader2, CheckCircle2, Pencil, Crosshair } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { MeasurementVerificationDialog } from './MeasurementVerificationDialog';
 import { useImageCache } from '@/contexts/ImageCacheContext';
 import { StructureSelectionMap } from './StructureSelectionMap';
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-  DropdownMenuSeparator,
-} from '@/components/ui/dropdown-menu';
 
 // Pitch multipliers for area adjustment
 const PITCH_MULTIPLIERS: Record<string, number> = {
@@ -133,9 +126,10 @@ export function PullMeasurementsButton({
   const imageCache = useImageCache();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
+  const [loadingCoords, setLoadingCoords] = useState(false);
   const [success, setSuccess] = useState(false);
   const [showStructureSelector, setShowStructureSelector] = useState(false);
-  const [customCoords, setCustomCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [verifiedCoords, setVerifiedCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [verificationData, setVerificationData] = useState<{
     measurement: any;
     tags: Record<string, any>;
@@ -144,10 +138,62 @@ export function PullMeasurementsButton({
   } | null>(null);
   const [showVerificationDialog, setShowVerificationDialog] = useState(false);
 
-  async function handlePull(useCustomCoords = false) {
-    // Use custom coordinates if provided (from structure selection PIN)
-    let pullLat = useCustomCoords && customCoords ? customCoords.lat : lat;
-    let pullLng = useCustomCoords && customCoords ? customCoords.lng : lng;
+  // Fetch verified coordinates from contact before opening structure selector
+  const handleOpenStructureSelector = async () => {
+    setLoadingCoords(true);
+    try {
+      // Fetch verified coordinates from the pipeline entry's contact
+      const { data: pipelineData, error } = await supabase
+        .from('pipeline_entries')
+        .select('contact_id, metadata, contacts!inner(verified_address, latitude, longitude)')
+        .eq('id', propertyId)
+        .single();
+
+      if (error) {
+        console.error('Error fetching pipeline data:', error);
+        toast({
+          title: "Error Loading Property",
+          description: "Could not fetch property coordinates. Please try again.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      const contact = (pipelineData as any)?.contacts;
+      const verifiedAddress = contact?.verified_address;
+      
+      // Priority: verified_address > contact lat/lng > props lat/lng
+      const coordLat = verifiedAddress?.lat || contact?.latitude || lat;
+      const coordLng = verifiedAddress?.lng || contact?.longitude || lng;
+
+      if (!coordLat || !coordLng || (coordLat === 0 && coordLng === 0)) {
+        toast({
+          title: "Missing Location",
+          description: "Property coordinates not found. Please verify the address first.",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      console.log('📍 Opening structure selector with verified coords:', { coordLat, coordLng });
+      setVerifiedCoords({ lat: coordLat, lng: coordLng });
+      setShowStructureSelector(true);
+    } catch (err) {
+      console.error('Failed to fetch coordinates:', err);
+      toast({
+        title: "Error",
+        description: "Could not load property location.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoadingCoords(false);
+    }
+  };
+
+  // Run AI analysis with the confirmed coordinates from PIN selection
+  async function handlePull(confirmedLat: number, confirmedLng: number) {
+    const pullLat = confirmedLat;
+    const pullLng = confirmedLng;
 
     // Validate coordinates before attempting pull
     if (!pullLat || !pullLng || (pullLat === 0 && pullLng === 0)) {
@@ -168,7 +214,6 @@ export function PullMeasurementsButton({
       propertyId, 
       pullLat, 
       pullLng, 
-      useCustomCoords,
       timestamp: new Date().toISOString() 
     });
 
@@ -176,70 +221,11 @@ export function PullMeasurementsButton({
       // Get current user for the request
       const { data: { user } } = await supabase.auth.getUser();
 
-      // Skip coordinate validation if user manually selected structure via PIN
-      if (!useCustomCoords) {
-        // ✅ Coordinate Validation: Check against verified address from contacts table (PRIORITY #1)
-        const { data: pipelineData } = await supabase
-          .from('pipeline_entries')
-          .select('contact_id, metadata, contacts!inner(verified_address, latitude, longitude)')
-          .eq('id', propertyId)
-          .single();
-
-        const contact = (pipelineData as any)?.contacts;
-        const verifiedAddress = contact?.verified_address;
-        const verifiedLat = (verifiedAddress?.lat || contact?.latitude) as number | undefined;
-        const verifiedLng = (verifiedAddress?.lng || contact?.longitude) as number | undefined;
-
-        if (verifiedLat && verifiedLng) {
-          // Calculate distance using haversine formula
-          const R = 6371e3; // Earth radius in meters
-          const φ1 = (verifiedLat * Math.PI) / 180;
-          const φ2 = (pullLat * Math.PI) / 180;
-          const Δφ = ((pullLat - verifiedLat) * Math.PI) / 180;
-          const Δλ = ((pullLng - verifiedLng) * Math.PI) / 180;
-
-          const a = Math.sin(Δφ / 2) * Math.sin(Δφ / 2) +
-            Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) * Math.sin(Δλ / 2);
-          const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-          const distance = R * c; // Distance in meters
-
-          console.log('🎯 Coordinate validation:', {
-            pullCoords: { lat: pullLat, lng: pullLng },
-            verifiedCoords: { lat: verifiedLat, lng: verifiedLng },
-            distance: `${Math.round(distance)}m`,
-            threshold: '30m',
-            status: distance > 30 ? '⚠️ MISMATCH' : '✅ OK'
-          });
-
-          if (distance > 30) {
-            toast({
-              title: "⚠️ Coordinate Mismatch Detected",
-              description: (
-                <div className="space-y-2 text-sm">
-                  <p>Pull coordinates are {Math.round(distance)}m from verified address.</p>
-                  <p className="text-muted-foreground">
-                    Using verified address coordinates ({verifiedLat.toFixed(6)}, {verifiedLng.toFixed(6)}) instead.
-                  </p>
-                </div>
-              ),
-              variant: "default",
-              duration: 7000,
-            });
-
-            // Override with verified coordinates
-            pullLat = verifiedLat;
-            pullLng = verifiedLng;
-            console.log('✅ Coordinates corrected to verified address');
-          }
-        } else {
-          console.warn('⚠️ No verified address found in metadata - proceeding with provided coordinates');
-        }
-      } else {
-        console.log('📍 Using user-selected PIN coordinates:', { pullLat, pullLng });
-      }
+      // User has already confirmed the PIN location, so we use those coordinates directly
+      console.log('📍 Using user-selected PIN coordinates:', { pullLat, pullLng });
 
       toast({
-        title: useCustomCoords ? "📍 Measuring Selected Structure" : "🤖 AI Analysis Started",
+        title: "📍 Measuring Selected Structure",
         description: "Analyzing roof with GPT-4 Vision + Google Solar API...",
       });
 
@@ -431,63 +417,61 @@ export function PullMeasurementsButton({
     navigate(`/roof-measure/${propertyId}?${params.toString()}`);
   };
 
-  // Handle structure selection from PIN map
+  // Handle structure selection from PIN map - immediately run AI analysis
   const handleStructureConfirmed = (selectedLat: number, selectedLng: number) => {
-    setCustomCoords({ lat: selectedLat, lng: selectedLng });
+    setShowStructureSelector(false);
     toast({
       title: "📍 Structure Selected",
       description: "Now pulling measurements for the selected building...",
     });
-    // Immediately trigger pull with custom coordinates
-    setTimeout(() => handlePull(true), 100);
+    // Immediately trigger pull with confirmed coordinates
+    handlePull(selectedLat, selectedLng);
   };
 
   return (
     <>
-      <div className="flex items-center gap-2">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              disabled={loading}
-              variant="outline"
-              size="sm"
-              className="w-full"
-            >
-              {loading ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  AI Analyzing...
-                </>
-              ) : success ? (
-                <>
-                  <CheckCircle2 className="h-4 w-4 mr-2 text-green-600" />
-                  Measurements Ready
-                </>
-              ) : (
-                <>
-                  <Brain className="h-4 w-4 mr-2" />
-                  AI Measurements
-                </>
-              )}
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-56">
-            <DropdownMenuItem onClick={() => handlePull(false)} disabled={loading}>
-              <Brain className="h-4 w-4 mr-2" />
-              AI Analysis (Auto)
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setShowStructureSelector(true)} disabled={loading}>
+      <div className="flex items-center gap-2 flex-wrap">
+        {/* Main AI Measurements button - opens structure selector first */}
+        <Button
+          onClick={handleOpenStructureSelector}
+          disabled={loading || loadingCoords}
+          variant="outline"
+          size="sm"
+        >
+          {loadingCoords ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              Loading...
+            </>
+          ) : loading ? (
+            <>
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              AI Analyzing...
+            </>
+          ) : success ? (
+            <>
+              <CheckCircle2 className="h-4 w-4 mr-2 text-green-600" />
+              Measurements Ready
+            </>
+          ) : (
+            <>
               <Crosshair className="h-4 w-4 mr-2" />
-              Select Structure First
-              <span className="ml-auto text-xs text-muted-foreground">PIN</span>
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleOpenManualTool}>
-              <Pencil className="h-4 w-4 mr-2" />
-              Draw Manually
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              AI Measurements
+            </>
+          )}
+        </Button>
+
+        {/* Draw Manually button */}
+        <Button
+          onClick={handleOpenManualTool}
+          variant="ghost"
+          size="sm"
+          className="text-muted-foreground"
+        >
+          <Pencil className="h-4 w-4 mr-1" />
+          Draw
+        </Button>
+
         {success && (
           <Badge variant="outline" className="text-green-600 border-green-600">
             ✓ Tags Ready
@@ -495,12 +479,12 @@ export function PullMeasurementsButton({
         )}
       </div>
 
-      {/* Structure Selection Map for PIN placement */}
+      {/* Structure Selection Map for PIN placement - FIRST STEP */}
       <StructureSelectionMap
         open={showStructureSelector}
         onOpenChange={setShowStructureSelector}
-        initialLat={lat}
-        initialLng={lng}
+        initialLat={verifiedCoords?.lat || lat}
+        initialLng={verifiedCoords?.lng || lng}
         address={address}
         onLocationConfirmed={handleStructureConfirmed}
       />
