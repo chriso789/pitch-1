@@ -12,6 +12,7 @@ interface CurrentUser {
   phone?: string;
   title?: string;
   is_developer?: boolean;
+  profileLoaded?: boolean;
 }
 
 export const useCurrentUser = () => {
@@ -30,6 +31,7 @@ export const useCurrentUser = () => {
     phone: profile.phone,
     title: profile.title,
     is_developer: profile.is_developer,
+    profileLoaded: profile.profileLoaded,
   } : null;
 
   return { user, loading, error, refetch };
