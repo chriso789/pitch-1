@@ -140,9 +140,14 @@ const handler = async (req: Request): Promise<Response> => {
       </div>
     `;
 
-    // Use Resend's verified domain (onboarding@resend.dev works without domain verification)
+    // Use verified domain from environment
+    const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
+    const fromAddress = `PITCH CRM Demos <demos@${fromDomain}>`;
+    
+    console.log("[send-demo-request] Sending email from:", fromAddress);
+    
     const emailResponse = await resend.emails.send({
-      from: "PITCH CRM <onboarding@resend.dev>",
+      from: fromAddress,
       to: ["chrisobrien91@gmail.com"],
       replyTo: requestData.email,
       subject: `Demo Request: ${requestData.firstName} ${requestData.lastName} from ${requestData.companyName}`,
