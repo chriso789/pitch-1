@@ -57,6 +57,8 @@ export const EmailDiagnosticsPanel = () => {
   const [sendingTest, setSendingTest] = useState(false);
   const [diagnostics, setDiagnostics] = useState<DiagnosticCheck[]>([]);
   const [runningDiagnostics, setRunningDiagnostics] = useState(false);
+  const [retryingEmails, setRetryingEmails] = useState(false);
+  const [retryProgress, setRetryProgress] = useState({ current: 0, total: 0 });
   const { toast } = useToast();
 
   useEffect(() => {
@@ -223,6 +225,84 @@ export const EmailDiagnosticsPanel = () => {
     } finally {
       setSendingTest(false);
     }
+  };
+
+  const retryFailedEmails = async () => {
+    const failedEmails = emailLogs.filter(log => log.status === 'failed' || !log.resend_message_id);
+    
+    if (failedEmails.length === 0) {
+      toast({
+        title: "No failed emails",
+        description: "There are no failed emails to retry."
+      });
+      return;
+    }
+
+    setRetryingEmails(true);
+    setRetryProgress({ current: 0, total: failedEmails.length });
+    
+    let successCount = 0;
+    let failCount = 0;
+
+    for (let i = 0; i < failedEmails.length; i++) {
+      const log = failedEmails[i];
+      setRetryProgress({ current: i + 1, total: failedEmails.length });
+
+      try {
+        // Get the company info for this email
+        const { data: tenant } = await supabase
+          .from('tenants')
+          .select('id, name, owner_name')
+          .eq('id', log.tenant_id)
+          .single();
+
+        if (!tenant) {
+          console.warn(`No tenant found for log ${log.id}`);
+          failCount++;
+          continue;
+        }
+
+        // Re-invoke the send-company-onboarding function
+        const { data, error } = await supabase.functions.invoke('send-company-onboarding', {
+          body: {
+            tenantId: tenant.id,
+            companyName: tenant.name,
+            ownerEmail: log.recipient_email,
+            ownerName: log.recipient_name || tenant.owner_name || 'Business Owner',
+            isRetry: true
+          }
+        });
+
+        if (error || !data?.success) {
+          console.error(`Failed to retry email for ${log.recipient_email}:`, error || data?.error);
+          failCount++;
+        } else {
+          successCount++;
+          
+          // Update the original log status
+          await supabase
+            .from('onboarding_email_log')
+            .update({ status: 'retried' })
+            .eq('id', log.id);
+        }
+      } catch (err: any) {
+        console.error(`Error retrying email ${log.id}:`, err);
+        failCount++;
+      }
+    }
+
+    setRetryingEmails(false);
+    setRetryProgress({ current: 0, total: 0 });
+
+    toast({
+      title: "Retry Complete",
+      description: `Successfully retried ${successCount} emails. ${failCount} failed.`,
+      variant: failCount > 0 ? "destructive" : "default"
+    });
+
+    // Refresh logs
+    loadEmailLogs();
+    runDiagnostics();
   };
 
   const getStatusIcon = (status: string) => {
@@ -434,13 +514,36 @@ export const EmailDiagnosticsPanel = () => {
       {failedLogs.length > 0 && (
         <Card className="border-destructive/50">
           <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-destructive">
-              <XCircle className="h-5 w-5" />
-              Failed Emails ({failedLogs.length})
-            </CardTitle>
-            <CardDescription>
-              Recent emails that failed to deliver
-            </CardDescription>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2 text-destructive">
+                  <XCircle className="h-5 w-5" />
+                  Failed Emails ({failedLogs.length})
+                </CardTitle>
+                <CardDescription>
+                  Recent emails that failed to deliver
+                </CardDescription>
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={retryFailedEmails}
+                disabled={retryingEmails}
+                className="border-destructive/50 text-destructive hover:bg-destructive/10"
+              >
+                {retryingEmails ? (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                    Retrying {retryProgress.current}/{retryProgress.total}...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Retry All Failed
+                  </>
+                )}
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-64">
