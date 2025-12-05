@@ -103,18 +103,10 @@ const ContactForm: React.FC<ContactFormProps> = ({
     }
   }, [formData, addressData, assignedTo, saveDraft, draftLoaded]);
 
-  // Fetch tenant users for assignment dropdown
+  // Fetch tenant users (sales reps) for assignment dropdown - always fetch for all users
   useEffect(() => {
     const fetchTenantUsers = async () => {
-      if (!currentUser) return;
-      
-      // Only fetch users if current user is a manager or admin
-      const managerRoles = ['master', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'];
-      if (!managerRoles.includes(currentUser.role)) {
-        // Auto-assign to self for non-managers
-        setAssignedTo(currentUser.id);
-        return;
-      }
+      if (!currentUser?.tenant_id) return;
 
       try {
         const { data, error } = await supabase
@@ -138,7 +130,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
     };
 
     fetchTenantUsers();
-  }, [currentUser]);
+  }, [currentUser?.tenant_id]);
 
   // Fetch active lead sources for dropdown
   useEffect(() => {
@@ -504,24 +496,22 @@ const ContactForm: React.FC<ContactFormProps> = ({
             </Select>
           </div>
 
-          {/* Assign To - only show for managers/admins */}
-          {currentUser && ['master', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'].includes(currentUser.role) && (
-            <div>
-              <label className="text-sm font-medium">Assign To</label>
-              <Select value={assignedTo} onValueChange={setAssignedTo}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select user to assign contact..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {tenantUsers.map((user) => (
-                    <SelectItem key={user.id} value={user.id}>
-                      {user.name} {user.email && `(${user.email})`}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          )}
+          {/* Assign to Sales Rep - visible to all users */}
+          <div>
+            <label className="text-sm font-medium">Assign to Sales Rep</label>
+            <Select value={assignedTo} onValueChange={setAssignedTo}>
+              <SelectTrigger>
+                <SelectValue placeholder="Select sales rep..." />
+              </SelectTrigger>
+              <SelectContent className="bg-popover">
+                {tenantUsers.map((user) => (
+                  <SelectItem key={user.id} value={user.id}>
+                    {user.name} {user.email && `(${user.email})`}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
 
           {/* Address Verification */}
           <div>
