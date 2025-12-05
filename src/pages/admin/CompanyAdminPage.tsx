@@ -28,7 +28,9 @@ import {
   Loader2,
   AlertTriangle,
   Trash2,
-  Send
+  Send,
+  UserCheck,
+  ToggleRight
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
@@ -40,6 +42,8 @@ import { LogoUploader } from '@/components/settings/LogoUploader';
 import { EmailTemplateManager } from '@/components/settings/EmailTemplateManager';
 import { activityTracker } from '@/services/activityTracker';
 import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { DemoRequestsPanel } from '@/components/settings/DemoRequestsPanel';
+import { CompanyFeatureControl } from '@/components/admin/CompanyFeatureControl';
 
 interface Company {
   id: string;
@@ -492,7 +496,7 @@ const CompanyAdminPage = () => {
               Company Administration
             </h1>
             <p className="text-muted-foreground mt-1">
-              Manage all companies, subscriptions, and access permissions
+              Manage companies, demo requests, and feature access
             </p>
           </div>
           <Button onClick={() => setCreateDialogOpen(true)}>
@@ -501,47 +505,66 @@ const CompanyAdminPage = () => {
           </Button>
         </div>
 
-        {/* Stats */}
-        <div className="grid gap-4 md:grid-cols-3">
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium">Total Companies</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.total}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-green-600">Active</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-green-600">{stats.active}</div>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">Inactive</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold text-muted-foreground">{stats.inactive}</div>
-            </CardContent>
-          </Card>
-        </div>
+        {/* Main Tabs */}
+        <Tabs defaultValue="companies" className="space-y-6">
+          <TabsList className="grid w-full grid-cols-3 max-w-md">
+            <TabsTrigger value="companies" className="flex items-center gap-2">
+              <Building2 className="h-4 w-4" />
+              Companies
+            </TabsTrigger>
+            <TabsTrigger value="demos" className="flex items-center gap-2">
+              <UserCheck className="h-4 w-4" />
+              Demo Requests
+            </TabsTrigger>
+            <TabsTrigger value="features" className="flex items-center gap-2">
+              <ToggleRight className="h-4 w-4" />
+              Feature Control
+            </TabsTrigger>
+          </TabsList>
 
-        {/* Search */}
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search companies..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="pl-10"
-          />
-        </div>
+          {/* Companies Tab */}
+          <TabsContent value="companies" className="space-y-6">
+            {/* Stats */}
+            <div className="grid gap-4 md:grid-cols-3">
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium">Total Companies</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold">{stats.total}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-green-600">Active</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-green-600">{stats.active}</div>
+                </CardContent>
+              </Card>
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium text-muted-foreground">Inactive</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="text-2xl font-bold text-muted-foreground">{stats.inactive}</div>
+                </CardContent>
+              </Card>
+            </div>
 
-        {/* Companies Grid */}
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {/* Search */}
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search companies..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="pl-10"
+              />
+            </div>
+
+            {/* Companies Grid */}
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {filteredCompanies.map((company) => (
             <Card 
               key={company.id} 
@@ -590,14 +613,26 @@ const CompanyAdminPage = () => {
           ))}
         </div>
 
-        {filteredCompanies.length === 0 && !loading && (
-          <Card>
-            <CardContent className="flex flex-col items-center justify-center py-10">
-              <Building2 className="h-12 w-12 text-muted-foreground mb-4" />
-              <p className="text-muted-foreground">No companies found</p>
-            </CardContent>
-          </Card>
-        )}
+            {filteredCompanies.length === 0 && !loading && (
+              <Card>
+                <CardContent className="flex flex-col items-center justify-center py-10">
+                  <Building2 className="h-12 w-12 text-muted-foreground mb-4" />
+                  <p className="text-muted-foreground">No companies found</p>
+                </CardContent>
+              </Card>
+            )}
+          </TabsContent>
+
+          {/* Demo Requests Tab */}
+          <TabsContent value="demos">
+            <DemoRequestsPanel />
+          </TabsContent>
+
+          {/* Feature Control Tab */}
+          <TabsContent value="features">
+            <CompanyFeatureControl />
+          </TabsContent>
+        </Tabs>
 
         {/* Create Company Dialog */}
         <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
