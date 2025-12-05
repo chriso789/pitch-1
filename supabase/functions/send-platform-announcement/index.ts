@@ -128,6 +128,7 @@ serve(async (req: Request) => {
     const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
     const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const resendApiKey = Deno.env.get("RESEND_API_KEY");
+    const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
     
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
@@ -216,7 +217,7 @@ serve(async (req: Request) => {
           console.log(`Sending to ${company.name}: ${targetEmail} (source: ${adminProfile?.email ? 'profile' : company.owner_email ? 'owner_email' : 'company_email'})`);
 
           await resend.emails.send({
-            from: "PITCH CRM <announcements@resend.dev>",
+            from: `PITCH CRM <announcements@${fromDomain}>`,
             to: [targetEmail],
             subject: `${config.emoji} ${title}`,
             html: emailHtml,

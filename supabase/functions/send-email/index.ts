@@ -59,9 +59,10 @@ const handler = async (req: Request): Promise<Response> => {
     const repName = `${profile?.first_name || ""} ${profile?.last_name || ""}`.trim();
     const repEmail = profile?.email || user.email;
     const companyName = profile?.company_name || "Your Company";
+    const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
 
     // Use verified domain as From, rep email as Reply-To for deliverability
-    const fromAddress = `${repName} <onboarding@resend.dev>`;
+    const fromAddress = `${repName} <noreply@${fromDomain}>`;
     const replyTo = repEmail;
 
     // Send email via Resend
