@@ -19,7 +19,8 @@ import {
   Shield,
   ExternalLink,
   BarChart3,
-  Megaphone
+  Megaphone,
+  Mail
 } from "lucide-react";
 import { EnhancedCompanyOnboarding } from "./EnhancedCompanyOnboarding";
 import { LocationUserAssignment } from "./LocationUserAssignment";
@@ -29,6 +30,7 @@ import { BackupStatusDashboard } from "./BackupStatusDashboard";
 import { BackupRestorePanel } from "./BackupRestorePanel";
 import { OnboardingAnalyticsDashboard } from "./OnboardingAnalyticsDashboard";
 import { PlatformCommunications } from "./PlatformCommunications";
+import { EmailDiagnosticsPanel } from "./EmailDiagnosticsPanel";
 
 interface Company {
   id: string;
@@ -251,6 +253,10 @@ export const PlatformAdmin = () => {
             <Megaphone className="h-3 w-3" />
             Communications
           </TabsTrigger>
+          <TabsTrigger value="email-diagnostics" className="gap-1">
+            <Mail className="h-3 w-3" />
+            Email Diagnostics
+          </TabsTrigger>
           <TabsTrigger value="onboarding-analytics" className="gap-1">
             <BarChart3 className="h-3 w-3" />
             Analytics
@@ -307,6 +313,10 @@ export const PlatformAdmin = () => {
 
         <TabsContent value="communications" className="mt-4">
           <PlatformCommunications />
+        </TabsContent>
+
+        <TabsContent value="email-diagnostics" className="mt-4">
+          <EmailDiagnosticsPanel />
         </TabsContent>
 
         <TabsContent value="onboarding-analytics" className="mt-4">
