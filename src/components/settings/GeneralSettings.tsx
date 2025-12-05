@@ -21,9 +21,9 @@ interface GoogleCalendarConnection {
 }
 
 export const GeneralSettings = () => {
-  const { theme: currentTheme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
+  const [mounted, setMounted] = useState(false);
   const [settings, setSettings] = useState({
-    darkMode: false,
     notifications: true,
     emailNotifications: true,
     pushNotifications: false,
@@ -36,10 +36,13 @@ export const GeneralSettings = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Sync local dark mode state with next-themes
+  // Handle hydration - only show theme state after mount
   useEffect(() => {
-    setSettings(prev => ({ ...prev, darkMode: currentTheme === 'dark' }));
-  }, [currentTheme]);
+    setMounted(true);
+  }, []);
+
+  // Compute dark mode directly from resolvedTheme (not local state)
+  const isDarkMode = mounted ? resolvedTheme === 'dark' : false;
 
   // React Query for settings and Google Calendar connection - parallel calls
   const { data: settingsData, isLoading: loading } = useQuery({
@@ -214,11 +217,6 @@ export const GeneralSettings = () => {
         title: "Settings Updated",
         description: "Your preferences have been saved.",
       });
-
-      // Apply dark mode immediately using next-themes
-      if (key === 'darkMode') {
-        setTheme(value ? 'dark' : 'light');
-      }
     } catch (error) {
       console.error('Error updating settings:', error);
       toast({
@@ -272,10 +270,14 @@ export const GeneralSettings = () => {
                 Toggle between light and dark themes
               </div>
             </div>
-            <Switch
-              checked={settings.darkMode}
-              onCheckedChange={(checked) => updateSetting('darkMode', checked)}
-            />
+            {!mounted ? (
+              <Skeleton className="h-6 w-11" />
+            ) : (
+              <Switch
+                checked={isDarkMode}
+                onCheckedChange={(checked) => setTheme(checked ? 'dark' : 'light')}
+              />
+            )}
           </div>
 
           <div className="space-y-2">
