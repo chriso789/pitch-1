@@ -164,9 +164,9 @@ export function StructureSelectionMap({
     }
   }, [initialLat, initialLng, calculateDistance]);
 
-  // Initialize map
+  // Initialize map - wait for container to be available
   useEffect(() => {
-    if (!open || !mapContainer.current) return;
+    if (!open) return;
 
     // Check for invalid coordinates before initializing map
     if (!isValidCoordinate(initialLat, initialLng)) {
@@ -177,9 +177,21 @@ export function StructureSelectionMap({
     }
     
     setHasInvalidCoords(false);
-    initMap();
+    
+    // Small delay to ensure dialog content is rendered and mapContainer.current is available
+    const timer = setTimeout(() => {
+      if (mapContainer.current) {
+        console.log('📍 MapContainer ready, initializing map...');
+        initMap();
+      } else {
+        console.error('❌ MapContainer still not available after delay');
+        setError('Map container not available. Please try again.');
+        setLoading(false);
+      }
+    }, 100);
 
     return () => {
+      clearTimeout(timer);
       marker.current?.remove();
       map.current?.remove();
       map.current = null;
