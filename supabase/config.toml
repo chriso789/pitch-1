@@ -311,3 +311,6 @@ verify_jwt = false
 
 [functions.scrape-county-permits]
 verify_jwt = true
+
+[functions.homeowner-ai-chat]
+verify_jwt = false

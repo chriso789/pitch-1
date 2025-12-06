@@ -86,6 +86,7 @@ import CrewPortalPage from "./pages/CrewPortalPage";
 import HomeownerPortalPage from "./pages/HomeownerPortalPage";
 import PortalLoginPage from "./pages/PortalLoginPage";
 import MonitoringPage from "./pages/admin/MonitoringPage";
+import HomeownerSetupAccount from "./pages/HomeownerSetupAccount";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -156,6 +157,7 @@ const AppContent = () => {
         <Route path="/customer/:token" element={<CustomerPortalPublic />} />
         <Route path="/sign/:token" element={<PublicSignatureCapture />} />
         <Route path="/portal/login" element={<PortalLoginPage />} />
+        <Route path="/portal/setup" element={<HomeownerSetupAccount />} />
         <Route path="/crew" element={<CrewPortalPage />} />
         <Route path="/homeowner" element={<HomeownerPortalPage />} />
         

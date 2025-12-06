@@ -25,11 +25,14 @@ import {
   ExternalLink,
   Phone,
   Mail,
-  Building
+  Building,
+  ClipboardList
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
+import { SimplifiedProjectTimeline } from "./SimplifiedProjectTimeline";
+import { HomeownerAIChat } from "./HomeownerAIChat";
 
 interface Project {
   id: string;
