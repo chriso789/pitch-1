@@ -4,7 +4,7 @@ import 'mapbox-gl/dist/mapbox-gl.css';
 import { Button } from '@/components/ui/button';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, MapPin, Move, CheckCircle2 } from 'lucide-react';
+import { Loader2, MapPin, Move, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 
 interface StructureSelectionMapProps {
@@ -29,6 +29,7 @@ export function StructureSelectionMap({
   const marker = useRef<mapboxgl.Marker | null>(null);
   
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
   const [pinPosition, setPinPosition] = useState({ lat: initialLat, lng: initialLng });
   const [distanceMoved, setDistanceMoved] = useState(0);
   const [hasInvalidCoords, setHasInvalidCoords] = useState(false);
@@ -61,6 +62,108 @@ export function StructureSelectionMap({
     return R * c;
   }, []);
 
+  const initMap = useCallback(async () => {
+    if (!mapContainer.current) return;
+    
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // Fetch Mapbox token with detailed logging
+      console.log('📍 Fetching Mapbox token...');
+      const { data, error: fnError } = await supabase.functions.invoke('get-mapbox-token');
+      
+      if (fnError) {
+        console.error('❌ Edge function error:', fnError);
+        throw new Error(`Failed to fetch Mapbox token: ${fnError.message}`);
+      }
+      
+      if (!data?.token) {
+        console.error('❌ No token in response:', data);
+        throw new Error('Mapbox token not configured. Please add MAPBOX_PUBLIC_TOKEN to Supabase secrets.');
+      }
+      
+      console.log('✅ Mapbox token received');
+      mapboxgl.accessToken = data.token;
+
+      // Create map with error handling
+      console.log('📍 Initializing Mapbox map at:', { initialLat, initialLng });
+      
+      map.current = new mapboxgl.Map({
+        container: mapContainer.current,
+        style: 'mapbox://styles/mapbox/satellite-v9',
+        center: [initialLng, initialLat],
+        zoom: 19,
+        pitch: 0,
+      });
+
+      // Add navigation controls
+      map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
+
+      // Add error handler for map
+      map.current.on('error', (e) => {
+        console.error('❌ Mapbox error:', e);
+        setError('Map failed to load. Please check your internet connection and try again.');
+        setLoading(false);
+      });
+
+      // Create custom PIN element
+      const pinElement = document.createElement('div');
+      pinElement.innerHTML = `
+        <div class="relative cursor-grab active:cursor-grabbing">
+          <div class="absolute -top-1 -left-1 w-10 h-10 bg-red-500/30 rounded-full animate-ping"></div>
+          <div class="relative flex items-center justify-center w-8 h-8 bg-red-600 rounded-full border-4 border-white shadow-lg">
+            <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
+              <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"/>
+            </svg>
+          </div>
+          <div class="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap bg-black/80 text-white text-xs px-2 py-1 rounded">
+            Drag to roof
+          </div>
+        </div>
+      `;
+
+      // Create draggable marker
+      marker.current = new mapboxgl.Marker({
+        element: pinElement,
+        draggable: true,
+        anchor: 'bottom'
+      })
+        .setLngLat([initialLng, initialLat])
+        .addTo(map.current);
+
+      // Handle marker drag
+      marker.current.on('dragend', () => {
+        const lngLat = marker.current?.getLngLat();
+        if (lngLat) {
+          setPinPosition({ lat: lngLat.lat, lng: lngLat.lng });
+          const distance = calculateDistance(initialLat, initialLng, lngLat.lat, lngLat.lng);
+          setDistanceMoved(distance);
+        }
+      });
+
+      map.current.on('load', () => {
+        console.log('✅ Mapbox map loaded successfully');
+        setLoading(false);
+      });
+
+      // Timeout fallback in case load event never fires
+      setTimeout(() => {
+        setLoading(prev => {
+          if (prev) {
+            console.warn('⚠️ Map load timeout - forcing completion');
+          }
+          return false;
+        });
+      }, 10000); // 10 second timeout
+
+    } catch (err) {
+      console.error('❌ Map initialization error:', err);
+      setError(err instanceof Error ? err.message : 'Failed to load map');
+      setLoading(false);
+    }
+  }, [initialLat, initialLng, calculateDistance]);
+
   // Initialize map
   useEffect(() => {
     if (!open || !mapContainer.current) return;
@@ -74,74 +177,6 @@ export function StructureSelectionMap({
     }
     
     setHasInvalidCoords(false);
-
-    const initMap = async () => {
-      setLoading(true);
-      
-      try {
-        // Fetch Mapbox token
-        const { data } = await supabase.functions.invoke('get-mapbox-token');
-        if (!data?.token) throw new Error('No Mapbox token');
-        
-        mapboxgl.accessToken = data.token;
-
-        // Create map
-        map.current = new mapboxgl.Map({
-          container: mapContainer.current!,
-          style: 'mapbox://styles/mapbox/satellite-v9',
-          center: [initialLng, initialLat],
-          zoom: 19,
-          pitch: 0,
-        });
-
-        // Add navigation controls
-        map.current.addControl(new mapboxgl.NavigationControl(), 'top-right');
-
-        // Create custom PIN element
-        const pinElement = document.createElement('div');
-        pinElement.innerHTML = `
-          <div class="relative cursor-grab active:cursor-grabbing">
-            <div class="absolute -top-1 -left-1 w-10 h-10 bg-red-500/30 rounded-full animate-ping"></div>
-            <div class="relative flex items-center justify-center w-8 h-8 bg-red-600 rounded-full border-4 border-white shadow-lg">
-              <svg class="w-4 h-4 text-white" fill="currentColor" viewBox="0 0 20 20">
-                <path fill-rule="evenodd" d="M5.05 4.05a7 7 0 119.9 9.9L10 18.9l-4.95-4.95a7 7 0 010-9.9zM10 11a2 2 0 100-4 2 2 0 000 4z" clip-rule="evenodd"/>
-              </svg>
-            </div>
-            <div class="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap bg-black/80 text-white text-xs px-2 py-1 rounded">
-              Drag to roof
-            </div>
-          </div>
-        `;
-
-        // Create draggable marker
-        marker.current = new mapboxgl.Marker({
-          element: pinElement,
-          draggable: true,
-          anchor: 'bottom'
-        })
-          .setLngLat([initialLng, initialLat])
-          .addTo(map.current);
-
-        // Handle marker drag
-        marker.current.on('dragend', () => {
-          const lngLat = marker.current?.getLngLat();
-          if (lngLat) {
-            setPinPosition({ lat: lngLat.lat, lng: lngLat.lng });
-            const distance = calculateDistance(initialLat, initialLng, lngLat.lat, lngLat.lng);
-            setDistanceMoved(distance);
-          }
-        });
-
-        map.current.on('load', () => {
-          setLoading(false);
-        });
-
-      } catch (error) {
-        console.error('Map initialization error:', error);
-        setLoading(false);
-      }
-    };
-
     initMap();
 
     return () => {
@@ -150,7 +185,7 @@ export function StructureSelectionMap({
       map.current = null;
       marker.current = null;
     };
-  }, [open, initialLat, initialLng, calculateDistance]);
+  }, [open, initialLat, initialLng, initMap]);
 
   const handleConfirm = () => {
     onLocationConfirmed(pinPosition.lat, pinPosition.lng);
@@ -189,6 +224,27 @@ export function StructureSelectionMap({
           {loading && !hasInvalidCoords && (
             <div className="absolute inset-0 flex items-center justify-center bg-muted/50 z-10">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          )}
+          
+          {/* Error State */}
+          {error && !loading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-muted/50 z-10">
+              <div className="bg-background p-6 rounded-lg shadow-lg max-w-md text-center">
+                <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
+                  <AlertCircle className="h-6 w-6 text-destructive" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">Map Loading Error</h3>
+                <p className="text-sm text-muted-foreground mb-4">{error}</p>
+                <div className="flex gap-2 justify-center">
+                  <Button variant="outline" onClick={() => onOpenChange(false)}>
+                    Cancel
+                  </Button>
+                  <Button onClick={() => { setError(null); initMap(); }}>
+                    Retry
+                  </Button>
+                </div>
+              </div>
             </div>
           )}
           
