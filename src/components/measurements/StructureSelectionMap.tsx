@@ -31,6 +31,12 @@ export function StructureSelectionMap({
   const [loading, setLoading] = useState(true);
   const [pinPosition, setPinPosition] = useState({ lat: initialLat, lng: initialLng });
   const [distanceMoved, setDistanceMoved] = useState(0);
+  const [hasInvalidCoords, setHasInvalidCoords] = useState(false);
+  
+  // Check for invalid coordinates (0,0 or very close to it)
+  const isValidCoordinate = (lat: number, lng: number) => {
+    return Math.abs(lat) > 0.001 || Math.abs(lng) > 0.001;
+  };
 
   // Calculate distance between two points in meters
   const calculateDistance = useCallback((lat1: number, lng1: number, lat2: number, lng2: number) => {
@@ -49,6 +55,16 @@ export function StructureSelectionMap({
   // Initialize map
   useEffect(() => {
     if (!open || !mapContainer.current) return;
+
+    // Check for invalid coordinates before initializing map
+    if (!isValidCoordinate(initialLat, initialLng)) {
+      console.error('❌ Invalid coordinates received:', { initialLat, initialLng });
+      setHasInvalidCoords(true);
+      setLoading(false);
+      return;
+    }
+    
+    setHasInvalidCoords(false);
 
     const initMap = async () => {
       setLoading(true);
@@ -161,28 +177,50 @@ export function StructureSelectionMap({
 
         {/* Map Container */}
         <div className="flex-1 relative min-h-[400px]">
-          {loading && (
+          {loading && !hasInvalidCoords && (
             <div className="absolute inset-0 flex items-center justify-center bg-muted/50 z-10">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           )}
+          
+          {/* Invalid Coordinates Error */}
+          {hasInvalidCoords && (
+            <div className="absolute inset-0 flex items-center justify-center bg-muted/50 z-10">
+              <div className="bg-background p-6 rounded-lg shadow-lg max-w-md text-center">
+                <div className="w-12 h-12 rounded-full bg-destructive/10 flex items-center justify-center mx-auto mb-4">
+                  <MapPin className="h-6 w-6 text-destructive" />
+                </div>
+                <h3 className="text-lg font-semibold mb-2">No Valid Coordinates</h3>
+                <p className="text-sm text-muted-foreground mb-4">
+                  This property doesn't have valid GPS coordinates. Please verify the address in the contact details first, 
+                  or manually enter the property address to generate coordinates.
+                </p>
+                <Button variant="outline" onClick={() => onOpenChange(false)}>
+                  Close
+                </Button>
+              </div>
+            </div>
+          )}
+          
           <div ref={mapContainer} className="absolute inset-0" />
           
           {/* Instructions Overlay */}
-          <div className="absolute top-4 left-4 bg-background/95 backdrop-blur p-3 rounded-lg shadow-lg max-w-xs z-10">
-            <div className="flex items-start gap-2">
-              <Move className="h-5 w-5 text-primary mt-0.5 shrink-0" />
-              <div className="space-y-1">
-                <p className="text-sm font-medium">Drag the PIN</p>
-                <p className="text-xs text-muted-foreground">
-                  Position it on the <strong>main dwelling roof</strong>, not sheds, garages, or other structures.
-                </p>
+          {!hasInvalidCoords && (
+            <div className="absolute top-4 left-4 bg-background/95 backdrop-blur p-3 rounded-lg shadow-lg max-w-xs z-10">
+              <div className="flex items-start gap-2">
+                <Move className="h-5 w-5 text-primary mt-0.5 shrink-0" />
+                <div className="space-y-1">
+                  <p className="text-sm font-medium">Drag the PIN</p>
+                  <p className="text-xs text-muted-foreground">
+                    Position it on the <strong>main dwelling roof</strong>, not sheds, garages, or other structures.
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Distance Indicator */}
-          {distanceMoved > 0 && (
+          {distanceMoved > 0 && !hasInvalidCoords && (
             <div className="absolute bottom-4 left-4 z-10">
               <Badge 
                 variant={distanceMoved > 10 ? "default" : "secondary"} 

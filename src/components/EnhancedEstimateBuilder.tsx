@@ -211,7 +211,10 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
               address_street,
               address_city,
               address_state,
-              address_zip
+              address_zip,
+              latitude,
+              longitude,
+              verified_address
             )
           `)
           .eq('id', pipelineEntryId)
@@ -221,17 +224,52 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 
         if (pipelineEntry) {
           const metadata = (pipelineEntry.metadata as any) || {};
+          const contact = pipelineEntry.contacts as any;
           const roofAreaSqFt = metadata.roof_area_sq_ft || metadata.comprehensive_measurements?.adjustedArea || 0;
           const comprehensiveMeasurements = metadata.comprehensive_measurements;
           const hasValidMeasurements = roofAreaSqFt > 0;
           
-          // Extract coordinates from verified address
+          // Extract coordinates with priority fallback chain
           const verifiedAddress = metadata.verified_address;
-          if (verifiedAddress?.geometry?.location) {
-            setCoordinates({
+          let extractedCoords: { lat: number; lng: number } | null = null;
+          
+          // Priority 1: metadata.verified_address.geometry.location
+          if (verifiedAddress?.geometry?.location?.lat && verifiedAddress?.geometry?.location?.lng) {
+            extractedCoords = {
               lat: verifiedAddress.geometry.location.lat,
               lng: verifiedAddress.geometry.location.lng
-            });
+            };
+            console.log('📍 Coordinates from metadata.verified_address.geometry.location:', extractedCoords);
+          }
+          // Priority 2: contact.latitude/longitude (from database)
+          else if (contact?.latitude && contact?.longitude) {
+            extractedCoords = {
+              lat: contact.latitude,
+              lng: contact.longitude
+            };
+            console.log('📍 Coordinates from contact.latitude/longitude:', extractedCoords);
+          }
+          // Priority 3: contact.verified_address (JSON field)
+          else if (contact?.verified_address?.lat && contact?.verified_address?.lng) {
+            extractedCoords = {
+              lat: contact.verified_address.lat,
+              lng: contact.verified_address.lng
+            };
+            console.log('📍 Coordinates from contact.verified_address:', extractedCoords);
+          }
+          // Priority 4: metadata flat structure
+          else if (metadata.verified_address?.lat && metadata.verified_address?.lng) {
+            extractedCoords = {
+              lat: metadata.verified_address.lat,
+              lng: metadata.verified_address.lng
+            };
+            console.log('📍 Coordinates from metadata.verified_address flat:', extractedCoords);
+          }
+          
+          if (extractedCoords && extractedCoords.lat !== 0 && extractedCoords.lng !== 0) {
+            setCoordinates(extractedCoords);
+          } else {
+            console.warn('⚠️ No valid coordinates found for this pipeline entry');
           }
           
           setHasMeasurements(hasValidMeasurements);
