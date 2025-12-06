@@ -23,7 +23,9 @@ import {
   Target,
   Mail,
   CloudRain,
-  Presentation
+  Presentation,
+  HardHat,
+  Activity
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -95,6 +97,9 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
     if (path.startsWith('/dialer')) return 'dialer';
     if (path.startsWith('/smartdocs')) return 'smartdocs';
     if (path.startsWith('/presentations')) return 'presentations';
+    if (path.startsWith('/crew')) return 'crew';
+    if (path.startsWith('/homeowner')) return 'homeowner';
+    if (path.startsWith('/admin/monitoring')) return 'monitoring';
     if (path.startsWith('/settings')) return 'settings';
     if (path.startsWith('/help')) return 'help';
     return 'dashboard';
@@ -264,6 +269,31 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
     }
   ];
 
+  const portalNavigation = [
+    {
+      name: "Crew Portal",
+      href: "crew",
+      path: "/crew",
+      icon: HardHat,
+      description: "Field crew workspace"
+    },
+    {
+      name: "Homeowner Portal",
+      href: "homeowner",
+      path: "/homeowner",
+      icon: Home,
+      description: "Customer project view"
+    },
+    {
+      name: "System Monitor",
+      href: "monitoring",
+      path: "/admin/monitoring",
+      icon: Activity,
+      description: "System health & crashes",
+      masterOnly: true
+    }
+  ];
+
   const bottomNavigation = [
     {
       name: "Settings",
@@ -342,6 +372,51 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
               )}
             </Link>
           ))}
+        </nav>
+      </div>
+
+      {/* Portal Navigation */}
+      <div className="px-4 pb-2">
+        <div className={cn("text-xs font-semibold text-muted-foreground mb-2", isCollapsed ? "text-center" : "px-3")}>
+          {!isCollapsed && "PORTALS"}
+        </div>
+        <nav className="space-y-1">
+          {portalNavigation
+            .filter(item => !item.masterOnly || currentUser?.role === 'master')
+            .map((item) => (
+              <Link
+                key={item.href}
+                to={item.path}
+                className={cn(
+                  "w-full flex items-center rounded-lg text-left transition-smooth group",
+                  isCollapsed ? "px-2 py-2 justify-center" : "gap-3 px-3 py-2",
+                  activeSection === item.href
+                    ? "bg-primary text-primary-foreground shadow-soft"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                )}
+                title={isCollapsed ? item.name : undefined}
+              >
+                <item.icon className={cn(
+                  "h-4 w-4",
+                  activeSection === item.href 
+                    ? "text-primary-foreground" 
+                    : "text-muted-foreground group-hover:text-accent-foreground"
+                )} />
+                {!isCollapsed && (
+                  <div className="flex-1">
+                    <div className="text-sm font-medium">{item.name}</div>
+                    <div className={cn(
+                      "text-xs",
+                      activeSection === item.href
+                        ? "text-primary-foreground/80"
+                        : "text-muted-foreground group-hover:text-accent-foreground/80"
+                    )}>
+                      {item.description}
+                    </div>
+                  </div>
+                )}
+              </Link>
+            ))}
         </nav>
       </div>
 

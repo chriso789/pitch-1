@@ -1,4 +1,4 @@
-import GlobalLayout from "@/components/layouts/GlobalLayout";
+import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 import { MonitoringDashboard } from "@/components/admin/MonitoringDashboard";
 
 const MonitoringPage = () => {
