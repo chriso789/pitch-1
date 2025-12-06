@@ -197,6 +197,50 @@ export function PullMeasurementsButton({
         coordSource = 'props';
       }
 
+      // Priority #6: Geocode from address if no valid coords found
+      if (!coordLat || !coordLng || (coordLat === 0 && coordLng === 0)) {
+        const addressToGeocode = 
+          metadata?.verified_address?.formatted_address ||
+          (contact?.address_street && contact?.address_city && contact?.address_state 
+            ? `${contact.address_street}, ${contact.address_city}, ${contact.address_state} ${contact.address_zip || ''}`
+            : null);
+
+        if (addressToGeocode) {
+          console.log('📍 No valid coords found, attempting to geocode address:', addressToGeocode);
+          
+          try {
+            const { data: geocodeData, error: geocodeError } = await supabase.functions.invoke('google-maps-proxy', {
+              body: {
+                endpoint: 'geocode',
+                params: { address: addressToGeocode }
+              }
+            });
+
+            if (!geocodeError && geocodeData?.results?.[0]?.geometry?.location) {
+              coordLat = geocodeData.results[0].geometry.location.lat;
+              coordLng = geocodeData.results[0].geometry.location.lng;
+              coordSource = 'geocoded_from_address';
+              console.log('✅ Successfully geocoded address:', { coordLat, coordLng });
+              
+              // Save geocoded coordinates to contact for future use
+              if (pipelineData?.contact_id) {
+                supabase
+                  .from('contacts')
+                  .update({ latitude: coordLat, longitude: coordLng })
+                  .eq('id', pipelineData.contact_id)
+                  .then(({ error }) => {
+                    if (error) console.error('Failed to save geocoded coordinates:', error);
+                    else console.log('💾 Saved geocoded coordinates to contact');
+                  });
+              }
+            }
+          } catch (geocodeErr) {
+            console.error('Geocoding failed:', geocodeErr);
+          }
+        }
+      }
+
+      // Final check after geocoding attempt
       if (!coordLat || !coordLng || (coordLat === 0 && coordLng === 0)) {
         toast({
           title: "Missing Location",
