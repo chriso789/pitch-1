@@ -2742,6 +2742,144 @@ export type Database = {
         }
         Relationships: []
       }
+      crew_portal_sessions: {
+        Row: {
+          created_at: string | null
+          crew_member_id: string
+          device_info: Json | null
+          expires_at: string
+          id: string
+          ip_address: unknown
+          last_active_at: string | null
+          tenant_id: string
+          token: string
+        }
+        Insert: {
+          created_at?: string | null
+          crew_member_id: string
+          device_info?: Json | null
+          expires_at: string
+          id?: string
+          ip_address?: unknown
+          last_active_at?: string | null
+          tenant_id: string
+          token: string
+        }
+        Update: {
+          created_at?: string | null
+          crew_member_id?: string
+          device_info?: Json | null
+          expires_at?: string
+          id?: string
+          ip_address?: unknown
+          last_active_at?: string | null
+          tenant_id?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crew_portal_sessions_crew_member_id_fkey"
+            columns: ["crew_member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crew_portal_sessions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      crew_time_entries: {
+        Row: {
+          approved: boolean | null
+          approved_by: string | null
+          break_minutes: number | null
+          clock_in: string
+          clock_out: string | null
+          created_at: string | null
+          crew_member_id: string
+          id: string
+          location_in: Json | null
+          location_out: Json | null
+          notes: string | null
+          project_id: string | null
+          tenant_id: string
+          work_order_id: string | null
+        }
+        Insert: {
+          approved?: boolean | null
+          approved_by?: string | null
+          break_minutes?: number | null
+          clock_in: string
+          clock_out?: string | null
+          created_at?: string | null
+          crew_member_id: string
+          id?: string
+          location_in?: Json | null
+          location_out?: Json | null
+          notes?: string | null
+          project_id?: string | null
+          tenant_id: string
+          work_order_id?: string | null
+        }
+        Update: {
+          approved?: boolean | null
+          approved_by?: string | null
+          break_minutes?: number | null
+          clock_in?: string
+          clock_out?: string | null
+          created_at?: string | null
+          crew_member_id?: string
+          id?: string
+          location_in?: Json | null
+          location_out?: Json | null
+          notes?: string | null
+          project_id?: string | null
+          tenant_id?: string
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crew_time_entries_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crew_time_entries_crew_member_id_fkey"
+            columns: ["crew_member_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crew_time_entries_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crew_time_entries_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crew_time_entries_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crews: {
         Row: {
           capacity_slots: number
@@ -5336,6 +5474,94 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      health_checks: {
+        Row: {
+          checked_at: string | null
+          details: Json | null
+          error_message: string | null
+          id: string
+          response_time_ms: number | null
+          service_name: string
+          status: string
+        }
+        Insert: {
+          checked_at?: string | null
+          details?: Json | null
+          error_message?: string | null
+          id?: string
+          response_time_ms?: number | null
+          service_name: string
+          status: string
+        }
+        Update: {
+          checked_at?: string | null
+          details?: Json | null
+          error_message?: string | null
+          id?: string
+          response_time_ms?: number | null
+          service_name?: string
+          status?: string
+        }
+        Relationships: []
+      }
+      homeowner_portal_sessions: {
+        Row: {
+          contact_id: string
+          created_at: string | null
+          email: string
+          expires_at: string
+          id: string
+          last_active_at: string | null
+          project_id: string | null
+          tenant_id: string
+          token: string
+        }
+        Insert: {
+          contact_id: string
+          created_at?: string | null
+          email: string
+          expires_at: string
+          id?: string
+          last_active_at?: string | null
+          project_id?: string | null
+          tenant_id: string
+          token: string
+        }
+        Update: {
+          contact_id?: string
+          created_at?: string | null
+          email?: string
+          expires_at?: string
+          id?: string
+          last_active_at?: string | null
+          project_id?: string | null
+          tenant_id?: string
+          token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "homeowner_portal_sessions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "homeowner_portal_sessions_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "homeowner_portal_sessions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       idempotency_keys: {
         Row: {
@@ -8101,6 +8327,69 @@ export type Database = {
           },
           {
             foreignKeyName: "portal_access_grants_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      portal_messages: {
+        Row: {
+          attachments: Json | null
+          created_at: string | null
+          id: string
+          is_read: boolean | null
+          message: string
+          project_id: string | null
+          read_at: string | null
+          recipient_id: string | null
+          recipient_type: string | null
+          sender_id: string | null
+          sender_type: string
+          subject: string | null
+          tenant_id: string
+        }
+        Insert: {
+          attachments?: Json | null
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          message: string
+          project_id?: string | null
+          read_at?: string | null
+          recipient_id?: string | null
+          recipient_type?: string | null
+          sender_id?: string | null
+          sender_type: string
+          subject?: string | null
+          tenant_id: string
+        }
+        Update: {
+          attachments?: Json | null
+          created_at?: string | null
+          id?: string
+          is_read?: boolean | null
+          message?: string
+          project_id?: string | null
+          read_at?: string | null
+          recipient_id?: string | null
+          recipient_type?: string | null
+          sender_id?: string | null
+          sender_type?: string
+          subject?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "portal_messages_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "portal_messages_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -13161,6 +13450,126 @@ export type Database = {
           },
         ]
       }
+      system_crashes: {
+        Row: {
+          auto_recovered: boolean | null
+          component: string | null
+          created_at: string | null
+          error_message: string | null
+          error_type: string
+          id: string
+          metadata: Json | null
+          recovery_action: string | null
+          resolved: boolean | null
+          resolved_at: string | null
+          resolved_by: string | null
+          route: string | null
+          severity: string | null
+          stack_trace: string | null
+          tenant_id: string | null
+          user_agent: string | null
+          user_id: string | null
+        }
+        Insert: {
+          auto_recovered?: boolean | null
+          component?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          error_type: string
+          id?: string
+          metadata?: Json | null
+          recovery_action?: string | null
+          resolved?: boolean | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          route?: string | null
+          severity?: string | null
+          stack_trace?: string | null
+          tenant_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          auto_recovered?: boolean | null
+          component?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          error_type?: string
+          id?: string
+          metadata?: Json | null
+          recovery_action?: string | null
+          resolved?: boolean | null
+          resolved_at?: string | null
+          resolved_by?: string | null
+          route?: string | null
+          severity?: string | null
+          stack_trace?: string | null
+          tenant_id?: string | null
+          user_agent?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "system_crashes_resolved_by_fkey"
+            columns: ["resolved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "system_crashes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "system_crashes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      system_metrics: {
+        Row: {
+          id: string
+          metric_name: string
+          metric_unit: string | null
+          metric_value: number | null
+          recorded_at: string | null
+          tags: Json | null
+          tenant_id: string | null
+        }
+        Insert: {
+          id?: string
+          metric_name: string
+          metric_unit?: string | null
+          metric_value?: number | null
+          recorded_at?: string | null
+          tags?: Json | null
+          tenant_id?: string | null
+        }
+        Update: {
+          id?: string
+          metric_name?: string
+          metric_unit?: string | null
+          metric_value?: number | null
+          recorded_at?: string | null
+          tags?: Json | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "system_metrics_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       task_dependencies: {
         Row: {
           created_at: string
@@ -14747,6 +15156,108 @@ export type Database = {
           longitude?: number | null
         }
         Relationships: []
+      }
+      work_orders: {
+        Row: {
+          actual_hours: number | null
+          assigned_to: string | null
+          completed_at: string | null
+          created_at: string | null
+          created_by: string | null
+          crew_id: string | null
+          description: string | null
+          estimated_hours: number | null
+          id: string
+          materials_used: Json | null
+          notes: string | null
+          priority: string | null
+          project_id: string | null
+          scheduled_date: string | null
+          scheduled_time: string | null
+          status: string | null
+          tenant_id: string
+          title: string
+          updated_at: string | null
+        }
+        Insert: {
+          actual_hours?: number | null
+          assigned_to?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          crew_id?: string | null
+          description?: string | null
+          estimated_hours?: number | null
+          id?: string
+          materials_used?: Json | null
+          notes?: string | null
+          priority?: string | null
+          project_id?: string | null
+          scheduled_date?: string | null
+          scheduled_time?: string | null
+          status?: string | null
+          tenant_id: string
+          title: string
+          updated_at?: string | null
+        }
+        Update: {
+          actual_hours?: number | null
+          assigned_to?: string | null
+          completed_at?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          crew_id?: string | null
+          description?: string | null
+          estimated_hours?: number | null
+          id?: string
+          materials_used?: Json | null
+          notes?: string | null
+          priority?: string | null
+          project_id?: string | null
+          scheduled_date?: string | null
+          scheduled_time?: string | null
+          status?: string | null
+          tenant_id?: string
+          title?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "work_orders_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_crew_id_fkey"
+            columns: ["crew_id"]
+            isOneToOne: false
+            referencedRelation: "crews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "work_orders_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       workflow_phase_history: {
         Row: {

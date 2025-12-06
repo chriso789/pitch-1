@@ -82,6 +82,10 @@ import OnboardingWalkthrough from "./pages/onboarding/OnboardingWalkthrough";
 import RequestSetupLink from "./pages/auth/RequestSetupLink";
 import CustomerPortalPublic from "./pages/CustomerPortalPublic";
 import PublicSignatureCapture from "./pages/PublicSignatureCapture";
+import CrewPortalPage from "./pages/CrewPortalPage";
+import HomeownerPortalPage from "./pages/HomeownerPortalPage";
+import PortalLoginPage from "./pages/PortalLoginPage";
+import MonitoringPage from "./pages/admin/MonitoringPage";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -151,6 +155,9 @@ const AppContent = () => {
         <Route path="/onboarding/:token" element={<OnboardingWalkthrough />} />
         <Route path="/customer/:token" element={<CustomerPortalPublic />} />
         <Route path="/sign/:token" element={<PublicSignatureCapture />} />
+        <Route path="/portal/login" element={<PortalLoginPage />} />
+        <Route path="/crew" element={<CrewPortalPage />} />
+        <Route path="/homeowner" element={<HomeownerPortalPage />} />
         
         {/* Main application routes */}
         <Route path="/dashboard" element={<Dashboard />} />
@@ -214,6 +221,7 @@ const AppContent = () => {
         
         {/* Admin routes */}
         <Route path="/admin/companies" element={<CompanyAdminPage />} />
+        <Route path="/admin/monitoring" element={<MonitoringPage />} />
         
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
