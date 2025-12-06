@@ -145,7 +145,7 @@ export function PullMeasurementsButton({
       // Fetch verified coordinates from the pipeline entry's contact
       const { data: pipelineData, error } = await supabase
         .from('pipeline_entries')
-        .select('contact_id, metadata, contacts!inner(verified_address, latitude, longitude)')
+        .select('contact_id, metadata, contacts!inner(verified_address, latitude, longitude, address_street, address_city, address_state, address_zip)')
         .eq('id', propertyId)
         .single();
 
