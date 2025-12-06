@@ -12086,6 +12086,85 @@ export type Database = {
           },
         ]
       }
+      share_links: {
+        Row: {
+          created_at: string | null
+          created_by: string
+          expires_at: string | null
+          id: string
+          last_accessed_at: string | null
+          max_views: number | null
+          permissions: string
+          recipient_email: string | null
+          recipient_id: string | null
+          revoked_at: string | null
+          revoked_by: string | null
+          target_id: string
+          target_type: string
+          tenant_id: string
+          token_hash: string
+          view_count: number | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by: string
+          expires_at?: string | null
+          id?: string
+          last_accessed_at?: string | null
+          max_views?: number | null
+          permissions?: string
+          recipient_email?: string | null
+          recipient_id?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          target_id: string
+          target_type: string
+          tenant_id: string
+          token_hash: string
+          view_count?: number | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string
+          expires_at?: string | null
+          id?: string
+          last_accessed_at?: string | null
+          max_views?: number | null
+          permissions?: string
+          recipient_email?: string | null
+          recipient_id?: string | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          target_id?: string
+          target_type?: string
+          tenant_id?: string
+          token_hash?: string
+          view_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "share_links_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "share_links_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "share_links_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       signature_envelopes: {
         Row: {
           completed_at: string | null
@@ -15131,6 +15210,75 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "verified_company_domains_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      view_events: {
+        Row: {
+          duration_seconds: number | null
+          geolocation: Json | null
+          id: string
+          ip_address: unknown
+          metadata: Json | null
+          referrer: string | null
+          session_id: string | null
+          share_link_id: string
+          target_id: string
+          target_type: string
+          tenant_id: string
+          user_agent: string | null
+          viewed_at: string | null
+          viewer_email: string | null
+          viewer_name: string | null
+        }
+        Insert: {
+          duration_seconds?: number | null
+          geolocation?: Json | null
+          id?: string
+          ip_address?: unknown
+          metadata?: Json | null
+          referrer?: string | null
+          session_id?: string | null
+          share_link_id: string
+          target_id: string
+          target_type: string
+          tenant_id: string
+          user_agent?: string | null
+          viewed_at?: string | null
+          viewer_email?: string | null
+          viewer_name?: string | null
+        }
+        Update: {
+          duration_seconds?: number | null
+          geolocation?: Json | null
+          id?: string
+          ip_address?: unknown
+          metadata?: Json | null
+          referrer?: string | null
+          session_id?: string | null
+          share_link_id?: string
+          target_id?: string
+          target_type?: string
+          tenant_id?: string
+          user_agent?: string | null
+          viewed_at?: string | null
+          viewer_email?: string | null
+          viewer_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "view_events_share_link_id_fkey"
+            columns: ["share_link_id"]
+            isOneToOne: false
+            referencedRelation: "share_links"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "view_events_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
