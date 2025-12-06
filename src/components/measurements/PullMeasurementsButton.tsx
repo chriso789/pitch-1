@@ -160,11 +160,42 @@ export function PullMeasurementsButton({
       }
 
       const contact = (pipelineData as any)?.contacts;
-      const verifiedAddress = contact?.verified_address;
+      const metadata = (pipelineData as any)?.metadata;
       
-      // Priority: verified_address > contact lat/lng > props lat/lng
-      const coordLat = verifiedAddress?.lat || contact?.latitude || lat;
-      const coordLng = verifiedAddress?.lng || contact?.longitude || lng;
+      let coordLat: number | undefined;
+      let coordLng: number | undefined;
+      let coordSource = 'unknown';
+
+      // Priority #1: contact.verified_address (Google-verified)
+      if (contact?.verified_address?.lat && contact?.verified_address?.lng) {
+        coordLat = contact.verified_address.lat;
+        coordLng = contact.verified_address.lng;
+        coordSource = 'contact.verified_address';
+      }
+      // Priority #2: contact.latitude/longitude (legacy)
+      else if (contact?.latitude && contact?.longitude) {
+        coordLat = contact.latitude;
+        coordLng = contact.longitude;
+        coordSource = 'contact.latitude/longitude';
+      }
+      // Priority #3: pipeline_entries.metadata.verified_address.geometry.location
+      else if (metadata?.verified_address?.geometry?.location?.lat && metadata?.verified_address?.geometry?.location?.lng) {
+        coordLat = metadata.verified_address.geometry.location.lat;
+        coordLng = metadata.verified_address.geometry.location.lng;
+        coordSource = 'metadata.verified_address.geometry.location';
+      }
+      // Priority #4: pipeline_entries.metadata.verified_address (flat structure)
+      else if (metadata?.verified_address?.lat && metadata?.verified_address?.lng) {
+        coordLat = metadata.verified_address.lat;
+        coordLng = metadata.verified_address.lng;
+        coordSource = 'metadata.verified_address';
+      }
+      // Priority #5: props passed to component (last resort)
+      else if (lat && lng) {
+        coordLat = lat;
+        coordLng = lng;
+        coordSource = 'props';
+      }
 
       if (!coordLat || !coordLng || (coordLat === 0 && coordLng === 0)) {
         toast({
@@ -175,7 +206,7 @@ export function PullMeasurementsButton({
         return;
       }
 
-      console.log('📍 Opening structure selector with verified coords:', { coordLat, coordLng });
+      console.log('📍 Opening structure selector with coords:', { coordLat, coordLng, source: coordSource });
       setVerifiedCoords({ lat: coordLat, lng: coordLng });
       setShowStructureSelector(true);
     } catch (err) {
