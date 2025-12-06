@@ -120,13 +120,13 @@ export function HomeownerPortal() {
         setContactInfo(contact);
 
         // Get project for this contact
-        const { data: projectData } = await supabase
+        const { data: projectData } = await (supabase as any)
           .from("projects")
           .select("*")
-          .eq("contact_id", contact.id)
+          .eq("contact_id", (contact as any).id)
           .order("created_at", { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
 
         if (projectData) {
           const pData = projectData as any;

@@ -32,7 +32,10 @@ import {
   Eye,
   Download,
   Printer,
-  ChevronDown
+  ChevronDown,
+  HardHat,
+  Home,
+  Activity
 } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import { subDays, format } from "date-fns";
@@ -489,7 +492,10 @@ const Dashboard = () => {
           }}
         />
         
-        <Card className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-secondary">
+        <Card 
+          className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-secondary"
+          onClick={() => navigate('/estimates')}
+        >
           <CardContent className="p-6 text-center text-white">
             <DollarSign className="h-8 w-8 mx-auto mb-2" />
             <h3 className="font-semibold mb-1">Create Estimate</h3>
@@ -497,7 +503,7 @@ const Dashboard = () => {
           </CardContent>
         </Card>
         
-        <Card 
+        <Card
           className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-success"
           onClick={() => navigate('/production')}
         >
@@ -508,6 +514,66 @@ const Dashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Portal Access */}
+      <Card className="shadow-soft border-0">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Activity className="h-5 w-5 text-primary" />
+            Portal Access
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <Card 
+              className="shadow-soft border hover:shadow-medium transition-smooth cursor-pointer hover:border-primary/50"
+              onClick={() => navigate('/crew')}
+            >
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <HardHat className="h-6 w-6 text-primary" />
+                </div>
+                <div>
+                  <h3 className="font-semibold">Crew Portal</h3>
+                  <p className="text-sm text-muted-foreground">Field crew workspace</p>
+                </div>
+              </CardContent>
+            </Card>
+            
+            <Card 
+              className="shadow-soft border hover:shadow-medium transition-smooth cursor-pointer hover:border-primary/50"
+              onClick={() => navigate('/homeowner')}
+            >
+              <CardContent className="p-4 flex items-center gap-4">
+                <div className="h-12 w-12 rounded-lg bg-success/10 flex items-center justify-center">
+                  <Home className="h-6 w-6 text-success" />
+                </div>
+                <div>
+                  <h3 className="font-semibold">Homeowner Portal</h3>
+                  <p className="text-sm text-muted-foreground">Customer project view</p>
+                </div>
+              </CardContent>
+            </Card>
+            
+            {user?.role === 'master' && (
+              <Card 
+                className="shadow-soft border hover:shadow-medium transition-smooth cursor-pointer hover:border-primary/50"
+                onClick={() => navigate('/admin/monitoring')}
+              >
+                <CardContent className="p-4 flex items-center gap-4">
+                  <div className="h-12 w-12 rounded-lg bg-destructive/10 flex items-center justify-center">
+                    <Activity className="h-6 w-6 text-destructive" />
+                  </div>
+                  <div>
+                    <h3 className="font-semibold">System Monitor</h3>
+                    <p className="text-sm text-muted-foreground">Health & crash detection</p>
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Pipeline Overview */}
       <Card className="shadow-soft border-0">
