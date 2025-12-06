@@ -2709,6 +2709,139 @@ export type Database = {
           },
         ]
       }
+      county_permit_forms: {
+        Row: {
+          county_id: string | null
+          created_at: string | null
+          form_name: string
+          form_type: string | null
+          form_url: string | null
+          id: string
+          is_required: boolean | null
+          last_verified_at: string | null
+          notes: string | null
+        }
+        Insert: {
+          county_id?: string | null
+          created_at?: string | null
+          form_name: string
+          form_type?: string | null
+          form_url?: string | null
+          id?: string
+          is_required?: boolean | null
+          last_verified_at?: string | null
+          notes?: string | null
+        }
+        Update: {
+          county_id?: string | null
+          created_at?: string | null
+          form_name?: string
+          form_type?: string | null
+          form_url?: string | null
+          id?: string
+          is_required?: boolean | null
+          last_verified_at?: string | null
+          notes?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "county_permit_forms_county_id_fkey"
+            columns: ["county_id"]
+            isOneToOne: false
+            referencedRelation: "florida_counties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      county_permit_requirements: {
+        Row: {
+          base_fee: number | null
+          county_id: string | null
+          created_at: string | null
+          department_address: string | null
+          department_email: string | null
+          department_name: string | null
+          department_phone: string | null
+          expedited_available: boolean | null
+          expedited_fee: number | null
+          id: string
+          in_person_required: boolean | null
+          last_scraped_at: string | null
+          last_verified_at: string | null
+          notes: string | null
+          online_submission: boolean | null
+          per_sqft_fee: number | null
+          permit_portal_url: string | null
+          permit_type: string
+          plan_review_fee: number | null
+          required_documents: Json | null
+          scrape_source_url: string | null
+          special_requirements: string[] | null
+          typical_processing_days: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          base_fee?: number | null
+          county_id?: string | null
+          created_at?: string | null
+          department_address?: string | null
+          department_email?: string | null
+          department_name?: string | null
+          department_phone?: string | null
+          expedited_available?: boolean | null
+          expedited_fee?: number | null
+          id?: string
+          in_person_required?: boolean | null
+          last_scraped_at?: string | null
+          last_verified_at?: string | null
+          notes?: string | null
+          online_submission?: boolean | null
+          per_sqft_fee?: number | null
+          permit_portal_url?: string | null
+          permit_type?: string
+          plan_review_fee?: number | null
+          required_documents?: Json | null
+          scrape_source_url?: string | null
+          special_requirements?: string[] | null
+          typical_processing_days?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          base_fee?: number | null
+          county_id?: string | null
+          created_at?: string | null
+          department_address?: string | null
+          department_email?: string | null
+          department_name?: string | null
+          department_phone?: string | null
+          expedited_available?: boolean | null
+          expedited_fee?: number | null
+          id?: string
+          in_person_required?: boolean | null
+          last_scraped_at?: string | null
+          last_verified_at?: string | null
+          notes?: string | null
+          online_submission?: boolean | null
+          per_sqft_fee?: number | null
+          permit_portal_url?: string | null
+          permit_type?: string
+          plan_review_fee?: number | null
+          required_documents?: Json | null
+          scrape_source_url?: string | null
+          special_requirements?: string[] | null
+          typical_processing_days?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "county_permit_requirements_county_id_fkey"
+            columns: ["county_id"]
+            isOneToOne: false
+            referencedRelation: "florida_counties"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crew_availability: {
         Row: {
           available_slots: number
@@ -5227,6 +5360,45 @@ export type Database = {
           is_enabled?: boolean
           tenant_id?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      florida_counties: {
+        Row: {
+          coast: string
+          created_at: string | null
+          id: string
+          is_hvhz: boolean | null
+          name: string
+          population: number | null
+          region: string | null
+          timezone: string | null
+          updated_at: string | null
+          wind_zone: string | null
+        }
+        Insert: {
+          coast: string
+          created_at?: string | null
+          id?: string
+          is_hvhz?: boolean | null
+          name: string
+          population?: number | null
+          region?: string | null
+          timezone?: string | null
+          updated_at?: string | null
+          wind_zone?: string | null
+        }
+        Update: {
+          coast?: string
+          created_at?: string | null
+          id?: string
+          is_hvhz?: boolean | null
+          name?: string
+          population?: number | null
+          region?: string | null
+          timezone?: string | null
+          updated_at?: string | null
+          wind_zone?: string | null
         }
         Relationships: []
       }

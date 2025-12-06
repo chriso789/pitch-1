@@ -308,3 +308,6 @@ verify_jwt = true
 
 [functions.resend-webhook]
 verify_jwt = false
+
+[functions.scrape-county-permits]
+verify_jwt = true
