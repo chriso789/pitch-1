@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { HomeownerPortalAccess } from "./HomeownerPortalAccess";
 
 interface ContactDetailsTabProps {
   contact: any;
@@ -123,6 +124,9 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Homeowner Portal Access */}
+      <HomeownerPortalAccess contact={contact} onUpdate={onContactUpdate} />
+
       {/* Quick Stats */}
       <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
         <Card className="shadow-soft">

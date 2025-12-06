@@ -2576,6 +2576,11 @@ export type Database = {
           notes: string | null
           nurturing_status: string | null
           phone: string | null
+          portal_access_enabled: boolean | null
+          portal_access_granted_at: string | null
+          portal_access_granted_by: string | null
+          portal_last_login_at: string | null
+          portal_password_hash: string | null
           qualification_status: string | null
           referral_source: string | null
           scoring_details: Json | null
@@ -2622,6 +2627,11 @@ export type Database = {
           notes?: string | null
           nurturing_status?: string | null
           phone?: string | null
+          portal_access_enabled?: boolean | null
+          portal_access_granted_at?: string | null
+          portal_access_granted_by?: string | null
+          portal_last_login_at?: string | null
+          portal_password_hash?: string | null
           qualification_status?: string | null
           referral_source?: string | null
           scoring_details?: Json | null
@@ -2668,6 +2678,11 @@ export type Database = {
           notes?: string | null
           nurturing_status?: string | null
           phone?: string | null
+          portal_access_enabled?: boolean | null
+          portal_access_granted_at?: string | null
+          portal_access_granted_by?: string | null
+          portal_last_login_at?: string | null
+          portal_password_hash?: string | null
           qualification_status?: string | null
           referral_source?: string | null
           scoring_details?: Json | null
@@ -2696,6 +2711,13 @@ export type Database = {
           {
             foreignKeyName: "contacts_created_by_ghost_fkey"
             columns: ["created_by_ghost"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contacts_portal_access_granted_by_fkey"
+            columns: ["portal_access_granted_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
@@ -5679,6 +5701,7 @@ export type Database = {
       }
       homeowner_portal_sessions: {
         Row: {
+          auth_method: string | null
           contact_id: string
           created_at: string | null
           email: string
@@ -5690,6 +5713,7 @@ export type Database = {
           token: string
         }
         Insert: {
+          auth_method?: string | null
           contact_id: string
           created_at?: string | null
           email: string
@@ -5701,6 +5725,7 @@ export type Database = {
           token: string
         }
         Update: {
+          auth_method?: string | null
           contact_id?: string
           created_at?: string | null
           email?: string
