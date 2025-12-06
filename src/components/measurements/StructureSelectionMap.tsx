@@ -38,6 +38,15 @@ export function StructureSelectionMap({
     return Math.abs(lat) > 0.001 || Math.abs(lng) > 0.001;
   };
 
+  // Sync pinPosition state with props when they change
+  useEffect(() => {
+    if (isValidCoordinate(initialLat, initialLng)) {
+      setPinPosition({ lat: initialLat, lng: initialLng });
+      setHasInvalidCoords(false);
+      console.log('📍 StructureSelectionMap: Updated pinPosition from props:', { initialLat, initialLng });
+    }
+  }, [initialLat, initialLng]);
+
   // Calculate distance between two points in meters
   const calculateDistance = useCallback((lat1: number, lng1: number, lat2: number, lng2: number) => {
     const R = 6371e3; // Earth radius in meters
