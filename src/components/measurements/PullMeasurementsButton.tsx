@@ -159,8 +159,17 @@ export function PullMeasurementsButton({
         return;
       }
 
-      const contact = (pipelineData as any)?.contacts;
+      // Handle Supabase join returning array or object
+      const contactsData = (pipelineData as any)?.contacts;
+      const contact = Array.isArray(contactsData) ? contactsData[0] : contactsData;
       const metadata = (pipelineData as any)?.metadata;
+      
+      console.log('📍 Contact data from Supabase:', { 
+        raw: contactsData, 
+        isArray: Array.isArray(contactsData),
+        extracted: contact,
+        hasLatLng: !!(contact?.latitude && contact?.longitude)
+      });
       
       let coordLat: number | undefined;
       let coordLng: number | undefined;
