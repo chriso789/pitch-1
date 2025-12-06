@@ -24,6 +24,12 @@ export const SMART_TAG_CATEGORIES = {
   MATERIALS_WASTE: 'Waste-Adjusted Materials',
   PROPERTY: 'Property Metadata',
   CALCULATIONS: 'Derived Calculations',
+  // NEW EXTERIOR CATEGORIES
+  EXTERIOR_SIDING: 'Siding Measurements',
+  EXTERIOR_GUTTERS: 'Gutter Measurements',
+  EXTERIOR_SOFFIT: 'Soffit & Fascia',
+  EXTERIOR_WINDOWS: 'Window Measurements',
+  EXTERIOR_MATERIALS: 'Exterior Material Quantities',
 } as const;
 
 export const SMART_TAGS: SmartTagDefinition[] = [
@@ -139,6 +145,54 @@ export const SMART_TAGS: SmartTagDefinition[] = [
   { key: 'calc.crew_days', category: 'CALCULATIONS', description: 'Estimated crew days (4-person)', example: '2', unit: 'days', type: 'number' },
   { key: 'calc.dump_runs', category: 'CALCULATIONS', description: 'Estimated dump runs needed', example: '2', unit: 'runs', type: 'number' },
   { key: 'calc.dumpster_size', category: 'CALCULATIONS', description: 'Recommended dumpster size', example: '20', unit: 'yards', type: 'number' },
+
+  // ============= EXTERIOR: SIDING MEASUREMENTS =============
+  { key: 'siding.total_sqft', category: 'EXTERIOR_SIDING', description: 'Total siding area', example: '1850', unit: 'sq ft', type: 'number' },
+  { key: 'siding.squares', category: 'EXTERIOR_SIDING', description: 'Siding squares (area / 100)', example: '18.5', unit: 'squares', type: 'number' },
+  { key: 'siding.waste_10pct_sqft', category: 'EXTERIOR_SIDING', description: 'Siding area with 10% waste', example: '2035', unit: 'sq ft', type: 'number' },
+  { key: 'siding.corners_inside', category: 'EXTERIOR_SIDING', description: 'Inside corner count', example: '4', unit: 'count', type: 'number' },
+  { key: 'siding.corners_outside', category: 'EXTERIOR_SIDING', description: 'Outside corner count', example: '8', unit: 'count', type: 'number' },
+  { key: 'siding.j_channel_lf', category: 'EXTERIOR_SIDING', description: 'J-channel linear feet', example: '180', unit: 'ft', type: 'number' },
+  { key: 'siding.starter_strip_lf', category: 'EXTERIOR_SIDING', description: 'Starter strip linear feet', example: '145', unit: 'ft', type: 'number' },
+  { key: 'siding.wall_count', category: 'EXTERIOR_SIDING', description: 'Number of wall sections', example: '12', unit: 'count', type: 'number' },
+
+  // ============= EXTERIOR: GUTTER MEASUREMENTS =============
+  { key: 'gutter.total_lf', category: 'EXTERIOR_GUTTERS', description: 'Total gutter linear feet', example: '165', unit: 'ft', type: 'number' },
+  { key: 'gutter.downspout_lf', category: 'EXTERIOR_GUTTERS', description: 'Downspout linear feet', example: '80', unit: 'ft', type: 'number' },
+  { key: 'gutter.downspout_count', category: 'EXTERIOR_GUTTERS', description: 'Number of downspouts', example: '8', unit: 'count', type: 'number' },
+  { key: 'gutter.inside_corners', category: 'EXTERIOR_GUTTERS', description: 'Inside corner miters', example: '4', unit: 'count', type: 'number' },
+  { key: 'gutter.outside_corners', category: 'EXTERIOR_GUTTERS', description: 'Outside corner miters', example: '6', unit: 'count', type: 'number' },
+  { key: 'gutter.end_caps', category: 'EXTERIOR_GUTTERS', description: 'End cap count', example: '8', unit: 'count', type: 'number' },
+  { key: 'gutter.outlets', category: 'EXTERIOR_GUTTERS', description: 'Outlet/drop count', example: '8', unit: 'count', type: 'number' },
+  { key: 'gutter.elbows', category: 'EXTERIOR_GUTTERS', description: 'Elbow count', example: '24', unit: 'count', type: 'number' },
+  { key: 'gutter.leaf_guard_lf', category: 'EXTERIOR_GUTTERS', description: 'Leaf guard linear feet', example: '165', unit: 'ft', type: 'number' },
+
+  // ============= EXTERIOR: SOFFIT & FASCIA =============
+  { key: 'soffit.total_sqft', category: 'EXTERIOR_SOFFIT', description: 'Total soffit area', example: '320', unit: 'sq ft', type: 'number' },
+  { key: 'soffit.lf', category: 'EXTERIOR_SOFFIT', description: 'Soffit linear feet', example: '210', unit: 'ft', type: 'number' },
+  { key: 'fascia.lf', category: 'EXTERIOR_SOFFIT', description: 'Fascia linear feet', example: '210', unit: 'ft', type: 'number' },
+  { key: 'fascia.4in_lf', category: 'EXTERIOR_SOFFIT', description: '4-inch fascia linear feet', example: '85', unit: 'ft', type: 'number' },
+  { key: 'fascia.6in_lf', category: 'EXTERIOR_SOFFIT', description: '6-inch fascia linear feet', example: '125', unit: 'ft', type: 'number' },
+  { key: 'fascia.8in_lf', category: 'EXTERIOR_SOFFIT', description: '8-inch fascia linear feet', example: '0', unit: 'ft', type: 'number' },
+
+  // ============= EXTERIOR: WINDOW MEASUREMENTS =============
+  { key: 'window.count', category: 'EXTERIOR_WINDOWS', description: 'Total window count', example: '14', unit: 'count', type: 'number' },
+  { key: 'window.standard_count', category: 'EXTERIOR_WINDOWS', description: 'Standard window count', example: '10', unit: 'count', type: 'number' },
+  { key: 'window.large_count', category: 'EXTERIOR_WINDOWS', description: 'Large window count', example: '3', unit: 'count', type: 'number' },
+  { key: 'window.picture_count', category: 'EXTERIOR_WINDOWS', description: 'Picture window count', example: '1', unit: 'count', type: 'number' },
+  { key: 'window.total_sqft', category: 'EXTERIOR_WINDOWS', description: 'Total window square feet', example: '185', unit: 'sq ft', type: 'number' },
+  { key: 'window.trim_lf', category: 'EXTERIOR_WINDOWS', description: 'Window trim linear feet', example: '320', unit: 'ft', type: 'number' },
+  { key: 'door.entry_count', category: 'EXTERIOR_WINDOWS', description: 'Entry door count', example: '2', unit: 'count', type: 'number' },
+  { key: 'door.slider_count', category: 'EXTERIOR_WINDOWS', description: 'Sliding door count', example: '1', unit: 'count', type: 'number' },
+
+  // ============= EXTERIOR: MATERIAL QUANTITIES =============
+  { key: 'ext.siding_panels', category: 'EXTERIOR_MATERIALS', description: 'Siding panels needed', example: '185', unit: 'panels', type: 'number' },
+  { key: 'ext.corner_posts', category: 'EXTERIOR_MATERIALS', description: 'Corner posts needed', example: '12', unit: 'posts', type: 'number' },
+  { key: 'ext.j_channel_sticks', category: 'EXTERIOR_MATERIALS', description: 'J-channel sticks (12.5 LF ea)', example: '15', unit: 'sticks', type: 'number' },
+  { key: 'ext.gutter_sections', category: 'EXTERIOR_MATERIALS', description: 'Gutter sections (10 LF ea)', example: '17', unit: 'sections', type: 'number' },
+  { key: 'ext.downspout_sections', category: 'EXTERIOR_MATERIALS', description: 'Downspout sections (10 LF ea)', example: '8', unit: 'sections', type: 'number' },
+  { key: 'ext.soffit_panels', category: 'EXTERIOR_MATERIALS', description: 'Soffit panels needed', example: '28', unit: 'panels', type: 'number' },
+  { key: 'ext.fascia_pieces', category: 'EXTERIOR_MATERIALS', description: 'Fascia pieces (12 LF ea)', example: '18', unit: 'pieces', type: 'number' },
 ];
 
 /**
