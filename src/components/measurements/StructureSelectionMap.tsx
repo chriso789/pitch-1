@@ -215,7 +215,7 @@ export function StructureSelectionMap({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl h-[80vh] max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
+      <DialogContent className="max-w-4xl h-[60vh] sm:h-[80vh] max-h-[80vh] sm:max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
         <DialogHeader className="p-4 pb-2 border-b">
           <DialogTitle className="flex items-center gap-2">
             <MapPin className="h-5 w-5 text-red-600" />
@@ -309,23 +309,23 @@ export function StructureSelectionMap({
           )}
         </div>
 
-        <DialogFooter className="p-4 border-t bg-muted/30 flex-col sm:flex-row gap-3 sm:justify-between shrink-0">
-          <div className="flex items-center gap-2 justify-center sm:justify-start">
-            <Button variant="outline" size="sm" onClick={handleReset}>
+        <DialogFooter className="p-4 pb-6 border-t bg-muted/30 flex flex-col gap-3 shrink-0">
+          <span className="text-xs text-muted-foreground text-center hidden sm:block">
+            Lat: {pinPosition.lat.toFixed(6)}, Lng: {pinPosition.lng.toFixed(6)}
+          </span>
+          <div className="flex flex-col sm:flex-row gap-2 w-full">
+            <Button variant="outline" size="default" onClick={handleReset} className="w-full sm:w-auto">
               Reset Position
             </Button>
-            <span className="text-xs text-muted-foreground hidden sm:inline">
-              Lat: {pinPosition.lat.toFixed(6)}, Lng: {pinPosition.lng.toFixed(6)}
-            </span>
-          </div>
-          <div className="flex gap-2 justify-center sm:justify-end">
-            <Button variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button onClick={handleConfirm} className="gap-2">
-              <CheckCircle2 className="h-4 w-4" />
-              Confirm & Measure
-            </Button>
+            <div className="flex flex-col sm:flex-row gap-2 sm:ml-auto">
+              <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full sm:w-auto">
+                Cancel
+              </Button>
+              <Button onClick={handleConfirm} className="gap-2 w-full sm:w-auto">
+                <CheckCircle2 className="h-4 w-4" />
+                Confirm & Measure
+              </Button>
+            </div>
           </div>
         </DialogFooter>
       </DialogContent>
