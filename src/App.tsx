@@ -36,7 +36,7 @@ import Production from "./pages/Production";
 import ClientList from "./pages/ClientList";
 import Calendar from "./pages/Calendar";
 import StormCanvass from "./pages/StormCanvass";
-import Dialer from "./pages/Dialer";
+import CommunicationsHub from "./pages/CommunicationsHub";
 import SmartDocs from "./pages/SmartDocs";
 import Settings from "./pages/Settings";
 import Help from "./pages/Help";
@@ -172,7 +172,8 @@ const AppContent = () => {
         <Route path="/storm-canvass/map" element={<TerritoryMapPage />} />
         <Route path="/storm-canvass/dashboard" element={<CanvasserDashboard />} />
         <Route path="/storm-canvass/leaderboard" element={<LeaderboardPage />} />
-        <Route path="/dialer" element={<Dialer />} />
+        <Route path="/communications" element={<CommunicationsHub />} />
+        <Route path="/dialer" element={<CommunicationsHub />} />
         <Route path="/campaigns" element={<Campaigns />} />
         <Route path="/smartdocs" element={<SmartDocs />} />
         <Route path="/jobs" element={<Jobs />} />

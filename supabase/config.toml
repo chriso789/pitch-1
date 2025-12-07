@@ -342,3 +342,6 @@ verify_jwt = true
 
 [functions.canvassiq-enrichment]
 verify_jwt = true
+
+[functions.sms-send-reply]
+verify_jwt = true

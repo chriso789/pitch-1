@@ -95,7 +95,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
     if (path.startsWith('/production')) return 'production';
     if (path.startsWith('/calendar')) return 'calendar';
     if (path.startsWith('/storm-canvass')) return 'storm-canvass';
-    if (path.startsWith('/dialer')) return 'dialer';
+    if (path.startsWith('/communications')) return 'communications';
     if (path.startsWith('/smartdocs')) return 'smartdocs';
     if (path.startsWith('/presentations')) return 'presentations';
     if (path.startsWith('/crew')) return 'crew';
@@ -248,11 +248,11 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       description: "Lead generation & canvassing"
     },
     {
-      name: "Dialer",
-      href: "dialer",
-      path: "/dialer",
+      name: "Communications",
+      href: "communications",
+      path: "/communications",
       icon: Phone,
-      description: "AI calling system"
+      description: "Calls, SMS & messages"
     },
     {
       name: "Smart Docs",
