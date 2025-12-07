@@ -177,15 +177,16 @@ export function ComprehensiveMeasurementOverlay({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
   const [editMode, setEditMode] = useState<EditMode>('select');
-  // WARNING: Facets disabled - Google Solar API provides same building footprint for all facets
-  // Individual facet boundaries cannot be visualized without manual drawing
-  // PHASE 3: Re-enable ridge and valley layers with fixed coordinate system
+  // PHASE 4: Complete roof feature visualization
+  // All linear features enabled by default for visual verification
   const [layers, setLayers] = useState({
-    facets: false,
-    ridges: true,   // Re-enabled with verified center coordinates
-    hips: true,     // Enabled by default for hip detection verification
-    valleys: true,  // Re-enabled with verified center coordinates
-    perimeter: false,
+    facets: false,      // Disabled - Google Solar doesn't provide individual facet boundaries
+    ridges: true,       // Green - roof peaks
+    hips: true,         // Blue - diagonal corner-to-peak lines
+    valleys: true,      // Red - internal angles where planes meet
+    eaves: true,        // Cyan - horizontal bottom edges
+    rakes: true,        // Magenta - sloped gable edges
+    perimeter: true,    // Orange - complete roof outline
     annotations: false,
   });
   const [drawPoints, setDrawPoints] = useState<Point[]>([]);
@@ -1003,9 +1004,31 @@ export function ComprehensiveMeasurementOverlay({
       }
     }
 
-    // Draw perimeter
+    // Draw eave lines (cyan)
+    if (layers.eaves) {
+      const linearFeatures = measurement?.linear_features || tags?.linear_features || [];
+      const eaveLines = linearFeatures.filter((f: any) => f.type === 'eave' && f.wkt) || [];
+      const fallbackEaves = tags['eave_lines'] || [];
+      const allEaves = eaveLines.length > 0 ? eaveLines : fallbackEaves;
+      if (allEaves.length > 0 || tags['lf.eave'] > 0) {
+        drawFeatureLines('eave', allEaves, '#06b6d4'); // cyan-500
+      }
+    }
+
+    // Draw rake lines (magenta)
+    if (layers.rakes) {
+      const linearFeatures = measurement?.linear_features || tags?.linear_features || [];
+      const rakeLines = linearFeatures.filter((f: any) => f.type === 'rake' && f.wkt) || [];
+      const fallbackRakes = tags['rake_lines'] || [];
+      const allRakes = rakeLines.length > 0 ? rakeLines : fallbackRakes;
+      if (allRakes.length > 0 || tags['lf.rake'] > 0) {
+        drawFeatureLines('rake', allRakes, '#d946ef'); // fuchsia-500
+      }
+    }
+
+    // Draw perimeter outline (orange) - complete roof boundary
     if (layers.perimeter) {
-      drawPerimeter();
+      drawRoofOutline();
     }
 
     // Draw annotations
@@ -1824,32 +1847,149 @@ export function ComprehensiveMeasurementOverlay({
     console.groupEnd();
   };
 
-  const drawPerimeter = () => {
-    if (!fabricCanvas || !measurement?.boundary) return;
+  /**
+   * Draw complete roof outline/perimeter
+   * Uses WKT POLYGON from measurement.perimeter_wkt or constructs from boundary points
+   */
+  const drawRoofOutline = () => {
+    if (!fabricCanvas) return;
 
-    const boundary = measurement.boundary;
-    for (let i = 0; i < boundary.length; i++) {
-      const start = boundary[i];
-      const end = boundary[(i + 1) % boundary.length];
-
-      const line = new Line(
-        [
-          start[0] * canvasWidth,
-          start[1] * canvasHeight,
-          end[0] * canvasWidth,
-          end[1] * canvasHeight,
-        ],
-        {
-          stroke: 'orange',
-          strokeWidth: 2,
-          selectable: false,
-          evented: false,
-        }
-      );
-
-      (line as any).data = { type: 'perimeter' };
-      fabricCanvas.add(line);
+    console.group('🏠 Drawing Roof Outline/Perimeter');
+    
+    // Try to get perimeter from various sources
+    let perimeterCoords: [number, number][] = [];
+    
+    // Priority 1: WKT POLYGON from measurement (most accurate)
+    if (measurement?.perimeter_wkt) {
+      perimeterCoords = parseWKTPolygon(measurement.perimeter_wkt);
+      console.log('Using perimeter_wkt:', perimeterCoords.length, 'points');
     }
+    // Priority 2: Building footprint from Google Solar bounding box
+    else if (measurement?.bounding_box) {
+      const box = measurement.bounding_box;
+      if (box.sw && box.ne) {
+        perimeterCoords = [
+          [box.sw.latitude, box.sw.longitude],
+          [box.sw.latitude, box.ne.longitude],
+          [box.ne.latitude, box.ne.longitude],
+          [box.ne.latitude, box.sw.longitude],
+          [box.sw.latitude, box.sw.longitude], // close polygon
+        ];
+        console.log('Using bounding_box:', perimeterCoords.length, 'points');
+      }
+    }
+    // Priority 3: Normalized boundary array
+    else if (measurement?.boundary && Array.isArray(measurement.boundary)) {
+      // Legacy format - normalized [0-1, 0-1] coordinates
+      for (let i = 0; i < measurement.boundary.length; i++) {
+        const start = measurement.boundary[i];
+        const end = measurement.boundary[(i + 1) % measurement.boundary.length];
+
+        const line = new Line(
+          [
+            start[0] * canvasWidth,
+            start[1] * canvasHeight,
+            end[0] * canvasWidth,
+            end[1] * canvasHeight,
+          ],
+          {
+            stroke: '#f97316', // orange-500
+            strokeWidth: 3,
+            strokeDashArray: [],
+            selectable: false,
+            evented: false,
+          }
+        );
+
+        (line as any).data = { type: 'perimeter' };
+        fabricCanvas.add(line);
+      }
+      console.log('Using legacy boundary:', measurement.boundary.length, 'points');
+      console.groupEnd();
+      return;
+    }
+    // Priority 4: Construct from eave + rake lines
+    else {
+      const linearFeatures = measurement?.linear_features || [];
+      const eaves = linearFeatures.filter((f: any) => f.type === 'eave' && f.wkt);
+      const rakes = linearFeatures.filter((f: any) => f.type === 'rake' && f.wkt);
+      
+      if (eaves.length > 0 || rakes.length > 0) {
+        console.log('Constructing perimeter from eave+rake lines');
+        // Just draw eaves and rakes as the perimeter
+        [...eaves, ...rakes].forEach((feature: any) => {
+          const coords = parseWKTLineString(feature.wkt);
+          if (coords.length >= 2) {
+            const startPoint = geoToCanvas(coords[0][0], coords[0][1]);
+            const endPoint = geoToCanvas(coords[coords.length - 1][0], coords[coords.length - 1][1]);
+            
+            const line = new Line(
+              [startPoint.x, startPoint.y, endPoint.x, endPoint.y],
+              {
+                stroke: '#f97316', // orange-500
+                strokeWidth: 3,
+                selectable: false,
+                evented: false,
+              }
+            );
+
+            (line as any).data = { type: 'perimeter', featureType: feature.type };
+            fabricCanvas.add(line);
+          }
+        });
+        console.groupEnd();
+        return;
+      }
+      
+      console.log('No perimeter data available');
+      console.groupEnd();
+      return;
+    }
+
+    // Draw geographic perimeter as closed polygon outline
+    if (perimeterCoords.length >= 3) {
+      const canvasPoints = perimeterCoords.map(([lat, lng]) => geoToCanvas(lat, lng));
+      
+      // Draw as connected lines (closed polygon outline)
+      for (let i = 0; i < canvasPoints.length - 1; i++) {
+        const start = canvasPoints[i];
+        const end = canvasPoints[i + 1];
+
+        const line = new Line(
+          [start.x, start.y, end.x, end.y],
+          {
+            stroke: '#f97316', // orange-500
+            strokeWidth: 4,
+            selectable: false,
+            evented: false,
+          }
+        );
+
+        (line as any).data = { type: 'perimeter' };
+        fabricCanvas.add(line);
+      }
+      
+      // Add "Perimeter" label
+      const centerX = canvasPoints.reduce((sum, p) => sum + p.x, 0) / canvasPoints.length;
+      const minY = Math.min(...canvasPoints.map(p => p.y));
+      
+      const label = new FabricText('PERIMETER', {
+        left: centerX,
+        top: minY - 20,
+        fontSize: 12,
+        fill: 'white',
+        backgroundColor: '#f97316',
+        padding: 4,
+        originX: 'center',
+        originY: 'center',
+        selectable: false,
+        evented: false,
+      });
+      (label as any).data = { type: 'perimeter-label' };
+      fabricCanvas.add(label);
+    }
+    
+    console.groupEnd();
   };
 
   const handleAddLine = (point: Point) => {

@@ -1433,6 +1433,40 @@ export function MeasurementVerificationDialog({
                 </div>
               )}
               
+              {/* Roof Feature Legend - Color-coded guide */}
+              <div className="p-3 bg-muted/30 rounded-lg border">
+                <h4 className="text-xs font-semibold mb-2 uppercase tracking-wide text-muted-foreground">Overlay Legend</h4>
+                <div className="grid grid-cols-3 gap-x-3 gap-y-1.5 text-xs">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-1 rounded-full" style={{ backgroundColor: '#22c55e' }} />
+                    <span>Ridge</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-1 rounded-full" style={{ backgroundColor: '#3b82f6' }} />
+                    <span>Hip</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-1 rounded-full" style={{ backgroundColor: '#ef4444' }} />
+                    <span>Valley</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-1 rounded-full" style={{ backgroundColor: '#06b6d4' }} />
+                    <span>Eave</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-1 rounded-full" style={{ backgroundColor: '#d946ef' }} />
+                    <span>Rake</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-4 h-1 rounded-full" style={{ backgroundColor: '#f97316' }} />
+                    <span>Perimeter</span>
+                  </div>
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-2">
+                  Solid lines = GPT-4 Vision (high confidence) • Dashed = AI estimated
+                </p>
+              </div>
+              
               {/* Source and Confidence */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
