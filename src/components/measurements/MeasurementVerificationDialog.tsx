@@ -419,13 +419,23 @@ export function MeasurementVerificationDialog({
   
   useEffect(() => {
     const fetchMapboxSatelliteImage = async () => {
-      // ✅ Wait for verified coordinates to load first (PRIORITY #1)
-      const lat = verifiedAddressLat;
-      const lng = verifiedAddressLng;
+      // ✅ PRIORITY #1: Use user-selected PIN coordinates (centerLat/centerLng from structure selection)
+      // These are passed in from StructureSelectionMap when user confirms the target building
+      let lat = centerLat;
+      let lng = centerLng;
       
-      // Only fetch if we have verified coordinates
+      // Only fall back to verified address if centerLat/centerLng are invalid/missing
+      if (!lat || !lng || (lat === 0 && lng === 0)) {
+        lat = verifiedAddressLat || 0;
+        lng = verifiedAddressLng || 0;
+        console.log('📍 Using verified address coordinates (fallback):', lat, lng);
+      } else {
+        console.log('📍 Using user-selected PIN coordinates (priority):', lat, lng);
+      }
+      
+      // Only fetch if we have valid coordinates
       if (!lat || !lng) {
-        console.log('⏳ Waiting for verified address coordinates before fetching satellite...');
+        console.log('⏳ No valid coordinates for satellite image...');
         return;
       }
       
@@ -458,7 +468,7 @@ export function MeasurementVerificationDialog({
     };
     
     fetchMapboxSatelliteImage();
-  }, [verifiedAddressLat, verifiedAddressLng, satelliteZoom, resolution]);  // ✅ Re-fetch when zoom or resolution changes
+  }, [centerLat, centerLng, verifiedAddressLat, verifiedAddressLng, satelliteZoom, resolution]);  // ✅ Priority: centerLat/centerLng first
   
   // Update satellite image URL when prop changes
   useEffect(() => {
