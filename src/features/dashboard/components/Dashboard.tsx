@@ -16,6 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { DashboardAIAssistant } from "./DashboardAIAssistant";
+import { cn } from "@/lib/utils";
 import { 
   DollarSign, 
   TrendingUp, 
@@ -425,18 +426,18 @@ const Dashboard = () => {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4 md:space-y-6">
       {/* Header */}
-      <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
+      <div className="flex flex-col gap-3 md:gap-4">
         <div>
-          <h1 className="text-3xl font-bold gradient-primary bg-clip-text text-transparent">
+          <h1 className="text-2xl md:text-3xl font-bold gradient-primary bg-clip-text text-transparent">
             PITCH Dashboard
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-sm md:text-base text-muted-foreground">
             Welcome back! Here's your roofing business overview.
           </p>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex flex-wrap items-center gap-2">
           <DateRangePicker
             value={dateRange}
             onChange={(range) => setDateRange(range || { from: subDays(new Date(), 90), to: new Date() })}
@@ -445,10 +446,10 @@ const Dashboard = () => {
           
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <Button variant="outline" size="sm">
-                <Download className="h-4 w-4 mr-2" />
-                Export
-                <ChevronDown className="h-4 w-4 ml-2" />
+              <Button variant="outline" size="sm" className="h-9">
+                <Download className="h-4 w-4 mr-1 md:mr-2" />
+                <span className="hidden sm:inline">Export</span>
+                <ChevronDown className="h-4 w-4 ml-1" />
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent>
@@ -459,11 +460,11 @@ const Dashboard = () => {
             </DropdownMenuContent>
           </DropdownMenu>
 
-          <Button variant="outline" size="sm" onClick={handlePrint} data-testid="dashboard-print">
+          <Button variant="outline" size="sm" onClick={handlePrint} data-testid="dashboard-print" className="h-9">
             <Printer className="h-4 w-4" />
           </Button>
 
-          <div className="flex items-center gap-2 text-muted-foreground">
+          <div className="hidden sm:flex items-center gap-2 text-muted-foreground">
             <Clock className="h-4 w-4" />
             <span className="text-sm">
               {new Date().toLocaleTimeString()}
@@ -476,14 +477,14 @@ const Dashboard = () => {
       <DashboardAIAssistant />
 
       {/* Quick Actions */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-6">
         <ContactFormDialog
           trigger={
-            <Card className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-primary">
-              <CardContent className="p-6 text-center text-white">
-                <Plus className="h-8 w-8 mx-auto mb-2" />
-                <h3 className="font-semibold mb-1">New Contact</h3>
-                <p className="text-sm opacity-90">Add a new customer contact</p>
+            <Card className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-primary touch-manipulation active:scale-[0.98]">
+              <CardContent className="p-4 md:p-6 text-center text-white">
+                <Plus className="h-6 w-6 md:h-8 md:w-8 mx-auto mb-2" />
+                <h3 className="font-semibold text-sm md:text-base mb-1">New Contact</h3>
+                <p className="text-xs md:text-sm opacity-90">Add a new customer contact</p>
               </CardContent>
             </Card>
           }
@@ -493,80 +494,80 @@ const Dashboard = () => {
         />
         
         <Card 
-          className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-secondary"
+          className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-secondary touch-manipulation active:scale-[0.98]"
           onClick={() => navigate('/estimates')}
         >
-          <CardContent className="p-6 text-center text-white">
-            <DollarSign className="h-8 w-8 mx-auto mb-2" />
-            <h3 className="font-semibold mb-1">Create Estimate</h3>
-            <p className="text-sm opacity-90">Build a new roof estimate</p>
+          <CardContent className="p-4 md:p-6 text-center text-white">
+            <DollarSign className="h-6 w-6 md:h-8 md:w-8 mx-auto mb-2" />
+            <h3 className="font-semibold text-sm md:text-base mb-1">Create Estimate</h3>
+            <p className="text-xs md:text-sm opacity-90">Build a new roof estimate</p>
           </CardContent>
         </Card>
         
         <Card
-          className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-success"
+          className="shadow-soft border-0 hover:shadow-medium transition-smooth cursor-pointer gradient-success touch-manipulation active:scale-[0.98] sm:col-span-2 md:col-span-1"
           onClick={() => navigate('/production')}
         >
-          <CardContent className="p-6 text-center text-white">
-            <Wrench className="h-8 w-8 mx-auto mb-2" />
-            <h3 className="font-semibold mb-1">Schedule Work</h3>
-            <p className="text-sm opacity-90">Manage project schedules</p>
+          <CardContent className="p-4 md:p-6 text-center text-white">
+            <Wrench className="h-6 w-6 md:h-8 md:w-8 mx-auto mb-2" />
+            <h3 className="font-semibold text-sm md:text-base mb-1">Schedule Work</h3>
+            <p className="text-xs md:text-sm opacity-90">Manage project schedules</p>
           </CardContent>
         </Card>
       </div>
 
       {/* Portal Access */}
       <Card className="shadow-soft border-0">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Activity className="h-5 w-5 text-primary" />
+        <CardHeader className="pb-3 md:pb-6">
+          <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+            <Activity className="h-4 w-4 md:h-5 md:w-5 text-primary" />
             Portal Access
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <CardContent className="pt-0">
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
             <Card 
-              className="shadow-soft border hover:shadow-medium transition-smooth cursor-pointer hover:border-primary/50"
+              className="shadow-soft border hover:shadow-medium transition-smooth cursor-pointer hover:border-primary/50 touch-manipulation active:scale-[0.98]"
               onClick={() => navigate('/crew')}
             >
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                  <HardHat className="h-6 w-6 text-primary" />
+              <CardContent className="p-3 md:p-4 flex items-center gap-3 md:gap-4">
+                <div className="h-10 w-10 md:h-12 md:w-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
+                  <HardHat className="h-5 w-5 md:h-6 md:w-6 text-primary" />
                 </div>
-                <div>
-                  <h3 className="font-semibold">Crew Portal</h3>
-                  <p className="text-sm text-muted-foreground">Field crew workspace</p>
+                <div className="min-w-0">
+                  <h3 className="font-semibold text-sm md:text-base truncate">Crew Portal</h3>
+                  <p className="text-xs md:text-sm text-muted-foreground truncate">Field crew workspace</p>
                 </div>
               </CardContent>
             </Card>
             
             <Card 
-              className="shadow-soft border hover:shadow-medium transition-smooth cursor-pointer hover:border-primary/50"
+              className="shadow-soft border hover:shadow-medium transition-smooth cursor-pointer hover:border-primary/50 touch-manipulation active:scale-[0.98]"
               onClick={() => navigate('/homeowner')}
             >
-              <CardContent className="p-4 flex items-center gap-4">
-                <div className="h-12 w-12 rounded-lg bg-success/10 flex items-center justify-center">
-                  <Home className="h-6 w-6 text-success" />
+              <CardContent className="p-3 md:p-4 flex items-center gap-3 md:gap-4">
+                <div className="h-10 w-10 md:h-12 md:w-12 rounded-lg bg-success/10 flex items-center justify-center flex-shrink-0">
+                  <Home className="h-5 w-5 md:h-6 md:w-6 text-success" />
                 </div>
-                <div>
-                  <h3 className="font-semibold">Homeowner Portal</h3>
-                  <p className="text-sm text-muted-foreground">Customer project view</p>
+                <div className="min-w-0">
+                  <h3 className="font-semibold text-sm md:text-base truncate">Homeowner Portal</h3>
+                  <p className="text-xs md:text-sm text-muted-foreground truncate">Customer project view</p>
                 </div>
               </CardContent>
             </Card>
             
             {user?.role === 'master' && (
               <Card 
-                className="shadow-soft border hover:shadow-medium transition-smooth cursor-pointer hover:border-primary/50"
+                className="shadow-soft border hover:shadow-medium transition-smooth cursor-pointer hover:border-primary/50 touch-manipulation active:scale-[0.98] sm:col-span-2 md:col-span-1"
                 onClick={() => navigate('/admin/monitoring')}
               >
-                <CardContent className="p-4 flex items-center gap-4">
-                  <div className="h-12 w-12 rounded-lg bg-destructive/10 flex items-center justify-center">
-                    <Activity className="h-6 w-6 text-destructive" />
+                <CardContent className="p-3 md:p-4 flex items-center gap-3 md:gap-4">
+                  <div className="h-10 w-10 md:h-12 md:w-12 rounded-lg bg-destructive/10 flex items-center justify-center flex-shrink-0">
+                    <Activity className="h-5 w-5 md:h-6 md:w-6 text-destructive" />
                   </div>
-                  <div>
-                    <h3 className="font-semibold">System Monitor</h3>
-                    <p className="text-sm text-muted-foreground">Health & crash detection</p>
+                  <div className="min-w-0">
+                    <h3 className="font-semibold text-sm md:text-base truncate">System Monitor</h3>
+                    <p className="text-xs md:text-sm text-muted-foreground truncate">Health & crash detection</p>
                   </div>
                 </CardContent>
               </Card>
@@ -577,20 +578,20 @@ const Dashboard = () => {
 
       {/* Pipeline Overview */}
       <Card className="shadow-soft border-0">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <TrendingUp className="h-5 w-5 text-primary" />
+        <CardHeader className="pb-3 md:pb-6">
+          <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+            <TrendingUp className="h-4 w-4 md:h-5 md:w-5 text-primary" />
             Pipeline Status
           </CardTitle>
         </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+        <CardContent className="pt-0">
+          <div className="grid grid-cols-3 md:grid-cols-6 gap-2 md:gap-4">
             {dashboardPipelineData.map((stage, index) => (
               <div key={index} className="text-center">
-                <div className={`${stage.color} rounded-lg p-4 mb-2`}>
-                  <div className="text-3xl font-bold text-white">{stage.count}</div>
+                <div className={`${stage.color} rounded-lg p-2 md:p-4 mb-1 md:mb-2`}>
+                  <div className="text-xl md:text-3xl font-bold text-white">{stage.count}</div>
                 </div>
-                <div className="text-sm font-medium text-foreground">{stage.status}</div>
+                <div className="text-xs md:text-sm font-medium text-foreground truncate">{stage.status}</div>
               </div>
             ))}
           </div>
@@ -599,10 +600,10 @@ const Dashboard = () => {
 
       {/* Progress Section */}
       <div className="space-y-3">
-        <h2 className="text-2xl font-bold">Progress</h2>
+        <h2 className="text-xl md:text-2xl font-bold">Progress</h2>
         <div className="space-y-3">
-          <h3 className="text-sm font-semibold text-muted-foreground tracking-wide">PROGRESS</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+          <h3 className="text-xs md:text-sm font-semibold text-muted-foreground tracking-wide">PROGRESS</h3>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-4">
             <MetricCard
               title="Unassigned Leads"
               count={unassignedLeads}
@@ -610,7 +611,7 @@ const Dashboard = () => {
               onClick={() => navigate('/pipeline')}
             />
             <MetricCard
-              title="Jobs Submitted for Approval"
+              title="Jobs for Approval"
               count={jobsForApproval}
               icon={FileCheck}
               variant="warning"
@@ -633,20 +634,20 @@ const Dashboard = () => {
       </div>
 
       {/* Key Metrics */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 md:gap-6">
         {metrics.map((metric, index) => (
           <Card key={index} className="shadow-soft border-0 hover:shadow-medium transition-smooth">
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium text-muted-foreground">
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-1 md:pb-2 p-3 md:p-6">
+              <CardTitle className="text-xs md:text-sm font-medium text-muted-foreground truncate pr-2">
                 {metric.title}
               </CardTitle>
-              <metric.icon className={`h-4 w-4 ${metric.color}`} />
+              <metric.icon className={`h-3 w-3 md:h-4 md:w-4 flex-shrink-0 ${metric.color}`} />
             </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{metric.value}</div>
+            <CardContent className="pt-0 p-3 md:p-6">
+              <div className="text-lg md:text-2xl font-bold truncate">{metric.value}</div>
               <p className="text-xs text-success flex items-center gap-1">
-                <TrendingUp className="h-3 w-3" />
-                {metric.change} from last month
+                <TrendingUp className="h-3 w-3 flex-shrink-0" />
+                <span className="truncate">{metric.change} from last month</span>
               </p>
             </CardContent>
           </Card>
@@ -655,41 +656,41 @@ const Dashboard = () => {
 
       {/* Recent Projects */}
       <Card className="shadow-soft border-0">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Calendar className="h-5 w-5 text-primary" />
+        <CardHeader className="pb-3 md:pb-6">
+          <CardTitle className="flex items-center gap-2 text-base md:text-lg">
+            <Calendar className="h-4 w-4 md:h-5 md:w-5 text-primary" />
             Recent Projects
           </CardTitle>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-0">
           {recentProjects.length === 0 ? (
-            <div className="text-center py-8 text-muted-foreground">
-              <HomeIcon className="h-12 w-12 mx-auto mb-2 opacity-50" />
-              <p>No projects yet. Create your first lead to get started!</p>
+            <div className="text-center py-6 md:py-8 text-muted-foreground">
+              <HomeIcon className="h-10 w-10 md:h-12 md:w-12 mx-auto mb-2 opacity-50" />
+              <p className="text-sm md:text-base">No projects yet. Create your first lead to get started!</p>
             </div>
           ) : (
-            <div className="space-y-4">
+            <div className="space-y-3 md:space-y-4">
               {recentProjects.map((project, index) => (
                 <div 
                   key={index} 
-                  className="flex items-center justify-between p-4 rounded-lg bg-muted/50 hover:bg-muted transition-smooth cursor-pointer"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-3 md:p-4 rounded-lg bg-muted/50 hover:bg-muted transition-smooth cursor-pointer touch-manipulation active:bg-muted gap-2 sm:gap-4"
                   onClick={() => navigate(`/jobs/${project.id}`)}
                   data-testid="dashboard-project-card"
                 >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono text-sm text-muted-foreground">{project.id}</span>
-                      <Badge variant="outline" className={getStatusColor(project.status)}>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono text-xs md:text-sm text-muted-foreground">{project.id}</span>
+                      <Badge variant="outline" className={cn("text-xs", getStatusColor(project.status))}>
                         {project.status}
                       </Badge>
                     </div>
-                    <h3 className="font-semibold mt-1">{project.homeowner}</h3>
-                    <p className="text-sm text-muted-foreground">{project.address}</p>
-                    <p className="text-sm text-primary">{project.type}</p>
+                    <h3 className="font-semibold text-sm md:text-base mt-1 truncate">{project.homeowner}</h3>
+                    <p className="text-xs md:text-sm text-muted-foreground truncate">{project.address}</p>
+                    <p className="text-xs md:text-sm text-primary truncate">{project.type}</p>
                   </div>
-                  <div className="text-right">
-                    <div className="text-lg font-bold">{project.value}</div>
-                    <div className="text-sm text-success">
+                  <div className="text-left sm:text-right flex sm:flex-col gap-2 sm:gap-0 flex-shrink-0">
+                    <div className="text-base md:text-lg font-bold">{project.value}</div>
+                    <div className="text-xs md:text-sm text-success">
                       {project.profit} profit
                     </div>
                   </div>
