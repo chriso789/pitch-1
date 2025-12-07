@@ -375,6 +375,53 @@ export const Settings = () => {
         <TabsContent value="demo-requests" className="space-y-6">
           <DemoRequestsPanel />
         </TabsContent>
+
+        <TabsContent value="portals" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <LucideIcons.LayoutGrid className="h-5 w-5" />
+                Portal Access
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-muted-foreground">
+                Access the crew and homeowner portals to manage field work and customer-facing project views.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <Card 
+                  className="cursor-pointer hover:bg-accent/50 transition-colors"
+                  onClick={() => window.location.href = '/crew'}
+                >
+                  <CardContent className="p-6 flex items-center gap-4">
+                    <div className="h-12 w-12 rounded-lg bg-orange-500/10 flex items-center justify-center">
+                      <LucideIcons.HardHat className="h-6 w-6 text-orange-500" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Crew Portal</h3>
+                      <p className="text-sm text-muted-foreground">Work orders & time tracking</p>
+                    </div>
+                  </CardContent>
+                </Card>
+
+                <Card 
+                  className="cursor-pointer hover:bg-accent/50 transition-colors"
+                  onClick={() => window.location.href = '/homeowner'}
+                >
+                  <CardContent className="p-6 flex items-center gap-4">
+                    <div className="h-12 w-12 rounded-lg bg-green-500/10 flex items-center justify-center">
+                      <LucideIcons.Home className="h-6 w-6 text-green-500" />
+                    </div>
+                    <div>
+                      <h3 className="font-semibold">Homeowner Portal</h3>
+                      <p className="text-sm text-muted-foreground">Customer-facing project view</p>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
       </Tabs>
     </div>
   );

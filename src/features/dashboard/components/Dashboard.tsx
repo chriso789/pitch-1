@@ -516,65 +516,6 @@ const Dashboard = () => {
         </Card>
       </div>
 
-      {/* Portal Access */}
-      <Card className="shadow-soft border-0">
-        <CardHeader className="pb-3 md:pb-6">
-          <CardTitle className="flex items-center gap-2 text-base md:text-lg">
-            <Activity className="h-4 w-4 md:h-5 md:w-5 text-primary" />
-            Portal Access
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pt-0">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3 md:gap-4">
-            <Card 
-              className="shadow-soft border hover:shadow-medium transition-smooth cursor-pointer hover:border-primary/50 touch-manipulation active:scale-[0.98]"
-              onClick={() => navigate('/crew')}
-            >
-              <CardContent className="p-3 md:p-4 flex items-center gap-3 md:gap-4">
-                <div className="h-10 w-10 md:h-12 md:w-12 rounded-lg bg-primary/10 flex items-center justify-center flex-shrink-0">
-                  <HardHat className="h-5 w-5 md:h-6 md:w-6 text-primary" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="font-semibold text-sm md:text-base truncate">Crew Portal</h3>
-                  <p className="text-xs md:text-sm text-muted-foreground truncate">Field crew workspace</p>
-                </div>
-              </CardContent>
-            </Card>
-            
-            <Card 
-              className="shadow-soft border hover:shadow-medium transition-smooth cursor-pointer hover:border-primary/50 touch-manipulation active:scale-[0.98]"
-              onClick={() => navigate('/homeowner')}
-            >
-              <CardContent className="p-3 md:p-4 flex items-center gap-3 md:gap-4">
-                <div className="h-10 w-10 md:h-12 md:w-12 rounded-lg bg-success/10 flex items-center justify-center flex-shrink-0">
-                  <Home className="h-5 w-5 md:h-6 md:w-6 text-success" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="font-semibold text-sm md:text-base truncate">Homeowner Portal</h3>
-                  <p className="text-xs md:text-sm text-muted-foreground truncate">Customer project view</p>
-                </div>
-              </CardContent>
-            </Card>
-            
-            {user?.role === 'master' && (
-              <Card 
-                className="shadow-soft border hover:shadow-medium transition-smooth cursor-pointer hover:border-primary/50 touch-manipulation active:scale-[0.98] sm:col-span-2 md:col-span-1"
-                onClick={() => navigate('/admin/monitoring')}
-              >
-                <CardContent className="p-3 md:p-4 flex items-center gap-3 md:gap-4">
-                  <div className="h-10 w-10 md:h-12 md:w-12 rounded-lg bg-destructive/10 flex items-center justify-center flex-shrink-0">
-                    <Activity className="h-5 w-5 md:h-6 md:w-6 text-destructive" />
-                  </div>
-                  <div className="min-w-0">
-                    <h3 className="font-semibold text-sm md:text-base truncate">System Monitor</h3>
-                    <p className="text-xs md:text-sm text-muted-foreground truncate">Health & crash detection</p>
-                  </div>
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </CardContent>
-      </Card>
 
       {/* Pipeline Overview */}
       <Card className="shadow-soft border-0">
