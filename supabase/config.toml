@@ -330,3 +330,15 @@ verify_jwt = false
 
 [functions.finalize-envelope]
 verify_jwt = true
+
+[functions.canvassiq-properties-geojson]
+verify_jwt = true
+
+[functions.canvassiq-add-property]
+verify_jwt = true
+
+[functions.canvassiq-auto-detect]
+verify_jwt = true
+
+[functions.canvassiq-enrichment]
+verify_jwt = true
