@@ -1733,19 +1733,48 @@ export function ComprehensiveMeasurementOverlay({
         return;
       }
 
+      // Determine line style based on source (GPT-4 Vision = solid/thick, others = varied)
+      const isVisionDetected = lineData.source === 'gpt4_vision';
+      const isGoogleSolar = lineData.source === 'google_solar_segment_intersection' || lineData.source === 'google_solar_boundary';
+      
+      // Vision-detected features get solid, thicker lines; others get dashed patterns
+      let strokeWidth = 3;
+      let strokeDashArray: number[] = [];
+      
+      if (isVisionDetected) {
+        // GPT-4 Vision features: solid, thick lines (highest accuracy)
+        strokeWidth = 4;
+        strokeDashArray = [];
+      } else if (isGoogleSolar) {
+        // Google Solar features: slightly thinner, subtle dash
+        strokeWidth = 3;
+        strokeDashArray = type === 'ridge' ? [] : [12, 4];
+      } else {
+        // AI-estimated features: dashed (lower confidence)
+        strokeWidth = 2;
+        strokeDashArray = type === 'ridge' ? [8, 4] : type === 'hip' ? [15, 5] : [8, 8];
+      }
+
       const line = new Line(
         [startPoint.x, startPoint.y, endPoint.x, endPoint.y],
         {
           stroke: color,
-          strokeWidth: 3,
-          strokeDashArray: type === 'ridge' ? [] : type === 'hip' ? [15, 5] : [8, 8],
+          strokeWidth,
+          strokeDashArray,
           selectable: editMode === 'select',
           hasControls: false,
           hasBorders: false,
         }
       );
 
-      (line as any).data = { type, editable: true, lineIndex: index, wkt: lineData.wkt };
+      (line as any).data = { 
+        type, 
+        editable: true, 
+        lineIndex: index, 
+        wkt: lineData.wkt,
+        source: lineData.source || 'unknown',
+        isVisionDetected 
+      };
       
       // Add hover effects
       line.on('mouseover', () => {

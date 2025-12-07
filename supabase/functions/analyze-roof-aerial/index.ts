@@ -3,11 +3,16 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { encode as base64Encode } from 'https://deno.land/std@0.168.0/encoding/base64.ts'
 
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!
+const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY')!
 const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY')!
 const GOOGLE_SOLAR_API_KEY = Deno.env.get('GOOGLE_SOLAR_API_KEY')!
 const MAPBOX_PUBLIC_TOKEN = Deno.env.get('MAPBOX_PUBLIC_TOKEN')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
+
+// Image zoom level for accurate coordinate conversion
+const IMAGE_ZOOM = 20
+const IMAGE_SIZE = 640 // pixels (Google Maps) or 1280 (Mapbox @2x)
 
 const PITCH_MULTIPLIERS: { [key: string]: number } = {
   '1/12': 1.0035, '2/12': 1.0138, '3/12': 1.0308, '4/12': 1.0541,
@@ -42,11 +47,29 @@ serve(async (req) => {
     const scale = calculateScale(solarData, selectedImage, aiAnalysis)
     const measurements = calculateDetailedMeasurements(aiAnalysis, scale, solarData)
     const confidence = calculateConfidenceScore(aiAnalysis, measurements, solarData, selectedImage)
+    
+    // NEW: GPT-4 Vision detection for accurate roof feature positioning
+    let visionLinearFeatures: any[] = []
+    if (OPENAI_API_KEY && selectedImage.url) {
+      try {
+        const imageSize = selectedImage.source === 'mapbox' ? 1280 : 640
+        visionLinearFeatures = await detectRoofFeaturesWithVision(
+          selectedImage.url, 
+          coordinates, 
+          imageSize, 
+          IMAGE_ZOOM
+        )
+        console.log(`🔍 GPT-4 Vision detected ${visionLinearFeatures.length} features`)
+      } catch (visionError) {
+        console.error('GPT-4 Vision detection failed, using fallback:', visionError)
+      }
+    }
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     const measurementRecord = await saveMeasurementToDatabase(supabase, {
       address, coordinates, customerId, userId, googleImage, mapboxImage,
-      selectedImage, solarData, aiAnalysis, scale, measurements, confidence
+      selectedImage, solarData, aiAnalysis, scale, measurements, confidence,
+      visionLinearFeatures
     })
 
     console.log('✅ Complete! Confidence:', confidence.score + '%')
@@ -337,6 +360,155 @@ function extractBoundaryLines(boundingBox: any, centerLat: number, centerLng: nu
   return lines
 }
 
+// GPT-4 Vision: Detect roof features visually from satellite imagery
+async function detectRoofFeaturesWithVision(
+  imageUrl: string, 
+  coordinates: { lat: number; lng: number },
+  imageSize: number,
+  zoom: number
+): Promise<any[]> {
+  const prompt = `Analyze this satellite roof image and identify all visible roof linear features.
+
+For each feature, provide:
+1. Type: "ridge" (horizontal peak where two slopes meet at top), "hip" (diagonal edge from corner to peak), "valley" (internal angle where two roof planes meet going down), "eave" (horizontal roof edge at bottom), or "rake" (sloped roof edge on gable end)
+2. Start position as percentage of image (0-100 for x from left, 0-100 for y from top)
+3. End position as percentage of image
+4. Confidence: "high", "medium", or "low"
+
+Return ONLY valid JSON in this exact format:
+{
+  "features": [
+    {"type": "ridge", "start": {"x": 25, "y": 45}, "end": {"x": 75, "y": 45}, "confidence": "high"},
+    {"type": "hip", "start": {"x": 10, "y": 20}, "end": {"x": 25, "y": 45}, "confidence": "high"},
+    {"type": "valley", "start": {"x": 50, "y": 60}, "end": {"x": 50, "y": 45}, "confidence": "medium"}
+  ],
+  "roofShape": "hip|gable|complex",
+  "detectionNotes": "any relevant observations"
+}
+
+Focus on VISIBLE features on the main roof structure. Be precise with positions. No markdown, only JSON.`
+
+  console.log('🔍 Calling GPT-4 Vision for roof feature detection...')
+  
+  const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    method: 'POST',
+    headers: { 
+      'Content-Type': 'application/json', 
+      'Authorization': `Bearer ${OPENAI_API_KEY}` 
+    },
+    body: JSON.stringify({
+      model: 'gpt-4o',
+      messages: [
+        { 
+          role: 'user', 
+          content: [
+            { type: 'text', text: prompt }, 
+            { type: 'image_url', image_url: { url: imageUrl, detail: 'high' } }
+          ] 
+        }
+      ],
+      max_tokens: 2000
+    })
+  })
+
+  if (!response.ok) {
+    const errorData = await response.text()
+    console.error('GPT-4 Vision API error:', response.status, errorData)
+    throw new Error(`GPT-4 Vision error: ${response.status}`)
+  }
+
+  const data = await response.json()
+  let content = data.choices?.[0]?.message?.content || ''
+  
+  // Clean markdown formatting
+  content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+  
+  console.log('GPT-4 Vision raw response length:', content.length)
+  
+  try {
+    const parsed = JSON.parse(content)
+    const features = parsed.features || []
+    
+    // Convert image percentage positions to geographic WKT coordinates
+    const wktFeatures = features.map((f: any, index: number) => {
+      const wkt = convertImagePercentToWKT(
+        f.start, 
+        f.end, 
+        coordinates, 
+        imageSize, 
+        zoom
+      )
+      
+      // Calculate length from percentage positions
+      const dx = (f.end.x - f.start.x) / 100 * imageSize
+      const dy = (f.end.y - f.start.y) / 100 * imageSize
+      const pixelLength = Math.sqrt(dx * dx + dy * dy)
+      const metersPerPixel = calculateMetersPerPixel(coordinates.lat, zoom)
+      const lengthMeters = pixelLength * metersPerPixel
+      const lengthFt = lengthMeters * 3.28084
+      
+      return {
+        id: `VIS${index + 1}`,
+        type: f.type,
+        wkt,
+        length_ft: Math.round(lengthFt * 10) / 10,
+        source: 'gpt4_vision',
+        confidence: f.confidence,
+        imagePosition: { start: f.start, end: f.end }
+      }
+    })
+    
+    console.log(`✅ GPT-4 Vision extracted ${wktFeatures.length} features with WKT`)
+    return wktFeatures
+    
+  } catch (parseError) {
+    console.error('Failed to parse GPT-4 Vision response:', content.substring(0, 300))
+    return []
+  }
+}
+
+// Calculate meters per pixel based on latitude and zoom level (Web Mercator)
+function calculateMetersPerPixel(lat: number, zoom: number): number {
+  const earthCircumference = 40075016.686 // meters at equator
+  const latRad = lat * Math.PI / 180
+  return (earthCircumference * Math.cos(latRad)) / Math.pow(2, zoom + 8)
+}
+
+// Convert image percentage position to WKT LINESTRING with geographic coordinates
+function convertImagePercentToWKT(
+  start: { x: number; y: number },
+  end: { x: number; y: number },
+  center: { lat: number; lng: number },
+  imageSize: number,
+  zoom: number
+): string {
+  const metersPerPixel = calculateMetersPerPixel(center.lat, zoom)
+  const halfImagePixels = imageSize / 2
+  
+  // Convert percentage to pixel offset from center
+  const startPixelX = (start.x / 100 * imageSize) - halfImagePixels
+  const startPixelY = (start.y / 100 * imageSize) - halfImagePixels
+  const endPixelX = (end.x / 100 * imageSize) - halfImagePixels
+  const endPixelY = (end.y / 100 * imageSize) - halfImagePixels
+  
+  // Convert pixel offset to meter offset
+  const startMeterX = startPixelX * metersPerPixel
+  const startMeterY = -startPixelY * metersPerPixel // Y is inverted
+  const endMeterX = endPixelX * metersPerPixel
+  const endMeterY = -endPixelY * metersPerPixel
+  
+  // Convert meter offset to lat/lng offset
+  const metersPerDegLat = 111320
+  const metersPerDegLng = 111320 * Math.cos(center.lat * Math.PI / 180)
+  
+  const startLat = center.lat + (startMeterY / metersPerDegLat)
+  const startLng = center.lng + (startMeterX / metersPerDegLng)
+  const endLat = center.lat + (endMeterY / metersPerDegLat)
+  const endLng = center.lng + (endMeterX / metersPerDegLng)
+  
+  return `LINESTRING(${startLng} ${startLat}, ${endLng} ${endLat})`
+}
+
 async function fetchMapboxSatellite(coords: any) {
   try {
     const url = `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${coords.lng},${coords.lat},20,0/640x640@2x?access_token=${MAPBOX_PUBLIC_TOKEN}`
@@ -576,29 +748,40 @@ function calculateConfidenceScore(aiAnalysis: any, measurements: any, solarData:
 }
 
 async function saveMeasurementToDatabase(supabase: any, data: any) {
-  const { address, coordinates, customerId, userId, googleImage, mapboxImage, selectedImage, solarData, aiAnalysis, scale, measurements, confidence } = data
+  const { address, coordinates, customerId, userId, googleImage, mapboxImage, selectedImage, solarData, aiAnalysis, scale, measurements, confidence, visionLinearFeatures = [] } = data
 
-  // Combine AI-estimated linear features with Google Solar extracted features (with WKT)
+  // Combine all linear feature sources with priority: GPT-4 Vision > Google Solar > AI Analysis
   const solarLinearFeatures = solarData.linearFeatures || []
+  
+  // AI-estimated features without WKT (lowest priority fallback)
+  const aiEstimatedFeatures = measurements.facets.flatMap((facet: any) => {
+    const features: any[] = []
+    if (facet.edges.ridge > 0) {
+      features.push({ type: 'ridge', length_ft: facet.edges.ridge, source: 'ai_analysis', facetNumber: facet.facetNumber })
+    }
+    if (facet.edges.hip > 0) {
+      features.push({ type: 'hip', length_ft: facet.edges.hip, source: 'ai_analysis', facetNumber: facet.facetNumber })
+    }
+    if (facet.edges.valley > 0) {
+      features.push({ type: 'valley', length_ft: facet.edges.valley, source: 'ai_analysis', facetNumber: facet.facetNumber })
+    }
+    return features
+  })
+  
+  // Priority order: vision features (most accurate) > solar segment intersections > AI estimates
   const combinedLinearFeatures = [
-    ...solarLinearFeatures,
-    // Add AI-estimated features without WKT (fallback)
-    ...measurements.facets.flatMap((facet: any) => {
-      const features: any[] = []
-      if (facet.edges.ridge > 0) {
-        features.push({ type: 'ridge', length_ft: facet.edges.ridge, source: 'ai_analysis', facetNumber: facet.facetNumber })
-      }
-      if (facet.edges.hip > 0) {
-        features.push({ type: 'hip', length_ft: facet.edges.hip, source: 'ai_analysis', facetNumber: facet.facetNumber })
-      }
-      if (facet.edges.valley > 0) {
-        features.push({ type: 'valley', length_ft: facet.edges.valley, source: 'ai_analysis', facetNumber: facet.facetNumber })
-      }
-      return features
-    })
+    ...visionLinearFeatures, // GPT-4 Vision detected (highest priority, has WKT)
+    ...solarLinearFeatures,   // Google Solar segment intersections (has WKT)
+    ...aiEstimatedFeatures    // AI-estimated (fallback, no WKT)
   ]
-
-  console.log(`💾 Saving measurement with ${combinedLinearFeatures.length} linear features (${solarLinearFeatures.filter((f: any) => f.wkt).length} with WKT)`)
+  
+  const visionCount = visionLinearFeatures.length
+  const solarWktCount = solarLinearFeatures.filter((f: any) => f.wkt).length
+  
+  console.log(`💾 Saving measurement with ${combinedLinearFeatures.length} linear features:`)
+  console.log(`   - GPT-4 Vision: ${visionCount} features (with WKT, highest accuracy)`)
+  console.log(`   - Google Solar: ${solarWktCount} features (with WKT)`)
+  console.log(`   - AI Estimated: ${aiEstimatedFeatures.length} features (no WKT, fallback)`)
 
   const { data: measurementRecord, error: measurementError } = await supabase
     .from('roof_measurements')
@@ -639,7 +822,7 @@ async function saveMeasurementToDatabase(supabase: any, data: any) {
       total_valley_length: measurements.linearMeasurements.valley,
       total_ridge_length: measurements.linearMeasurements.ridge,
       material_calculations: measurements.materials,
-      // NEW: Store linear features with WKT geometry for accurate overlay rendering
+      // Store combined linear features with priority: vision > solar > ai_analysis
       linear_features_wkt: combinedLinearFeatures
     })
     .select()
