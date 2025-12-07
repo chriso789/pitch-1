@@ -1330,6 +1330,75 @@ export type Database = {
           },
         ]
       }
+      call_recordings: {
+        Row: {
+          ai_summary: string | null
+          call_log_id: string | null
+          created_at: string | null
+          duration_seconds: number | null
+          file_size_bytes: number | null
+          id: string
+          is_starred: boolean | null
+          keywords: string[] | null
+          recording_sid: string | null
+          recording_url: string
+          sentiment: string | null
+          tenant_id: string
+          transcription: string | null
+          transcription_status: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          ai_summary?: string | null
+          call_log_id?: string | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          file_size_bytes?: number | null
+          id?: string
+          is_starred?: boolean | null
+          keywords?: string[] | null
+          recording_sid?: string | null
+          recording_url: string
+          sentiment?: string | null
+          tenant_id: string
+          transcription?: string | null
+          transcription_status?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          ai_summary?: string | null
+          call_log_id?: string | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          file_size_bytes?: number | null
+          id?: string
+          is_starred?: boolean | null
+          keywords?: string[] | null
+          recording_sid?: string | null
+          recording_url?: string
+          sentiment?: string | null
+          tenant_id?: string
+          transcription?: string | null
+          transcription_status?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_recordings_call_log_id_fkey"
+            columns: ["call_log_id"]
+            isOneToOne: false
+            referencedRelation: "call_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_recordings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_transcripts: {
         Row: {
           call_id: string
@@ -4023,6 +4092,73 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      dialer_sessions: {
+        Row: {
+          calls_answered: number | null
+          calls_made: number | null
+          calls_voicemail: number | null
+          campaign_id: string | null
+          created_at: string | null
+          ended_at: string | null
+          id: string
+          started_at: string | null
+          status: string | null
+          tenant_id: string
+          total_talk_time_seconds: number | null
+          user_id: string
+        }
+        Insert: {
+          calls_answered?: number | null
+          calls_made?: number | null
+          calls_voicemail?: number | null
+          campaign_id?: string | null
+          created_at?: string | null
+          ended_at?: string | null
+          id?: string
+          started_at?: string | null
+          status?: string | null
+          tenant_id: string
+          total_talk_time_seconds?: number | null
+          user_id: string
+        }
+        Update: {
+          calls_answered?: number | null
+          calls_made?: number | null
+          calls_voicemail?: number | null
+          campaign_id?: string | null
+          created_at?: string | null
+          ended_at?: string | null
+          id?: string
+          started_at?: string | null
+          status?: string | null
+          tenant_id?: string
+          total_talk_time_seconds?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dialer_sessions_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "dialer_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dialer_sessions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dialer_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       did_campaigns: {
         Row: {
@@ -13577,6 +13713,152 @@ export type Database = {
         }
         Relationships: []
       }
+      sms_messages: {
+        Row: {
+          body: string
+          contact_id: string | null
+          created_at: string | null
+          delivered_at: string | null
+          direction: string
+          error_message: string | null
+          from_number: string
+          id: string
+          is_read: boolean | null
+          media_urls: string[] | null
+          provider: string | null
+          provider_message_id: string | null
+          sent_at: string | null
+          status: string | null
+          tenant_id: string
+          thread_id: string
+          to_number: string
+        }
+        Insert: {
+          body: string
+          contact_id?: string | null
+          created_at?: string | null
+          delivered_at?: string | null
+          direction: string
+          error_message?: string | null
+          from_number: string
+          id?: string
+          is_read?: boolean | null
+          media_urls?: string[] | null
+          provider?: string | null
+          provider_message_id?: string | null
+          sent_at?: string | null
+          status?: string | null
+          tenant_id: string
+          thread_id: string
+          to_number: string
+        }
+        Update: {
+          body?: string
+          contact_id?: string | null
+          created_at?: string | null
+          delivered_at?: string | null
+          direction?: string
+          error_message?: string | null
+          from_number?: string
+          id?: string
+          is_read?: boolean | null
+          media_urls?: string[] | null
+          provider?: string | null
+          provider_message_id?: string | null
+          sent_at?: string | null
+          status?: string | null
+          tenant_id?: string
+          thread_id?: string
+          to_number?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_messages_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_messages_thread_id_fkey"
+            columns: ["thread_id"]
+            isOneToOne: false
+            referencedRelation: "sms_threads"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      sms_threads: {
+        Row: {
+          assigned_to: string | null
+          contact_id: string | null
+          created_at: string | null
+          id: string
+          is_archived: boolean | null
+          last_message_at: string | null
+          last_message_preview: string | null
+          phone_number: string
+          tenant_id: string
+          unread_count: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_archived?: boolean | null
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          phone_number: string
+          tenant_id: string
+          unread_count?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          id?: string
+          is_archived?: boolean | null
+          last_message_at?: string | null
+          last_message_preview?: string | null
+          phone_number?: string
+          tenant_id?: string
+          unread_count?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sms_threads_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_threads_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_threads_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       spatial_ref_sys: {
         Row: {
           auth_name: string | null
@@ -14979,6 +15261,95 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      unified_inbox: {
+        Row: {
+          assigned_to: string | null
+          channel: string
+          contact_id: string | null
+          content: string | null
+          created_at: string | null
+          direction: string
+          id: string
+          is_archived: boolean | null
+          is_read: boolean | null
+          is_starred: boolean | null
+          metadata: Json | null
+          phone_number: string | null
+          related_call_id: string | null
+          related_message_id: string | null
+          subject: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          channel: string
+          contact_id?: string | null
+          content?: string | null
+          created_at?: string | null
+          direction: string
+          id?: string
+          is_archived?: boolean | null
+          is_read?: boolean | null
+          is_starred?: boolean | null
+          metadata?: Json | null
+          phone_number?: string | null
+          related_call_id?: string | null
+          related_message_id?: string | null
+          subject?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          channel?: string
+          contact_id?: string | null
+          content?: string | null
+          created_at?: string | null
+          direction?: string
+          id?: string
+          is_archived?: boolean | null
+          is_read?: boolean | null
+          is_starred?: boolean | null
+          metadata?: Json | null
+          phone_number?: string | null
+          related_call_id?: string | null
+          related_message_id?: string | null
+          subject?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "unified_inbox_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unified_inbox_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unified_inbox_related_call_id_fkey"
+            columns: ["related_call_id"]
+            isOneToOne: false
+            referencedRelation: "call_logs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unified_inbox_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       user_achievements: {
         Row: {
