@@ -48,9 +48,10 @@ import { useQueryClient } from "@tanstack/react-query";
 
 interface SidebarProps {
   isCollapsed?: boolean;
+  onNavigate?: () => void;
 }
 
-const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
+const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
   const { toast } = useToast();
   const location = useLocation();
   const navigate = useNavigate();
@@ -342,26 +343,27 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
               key={item.href}
               to={item.path}
               data-testid={item.testId}
+              onClick={onNavigate}
               className={cn(
-                "w-full flex items-center rounded-lg text-left transition-smooth group",
+                "w-full flex items-center rounded-lg text-left transition-smooth group touch-manipulation",
                 isCollapsed ? "px-2 py-2.5 justify-center" : "gap-3 px-3 py-2.5",
                 activeSection === item.href
                   ? "bg-primary text-primary-foreground shadow-soft"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80"
               )}
               title={isCollapsed ? item.name : undefined}
             >
               <item.icon className={cn(
-                "h-5 w-5",
+                "h-5 w-5 flex-shrink-0",
                 activeSection === item.href 
                   ? "text-primary-foreground" 
                   : "text-muted-foreground group-hover:text-accent-foreground"
               )} />
               {!isCollapsed && (
-                <div className="flex-1">
-                  <div className="font-medium">{item.name}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium truncate">{item.name}</div>
                   <div className={cn(
-                    "text-xs",
+                    "text-xs truncate",
                     activeSection === item.href
                       ? "text-primary-foreground/80"
                       : "text-muted-foreground group-hover:text-accent-foreground/80"
@@ -387,26 +389,27 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
               <Link
                 key={item.href}
                 to={item.path}
+                onClick={onNavigate}
                 className={cn(
-                  "w-full flex items-center rounded-lg text-left transition-smooth group",
+                  "w-full flex items-center rounded-lg text-left transition-smooth group touch-manipulation",
                   isCollapsed ? "px-2 py-2 justify-center" : "gap-3 px-3 py-2",
                   activeSection === item.href
                     ? "bg-primary text-primary-foreground shadow-soft"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80"
                 )}
                 title={isCollapsed ? item.name : undefined}
               >
                 <item.icon className={cn(
-                  "h-4 w-4",
+                  "h-4 w-4 flex-shrink-0",
                   activeSection === item.href 
                     ? "text-primary-foreground" 
                     : "text-muted-foreground group-hover:text-accent-foreground"
                 )} />
                 {!isCollapsed && (
-                  <div className="flex-1">
-                    <div className="text-sm font-medium">{item.name}</div>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-sm font-medium truncate">{item.name}</div>
                     <div className={cn(
-                      "text-xs",
+                      "text-xs truncate",
                       activeSection === item.href
                         ? "text-primary-foreground/80"
                         : "text-muted-foreground group-hover:text-accent-foreground/80"
@@ -428,26 +431,27 @@ const Sidebar = ({ isCollapsed = false }: SidebarProps) => {
               key={item.href}
               to={item.path}
               data-testid={item.testId}
+              onClick={onNavigate}
               className={cn(
-                "w-full flex items-center rounded-lg text-left transition-smooth group",
+                "w-full flex items-center rounded-lg text-left transition-smooth group touch-manipulation",
                 isCollapsed ? "px-2 py-2.5 justify-center" : "gap-3 px-3 py-2.5",
                 activeSection === item.href
                   ? "bg-primary text-primary-foreground shadow-soft"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80"
               )}
               title={isCollapsed ? item.name : undefined}
             >
               <item.icon className={cn(
-                "h-4 w-4",
+                "h-4 w-4 flex-shrink-0",
                 activeSection === item.href 
                   ? "text-primary-foreground" 
                   : "text-muted-foreground group-hover:text-accent-foreground"
               )} />
               {!isCollapsed && (
-                <div className="flex-1">
-                  <div className="text-sm font-medium">{item.name}</div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium truncate">{item.name}</div>
                   <div className={cn(
-                    "text-xs",
+                    "text-xs truncate",
                     activeSection === item.href
                       ? "text-primary-foreground/80"
                       : "text-muted-foreground group-hover:text-accent-foreground/80"
