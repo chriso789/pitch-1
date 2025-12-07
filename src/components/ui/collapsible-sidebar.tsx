@@ -38,8 +38,8 @@ export const CollapsibleSidebar = ({ children, defaultCollapsed = false }: Colla
 
         {/* Mobile Sheet Drawer */}
         <Sheet open={isMobileOpen} onOpenChange={setIsMobileOpen}>
-          <SheetContent side="left" className="p-0 w-72 bg-card">
-            <div className="flex flex-col h-full">
+          <SheetContent side="left" className="p-0 w-72 bg-card overflow-hidden">
+            <div className="flex flex-col h-full overflow-y-auto overscroll-contain">
               {React.cloneElement(children as React.ReactElement, { 
                 isCollapsed: false,
                 onNavigate: () => setIsMobileOpen(false)

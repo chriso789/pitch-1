@@ -215,7 +215,7 @@ export function StructureSelectionMap({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl h-[80vh] flex flex-col p-0 gap-0">
+      <DialogContent className="max-w-4xl h-[80vh] max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
         <DialogHeader className="p-4 pb-2 border-b">
           <DialogTitle className="flex items-center gap-2">
             <MapPin className="h-5 w-5 text-red-600" />
@@ -309,16 +309,16 @@ export function StructureSelectionMap({
           )}
         </div>
 
-        <DialogFooter className="p-4 border-t bg-muted/30 flex-row justify-between">
-          <div className="flex items-center gap-2">
+        <DialogFooter className="p-4 border-t bg-muted/30 flex-col sm:flex-row gap-3 sm:justify-between shrink-0">
+          <div className="flex items-center gap-2 justify-center sm:justify-start">
             <Button variant="outline" size="sm" onClick={handleReset}>
               Reset Position
             </Button>
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-muted-foreground hidden sm:inline">
               Lat: {pinPosition.lat.toFixed(6)}, Lng: {pinPosition.lng.toFixed(6)}
             </span>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 justify-center sm:justify-end">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
               Cancel
             </Button>
