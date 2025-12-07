@@ -11346,6 +11346,7 @@ export type Database = {
           id: string
           image_quality_score: number | null
           is_archived: boolean | null
+          linear_features_wkt: Json | null
           mapbox_image_url: string | null
           material_calculations: Json | null
           measured_by: string | null
@@ -11405,6 +11406,7 @@ export type Database = {
           id?: string
           image_quality_score?: number | null
           is_archived?: boolean | null
+          linear_features_wkt?: Json | null
           mapbox_image_url?: string | null
           material_calculations?: Json | null
           measured_by?: string | null
@@ -11464,6 +11466,7 @@ export type Database = {
           id?: string
           image_quality_score?: number | null
           is_archived?: boolean | null
+          linear_features_wkt?: Json | null
           mapbox_image_url?: string | null
           material_calculations?: Json | null
           measured_by?: string | null
