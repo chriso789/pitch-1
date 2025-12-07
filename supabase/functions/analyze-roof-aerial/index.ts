@@ -361,32 +361,57 @@ function extractBoundaryLines(boundingBox: any, centerLat: number, centerLng: nu
 }
 
 // GPT-4 Vision: Detect roof features visually from satellite imagery
+// ENHANCED: Now detects perimeter outline, eaves, rakes in addition to ridges/hips/valleys
 async function detectRoofFeaturesWithVision(
   imageUrl: string, 
   coordinates: { lat: number; lng: number },
   imageSize: number,
   zoom: number
 ): Promise<any[]> {
-  const prompt = `Analyze this satellite roof image and identify all visible roof linear features.
+  const prompt = `Analyze this satellite roof image and identify ALL visible roof linear features.
+
+CRITICAL: Trace the COMPLETE roof structure including:
+
+1. **PERIMETER/OUTLINE** - The complete outer edge of the roof (as a closed polygon). This is the most important feature - trace it precisely following the exact roof edge.
+
+2. **EAVES** - Horizontal roof edges at the BOTTOM of each roof plane (where gutters attach). Usually parallel to the ground. Color: typically darker shadow line.
+
+3. **RAKES** - Sloped/diagonal roof edges on GABLE ENDS (the angled edges going up toward the peak). Only present on gable-style roofs.
+
+4. **RIDGES** - Horizontal lines at the TOP peak where two roof slopes meet. Usually runs along the highest point of the roof.
+
+5. **HIPS** - Diagonal lines from OUTER CORNERS going UP toward the ridge. Creates a sloped edge where two roof planes meet at an external angle.
+
+6. **VALLEYS** - Internal diagonal lines where two roof planes meet at an INTERNAL angle (forms a V-shape that channels water). Usually darker than surrounding roof.
 
 For each feature, provide:
-1. Type: "ridge" (horizontal peak where two slopes meet at top), "hip" (diagonal edge from corner to peak), "valley" (internal angle where two roof planes meet going down), "eave" (horizontal roof edge at bottom), or "rake" (sloped roof edge on gable end)
-2. Start position as percentage of image (0-100 for x from left, 0-100 for y from top)
-3. End position as percentage of image
-4. Confidence: "high", "medium", or "low"
+- Type: "perimeter" | "eave" | "rake" | "ridge" | "hip" | "valley"
+- Start position as percentage of image (0-100 for x from left, 0-100 for y from top)
+- End position as percentage of image
+- Confidence: "high" | "medium" | "low"
+
+For PERIMETER, provide an array of points tracing the complete roof outline.
 
 Return ONLY valid JSON in this exact format:
 {
   "features": [
     {"type": "ridge", "start": {"x": 25, "y": 45}, "end": {"x": 75, "y": 45}, "confidence": "high"},
     {"type": "hip", "start": {"x": 10, "y": 20}, "end": {"x": 25, "y": 45}, "confidence": "high"},
+    {"type": "eave", "start": {"x": 5, "y": 80}, "end": {"x": 95, "y": 80}, "confidence": "high"},
+    {"type": "rake", "start": {"x": 5, "y": 80}, "end": {"x": 25, "y": 45}, "confidence": "medium"},
     {"type": "valley", "start": {"x": 50, "y": 60}, "end": {"x": 50, "y": 45}, "confidence": "medium"}
   ],
+  "perimeter": [
+    {"x": 10, "y": 15},
+    {"x": 90, "y": 15},
+    {"x": 90, "y": 85},
+    {"x": 10, "y": 85}
+  ],
   "roofShape": "hip|gable|complex",
-  "detectionNotes": "any relevant observations"
+  "detectionNotes": "observations about the roof"
 }
 
-Focus on VISIBLE features on the main roof structure. Be precise with positions. No markdown, only JSON.`
+Focus on VISIBLE features on the main roof structure. Be precise - each line should follow the actual roof edge visible in the image. No markdown, only JSON.`
 
   console.log('🔍 Calling GPT-4 Vision for roof feature detection...')
   
@@ -428,6 +453,7 @@ Focus on VISIBLE features on the main roof structure. Be precise with positions.
   try {
     const parsed = JSON.parse(content)
     const features = parsed.features || []
+    const perimeterPoints = parsed.perimeter || []
     
     // Convert image percentage positions to geographic WKT coordinates
     const wktFeatures = features.map((f: any, index: number) => {
@@ -458,8 +484,59 @@ Focus on VISIBLE features on the main roof structure. Be precise with positions.
       }
     })
     
+    // Convert perimeter to WKT POLYGON if provided
+    let perimeterWkt: string | null = null
+    if (perimeterPoints.length >= 3) {
+      const perimeterCoords = perimeterPoints.map((p: any) => {
+        const metersPerPixel = calculateMetersPerPixel(coordinates.lat, zoom)
+        const halfImagePixels = imageSize / 2
+        
+        // Convert percentage to pixel offset from center
+        const pixelX = (p.x / 100 * imageSize) - halfImagePixels
+        const pixelY = (p.y / 100 * imageSize) - halfImagePixels
+        
+        // Convert pixel offset to meter offset
+        const meterX = pixelX * metersPerPixel
+        const meterY = -pixelY * metersPerPixel // Y is inverted
+        
+        // Convert meter offset to lat/lng offset
+        const metersPerDegLat = 111320
+        const metersPerDegLng = 111320 * Math.cos(coordinates.lat * Math.PI / 180)
+        
+        const lat = coordinates.lat + (meterY / metersPerDegLat)
+        const lng = coordinates.lng + (meterX / metersPerDegLng)
+        
+        return `${lng} ${lat}`
+      })
+      
+      // Close the polygon
+      perimeterCoords.push(perimeterCoords[0])
+      perimeterWkt = `POLYGON((${perimeterCoords.join(', ')}))`
+      console.log('✅ Created perimeter WKT polygon with', perimeterPoints.length, 'points')
+    }
+    
     console.log(`✅ GPT-4 Vision extracted ${wktFeatures.length} features with WKT`)
-    return wktFeatures
+    
+    // Return features with perimeter attached to the result
+    const result = wktFeatures.map((f: any) => ({
+      ...f,
+      _perimeterWkt: perimeterWkt // Attach perimeter to each feature for processing
+    }))
+    
+    // Also add perimeter as a special feature if available
+    if (perimeterWkt) {
+      result.push({
+        id: 'PERIMETER',
+        type: 'perimeter',
+        wkt: perimeterWkt,
+        length_ft: 0, // Will be calculated from polygon
+        source: 'gpt4_vision',
+        confidence: 'high',
+        isPerimeter: true
+      })
+    }
+    
+    return result
     
   } catch (parseError) {
     console.error('Failed to parse GPT-4 Vision response:', content.substring(0, 300))
