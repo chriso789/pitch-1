@@ -317,7 +317,7 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
         <div className="flex items-start justify-between gap-4">
           {/* Bubbles Section - Left Side */}
           <div className="flex-1">
-            <div className="flex items-center justify-start gap-4 md:gap-5 flex-wrap">
+            <div className="flex items-center justify-start gap-2 sm:gap-4 md:gap-5 flex-wrap">
           {bubbleSteps.map((step, index) => {
             const isComplete = requirements[step.key as keyof ApprovalRequirements];
             const Icon = step.icon;
@@ -325,20 +325,20 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
             return (
               <React.Fragment key={step.key}>
                 {/* Bubble */}
-                <div className="flex flex-col items-center space-y-2 relative">
+                <div className="flex flex-col items-center space-y-1 sm:space-y-2 relative">
                   {/* Circular Bubble */}
                   {step.key === 'hasContract' && !isComplete ? (
                     <Popover open={openPopover} onOpenChange={setOpenPopover}>
                       <PopoverTrigger asChild>
                         <div
                           className={cn(
-                            "relative w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300",
-                            "border-4 cursor-pointer",
+                            "relative w-10 h-10 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all duration-300",
+                            "border-2 sm:border-4 cursor-pointer",
                             "bg-muted border-border opacity-50 hover:opacity-100 hover:border-primary hover:scale-105"
                           )}
                         >
                           <Icon 
-                            className="h-6 w-6 text-muted-foreground"
+                            className="h-4 w-4 sm:h-6 sm:w-6 text-muted-foreground"
                           />
                         </div>
                       </PopoverTrigger>
@@ -370,13 +370,13 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
                       <PopoverTrigger asChild>
                         <div
                           className={cn(
-                            "relative w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300",
-                            "border-4 cursor-pointer",
+                            "relative w-10 h-10 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all duration-300",
+                            "border-2 sm:border-4 cursor-pointer",
                             "bg-muted border-border opacity-50 hover:opacity-100 hover:border-primary hover:scale-105"
                           )}
                         >
                           <Icon 
-                            className="h-6 w-6 text-muted-foreground"
+                            className="h-4 w-4 sm:h-6 sm:w-6 text-muted-foreground"
                           />
                         </div>
                       </PopoverTrigger>
@@ -422,8 +422,8 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
                   ) : (
                     <div
                       className={cn(
-                        "relative w-14 h-14 rounded-full flex items-center justify-center transition-all duration-300",
-                        "border-4",
+                        "relative w-10 h-10 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all duration-300",
+                        "border-2 sm:border-4",
                         isComplete
                           ? `bg-gradient-to-br ${step.color} border-white shadow-lg animate-scale-in hover:scale-110 hover:-translate-y-1 hover:shadow-xl cursor-pointer`
                           : "bg-muted border-border opacity-50"
@@ -431,7 +431,7 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
                     >
                       <Icon 
                         className={cn(
-                          "h-6 w-6 transition-colors",
+                          "h-4 w-4 sm:h-6 sm:w-6 transition-colors",
                           isComplete ? "text-white" : "text-muted-foreground"
                         )} 
                       />
@@ -447,7 +447,7 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
                   
                   {/* Label */}
                   <span className={cn(
-                    "text-sm font-medium text-center",
+                    "text-xs sm:text-sm font-medium text-center max-w-[60px] sm:max-w-none leading-tight",
                     isComplete ? "text-foreground" : "text-muted-foreground"
                   )}>
                     {step.label}
