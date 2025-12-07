@@ -215,24 +215,24 @@ export function StructureSelectionMap({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl h-[85vh] sm:h-[80vh] max-h-[85vh] sm:max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
-        <DialogHeader className="p-4 pb-2 border-b">
-          <DialogTitle className="flex items-center gap-2">
-            <MapPin className="h-5 w-5 text-red-600" />
+      <DialogContent className="max-w-4xl h-[90vh] sm:h-[80vh] max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
+        <DialogHeader className="p-3 sm:p-4 pb-2 border-b shrink-0">
+          <DialogTitle className="flex items-center gap-2 text-sm sm:text-base">
+            <MapPin className="h-4 w-4 sm:h-5 sm:w-5 text-red-600" />
             Select Main Dwelling Structure
           </DialogTitle>
-          <p className="text-sm text-muted-foreground">
-            Drag the red PIN to the center of the <strong>main house roof</strong> you want to measure.
+          <p className="text-xs sm:text-sm text-muted-foreground">
+            Drag the red PIN to the center of the <strong>main house roof</strong>.
           </p>
           {address && (
-            <p className="text-xs text-muted-foreground mt-1">
+            <p className="text-xs text-muted-foreground mt-1 truncate">
               📍 {address}
             </p>
           )}
         </DialogHeader>
 
         {/* Map Container */}
-        <div className="flex-1 relative min-h-[200px] sm:min-h-[400px]">
+        <div className="flex-1 relative min-h-0">
           {loading && !hasInvalidCoords && (
             <div className="absolute inset-0 flex items-center justify-center bg-muted/50 z-10">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -309,23 +309,19 @@ export function StructureSelectionMap({
           )}
         </div>
 
-        <DialogFooter className="p-4 pb-6 border-t bg-muted/30 flex flex-col gap-3 shrink-0">
-          <span className="text-xs text-muted-foreground text-center hidden sm:block">
-            Lat: {pinPosition.lat.toFixed(6)}, Lng: {pinPosition.lng.toFixed(6)}
-          </span>
-          <div className="flex flex-col sm:flex-row gap-2 w-full">
-            <Button variant="outline" size="default" onClick={handleReset} className="w-full sm:w-auto">
-              Reset Position
+        <DialogFooter className="p-3 sm:p-4 pb-4 sm:pb-6 border-t bg-background flex flex-col gap-2 shrink-0">
+          <div className="flex flex-row gap-2 w-full">
+            <Button variant="outline" size="sm" onClick={handleReset} className="flex-1 sm:flex-none sm:w-auto">
+              Reset
             </Button>
-            <div className="flex flex-col sm:flex-row gap-2 sm:ml-auto">
-              <Button variant="outline" onClick={() => onOpenChange(false)} className="w-full sm:w-auto">
-                Cancel
-              </Button>
-              <Button onClick={handleConfirm} className="gap-2 w-full sm:w-auto">
-                <CheckCircle2 className="h-4 w-4" />
-                Confirm & Measure
-              </Button>
-            </div>
+            <Button variant="outline" size="sm" onClick={() => onOpenChange(false)} className="flex-1 sm:flex-none sm:w-auto">
+              Cancel
+            </Button>
+            <Button onClick={handleConfirm} size="sm" className="gap-1 flex-1 sm:flex-none sm:w-auto">
+              <CheckCircle2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Confirm & Measure</span>
+              <span className="sm:hidden">Confirm</span>
+            </Button>
           </div>
         </DialogFooter>
       </DialogContent>
