@@ -276,9 +276,25 @@ function buildSmartTags(meas: MeasureResult) {
   const tags: Record<string, number|string> = {};
   const sum = meas.summary;
   const faces = meas.faces || [];
-  const linear = (meas.linear_features || []).concat(
-    ...faces.map(f => f.linear_features || [])
-  );
+  
+  // Handle linear_features as either array or object format
+  let linear: any[] = [];
+  const rawLinear = meas.linear_features;
+  if (Array.isArray(rawLinear)) {
+    // Array format from edge function
+    linear = rawLinear.concat(...faces.map(f => f.linear_features || []));
+  } else if (rawLinear && typeof rawLinear === 'object') {
+    // Object format from database: {hip: 140, eave: 130, ...} -> convert to array
+    linear = Object.entries(rawLinear)
+      .filter(([_, v]) => typeof v === 'number' && v > 0)
+      .map(([type, length_ft]) => ({ type, length_ft }));
+    // Also add face linear features
+    faces.forEach(f => {
+      if (Array.isArray(f.linear_features)) {
+        linear.push(...f.linear_features);
+      }
+    });
+  }
 
   const total_plan_sqft = faces.reduce((s, f) => s + (f.plan_area_sqft || 0), 0);
   const total_adj_sqft = sum.total_area_sqft;
