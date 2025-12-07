@@ -51,8 +51,8 @@ Deno.serve(async (req) => {
   }
 
   try {
-    // Create client with forwarded auth (requires valid JWT)
-    const supabaseClient = createClient(
+    // Create client with forwarded auth for authentication check
+    const authClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
       Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       { 
@@ -63,7 +63,13 @@ Deno.serve(async (req) => {
     );
 
     // Get authenticated user from JWT - this is the secure way
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
+    const { data: { user }, error: authError } = await authClient.auth.getUser();
+    
+    // Use service role for insert (bypasses RLS issues with users table reference)
+    const serviceClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
     
     if (authError || !user) {
       console.warn('⚠️ Unauthenticated request to log-auth-activity');
@@ -133,8 +139,8 @@ Deno.serve(async (req) => {
       created_at: new Date().toISOString()
     };
 
-    // Insert using RLS - user can only insert logs for themselves
-    const { data, error } = await supabaseClient
+    // Insert using service role to bypass RLS issues
+    const { data, error } = await serviceClient
       .from('session_activity_log')
       .insert(logEntry)
       .select('id')
