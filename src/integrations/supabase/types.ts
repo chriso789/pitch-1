@@ -1670,6 +1670,390 @@ export type Database = {
         }
         Relationships: []
       }
+      canvassiq_enrichment_logs: {
+        Row: {
+          confidence: number | null
+          cost: number | null
+          created_at: string | null
+          credits_used: number | null
+          duration_ms: number | null
+          endpoint: string | null
+          error_message: string | null
+          id: string
+          property_id: string | null
+          provider: string
+          request_payload: Json | null
+          response_data: Json | null
+          response_status: number | null
+          success: boolean | null
+          tenant_id: string
+          user_id: string | null
+        }
+        Insert: {
+          confidence?: number | null
+          cost?: number | null
+          created_at?: string | null
+          credits_used?: number | null
+          duration_ms?: number | null
+          endpoint?: string | null
+          error_message?: string | null
+          id?: string
+          property_id?: string | null
+          provider: string
+          request_payload?: Json | null
+          response_data?: Json | null
+          response_status?: number | null
+          success?: boolean | null
+          tenant_id: string
+          user_id?: string | null
+        }
+        Update: {
+          confidence?: number | null
+          cost?: number | null
+          created_at?: string | null
+          credits_used?: number | null
+          duration_ms?: number | null
+          endpoint?: string | null
+          error_message?: string | null
+          id?: string
+          property_id?: string | null
+          provider?: string
+          request_payload?: Json | null
+          response_data?: Json | null
+          response_status?: number | null
+          success?: boolean | null
+          tenant_id?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canvassiq_enrichment_logs_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "canvassiq_properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "canvassiq_enrichment_logs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "canvassiq_enrichment_logs_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      canvassiq_outbox: {
+        Row: {
+          attempts: number | null
+          created_at: string | null
+          error_message: string | null
+          event_type: string
+          id: string
+          last_attempt_at: string | null
+          max_attempts: number | null
+          payload: Json
+          processed_at: string | null
+          result: Json | null
+          status: string | null
+          tenant_id: string
+        }
+        Insert: {
+          attempts?: number | null
+          created_at?: string | null
+          error_message?: string | null
+          event_type: string
+          id?: string
+          last_attempt_at?: string | null
+          max_attempts?: number | null
+          payload: Json
+          processed_at?: string | null
+          result?: Json | null
+          status?: string | null
+          tenant_id: string
+        }
+        Update: {
+          attempts?: number | null
+          created_at?: string | null
+          error_message?: string | null
+          event_type?: string
+          id?: string
+          last_attempt_at?: string | null
+          max_attempts?: number | null
+          payload?: Json
+          processed_at?: string | null
+          result?: Json | null
+          status?: string | null
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canvassiq_outbox_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      canvassiq_properties: {
+        Row: {
+          address: Json
+          address_hash: string
+          contact_id: string | null
+          created_at: string | null
+          created_by: string | null
+          disposition: string | null
+          disposition_updated_at: string | null
+          disposition_updated_by: string | null
+          emails: string[] | null
+          enrichment_confidence: number | null
+          enrichment_cost: number | null
+          enrichment_last_at: string | null
+          enrichment_source: string[] | null
+          firecrawl_data: Json | null
+          flags: Json | null
+          geom: unknown
+          homeowner: Json | null
+          id: string
+          lat: number
+          lng: number
+          notes: string | null
+          owner_name: string | null
+          phone_numbers: string[] | null
+          place_id: string | null
+          property_data: Json | null
+          searchbug_data: Json | null
+          tags: string[] | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          address?: Json
+          address_hash: string
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          disposition?: string | null
+          disposition_updated_at?: string | null
+          disposition_updated_by?: string | null
+          emails?: string[] | null
+          enrichment_confidence?: number | null
+          enrichment_cost?: number | null
+          enrichment_last_at?: string | null
+          enrichment_source?: string[] | null
+          firecrawl_data?: Json | null
+          flags?: Json | null
+          geom?: unknown
+          homeowner?: Json | null
+          id?: string
+          lat: number
+          lng: number
+          notes?: string | null
+          owner_name?: string | null
+          phone_numbers?: string[] | null
+          place_id?: string | null
+          property_data?: Json | null
+          searchbug_data?: Json | null
+          tags?: string[] | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          address?: Json
+          address_hash?: string
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          disposition?: string | null
+          disposition_updated_at?: string | null
+          disposition_updated_by?: string | null
+          emails?: string[] | null
+          enrichment_confidence?: number | null
+          enrichment_cost?: number | null
+          enrichment_last_at?: string | null
+          enrichment_source?: string[] | null
+          firecrawl_data?: Json | null
+          flags?: Json | null
+          geom?: unknown
+          homeowner?: Json | null
+          id?: string
+          lat?: number
+          lng?: number
+          notes?: string | null
+          owner_name?: string | null
+          phone_numbers?: string[] | null
+          place_id?: string | null
+          property_data?: Json | null
+          searchbug_data?: Json | null
+          tags?: string[] | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canvassiq_properties_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "canvassiq_properties_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "canvassiq_properties_disposition_updated_by_fkey"
+            columns: ["disposition_updated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "canvassiq_properties_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      canvassiq_rate_limits: {
+        Row: {
+          action_type: string
+          count: number | null
+          created_at: string | null
+          id: string
+          max_per_day: number | null
+          max_per_hour: number | null
+          tenant_id: string
+          updated_at: string | null
+          user_id: string
+          window_start: string | null
+        }
+        Insert: {
+          action_type: string
+          count?: number | null
+          created_at?: string | null
+          id?: string
+          max_per_day?: number | null
+          max_per_hour?: number | null
+          tenant_id: string
+          updated_at?: string | null
+          user_id: string
+          window_start?: string | null
+        }
+        Update: {
+          action_type?: string
+          count?: number | null
+          created_at?: string | null
+          id?: string
+          max_per_day?: number | null
+          max_per_hour?: number | null
+          tenant_id?: string
+          updated_at?: string | null
+          user_id?: string
+          window_start?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canvassiq_rate_limits_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "canvassiq_rate_limits_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      canvassiq_visits: {
+        Row: {
+          accuracy_meters: number | null
+          created_at: string | null
+          disposition: string
+          duration_seconds: number | null
+          ended_at: string | null
+          id: string
+          lat: number | null
+          lng: number | null
+          notes: string | null
+          property_id: string
+          started_at: string | null
+          tenant_id: string
+          user_id: string
+          visit_type: string
+        }
+        Insert: {
+          accuracy_meters?: number | null
+          created_at?: string | null
+          disposition: string
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          notes?: string | null
+          property_id: string
+          started_at?: string | null
+          tenant_id: string
+          user_id: string
+          visit_type?: string
+        }
+        Update: {
+          accuracy_meters?: number | null
+          created_at?: string | null
+          disposition?: string
+          duration_seconds?: number | null
+          ended_at?: string | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          notes?: string | null
+          property_id?: string
+          started_at?: string | null
+          tenant_id?: string
+          user_id?: string
+          visit_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canvassiq_visits_property_id_fkey"
+            columns: ["property_id"]
+            isOneToOne: false
+            referencedRelation: "canvassiq_properties"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "canvassiq_visits_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "canvassiq_visits_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       change_order_line_items: {
         Row: {
           change_order_id: string
@@ -15985,6 +16369,17 @@ export type Database = {
         Returns: unknown
       }
       _st_within: { Args: { geom1: unknown; geom2: unknown }; Returns: boolean }
+      add_canvassiq_property: {
+        Args: {
+          p_address: Json
+          p_created_by?: string
+          p_lat: number
+          p_lng: number
+          p_place_id?: string
+          p_tenant_id: string
+        }
+        Returns: string
+      }
       addauth: { Args: { "": string }; Returns: boolean }
       addgeometrycolumn:
         | {
@@ -16575,6 +16970,53 @@ export type Database = {
       get_ai_usage_stats: {
         Args: { p_hours_back?: number; p_tenant_id: string }
         Returns: Json
+      }
+      get_canvassiq_properties_in_bbox: {
+        Args: {
+          p_limit?: number
+          p_max_lat: number
+          p_max_lng: number
+          p_min_lat: number
+          p_min_lng: number
+          p_tenant_id: string
+        }
+        Returns: {
+          address: Json
+          address_hash: string
+          contact_id: string | null
+          created_at: string | null
+          created_by: string | null
+          disposition: string | null
+          disposition_updated_at: string | null
+          disposition_updated_by: string | null
+          emails: string[] | null
+          enrichment_confidence: number | null
+          enrichment_cost: number | null
+          enrichment_last_at: string | null
+          enrichment_source: string[] | null
+          firecrawl_data: Json | null
+          flags: Json | null
+          geom: unknown
+          homeowner: Json | null
+          id: string
+          lat: number
+          lng: number
+          notes: string | null
+          owner_name: string | null
+          phone_numbers: string[] | null
+          place_id: string | null
+          property_data: Json | null
+          searchbug_data: Json | null
+          tags: string[] | null
+          tenant_id: string
+          updated_at: string | null
+        }[]
+        SetofOptions: {
+          from: "*"
+          to: "canvassiq_properties"
+          isOneToOne: false
+          isSetofReturn: true
+        }
       }
       get_next_contact_number: {
         Args: { tenant_id_param: string }
@@ -17379,6 +17821,10 @@ export type Database = {
       switch_developer_context: {
         Args: { target_tenant_id: string }
         Returns: boolean
+      }
+      sync_canvassiq_property_to_contact: {
+        Args: { p_property_id: string }
+        Returns: string
       }
       track_slide_view: {
         Args: {
