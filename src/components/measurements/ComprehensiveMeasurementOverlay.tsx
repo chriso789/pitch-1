@@ -972,7 +972,9 @@ export function ComprehensiveMeasurementOverlay({
     // PHASE 3: Enhanced linear feature rendering
     // First try linear_features array with WKT (preferred - accurate geo positions)
     // Then fall back to tags (legacy support)
-    const linearFeatures = measurement?.linear_features || tags?.linear_features || [];
+    // Ensure linearFeatures is always an array to prevent .filter errors
+    const rawLinearFeatures = measurement?.linear_features || tags?.linear_features;
+    const linearFeatures = Array.isArray(rawLinearFeatures) ? rawLinearFeatures : [];
     
     // Draw ridge lines
     if (layers.ridges) {
@@ -1006,7 +1008,6 @@ export function ComprehensiveMeasurementOverlay({
 
     // Draw eave lines (cyan)
     if (layers.eaves) {
-      const linearFeatures = measurement?.linear_features || tags?.linear_features || [];
       const eaveLines = linearFeatures.filter((f: any) => f.type === 'eave' && f.wkt) || [];
       const fallbackEaves = tags['eave_lines'] || [];
       const allEaves = eaveLines.length > 0 ? eaveLines : fallbackEaves;
@@ -1017,7 +1018,6 @@ export function ComprehensiveMeasurementOverlay({
 
     // Draw rake lines (magenta)
     if (layers.rakes) {
-      const linearFeatures = measurement?.linear_features || tags?.linear_features || [];
       const rakeLines = linearFeatures.filter((f: any) => f.type === 'rake' && f.wkt) || [];
       const fallbackRakes = tags['rake_lines'] || [];
       const allRakes = rakeLines.length > 0 ? rakeLines : fallbackRakes;
@@ -1910,9 +1910,10 @@ export function ComprehensiveMeasurementOverlay({
     }
     // Priority 4: Construct from eave + rake lines
     else {
-      const linearFeatures = measurement?.linear_features || [];
-      const eaves = linearFeatures.filter((f: any) => f.type === 'eave' && f.wkt);
-      const rakes = linearFeatures.filter((f: any) => f.type === 'rake' && f.wkt);
+      const rawFeatures = measurement?.linear_features || [];
+      const featuresArray = Array.isArray(rawFeatures) ? rawFeatures : [];
+      const eaves = featuresArray.filter((f: any) => f.type === 'eave' && f.wkt);
+      const rakes = featuresArray.filter((f: any) => f.type === 'rake' && f.wkt);
       
       if (eaves.length > 0 || rakes.length > 0) {
         console.log('Constructing perimeter from eave+rake lines');
