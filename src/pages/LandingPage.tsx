@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -14,15 +14,18 @@ import {
   Star,
   Zap,
   Shield,
-  TrendingUp
+  TrendingUp,
+  Loader2
 } from 'lucide-react';
 import { useMarketingTracking } from '@/lib/analytics/usePageTracking';
 import { ConsentBanner } from '@/components/ConsentBanner';
 import DashboardMockup from '@/components/landing/DashboardMockup';
 import { PowerDialerMockup, EstimateMockup, PipelineMockup, AnalyticsMockup } from '@/components/landing/FeatureMockups';
+import { supabase } from '@/integrations/supabase/client';
 
 const LandingPage = () => {
   const navigate = useNavigate();
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const { 
     trackNavLogin, 
     trackNavSignup, 
@@ -30,6 +33,37 @@ const LandingPage = () => {
     trackHeroBookDemo,
     trackCTAClick 
   } = useMarketingTracking();
+
+  // Auto-redirect authenticated users to dashboard
+  useEffect(() => {
+    const checkAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          console.log('[LandingPage] User authenticated, redirecting to dashboard');
+          navigate('/dashboard', { replace: true });
+          return;
+        }
+      } catch (error) {
+        console.error('[LandingPage] Auth check error:', error);
+      }
+      setCheckingAuth(false);
+    };
+    
+    checkAuth();
+  }, [navigate]);
+
+  // Show loading while checking auth
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-slate-50 to-white">
+        <div className="text-center">
+          <Loader2 className="h-8 w-8 animate-spin text-primary mx-auto mb-4" />
+          <p className="text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    );
+  }
 
   const features = [
     {

@@ -14941,6 +14941,45 @@ export type Database = {
         }
         Relationships: []
       }
+      trusted_devices: {
+        Row: {
+          created_at: string | null
+          device_fingerprint: string
+          device_name: string | null
+          id: string
+          ip_address: string | null
+          is_active: boolean | null
+          last_seen_at: string | null
+          metadata: Json | null
+          trusted_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          device_fingerprint: string
+          device_name?: string | null
+          id?: string
+          ip_address?: string | null
+          is_active?: boolean | null
+          last_seen_at?: string | null
+          metadata?: Json | null
+          trusted_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          device_fingerprint?: string
+          device_name?: string | null
+          id?: string
+          ip_address?: string | null
+          is_active?: boolean | null
+          last_seen_at?: string | null
+          metadata?: Json | null
+          trusted_at?: string | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       user_achievements: {
         Row: {
           achievement_id: string
