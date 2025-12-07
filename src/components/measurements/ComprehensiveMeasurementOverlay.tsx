@@ -374,20 +374,26 @@ export function ComprehensiveMeasurementOverlay({
   }, [canvasWidth, canvasHeight]);
   
    /**
-    * PHASE 2: Fixed coordinate transformation using verified address as center
-    * This ensures measurement overlays align with the satellite image
+    * PHASE 2: Enhanced coordinate transformation with precise meters-per-pixel calculation
+    * Uses Web Mercator projection math to accurately convert geographic coordinates to canvas pixels
+    * This ensures measurement overlays (ridges, hips, valleys) align precisely with satellite imagery
     */
    const geoToCanvas = useCallback((lat: number, lng: number): Point => {
      // Use verified address as reference point (satellite image center)
      const refLat = verifiedAddressLat || centerLat;
      const refLng = verifiedAddressLng || centerLng;
      
-     // Calculate offset from center in meters
-     const latOffsetMeters = (lat - refLat) * 111320; // 1 degree lat ≈ 111.32km
-     const lngOffsetMeters = (lng - refLng) * 111320 * Math.cos(refLat * Math.PI / 180);
+     // Calculate precise meters-per-pixel based on zoom level and latitude
+     // Formula: metersPerPixel = 156543.03392 * cos(lat * π/180) / (2^zoom)
+     // Default zoom 20 for satellite imagery, zoom 21 for HD
+     const effectiveZoom = zoom || 20;
+     const metersPerPixel = (156543.03392 * Math.cos(refLat * Math.PI / 180)) / Math.pow(2, effectiveZoom);
      
-     // Convert meters to pixels (Google Maps zoom 20 ≈ 0.596m per pixel)
-     const metersPerPixel = 0.596;
+     // Calculate offset from center in meters using accurate geodesic calculation
+     const latOffsetMeters = (lat - refLat) * 111320; // 1 degree lat ≈ 111.32km constant
+     const lngOffsetMeters = (lng - refLng) * 111320 * Math.cos(((lat + refLat) / 2) * Math.PI / 180); // Use average latitude
+     
+     // Convert meters to pixels
      const canvasCenterX = canvasWidth / 2;
      const canvasCenterY = canvasHeight / 2;
      
@@ -395,7 +401,7 @@ export function ComprehensiveMeasurementOverlay({
      const y = canvasCenterY - (latOffsetMeters / metersPerPixel); // Flip Y axis for canvas
      
      return { x, y };
-   }, [centerLat, centerLng, verifiedAddressLat, verifiedAddressLng, canvasWidth, canvasHeight]);
+   }, [centerLat, centerLng, verifiedAddressLat, verifiedAddressLng, canvasWidth, canvasHeight, zoom]);
 
   // Auto-save with database persistence
   const handleAutoSave = async () => {
@@ -962,19 +968,39 @@ export function ComprehensiveMeasurementOverlay({
       drawRoofFacets();
     }
 
+    // PHASE 3: Enhanced linear feature rendering
+    // First try linear_features array with WKT (preferred - accurate geo positions)
+    // Then fall back to tags (legacy support)
+    const linearFeatures = measurement?.linear_features || tags?.linear_features || [];
+    
     // Draw ridge lines
-    if (layers.ridges && tags['lf.ridge']) {
-      drawFeatureLines('ridge', tags['ridge_lines'] || [], 'green');
+    if (layers.ridges) {
+      const ridgeLines = linearFeatures.filter((f: any) => f.type === 'ridge' && f.wkt) || [];
+      const fallbackRidges = tags['ridge_lines'] || [];
+      const allRidges = ridgeLines.length > 0 ? ridgeLines : fallbackRidges;
+      if (allRidges.length > 0 || tags['lf.ridge'] > 0) {
+        drawFeatureLines('ridge', allRidges, '#22c55e'); // green-500
+      }
     }
 
     // Draw hip lines
-    if (layers.hips && tags['lf.hip']) {
-      drawFeatureLines('hip', tags['hip_lines'] || [], 'blue');
+    if (layers.hips) {
+      const hipLines = linearFeatures.filter((f: any) => f.type === 'hip' && f.wkt) || [];
+      const fallbackHips = tags['hip_lines'] || [];
+      const allHips = hipLines.length > 0 ? hipLines : fallbackHips;
+      if (allHips.length > 0 || tags['lf.hip'] > 0) {
+        drawFeatureLines('hip', allHips, '#3b82f6'); // blue-500
+      }
     }
 
     // Draw valley lines
-    if (layers.valleys && tags['lf.valley']) {
-      drawFeatureLines('valley', tags['valley_lines'] || [], 'red');
+    if (layers.valleys) {
+      const valleyLines = linearFeatures.filter((f: any) => f.type === 'valley' && f.wkt) || [];
+      const fallbackValleys = tags['valley_lines'] || [];
+      const allValleys = valleyLines.length > 0 ? valleyLines : fallbackValleys;
+      if (allValleys.length > 0 || tags['lf.valley'] > 0) {
+        drawFeatureLines('valley', allValleys, '#ef4444'); // red-500
+      }
     }
 
     // Draw perimeter
@@ -1644,27 +1670,67 @@ export function ComprehensiveMeasurementOverlay({
     filteredFeatures.forEach((lineData: any, index: number) => {
       let startPoint: Point;
       let endPoint: Point;
+      let length = lineData.length_ft || lineData.length || 0;
       
-      // Check if line has WKT format
+      // Check if line has WKT format (preferred - actual geo coordinates)
       if (lineData.wkt) {
         const coords = parseWKTLineString(lineData.wkt);
         if (coords.length < 2) {
-          console.warn(`Invalid WKT for ${type} line ${index}`);
+          console.warn(`Invalid WKT for ${type} line ${index}:`, lineData.wkt);
           return;
         }
         
-        // Transform geographic coordinates to canvas pixels using verified center
+        // Transform geographic coordinates to canvas pixels using enhanced geoToCanvas
         startPoint = geoToCanvas(coords[0][0], coords[0][1]);
-        endPoint = geoToCanvas(coords[1][0], coords[1][1]);
+        endPoint = geoToCanvas(coords[coords.length - 1][0], coords[coords.length - 1][1]);
+        
+        // Log transformation for debugging
+        console.log(`${type} line ${index}: geo (${coords[0][0].toFixed(6)}, ${coords[0][1].toFixed(6)}) → canvas (${startPoint.x.toFixed(1)}, ${startPoint.y.toFixed(1)})`);
+      } else if (lineData.start && lineData.end) {
+        // Check if start/end are geographic coordinates (lat/lng format)
+        const start = lineData.start;
+        const end = lineData.end;
+        
+        if (Array.isArray(start) && Math.abs(start[0]) <= 180 && Math.abs(start[1]) <= 90) {
+          // Geographic coordinates [lat, lng]
+          startPoint = geoToCanvas(start[0], start[1]);
+          endPoint = geoToCanvas(end[0], end[1]);
+        } else if (typeof start === 'object' && 'lat' in start) {
+          // Object format { lat, lng }
+          startPoint = geoToCanvas(start.lat, start.lng);
+          endPoint = geoToCanvas(end.lat, end.lng);
+        } else {
+          // Normalized coordinates [0-1, 0-1] (legacy format)
+          startPoint = { x: start[0] * canvasWidth, y: start[1] * canvasHeight };
+          endPoint = { x: end[0] * canvasWidth, y: end[1] * canvasHeight };
+        }
+      } else if (Array.isArray(lineData) && lineData.length >= 2) {
+        // Array format [[x1, y1], [x2, y2]]
+        const start = lineData[0];
+        const end = lineData[1];
+        
+        if (Math.abs(start[0]) <= 180 && Math.abs(start[1]) <= 90) {
+          // Geographic coordinates
+          startPoint = geoToCanvas(start[0], start[1]);
+          endPoint = geoToCanvas(end[0], end[1]);
+        } else {
+          // Normalized coordinates
+          startPoint = { x: start[0] * canvasWidth, y: start[1] * canvasHeight };
+          endPoint = { x: end[0] * canvasWidth, y: end[1] * canvasHeight };
+        }
       } else {
-        // Fallback to normalized coordinates (legacy format)
-        const start = lineData.start || lineData[0];
-        const end = lineData.end || lineData[1];
-        
-        if (!start || !end) return;
-        
-        startPoint = { x: start[0] * canvasWidth, y: start[1] * canvasHeight };
-        endPoint = { x: end[0] * canvasWidth, y: end[1] * canvasHeight };
+        console.warn(`Unrecognized line format for ${type} line ${index}:`, lineData);
+        return;
+      }
+
+      // Skip lines that would draw outside visible canvas area
+      const padding = 50;
+      if (startPoint.x < -padding || startPoint.x > canvasWidth + padding ||
+          startPoint.y < -padding || startPoint.y > canvasHeight + padding ||
+          endPoint.x < -padding || endPoint.x > canvasWidth + padding ||
+          endPoint.y < -padding || endPoint.y > canvasHeight + padding) {
+        console.log(`Skipping ${type} line ${index} - outside canvas bounds`);
+        return;
       }
 
       const line = new Line(
@@ -1672,14 +1738,14 @@ export function ComprehensiveMeasurementOverlay({
         {
           stroke: color,
           strokeWidth: 3,
-          strokeDashArray: type === 'ridge' ? [] : [10, 5],
+          strokeDashArray: type === 'ridge' ? [] : type === 'hip' ? [15, 5] : [8, 8],
           selectable: editMode === 'select',
           hasControls: false,
           hasBorders: false,
         }
       );
 
-      (line as any).data = { type, editable: true, lineIndex: index };
+      (line as any).data = { type, editable: true, lineIndex: index, wkt: lineData.wkt };
       
       // Add hover effects
       line.on('mouseover', () => {
@@ -1706,23 +1772,24 @@ export function ComprehensiveMeasurementOverlay({
       fabricCanvas.add(line);
 
       // Add length label
-      const length = lineData.length || 0;
       const midX = (startPoint.x + endPoint.x) / 2;
       const midY = (startPoint.y + endPoint.y) / 2;
 
-      const label = new FabricText(`${Math.round(length)} ft ${type}`, {
-        left: midX,
-        top: midY - 10,
-        fontSize: 11,
-        fill: 'white',
-        backgroundColor: `${color}`,
-        padding: 2,
-        originX: 'center',
-        originY: 'center',
-        selectable: false,
-      });
-      (label as any).data = { type: 'label' };
-      fabricCanvas.add(label);
+      if (length > 0) {
+        const label = new FabricText(`${Math.round(length)}' ${type}`, {
+          left: midX,
+          top: midY - 12,
+          fontSize: 11,
+          fill: 'white',
+          backgroundColor: color,
+          padding: 3,
+          originX: 'center',
+          originY: 'center',
+          selectable: false,
+        });
+        (label as any).data = { type: 'label', featureType: type };
+        fabricCanvas.add(label);
+      }
     });
     
     console.groupEnd();

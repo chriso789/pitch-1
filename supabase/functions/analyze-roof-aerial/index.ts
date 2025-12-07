@@ -124,21 +124,217 @@ async function fetchGoogleSolarData(coords: any) {
   try {
     const url = `https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${coords.lat}&location.longitude=${coords.lng}&key=${GOOGLE_SOLAR_API_KEY}`
     const response = await fetch(url)
-    if (!response.ok) return { available: false, buildingFootprintSqft: null, roofSegmentCount: 0 }
+    if (!response.ok) return { available: false, buildingFootprintSqft: null, roofSegmentCount: 0, linearFeatures: [] }
     const data = await response.json()
     const buildingFootprintSqm = data.solarPotential?.buildingStats?.areaMeters2 || 0
     const buildingFootprintSqft = buildingFootprintSqm * 10.764
     const roofSegments = data.solarPotential?.roofSegmentStats || []
+    const boundingBox = data.boundingBox || null
+    
+    // Extract roof segment boundaries and compute linear features with WKT geometry
+    const linearFeatures = extractLinearFeaturesFromSegments(roofSegments, boundingBox, coords)
+    
     return {
       available: true,
       buildingFootprintSqft,
       roofSegmentCount: roofSegments.length,
-      roofSegments: roofSegments.map((s: any) => ({ pitchDegrees: s.pitchDegrees, azimuthDegrees: s.azimuthDegrees, areaMeters2: s.stats?.areaMeters2 })),
+      roofSegments: roofSegments.map((s: any) => ({ 
+        pitchDegrees: s.pitchDegrees, 
+        azimuthDegrees: s.azimuthDegrees, 
+        areaMeters2: s.stats?.areaMeters2,
+        planeHeightAtCenter: s.planeHeightAtCenterMeters,
+        boundingBox: s.boundingBox
+      })),
+      linearFeatures,
+      boundingBox,
       rawData: data
     }
-  } catch {
-    return { available: false, buildingFootprintSqft: null, roofSegmentCount: 0 }
+  } catch (err) {
+    console.error('Google Solar API error:', err)
+    return { available: false, buildingFootprintSqft: null, roofSegmentCount: 0, linearFeatures: [] }
   }
+}
+
+// Extract linear features (ridges, hips, valleys) from roof segment intersections
+function extractLinearFeaturesFromSegments(segments: any[], boundingBox: any, center: any) {
+  const linearFeatures: any[] = []
+  let featureId = 1
+  
+  if (!segments || segments.length < 2 || !boundingBox) {
+    return linearFeatures
+  }
+  
+  const centerLat = center.lat
+  const centerLng = center.lng
+  
+  // Calculate meters per degree for accurate conversions
+  const metersPerDegLat = 111320
+  const metersPerDegLng = 111320 * Math.cos(centerLat * Math.PI / 180)
+  
+  // Process each pair of adjacent roof segments to find intersection lines (ridges/hips/valleys)
+  for (let i = 0; i < segments.length; i++) {
+    const seg1 = segments[i]
+    if (!seg1.boundingBox) continue
+    
+    for (let j = i + 1; j < segments.length; j++) {
+      const seg2 = segments[j]
+      if (!seg2.boundingBox) continue
+      
+      // Check if segments share an edge (intersect)
+      const intersection = findSegmentIntersection(seg1, seg2, centerLat, centerLng, metersPerDegLat, metersPerDegLng)
+      
+      if (intersection) {
+        // Determine feature type based on height comparison
+        const height1 = seg1.planeHeightAtCenterMeters || 0
+        const height2 = seg2.planeHeightAtCenterMeters || 0
+        const azimuth1 = seg1.azimuthDegrees || 0
+        const azimuth2 = seg2.azimuthDegrees || 0
+        const azimuthDiff = Math.abs(azimuth1 - azimuth2)
+        
+        let featureType = 'ridge'
+        // If planes face opposite directions (180° apart) = ridge
+        // If planes face similar directions but different heights = hip
+        // If intersection is below both planes = valley
+        if (azimuthDiff > 150 && azimuthDiff < 210) {
+          featureType = 'ridge'
+        } else if (intersection.isLowerThanBoth) {
+          featureType = 'valley'
+        } else {
+          featureType = 'hip'
+        }
+        
+        linearFeatures.push({
+          id: `LF${featureId++}`,
+          type: featureType,
+          wkt: intersection.wkt,
+          length_ft: intersection.length_ft,
+          source: 'google_solar_segment_intersection',
+          segment1Index: i,
+          segment2Index: j
+        })
+      }
+    }
+  }
+  
+  // Extract eave lines from building boundary
+  if (boundingBox) {
+    const eaveLines = extractBoundaryLines(boundingBox, centerLat, centerLng, metersPerDegLat, metersPerDegLng)
+    eaveLines.forEach(line => {
+      linearFeatures.push({
+        id: `LF${featureId++}`,
+        type: 'eave',
+        wkt: line.wkt,
+        length_ft: line.length_ft,
+        source: 'google_solar_boundary'
+      })
+    })
+  }
+  
+  console.log(`✅ Extracted ${linearFeatures.length} linear features from Google Solar segments`)
+  return linearFeatures
+}
+
+// Find intersection line between two roof segments
+function findSegmentIntersection(seg1: any, seg2: any, centerLat: number, centerLng: number, mPerDegLat: number, mPerDegLng: number) {
+  const box1 = seg1.boundingBox
+  const box2 = seg2.boundingBox
+  
+  if (!box1 || !box2) return null
+  
+  // Get bounding box corners
+  const b1sw = { lat: box1.sw?.latitude || 0, lng: box1.sw?.longitude || 0 }
+  const b1ne = { lat: box1.ne?.latitude || 0, lng: box1.ne?.longitude || 0 }
+  const b2sw = { lat: box2.sw?.latitude || 0, lng: box2.sw?.longitude || 0 }
+  const b2ne = { lat: box2.ne?.latitude || 0, lng: box2.ne?.longitude || 0 }
+  
+  // Check for overlap
+  const overlapMinLat = Math.max(b1sw.lat, b2sw.lat)
+  const overlapMaxLat = Math.min(b1ne.lat, b2ne.lat)
+  const overlapMinLng = Math.max(b1sw.lng, b2sw.lng)
+  const overlapMaxLng = Math.min(b1ne.lng, b2ne.lng)
+  
+  // Segments must overlap to share an edge
+  const tolerance = 0.00005 // ~5.5m tolerance
+  if (overlapMaxLat - overlapMinLat < -tolerance || overlapMaxLng - overlapMinLng < -tolerance) {
+    return null
+  }
+  
+  // Determine if it's a horizontal or vertical edge
+  const latOverlap = overlapMaxLat - overlapMinLat
+  const lngOverlap = overlapMaxLng - overlapMinLng
+  
+  let startLat, startLng, endLat, endLng
+  
+  if (latOverlap > lngOverlap) {
+    // Vertical edge (shared longitude)
+    const sharedLng = (overlapMinLng + overlapMaxLng) / 2
+    startLat = overlapMinLat
+    startLng = sharedLng
+    endLat = overlapMaxLat
+    endLng = sharedLng
+  } else {
+    // Horizontal edge (shared latitude)
+    const sharedLat = (overlapMinLat + overlapMaxLat) / 2
+    startLat = sharedLat
+    startLng = overlapMinLng
+    endLat = sharedLat
+    endLng = overlapMaxLng
+  }
+  
+  // Calculate length in feet
+  const dx = (endLng - startLng) * mPerDegLng
+  const dy = (endLat - startLat) * mPerDegLat
+  const length_m = Math.sqrt(dx * dx + dy * dy)
+  const length_ft = length_m * 3.28084
+  
+  // Skip very short lines
+  if (length_ft < 3) return null
+  
+  // Create WKT LINESTRING with actual geographic coordinates
+  const wkt = `LINESTRING(${startLng} ${startLat}, ${endLng} ${endLat})`
+  
+  // Check if intersection is lower than both segment centers (valley indicator)
+  const isLowerThanBoth = false // Would need elevation data for accurate detection
+  
+  return {
+    wkt,
+    length_ft,
+    isLowerThanBoth
+  }
+}
+
+// Extract eave/boundary lines from building bounding box
+function extractBoundaryLines(boundingBox: any, centerLat: number, centerLng: number, mPerDegLat: number, mPerDegLng: number) {
+  const lines: any[] = []
+  
+  if (!boundingBox || !boundingBox.sw || !boundingBox.ne) return lines
+  
+  const sw = { lat: boundingBox.sw.latitude, lng: boundingBox.sw.longitude }
+  const ne = { lat: boundingBox.ne.latitude, lng: boundingBox.ne.longitude }
+  const se = { lat: sw.lat, lng: ne.lng }
+  const nw = { lat: ne.lat, lng: sw.lng }
+  
+  const edges = [
+    { start: sw, end: se, label: 'South' },
+    { start: se, end: ne, label: 'East' },
+    { start: ne, end: nw, label: 'North' },
+    { start: nw, end: sw, label: 'West' }
+  ]
+  
+  edges.forEach(edge => {
+    const dx = (edge.end.lng - edge.start.lng) * mPerDegLng
+    const dy = (edge.end.lat - edge.start.lat) * mPerDegLat
+    const length_m = Math.sqrt(dx * dx + dy * dy)
+    const length_ft = length_m * 3.28084
+    
+    lines.push({
+      wkt: `LINESTRING(${edge.start.lng} ${edge.start.lat}, ${edge.end.lng} ${edge.end.lat})`,
+      length_ft,
+      label: edge.label
+    })
+  })
+  
+  return lines
 }
 
 async function fetchMapboxSatellite(coords: any) {
@@ -382,6 +578,28 @@ function calculateConfidenceScore(aiAnalysis: any, measurements: any, solarData:
 async function saveMeasurementToDatabase(supabase: any, data: any) {
   const { address, coordinates, customerId, userId, googleImage, mapboxImage, selectedImage, solarData, aiAnalysis, scale, measurements, confidence } = data
 
+  // Combine AI-estimated linear features with Google Solar extracted features (with WKT)
+  const solarLinearFeatures = solarData.linearFeatures || []
+  const combinedLinearFeatures = [
+    ...solarLinearFeatures,
+    // Add AI-estimated features without WKT (fallback)
+    ...measurements.facets.flatMap((facet: any) => {
+      const features: any[] = []
+      if (facet.edges.ridge > 0) {
+        features.push({ type: 'ridge', length_ft: facet.edges.ridge, source: 'ai_analysis', facetNumber: facet.facetNumber })
+      }
+      if (facet.edges.hip > 0) {
+        features.push({ type: 'hip', length_ft: facet.edges.hip, source: 'ai_analysis', facetNumber: facet.facetNumber })
+      }
+      if (facet.edges.valley > 0) {
+        features.push({ type: 'valley', length_ft: facet.edges.valley, source: 'ai_analysis', facetNumber: facet.facetNumber })
+      }
+      return features
+    })
+  ]
+
+  console.log(`💾 Saving measurement with ${combinedLinearFeatures.length} linear features (${solarLinearFeatures.filter((f: any) => f.wkt).length} with WKT)`)
+
   const { data: measurementRecord, error: measurementError } = await supabase
     .from('roof_measurements')
     .insert({
@@ -420,7 +638,9 @@ async function saveMeasurementToDatabase(supabase: any, data: any) {
       total_hip_length: measurements.linearMeasurements.hip,
       total_valley_length: measurements.linearMeasurements.valley,
       total_ridge_length: measurements.linearMeasurements.ridge,
-      material_calculations: measurements.materials
+      material_calculations: measurements.materials,
+      // NEW: Store linear features with WKT geometry for accurate overlay rendering
+      linear_features_wkt: combinedLinearFeatures
     })
     .select()
     .single()
