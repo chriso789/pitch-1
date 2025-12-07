@@ -11,6 +11,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
 import { Loader2, AlertCircle, Eye, EyeOff, Wifi, WifiOff, Shield, UserPlus, KeyRound, ArrowLeft, CheckCircle } from 'lucide-react';
 import { initSession, clearAllSessionData } from '@/services/sessionManager';
+import { getDeviceFingerprint, getDeviceName } from '@/services/deviceFingerprint';
 
 interface LoginProps {
   initialTab?: 'login' | 'signup' | 'forgot';
@@ -97,7 +98,7 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
       initSession(rememberMe);
       
       // Background tasks (non-blocking)
-      setTimeout(() => {
+      setTimeout(async () => {
         ensureUserProfile(authUser).catch(console.warn);
         // Sync user metadata from profiles to auth (fixes display name issues)
         supabase.functions.invoke('sync-user-metadata').catch(console.warn);
@@ -109,6 +110,28 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
             success: true
           }
         }).catch(console.warn);
+        
+        // Trust this device if Remember Me is checked
+        if (rememberMe) {
+          try {
+            const fingerprint = await getDeviceFingerprint();
+            const deviceName = getDeviceName();
+            
+            // Upsert trusted device
+            await supabase.from('trusted_devices').upsert({
+              user_id: authUser.id,
+              device_fingerprint: fingerprint,
+              device_name: deviceName,
+              last_seen_at: new Date().toISOString(),
+              is_active: true
+            }, {
+              onConflict: 'user_id,device_fingerprint'
+            });
+            console.log('[Login] Device trusted:', deviceName);
+          } catch (error) {
+            console.warn('[Login] Failed to trust device:', error);
+          }
+        }
       }, 0);
       
       toast({

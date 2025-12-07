@@ -32,6 +32,7 @@ import { SettingsTabEditor } from "@/components/settings/SettingsTabEditor";
 import { LeadSources } from "@/features/leads/components/LeadSources";
 import { IntegrationsSettings } from "@/components/settings/IntegrationsSettings";
 import { SecurityAudit } from "@/components/settings/SecurityAudit";
+import { TrustedDevices } from "@/components/settings/TrustedDevices";
 import { CacheManagement } from "@/components/settings/CacheManagement";
 import { CompanyManagement } from "@/features/settings/components/CompanyManagement";
 import { CompanyActivityLog } from "@/features/settings/components/CompanyActivityLog";
@@ -330,6 +331,7 @@ export const Settings = () => {
 
         <TabsContent value="security" className="space-y-6">
           <SecurityAudit />
+          <TrustedDevices />
         </TabsContent>
 
         <TabsContent value="cache" className="space-y-6">
