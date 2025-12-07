@@ -215,7 +215,7 @@ export function StructureSelectionMap({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl h-[60vh] sm:h-[80vh] max-h-[80vh] sm:max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
+      <DialogContent className="max-w-4xl h-[85vh] sm:h-[80vh] max-h-[85vh] sm:max-h-[90vh] flex flex-col p-0 gap-0 overflow-hidden">
         <DialogHeader className="p-4 pb-2 border-b">
           <DialogTitle className="flex items-center gap-2">
             <MapPin className="h-5 w-5 text-red-600" />
@@ -232,7 +232,7 @@ export function StructureSelectionMap({
         </DialogHeader>
 
         {/* Map Container */}
-        <div className="flex-1 relative min-h-[400px]">
+        <div className="flex-1 relative min-h-[200px] sm:min-h-[400px]">
           {loading && !hasInvalidCoords && (
             <div className="absolute inset-0 flex items-center justify-center bg-muted/50 z-10">
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
