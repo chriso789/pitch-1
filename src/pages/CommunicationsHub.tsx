@@ -18,6 +18,7 @@ import { RecordingLibrary } from '@/components/communications/RecordingLibrary';
 import { GlobalSoftphone } from '@/components/communications/GlobalSoftphone';
 import { SoftphonePanel } from '@/components/telephony/SoftphonePanel';
 import { useCommunications, SMSThread, UnifiedInboxItem } from '@/hooks/useCommunications';
+import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 
 const CommunicationsHub = () => {
   const [activeTab, setActiveTab] = useState('inbox');
@@ -60,7 +61,8 @@ const CommunicationsHub = () => {
   };
 
   return (
-    <div className="h-[calc(100vh-4rem)] flex flex-col">
+    <GlobalLayout>
+    <div className="h-[calc(100vh-8rem)] flex flex-col">
       {/* Header */}
       <div className="border-b px-4 py-3 shrink-0">
         <div className="flex items-center justify-between">
@@ -216,6 +218,7 @@ const CommunicationsHub = () => {
         contactName={callContactName}
       />
     </div>
+    </GlobalLayout>
   );
 };
 
