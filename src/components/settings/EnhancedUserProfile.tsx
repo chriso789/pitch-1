@@ -29,8 +29,10 @@ import {
   Key,
   Upload,
   Shield,
-  FileImage
+  FileImage,
+  Calendar
 } from "lucide-react";
+import { format } from "date-fns";
 
 interface EnhancedUserProfileProps {
   userId: string;
@@ -163,6 +165,24 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
     }
   };
 
+  // Format tenure display from created_at date
+  const formatTenure = (createdAt: string) => {
+    if (!createdAt) return 'Unknown';
+    
+    const startDate = new Date(createdAt);
+    const now = new Date();
+    const diffMs = now.getTime() - startDate.getTime();
+    const years = Math.floor(diffMs / (365.25 * 24 * 60 * 60 * 1000));
+    const months = Math.floor((diffMs % (365.25 * 24 * 60 * 60 * 1000)) / (30.44 * 24 * 60 * 60 * 1000));
+    
+    if (years > 0) {
+      return `${format(startDate, 'MMM yyyy')} (${years}y ${months}mo)`;
+    } else if (months > 0) {
+      return `${format(startDate, 'MMM yyyy')} (${months} months)`;
+    }
+    return format(startDate, 'MMM d, yyyy') + ' (New)';
+  };
+
   const updateUser = async () => {
     if (!user) return;
     try {
@@ -173,7 +193,8 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
           last_name: user.last_name,
           personal_overhead_rate: user.personal_overhead_rate,
           phone: user.phone,
-          title: user.title
+          email: user.email,
+          company_name: user.company_name
         })
         .eq('id', userId);
 
@@ -466,11 +487,18 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
                   <h2 className="text-2xl font-bold">
                     {user.first_name} {user.last_name}
                   </h2>
-                  <div className="flex items-center gap-2 mt-1">
+                  <div className="flex items-center gap-3 mt-2">
+                    <span className="text-base font-medium text-muted-foreground capitalize">
+                      {user.role?.replace(/_/g, ' ')}
+                    </span>
+                    <span className="text-muted-foreground">•</span>
                     <Badge variant={user.is_active ? "default" : "secondary"}>
                       {user.is_active ? "Active" : "Inactive"}
                     </Badge>
-                    <Badge variant="outline">{user.role}</Badge>
+                  </div>
+                  <div className="flex items-center gap-2 mt-1.5 text-sm text-muted-foreground">
+                    <Calendar className="h-3.5 w-3.5" />
+                    <span>Member since {formatTenure(user.created_at)}</span>
                   </div>
                 </div>
               </CardTitle>
@@ -502,18 +530,8 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
                     <Label htmlFor="email">Email</Label>
                     <Input
                       id="email"
-                      value={user.email}
-                      disabled
-                      className="bg-muted"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <Label htmlFor="title">Title</Label>
-                    <Input
-                      id="title"
-                      value={user.title || ""}
-                      onChange={(e) => setUser({ ...user, title: e.target.value })}
+                      value={user.email || ""}
+                      onChange={(e) => setUser({ ...user, email: e.target.value })}
                       disabled={!editing}
                     />
                   </div>
@@ -535,11 +553,10 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
                     <Input
                       id="company"
                       value={user.company_name || ""}
-                      disabled
-                      className="bg-muted"
+                      onChange={(e) => setUser({ ...user, company_name: e.target.value })}
+                      disabled={!editing}
                     />
                   </div>
-
                 </div>
               </div>
 
