@@ -3,9 +3,8 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import NearbyPropertiesLayer from './NearbyPropertiesLayer';
 import RouteVisualization from './RouteVisualization';
-
-// Hardcoded token for instant initialization (same pattern as TerritoryMapPage)
-const MAPBOX_TOKEN = 'pk.eyJ1IjoibG92YWJsZS1kZW1vIiwiYSI6ImNtMXoxZHdwejBhMnAyanM0dzA3ZW1yMG4ifQ.7tYMl9RfRHOaC4K5eKrXRQ';
+import { useMapboxToken } from '@/hooks/useMapboxToken';
+import { Loader2 } from 'lucide-react';
 
 interface Contact {
   id: string;
@@ -47,13 +46,14 @@ export default function LiveLocationMap({
   const userMarker = useRef<mapboxgl.Marker | null>(null);
   const mapInitialized = useRef(false);
   const [mapReady, setMapReady] = useState(false);
+  const { token, loading: tokenLoading } = useMapboxToken();
 
-  // Initialize map immediately with hardcoded token
+  // Initialize map once token is available
   useEffect(() => {
-    if (!mapContainer.current) return;
+    if (!mapContainer.current || !token) return;
     if (mapInitialized.current) return; // Only initialize once
 
-    mapboxgl.accessToken = MAPBOX_TOKEN;
+    mapboxgl.accessToken = token;
     mapInitialized.current = true;
 
     map.current = new mapboxgl.Map({
@@ -103,7 +103,7 @@ export default function LiveLocationMap({
     return () => {
       map.current?.remove();
     };
-  }, []);
+  }, [token]);
 
   // Update user location marker position
   useEffect(() => {
@@ -123,6 +123,14 @@ export default function LiveLocationMap({
       );
     }
   }, [userLocation, currentAddress, mapReady]);
+
+  if (tokenLoading) {
+    return (
+      <div className="absolute inset-0 flex items-center justify-center bg-background">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
 
   return (
     <>

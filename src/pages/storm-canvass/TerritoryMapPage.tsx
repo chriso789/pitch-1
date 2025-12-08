@@ -8,8 +8,7 @@ import { useStormCanvass, ActivityFilters, CanvassActivity } from '@/hooks/useSt
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2 } from 'lucide-react';
-
-mapboxgl.accessToken = 'pk.eyJ1IjoibG92YWJsZS1kZW1vIiwiYSI6ImNtMXoxZHdwejBhMnAyanM0dzA3ZW1yMG4ifQ.7tYMl9RfRHOaC4K5eKrXRQ';
+import { useMapboxToken } from '@/hooks/useMapboxToken';
 
 const TerritoryMapPage = () => {
   const mapContainer = useRef<HTMLDivElement>(null);
@@ -25,6 +24,7 @@ const TerritoryMapPage = () => {
   
   const { getActivities, getDispositions } = useStormCanvass();
   const { toast } = useToast();
+  const { token: mapboxToken, loading: tokenLoading } = useMapboxToken();
 
   // Fetch initial data
   useEffect(() => {
@@ -66,9 +66,11 @@ const TerritoryMapPage = () => {
     fetchInitialData();
   }, []);
 
-  // Initialize map
+  // Initialize map once token is available
   useEffect(() => {
-    if (!mapContainer.current || map.current) return;
+    if (!mapContainer.current || map.current || !mapboxToken) return;
+
+    mapboxgl.accessToken = mapboxToken;
 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
@@ -84,7 +86,7 @@ const TerritoryMapPage = () => {
       markers.current.forEach((marker) => marker.remove());
       map.current?.remove();
     };
-  }, []);
+  }, [mapboxToken]);
 
   // Update markers when activities change
   useEffect(() => {
@@ -175,7 +177,7 @@ const TerritoryMapPage = () => {
   return (
     <GlobalLayout>
       <div className="relative h-[calc(100vh-4rem)]">
-        {loading && (
+        {(loading || tokenLoading) && (
           <div className="absolute inset-0 z-50 flex items-center justify-center bg-background/80">
             <Loader2 className="h-8 w-8 animate-spin text-primary" />
           </div>
