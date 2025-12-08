@@ -32,21 +32,21 @@ export const useCompanySwitcher = () => {
       const companies = (tenantsResult.data as AccessibleCompany[]) || [];
       const user = userResult.data?.user;
       
-      // Get active tenant from companies list (primary one)
+      // Get active tenant from profile
       let activeTenantId: string | null = null;
       
       if (user) {
-        const activeCompany = companies.find((c) => c.is_primary);
-        activeTenantId = activeCompany?.tenant_id || null;
+        // Get from profile's tenant_id (primary source)
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('tenant_id')
+          .eq('id', user.id)
+          .single();
+        activeTenantId = profile?.tenant_id || null;
         
-        // If no primary found, try to get from profile
-        if (!activeTenantId) {
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('tenant_id')
-            .eq('id', user.id)
-            .single();
-          activeTenantId = profile?.tenant_id || null;
+        // If no tenant_id in profile and companies available, use first one
+        if (!activeTenantId && companies.length > 0) {
+          activeTenantId = companies[0]?.tenant_id || null;
         }
       }
       
