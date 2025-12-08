@@ -384,12 +384,28 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     });
     
     // Get linear features from comprehensive_measurements or tags
-    const linearFeatures = measurements.linear_features || [];
-    const ridgeFt = linearFeatures.filter((f: any) => f.type === 'ridge').reduce((sum: number, f: any) => sum + (f.length_ft || 0), 0) || measurementData?.tags?.['lf.ridge'] || 0;
-    const hipFt = linearFeatures.filter((f: any) => f.type === 'hip').reduce((sum: number, f: any) => sum + (f.length_ft || 0), 0) || measurementData?.tags?.['lf.hip'] || 0;
-    const valleyFt = linearFeatures.filter((f: any) => f.type === 'valley').reduce((sum: number, f: any) => sum + (f.length_ft || 0), 0) || measurementData?.tags?.['lf.valley'] || 0;
-    const eaveFt = linearFeatures.filter((f: any) => f.type === 'eave').reduce((sum: number, f: any) => sum + (f.length_ft || 0), 0) || measurementData?.tags?.['lf.eave'] || 0;
-    const rakeFt = linearFeatures.filter((f: any) => f.type === 'rake').reduce((sum: number, f: any) => sum + (f.length_ft || 0), 0) || measurementData?.tags?.['lf.rake'] || 0;
+    // Handle both object format { ridge: 40, hip: 40 } and array format [{ type: 'ridge', length_ft: 40 }]
+    const linearFeatures = measurements.linear_features || {};
+    
+    const getLinearFt = (type: string): number => {
+      // Check if it's an array format
+      if (Array.isArray(linearFeatures)) {
+        return linearFeatures
+          .filter((f: any) => f.type === type)
+          .reduce((sum: number, f: any) => sum + (f.length_ft || 0), 0);
+      }
+      // Object format - direct property access
+      if (typeof linearFeatures === 'object' && linearFeatures !== null) {
+        return linearFeatures[type] || 0;
+      }
+      return 0;
+    };
+    
+    const ridgeFt = getLinearFt('ridge') || measurementData?.tags?.['lf.ridge'] || 0;
+    const hipFt = getLinearFt('hip') || measurementData?.tags?.['lf.hip'] || 0;
+    const valleyFt = getLinearFt('valley') || measurementData?.tags?.['lf.valley'] || 0;
+    const eaveFt = getLinearFt('eave') || measurementData?.tags?.['lf.eave'] || 0;
+    const rakeFt = getLinearFt('rake') || measurementData?.tags?.['lf.rake'] || 0;
     const perimeterFt = measurements.adjustedPerimeter || measurements.summary?.perimeter || (eaveFt + rakeFt) || 0;
     
     console.log('📏 Linear features:', {
