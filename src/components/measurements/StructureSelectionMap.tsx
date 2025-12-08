@@ -48,6 +48,20 @@ export function StructureSelectionMap({
     }
   }, [initialLat, initialLng]);
 
+  // Recenter map AND marker when coordinates change AFTER map is already initialized
+  useEffect(() => {
+    if (map.current && marker.current && isValidCoordinate(initialLat, initialLng)) {
+      console.log('📍 Recentering map to updated coordinates:', { initialLat, initialLng });
+      marker.current.setLngLat([initialLng, initialLat]);
+      map.current.flyTo({ 
+        center: [initialLng, initialLat], 
+        zoom: 19,
+        duration: 1000 
+      });
+      setDistanceMoved(0);
+    }
+  }, [initialLat, initialLng]);
+
   // Calculate distance between two points in meters
   const calculateDistance = useCallback((lat1: number, lng1: number, lat2: number, lng2: number) => {
     const R = 6371e3; // Earth radius in meters
