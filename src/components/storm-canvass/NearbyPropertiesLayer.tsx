@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import mapboxgl from 'mapbox-gl';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/contexts/AuthContext';
@@ -27,10 +27,10 @@ interface Contact {
 
 export default function NearbyPropertiesLayer({ map, userLocation, onContactSelect }: NearbyPropertiesLayerProps) {
   const { user } = useAuth();
-  const [markers, setMarkers] = useState<mapboxgl.Marker[]>([]);
+  const markersRef = useRef<mapboxgl.Marker[]>([]);
 
   useEffect(() => {
-    if (!user) return;
+    if (!map || !user) return;
 
     const fetchNearbyContacts = async () => {
       // Get user's active tenant
@@ -57,7 +57,8 @@ export default function NearbyPropertiesLayer({ map, userLocation, onContactSele
       }
 
       // Clear existing markers
-      markers.forEach((marker) => marker.remove());
+      markersRef.current.forEach((marker) => marker.remove());
+      markersRef.current = [];
 
       // Filter contacts within 1 mile radius (approximately 1609 meters)
       const radiusMiles = 1;
@@ -72,7 +73,7 @@ export default function NearbyPropertiesLayer({ map, userLocation, onContactSele
       });
 
       // Create new markers
-      const newMarkers = nearbyContacts.map((contact) => {
+      nearbyContacts.forEach((contact) => {
         const disposition = contact.qualification_status || contact.metadata?.qualification_status || 'not_contacted';
         
         // Color-code by disposition
@@ -122,22 +123,30 @@ export default function NearbyPropertiesLayer({ map, userLocation, onContactSele
           )
           .addTo(map);
 
-        return marker;
+        markersRef.current.push(marker);
       });
-
-      setMarkers(newMarkers);
     };
 
-    fetchNearbyContacts();
+    // Wait for map style to load before adding markers
+    if (map.isStyleLoaded()) {
+      fetchNearbyContacts();
+    } else {
+      map.once('load', fetchNearbyContacts);
+    }
 
     // Refresh every 30 seconds
-    const interval = setInterval(fetchNearbyContacts, 30000);
+    const interval = setInterval(() => {
+      if (map.isStyleLoaded()) {
+        fetchNearbyContacts();
+      }
+    }, 30000);
 
     return () => {
       clearInterval(interval);
-      markers.forEach((marker) => marker.remove());
+      markersRef.current.forEach((marker) => marker.remove());
+      markersRef.current = [];
     };
-  }, [map, userLocation, user]);
+  }, [map, userLocation, user, onContactSelect]);
 
   return null;
 }

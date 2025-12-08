@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import NearbyPropertiesLayer from './NearbyPropertiesLayer';
@@ -46,6 +46,7 @@ export default function LiveLocationMap({
   const map = useRef<mapboxgl.Map | null>(null);
   const userMarker = useRef<mapboxgl.Marker | null>(null);
   const mapInitialized = useRef(false);
+  const [mapReady, setMapReady] = useState(false);
 
   // Initialize map immediately with hardcoded token
   useEffect(() => {
@@ -74,25 +75,30 @@ export default function LiveLocationMap({
     // Add scale control
     map.current.addControl(new mapboxgl.ScaleControl(), 'bottom-right');
 
-    // Create user location marker (pulsing blue dot)
-    const el = document.createElement('div');
-    el.className = 'user-location-marker';
-    el.style.width = '24px';
-    el.style.height = '24px';
-    el.style.borderRadius = '50%';
-    el.style.backgroundColor = '#3b82f6';
-    el.style.border = '3px solid white';
-    el.style.boxShadow = '0 0 0 4px rgba(59, 130, 246, 0.3)';
-    el.style.animation = 'pulse 2s infinite';
+    // Wait for map to fully load before setting ready state
+    map.current.on('load', () => {
+      setMapReady(true);
+      
+      // Create user location marker (pulsing blue dot)
+      const el = document.createElement('div');
+      el.className = 'user-location-marker';
+      el.style.width = '24px';
+      el.style.height = '24px';
+      el.style.borderRadius = '50%';
+      el.style.backgroundColor = '#3b82f6';
+      el.style.border = '3px solid white';
+      el.style.boxShadow = '0 0 0 4px rgba(59, 130, 246, 0.3)';
+      el.style.animation = 'pulse 2s infinite';
 
-    userMarker.current = new mapboxgl.Marker(el)
-      .setLngLat([userLocation.lng, userLocation.lat])
-      .setPopup(
-        new mapboxgl.Popup({ offset: 25 }).setHTML(
-          `<div class="p-2"><strong>Your Location</strong><br/>${currentAddress}</div>`
+      userMarker.current = new mapboxgl.Marker(el)
+        .setLngLat([userLocation.lng, userLocation.lat])
+        .setPopup(
+          new mapboxgl.Popup({ offset: 25 }).setHTML(
+            `<div class="p-2"><strong>Your Location</strong><br/>${currentAddress}</div>`
+          )
         )
-      )
-      .addTo(map.current);
+        .addTo(map.current!);
+    });
 
     return () => {
       map.current?.remove();
@@ -101,7 +107,7 @@ export default function LiveLocationMap({
 
   // Update user location marker position
   useEffect(() => {
-    if (userMarker.current && map.current) {
+    if (userMarker.current && map.current && mapReady) {
       userMarker.current.setLngLat([userLocation.lng, userLocation.lat]);
       
       // Animate map to new location (smooth follow)
@@ -116,12 +122,12 @@ export default function LiveLocationMap({
         `<div class="p-2"><strong>Your Location</strong><br/>${currentAddress}</div>`
       );
     }
-  }, [userLocation, currentAddress]);
+  }, [userLocation, currentAddress, mapReady]);
 
   return (
     <>
       <div ref={mapContainer} className="absolute inset-0" />
-      {map.current && (
+      {mapReady && map.current && (
         <>
           <NearbyPropertiesLayer
             map={map.current}
