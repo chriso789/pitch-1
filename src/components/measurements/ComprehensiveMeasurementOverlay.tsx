@@ -956,6 +956,177 @@ export function ComprehensiveMeasurementOverlay({
     };
   }, [fabricCanvas, editMode, drawPoints, recenterMode, onRecenterClick, canvasWidth, canvasHeight, selectedFacets, measurement]);
 
+  // ============= Estimate Linear Feature Positions from Numeric Totals =============
+  /**
+   * When linear_features is an object of totals (e.g., {ridge: 100, hip: 40})
+   * instead of an array of features with WKT geometry, generate estimated
+   * line positions for visualization based on typical roof patterns
+   */
+  const estimateLinearFeaturesFromTotals = (
+    linearTotals: Record<string, number>,
+    cWidth: number,
+    cHeight: number
+  ): any[] => {
+    const features: any[] = [];
+    const cx = cWidth / 2;
+    const cy = cHeight / 2;
+    const margin = cWidth * 0.15; // 15% margin from edges
+    const roofWidth = cWidth - (margin * 2);
+    const roofHeight = cHeight - (margin * 2);
+    
+    console.log('📐 Estimating linear feature positions from totals:', linearTotals);
+    
+    // Ridge line - horizontal through center (roof peak)
+    const ridgeTotal = linearTotals['ridge'] || linearTotals['lf.ridge'] || 0;
+    if (ridgeTotal > 0) {
+      features.push({
+        type: 'ridge',
+        start: [margin + roofWidth * 0.1, cy],
+        end: [margin + roofWidth * 0.9, cy],
+        length_ft: ridgeTotal,
+        source: 'estimated'
+      });
+    }
+    
+    // Hip lines - diagonal from ridge ends to corners (typical hip roof)
+    const hipTotal = linearTotals['hip'] || linearTotals['lf.hip'] || 0;
+    if (hipTotal > 0) {
+      const hipLength = hipTotal / 4; // Divide among 4 hips
+      // Top-left hip
+      features.push({
+        type: 'hip',
+        start: [margin + roofWidth * 0.1, cy],
+        end: [margin, margin],
+        length_ft: hipLength,
+        source: 'estimated'
+      });
+      // Bottom-left hip
+      features.push({
+        type: 'hip',
+        start: [margin + roofWidth * 0.1, cy],
+        end: [margin, cHeight - margin],
+        length_ft: hipLength,
+        source: 'estimated'
+      });
+      // Top-right hip
+      features.push({
+        type: 'hip',
+        start: [margin + roofWidth * 0.9, cy],
+        end: [cWidth - margin, margin],
+        length_ft: hipLength,
+        source: 'estimated'
+      });
+      // Bottom-right hip
+      features.push({
+        type: 'hip',
+        start: [margin + roofWidth * 0.9, cy],
+        end: [cWidth - margin, cHeight - margin],
+        length_ft: hipLength,
+        source: 'estimated'
+      });
+    }
+    
+    // Eave lines - bottom horizontal edges
+    const eaveTotal = linearTotals['eave'] || linearTotals['lf.eave'] || 0;
+    if (eaveTotal > 0) {
+      const eaveLength = eaveTotal / 4; // Divide among 4 sides
+      // Top eave
+      features.push({
+        type: 'eave',
+        start: [margin, margin],
+        end: [cWidth - margin, margin],
+        length_ft: eaveLength,
+        source: 'estimated'
+      });
+      // Bottom eave
+      features.push({
+        type: 'eave',
+        start: [margin, cHeight - margin],
+        end: [cWidth - margin, cHeight - margin],
+        length_ft: eaveLength,
+        source: 'estimated'
+      });
+      // Left eave
+      features.push({
+        type: 'eave',
+        start: [margin, margin],
+        end: [margin, cHeight - margin],
+        length_ft: eaveLength,
+        source: 'estimated'
+      });
+      // Right eave
+      features.push({
+        type: 'eave',
+        start: [cWidth - margin, margin],
+        end: [cWidth - margin, cHeight - margin],
+        length_ft: eaveLength,
+        source: 'estimated'
+      });
+    }
+    
+    // Valley lines - internal V-shaped angles (if present)
+    const valleyTotal = linearTotals['valley'] || linearTotals['lf.valley'] || 0;
+    if (valleyTotal > 0) {
+      const valleyLength = valleyTotal / 2;
+      features.push({
+        type: 'valley',
+        start: [cx, cy - roofHeight * 0.1],
+        end: [cx - roofWidth * 0.2, margin],
+        length_ft: valleyLength,
+        source: 'estimated'
+      });
+      features.push({
+        type: 'valley',
+        start: [cx, cy - roofHeight * 0.1],
+        end: [cx + roofWidth * 0.2, margin],
+        length_ft: valleyLength,
+        source: 'estimated'
+      });
+    }
+    
+    // Rake lines - sloped gable edges
+    const rakeTotal = linearTotals['rake'] || linearTotals['lf.rake'] || 0;
+    if (rakeTotal > 0) {
+      const rakeLength = rakeTotal / 4;
+      // If hip roof (hip > 0), rakes are shorter; if gable (hip = 0), rakes are prominent
+      const hasHips = hipTotal > 0;
+      if (!hasHips) {
+        // Gable roof - rakes on left/right gable ends
+        features.push({
+          type: 'rake',
+          start: [margin, margin],
+          end: [margin, cy],
+          length_ft: rakeLength,
+          source: 'estimated'
+        });
+        features.push({
+          type: 'rake',
+          start: [margin, cHeight - margin],
+          end: [margin, cy],
+          length_ft: rakeLength,
+          source: 'estimated'
+        });
+        features.push({
+          type: 'rake',
+          start: [cWidth - margin, margin],
+          end: [cWidth - margin, cy],
+          length_ft: rakeLength,
+          source: 'estimated'
+        });
+        features.push({
+          type: 'rake',
+          start: [cWidth - margin, cHeight - margin],
+          end: [cWidth - margin, cy],
+          length_ft: rakeLength,
+          source: 'estimated'
+        });
+      }
+    }
+    
+    console.log(`📐 Generated ${features.length} estimated features from totals`);
+    return features;
+  };
+
   const drawAllMeasurements = () => {
     if (!fabricCanvas) return;
 
@@ -972,56 +1143,79 @@ export function ComprehensiveMeasurementOverlay({
     // PHASE 3: Enhanced linear feature rendering
     // First try linear_features array with WKT (preferred - accurate geo positions)
     // Then fall back to tags (legacy support)
-    // Ensure linearFeatures is always an array to prevent .filter errors
+    // Handle case where linear_features is an object of totals (e.g., {ridge: 100})
     const rawLinearFeatures = measurement?.linear_features || tags?.linear_features;
-    const linearFeatures = Array.isArray(rawLinearFeatures) ? rawLinearFeatures : [];
+    
+    let linearFeatures: any[] = [];
+    
+    if (Array.isArray(rawLinearFeatures)) {
+      linearFeatures = rawLinearFeatures;
+    } else if (typeof rawLinearFeatures === 'object' && rawLinearFeatures !== null) {
+      // NEW: Convert object totals to estimated line positions for visualization
+      console.log('📐 Converting linear feature totals to estimated positions:', rawLinearFeatures);
+      linearFeatures = estimateLinearFeaturesFromTotals(rawLinearFeatures, canvasWidth, canvasHeight);
+    }
+    
+    // Also check tags for numeric totals (lf.ridge, lf.hip, etc.)
+    if (linearFeatures.length === 0) {
+      const tagsTotals: Record<string, number> = {};
+      if (tags['lf.ridge']) tagsTotals['ridge'] = tags['lf.ridge'];
+      if (tags['lf.hip']) tagsTotals['hip'] = tags['lf.hip'];
+      if (tags['lf.valley']) tagsTotals['valley'] = tags['lf.valley'];
+      if (tags['lf.eave']) tagsTotals['eave'] = tags['lf.eave'];
+      if (tags['lf.rake']) tagsTotals['rake'] = tags['lf.rake'];
+      
+      if (Object.keys(tagsTotals).length > 0) {
+        linearFeatures = estimateLinearFeaturesFromTotals(tagsTotals, canvasWidth, canvasHeight);
+      }
+    }
     
     // Draw ridge lines
     if (layers.ridges) {
-      const ridgeLines = linearFeatures.filter((f: any) => f.type === 'ridge' && f.wkt) || [];
+      const ridgeLines = linearFeatures.filter((f: any) => f.type === 'ridge') || [];
       const fallbackRidges = tags['ridge_lines'] || [];
       const allRidges = ridgeLines.length > 0 ? ridgeLines : fallbackRidges;
-      if (allRidges.length > 0 || tags['lf.ridge'] > 0) {
+      if (allRidges.length > 0) {
         drawFeatureLines('ridge', allRidges, '#22c55e'); // green-500
       }
     }
 
     // Draw hip lines
     if (layers.hips) {
-      const hipLines = linearFeatures.filter((f: any) => f.type === 'hip' && f.wkt) || [];
+      const hipLines = linearFeatures.filter((f: any) => f.type === 'hip') || [];
       const fallbackHips = tags['hip_lines'] || [];
       const allHips = hipLines.length > 0 ? hipLines : fallbackHips;
-      if (allHips.length > 0 || tags['lf.hip'] > 0) {
+      if (allHips.length > 0) {
         drawFeatureLines('hip', allHips, '#3b82f6'); // blue-500
       }
     }
 
     // Draw valley lines
     if (layers.valleys) {
-      const valleyLines = linearFeatures.filter((f: any) => f.type === 'valley' && f.wkt) || [];
+      const valleyLines = linearFeatures.filter((f: any) => f.type === 'valley') || [];
       const fallbackValleys = tags['valley_lines'] || [];
       const allValleys = valleyLines.length > 0 ? valleyLines : fallbackValleys;
-      if (allValleys.length > 0 || tags['lf.valley'] > 0) {
+      if (allValleys.length > 0) {
         drawFeatureLines('valley', allValleys, '#ef4444'); // red-500
       }
     }
 
     // Draw eave lines (cyan)
     if (layers.eaves) {
-      const eaveLines = linearFeatures.filter((f: any) => f.type === 'eave' && f.wkt) || [];
+      const eaveLines = linearFeatures.filter((f: any) => f.type === 'eave') || [];
       const fallbackEaves = tags['eave_lines'] || [];
       const allEaves = eaveLines.length > 0 ? eaveLines : fallbackEaves;
-      if (allEaves.length > 0 || tags['lf.eave'] > 0) {
+      if (allEaves.length > 0) {
         drawFeatureLines('eave', allEaves, '#06b6d4'); // cyan-500
       }
     }
 
     // Draw rake lines (magenta)
     if (layers.rakes) {
-      const rakeLines = linearFeatures.filter((f: any) => f.type === 'rake' && f.wkt) || [];
+      const rakeLines = linearFeatures.filter((f: any) => f.type === 'rake') || [];
       const fallbackRakes = tags['rake_lines'] || [];
       const allRakes = rakeLines.length > 0 ? rakeLines : fallbackRakes;
-      if (allRakes.length > 0 || tags['lf.rake'] > 0) {
+      if (allRakes.length > 0) {
         drawFeatureLines('rake', allRakes, '#d946ef'); // fuchsia-500
       }
     }
@@ -1695,8 +1889,17 @@ export function ComprehensiveMeasurementOverlay({
       let endPoint: Point;
       let length = lineData.length_ft || lineData.length || 0;
       
+      // Check if this is an estimated feature (canvas pixel coordinates)
+      if (lineData.source === 'estimated' && lineData.start && lineData.end) {
+        // Estimated features use direct canvas pixel coordinates
+        const start = lineData.start;
+        const end = lineData.end;
+        startPoint = { x: start[0], y: start[1] };
+        endPoint = { x: end[0], y: end[1] };
+        console.log(`${type} line ${index} (estimated): canvas (${startPoint.x.toFixed(1)}, ${startPoint.y.toFixed(1)}) → (${endPoint.x.toFixed(1)}, ${endPoint.y.toFixed(1)})`);
+      }
       // Check if line has WKT format (preferred - actual geo coordinates)
-      if (lineData.wkt) {
+      else if (lineData.wkt) {
         const coords = parseWKTLineString(lineData.wkt);
         if (coords.length < 2) {
           console.warn(`Invalid WKT for ${type} line ${index}:`, lineData.wkt);
@@ -1723,9 +1926,16 @@ export function ComprehensiveMeasurementOverlay({
           startPoint = geoToCanvas(start.lat, start.lng);
           endPoint = geoToCanvas(end.lat, end.lng);
         } else {
-          // Normalized coordinates [0-1, 0-1] (legacy format)
-          startPoint = { x: start[0] * canvasWidth, y: start[1] * canvasHeight };
-          endPoint = { x: end[0] * canvasWidth, y: end[1] * canvasHeight };
+          // Normalized coordinates [0-1, 0-1] (legacy format) OR canvas pixels (>1)
+          if (start[0] > 1 || start[1] > 1) {
+            // Canvas pixel coordinates (estimated features)
+            startPoint = { x: start[0], y: start[1] };
+            endPoint = { x: end[0], y: end[1] };
+          } else {
+            // Normalized coordinates
+            startPoint = { x: start[0] * canvasWidth, y: start[1] * canvasHeight };
+            endPoint = { x: end[0] * canvasWidth, y: end[1] * canvasHeight };
+          }
         }
       } else if (Array.isArray(lineData) && lineData.length >= 2) {
         // Array format [[x1, y1], [x2, y2]]
