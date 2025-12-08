@@ -10,8 +10,10 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useAvailableCompanies } from "@/hooks/useAvailableCompanies";
 import { UserCommissionSettings } from "./UserCommissionSettings";
 import { 
   User, 
@@ -53,8 +55,10 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
   const [updatingPassword, setUpdatingPassword] = useState(false);
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [checkingPermissions, setCheckingPermissions] = useState(true);
+  const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { companies } = useAvailableCompanies();
 
   useEffect(() => {
     loadUserProfile();
@@ -194,7 +198,8 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
           personal_overhead_rate: user.personal_overhead_rate,
           phone: user.phone,
           email: user.email,
-          company_name: user.company_name
+          company_name: user.company_name,
+          tenant_id: selectedTenantId || user.tenant_id
         })
         .eq('id', userId);
 
@@ -550,12 +555,36 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
 
                   <div className="space-y-2">
                     <Label htmlFor="company">Company</Label>
-                    <Input
-                      id="company"
-                      value={user.company_name || ""}
-                      onChange={(e) => setUser({ ...user, company_name: e.target.value })}
+                    <Select
+                      value={selectedTenantId || user.tenant_id || ""}
+                      onValueChange={(value) => {
+                        setSelectedTenantId(value);
+                        const company = companies.find(c => c.id === value);
+                        if (company) {
+                          setUser({ ...user, company_name: company.name, tenant_id: value });
+                        }
+                      }}
                       disabled={!editing}
-                    />
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Select company..." />
+                      </SelectTrigger>
+                      <SelectContent className="bg-popover z-50">
+                        {companies.map((company) => (
+                          <SelectItem key={company.id} value={company.id}>
+                            <div className="flex items-center gap-2">
+                              <Building className="h-4 w-4 text-muted-foreground" />
+                              <div className="flex flex-col">
+                                <span className="font-medium">{company.name}</span>
+                                {company.phone && (
+                                  <span className="text-xs text-muted-foreground">{company.phone}</span>
+                                )}
+                              </div>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                   </div>
                 </div>
               </div>
