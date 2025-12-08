@@ -345,3 +345,6 @@ verify_jwt = true
 
 [functions.sms-send-reply]
 verify_jwt = true
+
+[functions.generate-roofr-style-report]
+verify_jwt = true
