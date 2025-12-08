@@ -190,6 +190,19 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
   const updateUser = async () => {
     if (!user) return;
     try {
+      const newTenantId = selectedTenantId || user.tenant_id;
+      const oldTenantId = user.tenant_id;
+      
+      // Get company name for the new tenant
+      let companyName = user.company_name;
+      if (selectedTenantId && companies.length > 0) {
+        const selectedCompany = companies.find(c => c.id === selectedTenantId);
+        if (selectedCompany) {
+          companyName = selectedCompany.name;
+        }
+      }
+      
+      // Update profiles table
       const { error } = await supabase
         .from('profiles')
         .update({
@@ -198,18 +211,40 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
           personal_overhead_rate: user.personal_overhead_rate,
           phone: user.phone,
           email: user.email,
-          company_name: user.company_name,
-          tenant_id: selectedTenantId || user.tenant_id
+          company_name: companyName,
+          tenant_id: newTenantId
         })
         .eq('id', userId);
 
       if (error) throw error;
+
+      // If company changed, update user_company_access
+      if (selectedTenantId && selectedTenantId !== oldTenantId) {
+        // Upsert new company access
+        const { error: accessError } = await supabase
+          .from('user_company_access')
+          .upsert({
+            user_id: userId,
+            tenant_id: selectedTenantId,
+            is_active: true,
+            access_level: 'full'
+          }, { 
+            onConflict: 'user_id,tenant_id'
+          });
+        
+        if (accessError) {
+          console.error('Error updating company access:', accessError);
+        }
+      }
 
       toast({
         title: "Profile Updated",
         description: "User profile has been updated successfully.",
       });
       setEditing(false);
+      
+      // Reload to reflect changes
+      loadUserProfile();
     } catch (error) {
       console.error('Error updating user:', error);
       toast({
