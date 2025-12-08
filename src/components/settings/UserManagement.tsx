@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Plus, Edit2, Trash2, Shield, Settings, Eye, MapPin, EyeOff, Ban, CheckCircle } from "lucide-react";
+import { Users, Plus, Edit2, Trash2, Shield, Settings, Eye, MapPin, EyeOff, Ban, CheckCircle, Building2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -20,6 +20,7 @@ import { UserLocationAssignments } from './UserLocationAssignments';
 import { RepPayStructureConfig } from './RepPayStructureConfig';
 import { ActionsSelector } from "@/components/ui/actions-selector";
 import { auditService } from "@/services/auditService";
+import { useAvailableCompanies } from "@/hooks/useAvailableCompanies";
 
 interface User {
   id: string;
@@ -28,6 +29,8 @@ interface User {
   last_name: string;
   role: string;
   company_name: string;
+  resolved_company_name?: string;
+  tenant_id?: string;
   title: string;
   is_active: boolean;
   is_developer: boolean;
@@ -50,6 +53,7 @@ export const UserManagement = () => {
     last_name: "",
     role: "project_manager",
     company_name: "",
+    selected_tenant_id: "",
     title: "",
     is_developer: false,
     password: "",
@@ -63,16 +67,19 @@ export const UserManagement = () => {
   });
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { companies: availableCompanies, isLoading: companiesLoading } = useAvailableCompanies();
 
   // React Query for user management data with parallel calls
   const { data: userData, isLoading: loading } = useQuery({
     queryKey: ['user-management-data'],
     queryFn: async () => {
-      // Run all 3 calls in parallel
-      const [authResult, profilesResult, rolesResult] = await Promise.all([
+      // Run all queries in parallel
+      const [authResult, profilesResult, rolesResult, tenantsResult, accessResult] = await Promise.all([
         supabase.auth.getUser(),
         supabase.from('profiles').select('*').order('created_at', { ascending: false }),
-        supabase.from('user_roles').select('user_id, role').order('role', { ascending: true })
+        supabase.from('user_roles').select('user_id, role').order('role', { ascending: true }),
+        supabase.from('tenants').select('id, name'),
+        supabase.from('user_company_access').select('user_id, tenant_id, is_active')
       ]);
 
       if (profilesResult.error) throw profilesResult.error;
@@ -80,13 +87,17 @@ export const UserManagement = () => {
       const user = authResult.data?.user;
       let currentUserData = null;
 
+      // Create tenant name map
+      const tenantMap = new Map(tenantsResult.data?.map(t => [t.id, t.name]) || []);
+
       if (user) {
         // Find current user profile from already-fetched profiles
         const currentProfile = profilesResult.data?.find(p => p.id === user.id);
         const currentUserRole = rolesResult.data?.find(r => r.user_id === user.id);
         currentUserData = {
           ...currentProfile,
-          role: currentUserRole?.role || currentProfile?.role
+          role: currentUserRole?.role || currentProfile?.role,
+          resolved_company_name: currentProfile?.tenant_id ? tenantMap.get(currentProfile.tenant_id) : null
         };
       }
 
@@ -94,7 +105,8 @@ export const UserManagement = () => {
       const roleMap = new Map(rolesResult.data?.map(ur => [ur.user_id, ur.role]) || []);
       const usersWithRoles = profilesResult.data?.map(profile => ({
         ...profile,
-        role: roleMap.get(profile.id) || profile.role
+        role: roleMap.get(profile.id) || profile.role,
+        resolved_company_name: profile.tenant_id ? tenantMap.get(profile.tenant_id) : profile.company_name
       })) || [];
 
       return { users: usersWithRoles, currentUser: currentUserData };
@@ -174,6 +186,7 @@ export const UserManagement = () => {
           lastName: newUser.last_name,
           role: newUser.role,
           companyName: newUser.company_name,
+          assignedTenantId: newUser.selected_tenant_id || undefined,
           title: newUser.title,
           isDeveloper: newUser.is_developer,
           payStructure: ['sales_manager', 'regional_manager'].includes(newUser.role) ? payStructure : undefined
@@ -196,6 +209,7 @@ export const UserManagement = () => {
         last_name: "",
         role: "project_manager",
         company_name: "",
+        selected_tenant_id: "",
         title: "",
         is_developer: false,
         password: "",
@@ -590,14 +604,51 @@ export const UserManagement = () => {
                       </div>
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor="company_name">Company Name</Label>
-                      <Input
-                        id="company_name"
-                        value={newUser.company_name}
-                        onChange={(e) => setNewUser({ ...newUser, company_name: e.target.value })}
-                      />
-                    </div>
+                    {/* Company Assignment - Master users only */}
+                    {currentUser?.role === 'master' && (
+                      <div className="space-y-2">
+                        <Label htmlFor="company">Assign to Company</Label>
+                        <Select 
+                          value={newUser.selected_tenant_id} 
+                          onValueChange={(value) => {
+                            const company = availableCompanies.find(c => c.id === value);
+                            setNewUser({ 
+                              ...newUser, 
+                              selected_tenant_id: value,
+                              company_name: company?.name || ''
+                            });
+                          }}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Select a company..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {companiesLoading ? (
+                              <SelectItem value="loading" disabled>Loading companies...</SelectItem>
+                            ) : availableCompanies.length === 0 ? (
+                              <SelectItem value="none" disabled>No companies available</SelectItem>
+                            ) : (
+                              availableCompanies.map((company) => (
+                                <SelectItem key={company.id} value={company.id}>
+                                  <div className="flex items-center gap-2">
+                                    <Building2 className="h-4 w-4 text-muted-foreground" />
+                                    <span>{company.name}</span>
+                                    {company.subdomain && (
+                                      <span className="text-xs text-muted-foreground">
+                                        ({company.subdomain})
+                                      </span>
+                                    )}
+                                  </div>
+                                </SelectItem>
+                              ))
+                            )}
+                          </SelectContent>
+                        </Select>
+                        <p className="text-xs text-muted-foreground">
+                          User will only appear in this company's directory
+                        </p>
+                      </div>
+                    )}
 
                     {currentUser?.role === 'master' && (
                       <div className="flex items-center space-x-2">
@@ -660,7 +711,16 @@ export const UserManagement = () => {
                         {user.role}
                       </Badge>
                     </TableCell>
-                    <TableCell>{user.company_name}</TableCell>
+                    <TableCell>
+                      {user.resolved_company_name ? (
+                        <div className="flex items-center gap-1.5">
+                          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                          <span>{user.resolved_company_name}</span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground">—</span>
+                      )}
+                    </TableCell>
                     <TableCell>{user.title}</TableCell>
                     <TableCell>
                       <Badge variant={user.is_active ? "default" : "secondary"}>
