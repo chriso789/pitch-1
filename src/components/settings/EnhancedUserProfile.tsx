@@ -540,22 +540,6 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
                     />
                   </div>
 
-                  {user.role === 'sales_manager' && (
-                    <div className="space-y-2">
-                      <Label htmlFor="overhead_rate">Personal Overhead Rate (%)</Label>
-                      <Input
-                        id="overhead_rate"
-                        type="number"
-                        step="0.1"
-                        value={user.personal_overhead_rate || 0}
-                        onChange={(e) => setUser({ ...user, personal_overhead_rate: parseFloat(e.target.value) || 0 })}
-                        disabled={!editing}
-                      />
-                      <p className="text-xs text-muted-foreground">
-                        Applied to commission calculations
-                      </p>
-                    </div>
-                  )}
                 </div>
               </div>
 
@@ -568,7 +552,7 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
                       Commission Performance
                     </h3>
                     
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                       <Card>
                         <CardContent className="p-4">
                           <div className="flex items-center gap-2">
@@ -576,18 +560,6 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
                             <div>
                               <p className="text-sm text-muted-foreground">Total Commissions</p>
                               <p className="text-lg font-bold">${totalCommissions.toLocaleString()}</p>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                      
-                      <Card>
-                        <CardContent className="p-4">
-                          <div className="flex items-center gap-2">
-                            <TrendingUp className="h-4 w-4 text-success" />
-                            <div>
-                              <p className="text-sm text-muted-foreground">Overhead Rate</p>
-                              <p className="text-lg font-bold">{user.personal_overhead_rate || 0}%</p>
                             </div>
                           </div>
                         </CardContent>
