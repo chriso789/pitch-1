@@ -7,6 +7,7 @@ export interface AvailableCompany {
   name: string;
   subdomain: string;
   is_active: boolean;
+  phone: string | null;
 }
 
 /**
@@ -25,7 +26,7 @@ export const useAvailableCompanies = () => {
       if (profile.role === 'master') {
         const { data, error } = await supabase
           .from('tenants')
-          .select('id, name, subdomain, is_active')
+          .select('id, name, subdomain, is_active, phone')
           .order('name');
         
         if (error) throw error;
@@ -52,7 +53,7 @@ export const useAvailableCompanies = () => {
       
       const { data, error } = await supabase
         .from('tenants')
-        .select('id, name, subdomain, is_active')
+        .select('id, name, subdomain, is_active, phone')
         .in('id', tenantIds)
         .order('name');
       
