@@ -2268,6 +2268,87 @@ export type Database = {
           },
         ]
       }
+      commission_adjustments: {
+        Row: {
+          adjustment_type: string
+          amount: number
+          applies_to: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string
+          id: string
+          pipeline_entry_id: string | null
+          project_id: string | null
+          tenant_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          adjustment_type: string
+          amount: number
+          applies_to?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description: string
+          id?: string
+          pipeline_entry_id?: string | null
+          project_id?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          adjustment_type?: string
+          amount?: number
+          applies_to?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string
+          id?: string
+          pipeline_entry_id?: string | null
+          project_id?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commission_adjustments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_adjustments_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_adjustments_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_adjustments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_adjustments_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commission_calculations: {
         Row: {
           approved_at: string | null
@@ -2344,6 +2425,142 @@ export type Database = {
           {
             foreignKeyName: "commission_calculations_sales_rep_id_fkey"
             columns: ["sales_rep_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commission_earnings: {
+        Row: {
+          actual_labor_cost: number | null
+          actual_material_cost: number | null
+          approved_at: string | null
+          approved_by: string | null
+          closed_date: string | null
+          commission_amount: number
+          commission_rate: number
+          commission_type: string
+          contract_value: number
+          created_at: string | null
+          customer_name: string | null
+          estimate_id: string | null
+          gross_profit: number
+          id: string
+          job_address: string | null
+          job_number: string | null
+          net_profit: number
+          notes: string | null
+          paid_at: string | null
+          pipeline_entry_id: string | null
+          project_id: string | null
+          rep_overhead_amount: number | null
+          rep_overhead_rate: number | null
+          status: string | null
+          tenant_id: string
+          total_adjustments: number | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          actual_labor_cost?: number | null
+          actual_material_cost?: number | null
+          approved_at?: string | null
+          approved_by?: string | null
+          closed_date?: string | null
+          commission_amount: number
+          commission_rate: number
+          commission_type: string
+          contract_value: number
+          created_at?: string | null
+          customer_name?: string | null
+          estimate_id?: string | null
+          gross_profit: number
+          id?: string
+          job_address?: string | null
+          job_number?: string | null
+          net_profit: number
+          notes?: string | null
+          paid_at?: string | null
+          pipeline_entry_id?: string | null
+          project_id?: string | null
+          rep_overhead_amount?: number | null
+          rep_overhead_rate?: number | null
+          status?: string | null
+          tenant_id: string
+          total_adjustments?: number | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          actual_labor_cost?: number | null
+          actual_material_cost?: number | null
+          approved_at?: string | null
+          approved_by?: string | null
+          closed_date?: string | null
+          commission_amount?: number
+          commission_rate?: number
+          commission_type?: string
+          contract_value?: number
+          created_at?: string | null
+          customer_name?: string | null
+          estimate_id?: string | null
+          gross_profit?: number
+          id?: string
+          job_address?: string | null
+          job_number?: string | null
+          net_profit?: number
+          notes?: string | null
+          paid_at?: string | null
+          pipeline_entry_id?: string | null
+          project_id?: string | null
+          rep_overhead_amount?: number | null
+          rep_overhead_rate?: number | null
+          status?: string | null
+          tenant_id?: string
+          total_adjustments?: number | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commission_earnings_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_earnings_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "estimates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_earnings_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_earnings_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_earnings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_earnings_user_id_fkey"
+            columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
