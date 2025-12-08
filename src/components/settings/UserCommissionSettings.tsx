@@ -23,7 +23,7 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
   const [saving, setSaving] = useState(false);
   const [commissionType, setCommissionType] = useState<string>('percentage_selling_price');
   const [commissionRate, setCommissionRate] = useState<number>(10);
-  const [companyOverheadRate, setCompanyOverheadRate] = useState<number>(15);
+  const [repOverheadRate, setRepOverheadRate] = useState<number>(15);
   const [includeOverhead, setIncludeOverhead] = useState<boolean>(false);
   const [existingPlanId, setExistingPlanId] = useState<string | null>(null);
   const { toast } = useToast();
@@ -39,17 +39,15 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
       const { data: authUser } = await supabase.auth.getUser();
       const tenantId = authUser.user?.user_metadata?.tenant_id;
 
-      // Load company overhead from tenant
-      if (tenantId) {
-        const { data: tenant } = await supabase
-          .from('tenants')
-          .select('company_overhead_rate')
-          .eq('id', tenantId)
-          .single();
-        
-        if (tenant?.company_overhead_rate) {
-          setCompanyOverheadRate(Number(tenant.company_overhead_rate));
-        }
+      // Load rep's personal overhead rate from profile
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('personal_overhead_rate')
+        .eq('id', userId)
+        .single();
+      
+      if (profile?.personal_overhead_rate !== null && profile?.personal_overhead_rate !== undefined) {
+        setRepOverheadRate(Number(profile.personal_overhead_rate));
       }
       
       // Load user's commission plan from user_commission_plans
@@ -103,13 +101,11 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
       const { data: authUser } = await supabase.auth.getUser();
       const tenantId = authUser.user?.user_metadata?.tenant_id;
 
-      // Save company overhead to tenant
-      if (tenantId) {
-        await supabase
-          .from('tenants')
-          .update({ company_overhead_rate: companyOverheadRate })
-          .eq('id', tenantId);
-      }
+      // Save rep's personal overhead rate to their profile
+      await supabase
+        .from('profiles')
+        .update({ personal_overhead_rate: repOverheadRate })
+        .eq('id', userId);
 
       // Create or update commission plan for this user
       const planName = `${user.first_name} ${user.last_name} - Commission Plan`;
@@ -189,13 +185,12 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
   const exampleContractValue = 50000;
   const materialsRate = 0.325; // 32.5% materials
   const laborRate = 0.325; // 32.5% labor
-  const companyOverheadDefault = 0.15; // 15% company overhead (internal default)
   
   const calculateProfitBreakdown = () => {
     const materialsCost = exampleContractValue * materialsRate;
     const laborCost = exampleContractValue * laborRate;
     const totalJobCosts = materialsCost + laborCost;
-    const overheadCost = exampleContractValue * companyOverheadDefault;
+    const overheadCost = exampleContractValue * (repOverheadRate / 100);
     
     const grossProfit = exampleContractValue - totalJobCosts;
     const netProfit = grossProfit - overheadCost;
@@ -264,6 +259,22 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
           />
         </div>
 
+        <div className="space-y-2">
+          <Label htmlFor="rep-overhead-rate">Rep Overhead Rate (%)</Label>
+          <Input
+            id="rep-overhead-rate"
+            type="number"
+            step="0.5"
+            min="0"
+            max="50"
+            value={repOverheadRate}
+            onChange={(e) => setRepOverheadRate(parseFloat(e.target.value) || 0)}
+            disabled={!canEdit}
+          />
+          <p className="text-sm text-muted-foreground">
+            Company overhead charged to this rep (deducted from profit before commission split)
+          </p>
+        </div>
       </div>
 
       {/* Example Calculation with Full Breakdown */}
@@ -292,7 +303,7 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
               <span className="font-medium">${breakdown.grossProfit.toLocaleString()}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Company Overhead (15%):</span>
+              <span className="text-muted-foreground">Rep Overhead ({repOverheadRate}%):</span>
               <span className="font-medium text-destructive">-${breakdown.overheadCost.toLocaleString()}</span>
             </div>
             <hr className="border-border" />
