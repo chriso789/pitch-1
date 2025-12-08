@@ -3,11 +3,10 @@ import { Label } from "@/components/ui/label";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
 import { Card, CardContent } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Calculator, Save, Building2 } from "lucide-react";
+import { Calculator, Save } from "lucide-react";
 
 interface UserCommissionSettingsProps {
   userId: string;
@@ -186,15 +185,20 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
   };
 
   // Calculate example commission with full breakdown
+  // Industry standard: Materials ~32.5%, Labor ~32.5% = 65% combined
   const exampleContractValue = 50000;
-  const materialLaborRate = 0.30; // 30% material/labor costs
+  const materialsRate = 0.325; // 32.5% materials
+  const laborRate = 0.325; // 32.5% labor
+  const companyOverheadDefault = 0.15; // 15% company overhead (internal default)
   
   const calculateProfitBreakdown = () => {
-    const materialCosts = exampleContractValue * materialLaborRate;
-    const companyOverhead = exampleContractValue * (companyOverheadRate / 100);
-    const repOverhead = includeOverhead ? exampleContractValue * ((user?.personal_overhead_rate || 0) / 100) : 0;
+    const materialsCost = exampleContractValue * materialsRate;
+    const laborCost = exampleContractValue * laborRate;
+    const totalJobCosts = materialsCost + laborCost;
+    const overheadCost = exampleContractValue * companyOverheadDefault;
     
-    const netProfit = exampleContractValue - materialCosts - companyOverhead - repOverhead;
+    const grossProfit = exampleContractValue - totalJobCosts;
+    const netProfit = grossProfit - overheadCost;
     
     let commission = 0;
     if (commissionType === 'percentage_selling_price') {
@@ -205,9 +209,11 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
     
     return {
       contractValue: exampleContractValue,
-      materialCosts,
-      companyOverhead,
-      repOverhead,
+      materialsCost,
+      laborCost,
+      totalJobCosts,
+      overheadCost,
+      grossProfit,
       netProfit,
       commission
     };
@@ -258,40 +264,6 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
           />
         </div>
 
-        <div className="space-y-2">
-          <Label htmlFor="company-overhead" className="flex items-center gap-2">
-            <Building2 className="h-4 w-4" />
-            Company Overhead Rate (%)
-          </Label>
-          <Input
-            id="company-overhead"
-            type="number"
-            step="0.5"
-            min="0"
-            max="100"
-            value={companyOverheadRate}
-            onChange={(e) => setCompanyOverheadRate(parseFloat(e.target.value) || 0)}
-            disabled={!canEdit}
-          />
-          <p className="text-sm text-muted-foreground">
-            Company-level overhead (rent, insurance, admin costs)
-          </p>
-        </div>
-
-        <div className="flex items-center space-x-2">
-          <Switch
-            id="include-overhead"
-            checked={includeOverhead}
-            onCheckedChange={setIncludeOverhead}
-            disabled={!canEdit}
-          />
-          <Label htmlFor="include-overhead">Include Rep Overhead</Label>
-        </div>
-        {includeOverhead && (
-          <p className="text-sm text-muted-foreground">
-            Rep's personal overhead rate ({user?.personal_overhead_rate || 0}%) will be deducted before commission calculation
-          </p>
-        )}
       </div>
 
       {/* Example Calculation with Full Breakdown */}
@@ -307,22 +279,25 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
               <span className="font-medium">${breakdown.contractValue.toLocaleString()}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Material/Labor (30%):</span>
-              <span className="font-medium text-destructive">-${breakdown.materialCosts.toLocaleString()}</span>
+              <span className="text-muted-foreground">Materials (~32.5%):</span>
+              <span className="font-medium text-destructive">-${breakdown.materialsCost.toLocaleString()}</span>
             </div>
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Company Overhead ({companyOverheadRate}%):</span>
-              <span className="font-medium text-destructive">-${breakdown.companyOverhead.toLocaleString()}</span>
+              <span className="text-muted-foreground">Labor (~32.5%):</span>
+              <span className="font-medium text-destructive">-${breakdown.laborCost.toLocaleString()}</span>
             </div>
-            {includeOverhead && breakdown.repOverhead > 0 && (
-              <div className="flex justify-between">
-                <span className="text-muted-foreground">Rep Overhead ({user?.personal_overhead_rate || 0}%):</span>
-                <span className="font-medium text-destructive">-${breakdown.repOverhead.toLocaleString()}</span>
-              </div>
-            )}
             <hr className="border-border" />
             <div className="flex justify-between">
-              <span className="text-muted-foreground">Net Profit:</span>
+              <span className="text-muted-foreground">Gross Profit (35%):</span>
+              <span className="font-medium">${breakdown.grossProfit.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Company Overhead (15%):</span>
+              <span className="font-medium text-destructive">-${breakdown.overheadCost.toLocaleString()}</span>
+            </div>
+            <hr className="border-border" />
+            <div className="flex justify-between">
+              <span className="text-muted-foreground">Net Profit (20%):</span>
               <span className="font-medium">${breakdown.netProfit.toLocaleString()}</span>
             </div>
             <div className="flex justify-between">
