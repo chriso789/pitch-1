@@ -13,6 +13,7 @@ interface CreateUserRequest {
   lastName: string;
   role: string;
   companyName: string;
+  assignedTenantId?: string; // Optional: assign user to a specific company
   title: string;
   isDeveloper: boolean;
   payStructure?: {
@@ -66,10 +67,14 @@ const handler = async (req: Request): Promise<Response> => {
       lastName,
       role,
       companyName,
+      assignedTenantId,
       title,
       isDeveloper,
       payStructure
     }: CreateUserRequest = await req.json();
+
+    // Determine which tenant to assign user to
+    const targetTenantId = assignedTenantId || profile.tenant_id;
 
     // Validate required fields
     if (!email || !password || !firstName || !lastName) {
@@ -151,9 +156,10 @@ const handler = async (req: Request): Promise<Response> => {
       title,
       is_developer: isDeveloper,
       is_active: true,
-      tenant_id: profile.tenant_id
+      tenant_id: targetTenantId,
+      active_tenant_id: targetTenantId
     };
-    console.log('ProfileData role value:', profileData.role, 'Full profileData:', JSON.stringify(profileData));
+    console.log('ProfileData role value:', profileData.role, 'Target tenant:', targetTenantId);
 
     // Add pay structure for sales reps/managers
     if (payStructure && ['sales_manager', 'regional_manager'].includes(role)) {
@@ -183,17 +189,34 @@ const handler = async (req: Request): Promise<Response> => {
       .from('user_roles')
       .insert({
         user_id: newUser.user.id,
-        tenant_id: profile.tenant_id,
+        tenant_id: targetTenantId,
         role,
         created_by: user.id
       });
 
     if (roleError) {
       console.error('Error creating user role:', roleError);
-      // Don't fail the whole request, profile was created successfully
       console.warn('User created but role assignment failed - user may need manual role assignment');
     } else {
       console.log('User role created successfully');
+    }
+
+    // Create user_company_access entry for multi-tenant access control
+    const { error: accessError } = await supabaseAdmin
+      .from('user_company_access')
+      .insert({
+        user_id: newUser.user.id,
+        tenant_id: targetTenantId,
+        granted_by: user.id,
+        access_level: 'full',
+        is_active: true
+      });
+
+    if (accessError) {
+      console.error('Error creating user company access:', accessError);
+      console.warn('User created but company access record failed');
+    } else {
+      console.log('User company access created successfully');
     }
 
     // Send welcome email (without password)
