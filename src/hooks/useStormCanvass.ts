@@ -144,34 +144,73 @@ export const useStormCanvass = () => {
   ) => {
     setLoading(true);
     try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('No active session');
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('No active session');
 
-      const { data, error } = await supabase.functions.invoke('canvass-dispositions', {
-        body: {
-          session_token: session.access_token,
-          contact_id: contactId,
-          disposition_id: dispositionId,
-          notes: notes,
-        },
+      // Get disposition details
+      const { data: disposition, error: dispError } = await supabase
+        .from('dialer_dispositions')
+        .select('name, is_positive')
+        .eq('id', dispositionId)
+        .single();
+
+      if (dispError || !disposition) {
+        throw new Error('Disposition not found');
+      }
+
+      const qualificationStatus = disposition.is_positive ? 'qualified' : 'not_interested';
+
+      // Update contact
+      const { error: updateError } = await supabase
+        .from('contacts')
+        .update({
+          qualification_status: qualificationStatus,
+          notes: notes ? `${notes}\n\nDisposition: ${disposition.name}` : `Disposition: ${disposition.name}`,
+        })
+        .eq('id', contactId);
+
+      if (updateError) throw updateError;
+
+      let pipelineCreated = false;
+
+      // Create pipeline entry if positive disposition
+      if (disposition.is_positive) {
+        const { data: existingPipeline } = await supabase
+          .from('pipeline_entries')
+          .select('id')
+          .eq('contact_id', contactId)
+          .maybeSingle();
+
+        if (!existingPipeline) {
+          const { error: pipelineError } = await supabase
+            .from('pipeline_entries')
+            .insert({
+              contact_id: contactId,
+              status: 'lead',
+              lead_quality_score: 80,
+              assigned_to: user.id,
+              metadata: { source: 'canvassing', disposition: disposition.name },
+              created_by: user.id
+            });
+
+          if (!pipelineError) {
+            pipelineCreated = true;
+          }
+        }
+      }
+
+      toast({
+        title: 'Disposition updated',
+        description: `Contact marked as ${disposition.name}`,
       });
 
-      if (error) throw error;
-
-      if (data.success) {
+      if (pipelineCreated) {
         toast({
-          title: 'Disposition updated',
-          description: `Contact marked as ${data.disposition}`,
+          title: 'Lead added to pipeline!',
         });
-        if (data.pipeline_created) {
-          toast({
-            title: 'Lead added to pipeline!',
-          });
-        }
-        return data;
-      } else {
-        throw new Error(data.error || 'Failed to update disposition');
       }
+
+      return { success: true, disposition: disposition.name, pipeline_created: pipelineCreated };
     } catch (error: any) {
       toast({
         title: 'Error updating disposition',
