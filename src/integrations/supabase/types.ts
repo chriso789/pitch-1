@@ -717,6 +717,64 @@ export type Database = {
           },
         ]
       }
+      attorney_requests: {
+        Row: {
+          assigned_attorney: string | null
+          contact_id: string | null
+          created_at: string | null
+          id: string
+          notes: string | null
+          project_id: string | null
+          reason: string
+          status: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          assigned_attorney?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          project_id?: string | null
+          reason: string
+          status?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          assigned_attorney?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          project_id?: string | null
+          reason?: string
+          status?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attorney_requests_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attorney_requests_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attorney_requests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       audit_log: {
         Row: {
           action: string
@@ -3755,6 +3813,69 @@ export type Database = {
           },
         ]
       }
+      customer_job_milestones: {
+        Row: {
+          completed_at: string | null
+          created_at: string | null
+          description: string | null
+          display_order: number | null
+          document_url: string | null
+          id: string
+          is_complete: boolean | null
+          metadata: Json | null
+          milestone_key: string
+          milestone_name: string
+          project_id: string | null
+          tenant_id: string | null
+          video_url: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string | null
+          description?: string | null
+          display_order?: number | null
+          document_url?: string | null
+          id?: string
+          is_complete?: boolean | null
+          metadata?: Json | null
+          milestone_key: string
+          milestone_name: string
+          project_id?: string | null
+          tenant_id?: string | null
+          video_url?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string | null
+          description?: string | null
+          display_order?: number | null
+          document_url?: string | null
+          id?: string
+          is_complete?: boolean | null
+          metadata?: Json | null
+          milestone_key?: string
+          milestone_name?: string
+          project_id?: string | null
+          tenant_id?: string | null
+          video_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_job_milestones_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_job_milestones_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       customer_messages: {
         Row: {
           contact_id: string | null
@@ -3809,6 +3930,61 @@ export type Database = {
           },
           {
             foreignKeyName: "customer_messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_photos: {
+        Row: {
+          contact_id: string | null
+          description: string | null
+          file_name: string | null
+          file_url: string
+          id: string
+          project_id: string | null
+          tenant_id: string | null
+          uploaded_at: string | null
+        }
+        Insert: {
+          contact_id?: string | null
+          description?: string | null
+          file_name?: string | null
+          file_url: string
+          id?: string
+          project_id?: string | null
+          tenant_id?: string | null
+          uploaded_at?: string | null
+        }
+        Update: {
+          contact_id?: string | null
+          description?: string | null
+          file_name?: string | null
+          file_url?: string
+          id?: string
+          project_id?: string | null
+          tenant_id?: string | null
+          uploaded_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_photos_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_photos_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_photos_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -3877,6 +4053,60 @@ export type Database = {
           },
           {
             foreignKeyName: "customer_portal_tokens_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_referrals: {
+        Row: {
+          converted_at: string | null
+          created_at: string | null
+          id: string
+          referred_email: string | null
+          referred_name: string
+          referred_phone: string | null
+          referrer_contact_id: string | null
+          reward_points_earned: number | null
+          status: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          converted_at?: string | null
+          created_at?: string | null
+          id?: string
+          referred_email?: string | null
+          referred_name: string
+          referred_phone?: string | null
+          referrer_contact_id?: string | null
+          reward_points_earned?: number | null
+          status?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          converted_at?: string | null
+          created_at?: string | null
+          id?: string
+          referred_email?: string | null
+          referred_name?: string
+          referred_phone?: string | null
+          referrer_contact_id?: string | null
+          reward_points_earned?: number | null
+          status?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_referrals_referrer_contact_id_fkey"
+            columns: ["referrer_contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_referrals_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -3960,6 +4190,51 @@ export type Database = {
           },
           {
             foreignKeyName: "customer_reviews_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      customer_rewards: {
+        Row: {
+          contact_id: string | null
+          created_at: string | null
+          id: string
+          last_activity_at: string | null
+          lifetime_points_earned: number | null
+          points_balance: number | null
+          tenant_id: string | null
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string | null
+          id?: string
+          last_activity_at?: string | null
+          lifetime_points_earned?: number | null
+          points_balance?: number | null
+          tenant_id?: string | null
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string | null
+          id?: string
+          last_activity_at?: string | null
+          lifetime_points_earned?: number | null
+          points_balance?: number | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "customer_rewards_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: true
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_rewards_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -10666,18 +10941,22 @@ export type Database = {
           budget_data: Json | null
           budget_file_path: string | null
           budget_variance_alerts: boolean | null
+          certificate_of_completion_url: string | null
           clj_formatted_number: string | null
           contact_number: number | null
           created_at: string | null
           created_by: string | null
+          customer_portal_status: string | null
           description: string | null
           estimated_completion_date: string | null
           id: string
           job_number: number | null
           lead_number: number | null
+          lien_waiver_url: string | null
           location_id: string | null
           metadata: Json | null
           name: string
+          permit_url: string | null
           pipeline_entry_id: string | null
           project_manager_id: string | null
           project_number: string | null
@@ -10685,24 +10964,30 @@ export type Database = {
           status: string | null
           tenant_id: string | null
           updated_at: string | null
+          warranty_url: string | null
+          wind_mitigation_eligible: boolean | null
         }
         Insert: {
           actual_completion_date?: string | null
           budget_data?: Json | null
           budget_file_path?: string | null
           budget_variance_alerts?: boolean | null
+          certificate_of_completion_url?: string | null
           clj_formatted_number?: string | null
           contact_number?: number | null
           created_at?: string | null
           created_by?: string | null
+          customer_portal_status?: string | null
           description?: string | null
           estimated_completion_date?: string | null
           id?: string
           job_number?: number | null
           lead_number?: number | null
+          lien_waiver_url?: string | null
           location_id?: string | null
           metadata?: Json | null
           name: string
+          permit_url?: string | null
           pipeline_entry_id?: string | null
           project_manager_id?: string | null
           project_number?: string | null
@@ -10710,24 +10995,30 @@ export type Database = {
           status?: string | null
           tenant_id?: string | null
           updated_at?: string | null
+          warranty_url?: string | null
+          wind_mitigation_eligible?: boolean | null
         }
         Update: {
           actual_completion_date?: string | null
           budget_data?: Json | null
           budget_file_path?: string | null
           budget_variance_alerts?: boolean | null
+          certificate_of_completion_url?: string | null
           clj_formatted_number?: string | null
           contact_number?: number | null
           created_at?: string | null
           created_by?: string | null
+          customer_portal_status?: string | null
           description?: string | null
           estimated_completion_date?: string | null
           id?: string
           job_number?: number | null
           lead_number?: number | null
+          lien_waiver_url?: string | null
           location_id?: string | null
           metadata?: Json | null
           name?: string
+          permit_url?: string | null
           pipeline_entry_id?: string | null
           project_manager_id?: string | null
           project_number?: string | null
@@ -10735,6 +11026,8 @@ export type Database = {
           status?: string | null
           tenant_id?: string | null
           updated_at?: string | null
+          warranty_url?: string | null
+          wind_mitigation_eligible?: boolean | null
         }
         Relationships: [
           {
@@ -11591,6 +11884,57 @@ export type Database = {
           },
           {
             foreignKeyName: "rep_overhead_rules_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      reward_redemptions: {
+        Row: {
+          contact_id: string | null
+          created_at: string | null
+          id: string
+          notes: string | null
+          points_redeemed: number
+          redemption_type: string
+          status: string | null
+          tenant_id: string | null
+          value: number | null
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          points_redeemed: number
+          redemption_type: string
+          status?: string | null
+          tenant_id?: string | null
+          value?: number | null
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          points_redeemed?: number
+          redemption_type?: string
+          status?: string | null
+          tenant_id?: string | null
+          value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reward_redemptions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reward_redemptions_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -12727,6 +13071,64 @@ export type Database = {
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      service_quote_requests: {
+        Row: {
+          contact_id: string | null
+          created_at: string | null
+          description: string | null
+          id: string
+          project_id: string | null
+          quote_amount: number | null
+          service_type: string
+          status: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          project_id?: string | null
+          quote_amount?: number | null
+          service_type: string
+          status?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          project_id?: string | null
+          quote_amount?: number | null
+          service_type?: string
+          status?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "service_quote_requests_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_quote_requests_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_quote_requests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
