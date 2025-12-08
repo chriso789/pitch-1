@@ -87,6 +87,7 @@ import HomeownerPortalPage from "./pages/HomeownerPortalPage";
 import PortalLoginPage from "./pages/PortalLoginPage";
 import MonitoringPage from "./pages/admin/MonitoringPage";
 import HomeownerSetupAccount from "./pages/HomeownerSetupAccount";
+import CommissionReport from "./pages/CommissionReport";
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -225,6 +226,7 @@ const AppContent = () => {
         {/* Admin routes */}
         <Route path="/admin/companies" element={<CompanyAdminPage />} />
         <Route path="/admin/monitoring" element={<MonitoringPage />} />
+        <Route path="/commission-report" element={<CommissionReport />} />
         
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
