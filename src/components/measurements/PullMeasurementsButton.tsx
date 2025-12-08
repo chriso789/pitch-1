@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
@@ -9,6 +9,7 @@ import { Badge } from '@/components/ui/badge';
 import { MeasurementVerificationDialog } from './MeasurementVerificationDialog';
 import { useImageCache } from '@/contexts/ImageCacheContext';
 import { StructureSelectionMap } from './StructureSelectionMap';
+import { useMeasurementCoordinates } from '@/hooks/useMeasurementCoordinates';
 
 // Pitch multipliers for area adjustment
 const PITCH_MULTIPLIERS: Record<string, number> = {
@@ -126,10 +127,8 @@ export function PullMeasurementsButton({
   const imageCache = useImageCache();
   const navigate = useNavigate();
   const [loading, setLoading] = useState(false);
-  const [loadingCoords, setLoadingCoords] = useState(false);
   const [success, setSuccess] = useState(false);
   const [showStructureSelector, setShowStructureSelector] = useState(false);
-  const [verifiedCoords, setVerifiedCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [verificationData, setVerificationData] = useState<{
     measurement: any;
     tags: Record<string, any>;
@@ -137,142 +136,41 @@ export function PullMeasurementsButton({
     finalCoords?: { lat: number; lng: number };
   } | null>(null);
   const [showVerificationDialog, setShowVerificationDialog] = useState(false);
+  
+  // Use unified coordinate hook for single source of truth
+  const { 
+    coordinates: verifiedCoords, 
+    isLoading: loadingCoords, 
+    source: coordSource,
+    loadCoordinates 
+  } = useMeasurementCoordinates({
+    pipelineEntryId: propertyId,
+    propLat: lat,
+    propLng: lng,
+    address
+  });
 
-  // Fetch verified coordinates from contact before opening structure selector
-  const handleOpenStructureSelector = async () => {
-    setLoadingCoords(true);
-    try {
-      // Fetch verified coordinates from the pipeline entry's contact
-      const { data: pipelineData, error } = await supabase
-        .from('pipeline_entries')
-        .select('contact_id, metadata, contacts!inner(verified_address, latitude, longitude, address_street, address_city, address_state, address_zip)')
-        .eq('id', propertyId)
-        .single();
-
-      if (error) {
-        console.error('Error fetching pipeline data:', error);
-        toast({
-          title: "Error Loading Property",
-          description: "Could not fetch property coordinates. Please try again.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      // Handle Supabase join returning array or object
-      const contactsData = (pipelineData as any)?.contacts;
-      const contact = Array.isArray(contactsData) ? contactsData[0] : contactsData;
-      const metadata = (pipelineData as any)?.metadata;
-      
-      console.log('📍 Contact data from Supabase:', { 
-        raw: contactsData, 
-        isArray: Array.isArray(contactsData),
-        extracted: contact,
-        hasLatLng: !!(contact?.latitude && contact?.longitude)
-      });
-      
-      let coordLat: number | undefined;
-      let coordLng: number | undefined;
-      let coordSource = 'unknown';
-
-      // Priority #1: contact.verified_address (Google-verified)
-      if (contact?.verified_address?.lat && contact?.verified_address?.lng) {
-        coordLat = contact.verified_address.lat;
-        coordLng = contact.verified_address.lng;
-        coordSource = 'contact.verified_address';
-      }
-      // Priority #2: contact.latitude/longitude (legacy)
-      else if (contact?.latitude && contact?.longitude) {
-        coordLat = contact.latitude;
-        coordLng = contact.longitude;
-        coordSource = 'contact.latitude/longitude';
-      }
-      // Priority #3: pipeline_entries.metadata.verified_address.geometry.location
-      else if (metadata?.verified_address?.geometry?.location?.lat && metadata?.verified_address?.geometry?.location?.lng) {
-        coordLat = metadata.verified_address.geometry.location.lat;
-        coordLng = metadata.verified_address.geometry.location.lng;
-        coordSource = 'metadata.verified_address.geometry.location';
-      }
-      // Priority #4: pipeline_entries.metadata.verified_address (flat structure)
-      else if (metadata?.verified_address?.lat && metadata?.verified_address?.lng) {
-        coordLat = metadata.verified_address.lat;
-        coordLng = metadata.verified_address.lng;
-        coordSource = 'metadata.verified_address';
-      }
-      // Priority #5: props passed to component (last resort)
-      else if (lat && lng) {
-        coordLat = lat;
-        coordLng = lng;
-        coordSource = 'props';
-      }
-
-      // Priority #6: Geocode from address if no valid coords found
-      if (!coordLat || !coordLng || (coordLat === 0 && coordLng === 0)) {
-        const addressToGeocode = 
-          metadata?.verified_address?.formatted_address ||
-          (contact?.address_street && contact?.address_city && contact?.address_state 
-            ? `${contact.address_street}, ${contact.address_city}, ${contact.address_state} ${contact.address_zip || ''}`
-            : null);
-
-        if (addressToGeocode) {
-          console.log('📍 No valid coords found, attempting to geocode address:', addressToGeocode);
-          
-          try {
-            const { data: geocodeData, error: geocodeError } = await supabase.functions.invoke('google-maps-proxy', {
-              body: {
-                endpoint: 'geocode',
-                params: { address: addressToGeocode }
-              }
-            });
-
-            if (!geocodeError && geocodeData?.results?.[0]?.geometry?.location) {
-              coordLat = geocodeData.results[0].geometry.location.lat;
-              coordLng = geocodeData.results[0].geometry.location.lng;
-              coordSource = 'geocoded_from_address';
-              console.log('✅ Successfully geocoded address:', { coordLat, coordLng });
-              
-              // Save geocoded coordinates to contact for future use
-              if (pipelineData?.contact_id) {
-                supabase
-                  .from('contacts')
-                  .update({ latitude: coordLat, longitude: coordLng })
-                  .eq('id', pipelineData.contact_id)
-                  .then(({ error }) => {
-                    if (error) console.error('Failed to save geocoded coordinates:', error);
-                    else console.log('💾 Saved geocoded coordinates to contact');
-                  });
-              }
-            }
-          } catch (geocodeErr) {
-            console.error('Geocoding failed:', geocodeErr);
-          }
-        }
-      }
-
-      // Final check after geocoding attempt
-      if (!coordLat || !coordLng || (coordLat === 0 && coordLng === 0)) {
-        toast({
-          title: "Missing Location",
-          description: "Property coordinates not found. Please verify the address first.",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      console.log('📍 Opening structure selector with coords:', { coordLat, coordLng, source: coordSource });
-      setVerifiedCoords({ lat: coordLat, lng: coordLng });
-      setShowStructureSelector(true);
-    } catch (err) {
-      console.error('Failed to fetch coordinates:', err);
+  // Open structure selector using coordinates from the unified hook
+  const handleOpenStructureSelector = useCallback(async () => {
+    // Load coordinates to ensure we have the latest
+    await loadCoordinates();
+    
+    if (!verifiedCoords?.isValid) {
       toast({
-        title: "Error",
-        description: "Could not load property location.",
+        title: "Missing Location",
+        description: "Property coordinates not found. Please verify the address first.",
         variant: "destructive"
       });
-    } finally {
-      setLoadingCoords(false);
+      return;
     }
-  };
+
+    console.log('📍 Opening structure selector with coords:', { 
+      lat: verifiedCoords.lat, 
+      lng: verifiedCoords.lng, 
+      source: coordSource 
+    });
+    setShowStructureSelector(true);
+  }, [verifiedCoords, coordSource, loadCoordinates, toast]);
 
   // Run AI analysis with the confirmed coordinates from PIN selection
   async function handlePull(confirmedLat: number, confirmedLng: number) {
@@ -563,12 +461,12 @@ export function PullMeasurementsButton({
         )}
       </div>
 
-      {/* Structure Selection Map for PIN placement - FIRST STEP */}
+      {/* Structure Selection Map for PIN placement - uses unified coordinates */}
       <StructureSelectionMap
         open={showStructureSelector}
         onOpenChange={setShowStructureSelector}
-        initialLat={verifiedCoords?.lat || lat}
-        initialLng={verifiedCoords?.lng || lng}
+        initialLat={verifiedCoords?.lat ?? lat}
+        initialLng={verifiedCoords?.lng ?? lng}
         address={address}
         onLocationConfirmed={handleStructureConfirmed}
       />

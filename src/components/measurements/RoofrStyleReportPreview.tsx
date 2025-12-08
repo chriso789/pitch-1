@@ -17,6 +17,8 @@ interface RoofrStyleReportPreviewProps {
   measurement: any;
   tags: Record<string, any>;
   address: string;
+  pipelineEntryId?: string;
+  satelliteImageUrl?: string;
   companyInfo?: {
     name: string;
     logo?: string;
@@ -37,6 +39,8 @@ export function RoofrStyleReportPreview({
   measurement,
   tags,
   address,
+  pipelineEntryId,
+  satelliteImageUrl,
   companyInfo,
   onReportGenerated,
 }: RoofrStyleReportPreviewProps) {

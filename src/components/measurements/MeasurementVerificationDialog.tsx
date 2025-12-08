@@ -10,7 +10,7 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Split, Info, MapPin, ZoomIn, Maximize2, Minimize2, ImageIcon, History } from 'lucide-react';
+import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Split, Info, MapPin, ZoomIn, Maximize2, Minimize2, ImageIcon, History, FileText } from 'lucide-react';
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PolygonEditor } from './PolygonEditor';
@@ -29,6 +29,7 @@ import { useToast } from '@/hooks/use-toast';
 import { detectRoofType } from '@/utils/measurementGeometry';
 import { saveMeasurementWithOfflineSupport } from '@/services/offlineMeasurementSync';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
+import { RoofrStyleReportPreview } from './RoofrStyleReportPreview';
 
 // Industry-standard roof pitch multipliers: slope_factor = sqrt(1 + (X/12)^2)
 const PITCH_MULTIPLIERS: Record<string, number> = {
@@ -304,6 +305,7 @@ export function MeasurementVerificationDialog({
   const [isMaximized, setIsMaximized] = useState(false); // Fullscreen toggle
   const [showHistoricalComparison, setShowHistoricalComparison] = useState(false); // Historical imagery dialog
   const [validationOpen, setValidationOpen] = useState(false); // Validation report collapsible
+  const [showReportPreview, setShowReportPreview] = useState(false); // Roofr-style report preview
   
   const manualVerify = useManualVerification();
   
@@ -1809,6 +1811,20 @@ export function MeasurementVerificationDialog({
             <TooltipContent>Split Facets</TooltipContent>
           </Tooltip>
           
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setShowReportPreview(true)}
+                disabled={isAccepting}
+              >
+                <FileText className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Preview Report</TooltipContent>
+          </Tooltip>
+          
           <div className="flex-1" />
           
           <Button onClick={handleAccept} disabled={isAccepting} variant="secondary" size="sm">
@@ -1886,6 +1902,17 @@ export function MeasurementVerificationDialog({
           });
           setShowHistoricalComparison(false);
         }}
+      />
+
+      {/* Roofr-Style Report Preview */}
+      <RoofrStyleReportPreview
+        open={showReportPreview}
+        onOpenChange={setShowReportPreview}
+        measurement={dbMeasurement || measurement}
+        tags={tags}
+        address={measurement?.address || 'Unknown Address'}
+        pipelineEntryId={pipelineEntryId}
+        satelliteImageUrl={satelliteImageUrl}
       />
     </Dialog>
   );
