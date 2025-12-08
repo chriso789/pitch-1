@@ -470,7 +470,7 @@ export function MeasurementVerificationDialog({
     };
     
     fetchMapboxSatelliteImage();
-  }, [centerLat, centerLng, verifiedAddressLat, verifiedAddressLng, satelliteZoom, resolution]);  // ✅ Priority: centerLat/centerLng first
+  }, [centerLat, centerLng, satelliteZoom, resolution]);  // ✅ FIXED: Only use user-confirmed PIN coordinates, not verified address
   
   // Update satellite image URL when prop changes
   useEffect(() => {
