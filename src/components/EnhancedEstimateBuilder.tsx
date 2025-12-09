@@ -115,6 +115,47 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const [solarMeasurementData, setSolarMeasurementData] = useState<any>(null);
   const [coordinates, setCoordinates] = useState<{lat: number, lng: number} | null>(null);
 
+  // Clear stale measurement data
+  const handleClearMeasurements = async () => {
+    if (!pipelineEntryId) return;
+    
+    try {
+      const { data: entry, error: fetchError } = await supabase
+        .from('pipeline_entries')
+        .select('metadata')
+        .eq('id', pipelineEntryId)
+        .single();
+      
+      if (fetchError) throw fetchError;
+      
+      const currentMetadata = (entry?.metadata as any) || {};
+      const { roof_area_sq_ft, comprehensive_measurements, ...cleanedMetadata } = currentMetadata;
+      
+      const { error } = await supabase
+        .from('pipeline_entries')
+        .update({ metadata: cleanedMetadata })
+        .eq('id', pipelineEntryId);
+      
+      if (error) throw error;
+      
+      setMeasurementData(null);
+      setHasMeasurements(false);
+      setPropertyDetails(prev => ({ ...prev, roof_area_sq_ft: 0 }));
+      
+      toast({
+        title: "Measurements Cleared",
+        description: "Stale measurement data has been removed. Pull new measurements when ready.",
+      });
+    } catch (error: any) {
+      console.error('Error clearing measurements:', error);
+      toast({
+        title: "Error",
+        description: "Failed to clear measurements",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Add measurement summary card near line items
   const MeasurementSummaryCard = () => {
     if (!measurementData) return null;
@@ -130,19 +171,29 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
               <Satellite className="h-4 w-4" />
               Measurement Summary
             </CardTitle>
-            <Button 
-              variant="ghost" 
-              size="sm"
-              onClick={() => {
-                // Reopen verification dialog
-                if (pipelineEntryId) {
-                  window.location.href = `/professional-measurement/${pipelineEntryId}`;
-                }
-              }}
-            >
-              <Edit className="h-4 w-4 mr-2" />
-              Re-verify
-            </Button>
+            <div className="flex gap-2">
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={handleClearMeasurements}
+                className="text-destructive hover:text-destructive"
+              >
+                <Trash2 className="h-4 w-4 mr-2" />
+                Clear
+              </Button>
+              <Button 
+                variant="ghost" 
+                size="sm"
+                onClick={() => {
+                  if (pipelineEntryId) {
+                    window.location.href = `/professional-measurement/${pipelineEntryId}`;
+                  }
+                }}
+              >
+                <Edit className="h-4 w-4 mr-2" />
+                Re-verify
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent>
@@ -297,7 +348,9 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
             complexity_level: comprehensiveMeasurements?.complexity || prev.complexity_level
           }));
 
-          if (hasValidMeasurements) {
+          // Only show toast when autoPopulate=true (fresh measurement flow), not on page load
+          const autoPopulateParam = new URLSearchParams(window.location.search).get('autoPopulate') === 'true';
+          if (hasValidMeasurements && autoPopulateParam) {
             toast({
               title: "Measurements Loaded",
               description: `${roofAreaSqFt.toFixed(0)} sq ft loaded from satellite measurements`,
