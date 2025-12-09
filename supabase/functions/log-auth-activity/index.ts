@@ -11,7 +11,10 @@ const VALID_EVENT_TYPES = [
   'login_failed', 
   'logout', 
   'session_refresh', 
-  'password_reset_request'
+  'password_reset_request',
+  'company_switch',
+  'password_reset_complete',
+  'page_navigation'
 ] as const;
 
 type EventType = typeof VALID_EVENT_TYPES[number];
