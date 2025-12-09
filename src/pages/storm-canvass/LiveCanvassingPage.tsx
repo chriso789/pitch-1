@@ -11,6 +11,8 @@ import MobileDispositionPanel from '@/components/storm-canvass/MobileDisposition
 import AddressSearchBar from '@/components/storm-canvass/AddressSearchBar';
 import NavigationPanel from '@/components/storm-canvass/NavigationPanel';
 import GPSAcquiringOverlay from '@/components/storm-canvass/GPSAcquiringOverlay';
+import MapStyleToggle, { MapStyle } from '@/components/storm-canvass/MapStyleToggle';
+import PropertyInfoPanel from '@/components/storm-canvass/PropertyInfoPanel';
 import { locationService } from '@/services/locationService';
 import { useToast } from '@/hooks/use-toast';
 import { useStormCanvass } from '@/hooks/useStormCanvass';
@@ -54,7 +56,9 @@ export default function LiveCanvassingPage() {
   const [isTracking, setIsTracking] = useState(false);
   const [distanceTraveled, setDistanceTraveled] = useState(0);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
+  const [selectedProperty, setSelectedProperty] = useState<any | null>(null);
   const [dispositions, setDispositions] = useState<Disposition[]>([]);
+  const [mapStyle, setMapStyle] = useState<MapStyle>('satellite');
   const [destination, setDestination] = useState<{
     lat: number;
     lng: number;
@@ -232,6 +236,11 @@ export default function LiveCanvassingPage() {
     });
   };
 
+  // Handle navigation from property panel
+  const handleNavigateToProperty = async (lat: number, lng: number, address: string) => {
+    await calculateRoute({ lat, lng, address });
+  };
+
   // Open device navigation
   const openDeviceNavigation = () => {
     if (!destination) return;
@@ -277,12 +286,13 @@ export default function LiveCanvassingPage() {
           </div>
         </div>
         
-        {/* Search Bar - Always show */}
-        <div className="px-4 pb-4">
+        {/* Search Bar and Style Toggle */}
+        <div className="px-4 pb-4 flex flex-col gap-3">
           <AddressSearchBar
             userLocation={userLocation}
             onAddressSelect={handleAddressSelect}
           />
+          <MapStyleToggle value={mapStyle} onChange={setMapStyle} />
         </div>
       </Card>
 
@@ -303,8 +313,10 @@ export default function LiveCanvassingPage() {
           userLocation={userLocation}
           currentAddress={currentAddress}
           onContactSelect={setSelectedContact}
+          onParcelSelect={setSelectedProperty}
           routeData={routeData}
           destination={destination}
+          mapStyle={mapStyle}
         />
         <LiveStatsOverlay distanceTraveled={distanceTraveled} />
         
@@ -315,7 +327,7 @@ export default function LiveCanvassingPage() {
       {/* Quick Activity Panel */}
       <QuickActivityPanel userLocation={userLocation} />
 
-      {/* Mobile Disposition Panel */}
+      {/* Mobile Disposition Panel (for contacts) */}
       <MobileDispositionPanel
         contact={selectedContact}
         userLocation={userLocation}
@@ -326,6 +338,16 @@ export default function LiveCanvassingPage() {
           setSelectedContact(null);
         }}
         onNavigate={handleNavigateToContact}
+      />
+
+      {/* Property Info Panel (for parcels) */}
+      <PropertyInfoPanel
+        open={!!selectedProperty}
+        onOpenChange={(open) => !open && setSelectedProperty(null)}
+        property={selectedProperty}
+        userLocation={userLocation}
+        onDispositionUpdate={() => setSelectedProperty(null)}
+        onNavigate={handleNavigateToProperty}
       />
     </div>
   );
