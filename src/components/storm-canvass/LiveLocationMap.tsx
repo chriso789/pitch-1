@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import NearbyPropertiesLayer from './NearbyPropertiesLayer';
 import RouteVisualization from './RouteVisualization';
+import ParcelBoundaryLayer from './ParcelBoundaryLayer';
 import { useMapboxToken } from '@/hooks/useMapboxToken';
 import { Loader2 } from 'lucide-react';
+import { MapStyle } from './MapStyleToggle';
 
 interface Contact {
   id: string;
@@ -26,20 +28,29 @@ interface LiveLocationMapProps {
   userLocation: { lat: number; lng: number };
   currentAddress: string;
   onContactSelect: (contact: Contact) => void;
+  onParcelSelect: (property: any) => void;
   routeData?: {
     distance: { distance: number; unit: string };
     duration: number;
     polyline: string;
   } | null;
   destination?: { lat: number; lng: number; address: string } | null;
+  mapStyle: MapStyle;
 }
+
+const MAP_STYLES = {
+  'satellite': 'mapbox://styles/mapbox/satellite-streets-v12',
+  'lot-lines': 'mapbox://styles/mapbox/streets-v12',
+};
 
 export default function LiveLocationMap({
   userLocation,
   currentAddress,
   onContactSelect,
+  onParcelSelect,
   routeData,
   destination,
+  mapStyle,
 }: LiveLocationMapProps) {
   const mapContainer = useRef<HTMLDivElement>(null);
   const map = useRef<mapboxgl.Map | null>(null);
@@ -48,20 +59,25 @@ export default function LiveLocationMap({
   const [mapReady, setMapReady] = useState(false);
   const { token, loading: tokenLoading } = useMapboxToken();
 
+  // Handle parcel click
+  const handleParcelClick = useCallback((property: any) => {
+    onParcelSelect(property);
+  }, [onParcelSelect]);
+
   // Initialize map once token is available
   useEffect(() => {
     if (!mapContainer.current || !token) return;
-    if (mapInitialized.current) return; // Only initialize once
+    if (mapInitialized.current) return;
 
     mapboxgl.accessToken = token;
     mapInitialized.current = true;
 
     map.current = new mapboxgl.Map({
       container: mapContainer.current,
-      style: 'mapbox://styles/mapbox/streets-v12',
+      style: MAP_STYLES[mapStyle],
       center: [userLocation.lng, userLocation.lat],
-      zoom: 16,
-      pitch: 45,
+      zoom: 17,
+      pitch: 0,
     });
 
     // Add navigation controls
@@ -75,7 +91,7 @@ export default function LiveLocationMap({
     // Add scale control
     map.current.addControl(new mapboxgl.ScaleControl(), 'bottom-right');
 
-    // Wait for map to fully load before setting ready state
+    // Wait for map to fully load
     map.current.on('load', () => {
       setMapReady(true);
       
@@ -105,12 +121,51 @@ export default function LiveLocationMap({
     };
   }, [token]);
 
+  // Handle style changes
+  useEffect(() => {
+    if (!map.current || !mapReady) return;
+    
+    const currentStyle = map.current.getStyle()?.sprite;
+    const newStyleUrl = MAP_STYLES[mapStyle];
+    
+    // Only change if style is different
+    if (!currentStyle?.includes(mapStyle)) {
+      map.current.setStyle(newStyleUrl);
+      
+      // Re-add user marker after style change
+      map.current.once('style.load', () => {
+        if (userMarker.current) {
+          userMarker.current.remove();
+          
+          const el = document.createElement('div');
+          el.className = 'user-location-marker';
+          el.style.width = '24px';
+          el.style.height = '24px';
+          el.style.borderRadius = '50%';
+          el.style.backgroundColor = '#3b82f6';
+          el.style.border = '3px solid white';
+          el.style.boxShadow = '0 0 0 4px rgba(59, 130, 246, 0.3)';
+          el.style.animation = 'pulse 2s infinite';
+
+          userMarker.current = new mapboxgl.Marker(el)
+            .setLngLat([userLocation.lng, userLocation.lat])
+            .setPopup(
+              new mapboxgl.Popup({ offset: 25 }).setHTML(
+                `<div class="p-2"><strong>Your Location</strong><br/>${currentAddress}</div>`
+              )
+            )
+            .addTo(map.current!);
+        }
+      });
+    }
+  }, [mapStyle, mapReady]);
+
   // Update user location marker position
   useEffect(() => {
     if (userMarker.current && map.current && mapReady) {
       userMarker.current.setLngLat([userLocation.lng, userLocation.lat]);
       
-      // Animate map to new location (smooth follow)
+      // Animate map to new location
       map.current.easeTo({
         center: [userLocation.lng, userLocation.lat],
         duration: 1000,
@@ -141,6 +196,12 @@ export default function LiveLocationMap({
             map={map.current}
             userLocation={userLocation}
             onContactSelect={onContactSelect}
+          />
+          <ParcelBoundaryLayer
+            map={map.current}
+            userLocation={userLocation}
+            onParcelClick={handleParcelClick}
+            visible={true}
           />
           {routeData && destination && (
             <RouteVisualization
