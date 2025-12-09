@@ -208,7 +208,7 @@ export function PullMeasurementsButton({
 
       toast({
         title: "📍 Measuring Selected Structure",
-        description: "Analyzing roof with GPT-4 Vision + Google Solar API...",
+        description: "Analyzing roof with AI Vision on Mapbox satellite imagery. If current image is unclear, checking historical archives...",
       });
 
       // 🚀 Call the NEW analyze-roof-aerial edge function

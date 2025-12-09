@@ -25,6 +25,111 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Image quality assessment using AI
+async function assessImageQuality(imageUrl: string, coordinates: { lat: number; lng: number }): Promise<{
+  isRoofVisible: boolean;
+  obstructionType: 'trees' | 'shadows' | 'clouds' | 'blur' | 'none';
+  confidence: number;
+  suggestion?: string;
+}> {
+  try {
+    console.log('🔍 Assessing image quality...')
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: { 
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: `Quickly assess this satellite image. Is the main building's roof CLEARLY visible and unobstructed?
+
+Return ONLY JSON:
+{
+  "isRoofVisible": true|false,
+  "obstructionType": "trees"|"shadows"|"clouds"|"blur"|"none",
+  "confidence": 0-100,
+  "suggestion": "description if obstructed"
+}` },
+            { type: 'image_url', image_url: { url: imageUrl } }
+          ]
+        }],
+        max_completion_tokens: 200
+      })
+    })
+    
+    if (!response.ok) {
+      console.log('Quality check failed, assuming image is usable')
+      return { isRoofVisible: true, obstructionType: 'none', confidence: 70 }
+    }
+    
+    const data = await response.json()
+    let content = data.choices?.[0]?.message?.content || ''
+    content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+    
+    const parsed = JSON.parse(content)
+    console.log('📸 Image quality:', parsed.isRoofVisible ? 'Clear' : `Obstructed by ${parsed.obstructionType}`, `(${parsed.confidence}%)`)
+    return parsed
+  } catch (err) {
+    console.log('Quality assessment error, assuming usable:', err)
+    return { isRoofVisible: true, obstructionType: 'none', confidence: 50 }
+  }
+}
+
+// Fetch historical imagery from ESRI Wayback
+async function fetchHistoricalImagery(coords: { lat: number; lng: number }, targetYear: number): Promise<{
+  url: string;
+  year: number;
+  source: string;
+} | null> {
+  try {
+    console.log(`📅 Fetching historical imagery for ${targetYear}...`)
+    const response = await fetch(`${SUPABASE_URL}/functions/v1/historical-imagery-fetch`, {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+      },
+      body: JSON.stringify({ 
+        lat: coords.lat, 
+        lng: coords.lng, 
+        targetYear, 
+        zoom: 20, 
+        width: 1280, 
+        height: 1280 
+      })
+    })
+    
+    if (!response.ok) {
+      console.log(`Historical imagery for ${targetYear} not available`)
+      return null
+    }
+    
+    const data = await response.json()
+    if (data.ok && data.data?.timePoints?.length > 0) {
+      const point = data.data.timePoints[0]
+      // Fetch the actual image and convert to base64
+      const imageResponse = await fetch(point.imageUrl)
+      if (imageResponse.ok) {
+        const buffer = await imageResponse.arrayBuffer()
+        const base64 = base64Encode(new Uint8Array(buffer))
+        return { 
+          url: `data:image/jpeg;base64,${base64}`, 
+          year: point.year, 
+          source: `esri_wayback_${point.year}` 
+        }
+      }
+    }
+    return null
+  } catch (err) {
+    console.log(`Historical imagery fetch error:`, err)
+    return null
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -34,14 +139,54 @@ serve(async (req) => {
     const { address, coordinates, customerId, userId } = await req.json()
     console.log('🏠 Analyzing roof:', address)
 
+    // Fetch current imagery from both sources
     const [googleImage, solarData, mapboxImage] = await Promise.all([
       fetchGoogleStaticMap(coordinates),
       fetchGoogleSolarData(coordinates),
       fetchMapboxSatellite(coordinates)
     ])
 
-    const selectedImage = mapboxImage.quality && mapboxImage.quality > (googleImage.quality || 0) ? mapboxImage : googleImage
-    console.log(`✅ Using: ${selectedImage.source}`)
+    // Select best current image
+    let selectedImage = mapboxImage.quality && mapboxImage.quality > (googleImage.quality || 0) ? mapboxImage : googleImage
+    let imageSource = selectedImage.source
+    let imageYear = new Date().getFullYear()
+    let qualityAssessment: any = null
+    
+    // Assess current image quality
+    if (selectedImage.url) {
+      qualityAssessment = await assessImageQuality(selectedImage.url, coordinates)
+      
+      // If roof is obscured or low confidence, try historical imagery
+      if (!qualityAssessment.isRoofVisible || qualityAssessment.confidence < 70) {
+        console.log(`⚠️ Current image obstructed by ${qualityAssessment.obstructionType}, checking historical imagery...`)
+        
+        const yearsToTry = [2023, 2022, 2021, 2020, 2019]
+        
+        for (const year of yearsToTry) {
+          const historicalImage = await fetchHistoricalImagery(coordinates, year)
+          if (historicalImage) {
+            // Assess the historical image quality
+            const historicalQuality = await assessImageQuality(historicalImage.url, coordinates)
+            
+            if (historicalQuality.isRoofVisible && historicalQuality.confidence > qualityAssessment.confidence) {
+              console.log(`✅ Found clearer image from ${year} (confidence: ${historicalQuality.confidence}%)`)
+              selectedImage = { 
+                url: historicalImage.url, 
+                source: historicalImage.source,
+                resolution: '1280x1280',
+                quality: Math.round(historicalQuality.confidence / 10)
+              }
+              imageSource = historicalImage.source
+              imageYear = year
+              qualityAssessment = historicalQuality
+              break
+            }
+          }
+        }
+      }
+    }
+    
+    console.log(`✅ Using: ${imageSource} (year: ${imageYear})`)
 
     const aiAnalysis = await analyzeRoofWithAI(selectedImage.url, address)
     const scale = calculateScale(solarData, selectedImage, aiAnalysis)
@@ -69,7 +214,7 @@ serve(async (req) => {
     const measurementRecord = await saveMeasurementToDatabase(supabase, {
       address, coordinates, customerId, userId, googleImage, mapboxImage,
       selectedImage, solarData, aiAnalysis, scale, measurements, confidence,
-      visionLinearFeatures
+      visionLinearFeatures, imageSource, imageYear, qualityAssessment
     })
 
     console.log('✅ Complete! Confidence:', confidence.score + '%')
@@ -849,7 +994,7 @@ function calculateConfidenceScore(aiAnalysis: any, measurements: any, solarData:
 }
 
 async function saveMeasurementToDatabase(supabase: any, data: any) {
-  const { address, coordinates, customerId, userId, googleImage, mapboxImage, selectedImage, solarData, aiAnalysis, scale, measurements, confidence, visionLinearFeatures = [] } = data
+  const { address, coordinates, customerId, userId, googleImage, mapboxImage, selectedImage, solarData, aiAnalysis, scale, measurements, confidence, visionLinearFeatures = [], imageSource, imageYear, qualityAssessment } = data
 
   // Combine all linear feature sources with priority: GPT-4 Vision > Google Solar > AI Analysis
   const solarLinearFeatures = solarData.linearFeatures || []
@@ -927,7 +1072,12 @@ async function saveMeasurementToDatabase(supabase: any, data: any) {
       linear_features_wkt: combinedLinearFeatures,
       // Store the zoom level used for analysis - critical for accurate overlay alignment
       analysis_zoom: IMAGE_ZOOM,
-      analysis_image_size: selectedImage.source === 'mapbox' ? 1280 : 640
+      analysis_image_size: selectedImage.source === 'mapbox' ? 1280 : 640,
+      // Store image source metadata for historical imagery tracking
+      image_source: imageSource || selectedImage.source,
+      image_year: imageYear || new Date().getFullYear(),
+      quality_assessment: qualityAssessment
+    })
     .select()
     .single()
 
