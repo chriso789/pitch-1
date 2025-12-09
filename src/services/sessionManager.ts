@@ -104,12 +104,16 @@ export function isSessionExpiringSoon(): boolean {
 
 /**
  * Clear all session data - localStorage, sessionStorage, and cookies
+ * SECURITY: This must clear ALL cached authentication data to prevent session leaks
  */
 export function clearAllSessionData(): void {
   console.log('[SessionManager] Clearing all session data...');
 
   // Clear Supabase auth token
   localStorage.removeItem(SESSION_KEYS.SUPABASE_AUTH);
+
+  // Clear device fingerprint to prevent cross-user fingerprint reuse
+  localStorage.removeItem('pitch_device_fingerprint');
 
   // Clear all pitch_ prefixed items from localStorage
   const localStorageKeys = Object.keys(localStorage);
