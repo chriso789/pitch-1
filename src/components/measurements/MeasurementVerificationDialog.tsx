@@ -300,7 +300,15 @@ export function MeasurementVerificationDialog({
   const [coordinateMismatchDistance, setCoordinateMismatchDistance] = useState<number>(0);
   const [hasAutoFixedMismatch, setHasAutoFixedMismatch] = useState(false);
   const [regenerationError, setRegenerationError] = useState<string | null>(null);
-  const [satelliteZoom, setSatelliteZoom] = useState(20); // Range 18-21, default 20 for closer view
+  // Auto-calculate optimal zoom based on roof size
+  const optimalZoom = useMemo(() => {
+    const totalArea = measurement?.summary?.total_area_sqft || 0;
+    if (totalArea < 1500) return 22; // Small roof - zoom in close
+    if (totalArea < 3000) return 21; // Medium roof
+    return 20; // Large roof
+  }, [measurement?.summary?.total_area_sqft]);
+  
+  const [satelliteZoom, setSatelliteZoom] = useState(21); // Range 18-22, default 21 for closer view
   const [resolution, setResolution] = useState<ResolutionOption>('hd'); // Resolution selector
   const [isMaximized, setIsMaximized] = useState(false); // Fullscreen toggle
   const [showHistoricalComparison, setShowHistoricalComparison] = useState(false); // Historical imagery dialog
@@ -322,6 +330,20 @@ export function MeasurementVerificationDialog({
       setDetectedRoofType(detection);
     }
   }, [measurement, tags]);
+  
+  // Auto-apply optimal zoom on dialog open based on roof size
+  useEffect(() => {
+    if (open && measurement?.summary?.total_area_sqft) {
+      const area = measurement.summary.total_area_sqft;
+      let autoZoom = 21; // Default
+      if (area < 1500) autoZoom = 22;
+      else if (area < 3000) autoZoom = 21;
+      else autoZoom = 20;
+      
+      console.log(`🔍 Auto-zoom: ${autoZoom} for ${area} sqft roof`);
+      setSatelliteZoom(autoZoom);
+    }
+  }, [open, measurement?.summary?.total_area_sqft]);
   
   // ALWAYS load measurement from database to get complete linear features (ridges, hips, valleys)
   // The API may return area but miss linear features - database has the complete picture
@@ -1245,7 +1267,7 @@ export function MeasurementVerificationDialog({
             {satelliteImageUrl && (measurement?.faces || buildingPolygon.length > 0) && (
               <div className="space-y-3">
                 {/* Zoom Control Toolbar */}
-                <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg border">
+                <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg border flex-wrap">
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <div className="flex items-center">
@@ -1258,7 +1280,7 @@ export function MeasurementVerificationDialog({
                     value={[satelliteZoom]}
                     onValueChange={(value) => setSatelliteZoom(value[0])}
                     min={18}
-                    max={21}
+                    max={22}
                     step={1}
                     className="flex-1 max-w-[160px]"
                     disabled={isLoadingSatellite}
@@ -1266,6 +1288,21 @@ export function MeasurementVerificationDialog({
                   <Badge variant="secondary" className="text-xs min-w-[32px] justify-center">
                     {satelliteZoom}
                   </Badge>
+                  {/* Auto-Zoom Button */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={() => setSatelliteZoom(optimalZoom)}
+                        disabled={isLoadingSatellite}
+                      >
+                        Auto
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>Auto-zoom based on roof size ({optimalZoom})</TooltipContent>
+                  </Tooltip>
                   <div className="flex items-center gap-1.5 pl-2 border-l">
                     <Select value={resolution} onValueChange={(v) => setResolution(v as ResolutionOption)} disabled={isLoadingSatellite}>
                       <SelectTrigger className="h-7 w-[90px] text-xs">
@@ -1317,9 +1354,51 @@ export function MeasurementVerificationDialog({
                   />
                 )}
                 
-                {/* Reset to Verified Address Button */}
-                {coordinateMismatchDistance > 20 && verifiedAddressLat && verifiedAddressLng && (
-                  <div className="absolute top-2 right-2">
+                {/* Re-center Buttons */}
+                <div className="absolute top-2 right-2 flex flex-col gap-1">
+                  {/* Re-center on Roof Centroid Button */}
+                  {measurement?.faces?.length > 0 && (
+                    <Button
+                      variant="secondary"
+                      size="sm"
+                      onClick={() => {
+                        // Calculate centroid from WKT facets
+                        const allCoords: [number, number][] = [];
+                        measurement.faces?.forEach((face: any) => {
+                          const wkt = face.wkt || '';
+                          const match = wkt.match(/POLYGON\(\(([^)]+)\)\)/);
+                          if (match) {
+                            match[1].split(',').forEach((pair: string) => {
+                              const [lng, lat] = pair.trim().split(' ').map(Number);
+                              if (!isNaN(lat) && !isNaN(lng)) {
+                                allCoords.push([lat, lng]);
+                              }
+                            });
+                          }
+                        });
+                        
+                        if (allCoords.length > 0) {
+                          const centroidLat = allCoords.reduce((sum, [lat]) => sum + lat, 0) / allCoords.length;
+                          const centroidLng = allCoords.reduce((sum, [, lng]) => sum + lng, 0) / allCoords.length;
+                          console.log('🎯 Re-centering on roof centroid:', centroidLat, centroidLng);
+                          setAdjustedCenterLat(centroidLat);
+                          setAdjustedCenterLng(centroidLng);
+                          toast({
+                            title: "Re-centered on Roof",
+                            description: "Satellite image centered on detected roof structure",
+                          });
+                        }
+                      }}
+                      disabled={isLoadingSatellite}
+                      className="bg-background/95 backdrop-blur shadow-lg text-xs"
+                    >
+                      <MapPin className="h-3 w-3 mr-1" />
+                      Center on Roof
+                    </Button>
+                  )}
+                  
+                  {/* Reset to Verified Address Button */}
+                  {coordinateMismatchDistance > 20 && verifiedAddressLat && verifiedAddressLng && (
                     <Button
                       variant="default"
                       size="sm"
@@ -1330,14 +1409,14 @@ export function MeasurementVerificationDialog({
                         handleRegenerateVisualization(verifiedAddressLat, verifiedAddressLng, manualZoom);
                       }}
                       disabled={isRegenerating || !isOnline}
-                      className="bg-background/95 backdrop-blur shadow-lg"
+                      className="bg-background/95 backdrop-blur shadow-lg text-xs"
                       title="Center on house address"
                     >
-                      <Home className="h-4 w-4 mr-1.5" />
+                      <Home className="h-3 w-3 mr-1" />
                       Reset to Home
                     </Button>
-                  </div>
-                )}
+                  )}
+                </div>
                 
                 {/* Offline Notice */}
                 {!isOnline && (
