@@ -64,6 +64,11 @@ interface ComprehensiveMeasurementOverlayProps {
   pipelineEntryId?: string;
   verifiedAddressLat?: number;
   verifiedAddressLng?: number;
+  // Manual offset adjustment for fine-tuning overlay alignment
+  offsetX?: number;
+  offsetY?: number;
+  // Debug mode to show AI detection boundaries
+  showDebugOverlay?: boolean;
 }
 
 // ============= WKT Parsing Utilities =============
@@ -173,6 +178,9 @@ export function ComprehensiveMeasurementOverlay({
   pipelineEntryId,
   verifiedAddressLat,
   verifiedAddressLng,
+  offsetX = 0,
+  offsetY = 0,
+  showDebugOverlay = false,
 }: ComprehensiveMeasurementOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
@@ -407,11 +415,12 @@ export function ComprehensiveMeasurementOverlay({
      const canvasCenterX = canvasWidth / 2;
      const canvasCenterY = canvasHeight / 2;
      
-     const x = canvasCenterX + (lngOffsetMeters / metersPerPixel) * zoomScaleFactor;
-     const y = canvasCenterY - (latOffsetMeters / metersPerPixel) * zoomScaleFactor; // Flip Y axis for canvas
+     // Apply manual offset adjustment for fine-tuning alignment
+     const x = canvasCenterX + (lngOffsetMeters / metersPerPixel) * zoomScaleFactor + offsetX;
+     const y = canvasCenterY - (latOffsetMeters / metersPerPixel) * zoomScaleFactor + offsetY; // Flip Y axis for canvas
      
      return { x, y };
-   }, [centerLat, centerLng, verifiedAddressLat, verifiedAddressLng, canvasWidth, canvasHeight, zoom, measurement?.analysis_zoom]);
+   }, [centerLat, centerLng, verifiedAddressLat, verifiedAddressLng, canvasWidth, canvasHeight, zoom, measurement?.analysis_zoom, offsetX, offsetY]);
 
   // Auto-save with database persistence
   const handleAutoSave = async () => {
@@ -2827,6 +2836,71 @@ export function ComprehensiveMeasurementOverlay({
       <div className="border border-border rounded-lg overflow-hidden bg-muted relative">
         <canvas ref={canvasRef} />
         
+        {/* Debug Overlay - Shows AI detection bounding box */}
+        {showDebugOverlay && measurement?.bounding_box && (
+          <svg 
+            className="absolute inset-0 pointer-events-none" 
+            width={canvasWidth} 
+            height={canvasHeight}
+            style={{ zIndex: 50 }}
+          >
+            {/* Detected bounding box */}
+            <rect
+              x={(measurement.bounding_box.topLeftX / 100) * canvasWidth}
+              y={(measurement.bounding_box.topLeftY / 100) * canvasHeight}
+              width={((measurement.bounding_box.bottomRightX - measurement.bounding_box.topLeftX) / 100) * canvasWidth}
+              height={((measurement.bounding_box.bottomRightY - measurement.bounding_box.topLeftY) / 100) * canvasHeight}
+              fill="none"
+              stroke="#facc15"
+              strokeWidth={2}
+              strokeDasharray="8,4"
+            />
+            {/* Center point marker */}
+            <circle
+              cx={canvasWidth / 2 + (offsetX || 0)}
+              cy={canvasHeight / 2 + (offsetY || 0)}
+              r={8}
+              fill="none"
+              stroke="#facc15"
+              strokeWidth={2}
+            />
+            <line
+              x1={canvasWidth / 2 + (offsetX || 0) - 12}
+              y1={canvasHeight / 2 + (offsetY || 0)}
+              x2={canvasWidth / 2 + (offsetX || 0) + 12}
+              y2={canvasHeight / 2 + (offsetY || 0)}
+              stroke="#facc15"
+              strokeWidth={2}
+            />
+            <line
+              x1={canvasWidth / 2 + (offsetX || 0)}
+              y1={canvasHeight / 2 + (offsetY || 0) - 12}
+              x2={canvasWidth / 2 + (offsetX || 0)}
+              y2={canvasHeight / 2 + (offsetY || 0) + 12}
+              stroke="#facc15"
+              strokeWidth={2}
+            />
+            <text
+              x={10}
+              y={20}
+              fill="#facc15"
+              fontSize={12}
+              fontFamily="monospace"
+            >
+              Debug: Bounding Box + Center Point
+            </text>
+          </svg>
+        )}
+        
+        {/* Debug overlay fallback when no bounding box stored */}
+        {showDebugOverlay && !measurement?.bounding_box && (
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-50">
+            <div className="bg-yellow-500/10 border-2 border-dashed border-yellow-500 rounded-lg p-4 text-yellow-600 text-xs">
+              Debug Mode: No bounding box data stored.
+              <br />Re-run measurement to capture detection boundaries.
+            </div>
+          </div>
+        )}
         {/* Measurement Summary HUD */}
         <div className="absolute top-4 right-4 bg-background/95 backdrop-blur-sm border rounded-lg shadow-lg z-10 min-w-[200px]">
           <div className="flex items-center justify-between p-3 border-b">
