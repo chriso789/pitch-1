@@ -193,18 +193,29 @@ serve(async (req) => {
     const measurements = calculateDetailedMeasurements(aiAnalysis, scale, solarData)
     const confidence = calculateConfidenceScore(aiAnalysis, measurements, solarData, selectedImage)
     
-    // NEW: GPT-4 Vision detection for accurate roof feature positioning
+    // NEW: Two-pass AI detection for accurate roof feature positioning
+    // PHASE 1: Detect bounding box first to anchor detection
+    // PHASE 2: Detect features within bounding box for precision
     let visionLinearFeatures: any[] = []
-    if (OPENAI_API_KEY && selectedImage.url) {
+    let boundingBoxResult: any = null
+    
+    if (LOVABLE_API_KEY && selectedImage.url) {
       try {
         const imageSize = selectedImage.source === 'mapbox' ? 1280 : 640
+        
+        // PHASE 1: Detect main building bounding box first
+        console.log('🎯 Starting two-pass roof detection...')
+        boundingBoxResult = await detectRoofBoundingBox(selectedImage.url, coordinates)
+        
+        // PHASE 2: Detect features within bounding box
         visionLinearFeatures = await detectRoofFeaturesWithVision(
           selectedImage.url, 
           coordinates, 
           imageSize, 
-          IMAGE_ZOOM
+          IMAGE_ZOOM,
+          boundingBoxResult // Pass bounding box to focus detection
         )
-        console.log(`🔍 Lovable AI Vision detected ${visionLinearFeatures.length} features`)
+        console.log(`🔍 Two-pass detection complete: ${visionLinearFeatures.length} features detected`)
       } catch (visionError) {
         console.error('Lovable AI Vision detection failed, using fallback:', visionError)
       }
@@ -505,58 +516,158 @@ function extractBoundaryLines(boundingBox: any, centerLat: number, centerLng: nu
   return lines
 }
 
-// GPT-4 Vision: Detect roof features visually from satellite imagery
-// ENHANCED: Now detects perimeter outline, eaves, rakes in addition to ridges/hips/valleys
+// PHASE 1: Detect roof bounding box first (two-pass approach)
+// This anchors all subsequent feature detection to the actual visible roof area
+async function detectRoofBoundingBox(
+  imageUrl: string,
+  coordinates: { lat: number; lng: number }
+): Promise<{
+  boundingBox: { topLeftX: number; topLeftY: number; bottomRightX: number; bottomRightY: number } | null;
+  mainBuildingCenter: { x: number; y: number };
+  confidence: number;
+  description: string;
+}> {
+  const prompt = `STEP 1: LOCATE THE MAIN BUILDING
+
+Look at this satellite image and identify the PRIMARY residential building:
+- Find the LARGEST roofing structure (ignore sheds, garages, pools, driveways)
+- The main building is typically centered in the image near the address marker
+
+Return the BOUNDING BOX of the main roof as percentage coordinates (0-100):
+- topLeftX, topLeftY: top-left corner of the roof
+- bottomRightX, bottomRightY: bottom-right corner of the roof
+- centerX, centerY: center point of the main roof
+
+Return ONLY valid JSON:
+{
+  "boundingBox": {
+    "topLeftX": 15,
+    "topLeftY": 20,
+    "bottomRightX": 85,
+    "bottomRightY": 75
+  },
+  "mainBuildingCenter": {"x": 50, "y": 47},
+  "confidence": 0-100,
+  "description": "Main house with hip roof, pool visible to south"
+}
+
+Be PRECISE - the bounding box should tightly enclose ONLY the main roof, not surrounding structures.`
+
+  console.log('🎯 PHASE 1: Detecting main roof bounding box...')
+  
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json', 
+        'Authorization': `Bearer ${LOVABLE_API_KEY}` 
+      },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash', // Fast model for quick bounding box detection
+        messages: [{ 
+          role: 'user', 
+          content: [
+            { type: 'text', text: prompt }, 
+            { type: 'image_url', image_url: { url: imageUrl } }
+          ] 
+        }],
+        max_completion_tokens: 500
+      })
+    })
+
+    if (!response.ok) {
+      console.log('Bounding box detection failed, using default center')
+      return { boundingBox: null, mainBuildingCenter: { x: 50, y: 50 }, confidence: 0, description: 'Detection failed' }
+    }
+
+    const data = await response.json()
+    let content = data.choices?.[0]?.message?.content || ''
+    content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+    
+    const parsed = JSON.parse(content)
+    console.log('✅ Main roof located:', parsed.description, `(${parsed.confidence}% confidence)`)
+    console.log('📦 Bounding box:', parsed.boundingBox)
+    
+    return {
+      boundingBox: parsed.boundingBox,
+      mainBuildingCenter: parsed.mainBuildingCenter || { x: 50, y: 50 },
+      confidence: parsed.confidence || 70,
+      description: parsed.description || ''
+    }
+  } catch (err) {
+    console.log('Bounding box detection error:', err)
+    return { boundingBox: null, mainBuildingCenter: { x: 50, y: 50 }, confidence: 0, description: 'Parse error' }
+  }
+}
+
+// PHASE 2: GPT-5 Vision - Detect roof features with two-pass approach
+// Uses bounding box from Phase 1 to focus detection on the correct structure
 async function detectRoofFeaturesWithVision(
   imageUrl: string, 
   coordinates: { lat: number; lng: number },
   imageSize: number,
-  zoom: number
+  zoom: number,
+  boundingBoxResult?: { boundingBox: any; mainBuildingCenter: { x: number; y: number }; confidence: number }
 ): Promise<any[]> {
-  const prompt = `Analyze this satellite roof image and identify ALL visible roof linear features.
+  // Build context from bounding box detection
+  const boundingBoxContext = boundingBoxResult?.boundingBox 
+    ? `FOCUS AREA: The main building roof is located between:
+- Top-left: (${boundingBoxResult.boundingBox.topLeftX}%, ${boundingBoxResult.boundingBox.topLeftY}%)
+- Bottom-right: (${boundingBoxResult.boundingBox.bottomRightX}%, ${boundingBoxResult.boundingBox.bottomRightY}%)
+- Center: (${boundingBoxResult.mainBuildingCenter.x}%, ${boundingBoxResult.mainBuildingCenter.y}%)
 
-CRITICAL: Trace the COMPLETE roof structure including:
+ONLY trace features within this bounding box. Ignore structures outside this area.
 
-1. **PERIMETER/OUTLINE** - The complete outer edge of the roof (as a closed polygon). This is the most important feature - trace it precisely following the exact roof edge.
+`
+    : ''
 
-2. **EAVES** - Horizontal roof edges at the BOTTOM of each roof plane (where gutters attach). Usually parallel to the ground. Color: typically darker shadow line.
+  const prompt = `${boundingBoxContext}ROOF FEATURE DETECTION - PIXEL-PERFECT PRECISION REQUIRED
 
-3. **RAKES** - Sloped/diagonal roof edges on GABLE ENDS (the angled edges going up toward the peak). Only present on gable-style roofs.
+STEP 1: IDENTIFY THE MAIN BUILDING
+${boundingBoxContext ? '(Already identified - focus on the marked bounding box area)' : '- Find the PRIMARY residential building (largest roof structure)'}
+- The roof edges are visible as lines where shingles meet gutters/fascia
 
-4. **RIDGES** - Horizontal lines at the TOP peak where two roof slopes meet. Usually runs along the highest point of the roof.
+STEP 2: TRACE EXACT VISIBLE EDGES WITH DECIMAL PRECISION
+For each feature, trace the EXACT visible edge where you can see:
+- The shingle/material edge meeting the fascia/gutter (for eaves)
+- The peak line where two roof planes meet (for ridges)
+- The diagonal edge from corner to peak (for hips)
 
-5. **HIPS** - Diagonal lines from OUTER CORNERS going UP toward the ridge. Creates a sloped edge where two roof planes meet at an external angle.
+Use DECIMAL precision (e.g., 34.5, not 35) for accuracy.
 
-6. **VALLEYS** - Internal diagonal lines where two roof planes meet at an INTERNAL angle (forms a V-shape that channels water). Usually darker than surrounding roof.
+FEATURE DEFINITIONS:
+1. **EAVES** - Horizontal edges at the BOTTOM of roof planes (gutter line). Look for shadow or color change.
+2. **RAKES** - Sloped edges on GABLE ends going UP to the ridge peak.
+3. **RIDGES** - Horizontal peak lines where two slopes meet at the TOP.
+4. **HIPS** - Diagonal lines from OUTER corners going UP toward the ridge.
+5. **VALLEYS** - Internal V-shaped lines where roof planes meet (water channels).
+6. **PERIMETER** - Complete outer edge tracing the entire roof outline.
 
-For each feature, provide:
-- Type: "perimeter" | "eave" | "rake" | "ridge" | "hip" | "valley"
-- Start position as percentage of image (0-100 for x from left, 0-100 for y from top)
-- End position as percentage of image
-- Confidence: "high" | "medium" | "low"
+VALIDATION CHECK:
+- Eave lines should be at the BOTTOM edges of the visible roof
+- Ridge lines should be at the TOP peak
+- All features must be WITHIN the roof structure, not floating in space
 
-For PERIMETER, provide an array of points tracing the complete roof outline.
-
-Return ONLY valid JSON in this exact format:
+Return ONLY valid JSON:
 {
   "features": [
-    {"type": "ridge", "start": {"x": 25, "y": 45}, "end": {"x": 75, "y": 45}, "confidence": "high"},
-    {"type": "hip", "start": {"x": 10, "y": 20}, "end": {"x": 25, "y": 45}, "confidence": "high"},
-    {"type": "eave", "start": {"x": 5, "y": 80}, "end": {"x": 95, "y": 80}, "confidence": "high"},
-    {"type": "rake", "start": {"x": 5, "y": 80}, "end": {"x": 25, "y": 45}, "confidence": "medium"},
-    {"type": "valley", "start": {"x": 50, "y": 60}, "end": {"x": 50, "y": 45}, "confidence": "medium"}
+    {"type": "eave", "start": {"x": 22.5, "y": 68.3}, "end": {"x": 77.5, "y": 68.3}, "confidence": "high"},
+    {"type": "ridge", "start": {"x": 25.0, "y": 45.5}, "end": {"x": 75.0, "y": 45.5}, "confidence": "high"},
+    {"type": "hip", "start": {"x": 15.2, "y": 65.8}, "end": {"x": 25.0, "y": 45.5}, "confidence": "high"},
+    {"type": "valley", "start": {"x": 50.0, "y": 60.0}, "end": {"x": 50.0, "y": 45.5}, "confidence": "medium"}
   ],
   "perimeter": [
-    {"x": 10, "y": 15},
-    {"x": 90, "y": 15},
-    {"x": 90, "y": 85},
-    {"x": 10, "y": 85}
+    {"x": 15.2, "y": 30.5},
+    {"x": 84.8, "y": 30.5},
+    {"x": 84.8, "y": 68.3},
+    {"x": 15.2, "y": 68.3}
   ],
   "roofShape": "hip|gable|complex",
-  "detectionNotes": "observations about the roof"
+  "detectionNotes": "observations",
+  "boundingBox": {"topLeftX": 15, "topLeftY": 30, "bottomRightX": 85, "bottomRightY": 70}
 }
 
-Focus on VISIBLE features on the main roof structure. Be precise - each line should follow the actual roof edge visible in the image. No markdown, only JSON.`
+CRITICAL: Every coordinate MUST fall on actual visible roof edges. If unsure, mark confidence as "low".`
 
   console.log('🔍 Calling Lovable AI Gateway for roof feature detection...')
   

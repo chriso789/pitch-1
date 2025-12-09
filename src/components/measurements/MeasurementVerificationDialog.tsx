@@ -320,6 +320,11 @@ export function MeasurementVerificationDialog({
   const [validationOpen, setValidationOpen] = useState(false); // Validation report collapsible
   const [showReportPreview, setShowReportPreview] = useState(false); // Roofr-style report preview
   
+  // Manual overlay offset adjustment controls
+  const [overlayOffsetX, setOverlayOffsetX] = useState(0); // Horizontal offset in pixels
+  const [overlayOffsetY, setOverlayOffsetY] = useState(0); // Vertical offset in pixels
+  const [showDebugOverlay, setShowDebugOverlay] = useState(false); // Show AI detection boundaries
+  
   const manualVerify = useManualVerification();
   
   // Database measurement fallback - loads from DB when AI returns empty values
@@ -1396,6 +1401,9 @@ export function MeasurementVerificationDialog({
                       canvasHeight={RESOLUTION_CONFIG[resolution].height}
                       verifiedAddressLat={overlayCoordinates.lat}
                       verifiedAddressLng={overlayCoordinates.lng}
+                      offsetX={overlayOffsetX}
+                      offsetY={overlayOffsetY}
+                      showDebugOverlay={showDebugOverlay}
                     />
                   ) : (
                     <PolygonEditor
@@ -1751,6 +1759,64 @@ export function MeasurementVerificationDialog({
                     <Input type="number" value={faceCount} onChange={(e) => setFaceCount(Number(e.target.value))} className="h-8 text-xs" min="1" max="20" />
                   </div>
                 </div>
+              </Card>
+              
+              {/* Manual Overlay Offset Adjustment */}
+              <Card className="p-3 bg-muted/30 border">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Overlay Alignment</h4>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={showDebugOverlay}
+                      onCheckedChange={setShowDebugOverlay}
+                      className="scale-75"
+                    />
+                    <span className="text-[10px] text-muted-foreground">Debug</span>
+                  </div>
+                </div>
+                <div className="space-y-3">
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-muted-foreground">Horizontal (←→)</label>
+                      <span className="text-xs font-mono">{overlayOffsetX}px</span>
+                    </div>
+                    <Slider
+                      value={[overlayOffsetX]}
+                      onValueChange={([v]) => setOverlayOffsetX(v)}
+                      min={-50}
+                      max={50}
+                      step={1}
+                      className="w-full"
+                    />
+                  </div>
+                  <div>
+                    <div className="flex items-center justify-between mb-1">
+                      <label className="text-xs text-muted-foreground">Vertical (↑↓)</label>
+                      <span className="text-xs font-mono">{overlayOffsetY}px</span>
+                    </div>
+                    <Slider
+                      value={[overlayOffsetY]}
+                      onValueChange={([v]) => setOverlayOffsetY(v)}
+                      min={-50}
+                      max={50}
+                      step={1}
+                      className="w-full"
+                    />
+                  </div>
+                  {(overlayOffsetX !== 0 || overlayOffsetY !== 0) && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => { setOverlayOffsetX(0); setOverlayOffsetY(0); }}
+                      className="w-full h-7 text-xs"
+                    >
+                      Reset Offsets
+                    </Button>
+                  )}
+                </div>
+                <p className="text-[10px] text-muted-foreground mt-2">
+                  💡 Nudge overlay if lines don't align with roof edges
+                </p>
               </Card>
 
               {/* Collapsible: Roof Geometry */}
