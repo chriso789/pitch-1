@@ -48,22 +48,24 @@ serve(async (req) => {
     const selectedImage = mapboxImage.url ? mapboxImage : googleImage
     const imageSource = selectedImage.source
     const imageYear = new Date().getFullYear()
+    const imageSize = selectedImage.source === 'mapbox' ? 1280 : 640
     
-    console.log(`✅ Using: ${imageSource}`)
+    console.log(`✅ Using: ${imageSource} (${imageSize}x${imageSize})`)
 
-    // STREAMLINED: Single fast AI call for roof analysis + edge detection
+    // TWO-PASS AI ANALYSIS:
+    // Pass 1: Fast roof bounding box + basic analysis
     const aiAnalysis = await analyzeRoofWithAI(selectedImage.url, address, coordinates)
+    console.log(`⏱️ Pass 1 (bounding box) complete: ${Date.now() - startTime}ms`)
     
-    console.log(`⏱️ AI analysis complete: ${Date.now() - startTime}ms`)
+    // Pass 2: Precise ridge/hip/valley edge detection (the key improvement!)
+    const visionEdges = await detectRoofEdgesWithVision(selectedImage.url, aiAnalysis.boundingBox)
+    console.log(`⏱️ Pass 2 (edge detection) complete: ${Date.now() - startTime}ms`)
     
     const scale = calculateScale(solarData, selectedImage, aiAnalysis)
     const measurements = calculateDetailedMeasurements(aiAnalysis, scale, solarData)
     const confidence = calculateConfidenceScore(aiAnalysis, measurements, solarData, selectedImage)
     
-    // Get image size for coordinate conversion
-    const imageSize = selectedImage.source === 'mapbox' ? 1280 : 640
-    
-    // Convert AI-detected edges to WKT coordinates
+    // Convert AI-detected edges to WKT coordinates (perimeter from Pass 1)
     const aiEdgeData = convertAIEdgesToWKT(
       aiAnalysis.edgeSegments || [],
       aiAnalysis.roofPerimeter || [],
@@ -72,19 +74,25 @@ serve(async (req) => {
       IMAGE_ZOOM
     )
     
-    // Combine: AI edge lines (eaves/rakes/perimeter) + Google Solar lines (ridges/hips/valleys)
-    // Filter Google Solar features to only keep ridges, hips, valleys (not bounding box eaves/rakes)
-    const solarInteriorFeatures = (solarData.linearFeatures || []).filter(
-      (f: any) => f.type === 'ridge' || f.type === 'hip' || f.type === 'valley'
+    // Convert vision-detected ridge/hip/valley lines to WKT (Pass 2 - the accurate ones!)
+    const visionLinearFeatures = convertVisionEdgesToWKT(
+      visionEdges,
+      coordinates,
+      imageSize,
+      IMAGE_ZOOM
     )
-    const linearFeatures = [...aiEdgeData.linearFeatures, ...solarInteriorFeatures]
-    console.log(`📏 Using ${aiEdgeData.linearFeatures.length} AI edges + ${solarInteriorFeatures.length} Solar interior features = ${linearFeatures.length} total`)
+    
+    // Combine: AI perimeter edges (eaves/rakes) + Vision-detected interior features (ridges/hips/valleys)
+    // Vision-detected features are prioritized over Google Solar segment intersections
+    const linearFeatures = [...aiEdgeData.linearFeatures, ...visionLinearFeatures]
+    console.log(`📏 Using ${aiEdgeData.linearFeatures.length} AI perimeter edges + ${visionLinearFeatures.length} Vision-detected interior features = ${linearFeatures.length} total`)
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     const measurementRecord = await saveMeasurementToDatabase(supabase, {
       address, coordinates, customerId, userId, googleImage, mapboxImage,
       selectedImage, solarData, aiAnalysis, scale, measurements, confidence,
-      linearFeatures, imageSource, imageYear, perimeterWkt: aiEdgeData.perimeterWkt
+      linearFeatures, imageSource, imageYear, perimeterWkt: aiEdgeData.perimeterWkt,
+      visionEdges, imageSize
     })
     
     const totalTime = Date.now() - startTime
@@ -108,7 +116,12 @@ serve(async (req) => {
           facetCount: aiAnalysis.facets.length,
           complexity: aiAnalysis.overallComplexity,
           pitch: measurements.predominantPitch,
-          boundingBox: aiAnalysis.boundingBox
+          boundingBox: aiAnalysis.boundingBox,
+          visionEdges: {
+            ridges: visionEdges.ridges?.length || 0,
+            hips: visionEdges.hips?.length || 0,
+            valleys: visionEdges.valleys?.length || 0
+          }
         },
         measurements: {
           totalAreaSqft: measurements.totalAdjustedArea,
@@ -172,9 +185,6 @@ async function fetchGoogleSolarData(coords: any) {
     const roofSegments = data.solarPotential?.roofSegmentStats || []
     const boundingBox = data.boundingBox || null
     
-    // Extract roof segment boundaries and compute linear features with WKT geometry
-    const linearFeatures = extractLinearFeaturesFromSegments(roofSegments, boundingBox, coords)
-    
     return {
       available: true,
       buildingFootprintSqft,
@@ -186,121 +196,12 @@ async function fetchGoogleSolarData(coords: any) {
         planeHeightAtCenter: s.planeHeightAtCenterMeters,
         boundingBox: s.boundingBox
       })),
-      linearFeatures,
       boundingBox,
       rawData: data
     }
   } catch (err) {
     console.error('Google Solar API error:', err)
     return { available: false, buildingFootprintSqft: null, roofSegmentCount: 0, linearFeatures: [] }
-  }
-}
-
-// Extract linear features (ridges, hips, valleys) from roof segment data
-// NOTE: We no longer extract eave/rake from bounding box - AI edge detection handles those
-function extractLinearFeaturesFromSegments(segments: any[], boundingBox: any, center: any) {
-  const linearFeatures: any[] = []
-  let featureId = 1
-  
-  const centerLat = center.lat
-  const metersPerDegLat = 111320
-  const metersPerDegLng = 111320 * Math.cos(centerLat * Math.PI / 180)
-  
-  // Process segment pairs to find intersection lines (ridges/hips/valleys)
-  if (segments && segments.length >= 2) {
-    for (let i = 0; i < segments.length; i++) {
-      const seg1 = segments[i]
-      if (!seg1.boundingBox) continue
-      
-      for (let j = i + 1; j < segments.length; j++) {
-        const seg2 = segments[j]
-        if (!seg2.boundingBox) continue
-        
-        const intersection = findSegmentIntersection(seg1, seg2, metersPerDegLat, metersPerDegLng)
-        
-        if (intersection) {
-          const azimuth1 = seg1.azimuthDegrees || 0
-          const azimuth2 = seg2.azimuthDegrees || 0
-          const azimuthDiff = Math.abs(azimuth1 - azimuth2)
-          
-          let featureType = 'ridge'
-          if (azimuthDiff > 150 && azimuthDiff < 210) {
-            featureType = 'ridge'
-          } else if (intersection.isLowerThanBoth) {
-            featureType = 'valley'
-          } else {
-            featureType = 'hip'
-          }
-          
-          linearFeatures.push({
-            id: `LF${featureId++}`,
-            type: featureType,
-            wkt: intersection.wkt,
-            length_ft: intersection.length_ft,
-            source: 'google_solar'
-          })
-        }
-      }
-    }
-  }
-  
-  // NOTE: Removed bounding box eave/rake extraction - AI edge detection now handles roof perimeter
-  
-  console.log(`✅ Extracted ${linearFeatures.length} interior linear features from Google Solar`)
-  return linearFeatures
-}
-
-function findSegmentIntersection(seg1: any, seg2: any, mPerDegLat: number, mPerDegLng: number) {
-  const box1 = seg1.boundingBox
-  const box2 = seg2.boundingBox
-  
-  if (!box1 || !box2) return null
-  
-  const b1sw = { lat: box1.sw?.latitude || 0, lng: box1.sw?.longitude || 0 }
-  const b1ne = { lat: box1.ne?.latitude || 0, lng: box1.ne?.longitude || 0 }
-  const b2sw = { lat: box2.sw?.latitude || 0, lng: box2.sw?.longitude || 0 }
-  const b2ne = { lat: box2.ne?.latitude || 0, lng: box2.ne?.longitude || 0 }
-  
-  const overlapMinLat = Math.max(b1sw.lat, b2sw.lat)
-  const overlapMaxLat = Math.min(b1ne.lat, b2ne.lat)
-  const overlapMinLng = Math.max(b1sw.lng, b2sw.lng)
-  const overlapMaxLng = Math.min(b1ne.lng, b2ne.lng)
-  
-  const tolerance = 0.00005
-  if (overlapMaxLat - overlapMinLat < -tolerance || overlapMaxLng - overlapMinLng < -tolerance) {
-    return null
-  }
-  
-  const latOverlap = overlapMaxLat - overlapMinLat
-  const lngOverlap = overlapMaxLng - overlapMinLng
-  
-  let startLat, startLng, endLat, endLng
-  
-  if (latOverlap > lngOverlap) {
-    const sharedLng = (overlapMinLng + overlapMaxLng) / 2
-    startLat = overlapMinLat
-    startLng = sharedLng
-    endLat = overlapMaxLat
-    endLng = sharedLng
-  } else {
-    const sharedLat = (overlapMinLat + overlapMaxLat) / 2
-    startLat = sharedLat
-    startLng = overlapMinLng
-    endLat = sharedLat
-    endLng = overlapMaxLng
-  }
-  
-  const dx = (endLng - startLng) * mPerDegLng
-  const dy = (endLat - startLat) * mPerDegLat
-  const length_m = Math.sqrt(dx * dx + dy * dy)
-  const length_ft = length_m * 3.28084
-  
-  if (length_ft < 3) return null
-  
-  return {
-    wkt: `LINESTRING(${startLng} ${startLat}, ${endLng} ${endLat})`,
-    length_ft,
-    isLowerThanBoth: false
   }
 }
 
@@ -321,7 +222,7 @@ async function fetchMapboxSatellite(coords: any) {
   }
 }
 
-// STREAMLINED: Single fast AI call for roof analysis + edge detection
+// PASS 1: Fast roof bounding box + perimeter analysis
 async function analyzeRoofWithAI(imageUrl: string, address: string, coordinates: { lat: number; lng: number }) {
   if (!imageUrl) {
     throw new Error('No satellite image available for AI analysis')
@@ -339,8 +240,7 @@ async function analyzeRoofWithAI(imageUrl: string, address: string, coordinates:
   ],
   "edgeSegments": [
     {"type": "eave", "startX": 25.5, "startY": 70.0, "endX": 78.0, "endY": 68.5},
-    {"type": "rake", "startX": 78.0, "startY": 68.5, "endX": 75.3, "endY": 28.1},
-    {"type": "ridge", "startX": 50.0, "startY": 29.0, "endX": 50.0, "endY": 29.0}
+    {"type": "rake", "startX": 78.0, "startY": 68.5, "endX": 75.3, "endY": 28.1}
   ],
   "boundingBox": {
     "topLeftX": 22,
@@ -366,13 +266,12 @@ async function analyzeRoofWithAI(imageUrl: string, address: string, coordinates:
 }
 
 CRITICAL INSTRUCTIONS:
-1. roofPerimeter: Trace the EXACT visible roof outline as polygon vertices. Use percentages (0-100) of image dimensions. Trace where shingles meet sky/ground - this is the TRUE roof edge.
-2. edgeSegments: Classify each edge as "eave" (horizontal bottom), "rake" (sloped gable sides), "ridge" (peak), "hip" (corner angles), or "valley" (internal angles).
-3. Use DECIMAL precision (e.g., 34.7 not 35) for accurate tracing.
-4. For complex roofs, trace the complete outer perimeter including all extensions.
-5. Keep facets array SHORT - max 4 main facets. ONLY JSON, no markdown.`
+1. roofPerimeter: Trace the EXACT visible roof outline as polygon vertices. Use percentages (0-100) of image dimensions.
+2. edgeSegments: Only include "eave" and "rake" edges (horizontal bottom, sloped gable sides). DO NOT include ridge/hip/valley here.
+3. Use DECIMAL precision (e.g., 34.72 not 35) for accurate tracing.
+4. Keep facets array SHORT - max 4 main facets. ONLY JSON, no markdown.`
 
-  console.log('🤖 Calling AI for roof analysis with edge detection...')
+  console.log('🤖 Pass 1: AI roof bounding box + perimeter...')
   
   const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
@@ -421,7 +320,6 @@ CRITICAL INSTRUCTIONS:
       aiAnalysis.boundingBox = { topLeftX: 20, topLeftY: 25, bottomRightX: 80, bottomRightY: 75 }
     }
     if (!aiAnalysis.roofPerimeter || aiAnalysis.roofPerimeter.length < 3) {
-      // Fallback to bounding box corners if perimeter detection failed
       const bb = aiAnalysis.boundingBox
       aiAnalysis.roofPerimeter = [
         { x: bb.topLeftX, y: bb.topLeftY },
@@ -430,10 +328,10 @@ CRITICAL INSTRUCTIONS:
         { x: bb.topLeftX, y: bb.bottomRightY }
       ]
     }
-    if (!aiAnalysis.edgeSegments || aiAnalysis.edgeSegments.length === 0) {
+    if (!aiAnalysis.edgeSegments) {
       aiAnalysis.edgeSegments = []
     }
-    console.log('✅ AI analysis:', aiAnalysis.roofType, 'with', aiAnalysis.facets.length, 'facets,', aiAnalysis.roofPerimeter.length, 'perimeter points,', aiAnalysis.edgeSegments.length, 'edge segments')
+    console.log('✅ Pass 1 complete:', aiAnalysis.roofType, 'with', aiAnalysis.facets.length, 'facets,', aiAnalysis.roofPerimeter.length, 'perimeter points')
     return aiAnalysis
   } catch (parseError) {
     console.error('Failed to parse AI response:', content.substring(0, 300))
@@ -456,7 +354,176 @@ CRITICAL INSTRUCTIONS:
   }
 }
 
-// Convert AI-detected edge percentages to geographic WKT coordinates
+// PASS 2: Precise ridge/hip/valley detection - THIS IS THE KEY IMPROVEMENT
+// Traces ACTUAL VISIBLE LINES on the roof, not calculated from bounding box intersections
+async function detectRoofEdgesWithVision(imageUrl: string, boundingBox: any) {
+  if (!imageUrl) {
+    console.log('⚠️ No image for vision edge detection, returning empty')
+    return { ridges: [], hips: [], valleys: [] }
+  }
+
+  const prompt = `You are a roof measurement expert. Analyze this satellite roof image and trace the EXACT visible linear features.
+
+INSTRUCTIONS:
+Look at the roof and trace these specific features by following visible shadow lines and shingle patterns:
+
+1. RIDGE LINES: The exact peak lines where two roof planes meet at the HIGHEST point. These cast distinct shadows. Usually runs horizontally along the top of the roof.
+
+2. HIP LINES: Diagonal lines from ridge ends DOWN to roof corners. These are angled edges going from peak to corner. Common on hip roofs.
+
+3. VALLEY LINES: Internal V-shaped lines where two roof planes meet at a LOW angle (like where two roof sections join). Water flows here.
+
+Return coordinates as PERCENTAGE of image dimensions (0-100) with DECIMAL precision (e.g., 34.72 not 35).
+
+{
+  "ridges": [
+    {"startX": 30.5, "startY": 48.2, "endX": 69.5, "endY": 48.2}
+  ],
+  "hips": [
+    {"startX": 30.5, "startY": 48.2, "endX": 15.0, "endY": 25.0},
+    {"startX": 30.5, "startY": 48.2, "endX": 15.0, "endY": 75.0},
+    {"startX": 69.5, "startY": 48.2, "endX": 85.0, "endY": 25.0},
+    {"startX": 69.5, "startY": 48.2, "endX": 85.0, "endY": 75.0}
+  ],
+  "valleys": []
+}
+
+CRITICAL RULES:
+- Trace EXACTLY where you SEE the lines in the image
+- Follow shadow edges and shingle pattern changes
+- Hip lines should connect ridge endpoints to roof corners
+- Ridge lines are at the TOP/peak of the roof
+- Use decimal precision for accuracy
+- Return ONLY valid JSON, no markdown or explanation
+
+If you cannot clearly see any of these features, return empty arrays for that type.`
+
+  console.log('🔍 Pass 2: Vision-based ridge/hip/valley detection...')
+  
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${LOVABLE_API_KEY}` },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-flash',
+        messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: imageUrl } }] }],
+        max_completion_tokens: 1500
+      })
+    })
+
+    const data = await response.json()
+    
+    if (!response.ok) {
+      console.error('Vision edge detection error:', JSON.stringify(data))
+      return { ridges: [], hips: [], valleys: [] }
+    }
+    
+    if (!data.choices || !data.choices[0]) {
+      console.error('Vision edge detection: no choices returned')
+      return { ridges: [], hips: [], valleys: [] }
+    }
+    
+    let content = data.choices[0].message?.content || ''
+    content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+    
+    // Fix truncated JSON
+    if (!content.endsWith('}')) {
+      const openBraces = (content.match(/{/g) || []).length
+      const closeBraces = (content.match(/}/g) || []).length
+      const openBrackets = (content.match(/\[/g) || []).length
+      const closeBrackets = (content.match(/]/g) || []).length
+      for (let i = 0; i < openBrackets - closeBrackets; i++) content += ']'
+      for (let i = 0; i < openBraces - closeBraces; i++) content += '}'
+    }
+    
+    const visionEdges = JSON.parse(content)
+    
+    const ridgeCount = visionEdges.ridges?.length || 0
+    const hipCount = visionEdges.hips?.length || 0
+    const valleyCount = visionEdges.valleys?.length || 0
+    
+    console.log(`✅ Pass 2 complete: ${ridgeCount} ridges, ${hipCount} hips, ${valleyCount} valleys`)
+    
+    return {
+      ridges: visionEdges.ridges || [],
+      hips: visionEdges.hips || [],
+      valleys: visionEdges.valleys || []
+    }
+  } catch (err) {
+    console.error('Vision edge detection failed:', err)
+    return { ridges: [], hips: [], valleys: [] }
+  }
+}
+
+// Convert vision-detected ridge/hip/valley lines to WKT coordinates
+function convertVisionEdgesToWKT(
+  visionEdges: { ridges: any[], hips: any[], valleys: any[] },
+  imageCenter: { lat: number; lng: number },
+  imageSize: number,
+  zoom: number
+) {
+  const metersPerPixel = (156543.03392 * Math.cos(imageCenter.lat * Math.PI / 180)) / Math.pow(2, zoom)
+  const metersPerDegLat = 111320
+  const metersPerDegLng = 111320 * Math.cos(imageCenter.lat * Math.PI / 180)
+  
+  const linearFeatures: any[] = []
+  let featureId = 1
+  
+  // Process each feature type
+  const processFeatures = (features: any[], type: string) => {
+    if (!features || !Array.isArray(features)) return
+    
+    features.forEach((line: any) => {
+      if (!line || typeof line.startX !== 'number' || typeof line.startY !== 'number' ||
+          typeof line.endX !== 'number' || typeof line.endY !== 'number') {
+        console.log(`⚠️ Skipping invalid ${type} line:`, line)
+        return
+      }
+      
+      // Convert percentage to pixel offset from center (image center is 50%, 50%)
+      const startPixelX = ((line.startX / 100) - 0.5) * imageSize
+      const startPixelY = ((line.startY / 100) - 0.5) * imageSize
+      const endPixelX = ((line.endX / 100) - 0.5) * imageSize
+      const endPixelY = ((line.endY / 100) - 0.5) * imageSize
+      
+      // Convert pixel offset to geographic offset
+      const startLngOffset = (startPixelX * metersPerPixel) / metersPerDegLng
+      const startLatOffset = -(startPixelY * metersPerPixel) / metersPerDegLat // Negative because Y increases downward
+      const endLngOffset = (endPixelX * metersPerPixel) / metersPerDegLng
+      const endLatOffset = -(endPixelY * metersPerPixel) / metersPerDegLat
+      
+      const startLng = imageCenter.lng + startLngOffset
+      const startLat = imageCenter.lat + startLatOffset
+      const endLng = imageCenter.lng + endLngOffset
+      const endLat = imageCenter.lat + endLatOffset
+      
+      // Calculate length
+      const dx = (endLng - startLng) * metersPerDegLng
+      const dy = (endLat - startLat) * metersPerDegLat
+      const length_ft = Math.sqrt(dx * dx + dy * dy) * 3.28084
+      
+      if (length_ft >= 3) { // Only add features longer than 3 feet
+        linearFeatures.push({
+          id: `VISION_${type}_${featureId++}`,
+          type: type,
+          wkt: `LINESTRING(${startLng.toFixed(8)} ${startLat.toFixed(8)}, ${endLng.toFixed(8)} ${endLat.toFixed(8)})`,
+          length_ft: Math.round(length_ft * 10) / 10,
+          source: 'gpt4_vision' // Marked as vision-detected for prioritization in rendering
+        })
+      }
+    })
+  }
+  
+  processFeatures(visionEdges.ridges, 'ridge')
+  processFeatures(visionEdges.hips, 'hip')
+  processFeatures(visionEdges.valleys, 'valley')
+  
+  console.log(`✅ Converted ${linearFeatures.length} vision-detected features to WKT`)
+  
+  return linearFeatures
+}
+
+// Convert AI-detected edge percentages to geographic WKT coordinates (for perimeter/eaves/rakes)
 function convertAIEdgesToWKT(
   edgeSegments: any[], 
   roofPerimeter: any[],
@@ -471,8 +538,13 @@ function convertAIEdgesToWKT(
   const linearFeatures: any[] = []
   let featureId = 1
   
-  // Convert each edge segment to WKT
+  // Convert each edge segment to WKT (only eaves and rakes from Pass 1)
   edgeSegments.forEach(edge => {
+    // Skip ridge/hip/valley - those come from Pass 2 vision detection
+    if (edge.type === 'ridge' || edge.type === 'hip' || edge.type === 'valley') {
+      return
+    }
+    
     // Convert percentage to pixel offset from center (image center is 50%, 50%)
     const startPixelX = ((edge.startX / 100) - 0.5) * imageSize
     const startPixelY = ((edge.startY / 100) - 0.5) * imageSize
@@ -481,7 +553,7 @@ function convertAIEdgesToWKT(
     
     // Convert pixel offset to geographic offset
     const startLngOffset = (startPixelX * metersPerPixel) / metersPerDegLng
-    const startLatOffset = -(startPixelY * metersPerPixel) / metersPerDegLat // Negative because Y increases downward
+    const startLatOffset = -(startPixelY * metersPerPixel) / metersPerDegLat
     const endLngOffset = (endPixelX * metersPerPixel) / metersPerDegLng
     const endLatOffset = -(endPixelY * metersPerPixel) / metersPerDegLat
     
@@ -499,8 +571,8 @@ function convertAIEdgesToWKT(
       linearFeatures.push({
         id: `AI${featureId++}`,
         type: edge.type || 'eave',
-        wkt: `LINESTRING(${startLng} ${startLat}, ${endLng} ${endLat})`,
-        length_ft,
+        wkt: `LINESTRING(${startLng.toFixed(8)} ${startLat.toFixed(8)}, ${endLng.toFixed(8)} ${endLat.toFixed(8)})`,
+        length_ft: Math.round(length_ft * 10) / 10,
         source: 'ai_edge_detection'
       })
     }
@@ -514,14 +586,14 @@ function convertAIEdgesToWKT(
       const pixelY = ((pt.y / 100) - 0.5) * imageSize
       const lngOffset = (pixelX * metersPerPixel) / metersPerDegLng
       const latOffset = -(pixelY * metersPerPixel) / metersPerDegLat
-      return `${imageCenter.lng + lngOffset} ${imageCenter.lat + latOffset}`
+      return `${(imageCenter.lng + lngOffset).toFixed(8)} ${(imageCenter.lat + latOffset).toFixed(8)}`
     })
     // Close the polygon
     wktPoints.push(wktPoints[0])
     perimeterWkt = `POLYGON((${wktPoints.join(', ')}))`
   }
   
-  console.log(`✅ Converted ${linearFeatures.length} AI edges to WKT, perimeter: ${perimeterWkt ? 'yes' : 'no'}`)
+  console.log(`✅ Converted ${linearFeatures.length} AI perimeter edges to WKT, perimeter: ${perimeterWkt ? 'yes' : 'no'}`)
   
   return { linearFeatures, perimeterWkt }
 }
@@ -657,9 +729,9 @@ function calculateConfidenceScore(aiAnalysis: any, measurements: any, solarData:
 }
 
 async function saveMeasurementToDatabase(supabase: any, data: any) {
-  const { address, coordinates, customerId, userId, googleImage, mapboxImage, selectedImage, solarData, aiAnalysis, scale, measurements, confidence, linearFeatures = [], imageSource, imageYear, perimeterWkt = null } = data
+  const { address, coordinates, customerId, userId, googleImage, mapboxImage, selectedImage, solarData, aiAnalysis, scale, measurements, confidence, linearFeatures = [], imageSource, imageYear, perimeterWkt = null, visionEdges = {}, imageSize = 640 } = data
 
-  // AI-estimated features (fallback only)
+  // AI-estimated features (fallback only - not used if vision detection worked)
   const aiEstimatedFeatures = measurements.facets.flatMap((facet: any) => {
     const features: any[] = []
     if (facet.edges.ridge > 0) features.push({ type: 'ridge', length_ft: facet.edges.ridge, source: 'ai_analysis', facetNumber: facet.facetNumber })
@@ -668,10 +740,13 @@ async function saveMeasurementToDatabase(supabase: any, data: any) {
     return features
   })
   
-  // Priority: Google Solar (has WKT) > AI estimated (no WKT)
-  const combinedLinearFeatures = [...linearFeatures, ...aiEstimatedFeatures]
+  // Only add AI estimated features if vision detection found nothing
+  const hasVisionFeatures = linearFeatures.some((f: any) => f.source === 'gpt4_vision')
+  const combinedLinearFeatures = hasVisionFeatures 
+    ? linearFeatures 
+    : [...linearFeatures, ...aiEstimatedFeatures]
   
-  console.log(`💾 Saving ${combinedLinearFeatures.length} linear features (${linearFeatures.length} from Solar API)`)
+  console.log(`💾 Saving ${combinedLinearFeatures.length} linear features (${linearFeatures.filter((f: any) => f.source === 'gpt4_vision').length} from vision detection)`)
 
   const { data: measurementRecord, error: measurementError } = await supabase
     .from('roof_measurements')
@@ -715,12 +790,13 @@ async function saveMeasurementToDatabase(supabase: any, data: any) {
       linear_features_wkt: combinedLinearFeatures,
       perimeter_wkt: perimeterWkt,
       analysis_zoom: IMAGE_ZOOM,
-      analysis_image_size: { width: selectedImage.source === 'mapbox' ? 1280 : 640, height: selectedImage.source === 'mapbox' ? 1280 : 640 },
+      analysis_image_size: { width: imageSize, height: imageSize },
       image_source: imageSource,
       image_year: imageYear,
       bounding_box: aiAnalysis.boundingBox,
       roof_perimeter: aiAnalysis.roofPerimeter,
-      edge_segments: aiAnalysis.edgeSegments
+      edge_segments: aiAnalysis.edgeSegments,
+      vision_edges: visionEdges // Store the raw vision detection results
     })
     .select()
     .single()

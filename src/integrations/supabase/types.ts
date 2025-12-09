@@ -12478,6 +12478,7 @@ export type Database = {
           updated_at: string | null
           validation_notes: string | null
           validation_status: string | null
+          vision_edges: Json | null
           waste_factor_percent: number | null
         }
         Insert: {
@@ -12547,6 +12548,7 @@ export type Database = {
           updated_at?: string | null
           validation_notes?: string | null
           validation_status?: string | null
+          vision_edges?: Json | null
           waste_factor_percent?: number | null
         }
         Update: {
@@ -12616,6 +12618,7 @@ export type Database = {
           updated_at?: string | null
           validation_notes?: string | null
           validation_status?: string | null
+          vision_edges?: Json | null
           waste_factor_percent?: number | null
         }
         Relationships: []
