@@ -12414,7 +12414,10 @@ export type Database = {
         Row: {
           ai_detection_data: Json
           ai_model_version: string | null
+          analysis_image_size: Json | null
+          analysis_zoom: number | null
           api_variance_percent: number | null
+          bounding_box: Json | null
           complexity_rating: string | null
           created_at: string | null
           customer_id: string | null
@@ -12426,6 +12429,8 @@ export type Database = {
           gps_coordinates: Json
           id: string
           image_quality_score: number | null
+          image_source: string | null
+          image_year: number | null
           is_archived: boolean | null
           linear_features_wkt: Json | null
           mapbox_image_url: string | null
@@ -12442,6 +12447,7 @@ export type Database = {
           property_city: string | null
           property_state: string | null
           property_zip: string | null
+          quality_assessment: Json | null
           report_generated_at: string | null
           report_pdf_url: string | null
           requires_manual_review: boolean | null
@@ -12474,7 +12480,10 @@ export type Database = {
         Insert: {
           ai_detection_data: Json
           ai_model_version?: string | null
+          analysis_image_size?: Json | null
+          analysis_zoom?: number | null
           api_variance_percent?: number | null
+          bounding_box?: Json | null
           complexity_rating?: string | null
           created_at?: string | null
           customer_id?: string | null
@@ -12486,6 +12495,8 @@ export type Database = {
           gps_coordinates: Json
           id?: string
           image_quality_score?: number | null
+          image_source?: string | null
+          image_year?: number | null
           is_archived?: boolean | null
           linear_features_wkt?: Json | null
           mapbox_image_url?: string | null
@@ -12502,6 +12513,7 @@ export type Database = {
           property_city?: string | null
           property_state?: string | null
           property_zip?: string | null
+          quality_assessment?: Json | null
           report_generated_at?: string | null
           report_pdf_url?: string | null
           requires_manual_review?: boolean | null
@@ -12534,7 +12546,10 @@ export type Database = {
         Update: {
           ai_detection_data?: Json
           ai_model_version?: string | null
+          analysis_image_size?: Json | null
+          analysis_zoom?: number | null
           api_variance_percent?: number | null
+          bounding_box?: Json | null
           complexity_rating?: string | null
           created_at?: string | null
           customer_id?: string | null
@@ -12546,6 +12561,8 @@ export type Database = {
           gps_coordinates?: Json
           id?: string
           image_quality_score?: number | null
+          image_source?: string | null
+          image_year?: number | null
           is_archived?: boolean | null
           linear_features_wkt?: Json | null
           mapbox_image_url?: string | null
@@ -12562,6 +12579,7 @@ export type Database = {
           property_city?: string | null
           property_state?: string | null
           property_zip?: string | null
+          quality_assessment?: Json | null
           report_generated_at?: string | null
           report_pdf_url?: string | null
           requires_manual_review?: boolean | null
