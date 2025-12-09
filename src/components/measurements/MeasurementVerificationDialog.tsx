@@ -29,7 +29,7 @@ import { useToast } from '@/hooks/use-toast';
 import { detectRoofType } from '@/utils/measurementGeometry';
 import { saveMeasurementWithOfflineSupport } from '@/services/offlineMeasurementSync';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
-import { RoofrStyleReportPreview } from './RoofrStyleReportPreview';
+import { EagleViewStyleReport } from './EagleViewStyleReport';
 
 // Industry-standard roof pitch multipliers: slope_factor = sqrt(1 + (X/12)^2)
 const PITCH_MULTIPLIERS: Record<string, number> = {
@@ -1904,10 +1904,11 @@ export function MeasurementVerificationDialog({
         }}
       />
 
-      {/* Roofr-Style Report Preview */}
-      <RoofrStyleReportPreview
+      {/* EagleView-Style Report Preview */}
+      <EagleViewStyleReport
         open={showReportPreview}
         onOpenChange={setShowReportPreview}
+        measurementId={dbMeasurement?.id}
         measurement={dbMeasurement || measurement}
         tags={tags}
         address={measurement?.address || 'Unknown Address'}
