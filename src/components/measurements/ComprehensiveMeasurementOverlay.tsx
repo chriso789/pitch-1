@@ -1159,22 +1159,33 @@ export function ComprehensiveMeasurementOverlay({
     }
 
     // PHASE 3: Enhanced linear feature rendering
-    // First try linear_features array with WKT (preferred - accurate geo positions)
-    // Then fall back to tags (legacy support)
-    // Handle case where linear_features is an object of totals (e.g., {ridge: 100})
+    // PRIORITY ORDER for linear features:
+    // 1. measurement.linear_features array with WKT (from database linear_features_wkt)
+    // 2. tags linear feature arrays (legacy support)
+    // 3. Object totals (estimated positions - fallback only)
     const rawLinearFeatures = measurement?.linear_features || tags?.linear_features;
     
     let linearFeatures: any[] = [];
     
-    if (Array.isArray(rawLinearFeatures)) {
-      linearFeatures = rawLinearFeatures;
+    if (Array.isArray(rawLinearFeatures) && rawLinearFeatures.length > 0) {
+      // Check if array contains WKT features (preferred - accurate geo positions)
+      if (rawLinearFeatures[0]?.wkt) {
+        console.log('✅ Using WKT linear features array:', rawLinearFeatures.length, 'features with WKT coordinates');
+        linearFeatures = rawLinearFeatures;
+      } else if (rawLinearFeatures[0]?.type) {
+        // Array format but without WKT - may have start/end coords
+        console.log('📐 Using linear features array (no WKT):', rawLinearFeatures.length, 'features');
+        linearFeatures = rawLinearFeatures;
+      } else {
+        console.log('⚠️ Unrecognized linear features array format');
+      }
     } else if (typeof rawLinearFeatures === 'object' && rawLinearFeatures !== null) {
-      // NEW: Convert object totals to estimated line positions for visualization
-      console.log('📐 Converting linear feature totals to estimated positions:', rawLinearFeatures);
+      // Object totals format - estimate positions (fallback only)
+      console.log('⚠️ No WKT data - estimating from totals:', rawLinearFeatures);
       linearFeatures = estimateLinearFeaturesFromTotals(rawLinearFeatures, canvasWidth, canvasHeight);
     }
     
-    // Also check tags for numeric totals (lf.ridge, lf.hip, etc.)
+    // Also check tags for numeric totals (lf.ridge, lf.hip, etc.) if no features yet
     if (linearFeatures.length === 0) {
       const tagsTotals: Record<string, number> = {};
       if (tags['lf.ridge']) tagsTotals['ridge'] = tags['lf.ridge'];
@@ -1184,8 +1195,20 @@ export function ComprehensiveMeasurementOverlay({
       if (tags['lf.rake']) tagsTotals['rake'] = tags['lf.rake'];
       
       if (Object.keys(tagsTotals).length > 0) {
+        console.log('📐 Falling back to tags totals for feature estimation');
         linearFeatures = estimateLinearFeaturesFromTotals(tagsTotals, canvasWidth, canvasHeight);
       }
+    }
+    
+    // Log summary of what we're rendering
+    if (linearFeatures.length > 0) {
+      const ridgeCount = linearFeatures.filter(f => f.type === 'ridge').length;
+      const hipCount = linearFeatures.filter(f => f.type === 'hip').length;
+      const valleyCount = linearFeatures.filter(f => f.type === 'valley').length;
+      const eaveCount = linearFeatures.filter(f => f.type === 'eave').length;
+      const rakeCount = linearFeatures.filter(f => f.type === 'rake').length;
+      const hasWkt = linearFeatures.some(f => f.wkt);
+      console.log(`📏 Rendering ${linearFeatures.length} linear features: ${ridgeCount} ridges, ${hipCount} hips, ${valleyCount} valleys, ${eaveCount} eaves, ${rakeCount} rakes | WKT: ${hasWkt ? 'YES' : 'NO'}`);
     }
     
     // Draw ridge lines

@@ -130,8 +130,15 @@ serve(async (req) => {
           facets: measurements.facets,
           linear: measurements.linearMeasurements,
           materials: measurements.materials,
-          predominantPitch: measurements.predominantPitch
+          predominantPitch: measurements.predominantPitch,
+          // CRITICAL: Include WKT arrays for overlay rendering
+          linearFeaturesWkt: linearFeatures,
+          analysisZoom: IMAGE_ZOOM
         },
+        // TOP-LEVEL: Include WKT data for immediate overlay use (not just nested in measurements)
+        linearFeaturesWkt: linearFeatures,
+        perimeterWkt: aiEdgeData.perimeterWkt,
+        analysisZoom: IMAGE_ZOOM,
         confidence: {
           score: confidence.score,
           rating: confidence.rating,
