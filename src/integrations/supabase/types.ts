@@ -12423,6 +12423,7 @@ export type Database = {
           customer_id: string | null
           detection_confidence: number | null
           detection_timestamp: string | null
+          edge_segments: Json | null
           facet_count: number | null
           google_maps_image_url: string | null
           google_maps_zoom_level: number | null
@@ -12439,6 +12440,7 @@ export type Database = {
           measurement_confidence: number | null
           notes: string | null
           organization_id: string | null
+          perimeter_wkt: string | null
           pitch_degrees: number | null
           pitch_multiplier: number | null
           pixels_per_foot: number | null
@@ -12451,6 +12453,7 @@ export type Database = {
           report_generated_at: string | null
           report_pdf_url: string | null
           requires_manual_review: boolean | null
+          roof_perimeter: Json | null
           roof_type: string | null
           scale_confidence: string | null
           scale_method: string | null
@@ -12489,6 +12492,7 @@ export type Database = {
           customer_id?: string | null
           detection_confidence?: number | null
           detection_timestamp?: string | null
+          edge_segments?: Json | null
           facet_count?: number | null
           google_maps_image_url?: string | null
           google_maps_zoom_level?: number | null
@@ -12505,6 +12509,7 @@ export type Database = {
           measurement_confidence?: number | null
           notes?: string | null
           organization_id?: string | null
+          perimeter_wkt?: string | null
           pitch_degrees?: number | null
           pitch_multiplier?: number | null
           pixels_per_foot?: number | null
@@ -12517,6 +12522,7 @@ export type Database = {
           report_generated_at?: string | null
           report_pdf_url?: string | null
           requires_manual_review?: boolean | null
+          roof_perimeter?: Json | null
           roof_type?: string | null
           scale_confidence?: string | null
           scale_method?: string | null
@@ -12555,6 +12561,7 @@ export type Database = {
           customer_id?: string | null
           detection_confidence?: number | null
           detection_timestamp?: string | null
+          edge_segments?: Json | null
           facet_count?: number | null
           google_maps_image_url?: string | null
           google_maps_zoom_level?: number | null
@@ -12571,6 +12578,7 @@ export type Database = {
           measurement_confidence?: number | null
           notes?: string | null
           organization_id?: string | null
+          perimeter_wkt?: string | null
           pitch_degrees?: number | null
           pitch_multiplier?: number | null
           pixels_per_foot?: number | null
@@ -12583,6 +12591,7 @@ export type Database = {
           report_generated_at?: string | null
           report_pdf_url?: string | null
           requires_manual_review?: boolean | null
+          roof_perimeter?: Json | null
           roof_type?: string | null
           scale_confidence?: string | null
           scale_method?: string | null
