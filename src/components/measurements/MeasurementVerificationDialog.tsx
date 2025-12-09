@@ -1606,7 +1606,7 @@ export function MeasurementVerificationDialog({
                   </div>
                 </div>
                 <p className="text-[10px] text-muted-foreground mt-2">
-                  Solid lines = GPT-4 Vision (high confidence) • Dashed = AI estimated
+                  Solid lines = AI Vision (high confidence) • Dashed = AI estimated
                 </p>
               </div>
               
@@ -1632,22 +1632,31 @@ export function MeasurementVerificationDialog({
                 {/* Visualization Status Indicator */}
                 <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
                   <span className="text-xs text-muted-foreground">Image Source:</span>
-                  {measurement?.mapbox_visualization_url ? (
-                    <Badge variant="default" className="gap-1">
-                      <CheckCircle2 className="h-3 w-3" />
-                      Aerial Photo
-                    </Badge>
-                  ) : satelliteImageUrl?.includes('data:image') ? (
-                    <Badge variant="secondary" className="gap-1">
-                      <AlertCircle className="h-3 w-3" />
-                      Satellite View (Fallback)
-                    </Badge>
-                  ) : (
-                    <Badge variant="destructive" className="gap-1">
-                      <X className="h-3 w-3" />
-                      No Satellite Image
-                    </Badge>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {/* Historical imagery badge */}
+                    {measurement?.image_source?.includes('wayback') && (
+                      <Badge variant="outline" className="gap-1 text-amber-600 border-amber-300">
+                        <History className="h-3 w-3" />
+                        {measurement?.image_year || 'Historical'}
+                      </Badge>
+                    )}
+                    {measurement?.mapbox_visualization_url ? (
+                      <Badge variant="default" className="gap-1">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Aerial Photo
+                      </Badge>
+                    ) : satelliteImageUrl?.includes('data:image') ? (
+                      <Badge variant="secondary" className="gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        Satellite View
+                      </Badge>
+                    ) : (
+                      <Badge variant="destructive" className="gap-1">
+                        <X className="h-3 w-3" />
+                        No Image
+                      </Badge>
+                    )}
+                  </div>
                 </div>
                 
                 {/* Regenerate Visualization Button */}
