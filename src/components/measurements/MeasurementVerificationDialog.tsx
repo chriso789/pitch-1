@@ -1386,7 +1386,35 @@ export function MeasurementVerificationDialog({
                   {measurement?.faces ? (
                     <ComprehensiveMeasurementOverlay
                       satelliteImageUrl={cleanSatelliteImageUrl}
-                      measurement={measurement}
+                      measurement={(() => {
+                        // CRITICAL FIX: Merge database WKT linear features into measurement
+                        // The DB stores linear_features_wkt array with actual WKT coordinates
+                        // This enables overlay to draw accurate ridge/hip/valley lines
+                        const enriched = { ...measurement };
+                        
+                        // Priority 1: Database linear_features_wkt (most accurate - from AI vision detection)
+                        if (dbMeasurement?.linear_features_wkt && Array.isArray(dbMeasurement.linear_features_wkt)) {
+                          console.log('📐 Using WKT linear features from database:', dbMeasurement.linear_features_wkt.length, 'features');
+                          enriched.linear_features = dbMeasurement.linear_features_wkt;
+                        }
+                        // Priority 2: Database linear_features if it's an array with WKT
+                        else if (Array.isArray(dbMeasurement?.linear_features) && dbMeasurement.linear_features[0]?.wkt) {
+                          console.log('📐 Using linear_features array from database:', dbMeasurement.linear_features.length, 'features');
+                          enriched.linear_features = dbMeasurement.linear_features;
+                        }
+                        
+                        // Merge perimeter_wkt from database
+                        if (dbMeasurement?.perimeter_wkt) {
+                          enriched.perimeter_wkt = dbMeasurement.perimeter_wkt;
+                        }
+                        
+                        // CRITICAL: Use analysis_zoom from database for accurate coordinate transformation
+                        if (dbMeasurement?.analysis_zoom) {
+                          enriched.analysis_zoom = dbMeasurement.analysis_zoom;
+                        }
+                        
+                        return enriched;
+                      })()}
                       tags={tags}
                       centerLng={overlayCoordinates.lng}
                       centerLat={overlayCoordinates.lat}

@@ -31,7 +31,7 @@ interface PullMeasurementsButtonProps {
  * Transform new analyze-roof-aerial response to legacy format for MeasurementVerificationDialog
  */
 function transformNewMeasurementToLegacyFormat(newData: any) {
-  const { measurements, aiAnalysis, confidence, images } = newData;
+  const { measurements, aiAnalysis, confidence, images, linearFeaturesWkt, perimeterWkt, analysisZoom } = newData;
   
   // Transform to legacy "measurement" object
   const measurement = {
@@ -46,13 +46,19 @@ function transformNewMeasurementToLegacyFormat(newData: any) {
       orientation: f.orientation || 'unknown',
       wkt: null,
     })) || [],
-    linear_features: measurements?.linear || {
+    // CRITICAL FIX: Use WKT array from API response for accurate overlay rendering
+    // This preserves the geographic coordinates detected by AI Vision
+    linear_features: linearFeaturesWkt || measurements?.linearFeaturesWkt || measurements?.linear || {
       ridge: 0,
       hip: 0,
       valley: 0,
       eave: 0,
       rake: 0,
     },
+    // Preserve perimeter WKT for outline rendering
+    perimeter_wkt: perimeterWkt || measurements?.perimeterWkt || null,
+    // Store analysis zoom for accurate coordinate transformation in overlay
+    analysis_zoom: analysisZoom || measurements?.analysisZoom || 20,
     mapbox_visualization_url: images?.mapbox?.url || null,
     google_image_url: images?.google?.url || null,
     roof_type: aiAnalysis?.roofType || measurements?.roofType || 'unknown',
@@ -67,6 +73,12 @@ function transformNewMeasurementToLegacyFormat(newData: any) {
       pitch: measurements?.predominantPitch || aiAnalysis?.pitch || '6/12',
       perimeter_ft: (measurements?.linear?.eave || 0) + (measurements?.linear?.rake || 0),
       stories: measurements?.stories || 1,
+      // Include linear feature totals in summary for display
+      ridge_ft: measurements?.linear?.ridge || 0,
+      hip_ft: measurements?.linear?.hip || 0,
+      valley_ft: measurements?.linear?.valley || 0,
+      eave_ft: measurements?.linear?.eave || 0,
+      rake_ft: measurements?.linear?.rake || 0,
     },
     // AI-specific fields
     aiAnalysis: aiAnalysis || null,
