@@ -301,14 +301,19 @@ export function MeasurementVerificationDialog({
   const [hasAutoFixedMismatch, setHasAutoFixedMismatch] = useState(false);
   const [regenerationError, setRegenerationError] = useState<string | null>(null);
   // Auto-calculate optimal zoom based on roof size
+  // FIXED: Default to zoom 20 to match IMAGE_ZOOM in edge function (analyze-roof-aerial)
+  // This ensures WKT coordinates from AI analysis align with satellite imagery
   const optimalZoom = useMemo(() => {
     const totalArea = measurement?.summary?.total_area_sqft || 0;
-    if (totalArea < 1500) return 22; // Small roof - zoom in close
-    if (totalArea < 3000) return 21; // Medium roof
-    return 20; // Large roof
+    if (totalArea < 1000) return 21;  // Only zoom in for very small roofs
+    if (totalArea < 2500) return 20;  // Standard zoom (matches analysis)
+    return 19; // Zoom out for large roofs
   }, [measurement?.summary?.total_area_sqft]);
   
-  const [satelliteZoom, setSatelliteZoom] = useState(21); // Range 18-22, default 21 for closer view
+  // Get analysis zoom from measurement record if available, otherwise use 20 (IMAGE_ZOOM constant)
+  const analysisZoom = measurement?.analysis_zoom || 20;
+  
+  const [satelliteZoom, setSatelliteZoom] = useState(20); // Default 20 to match AI analysis zoom
   const [resolution, setResolution] = useState<ResolutionOption>('hd'); // Resolution selector
   const [isMaximized, setIsMaximized] = useState(false); // Fullscreen toggle
   const [showHistoricalComparison, setShowHistoricalComparison] = useState(false); // Historical imagery dialog
@@ -331,19 +336,27 @@ export function MeasurementVerificationDialog({
     }
   }, [measurement, tags]);
   
-  // Auto-apply optimal zoom on dialog open based on roof size
+  // Auto-apply optimal zoom on dialog open - prioritize analysis zoom for accurate overlay alignment
   useEffect(() => {
-    if (open && measurement?.summary?.total_area_sqft) {
-      const area = measurement.summary.total_area_sqft;
-      let autoZoom = 21; // Default
-      if (area < 1500) autoZoom = 22;
-      else if (area < 3000) autoZoom = 21;
-      else autoZoom = 20;
+    if (open) {
+      // FIXED: Use analysis zoom from measurement if available (most accurate for overlay alignment)
+      const measurementAnalysisZoom = measurement?.analysis_zoom;
+      if (measurementAnalysisZoom) {
+        console.log(`🔍 Using analysis zoom from measurement: ${measurementAnalysisZoom}`);
+        setSatelliteZoom(measurementAnalysisZoom);
+        return;
+      }
       
-      console.log(`🔍 Auto-zoom: ${autoZoom} for ${area} sqft roof`);
+      // Fallback: Calculate based on roof size
+      const area = measurement?.summary?.total_area_sqft || 0;
+      let autoZoom = 20; // Default matches IMAGE_ZOOM in edge function
+      if (area < 1000) autoZoom = 21;
+      else if (area > 2500) autoZoom = 19;
+      
+      console.log(`🔍 Auto-zoom: ${autoZoom} for ${area} sqft roof (no analysis_zoom stored)`);
       setSatelliteZoom(autoZoom);
     }
-  }, [open, measurement?.summary?.total_area_sqft]);
+  }, [open, measurement?.summary?.total_area_sqft, measurement?.analysis_zoom]);
   
   // ALWAYS load measurement from database to get complete linear features (ridges, hips, valleys)
   // The API may return area but miss linear features - database has the complete picture

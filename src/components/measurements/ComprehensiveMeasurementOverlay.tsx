@@ -378,31 +378,40 @@ export function ComprehensiveMeasurementOverlay({
     * PHASE 2: Enhanced coordinate transformation with precise meters-per-pixel calculation
     * Uses Web Mercator projection math to accurately convert geographic coordinates to canvas pixels
     * This ensures measurement overlays (ridges, hips, valleys) align precisely with satellite imagery
+    * 
+    * FIXED: Use analysis_zoom from measurement record for WKT coordinate conversion
+    * The AI analysis generates WKT at IMAGE_ZOOM=20, so we must use that same zoom for overlay
     */
    const geoToCanvas = useCallback((lat: number, lng: number): Point => {
      // Use verified address as reference point (satellite image center)
      const refLat = verifiedAddressLat || centerLat;
      const refLng = verifiedAddressLng || centerLng;
      
-     // Calculate precise meters-per-pixel based on zoom level and latitude
+     // CRITICAL FIX: Use analysis zoom from measurement for WKT coordinate conversion
+     // The WKT was generated at this zoom level, so overlay must use the same
+     const analysisZoom = measurement?.analysis_zoom || 20; // Default to IMAGE_ZOOM constant
+     
+     // Calculate precise meters-per-pixel based on ANALYSIS zoom level (not display zoom)
      // Formula: metersPerPixel = 156543.03392 * cos(lat * π/180) / (2^zoom)
-     // Default zoom 20 for satellite imagery, zoom 21 for HD
-     const effectiveZoom = zoom || 20;
-     const metersPerPixel = (156543.03392 * Math.cos(refLat * Math.PI / 180)) / Math.pow(2, effectiveZoom);
+     const metersPerPixel = (156543.03392 * Math.cos(refLat * Math.PI / 180)) / Math.pow(2, analysisZoom);
+     
+     // Calculate scale factor if display zoom differs from analysis zoom
+     // This allows the overlay to scale correctly when user changes zoom slider
+     const zoomScaleFactor = Math.pow(2, zoom - analysisZoom);
      
      // Calculate offset from center in meters using accurate geodesic calculation
      const latOffsetMeters = (lat - refLat) * 111320; // 1 degree lat ≈ 111.32km constant
      const lngOffsetMeters = (lng - refLng) * 111320 * Math.cos(((lat + refLat) / 2) * Math.PI / 180); // Use average latitude
      
-     // Convert meters to pixels
+     // Convert meters to pixels at analysis zoom, then scale for display zoom
      const canvasCenterX = canvasWidth / 2;
      const canvasCenterY = canvasHeight / 2;
      
-     const x = canvasCenterX + (lngOffsetMeters / metersPerPixel);
-     const y = canvasCenterY - (latOffsetMeters / metersPerPixel); // Flip Y axis for canvas
+     const x = canvasCenterX + (lngOffsetMeters / metersPerPixel) * zoomScaleFactor;
+     const y = canvasCenterY - (latOffsetMeters / metersPerPixel) * zoomScaleFactor; // Flip Y axis for canvas
      
      return { x, y };
-   }, [centerLat, centerLng, verifiedAddressLat, verifiedAddressLng, canvasWidth, canvasHeight, zoom]);
+   }, [centerLat, centerLng, verifiedAddressLat, verifiedAddressLng, canvasWidth, canvasHeight, zoom, measurement?.analysis_zoom]);
 
   // Auto-save with database persistence
   const handleAutoSave = async () => {
@@ -1238,6 +1247,72 @@ export function ComprehensiveMeasurementOverlay({
 
     // Draw aggregate facet annotations
     drawAggregateFacetAnnotations();
+    
+    // DEBUG: Draw center crosshair to verify coordinate alignment
+    // This shows where the overlay thinks the center is (should match satellite image center)
+    drawDebugCenterCrosshair();
+  };
+  
+  // DEBUG: Draw a red crosshair at the center coordinates to verify alignment
+  const drawDebugCenterCrosshair = () => {
+    if (!fabricCanvas) return;
+    
+    // Get the canvas center point (should match satellite center)
+    const refLat = verifiedAddressLat || centerLat;
+    const refLng = verifiedAddressLng || centerLng;
+    const centerPoint = geoToCanvas(refLat, refLng);
+    
+    const crosshairSize = 20;
+    const debugColor = '#ff0000'; // Red for visibility
+    
+    // Horizontal line
+    const hLine = new Line(
+      [centerPoint.x - crosshairSize, centerPoint.y, centerPoint.x + crosshairSize, centerPoint.y],
+      {
+        stroke: debugColor,
+        strokeWidth: 2,
+        selectable: false,
+        evented: false,
+        strokeDashArray: [4, 2],
+        data: { type: 'debug-crosshair' }
+      }
+    );
+    
+    // Vertical line
+    const vLine = new Line(
+      [centerPoint.x, centerPoint.y - crosshairSize, centerPoint.x, centerPoint.y + crosshairSize],
+      {
+        stroke: debugColor,
+        strokeWidth: 2,
+        selectable: false,
+        evented: false,
+        strokeDashArray: [4, 2],
+        data: { type: 'debug-crosshair' }
+      }
+    );
+    
+    // Center dot
+    const dot = new Circle({
+      left: centerPoint.x - 3,
+      top: centerPoint.y - 3,
+      radius: 3,
+      fill: debugColor,
+      selectable: false,
+      evented: false,
+      data: { type: 'debug-crosshair' }
+    });
+    
+    fabricCanvas.add(hLine, vLine, dot);
+    
+    // Log debug info
+    console.log('🎯 DEBUG Crosshair:', {
+      refLat,
+      refLng,
+      canvasCenter: centerPoint,
+      expectedCanvasCenter: { x: canvasWidth / 2, y: canvasHeight / 2 },
+      analysisZoom: measurement?.analysis_zoom || 20,
+      displayZoom: (window as any).__currentDisplayZoom || 'unknown'
+    });
   };
 
   const drawGrid = () => {
