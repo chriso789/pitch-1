@@ -71,13 +71,39 @@ serve(async (req) => {
     if (measurement) {
       measurementData = measurement;
     } else {
-      const { data, error } = await supabase
-        .from('measurements')
-        .select('*')
+      // Try roof_measurements first (new table), then fallback to measurements (legacy)
+      let data = null;
+      let error = null;
+      
+      const { data: roofData, error: roofError } = await supabase
+        .from('roof_measurements')
+        .select('id, customer_id, linear_features_wkt, perimeter_wkt, gps_coordinates, analysis_zoom')
         .eq('id', measurement_id)
         .single();
+      
+      if (roofData) {
+        // Transform roof_measurements format to expected format
+        data = {
+          id: roofData.id,
+          property_id: roofData.customer_id,
+          linear_features: roofData.linear_features_wkt || [],
+          center_lat: roofData.gps_coordinates?.lat,
+          center_lng: roofData.gps_coordinates?.lng,
+        };
+      } else {
+        // Fallback to legacy measurements table
+        const { data: legacyData, error: legacyError } = await supabase
+          .from('measurements')
+          .select('*')
+          .eq('id', measurement_id)
+          .single();
+        
+        data = legacyData;
+        error = legacyError;
+      }
 
-      if (error || !data) {
+      if (!data) {
+        console.error('Measurement not found in either table:', { measurement_id, roofError, error });
         return json({ ok: false, error: 'Measurement not found' }, corsHeaders, 404);
       }
       measurementData = data;
