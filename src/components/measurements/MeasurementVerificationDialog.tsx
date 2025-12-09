@@ -11,7 +11,7 @@ import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Split, Info, MapPin, ZoomIn, Maximize2, Minimize2, ImageIcon, History, FileText } from 'lucide-react';
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PolygonEditor } from './PolygonEditor';
 import { ComprehensiveMeasurementOverlay } from './ComprehensiveMeasurementOverlay';
@@ -419,29 +419,35 @@ export function MeasurementVerificationDialog({
   const [cleanSatelliteImageUrl, setCleanSatelliteImageUrl] = useState<string>('');
   const [isLoadingSatellite, setIsLoadingSatellite] = useState(false);
   
+  // ✅ CRITICAL FIX: Single source of truth for overlay center coordinates
+  // Both satellite image AND overlay MUST use these EXACT same values
+  const overlayCoordinates = useMemo(() => {
+    // Priority 1: User-selected PIN (from StructureSelectionMap)
+    if (adjustedCenterLat && adjustedCenterLng && adjustedCenterLat !== 0) {
+      return { lat: adjustedCenterLat, lng: adjustedCenterLng, source: 'user-pin' };
+    }
+    // Priority 2: Props (user-selected from parent)
+    if (centerLat && centerLng && centerLat !== 0) {
+      return { lat: centerLat, lng: centerLng, source: 'props' };
+    }
+    // Priority 3: Verified address
+    if (verifiedAddressLat && verifiedAddressLng) {
+      return { lat: verifiedAddressLat, lng: verifiedAddressLng, source: 'verified' };
+    }
+    return { lat: 0, lng: 0, source: 'none' };
+  }, [adjustedCenterLat, adjustedCenterLng, centerLat, centerLng, verifiedAddressLat, verifiedAddressLng]);
+  
   useEffect(() => {
     const fetchMapboxSatelliteImage = async () => {
-      // ✅ PRIORITY #1: Use user-selected PIN coordinates (centerLat/centerLng from structure selection)
-      // These are passed in from StructureSelectionMap when user confirms the target building
-      let lat = centerLat;
-      let lng = centerLng;
-      
-      // Only fall back to verified address if centerLat/centerLng are invalid/missing
-      if (!lat || !lng || (lat === 0 && lng === 0)) {
-        lat = verifiedAddressLat || 0;
-        lng = verifiedAddressLng || 0;
-        console.log('📍 Using verified address coordinates (fallback):', lat, lng);
-      } else {
-        console.log('📍 Using user-selected PIN coordinates (priority):', lat, lng);
-      }
+      const { lat, lng, source } = overlayCoordinates;
       
       // Only fetch if we have valid coordinates
-      if (!lat || !lng) {
+      if (!lat || !lng || lat === 0) {
         console.log('⏳ No valid coordinates for satellite image...');
         return;
       }
       
-      console.log(`📍 Fetching Mapbox satellite at zoom ${satelliteZoom}: ${lat}, ${lng}`);
+      console.log(`📍 Fetching Mapbox satellite at zoom ${satelliteZoom} from ${source}: ${lat}, ${lng}`);
       setIsLoadingSatellite(true);
       try {
         // Fetch Mapbox token from edge function
@@ -470,7 +476,7 @@ export function MeasurementVerificationDialog({
     };
     
     fetchMapboxSatelliteImage();
-  }, [centerLat, centerLng, satelliteZoom, resolution]);  // ✅ FIXED: Only use user-confirmed PIN coordinates, not verified address
+  }, [overlayCoordinates.lat, overlayCoordinates.lng, satelliteZoom, resolution]);
   
   // Update satellite image URL when prop changes
   useEffect(() => {
@@ -1284,8 +1290,8 @@ export function MeasurementVerificationDialog({
                       satelliteImageUrl={cleanSatelliteImageUrl}
                       measurement={measurement}
                       tags={tags}
-                      centerLng={verifiedAddressLng || adjustedCenterLng}
-                      centerLat={verifiedAddressLat || adjustedCenterLat}
+                      centerLng={overlayCoordinates.lng}
+                      centerLat={overlayCoordinates.lat}
                       zoom={satelliteZoom}
                       onMeasurementUpdate={(updatedMeasurement, updatedTags) => {
                         Object.assign(measurement, updatedMeasurement);
@@ -1295,8 +1301,8 @@ export function MeasurementVerificationDialog({
                       }}
                       canvasWidth={RESOLUTION_CONFIG[resolution].width}
                       canvasHeight={RESOLUTION_CONFIG[resolution].height}
-                      verifiedAddressLat={verifiedAddressLat}
-                      verifiedAddressLng={verifiedAddressLng}
+                      verifiedAddressLat={overlayCoordinates.lat}
+                      verifiedAddressLng={overlayCoordinates.lng}
                     />
                   ) : (
                     <PolygonEditor
