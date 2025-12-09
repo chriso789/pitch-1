@@ -924,8 +924,10 @@ async function saveMeasurementToDatabase(supabase: any, data: any) {
       total_ridge_length: measurements.linearMeasurements.ridge,
       material_calculations: measurements.materials,
       // Store combined linear features with priority: vision > solar > ai_analysis
-      linear_features_wkt: combinedLinearFeatures
-    })
+      linear_features_wkt: combinedLinearFeatures,
+      // Store the zoom level used for analysis - critical for accurate overlay alignment
+      analysis_zoom: IMAGE_ZOOM,
+      analysis_image_size: selectedImage.source === 'mapbox' ? 1280 : 640
     .select()
     .single()
 
