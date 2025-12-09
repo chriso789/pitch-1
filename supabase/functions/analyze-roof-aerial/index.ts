@@ -59,9 +59,9 @@ serve(async (req) => {
           imageSize, 
           IMAGE_ZOOM
         )
-        console.log(`🔍 GPT-4 Vision detected ${visionLinearFeatures.length} features`)
+        console.log(`🔍 Lovable AI Vision detected ${visionLinearFeatures.length} features`)
       } catch (visionError) {
-        console.error('GPT-4 Vision detection failed, using fallback:', visionError)
+        console.error('Lovable AI Vision detection failed, using fallback:', visionError)
       }
     }
 
@@ -413,42 +413,58 @@ Return ONLY valid JSON in this exact format:
 
 Focus on VISIBLE features on the main roof structure. Be precise - each line should follow the actual roof edge visible in the image. No markdown, only JSON.`
 
-  console.log('🔍 Calling GPT-4 Vision for roof feature detection...')
+  console.log('🔍 Calling Lovable AI Gateway for roof feature detection...')
   
-  const response = await fetch('https://api.openai.com/v1/chat/completions', {
-    method: 'POST',
-    headers: { 
-      'Content-Type': 'application/json', 
-      'Authorization': `Bearer ${OPENAI_API_KEY}` 
-    },
-    body: JSON.stringify({
-      model: 'gpt-4o',
-      messages: [
-        { 
-          role: 'user', 
-          content: [
-            { type: 'text', text: prompt }, 
-            { type: 'image_url', image_url: { url: imageUrl, detail: 'high' } }
-          ] 
-        }
-      ],
-      max_tokens: 2000
+  // Use Lovable AI Gateway with timeout
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), 25000) // 25 second timeout
+  
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: { 
+        'Content-Type': 'application/json', 
+        'Authorization': `Bearer ${LOVABLE_API_KEY}` 
+      },
+      body: JSON.stringify({
+        model: 'openai/gpt-5',
+        messages: [
+          { 
+            role: 'user', 
+            content: [
+              { type: 'text', text: prompt }, 
+              { type: 'image_url', image_url: { url: imageUrl } }
+            ] 
+          }
+        ],
+        max_completion_tokens: 2000
+      }),
+      signal: controller.signal
     })
-  })
+    
+    clearTimeout(timeoutId)
 
-  if (!response.ok) {
-    const errorData = await response.text()
-    console.error('GPT-4 Vision API error:', response.status, errorData)
-    throw new Error(`GPT-4 Vision error: ${response.status}`)
-  }
+    if (!response.ok) {
+      const errorData = await response.text()
+      console.error('Lovable AI Gateway error:', response.status, errorData)
+      
+      // Handle specific error codes
+      if (response.status === 429) {
+        throw new Error('RATE_LIMIT: AI service rate limit exceeded. Please try again in a moment.')
+      }
+      if (response.status === 402) {
+        throw new Error('PAYMENT_REQUIRED: AI credits exhausted. Please add credits to continue.')
+      }
+      throw new Error(`AI Vision error: ${response.status}`)
+    }
 
-  const data = await response.json()
-  let content = data.choices?.[0]?.message?.content || ''
-  
-  // Clean markdown formatting
-  content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-  
-  console.log('GPT-4 Vision raw response length:', content.length)
+    const data = await response.json()
+    let content = data.choices?.[0]?.message?.content || ''
+    
+    // Clean markdown formatting
+    content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+    
+    console.log('Lovable AI Vision raw response length:', content.length)
   
   try {
     const parsed = JSON.parse(content)
@@ -538,9 +554,17 @@ Focus on VISIBLE features on the main roof structure. Be precise - each line sho
     
     return result
     
-  } catch (parseError) {
-    console.error('Failed to parse GPT-4 Vision response:', content.substring(0, 300))
-    return []
+    } catch (parseError) {
+      console.error('Failed to parse Lovable AI Vision response:', content.substring(0, 300))
+      return []
+    }
+  } catch (fetchError: any) {
+    clearTimeout(timeoutId)
+    if (fetchError.name === 'AbortError') {
+      console.error('Lovable AI Vision request timed out')
+      throw new Error('TIMEOUT: AI Vision request timed out after 25 seconds')
+    }
+    throw fetchError
   }
 }
 

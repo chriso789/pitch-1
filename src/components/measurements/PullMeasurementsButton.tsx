@@ -323,9 +323,28 @@ export function PullMeasurementsButton({
 
     } catch (err: any) {
       console.error('AI measurement analysis error:', err);
+      
+      // Determine user-friendly error message based on error type
+      let title = "Analysis Failed";
+      let description = err.message || "Could not analyze roof. Try manual mode.";
+      
+      if (err.message?.includes('RATE_LIMIT') || err.message?.includes('429')) {
+        title = "Rate Limit Reached";
+        description = "Too many requests. Please wait a moment and try again.";
+      } else if (err.message?.includes('PAYMENT_REQUIRED') || err.message?.includes('402')) {
+        title = "Credits Exhausted";
+        description = "AI credits are depleted. Please contact your administrator.";
+      } else if (err.message?.includes('timeout') || err.message?.includes('aborted')) {
+        title = "Request Timeout";
+        description = "Analysis took too long. Please try again.";
+      } else if (err.message?.includes('Failed to fetch') || err.message?.includes('network')) {
+        title = "Connection Error";
+        description = "Could not connect to AI service. Check your internet connection.";
+      }
+      
       toast({
-        title: "Analysis Failed",
-        description: err.message || "Could not analyze roof. Try manual mode.",
+        title,
+        description,
         variant: "destructive",
       });
     } finally {
