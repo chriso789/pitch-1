@@ -3,16 +3,14 @@ import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { encode as base64Encode } from 'https://deno.land/std@0.168.0/encoding/base64.ts'
 
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!
-const OPENAI_API_KEY = Deno.env.get('OPENAI_API_KEY')!
 const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY')!
 const GOOGLE_SOLAR_API_KEY = Deno.env.get('GOOGLE_SOLAR_API_KEY')!
 const MAPBOX_PUBLIC_TOKEN = Deno.env.get('MAPBOX_PUBLIC_TOKEN')!
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
-// Image zoom level for accurate coordinate conversion
 const IMAGE_ZOOM = 20
-const IMAGE_SIZE = 640 // pixels (Google Maps) or 1280 (Mapbox @2x)
+const IMAGE_SIZE = 640
 
 const PITCH_MULTIPLIERS: { [key: string]: number } = {
   '1/12': 1.0035, '2/12': 1.0138, '3/12': 1.0308, '4/12': 1.0541,
@@ -25,227 +23,76 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
-// Image quality assessment using AI
-async function assessImageQuality(imageUrl: string, coordinates: { lat: number; lng: number }): Promise<{
-  isRoofVisible: boolean;
-  obstructionType: 'trees' | 'shadows' | 'clouds' | 'blur' | 'none';
-  confidence: number;
-  suggestion?: string;
-}> {
-  try {
-    console.log('🔍 Assessing image quality...')
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: { 
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash',
-        messages: [{
-          role: 'user',
-          content: [
-            { type: 'text', text: `Quickly assess this satellite image. Is the main building's roof CLEARLY visible and unobstructed?
-
-Return ONLY JSON:
-{
-  "isRoofVisible": true|false,
-  "obstructionType": "trees"|"shadows"|"clouds"|"blur"|"none",
-  "confidence": 0-100,
-  "suggestion": "description if obstructed"
-}` },
-            { type: 'image_url', image_url: { url: imageUrl } }
-          ]
-        }],
-        max_completion_tokens: 200
-      })
-    })
-    
-    if (!response.ok) {
-      console.log('Quality check failed, assuming image is usable')
-      return { isRoofVisible: true, obstructionType: 'none', confidence: 70 }
-    }
-    
-    const data = await response.json()
-    let content = data.choices?.[0]?.message?.content || ''
-    content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-    
-    const parsed = JSON.parse(content)
-    console.log('📸 Image quality:', parsed.isRoofVisible ? 'Clear' : `Obstructed by ${parsed.obstructionType}`, `(${parsed.confidence}%)`)
-    return parsed
-  } catch (err) {
-    console.log('Quality assessment error, assuming usable:', err)
-    return { isRoofVisible: true, obstructionType: 'none', confidence: 50 }
-  }
-}
-
-// Fetch historical imagery from ESRI Wayback
-async function fetchHistoricalImagery(coords: { lat: number; lng: number }, targetYear: number): Promise<{
-  url: string;
-  year: number;
-  source: string;
-} | null> {
-  try {
-    console.log(`📅 Fetching historical imagery for ${targetYear}...`)
-    const response = await fetch(`${SUPABASE_URL}/functions/v1/historical-imagery-fetch`, {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
-      },
-      body: JSON.stringify({ 
-        lat: coords.lat, 
-        lng: coords.lng, 
-        targetYear, 
-        zoom: 20, 
-        width: 1280, 
-        height: 1280 
-      })
-    })
-    
-    if (!response.ok) {
-      console.log(`Historical imagery for ${targetYear} not available`)
-      return null
-    }
-    
-    const data = await response.json()
-    if (data.ok && data.data?.timePoints?.length > 0) {
-      const point = data.data.timePoints[0]
-      // Fetch the actual image and convert to base64
-      const imageResponse = await fetch(point.imageUrl)
-      if (imageResponse.ok) {
-        const buffer = await imageResponse.arrayBuffer()
-        const base64 = base64Encode(new Uint8Array(buffer))
-        return { 
-          url: `data:image/jpeg;base64,${base64}`, 
-          year: point.year, 
-          source: `esri_wayback_${point.year}` 
-        }
-      }
-    }
-    return null
-  } catch (err) {
-    console.log(`Historical imagery fetch error:`, err)
-    return null
-  }
-}
-
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
 
+  const startTime = Date.now()
+  
   try {
     const { address, coordinates, customerId, userId } = await req.json()
     console.log('🏠 Analyzing roof:', address)
+    console.log('📍 Coordinates:', coordinates.lat, coordinates.lng)
 
-    // Fetch current imagery from both sources
+    // STREAMLINED: Fetch imagery and Solar API data in parallel (no quality checks)
     const [googleImage, solarData, mapboxImage] = await Promise.all([
       fetchGoogleStaticMap(coordinates),
       fetchGoogleSolarData(coordinates),
       fetchMapboxSatellite(coordinates)
     ])
-
-    // Select best current image
-    let selectedImage = mapboxImage.quality && mapboxImage.quality > (googleImage.quality || 0) ? mapboxImage : googleImage
-    let imageSource = selectedImage.source
-    let imageYear = new Date().getFullYear()
-    let qualityAssessment: any = null
     
-    // Assess current image quality
-    if (selectedImage.url) {
-      qualityAssessment = await assessImageQuality(selectedImage.url, coordinates)
-      
-      // If roof is obscured or low confidence, try historical imagery
-      if (!qualityAssessment.isRoofVisible || qualityAssessment.confidence < 70) {
-        console.log(`⚠️ Current image obstructed by ${qualityAssessment.obstructionType}, checking historical imagery...`)
-        
-        const yearsToTry = [2023, 2022, 2021, 2020, 2019]
-        
-        for (const year of yearsToTry) {
-          const historicalImage = await fetchHistoricalImagery(coordinates, year)
-          if (historicalImage) {
-            // Assess the historical image quality
-            const historicalQuality = await assessImageQuality(historicalImage.url, coordinates)
-            
-            if (historicalQuality.isRoofVisible && historicalQuality.confidence > qualityAssessment.confidence) {
-              console.log(`✅ Found clearer image from ${year} (confidence: ${historicalQuality.confidence}%)`)
-              selectedImage = { 
-                url: historicalImage.url, 
-                source: historicalImage.source,
-                resolution: '1280x1280',
-                quality: Math.round(historicalQuality.confidence / 10)
-              }
-              imageSource = historicalImage.source
-              imageYear = year
-              qualityAssessment = historicalQuality
-              break
-            }
-          }
-        }
-      }
-    }
-    
-    console.log(`✅ Using: ${imageSource} (year: ${imageYear})`)
+    console.log(`⏱️ Image fetch complete: ${Date.now() - startTime}ms`)
 
-    const aiAnalysis = await analyzeRoofWithAI(selectedImage.url, address)
+    // Select best image (prefer Mapbox for higher resolution)
+    const selectedImage = mapboxImage.url ? mapboxImage : googleImage
+    const imageSource = selectedImage.source
+    const imageYear = new Date().getFullYear()
+    
+    console.log(`✅ Using: ${imageSource}`)
+
+    // STREAMLINED: Single fast AI call for roof analysis + bounding box detection
+    const aiAnalysis = await analyzeRoofWithAI(selectedImage.url, address, coordinates)
+    
+    console.log(`⏱️ AI analysis complete: ${Date.now() - startTime}ms`)
+    
     const scale = calculateScale(solarData, selectedImage, aiAnalysis)
     const measurements = calculateDetailedMeasurements(aiAnalysis, scale, solarData)
     const confidence = calculateConfidenceScore(aiAnalysis, measurements, solarData, selectedImage)
     
-    // NEW: Two-pass AI detection for accurate roof feature positioning
-    // PHASE 1: Detect bounding box first to anchor detection
-    // PHASE 2: Detect features within bounding box for precision
-    let visionLinearFeatures: any[] = []
-    let boundingBoxResult: any = null
-    
-    if (LOVABLE_API_KEY && selectedImage.url) {
-      try {
-        const imageSize = selectedImage.source === 'mapbox' ? 1280 : 640
-        
-        // PHASE 1: Detect main building bounding box first
-        console.log('🎯 Starting two-pass roof detection...')
-        boundingBoxResult = await detectRoofBoundingBox(selectedImage.url, coordinates)
-        
-        // PHASE 2: Detect features within bounding box
-        visionLinearFeatures = await detectRoofFeaturesWithVision(
-          selectedImage.url, 
-          coordinates, 
-          imageSize, 
-          IMAGE_ZOOM,
-          boundingBoxResult // Pass bounding box to focus detection
-        )
-        console.log(`🔍 Two-pass detection complete: ${visionLinearFeatures.length} features detected`)
-      } catch (visionError) {
-        console.error('Lovable AI Vision detection failed, using fallback:', visionError)
-      }
-    }
+    // Use Google Solar linear features as primary source (already has WKT)
+    const linearFeatures = solarData.linearFeatures || []
+    console.log(`📏 Using ${linearFeatures.length} linear features from Google Solar API`)
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     const measurementRecord = await saveMeasurementToDatabase(supabase, {
       address, coordinates, customerId, userId, googleImage, mapboxImage,
       selectedImage, solarData, aiAnalysis, scale, measurements, confidence,
-      visionLinearFeatures, imageSource, imageYear, qualityAssessment
+      linearFeatures, imageSource, imageYear
     })
-
-    console.log('✅ Complete! Confidence:', confidence.score + '%')
+    
+    const totalTime = Date.now() - startTime
+    console.log(`✅ Complete in ${totalTime}ms! Confidence: ${confidence.score}%`)
 
     return new Response(JSON.stringify({
       success: true,
       measurementId: measurementRecord.id,
+      timing: { totalMs: totalTime },
       data: {
         address, coordinates,
-        images: { google: googleImage, mapbox: mapboxImage, selected: selectedImage.source },
+        images: { google: googleImage.url ? 'available' : 'unavailable', mapbox: mapboxImage.url ? 'available' : 'unavailable', selected: selectedImage.source },
         solarApiData: {
           available: solarData.available,
           buildingFootprint: solarData.buildingFootprintSqft,
-          roofSegments: solarData.roofSegmentCount
+          roofSegments: solarData.roofSegmentCount,
+          linearFeatures: linearFeatures.length
         },
         aiAnalysis: {
           roofType: aiAnalysis.roofType,
           facetCount: aiAnalysis.facets.length,
           complexity: aiAnalysis.overallComplexity,
-          pitch: measurements.predominantPitch
+          pitch: measurements.predominantPitch,
+          boundingBox: aiAnalysis.boundingBox
         },
         measurements: {
           totalAreaSqft: measurements.totalAdjustedArea,
@@ -290,7 +137,6 @@ async function fetchGoogleStaticMap(coords: any) {
       return { url: null, source: 'google_maps', resolution: '640x640', quality: 0 }
     }
     const buffer = await response.arrayBuffer()
-    // Use Deno's base64 encoding to avoid stack overflow with large images
     const base64 = base64Encode(new Uint8Array(buffer))
     return { url: `data:image/png;base64,${base64}`, source: 'google_maps', resolution: '640x640', quality: 8 }
   } catch (err) {
@@ -334,125 +180,123 @@ async function fetchGoogleSolarData(coords: any) {
   }
 }
 
-// Extract linear features (ridges, hips, valleys) from roof segment intersections
+// Extract linear features (ridges, hips, valleys, eaves) from roof segment data
 function extractLinearFeaturesFromSegments(segments: any[], boundingBox: any, center: any) {
   const linearFeatures: any[] = []
   let featureId = 1
   
-  if (!segments || segments.length < 2 || !boundingBox) {
-    return linearFeatures
-  }
-  
   const centerLat = center.lat
   const centerLng = center.lng
-  
-  // Calculate meters per degree for accurate conversions
   const metersPerDegLat = 111320
   const metersPerDegLng = 111320 * Math.cos(centerLat * Math.PI / 180)
   
-  // Process each pair of adjacent roof segments to find intersection lines (ridges/hips/valleys)
-  for (let i = 0; i < segments.length; i++) {
-    const seg1 = segments[i]
-    if (!seg1.boundingBox) continue
-    
-    for (let j = i + 1; j < segments.length; j++) {
-      const seg2 = segments[j]
-      if (!seg2.boundingBox) continue
+  // Process segment pairs to find intersection lines (ridges/hips/valleys)
+  if (segments && segments.length >= 2) {
+    for (let i = 0; i < segments.length; i++) {
+      const seg1 = segments[i]
+      if (!seg1.boundingBox) continue
       
-      // Check if segments share an edge (intersect)
-      const intersection = findSegmentIntersection(seg1, seg2, centerLat, centerLng, metersPerDegLat, metersPerDegLng)
-      
-      if (intersection) {
-        // Determine feature type based on height comparison
-        const height1 = seg1.planeHeightAtCenterMeters || 0
-        const height2 = seg2.planeHeightAtCenterMeters || 0
-        const azimuth1 = seg1.azimuthDegrees || 0
-        const azimuth2 = seg2.azimuthDegrees || 0
-        const azimuthDiff = Math.abs(azimuth1 - azimuth2)
+      for (let j = i + 1; j < segments.length; j++) {
+        const seg2 = segments[j]
+        if (!seg2.boundingBox) continue
         
-        let featureType = 'ridge'
-        // If planes face opposite directions (180° apart) = ridge
-        // If planes face similar directions but different heights = hip
-        // If intersection is below both planes = valley
-        if (azimuthDiff > 150 && azimuthDiff < 210) {
-          featureType = 'ridge'
-        } else if (intersection.isLowerThanBoth) {
-          featureType = 'valley'
-        } else {
-          featureType = 'hip'
+        const intersection = findSegmentIntersection(seg1, seg2, metersPerDegLat, metersPerDegLng)
+        
+        if (intersection) {
+          const azimuth1 = seg1.azimuthDegrees || 0
+          const azimuth2 = seg2.azimuthDegrees || 0
+          const azimuthDiff = Math.abs(azimuth1 - azimuth2)
+          
+          let featureType = 'ridge'
+          if (azimuthDiff > 150 && azimuthDiff < 210) {
+            featureType = 'ridge'
+          } else if (intersection.isLowerThanBoth) {
+            featureType = 'valley'
+          } else {
+            featureType = 'hip'
+          }
+          
+          linearFeatures.push({
+            id: `LF${featureId++}`,
+            type: featureType,
+            wkt: intersection.wkt,
+            length_ft: intersection.length_ft,
+            source: 'google_solar'
+          })
         }
-        
-        linearFeatures.push({
-          id: `LF${featureId++}`,
-          type: featureType,
-          wkt: intersection.wkt,
-          length_ft: intersection.length_ft,
-          source: 'google_solar_segment_intersection',
-          segment1Index: i,
-          segment2Index: j
-        })
       }
     }
   }
   
   // Extract eave lines from building boundary
-  if (boundingBox) {
-    const eaveLines = extractBoundaryLines(boundingBox, centerLat, centerLng, metersPerDegLat, metersPerDegLng)
-    eaveLines.forEach(line => {
+  if (boundingBox && boundingBox.sw && boundingBox.ne) {
+    const sw = { lat: boundingBox.sw.latitude, lng: boundingBox.sw.longitude }
+    const ne = { lat: boundingBox.ne.latitude, lng: boundingBox.ne.longitude }
+    const se = { lat: sw.lat, lng: ne.lng }
+    const nw = { lat: ne.lat, lng: sw.lng }
+    
+    const edges = [
+      { start: sw, end: se, label: 'eave_south' },
+      { start: se, end: ne, label: 'rake_east' },
+      { start: ne, end: nw, label: 'eave_north' },
+      { start: nw, end: sw, label: 'rake_west' }
+    ]
+    
+    edges.forEach(edge => {
+      const dx = (edge.end.lng - edge.start.lng) * metersPerDegLng
+      const dy = (edge.end.lat - edge.start.lat) * metersPerDegLat
+      const length_m = Math.sqrt(dx * dx + dy * dy)
+      const length_ft = length_m * 3.28084
+      
+      const type = edge.label.startsWith('eave') ? 'eave' : 'rake'
+      
       linearFeatures.push({
         id: `LF${featureId++}`,
-        type: 'eave',
-        wkt: line.wkt,
-        length_ft: line.length_ft,
-        source: 'google_solar_boundary'
+        type,
+        wkt: `LINESTRING(${edge.start.lng} ${edge.start.lat}, ${edge.end.lng} ${edge.end.lat})`,
+        length_ft,
+        source: 'google_solar'
       })
     })
   }
   
-  console.log(`✅ Extracted ${linearFeatures.length} linear features from Google Solar segments`)
+  console.log(`✅ Extracted ${linearFeatures.length} linear features from Google Solar`)
   return linearFeatures
 }
 
-// Find intersection line between two roof segments
-function findSegmentIntersection(seg1: any, seg2: any, centerLat: number, centerLng: number, mPerDegLat: number, mPerDegLng: number) {
+function findSegmentIntersection(seg1: any, seg2: any, mPerDegLat: number, mPerDegLng: number) {
   const box1 = seg1.boundingBox
   const box2 = seg2.boundingBox
   
   if (!box1 || !box2) return null
   
-  // Get bounding box corners
   const b1sw = { lat: box1.sw?.latitude || 0, lng: box1.sw?.longitude || 0 }
   const b1ne = { lat: box1.ne?.latitude || 0, lng: box1.ne?.longitude || 0 }
   const b2sw = { lat: box2.sw?.latitude || 0, lng: box2.sw?.longitude || 0 }
   const b2ne = { lat: box2.ne?.latitude || 0, lng: box2.ne?.longitude || 0 }
   
-  // Check for overlap
   const overlapMinLat = Math.max(b1sw.lat, b2sw.lat)
   const overlapMaxLat = Math.min(b1ne.lat, b2ne.lat)
   const overlapMinLng = Math.max(b1sw.lng, b2sw.lng)
   const overlapMaxLng = Math.min(b1ne.lng, b2ne.lng)
   
-  // Segments must overlap to share an edge
-  const tolerance = 0.00005 // ~5.5m tolerance
+  const tolerance = 0.00005
   if (overlapMaxLat - overlapMinLat < -tolerance || overlapMaxLng - overlapMinLng < -tolerance) {
     return null
   }
   
-  // Determine if it's a horizontal or vertical edge
   const latOverlap = overlapMaxLat - overlapMinLat
   const lngOverlap = overlapMaxLng - overlapMinLng
   
   let startLat, startLng, endLat, endLng
   
   if (latOverlap > lngOverlap) {
-    // Vertical edge (shared longitude)
     const sharedLng = (overlapMinLng + overlapMaxLng) / 2
     startLat = overlapMinLat
     startLng = sharedLng
     endLat = overlapMaxLat
     endLng = sharedLng
   } else {
-    // Horizontal edge (shared latitude)
     const sharedLat = (overlapMinLat + overlapMaxLat) / 2
     startLat = sharedLat
     startLng = overlapMinLng
@@ -460,410 +304,18 @@ function findSegmentIntersection(seg1: any, seg2: any, centerLat: number, center
     endLng = overlapMaxLng
   }
   
-  // Calculate length in feet
   const dx = (endLng - startLng) * mPerDegLng
   const dy = (endLat - startLat) * mPerDegLat
   const length_m = Math.sqrt(dx * dx + dy * dy)
   const length_ft = length_m * 3.28084
   
-  // Skip very short lines
   if (length_ft < 3) return null
   
-  // Create WKT LINESTRING with actual geographic coordinates
-  const wkt = `LINESTRING(${startLng} ${startLat}, ${endLng} ${endLat})`
-  
-  // Check if intersection is lower than both segment centers (valley indicator)
-  const isLowerThanBoth = false // Would need elevation data for accurate detection
-  
   return {
-    wkt,
+    wkt: `LINESTRING(${startLng} ${startLat}, ${endLng} ${endLat})`,
     length_ft,
-    isLowerThanBoth
+    isLowerThanBoth: false
   }
-}
-
-// Extract eave/boundary lines from building bounding box
-function extractBoundaryLines(boundingBox: any, centerLat: number, centerLng: number, mPerDegLat: number, mPerDegLng: number) {
-  const lines: any[] = []
-  
-  if (!boundingBox || !boundingBox.sw || !boundingBox.ne) return lines
-  
-  const sw = { lat: boundingBox.sw.latitude, lng: boundingBox.sw.longitude }
-  const ne = { lat: boundingBox.ne.latitude, lng: boundingBox.ne.longitude }
-  const se = { lat: sw.lat, lng: ne.lng }
-  const nw = { lat: ne.lat, lng: sw.lng }
-  
-  const edges = [
-    { start: sw, end: se, label: 'South' },
-    { start: se, end: ne, label: 'East' },
-    { start: ne, end: nw, label: 'North' },
-    { start: nw, end: sw, label: 'West' }
-  ]
-  
-  edges.forEach(edge => {
-    const dx = (edge.end.lng - edge.start.lng) * mPerDegLng
-    const dy = (edge.end.lat - edge.start.lat) * mPerDegLat
-    const length_m = Math.sqrt(dx * dx + dy * dy)
-    const length_ft = length_m * 3.28084
-    
-    lines.push({
-      wkt: `LINESTRING(${edge.start.lng} ${edge.start.lat}, ${edge.end.lng} ${edge.end.lat})`,
-      length_ft,
-      label: edge.label
-    })
-  })
-  
-  return lines
-}
-
-// PHASE 1: Detect roof bounding box first (two-pass approach)
-// This anchors all subsequent feature detection to the actual visible roof area
-async function detectRoofBoundingBox(
-  imageUrl: string,
-  coordinates: { lat: number; lng: number }
-): Promise<{
-  boundingBox: { topLeftX: number; topLeftY: number; bottomRightX: number; bottomRightY: number } | null;
-  mainBuildingCenter: { x: number; y: number };
-  confidence: number;
-  description: string;
-}> {
-  const prompt = `STEP 1: LOCATE THE MAIN BUILDING
-
-Look at this satellite image and identify the PRIMARY residential building:
-- Find the LARGEST roofing structure (ignore sheds, garages, pools, driveways)
-- The main building is typically centered in the image near the address marker
-
-Return the BOUNDING BOX of the main roof as percentage coordinates (0-100):
-- topLeftX, topLeftY: top-left corner of the roof
-- bottomRightX, bottomRightY: bottom-right corner of the roof
-- centerX, centerY: center point of the main roof
-
-Return ONLY valid JSON:
-{
-  "boundingBox": {
-    "topLeftX": 15,
-    "topLeftY": 20,
-    "bottomRightX": 85,
-    "bottomRightY": 75
-  },
-  "mainBuildingCenter": {"x": 50, "y": 47},
-  "confidence": 0-100,
-  "description": "Main house with hip roof, pool visible to south"
-}
-
-Be PRECISE - the bounding box should tightly enclose ONLY the main roof, not surrounding structures.`
-
-  console.log('🎯 PHASE 1: Detecting main roof bounding box...')
-  
-  try {
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json', 
-        'Authorization': `Bearer ${LOVABLE_API_KEY}` 
-      },
-      body: JSON.stringify({
-        model: 'google/gemini-2.5-flash', // Fast model for quick bounding box detection
-        messages: [{ 
-          role: 'user', 
-          content: [
-            { type: 'text', text: prompt }, 
-            { type: 'image_url', image_url: { url: imageUrl } }
-          ] 
-        }],
-        max_completion_tokens: 500
-      })
-    })
-
-    if (!response.ok) {
-      console.log('Bounding box detection failed, using default center')
-      return { boundingBox: null, mainBuildingCenter: { x: 50, y: 50 }, confidence: 0, description: 'Detection failed' }
-    }
-
-    const data = await response.json()
-    let content = data.choices?.[0]?.message?.content || ''
-    content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-    
-    const parsed = JSON.parse(content)
-    console.log('✅ Main roof located:', parsed.description, `(${parsed.confidence}% confidence)`)
-    console.log('📦 Bounding box:', parsed.boundingBox)
-    
-    return {
-      boundingBox: parsed.boundingBox,
-      mainBuildingCenter: parsed.mainBuildingCenter || { x: 50, y: 50 },
-      confidence: parsed.confidence || 70,
-      description: parsed.description || ''
-    }
-  } catch (err) {
-    console.log('Bounding box detection error:', err)
-    return { boundingBox: null, mainBuildingCenter: { x: 50, y: 50 }, confidence: 0, description: 'Parse error' }
-  }
-}
-
-// PHASE 2: GPT-5 Vision - Detect roof features with two-pass approach
-// Uses bounding box from Phase 1 to focus detection on the correct structure
-async function detectRoofFeaturesWithVision(
-  imageUrl: string, 
-  coordinates: { lat: number; lng: number },
-  imageSize: number,
-  zoom: number,
-  boundingBoxResult?: { boundingBox: any; mainBuildingCenter: { x: number; y: number }; confidence: number }
-): Promise<any[]> {
-  // Build context from bounding box detection
-  const boundingBoxContext = boundingBoxResult?.boundingBox 
-    ? `FOCUS AREA: The main building roof is located between:
-- Top-left: (${boundingBoxResult.boundingBox.topLeftX}%, ${boundingBoxResult.boundingBox.topLeftY}%)
-- Bottom-right: (${boundingBoxResult.boundingBox.bottomRightX}%, ${boundingBoxResult.boundingBox.bottomRightY}%)
-- Center: (${boundingBoxResult.mainBuildingCenter.x}%, ${boundingBoxResult.mainBuildingCenter.y}%)
-
-ONLY trace features within this bounding box. Ignore structures outside this area.
-
-`
-    : ''
-
-  const prompt = `${boundingBoxContext}ROOF FEATURE DETECTION - PIXEL-PERFECT PRECISION REQUIRED
-
-STEP 1: IDENTIFY THE MAIN BUILDING
-${boundingBoxContext ? '(Already identified - focus on the marked bounding box area)' : '- Find the PRIMARY residential building (largest roof structure)'}
-- The roof edges are visible as lines where shingles meet gutters/fascia
-
-STEP 2: TRACE EXACT VISIBLE EDGES WITH DECIMAL PRECISION
-For each feature, trace the EXACT visible edge where you can see:
-- The shingle/material edge meeting the fascia/gutter (for eaves)
-- The peak line where two roof planes meet (for ridges)
-- The diagonal edge from corner to peak (for hips)
-
-Use DECIMAL precision (e.g., 34.5, not 35) for accuracy.
-
-FEATURE DEFINITIONS:
-1. **EAVES** - Horizontal edges at the BOTTOM of roof planes (gutter line). Look for shadow or color change.
-2. **RAKES** - Sloped edges on GABLE ends going UP to the ridge peak.
-3. **RIDGES** - Horizontal peak lines where two slopes meet at the TOP.
-4. **HIPS** - Diagonal lines from OUTER corners going UP toward the ridge.
-5. **VALLEYS** - Internal V-shaped lines where roof planes meet (water channels).
-6. **PERIMETER** - Complete outer edge tracing the entire roof outline.
-
-VALIDATION CHECK:
-- Eave lines should be at the BOTTOM edges of the visible roof
-- Ridge lines should be at the TOP peak
-- All features must be WITHIN the roof structure, not floating in space
-
-Return ONLY valid JSON:
-{
-  "features": [
-    {"type": "eave", "start": {"x": 22.5, "y": 68.3}, "end": {"x": 77.5, "y": 68.3}, "confidence": "high"},
-    {"type": "ridge", "start": {"x": 25.0, "y": 45.5}, "end": {"x": 75.0, "y": 45.5}, "confidence": "high"},
-    {"type": "hip", "start": {"x": 15.2, "y": 65.8}, "end": {"x": 25.0, "y": 45.5}, "confidence": "high"},
-    {"type": "valley", "start": {"x": 50.0, "y": 60.0}, "end": {"x": 50.0, "y": 45.5}, "confidence": "medium"}
-  ],
-  "perimeter": [
-    {"x": 15.2, "y": 30.5},
-    {"x": 84.8, "y": 30.5},
-    {"x": 84.8, "y": 68.3},
-    {"x": 15.2, "y": 68.3}
-  ],
-  "roofShape": "hip|gable|complex",
-  "detectionNotes": "observations",
-  "boundingBox": {"topLeftX": 15, "topLeftY": 30, "bottomRightX": 85, "bottomRightY": 70}
-}
-
-CRITICAL: Every coordinate MUST fall on actual visible roof edges. If unsure, mark confidence as "low".`
-
-  console.log('🔍 Calling Lovable AI Gateway for roof feature detection...')
-  
-  // Use Lovable AI Gateway with timeout
-  const controller = new AbortController()
-  const timeoutId = setTimeout(() => controller.abort(), 25000) // 25 second timeout
-  
-  try {
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-      method: 'POST',
-      headers: { 
-        'Content-Type': 'application/json', 
-        'Authorization': `Bearer ${LOVABLE_API_KEY}` 
-      },
-      body: JSON.stringify({
-        model: 'openai/gpt-5',
-        messages: [
-          { 
-            role: 'user', 
-            content: [
-              { type: 'text', text: prompt }, 
-              { type: 'image_url', image_url: { url: imageUrl } }
-            ] 
-          }
-        ],
-        max_completion_tokens: 2000
-      }),
-      signal: controller.signal
-    })
-    
-    clearTimeout(timeoutId)
-
-    if (!response.ok) {
-      const errorData = await response.text()
-      console.error('Lovable AI Gateway error:', response.status, errorData)
-      
-      // Handle specific error codes
-      if (response.status === 429) {
-        throw new Error('RATE_LIMIT: AI service rate limit exceeded. Please try again in a moment.')
-      }
-      if (response.status === 402) {
-        throw new Error('PAYMENT_REQUIRED: AI credits exhausted. Please add credits to continue.')
-      }
-      throw new Error(`AI Vision error: ${response.status}`)
-    }
-
-    const data = await response.json()
-    let content = data.choices?.[0]?.message?.content || ''
-    
-    // Clean markdown formatting
-    content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-    
-    console.log('Lovable AI Vision raw response length:', content.length)
-  
-  try {
-    const parsed = JSON.parse(content)
-    const features = parsed.features || []
-    const perimeterPoints = parsed.perimeter || []
-    
-    // Convert image percentage positions to geographic WKT coordinates
-    const wktFeatures = features.map((f: any, index: number) => {
-      const wkt = convertImagePercentToWKT(
-        f.start, 
-        f.end, 
-        coordinates, 
-        imageSize, 
-        zoom
-      )
-      
-      // Calculate length from percentage positions
-      const dx = (f.end.x - f.start.x) / 100 * imageSize
-      const dy = (f.end.y - f.start.y) / 100 * imageSize
-      const pixelLength = Math.sqrt(dx * dx + dy * dy)
-      const metersPerPixel = calculateMetersPerPixel(coordinates.lat, zoom)
-      const lengthMeters = pixelLength * metersPerPixel
-      const lengthFt = lengthMeters * 3.28084
-      
-      return {
-        id: `VIS${index + 1}`,
-        type: f.type,
-        wkt,
-        length_ft: Math.round(lengthFt * 10) / 10,
-        source: 'gpt4_vision',
-        confidence: f.confidence,
-        imagePosition: { start: f.start, end: f.end }
-      }
-    })
-    
-    // Convert perimeter to WKT POLYGON if provided
-    let perimeterWkt: string | null = null
-    if (perimeterPoints.length >= 3) {
-      const perimeterCoords = perimeterPoints.map((p: any) => {
-        const metersPerPixel = calculateMetersPerPixel(coordinates.lat, zoom)
-        const halfImagePixels = imageSize / 2
-        
-        // Convert percentage to pixel offset from center
-        const pixelX = (p.x / 100 * imageSize) - halfImagePixels
-        const pixelY = (p.y / 100 * imageSize) - halfImagePixels
-        
-        // Convert pixel offset to meter offset
-        const meterX = pixelX * metersPerPixel
-        const meterY = -pixelY * metersPerPixel // Y is inverted
-        
-        // Convert meter offset to lat/lng offset
-        const metersPerDegLat = 111320
-        const metersPerDegLng = 111320 * Math.cos(coordinates.lat * Math.PI / 180)
-        
-        const lat = coordinates.lat + (meterY / metersPerDegLat)
-        const lng = coordinates.lng + (meterX / metersPerDegLng)
-        
-        return `${lng} ${lat}`
-      })
-      
-      // Close the polygon
-      perimeterCoords.push(perimeterCoords[0])
-      perimeterWkt = `POLYGON((${perimeterCoords.join(', ')}))`
-      console.log('✅ Created perimeter WKT polygon with', perimeterPoints.length, 'points')
-    }
-    
-    console.log(`✅ GPT-4 Vision extracted ${wktFeatures.length} features with WKT`)
-    
-    // Return features with perimeter attached to the result
-    const result = wktFeatures.map((f: any) => ({
-      ...f,
-      _perimeterWkt: perimeterWkt // Attach perimeter to each feature for processing
-    }))
-    
-    // Also add perimeter as a special feature if available
-    if (perimeterWkt) {
-      result.push({
-        id: 'PERIMETER',
-        type: 'perimeter',
-        wkt: perimeterWkt,
-        length_ft: 0, // Will be calculated from polygon
-        source: 'gpt4_vision',
-        confidence: 'high',
-        isPerimeter: true
-      })
-    }
-    
-    return result
-    
-    } catch (parseError) {
-      console.error('Failed to parse Lovable AI Vision response:', content.substring(0, 300))
-      return []
-    }
-  } catch (fetchError: any) {
-    clearTimeout(timeoutId)
-    if (fetchError.name === 'AbortError') {
-      console.error('Lovable AI Vision request timed out')
-      throw new Error('TIMEOUT: AI Vision request timed out after 25 seconds')
-    }
-    throw fetchError
-  }
-}
-
-// Calculate meters per pixel based on latitude and zoom level (Web Mercator)
-function calculateMetersPerPixel(lat: number, zoom: number): number {
-  const earthCircumference = 40075016.686 // meters at equator
-  const latRad = lat * Math.PI / 180
-  return (earthCircumference * Math.cos(latRad)) / Math.pow(2, zoom + 8)
-}
-
-// Convert image percentage position to WKT LINESTRING with geographic coordinates
-function convertImagePercentToWKT(
-  start: { x: number; y: number },
-  end: { x: number; y: number },
-  center: { lat: number; lng: number },
-  imageSize: number,
-  zoom: number
-): string {
-  const metersPerPixel = calculateMetersPerPixel(center.lat, zoom)
-  const halfImagePixels = imageSize / 2
-  
-  // Convert percentage to pixel offset from center
-  const startPixelX = (start.x / 100 * imageSize) - halfImagePixels
-  const startPixelY = (start.y / 100 * imageSize) - halfImagePixels
-  const endPixelX = (end.x / 100 * imageSize) - halfImagePixels
-  const endPixelY = (end.y / 100 * imageSize) - halfImagePixels
-  
-  // Convert pixel offset to meter offset
-  const startMeterX = startPixelX * metersPerPixel
-  const startMeterY = -startPixelY * metersPerPixel // Y is inverted
-  const endMeterX = endPixelX * metersPerPixel
-  const endMeterY = -endPixelY * metersPerPixel
-  
-  // Convert meter offset to lat/lng offset
-  const metersPerDegLat = 111320
-  const metersPerDegLng = 111320 * Math.cos(center.lat * Math.PI / 180)
-  
-  const startLat = center.lat + (startMeterY / metersPerDegLat)
-  const startLng = center.lng + (startMeterX / metersPerDegLng)
-  const endLat = center.lat + (endMeterY / metersPerDegLat)
-  const endLng = center.lng + (endMeterX / metersPerDegLng)
-  
-  return `LINESTRING(${startLng} ${startLat}, ${endLng} ${endLat})`
 }
 
 async function fetchMapboxSatellite(coords: any) {
@@ -875,7 +327,6 @@ async function fetchMapboxSatellite(coords: any) {
       return { url: null, source: 'mapbox', resolution: '1280x1280', quality: 0 }
     }
     const buffer = await response.arrayBuffer()
-    // Use Deno's base64 encoding to avoid stack overflow with large images
     const base64 = base64Encode(new Uint8Array(buffer))
     return { url: `data:image/png;base64,${base64}`, source: 'mapbox', resolution: '1280x1280', quality: 9 }
   } catch (err) {
@@ -884,57 +335,74 @@ async function fetchMapboxSatellite(coords: any) {
   }
 }
 
-async function analyzeRoofWithAI(imageUrl: string, address: string) {
+// STREAMLINED: Single fast AI call for roof analysis + bounding box
+async function analyzeRoofWithAI(imageUrl: string, address: string, coordinates: { lat: number; lng: number }) {
   if (!imageUrl) {
     throw new Error('No satellite image available for AI analysis')
   }
 
-  const prompt = `Analyze this roof aerial image for ${address}. Return ONLY valid JSON:
+  const prompt = `Analyze this roof aerial image for ${address}. Return ONLY valid JSON with roof analysis AND bounding box:
 
-{"roofType":"gable|hip|flat|complex","facets":[{"facetNumber":1,"shape":"rectangle|triangle|trapezoid","estimatedPitch":"5/12","pitchConfidence":"high|medium|low","estimatedAreaSqft":850,"edges":{"eave":40,"rake":25,"hip":0,"valley":0,"ridge":40},"features":{"chimneys":0,"skylights":0,"vents":2},"orientation":"north|south|east|west"}],"overallComplexity":"simple|moderate|complex","shadowAnalysis":{"estimatedPitchRange":"4/12 to 6/12","confidence":"medium"},"detectionNotes":"notes"}
+{
+  "roofType": "gable|hip|flat|complex",
+  "boundingBox": {
+    "topLeftX": 15,
+    "topLeftY": 20,
+    "bottomRightX": 85,
+    "bottomRightY": 75
+  },
+  "facets": [
+    {
+      "facetNumber": 1,
+      "shape": "rectangle|triangle|trapezoid",
+      "estimatedPitch": "5/12",
+      "pitchConfidence": "high|medium|low",
+      "estimatedAreaSqft": 850,
+      "edges": {"eave": 40, "rake": 25, "hip": 0, "valley": 0, "ridge": 40},
+      "features": {"chimneys": 0, "skylights": 0, "vents": 2},
+      "orientation": "north|south|east|west"
+    }
+  ],
+  "overallComplexity": "simple|moderate|complex",
+  "shadowAnalysis": {"estimatedPitchRange": "4/12 to 6/12", "confidence": "medium"},
+  "detectionNotes": "notes"
+}
 
-Keep facets array SHORT - max 4 main facets. No boundingBox field. ONLY JSON, no markdown.`
+BOUNDING BOX: Identify the main building and provide coordinates as percentages (0-100) of image dimensions.
+Keep facets array SHORT - max 4 main facets. ONLY JSON, no markdown.`
 
-  console.log('Calling Lovable AI for roof analysis...')
+  console.log('🤖 Calling AI for roof analysis...')
   
   const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${LOVABLE_API_KEY}` },
     body: JSON.stringify({
       model: 'google/gemini-2.5-flash',
-      messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: imageUrl } }] }]
+      messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: imageUrl } }] }],
+      max_completion_tokens: 1500
     })
   })
 
   const data = await response.json()
-  console.log('Lovable AI response status:', response.status)
   
   if (!response.ok) {
-    console.error('Lovable AI error:', JSON.stringify(data))
-    throw new Error(data.error?.message || `Lovable AI error: ${response.status}`)
+    console.error('AI error:', JSON.stringify(data))
+    throw new Error(data.error?.message || `AI error: ${response.status}`)
   }
   
   if (!data.choices || !data.choices[0]) {
-    console.error('No choices in response:', JSON.stringify(data))
-    throw new Error('Lovable AI returned no choices')
+    throw new Error('AI returned no choices')
   }
   
   let content = data.choices[0].message?.content || ''
-  console.log('Raw AI content length:', content.length)
-  
-  // Clean up markdown formatting
   content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
   
-  // Try to fix truncated JSON by closing brackets
+  // Fix truncated JSON
   if (!content.endsWith('}')) {
-    console.log('Attempting to fix truncated JSON...')
-    // Count open brackets and close them
     const openBraces = (content.match(/{/g) || []).length
     const closeBraces = (content.match(/}/g) || []).length
     const openBrackets = (content.match(/\[/g) || []).length
     const closeBrackets = (content.match(/]/g) || []).length
-    
-    // Add missing closing brackets
     for (let i = 0; i < openBrackets - closeBrackets; i++) content += ']'
     for (let i = 0; i < openBraces - closeBraces; i++) content += '}'
   }
@@ -942,21 +410,22 @@ Keep facets array SHORT - max 4 main facets. No boundingBox field. ONLY JSON, no
   try {
     const aiAnalysis = JSON.parse(content)
     if (!aiAnalysis.facets || aiAnalysis.facets.length === 0) {
-      // Create default facet if none detected
       aiAnalysis.facets = [{
         facetNumber: 1, shape: 'rectangle', estimatedPitch: '5/12', pitchConfidence: 'low',
         estimatedAreaSqft: 1500, edges: { eave: 50, rake: 30, hip: 0, valley: 0, ridge: 50 },
         features: { chimneys: 0, skylights: 0, vents: 2 }, orientation: 'south'
       }]
     }
-    console.log('✅ AI analysis parsed successfully:', aiAnalysis.roofType, 'with', aiAnalysis.facets.length, 'facets')
+    if (!aiAnalysis.boundingBox) {
+      aiAnalysis.boundingBox = { topLeftX: 20, topLeftY: 25, bottomRightX: 80, bottomRightY: 75 }
+    }
+    console.log('✅ AI analysis:', aiAnalysis.roofType, 'with', aiAnalysis.facets.length, 'facets')
     return aiAnalysis
   } catch (parseError) {
-    console.error('Failed to parse AI response:', content.substring(0, 500))
-    // Return fallback analysis instead of throwing
-    console.log('Using fallback roof analysis...')
+    console.error('Failed to parse AI response:', content.substring(0, 300))
     return {
       roofType: 'complex',
+      boundingBox: { topLeftX: 20, topLeftY: 25, bottomRightX: 80, bottomRightY: 75 },
       facets: [{
         facetNumber: 1, shape: 'rectangle', estimatedPitch: '5/12', pitchConfidence: 'low',
         estimatedAreaSqft: 1800, edges: { eave: 60, rake: 30, hip: 20, valley: 0, ridge: 40 },
@@ -964,7 +433,7 @@ Keep facets array SHORT - max 4 main facets. No boundingBox field. ONLY JSON, no
       }],
       overallComplexity: 'moderate',
       shadowAnalysis: { estimatedPitchRange: '4/12 to 6/12', confidence: 'low' },
-      detectionNotes: 'Fallback analysis - manual verification recommended'
+      detectionNotes: 'Fallback analysis'
     }
   }
 }
@@ -1092,11 +561,6 @@ function calculateConfidenceScore(aiAnalysis: any, measurements: any, solarData:
   else if (complexity === 'moderate') { score -= 5; factors.complexity = 'Moderate complexity' }
   else { factors.complexity = 'Simple roof' }
 
-  const totalFromFacets = measurements.facets.reduce((sum: number, f: any) => sum + f.adjustedAreaSqft, 0)
-  const consistency = Math.abs(totalFromFacets - measurements.totalAdjustedArea) / measurements.totalAdjustedArea
-  if (consistency > 0.05) { score -= 10; factors.consistency = 'Minor inconsistencies' }
-  else { factors.consistency = 'Internally consistent' }
-
   const rating = score >= 90 ? 'EXCELLENT' : score >= 75 ? 'GOOD' : score >= 60 ? 'FAIR' : 'POOR'
   const requiresReview = score < 75
   const validationStatus = score >= 90 ? 'validated' : score >= 75 ? 'validated' : score >= 60 ? 'flagged' : 'rejected'
@@ -1105,40 +569,21 @@ function calculateConfidenceScore(aiAnalysis: any, measurements: any, solarData:
 }
 
 async function saveMeasurementToDatabase(supabase: any, data: any) {
-  const { address, coordinates, customerId, userId, googleImage, mapboxImage, selectedImage, solarData, aiAnalysis, scale, measurements, confidence, visionLinearFeatures = [], imageSource, imageYear, qualityAssessment } = data
+  const { address, coordinates, customerId, userId, googleImage, mapboxImage, selectedImage, solarData, aiAnalysis, scale, measurements, confidence, linearFeatures = [], imageSource, imageYear } = data
 
-  // Combine all linear feature sources with priority: GPT-4 Vision > Google Solar > AI Analysis
-  const solarLinearFeatures = solarData.linearFeatures || []
-  
-  // AI-estimated features without WKT (lowest priority fallback)
+  // AI-estimated features (fallback only)
   const aiEstimatedFeatures = measurements.facets.flatMap((facet: any) => {
     const features: any[] = []
-    if (facet.edges.ridge > 0) {
-      features.push({ type: 'ridge', length_ft: facet.edges.ridge, source: 'ai_analysis', facetNumber: facet.facetNumber })
-    }
-    if (facet.edges.hip > 0) {
-      features.push({ type: 'hip', length_ft: facet.edges.hip, source: 'ai_analysis', facetNumber: facet.facetNumber })
-    }
-    if (facet.edges.valley > 0) {
-      features.push({ type: 'valley', length_ft: facet.edges.valley, source: 'ai_analysis', facetNumber: facet.facetNumber })
-    }
+    if (facet.edges.ridge > 0) features.push({ type: 'ridge', length_ft: facet.edges.ridge, source: 'ai_analysis', facetNumber: facet.facetNumber })
+    if (facet.edges.hip > 0) features.push({ type: 'hip', length_ft: facet.edges.hip, source: 'ai_analysis', facetNumber: facet.facetNumber })
+    if (facet.edges.valley > 0) features.push({ type: 'valley', length_ft: facet.edges.valley, source: 'ai_analysis', facetNumber: facet.facetNumber })
     return features
   })
   
-  // Priority order: vision features (most accurate) > solar segment intersections > AI estimates
-  const combinedLinearFeatures = [
-    ...visionLinearFeatures, // GPT-4 Vision detected (highest priority, has WKT)
-    ...solarLinearFeatures,   // Google Solar segment intersections (has WKT)
-    ...aiEstimatedFeatures    // AI-estimated (fallback, no WKT)
-  ]
+  // Priority: Google Solar (has WKT) > AI estimated (no WKT)
+  const combinedLinearFeatures = [...linearFeatures, ...aiEstimatedFeatures]
   
-  const visionCount = visionLinearFeatures.length
-  const solarWktCount = solarLinearFeatures.filter((f: any) => f.wkt).length
-  
-  console.log(`💾 Saving measurement with ${combinedLinearFeatures.length} linear features:`)
-  console.log(`   - GPT-4 Vision: ${visionCount} features (with WKT, highest accuracy)`)
-  console.log(`   - Google Solar: ${solarWktCount} features (with WKT)`)
-  console.log(`   - AI Estimated: ${aiEstimatedFeatures.length} features (no WKT, fallback)`)
+  console.log(`💾 Saving ${combinedLinearFeatures.length} linear features (${linearFeatures.length} from Solar API)`)
 
   const { data: measurementRecord, error: measurementError } = await supabase
     .from('roof_measurements')
@@ -1179,15 +624,12 @@ async function saveMeasurementToDatabase(supabase: any, data: any) {
       total_valley_length: measurements.linearMeasurements.valley,
       total_ridge_length: measurements.linearMeasurements.ridge,
       material_calculations: measurements.materials,
-      // Store combined linear features with priority: vision > solar > ai_analysis
       linear_features_wkt: combinedLinearFeatures,
-      // Store the zoom level used for analysis - critical for accurate overlay alignment
       analysis_zoom: IMAGE_ZOOM,
-      analysis_image_size: selectedImage.source === 'mapbox' ? 1280 : 640,
-      // Store image source metadata for historical imagery tracking
-      image_source: imageSource || selectedImage.source,
-      image_year: imageYear || new Date().getFullYear(),
-      quality_assessment: qualityAssessment
+      analysis_image_size: { width: selectedImage.source === 'mapbox' ? 1280 : 640, height: selectedImage.source === 'mapbox' ? 1280 : 640 },
+      image_source: imageSource,
+      image_year: imageYear,
+      bounding_box: aiAnalysis.boundingBox
     })
     .select()
     .single()
