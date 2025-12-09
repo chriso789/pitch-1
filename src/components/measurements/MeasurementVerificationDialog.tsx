@@ -10,7 +10,7 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Split, Info, MapPin, ZoomIn, Maximize2, Minimize2, ImageIcon, History, FileText } from 'lucide-react';
+import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Split, Info, MapPin, ZoomIn, Maximize2, Minimize2, ImageIcon, History, FileText, Trash2 } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PolygonEditor } from './PolygonEditor';
@@ -385,12 +385,9 @@ export function MeasurementVerificationDialog({
         const measurementData = measurementResult?.data;
         const summary = measurementData?.summary;
         if (summary?.total_area_sqft) {
-          console.log('✅ Found measurement in database:', summary);
+          console.log('✅ Found measurement in database:', summary.total_area_sqft.toFixed(0), 'sq ft');
           setDbMeasurement(measurementData);
-          toast({
-            title: "Loaded from Database",
-            description: `Found ${summary.total_area_sqft.toFixed(0)} sq ft measurement`,
-          });
+          // Silent load - no toast to avoid confusion with stale data
         } else {
           console.log('⚠️ No measurement found in database for property:', pipelineEntryId);
         }
@@ -447,6 +444,39 @@ export function MeasurementVerificationDialog({
       });
     } finally {
       setIsLoadingDbMeasurement(false);
+    }
+  };
+  
+  // Clear all measurement history for this property
+  const handleClearMeasurementHistory = async () => {
+    if (!pipelineEntryId) return;
+    
+    try {
+      // Deactivate all measurements for this property
+      const { error } = await supabase
+        .from('measurements')
+        .update({ is_active: false })
+        .eq('property_id', pipelineEntryId);
+      
+      if (error) throw error;
+      
+      // Clear the local state
+      setDbMeasurement(null);
+      
+      toast({
+        title: "Measurements Cleared",
+        description: "All measurement history has been cleared. Pull new measurements when ready.",
+      });
+      
+      // Close the dialog
+      onOpenChange(false);
+    } catch (error) {
+      console.error('Failed to clear measurements:', error);
+      toast({
+        title: "Clear Failed",
+        description: "Could not clear measurement history",
+        variant: "destructive",
+      });
     }
   };
   
@@ -1214,6 +1244,19 @@ export function MeasurementVerificationDialog({
               <Badge variant={isOnline ? 'secondary' : 'destructive'} className="text-xs">
                 {isOnline ? 'Online' : 'Offline'}
               </Badge>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button 
+                    variant="ghost" 
+                    size="icon" 
+                    className="h-7 w-7 text-destructive hover:text-destructive" 
+                    onClick={handleClearMeasurementHistory}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>Clear Measurement History</TooltipContent>
+              </Tooltip>
               <Tooltip>
                 <TooltipTrigger asChild>
                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setIsMaximized(!isMaximized)}>
