@@ -251,6 +251,16 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 
     const loadMeasurementData = async () => {
       try {
+        // First, check if there's an ACTIVE verified measurement in the measurements table
+        const { data: activeMeasurement } = await supabase
+          .from('measurements')
+          .select('id, summary, linear_features')
+          .eq('property_id', pipelineEntryId)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
         const { data: pipelineEntry, error } = await supabase
           .from('pipeline_entries')
           .select(`
@@ -276,8 +286,29 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
         if (pipelineEntry) {
           const metadata = (pipelineEntry.metadata as any) || {};
           const contact = pipelineEntry.contacts as any;
-          const roofAreaSqFt = metadata.roof_area_sq_ft || metadata.comprehensive_measurements?.adjustedArea || 0;
-          const comprehensiveMeasurements = metadata.comprehensive_measurements;
+          
+          // CRITICAL FIX: Only use measurements if there's an ACTIVE measurement in the database
+          // Don't show cached/stale metadata if no active measurement exists
+          let roofAreaSqFt = 0;
+          let comprehensiveMeasurements: any = null;
+          
+          const summary = activeMeasurement?.summary as any;
+          if (summary?.total_area_sqft) {
+            // Use verified measurement from database
+            roofAreaSqFt = summary.total_area_sqft;
+            const metaComprehensive = (metadata.comprehensive_measurements || {}) as any;
+            comprehensiveMeasurements = {
+              ...metaComprehensive,
+              adjustedArea: roofAreaSqFt,
+              adjustedSquares: roofAreaSqFt / 100,
+              ...summary
+            };
+            console.log('✅ Using ACTIVE verified measurement:', roofAreaSqFt, 'sq ft');
+          } else {
+            // No active measurement - don't show stale cached data
+            console.log('⚠️ No active measurement found - not displaying stale cached data');
+          }
+          
           const hasValidMeasurements = roofAreaSqFt > 0;
           
           // Extract coordinates with priority fallback chain
