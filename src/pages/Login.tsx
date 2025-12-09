@@ -92,65 +92,109 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
   // Watch AuthContext - navigate when session is ready after login attempt
   useEffect(() => {
     if (loginAttempted && session && authUser && !authLoading) {
-      console.log('[Login] AuthContext ready with session, navigating to dashboard');
-      
-      // Initialize session with configured timeout
-      initSession(rememberMe);
-      
-      // Background tasks (non-blocking)
-      setTimeout(async () => {
-        ensureUserProfile(authUser).catch(console.warn);
-        // Sync user metadata from profiles to auth (fixes display name issues)
-        supabase.functions.invoke('sync-user-metadata').catch(console.warn);
-        supabase.functions.invoke('log-auth-activity', {
-          body: {
-            user_id: authUser.id,
-            email: authUser.email,
-            event_type: 'login_success',
-            success: true
-          }
-        }).catch(console.warn);
-        
-        // Trust this device if Remember Me is checked
-        if (rememberMe) {
-          try {
-            const fingerprint = await getDeviceFingerprint();
-            const deviceName = getDeviceName();
-            
-            // Upsert trusted device
-            await supabase.from('trusted_devices').upsert({
-              user_id: authUser.id,
-              device_fingerprint: fingerprint,
-              device_name: deviceName,
-              last_seen_at: new Date().toISOString(),
-              is_active: true
-            }, {
-              onConflict: 'user_id,device_fingerprint'
+      // CRITICAL SECURITY: Verify the session is valid before redirecting
+      const verifyAndRedirect = async () => {
+        try {
+          // Double-check with Supabase that this session is real
+          const { data: { session: verifiedSession }, error } = await supabase.auth.getSession();
+          
+          if (error || !verifiedSession || verifiedSession.user.id !== authUser.id) {
+            console.error('[Login] Session verification failed - clearing and staying on login');
+            clearAllSessionData();
+            await supabase.auth.signOut();
+            setLoading(false);
+            setLoginAttempted(false);
+            toast({
+              title: "Session Error",
+              description: "Please try logging in again.",
+              variant: "destructive"
             });
-            console.log('[Login] Device trusted:', deviceName);
-          } catch (error) {
-            console.warn('[Login] Failed to trust device:', error);
+            return;
           }
+
+          console.log('[Login] Session verified for user:', authUser.email);
+          
+          // Initialize session with configured timeout
+          initSession(rememberMe);
+          
+          // Background tasks (non-blocking)
+          setTimeout(async () => {
+            ensureUserProfile(authUser).catch(console.warn);
+            // Sync user metadata from profiles to auth (fixes display name issues)
+            supabase.functions.invoke('sync-user-metadata').catch(console.warn);
+            supabase.functions.invoke('log-auth-activity', {
+              body: {
+                user_id: authUser.id,
+                email: authUser.email,
+                event_type: 'login_success',
+                success: true
+              }
+            }).catch(console.warn);
+            
+            // Trust this device if Remember Me is checked
+            if (rememberMe) {
+              try {
+                const fingerprint = await getDeviceFingerprint();
+                const deviceName = getDeviceName();
+                
+                // Upsert trusted device
+                await supabase.from('trusted_devices').upsert({
+                  user_id: authUser.id,
+                  device_fingerprint: fingerprint,
+                  device_name: deviceName,
+                  last_seen_at: new Date().toISOString(),
+                  is_active: true
+                }, {
+                  onConflict: 'user_id,device_fingerprint'
+                });
+                console.log('[Login] Device trusted:', deviceName);
+              } catch (error) {
+                console.warn('[Login] Failed to trust device:', error);
+              }
+            }
+          }, 0);
+          
+          toast({
+            title: "Login successful",
+            description: "Welcome back!"
+          });
+          
+          setLoading(false);
+          setLoginAttempted(false);
+          navigate('/dashboard');
+        } catch (error) {
+          console.error('[Login] Verification error:', error);
+          clearAllSessionData();
+          setLoading(false);
+          setLoginAttempted(false);
         }
-      }, 0);
-      
-      toast({
-        title: "Login successful",
-        description: "Welcome back!"
-      });
-      
-      setLoading(false);
-      setLoginAttempted(false);
-      navigate('/dashboard');
+      };
+
+      verifyAndRedirect();
     }
   }, [session, authUser, authLoading, loginAttempted, navigate, toast, rememberMe]);
 
   // Redirect if already authenticated (landing on /login while logged in)
+  // SECURITY: Verify session before auto-redirect
   useEffect(() => {
-    if (!authLoading && session && authUser && !loginAttempted) {
-      console.log('[Login] Already authenticated, redirecting to dashboard');
-      navigate('/dashboard');
-    }
+    const checkAndRedirect = async () => {
+      if (!authLoading && session && authUser && !loginAttempted) {
+        // Verify session is actually valid before redirecting
+        const { data: { session: verifiedSession }, error } = await supabase.auth.getSession();
+        
+        if (error || !verifiedSession || verifiedSession.user.id !== authUser.id) {
+          console.log('[Login] Invalid session detected, clearing...');
+          clearAllSessionData();
+          await supabase.auth.signOut();
+          return;
+        }
+        
+        console.log('[Login] Verified existing session, redirecting to dashboard');
+        navigate('/dashboard');
+      }
+    };
+    
+    checkAndRedirect();
   }, [session, authUser, authLoading, loginAttempted, navigate]);
 
   useEffect(() => {

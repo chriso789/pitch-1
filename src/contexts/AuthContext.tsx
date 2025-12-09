@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import { Session, User } from '@supabase/supabase-js';
 import { supabase } from '@/integrations/supabase/client';
 import { checkSessionExpiry, clearAllSessionData } from '@/services/sessionManager';
@@ -9,6 +9,7 @@ interface AuthContextType {
   user: User | null;
   loading: boolean;
   isTrustedDevice: boolean;
+  validateSession: () => Promise<boolean>;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -16,6 +17,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   loading: true,
   isTrustedDevice: false,
+  validateSession: async () => false,
 });
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
@@ -24,37 +26,147 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [loading, setLoading] = useState(true);
   const [isTrustedDevice, setIsTrustedDevice] = useState(false);
 
-  useEffect(() => {
-    // Get initial session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      // Check if session has expired based on our custom timeout
-      const sessionInfo = checkSessionExpiry();
-      if (session && sessionInfo.expiresAt !== null && !sessionInfo.isValid) {
-        console.log('[AuthContext] Session expired based on custom timeout, signing out');
+  // CRITICAL SECURITY: Validate session is real and belongs to this user
+  const validateSession = useCallback(async (): Promise<boolean> => {
+    try {
+      const { data: { session: currentSession }, error } = await supabase.auth.getSession();
+      
+      if (error || !currentSession?.user) {
+        console.log('[AuthContext] Session validation failed - no valid session');
         clearAllSessionData();
-        supabase.auth.signOut();
         setSession(null);
         setUser(null);
-        setLoading(false);
-        return;
+        return false;
       }
-      
-      setSession(session);
-      setUser(session?.user ?? null);
-      setLoading(false);
-      
-      // Check if this is a trusted device and update last_seen
-      if (session?.user) {
-        checkTrustedDevice(session.user.id);
+
+      // Verify the session token is actually valid by making a test API call
+      const { data: profile, error: profileError } = await supabase
+        .from('profiles')
+        .select('id, email')
+        .eq('id', currentSession.user.id)
+        .maybeSingle();
+
+      if (profileError && profileError.code !== 'PGRST116') {
+        console.error('[AuthContext] Session validation failed - API error:', profileError);
+        clearAllSessionData();
+        await supabase.auth.signOut();
+        setSession(null);
+        setUser(null);
+        return false;
       }
-    });
+
+      // Session is valid
+      return true;
+    } catch (error) {
+      console.error('[AuthContext] Session validation error:', error);
+      clearAllSessionData();
+      setSession(null);
+      setUser(null);
+      return false;
+    }
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+
+    // CRITICAL: Always start with clean state, then verify session
+    const initializeAuth = async () => {
+      try {
+        const { data: { session: initialSession }, error } = await supabase.auth.getSession();
+        
+        if (error) {
+          console.error('[AuthContext] Error getting session:', error);
+          if (mounted) {
+            clearAllSessionData();
+            setSession(null);
+            setUser(null);
+            setLoading(false);
+          }
+          return;
+        }
+
+        // Check if session has expired based on our custom timeout
+        const sessionInfo = checkSessionExpiry();
+        if (initialSession && sessionInfo.expiresAt !== null && !sessionInfo.isValid) {
+          console.log('[AuthContext] Session expired based on custom timeout, signing out');
+          clearAllSessionData();
+          await supabase.auth.signOut();
+          if (mounted) {
+            setSession(null);
+            setUser(null);
+            setLoading(false);
+          }
+          return;
+        }
+
+        if (initialSession?.user) {
+          // SECURITY: Verify this session actually works before trusting it
+          const { error: verifyError } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', initialSession.user.id)
+            .maybeSingle();
+
+          if (verifyError && verifyError.code !== 'PGRST116') {
+            console.error('[AuthContext] Session verification failed:', verifyError);
+            clearAllSessionData();
+            await supabase.auth.signOut();
+            if (mounted) {
+              setSession(null);
+              setUser(null);
+              setLoading(false);
+            }
+            return;
+          }
+
+          if (mounted) {
+            setSession(initialSession);
+            setUser(initialSession.user);
+            // Check trusted device AFTER confirming session is valid
+            checkTrustedDevice(initialSession.user.id);
+          }
+        } else {
+          // No session - ensure clean state
+          if (mounted) {
+            setSession(null);
+            setUser(null);
+          }
+        }
+
+        if (mounted) {
+          setLoading(false);
+        }
+      } catch (error) {
+        console.error('[AuthContext] Init error:', error);
+        if (mounted) {
+          clearAllSessionData();
+          setSession(null);
+          setUser(null);
+          setLoading(false);
+        }
+      }
+    };
+
+    initializeAuth();
 
     // Listen for auth changes
     const {
       data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
-      setUser(session?.user ?? null);
+    } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[AuthContext] Auth state change:', event, session?.user?.email);
+      
+      if (event === 'SIGNED_OUT') {
+        clearAllSessionData();
+        setSession(null);
+        setUser(null);
+        setIsTrustedDevice(false);
+      } else if (session) {
+        setSession(session);
+        setUser(session.user);
+      } else {
+        setSession(null);
+        setUser(null);
+      }
       setLoading(false);
     });
 
@@ -72,6 +184,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
     window.addEventListener('focus', handleFocus);
 
     return () => {
+      mounted = false;
       subscription.unsubscribe();
       window.removeEventListener('focus', handleFocus);
     };
@@ -84,13 +197,14 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       
       const { data, error } = await supabase
         .from('trusted_devices')
-        .select('id, is_active')
+        .select('id, is_active, user_id')
         .eq('user_id', userId)
         .eq('device_fingerprint', fingerprint)
         .eq('is_active', true)
         .maybeSingle();
       
-      if (data && !error) {
+      // SECURITY: Verify the trusted device actually belongs to this user
+      if (data && !error && data.user_id === userId) {
         setIsTrustedDevice(true);
         // Update last_seen_at
         await supabase
@@ -107,7 +221,7 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   };
 
   return (
-    <AuthContext.Provider value={{ session, user, loading, isTrustedDevice }}>
+    <AuthContext.Provider value={{ session, user, loading, isTrustedDevice, validateSession }}>
       {children}
     </AuthContext.Provider>
   );
