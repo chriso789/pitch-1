@@ -95,13 +95,12 @@ serve(async (req) => {
     // Log to communication history
     await supabaseAdmin.from('communication_history').insert({
       tenant_id: tenantId,
-      user_id: user.id,
+      rep_id: user.id,
       contact_id: contactId,
-      pipeline_id: jobId,
-      type: 'sms',
+      pipeline_entry_id: jobId,
+      communication_type: 'sms',
       direction: 'outbound',
       content: message,
-      status: 'sent',
       metadata: {
         message_id: data.data.id,
         to_number: to,
