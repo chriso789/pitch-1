@@ -9475,6 +9475,67 @@ export type Database = {
           },
         ]
       }
+      platform_operators: {
+        Row: {
+          created_at: string | null
+          created_by_master: string
+          deactivated_at: string | null
+          deactivated_by: string | null
+          granted_permissions: Json | null
+          id: string
+          is_active: boolean | null
+          notes: string | null
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by_master: string
+          deactivated_at?: string | null
+          deactivated_by?: string | null
+          granted_permissions?: Json | null
+          id?: string
+          is_active?: boolean | null
+          notes?: string | null
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by_master?: string
+          deactivated_at?: string | null
+          deactivated_by?: string | null
+          granted_permissions?: Json | null
+          id?: string
+          is_active?: boolean | null
+          notes?: string | null
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "platform_operators_created_by_master_fkey"
+            columns: ["created_by_master"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_operators_deactivated_by_fkey"
+            columns: ["deactivated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "platform_operators_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: true
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       portal_access_grants: {
         Row: {
           access_token: string
@@ -10392,6 +10453,7 @@ export type Database = {
         Row: {
           active_tenant_id: string | null
           avatar_url: string | null
+          can_manage_all_companies: boolean | null
           commission_rate: number | null
           commission_structure: string | null
           company_name: string | null
@@ -10404,6 +10466,7 @@ export type Database = {
           is_active: boolean | null
           is_developer: boolean | null
           is_ghost_account: boolean | null
+          is_suspended: boolean | null
           last_name: string | null
           location_updated_at: string | null
           metadata: Json | null
@@ -10415,6 +10478,9 @@ export type Database = {
           phone: string | null
           photo_url: string | null
           role: Database["public"]["Enums"]["app_role"] | null
+          suspended_at: string | null
+          suspended_by: string | null
+          suspension_reason: string | null
           tenant_id: string | null
           title: string | null
           updated_at: string | null
@@ -10422,6 +10488,7 @@ export type Database = {
         Insert: {
           active_tenant_id?: string | null
           avatar_url?: string | null
+          can_manage_all_companies?: boolean | null
           commission_rate?: number | null
           commission_structure?: string | null
           company_name?: string | null
@@ -10434,6 +10501,7 @@ export type Database = {
           is_active?: boolean | null
           is_developer?: boolean | null
           is_ghost_account?: boolean | null
+          is_suspended?: boolean | null
           last_name?: string | null
           location_updated_at?: string | null
           metadata?: Json | null
@@ -10445,6 +10513,9 @@ export type Database = {
           phone?: string | null
           photo_url?: string | null
           role?: Database["public"]["Enums"]["app_role"] | null
+          suspended_at?: string | null
+          suspended_by?: string | null
+          suspension_reason?: string | null
           tenant_id?: string | null
           title?: string | null
           updated_at?: string | null
@@ -10452,6 +10523,7 @@ export type Database = {
         Update: {
           active_tenant_id?: string | null
           avatar_url?: string | null
+          can_manage_all_companies?: boolean | null
           commission_rate?: number | null
           commission_structure?: string | null
           company_name?: string | null
@@ -10464,6 +10536,7 @@ export type Database = {
           is_active?: boolean | null
           is_developer?: boolean | null
           is_ghost_account?: boolean | null
+          is_suspended?: boolean | null
           last_name?: string | null
           location_updated_at?: string | null
           metadata?: Json | null
@@ -10475,6 +10548,9 @@ export type Database = {
           phone?: string | null
           photo_url?: string | null
           role?: Database["public"]["Enums"]["app_role"] | null
+          suspended_at?: string | null
+          suspended_by?: string | null
+          suspension_reason?: string | null
           tenant_id?: string | null
           title?: string | null
           updated_at?: string | null
@@ -10490,6 +10566,13 @@ export type Database = {
           {
             foreignKeyName: "profiles_created_by_master_fkey"
             columns: ["created_by_master"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_suspended_by_fkey"
+            columns: ["suspended_by"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
