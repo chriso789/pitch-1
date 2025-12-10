@@ -161,11 +161,15 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
             </div>
           </div>
           <CardTitle className="text-2xl gradient-primary bg-clip-text text-transparent">
-            Welcome to PITCH
+            Staff Login
           </CardTitle>
           <CardDescription>
-            Your complete roofing CRM solution
+            Sign in to PITCH CRM
           </CardDescription>
+          <div className="mt-2 inline-flex items-center gap-1 px-3 py-1 rounded-full bg-primary/10 text-primary text-xs font-medium">
+            <Building2 className="h-3 w-3" />
+            Sales Reps, Managers & Admins
+          </div>
         </CardHeader>
 
         <CardContent>
@@ -295,12 +299,22 @@ const Auth: React.FC<AuthProps> = ({ onAuthSuccess }) => {
                 Loading Demo...
               </>
             ) : (
-              'Try Demo Account'
-            )}
+            'Try Demo Account'
+          )}
           </Button>
           <p className="text-xs text-center text-muted-foreground">
             Demo account includes sample roofing data
           </p>
+          
+          {/* Customer Portal Link */}
+          <div className="mt-4 pt-4 border-t w-full">
+            <p className="text-sm text-center text-muted-foreground">
+              Are you a homeowner or crew member?{" "}
+              <a href="/portal/login" className="text-primary hover:underline font-medium">
+                Customer Portal →
+              </a>
+            </p>
+          </div>
         </CardFooter>
       </Card>
     </div>
