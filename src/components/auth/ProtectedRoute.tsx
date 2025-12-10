@@ -1,0 +1,52 @@
+import { useEffect, useState } from 'react';
+import { Navigate, useLocation } from 'react-router-dom';
+import { useAuth } from '@/contexts/AuthContext';
+import { Loader2 } from 'lucide-react';
+
+interface ProtectedRouteProps {
+  children: React.ReactNode;
+}
+
+export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
+  const { user, loading, validateSession } = useAuth();
+  const location = useLocation();
+  const [isValidating, setIsValidating] = useState(true);
+  const [isValid, setIsValid] = useState(false);
+
+  useEffect(() => {
+    const checkAuth = async () => {
+      if (!loading) {
+        if (user) {
+          // Validate the session is real
+          const valid = await validateSession();
+          setIsValid(valid);
+        } else {
+          setIsValid(false);
+        }
+        setIsValidating(false);
+      }
+    };
+
+    checkAuth();
+  }, [user, loading, validateSession]);
+
+  // Show loading while checking auth
+  if (loading || isValidating) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Verifying authentication...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Redirect to login if not authenticated
+  if (!user || !isValid) {
+    console.log('[ProtectedRoute] No valid session, redirecting to login');
+    return <Navigate to="/login" state={{ from: location }} replace />;
+  }
+
+  return <>{children}</>;
+};
