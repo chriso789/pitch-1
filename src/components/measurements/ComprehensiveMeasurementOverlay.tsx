@@ -383,44 +383,48 @@ export function ComprehensiveMeasurementOverlay({
   }, [canvasWidth, canvasHeight]);
   
    /**
-    * PHASE 2: Enhanced coordinate transformation with precise meters-per-pixel calculation
-    * Uses Web Mercator projection math to accurately convert geographic coordinates to canvas pixels
-    * This ensures measurement overlays (ridges, hips, valleys) align precisely with satellite imagery
-    * 
-    * FIXED: Use analysis_zoom from measurement record for WKT coordinate conversion
-    * The AI analysis generates WKT at IMAGE_ZOOM=20, so we must use that same zoom for overlay
+    * FIXED: Simplified coordinate transformation - NO zoom scaling
+    * The satellite image and WKT are both generated at zoom=20 (analysis_zoom)
+    * Removing zoomScaleFactor prevents drift/misalignment
     */
    const geoToCanvas = useCallback((lat: number, lng: number): Point => {
      // Use verified address as reference point (satellite image center)
      const refLat = verifiedAddressLat || centerLat;
      const refLng = verifiedAddressLng || centerLng;
      
-     // CRITICAL FIX: Use analysis zoom from measurement for WKT coordinate conversion
-     // The WKT was generated at this zoom level, so overlay must use the same
-     const analysisZoom = measurement?.analysis_zoom || 20; // Default to IMAGE_ZOOM constant
+     // Use analysis zoom from measurement (default 20)
+     const analysisZoom = measurement?.analysis_zoom || 20;
      
-     // Calculate precise meters-per-pixel based on ANALYSIS zoom level (not display zoom)
+     // Calculate meters-per-pixel at analysis zoom level
      // Formula: metersPerPixel = 156543.03392 * cos(lat * π/180) / (2^zoom)
      const metersPerPixel = (156543.03392 * Math.cos(refLat * Math.PI / 180)) / Math.pow(2, analysisZoom);
      
-     // Calculate scale factor if display zoom differs from analysis zoom
-     // This allows the overlay to scale correctly when user changes zoom slider
-     const zoomScaleFactor = Math.pow(2, zoom - analysisZoom);
+     // Calculate offset from center in meters
+     const latOffsetMeters = (lat - refLat) * 111320; // 1 degree lat ≈ 111.32km
+     const lngOffsetMeters = (lng - refLng) * 111320 * Math.cos(((lat + refLat) / 2) * Math.PI / 180);
      
-     // Calculate offset from center in meters using accurate geodesic calculation
-     const latOffsetMeters = (lat - refLat) * 111320; // 1 degree lat ≈ 111.32km constant
-     const lngOffsetMeters = (lng - refLng) * 111320 * Math.cos(((lat + refLat) / 2) * Math.PI / 180); // Use average latitude
-     
-     // Convert meters to pixels at analysis zoom, then scale for display zoom
+     // Canvas center point
      const canvasCenterX = canvasWidth / 2;
      const canvasCenterY = canvasHeight / 2;
      
-     // Apply manual offset adjustment for fine-tuning alignment
-     const x = canvasCenterX + (lngOffsetMeters / metersPerPixel) * zoomScaleFactor + offsetX;
-     const y = canvasCenterY - (latOffsetMeters / metersPerPixel) * zoomScaleFactor + offsetY; // Flip Y axis for canvas
+     // FIXED: No zoomScaleFactor - both satellite and WKT use same zoom
+     const x = canvasCenterX + (lngOffsetMeters / metersPerPixel) + offsetX;
+     const y = canvasCenterY - (latOffsetMeters / metersPerPixel) + offsetY;
+     
+     // Debug log first call
+     if (lat !== 0 && lng !== 0) {
+       console.log('📍 geoToCanvas:', {
+         input: { lat: lat.toFixed(6), lng: lng.toFixed(6) },
+         ref: { lat: refLat.toFixed(6), lng: refLng.toFixed(6) },
+         offsetMeters: { lat: latOffsetMeters.toFixed(2), lng: lngOffsetMeters.toFixed(2) },
+         metersPerPixel: metersPerPixel.toFixed(4),
+         output: { x: x.toFixed(1), y: y.toFixed(1) },
+         canvas: { width: canvasWidth, height: canvasHeight },
+       });
+     }
      
      return { x, y };
-   }, [centerLat, centerLng, verifiedAddressLat, verifiedAddressLng, canvasWidth, canvasHeight, zoom, measurement?.analysis_zoom, offsetX, offsetY]);
+   }, [centerLat, centerLng, verifiedAddressLat, verifiedAddressLng, canvasWidth, canvasHeight, measurement?.analysis_zoom, offsetX, offsetY]);
 
   // Auto-save with database persistence
   const handleAutoSave = async () => {
@@ -668,13 +672,26 @@ export function ComprehensiveMeasurementOverlay({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [editMode, selectedFacetIndex, selectedLineData, measurement, tags, onMeasurementUpdate]);
 
-  // Load and cache satellite image with LRU eviction
+  // Load and cache satellite image with LRU eviction and error handling
   useEffect(() => {
+    // Debug: Log satellite image URL status
+    console.log('🛰️ Satellite Image Load:', {
+      url: satelliteImageUrl?.substring(0, 100) + '...',
+      hasUrl: !!satelliteImageUrl,
+      urlLength: satelliteImageUrl?.length || 0,
+      fabricCanvasReady: !!fabricCanvas,
+    });
+    
+    if (!satelliteImageUrl) {
+      console.error('❌ No satellite image URL provided!');
+      return;
+    }
+    
     // Check if image is in cache
     const cachedImage = imageCache.getImage(satelliteImageUrl);
     
     if (cachedImage) {
-      // Use cached image
+      console.log('✅ Using cached satellite image');
       if (fabricCanvas) {
         fabricCanvas.backgroundImage = cachedImage;
         fabricCanvas.renderAll();
@@ -682,38 +699,61 @@ export function ComprehensiveMeasurementOverlay({
       return;
     }
 
-    // Load new image
-    console.log('Loading satellite image:', satelliteImageUrl);
-    FabricImage.fromURL(satelliteImageUrl, {
-      crossOrigin: 'anonymous',
-    }).then((img) => {
-      // Scale image to fit canvas while maintaining aspect ratio and center it
-      const scale = Math.min(canvasWidth / img.width!, canvasHeight / img.height!);
-      img.scale(scale);
-      img.set({
-        left: (canvasWidth - img.width! * scale) / 2,
-        top: (canvasHeight - img.height! * scale) / 2,
-        selectable: false,
-        evented: false,
-      });
+    // Load new image with retry logic
+    const loadImage = async (retryCount = 0) => {
+      const maxRetries = 2;
       
-      // Cache the loaded image
-      imageCache.setImage(satelliteImageUrl, img);
-      
-      // Update canvas background if canvas exists
-      if (fabricCanvas) {
-        fabricCanvas.backgroundImage = img;
-        fabricCanvas.renderAll();
+      try {
+        console.log(`🔄 Loading satellite image (attempt ${retryCount + 1}/${maxRetries + 1}):`, satelliteImageUrl.substring(0, 80));
+        
+        const img = await FabricImage.fromURL(satelliteImageUrl, {
+          crossOrigin: 'anonymous',
+        });
+        
+        if (!img || !img.width || !img.height) {
+          throw new Error('Image loaded but has no dimensions');
+        }
+        
+        console.log('✅ Satellite image loaded:', { width: img.width, height: img.height });
+        
+        // Scale image to fit canvas while maintaining aspect ratio and center it
+        const scale = Math.min(canvasWidth / img.width!, canvasHeight / img.height!);
+        img.scale(scale);
+        img.set({
+          left: (canvasWidth - img.width! * scale) / 2,
+          top: (canvasHeight - img.height! * scale) / 2,
+          selectable: false,
+          evented: false,
+        });
+        
+        // Cache the loaded image
+        imageCache.setImage(satelliteImageUrl, img);
+        
+        // Update canvas background if canvas exists
+        if (fabricCanvas) {
+          fabricCanvas.backgroundImage = img;
+          fabricCanvas.renderAll();
+        }
+        
+        // Log cache stats
+        const stats = imageCache.getCacheStats();
+        console.log(`[Cache Stats] ${stats.currentSize}/${stats.maxSize} images cached`);
+        
+      } catch (error) {
+        console.error(`❌ Failed to load satellite image (attempt ${retryCount + 1}):`, error);
+        
+        if (retryCount < maxRetries) {
+          console.log(`🔄 Retrying in 1 second...`);
+          setTimeout(() => loadImage(retryCount + 1), 1000);
+        } else {
+          console.error('❌ All retry attempts failed for satellite image');
+          toast.error('Failed to load satellite image - check coordinates');
+        }
       }
-      
-      // Log cache stats
-      const stats = imageCache.getCacheStats();
-      console.log(`[Cache Stats] ${stats.currentSize}/${stats.maxSize} images cached`);
-    }).catch((error) => {
-      console.error('Failed to load satellite image:', error);
-      toast.error('Failed to load satellite image');
-    });
-  }, [satelliteImageUrl, fabricCanvas, imageCache]);
+    };
+    
+    loadImage();
+  }, [satelliteImageUrl, fabricCanvas, imageCache, canvasWidth, canvasHeight]);
 
   // Initialize canvas
   useEffect(() => {
