@@ -40,14 +40,25 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
       }
 
       // Verify the session token is actually valid by making a test API call
+      // ALSO check if user is suspended
       const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('id, email')
+        .select('id, email, is_suspended, suspension_reason')
         .eq('id', currentSession.user.id)
         .maybeSingle();
 
       if (profileError && profileError.code !== 'PGRST116') {
         console.error('[AuthContext] Session validation failed - API error:', profileError);
+        clearAllSessionData();
+        await supabase.auth.signOut();
+        setSession(null);
+        setUser(null);
+        return false;
+      }
+
+      // SECURITY: Check if user is suspended - immediately log them out
+      if (profile?.is_suspended) {
+        console.warn('[AuthContext] User is suspended, forcing logout:', profile.suspension_reason);
         clearAllSessionData();
         await supabase.auth.signOut();
         setSession(null);
@@ -100,15 +111,28 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
         }
 
         if (initialSession?.user) {
-          // SECURITY: Verify this session actually works before trusting it
-          const { error: verifyError } = await supabase
+          // SECURITY: Verify this session actually works AND user is not suspended
+          const { data: verifyProfile, error: verifyError } = await supabase
             .from('profiles')
-            .select('id')
+            .select('id, is_suspended, suspension_reason')
             .eq('id', initialSession.user.id)
             .maybeSingle();
 
           if (verifyError && verifyError.code !== 'PGRST116') {
             console.error('[AuthContext] Session verification failed:', verifyError);
+            clearAllSessionData();
+            await supabase.auth.signOut();
+            if (mounted) {
+              setSession(null);
+              setUser(null);
+              setLoading(false);
+            }
+            return;
+          }
+
+          // SECURITY: Check suspension status on init
+          if (verifyProfile?.is_suspended) {
+            console.warn('[AuthContext] User is suspended, forcing logout:', verifyProfile.suspension_reason);
             clearAllSessionData();
             await supabase.auth.signOut();
             if (mounted) {

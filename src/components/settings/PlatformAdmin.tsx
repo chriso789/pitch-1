@@ -20,7 +20,8 @@ import {
   ExternalLink,
   BarChart3,
   Megaphone,
-  Mail
+  Mail,
+  UserCog
 } from "lucide-react";
 import { EnhancedCompanyOnboarding } from "./EnhancedCompanyOnboarding";
 import { LocationUserAssignment } from "./LocationUserAssignment";
@@ -31,6 +32,7 @@ import { BackupRestorePanel } from "./BackupRestorePanel";
 import { OnboardingAnalyticsDashboard } from "./OnboardingAnalyticsDashboard";
 import { PlatformCommunications } from "./PlatformCommunications";
 import { EmailDiagnosticsPanel } from "./EmailDiagnosticsPanel";
+import { PlatformOperatorsPanel } from "./PlatformOperatorsPanel";
 
 interface Company {
   id: string;
@@ -273,6 +275,10 @@ export const PlatformAdmin = () => {
           <TabsTrigger value="patents">
             Patents & IP
           </TabsTrigger>
+          <TabsTrigger value="operators" className="gap-1">
+            <UserCog className="h-3 w-3" />
+            Operators
+          </TabsTrigger>
         </TabsList>
 
         <TabsContent value="active" className="mt-4">
@@ -337,6 +343,10 @@ export const PlatformAdmin = () => {
 
         <TabsContent value="patents" className="mt-4">
           <PatentResearchDashboard />
+        </TabsContent>
+
+        <TabsContent value="operators" className="mt-4">
+          <PlatformOperatorsPanel />
         </TabsContent>
       </Tabs>
 
