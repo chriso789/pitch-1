@@ -365,6 +365,7 @@ export function MeasurementVerificationDialog({
   
   // ALWAYS load measurement from database to get complete linear features (ridges, hips, valleys)
   // The API may return area but miss linear features - database has the complete picture
+  // CRITICAL FIX: Also load from roof_measurements which has WKT geometry for overlay alignment
   useEffect(() => {
     const loadMeasurementFromDatabase = async () => {
       if (!pipelineEntryId || !open) return;
@@ -377,22 +378,58 @@ export function MeasurementVerificationDialog({
       console.log('📊 ALWAYS loading measurement from database to get complete linear features...');
       
       try {
-        // Try measurements table - primary source of measurement data
-        const measurementResult: any = await supabase
-          .from('measurements')
-          .select('*')
-          .eq('property_id', pipelineEntryId)
-          .eq('is_active', true)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        // Run both queries in parallel for efficiency
+        const [measurementResult, roofMeasurementResult] = await Promise.all([
+          // Query 1: measurements table - has summary totals
+          supabase
+            .from('measurements')
+            .select('*')
+            .eq('property_id', pipelineEntryId)
+            .eq('is_active', true)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle(),
+          
+          // Query 2: roof_measurements table - has WKT geometry for overlay alignment
+          supabase
+            .from('roof_measurements')
+            .select('id, linear_features_wkt, perimeter_wkt, analysis_zoom, gps_coordinates')
+            .eq('customer_id', pipelineEntryId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle()
+        ]);
         
-        const measurementData = measurementResult?.data;
+        let measurementData = (measurementResult as any)?.data;
         const summary = measurementData?.summary;
-        if (summary?.total_area_sqft) {
-          console.log('✅ Found measurement in database:', summary.total_area_sqft.toFixed(0), 'sq ft');
+        
+        // CRITICAL FIX: Merge WKT linear features from roof_measurements
+        const roofMeasData = (roofMeasurementResult as any)?.data;
+        if (roofMeasData?.linear_features_wkt) {
+          console.log('✅ Found WKT linear features from roof_measurements:', 
+            roofMeasData.linear_features_wkt.length, 'features');
+          
+          // Merge WKT data into measurement object so overlay can use it
+          measurementData = {
+            ...measurementData,
+            linear_features: roofMeasData.linear_features_wkt, // Use WKT array as linear_features
+            perimeter_wkt: roofMeasData.perimeter_wkt,
+            analysis_zoom: roofMeasData.analysis_zoom || 20,
+            gps_coordinates: roofMeasData.gps_coordinates,
+          };
+          
+          console.log('📐 WKT features merged:', {
+            types: [...new Set(roofMeasData.linear_features_wkt.map((f: any) => f.type))],
+            hasPerimeter: !!roofMeasData.perimeter_wkt,
+            analysisZoom: roofMeasData.analysis_zoom,
+          });
+        } else {
+          console.log('⚠️ No WKT data in roof_measurements for:', pipelineEntryId);
+        }
+        
+        if (summary?.total_area_sqft || roofMeasData?.linear_features_wkt) {
+          console.log('✅ Found measurement in database:', summary?.total_area_sqft?.toFixed(0) || 0, 'sq ft');
           setDbMeasurement(measurementData);
-          // Silent load - no toast to avoid confusion with stale data
         } else {
           console.log('⚠️ No measurement found in database for property:', pipelineEntryId);
         }
@@ -414,24 +451,47 @@ export function MeasurementVerificationDialog({
     console.log('🔄 Manually refreshing measurements from database...');
     
     try {
-      const measurementResult: any = await supabase
-        .from('measurements')
-        .select('*')
-        .eq('property_id', pipelineEntryId)
-        .eq('is_active', true)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle();
+      // Query both tables in parallel
+      const [measurementResult, roofMeasurementResult] = await Promise.all([
+        supabase
+          .from('measurements')
+          .select('*')
+          .eq('property_id', pipelineEntryId)
+          .eq('is_active', true)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle(),
+        
+        supabase
+          .from('roof_measurements')
+          .select('id, linear_features_wkt, perimeter_wkt, analysis_zoom, gps_coordinates')
+          .eq('customer_id', pipelineEntryId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+      ]);
       
-      const measurementData = measurementResult?.data;
+      let measurementData = (measurementResult as any)?.data;
       const summary = measurementData?.summary;
       
-      if (summary) {
+      // Merge WKT data from roof_measurements
+      const roofMeasData = (roofMeasurementResult as any)?.data;
+      if (roofMeasData?.linear_features_wkt) {
+        measurementData = {
+          ...measurementData,
+          linear_features: roofMeasData.linear_features_wkt,
+          perimeter_wkt: roofMeasData.perimeter_wkt,
+          analysis_zoom: roofMeasData.analysis_zoom || 20,
+        };
+        console.log('✅ Merged WKT features:', roofMeasData.linear_features_wkt.length);
+      }
+      
+      if (summary || roofMeasData?.linear_features_wkt) {
         console.log('✅ Refreshed measurement from database:', summary);
         setDbMeasurement(measurementData);
         toast({
           title: "Measurements Refreshed",
-          description: `Valley: ${summary.valley_ft?.toFixed(0) || 0}', Ridge: ${summary.ridge_ft?.toFixed(0) || 0}', Hip: ${summary.hip_ft?.toFixed(0) || 0}'`,
+          description: `${roofMeasData?.linear_features_wkt?.length || 0} WKT features loaded`,
         });
       } else {
         toast({
@@ -1388,27 +1448,24 @@ export function MeasurementVerificationDialog({
                       satelliteImageUrl={cleanSatelliteImageUrl}
                       measurement={(() => {
                         // CRITICAL FIX: Merge database WKT linear features into measurement
-                        // The DB stores linear_features_wkt array with actual WKT coordinates
-                        // This enables overlay to draw accurate ridge/hip/valley lines
+                        // The roof_measurements table stores linear_features_wkt array with actual WKT coordinates
+                        // This enables overlay to draw accurate ridge/hip/valley lines that match satellite imagery
                         const enriched = { ...measurement };
                         
-                        // Priority 1: Database linear_features_wkt (most accurate - from AI vision detection)
-                        if (dbMeasurement?.linear_features_wkt && Array.isArray(dbMeasurement.linear_features_wkt)) {
-                          console.log('📐 Using WKT linear features from database:', dbMeasurement.linear_features_wkt.length, 'features');
-                          enriched.linear_features = dbMeasurement.linear_features_wkt;
-                        }
-                        // Priority 2: Database linear_features if it's an array with WKT
-                        else if (Array.isArray(dbMeasurement?.linear_features) && dbMeasurement.linear_features[0]?.wkt) {
-                          console.log('📐 Using linear_features array from database:', dbMeasurement.linear_features.length, 'features');
+                        // Priority 1: Database linear_features array with WKT (loaded from roof_measurements.linear_features_wkt)
+                        if (Array.isArray(dbMeasurement?.linear_features) && dbMeasurement.linear_features.length > 0) {
+                          const hasWkt = dbMeasurement.linear_features[0]?.wkt;
+                          console.log('📐 Using linear_features from database:', dbMeasurement.linear_features.length, 'features, hasWKT:', !!hasWkt);
                           enriched.linear_features = dbMeasurement.linear_features;
                         }
                         
-                        // Merge perimeter_wkt from database
+                        // Merge perimeter_wkt from database (for complete roof outline)
                         if (dbMeasurement?.perimeter_wkt) {
                           enriched.perimeter_wkt = dbMeasurement.perimeter_wkt;
                         }
                         
                         // CRITICAL: Use analysis_zoom from database for accurate coordinate transformation
+                        // The WKT coordinates were generated at this zoom level
                         if (dbMeasurement?.analysis_zoom) {
                           enriched.analysis_zoom = dbMeasurement.analysis_zoom;
                         }
