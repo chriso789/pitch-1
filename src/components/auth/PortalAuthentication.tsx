@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,7 +12,7 @@ import {
   ArrowRight,
   Loader2,
   CheckCircle,
-  AlertCircle
+  Building2
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -24,8 +24,28 @@ export function PortalAuthentication() {
   const [homeownerEmail, setHomeownerEmail] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [emailSent, setEmailSent] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   const { toast } = useToast();
   const navigate = useNavigate();
+
+  // Smart redirect: If user is already authenticated as staff, redirect to dashboard
+  useEffect(() => {
+    const checkExistingAuth = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (session?.user) {
+          // User is already authenticated as staff, redirect to dashboard
+          navigate('/dashboard', { replace: true });
+          return;
+        }
+      } catch (error) {
+        console.error('Auth check error:', error);
+      } finally {
+        setCheckingAuth(false);
+      }
+    };
+    checkExistingAuth();
+  }, [navigate]);
 
   const handleCrewLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -156,18 +176,31 @@ export function PortalAuthentication() {
     }
   };
 
+  // Show loading while checking auth
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 flex items-center justify-center p-4">
       <div className="w-full max-w-md">
-        {/* Logo/Branding */}
+        {/* Logo/Branding - Customer Portal branded */}
         <div className="text-center mb-8">
-          <div className="h-16 w-16 bg-primary/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
-            <Home className="h-8 w-8 text-primary" />
+          <div className="h-16 w-16 bg-emerald-500/10 rounded-2xl flex items-center justify-center mx-auto mb-4">
+            <Home className="h-8 w-8 text-emerald-600" />
           </div>
-          <h1 className="text-2xl font-bold">Project Portal</h1>
+          <h1 className="text-2xl font-bold">Customer Portal</h1>
           <p className="text-muted-foreground mt-2">
             Access your project information
           </p>
+          <div className="mt-2 inline-flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-500/10 text-emerald-600 text-xs font-medium">
+            <Home className="h-3 w-3" />
+            Homeowners & Crew Members
+          </div>
         </div>
 
         <Card>
@@ -283,8 +316,30 @@ export function PortalAuthentication() {
           </CardContent>
         </Card>
 
+        {/* Staff Login Link */}
+        <div className="mt-6 p-4 rounded-lg border border-dashed border-primary/30 bg-primary/5">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 bg-primary/10 rounded-lg flex items-center justify-center flex-shrink-0">
+              <Building2 className="h-5 w-5 text-primary" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium">Are you a staff member?</p>
+              <p className="text-xs text-muted-foreground">Sales reps, managers, and admins</p>
+            </div>
+            <Button 
+              variant="outline" 
+              size="sm"
+              onClick={() => navigate('/login')}
+              className="flex-shrink-0"
+            >
+              Staff Login
+              <ArrowRight className="h-3 w-3 ml-1" />
+            </Button>
+          </div>
+        </div>
+
         {/* Help Text */}
-        <div className="mt-6 text-center">
+        <div className="mt-4 text-center">
           <p className="text-sm text-muted-foreground">
             Need help accessing your portal?{" "}
             <a href="#" className="text-primary hover:underline">
