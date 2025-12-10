@@ -354,3 +354,6 @@ verify_jwt = true
 
 [functions.create-platform-operator]
 verify_jwt = true
+
+[functions.send-communication]
+verify_jwt = true

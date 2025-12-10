@@ -18,7 +18,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import SatelliteMeasurement from '@/components/SatelliteMeasurement';
 import EstimateHyperlinkBar from '@/components/estimates/EstimateHyperlinkBar';
 import ProfitSlider from '@/components/estimates/ProfitSlider';
-import CommunicationHub from '@/components/communication/CommunicationHub';
+import { CompactCommunicationHub } from '@/components/communication/CompactCommunicationHub';
 import MeasurementGating from '@/components/estimates/MeasurementGating';
 import { EnhancedEstimateBuilder } from '@/components/EnhancedEstimateBuilder';
 import { ApprovalRequirementsBubbles } from '@/components/ApprovalRequirementsBubbles';
@@ -546,17 +546,20 @@ const LeadDetails = () => {
         </CardContent>
       </Card>
 
-      {/* Communication Hub & Photos - Tabbed Interface */}
-      <Card>
-        <Tabs defaultValue="communication" className="w-full">
-          <CardHeader className="pb-3">
-            <TabsList className="w-full justify-start">
-              <TabsTrigger value="communication">Communication Hub</TabsTrigger>
-              <TabsTrigger value="photos" className="flex items-center gap-2">
-                <Camera className="h-4 w-4" />
+      {/* Communication & Photos - Compact Tab */}
+      <Card className="border-muted">
+        <Tabs defaultValue="comms" className="w-full">
+          <CardHeader className="pb-2 pt-3">
+            <TabsList className="h-8">
+              <TabsTrigger value="comms" className="text-xs h-7 px-3">
+                <MessageSquare className="h-3 w-3 mr-1" />
+                Comms
+              </TabsTrigger>
+              <TabsTrigger value="photos" className="text-xs h-7 px-3">
+                <Camera className="h-3 w-3 mr-1" />
                 Photos
                 {photos.length > 0 && (
-                  <Badge variant="secondary" className="ml-1 text-xs">
+                  <Badge variant="secondary" className="ml-1 text-[10px] h-4 px-1">
                     {photos.length}
                   </Badge>
                 )}
@@ -564,130 +567,94 @@ const LeadDetails = () => {
             </TabsList>
           </CardHeader>
 
-          <CardContent>
-            <TabsContent value="communication" className="mt-0">
-              <div className="space-y-3">
-                <CommunicationHub 
-                  contactId={lead.contact?.id}
-                  contactName={lead.contact ? `${lead.contact.first_name} ${lead.contact.last_name}` : undefined}
-                  contactEmail={lead.contact?.email}
-                  contactPhone={lead.contact?.phone}
-                  assignedRep={lead.assigned_rep || undefined}
-                  onCallClick={() => setShowCallDialog(true)}
-                  onEmailClick={() => setShowEmailComposer(true)}
-                  onSMSClick={() => setShowSMSDialog(true)}
-                />
-                
-                <div className="flex gap-2">
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    className="flex-1"
-                    onClick={() => {
-                      if (lead?.contact?.phone) {
-                        setAvailablePhoneNumbers([
-                          { label: 'Primary Phone', number: lead.contact.phone }
-                        ]);
-                        setShowCallDialog(true);
-                      } else {
-                        toast({
-                          title: "No phone number",
-                          description: "This contact doesn't have a phone number on file.",
-                          variant: "destructive"
-                        });
-                      }
-                    }}
-                  >
-                    <Phone className="h-3 w-3 mr-1" />
-                    Call
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    className="flex-1"
-                    onClick={() => {
-                      if (lead?.contact?.email) {
-                        setShowEmailComposer(true);
-                      } else {
-                        toast({
-                          title: "No email address",
-                          description: "This contact doesn't have an email address on file.",
-                          variant: "destructive"
-                        });
-                      }
-                    }}
-                  >
-                    <Mail className="h-3 w-3 mr-1" />
-                    Email
-                  </Button>
-                  <Button 
-                    size="sm" 
-                    variant="outline" 
-                    className="flex-1"
-                    onClick={() => {
-                      if (lead?.contact?.phone) {
-                        setShowSMSDialog(true);
-                      } else {
-                        toast({
-                          title: "No phone number",
-                          description: "This contact doesn't have a phone number on file.",
-                          variant: "destructive"
-                        });
-                      }
-                    }}
-                  >
-                    <MessageSquare className="h-3 w-3 mr-1" />
-                    SMS
-                  </Button>
-                </div>
-              </div>
+          <CardContent className="pt-0 pb-3">
+            <TabsContent value="comms" className="mt-0">
+              <CompactCommunicationHub 
+                contactId={lead.contact?.id}
+                contactPhone={lead.contact?.phone}
+                contactEmail={lead.contact?.email}
+                onCallClick={() => {
+                  if (lead?.contact?.phone) {
+                    setAvailablePhoneNumbers([
+                      { label: 'Primary Phone', number: lead.contact.phone }
+                    ]);
+                    setShowCallDialog(true);
+                  } else {
+                    toast({
+                      title: "No phone number",
+                      description: "This contact doesn't have a phone number on file.",
+                      variant: "destructive"
+                    });
+                  }
+                }}
+                onEmailClick={() => {
+                  if (lead?.contact?.email) {
+                    setShowEmailComposer(true);
+                  } else {
+                    toast({
+                      title: "No email address",
+                      description: "This contact doesn't have an email address on file.",
+                      variant: "destructive"
+                    });
+                  }
+                }}
+                onSMSClick={() => {
+                  if (lead?.contact?.phone) {
+                    setShowSMSDialog(true);
+                  } else {
+                    toast({
+                      title: "No phone number",
+                      description: "This contact doesn't have a phone number on file.",
+                      variant: "destructive"
+                    });
+                  }
+                }}
+              />
             </TabsContent>
 
             <TabsContent value="photos" className="mt-0">
               {photos.length > 0 ? (
-                <div className="space-y-4">
-                  {/* Photo Display */}
+                <div className="space-y-3">
                   <div 
-                    className="relative aspect-video bg-muted rounded-lg flex items-center justify-center cursor-pointer overflow-hidden group"
+                    className="relative aspect-video bg-muted rounded-lg flex items-center justify-center cursor-pointer overflow-hidden group max-h-32"
                     onClick={() => setShowFullScreenPhoto(true)}
                   >
-                    <ImageIcon className="h-16 w-16 text-muted-foreground" />
+                    <ImageIcon className="h-10 w-10 text-muted-foreground" />
                     <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
-                      <span className="text-sm text-white opacity-0 group-hover:opacity-100 transition-opacity">
+                      <span className="text-xs text-white opacity-0 group-hover:opacity-100 transition-opacity">
                         Click to expand
                       </span>
                     </div>
                   </div>
 
-                  {/* Navigation Controls */}
                   <div className="flex items-center justify-between">
                     <Button
                       size="sm"
-                      variant="outline"
+                      variant="ghost"
+                      className="h-6 text-xs"
                       onClick={() => setCurrentPhotoIndex(Math.max(0, currentPhotoIndex - 1))}
                       disabled={currentPhotoIndex === 0}
                     >
-                      <ChevronLeft className="h-4 w-4 mr-1" />
-                      Previous
+                      <ChevronLeft className="h-3 w-3" />
                     </Button>
-                    <span className="text-sm text-muted-foreground">
-                      {currentPhotoIndex + 1} of {photos.length} - {photos[currentPhotoIndex]?.filename || 'Photo'}
+                    <span className="text-xs text-muted-foreground">
+                      {currentPhotoIndex + 1}/{photos.length}
                     </span>
                     <Button
                       size="sm"
-                      variant="outline"
+                      variant="ghost"
+                      className="h-6 text-xs"
                       onClick={() => setCurrentPhotoIndex(Math.min(photos.length - 1, currentPhotoIndex + 1))}
                       disabled={currentPhotoIndex === photos.length - 1}
                     >
-                      Next
-                      <ChevronRight className="h-4 w-4 ml-1" />
+                      <ChevronRight className="h-3 w-3" />
                     </Button>
                   </div>
                 </div>
               ) : (
-                <div className="aspect-video bg-muted rounded-lg flex flex-col items-center justify-center text-center p-6">
-                  <Camera className="h-12 w-12 text-muted-foreground mb-3" />
-                  <p className="text-sm text-muted-foreground">No photos uploaded yet</p>
+                <div className="py-4 text-center">
+                  <Camera className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
+                  <p className="text-xs text-muted-foreground">No photos yet</p>
                 </div>
               )}
             </TabsContent>
