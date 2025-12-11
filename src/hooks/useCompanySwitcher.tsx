@@ -82,8 +82,8 @@ export const useCompanySwitcher = () => {
           description: `Now viewing ${result.tenant_name}`,
         });
         
-        // Force page reload to ensure all components refresh with new tenant
-        window.location.reload();
+        // Clear cache and navigate to dashboard with full reload
+        window.location.href = '/dashboard';
       } else {
         throw new Error(result.error || 'Failed to switch company');
       }
