@@ -13,6 +13,7 @@ import { UserProfileProvider } from "@/contexts/UserProfileContext";
 import { ImageCacheProvider } from "@/contexts/ImageCacheContext";
 import { useGlobalActivityTracking } from "@/hooks/useGlobalActivityTracking";
 import { SessionExpiryHandler } from "@/components/auth/SessionExpiryHandler";
+import { GlobalLoadingHandler } from "@/components/layout/GlobalLoadingHandler";
 import LandingPage from "./pages/LandingPage";
 import Pricing from "./pages/Pricing";
 import Features from "./pages/Features";
@@ -132,6 +133,7 @@ const AppContent = () => {
 
   return (
     <>
+      <GlobalLoadingHandler />
       <Toaster />
       <Sonner />
       <SessionExpiryHandler />

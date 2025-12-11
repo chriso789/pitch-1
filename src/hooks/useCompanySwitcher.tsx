@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { setSwitchingFlag } from '@/components/layout/GlobalLoadingHandler';
 
 interface AccessibleCompany {
   tenant_id: string;
@@ -60,7 +61,16 @@ export const useCompanySwitcher = () => {
   const companies = companiesData?.companies || [];
   const computedActiveCompanyId = activeCompanyId || companiesData?.activeTenantId || null;
 
+  const [isSwitching, setIsSwitching] = useState(false);
+
   const switchCompany = async (tenantId: string) => {
+    // Find company name for overlay
+    const targetCompany = companies.find(c => c.tenant_id === tenantId);
+    
+    // Show overlay immediately
+    setIsSwitching(true);
+    setSwitchingFlag(targetCompany?.tenant_name);
+
     try {
       // @ts-ignore - RPC function not yet in generated types
       const { data, error } = await supabase.rpc('switch_active_tenant', {
@@ -73,21 +83,20 @@ export const useCompanySwitcher = () => {
 
       if (result.success) {
         setActiveCompanyId(tenantId);
-        
-        // Clear all cached queries to force refresh with new tenant data
         queryClient.clear();
         
-        toast({
-          title: "Company Switched",
-          description: `Now viewing ${result.tenant_name}`,
-        });
-        
-        // Clear cache and navigate to dashboard with full reload
-        window.location.href = '/dashboard';
+        // Brief delay for smooth overlay animation before reload
+        setTimeout(() => {
+          window.location.href = '/dashboard';
+        }, 200);
       } else {
+        setIsSwitching(false);
+        localStorage.removeItem('company-switching');
         throw new Error(result.error || 'Failed to switch company');
       }
     } catch (error: any) {
+      setIsSwitching(false);
+      localStorage.removeItem('company-switching');
       toast({
         title: "Switch Failed",
         description: error.message,
@@ -103,6 +112,7 @@ export const useCompanySwitcher = () => {
     activeCompany,
     activeCompanyId: computedActiveCompanyId,
     loading,
+    isSwitching,
     switchCompany,
     refetch,
   };
