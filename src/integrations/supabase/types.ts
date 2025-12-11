@@ -15379,6 +15379,7 @@ export type Database = {
       template_items: {
         Row: {
           active: boolean
+          coverage_per_unit: number | null
           created_at: string
           description: string | null
           estimate_item_name: string | null
@@ -15387,9 +15388,11 @@ export type Database = {
           id: string
           item_name: string
           item_type: string | null
+          manufacturer: string | null
           measurement_type: string | null
           pricing_type: string | null
           qty_formula: string
+          sku_pattern: string | null
           sort_order: number
           template_id: string
           unit: string
@@ -15399,6 +15402,7 @@ export type Database = {
         }
         Insert: {
           active?: boolean
+          coverage_per_unit?: number | null
           created_at?: string
           description?: string | null
           estimate_item_name?: string | null
@@ -15407,9 +15411,11 @@ export type Database = {
           id?: string
           item_name: string
           item_type?: string | null
+          manufacturer?: string | null
           measurement_type?: string | null
           pricing_type?: string | null
           qty_formula: string
+          sku_pattern?: string | null
           sort_order?: number
           template_id: string
           unit: string
@@ -15419,6 +15425,7 @@ export type Database = {
         }
         Update: {
           active?: boolean
+          coverage_per_unit?: number | null
           created_at?: string
           description?: string | null
           estimate_item_name?: string | null
@@ -15427,9 +15434,11 @@ export type Database = {
           id?: string
           item_name?: string
           item_type?: string | null
+          manufacturer?: string | null
           measurement_type?: string | null
           pricing_type?: string | null
           qty_formula?: string
+          sku_pattern?: string | null
           sort_order?: number
           template_id?: string
           unit?: string
@@ -15457,13 +15466,17 @@ export type Database = {
       templates: {
         Row: {
           available_trades: string[] | null
+          brand: string | null
           created_at: string
           currency: string
           id: string
+          is_system_default: boolean | null
           labor: Json
           name: string
           overhead: Json
+          product_line: string | null
           profit_margin_percent: number | null
+          roof_type: string | null
           status: string
           supplier_id: string | null
           template_description: string | null
@@ -15474,13 +15487,17 @@ export type Database = {
         }
         Insert: {
           available_trades?: string[] | null
+          brand?: string | null
           created_at?: string
           currency?: string
           id?: string
+          is_system_default?: boolean | null
           labor?: Json
           name: string
           overhead?: Json
+          product_line?: string | null
           profit_margin_percent?: number | null
+          roof_type?: string | null
           status?: string
           supplier_id?: string | null
           template_description?: string | null
@@ -15491,13 +15508,17 @@ export type Database = {
         }
         Update: {
           available_trades?: string[] | null
+          brand?: string | null
           created_at?: string
           currency?: string
           id?: string
+          is_system_default?: boolean | null
           labor?: Json
           name?: string
           overhead?: Json
+          product_line?: string | null
           profit_margin_percent?: number | null
+          roof_type?: string | null
           status?: string
           supplier_id?: string | null
           template_description?: string | null
