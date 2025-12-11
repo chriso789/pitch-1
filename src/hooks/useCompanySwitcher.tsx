@@ -36,13 +36,13 @@ export const useCompanySwitcher = () => {
       let activeTenantId: string | null = null;
       
       if (user) {
-        // Get from profile's tenant_id (primary source)
+        // Get from profile's active_tenant_id (switched) or tenant_id (primary fallback)
         const { data: profile } = await supabase
           .from('profiles')
-          .select('tenant_id')
+          .select('active_tenant_id, tenant_id')
           .eq('id', user.id)
           .single();
-        activeTenantId = profile?.tenant_id || null;
+        activeTenantId = profile?.active_tenant_id || profile?.tenant_id || null;
         
         // If no tenant_id in profile and companies available, use first one
         if (!activeTenantId && companies.length > 0) {
