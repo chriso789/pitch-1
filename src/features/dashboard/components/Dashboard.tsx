@@ -15,6 +15,7 @@ import { useQuery } from "@tanstack/react-query";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
 import { DashboardAIAssistant } from "./DashboardAIAssistant";
 import { cn } from "@/lib/utils";
 import { 
@@ -36,7 +37,8 @@ import {
   ChevronDown,
   HardHat,
   Home,
-  Activity
+  Activity,
+  Building2
 } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import { subDays, format } from "date-fns";
@@ -46,6 +48,7 @@ import { toast } from "sonner";
 const Dashboard = () => {
   const navigate = useNavigate();
   const { user } = useCurrentUser();
+  const { activeCompany } = useCompanySwitcher();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 90),
     to: new Date()
@@ -430,8 +433,16 @@ const Dashboard = () => {
       {/* Header */}
       <div className="flex flex-col gap-3 md:gap-4">
         <div>
+          <div className="flex items-center gap-2 mb-1">
+            {activeCompany && (
+              <Badge variant="outline" className="text-xs font-medium">
+                <Building2 className="h-3 w-3 mr-1" />
+                {activeCompany.tenant_name}
+              </Badge>
+            )}
+          </div>
           <h1 className="text-2xl md:text-3xl font-bold gradient-primary bg-clip-text text-transparent">
-            PITCH Dashboard
+            {activeCompany?.tenant_name || 'PITCH'} Dashboard
           </h1>
           <p className="text-sm md:text-base text-muted-foreground">
             Welcome back! Here's your roofing business overview.
