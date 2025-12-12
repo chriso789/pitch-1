@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Plus, Edit2, Trash2, Shield, Settings, Eye, MapPin, EyeOff, Ban, CheckCircle, Building2 } from "lucide-react";
+import { Users, Plus, Edit2, Trash2, Settings, Eye, MapPin, Ban, CheckCircle, Building2, Phone } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -33,15 +33,14 @@ interface User {
   tenant_id?: string;
   title: string;
   is_active: boolean;
-  is_developer: boolean;
   created_at: string;
+  phone?: string;
+  pay_type?: string;
 }
 
 export const UserManagement = () => {
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
-  const [showPassword, setShowPassword] = useState(false);
-  const [showPasswordConfirm, setShowPasswordConfirm] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
@@ -51,16 +50,17 @@ export const UserManagement = () => {
     email: "",
     first_name: "",
     last_name: "",
+    phone: "",
     role: "project_manager",
     company_name: "",
     selected_tenant_id: "",
     title: "",
-    is_developer: false,
-    password: "",
-    password_confirm: ""
+    pay_type: "commission" as 'hourly' | 'commission'
   });
 
   const [payStructure, setPayStructure] = useState({
+    pay_type: 'commission' as 'hourly' | 'commission',
+    hourly_rate: 25,
     overhead_rate: 5,
     commission_structure: 'profit_split' as 'profit_split' | 'sales_percentage',
     commission_rate: 50
@@ -69,11 +69,9 @@ export const UserManagement = () => {
   const queryClient = useQueryClient();
   const { companies: availableCompanies, isLoading: companiesLoading } = useAvailableCompanies();
 
-  // React Query for user management data with parallel calls
   const { data: userData, isLoading: loading } = useQuery({
     queryKey: ['user-management-data'],
     queryFn: async () => {
-      // Run all queries in parallel
       const [authResult, profilesResult, rolesResult, tenantsResult, accessResult] = await Promise.all([
         supabase.auth.getUser(),
         supabase.from('profiles').select('*').order('created_at', { ascending: false }),
@@ -87,11 +85,9 @@ export const UserManagement = () => {
       const user = authResult.data?.user;
       let currentUserData = null;
 
-      // Create tenant name map
       const tenantMap = new Map(tenantsResult.data?.map(t => [t.id, t.name]) || []);
 
       if (user) {
-        // Find current user profile from already-fetched profiles
         const currentProfile = profilesResult.data?.find(p => p.id === user.id);
         const currentUserRole = rolesResult.data?.find(r => r.user_id === user.id);
         currentUserData = {
@@ -101,7 +97,6 @@ export const UserManagement = () => {
         };
       }
 
-      // Create role map and merge with profiles
       const roleMap = new Map(rolesResult.data?.map(ur => [ur.user_id, ur.role]) || []);
       const usersWithRoles = profilesResult.data?.map(profile => ({
         ...profile,
@@ -111,7 +106,7 @@ export const UserManagement = () => {
 
       return { users: usersWithRoles, currentUser: currentUserData };
     },
-    staleTime: 60 * 1000, // 1 minute cache
+    staleTime: 60 * 1000,
   });
 
   const users = userData?.users || [];
@@ -121,51 +116,11 @@ export const UserManagement = () => {
     queryClient.invalidateQueries({ queryKey: ['user-management-data'] });
   };
 
-  const validatePassword = (password: string): string | null => {
-    if (password.length < 8) {
-      return "Password must be at least 8 characters long";
-    }
-    if (!/[A-Z]/.test(password)) {
-      return "Password must contain at least one uppercase letter";
-    }
-    if (!/[a-z]/.test(password)) {
-      return "Password must contain at least one lowercase letter";
-    }
-    if (!/[0-9]/.test(password)) {
-      return "Password must contain at least one number";
-    }
-    if (!/[!@#$%^&*]/.test(password)) {
-      return "Password must contain at least one special character (!@#$%^&*)";
-    }
-    return null;
-  };
-
   const createUser = async () => {
     if (isCreating) return;
     
     try {
       setIsCreating(true);
-      
-      // Validate password
-      const passwordError = validatePassword(newUser.password);
-      if (passwordError) {
-        toast({
-          title: "Invalid Password",
-          description: passwordError,
-          variant: "destructive",
-        });
-        return;
-      }
-
-      // Check password confirmation
-      if (newUser.password !== newUser.password_confirm) {
-        toast({
-          title: "Password Mismatch",
-          description: "Passwords do not match",
-          variant: "destructive",
-        });
-        return;
-      }
 
       // Validate email
       if (!newUser.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(newUser.email)) {
@@ -177,19 +132,36 @@ export const UserManagement = () => {
         return;
       }
 
-      // Call the admin edge function to create user
+      // Validate required fields
+      if (!newUser.first_name || !newUser.last_name) {
+        toast({
+          title: "Missing Information",
+          description: "Please enter first and last name",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      // Call the admin edge function - no password required now
       const { data, error } = await supabase.functions.invoke('admin-create-user', {
         body: {
           email: newUser.email,
-          password: newUser.password,
           firstName: newUser.first_name,
           lastName: newUser.last_name,
+          phone: newUser.phone || undefined,
           role: newUser.role,
           companyName: newUser.company_name,
           assignedTenantId: newUser.selected_tenant_id || undefined,
           title: newUser.title,
-          isDeveloper: newUser.is_developer,
-          payStructure: ['sales_manager', 'regional_manager'].includes(newUser.role) ? payStructure : undefined
+          payType: payStructure.pay_type,
+          hourlyRate: payStructure.pay_type === 'hourly' ? payStructure.hourly_rate : undefined,
+          payStructure: payStructure.pay_type === 'commission' && ['sales_manager', 'regional_manager'].includes(newUser.role) 
+            ? {
+                overhead_rate: payStructure.overhead_rate,
+                commission_structure: payStructure.commission_structure,
+                commission_rate: payStructure.commission_rate
+              } 
+            : undefined
         }
       });
 
@@ -199,7 +171,7 @@ export const UserManagement = () => {
 
       toast({
         title: "User Created Successfully",
-        description: `${newUser.first_name} ${newUser.last_name} has been added. A welcome email has been sent. Please provide them with the password you set.`,
+        description: `${newUser.first_name} ${newUser.last_name} has been added. An onboarding email with password setup link has been sent.`,
       });
 
       setIsAddUserOpen(false);
@@ -207,27 +179,29 @@ export const UserManagement = () => {
         email: "",
         first_name: "",
         last_name: "",
+        phone: "",
         role: "project_manager",
         company_name: "",
         selected_tenant_id: "",
         title: "",
-        is_developer: false,
-        password: "",
-        password_confirm: ""
+        pay_type: "commission"
       });
       
       setPayStructure({
+        pay_type: 'commission',
+        hourly_rate: 25,
         overhead_rate: 5,
         commission_structure: 'profit_split',
         commission_rate: 50
       });
       
       loadUsers();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error creating user:', error);
+      const errorMessage = error instanceof Error ? error.message : "An unexpected error occurred";
       toast({
         title: "Error Creating User",
-        description: error.message || "An unexpected error occurred. Please try again.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -249,7 +223,6 @@ export const UserManagement = () => {
         description: `User has been ${!isActive ? 'activated' : 'deactivated'}.`,
       });
 
-      // Log the audit
       await auditService.logChange(
         'profiles',
         'UPDATE',
@@ -289,11 +262,12 @@ export const UserManagement = () => {
       setShowDeleteDialog(false);
       setUserToDelete(null);
       loadUsers();
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error('Error deleting user:', error);
+      const errorMessage = error instanceof Error ? error.message : "Failed to delete user";
       toast({
         title: "Error",
-        description: error.message || "Failed to delete user.",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -309,9 +283,7 @@ export const UserManagement = () => {
   const getActionsForUser = (user: User) => {
     const actions = [];
 
-    // Early return with view-only if currentUser is not loaded
     if (!currentUser) {
-      console.warn('⚠️ currentUser not loaded, showing view-only action');
       return [{
         label: 'View Profile',
         icon: Eye,
@@ -319,38 +291,26 @@ export const UserManagement = () => {
       }];
     }
 
-    console.log('🔍 Getting actions for user:', {
-      userName: `${user.first_name} ${user.last_name}`,
-      userRole: user.role,
-      currentUserRole: currentUser.role,
-      currentUserId: currentUser.id,
-      targetUserId: user.id
-    });
-
-    // View action - available to all
     actions.push({
       label: 'View Profile',
       icon: Eye,
       onClick: () => setSelectedUserId(user.id)
     });
 
-    // Edit action - role-based permissions using hierarchy
-    const roleHierarchy = {
+    const roleHierarchy: Record<string, number> = {
       master: 1,
-      corporate: 2,
-      office_admin: 3,
-      regional_manager: 4,
-      sales_manager: 5,
-      project_manager: 6
+      owner: 2,
+      corporate: 3,
+      office_admin: 4,
+      regional_manager: 5,
+      sales_manager: 6,
+      project_manager: 7
     };
     
     const currentLevel = roleHierarchy[currentUser.role] || 999;
     const targetLevel = roleHierarchy[user.role] || 999;
     
-    const canEdit =
-      currentUser.role === 'master' || // Master can edit all
-      currentLevel < targetLevel || // Can edit users below in hierarchy
-      currentUser.id === user.id; // Users can edit themselves
+    const canEdit = currentUser.role === 'master' || currentLevel < targetLevel || currentUser.id === user.id;
 
     if (canEdit) {
       actions.push({
@@ -363,7 +323,6 @@ export const UserManagement = () => {
       });
     }
 
-    // Activate/Deactivate - with separator
     actions.push({
       label: user.is_active ? 'Deactivate' : 'Activate',
       icon: user.is_active ? Ban : CheckCircle,
@@ -371,45 +330,25 @@ export const UserManagement = () => {
       separator: true
     });
 
-    // Delete action - role-based permissions using hierarchy
-    const canDelete =
-      currentUser.role === 'master' || // Master can delete all
-      currentLevel < targetLevel; // Can delete users below in hierarchy
+    const canDelete = currentUser.role === 'master' || currentLevel < targetLevel;
 
-    console.log('🗑️ Delete permission check:', {
-      canDelete,
-      currentRole: currentUser.role,
-      currentLevel,
-      targetRole: user.role,
-      targetLevel,
-      isSelf: user.id === currentUser.id,
-      willShowDelete: canDelete && user.id !== currentUser.id
-    });
-
-    if (canDelete && user.id !== currentUser.id) { // Can't delete yourself
-      const deleteLabel = 'Delete User';
-      console.log('✅ Adding delete button for user:', user.first_name, 'with label:', deleteLabel);
+    if (canDelete && user.id !== currentUser.id) {
       actions.push({
-        label: deleteLabel,
+        label: 'Delete User',
         icon: Trash2,
         variant: 'destructive' as const,
         onClick: () => confirmDeleteUser(user),
         disabled: user.id === currentUser.id
       });
-    } else {
-      console.log('❌ Not adding delete button - reason:', {
-        canDelete,
-        isSelf: user.id === currentUser.id
-      });
     }
 
-    console.log('📋 Final actions:', actions.map(a => a.label));
     return actions;
   };
 
   const getRoleBadgeVariant = (role: string) => {
     switch (role) {
       case 'master': return 'destructive';
+      case 'owner': return 'destructive';
       case 'corporate': return 'destructive';
       case 'office_admin': return 'default';
       case 'regional_manager': return 'default';
@@ -452,7 +391,6 @@ export const UserManagement = () => {
     );
   }
 
-  // Show user profile if one is selected
   if (selectedUserId) {
     return (
       <EnhancedUserProfile 
@@ -506,80 +444,56 @@ export const UserManagement = () => {
                   <div className="space-y-4">
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="first_name">First Name</Label>
+                        <Label htmlFor="first_name">First Name *</Label>
                         <Input
                           id="first_name"
                           value={newUser.first_name}
                           onChange={(e) => setNewUser({ ...newUser, first_name: e.target.value })}
+                          placeholder="John"
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="last_name">Last Name</Label>
+                        <Label htmlFor="last_name">Last Name *</Label>
                         <Input
                           id="last_name"
                           value={newUser.last_name}
                           onChange={(e) => setNewUser({ ...newUser, last_name: e.target.value })}
+                          placeholder="Smith"
                         />
                       </div>
                     </div>
                     
                     <div className="space-y-2">
-                      <Label htmlFor="email">Email</Label>
+                      <Label htmlFor="email">Email *</Label>
                       <Input
                         id="email"
                         type="email"
                         value={newUser.email}
                         onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
+                        placeholder="john.smith@company.com"
                       />
+                      <p className="text-xs text-muted-foreground">
+                        An email with password setup link will be sent to this address
+                      </p>
                     </div>
 
                     <div className="space-y-2">
-                      <Label htmlFor="password">Password *</Label>
-                      <div className="relative">
-                        <Input
-                          id="password"
-                          type={showPassword ? "text" : "password"}
-                          value={newUser.password}
-                          onChange={(e) => setNewUser({ ...newUser, password: e.target.value })}
-                          placeholder="Min 8 chars, uppercase, number, special char"
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="absolute right-0 top-0 h-full px-3"
-                          onClick={() => setShowPassword(!showPassword)}
-                        >
-                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </Button>
-                      </div>
-                    </div>
-
-                    <div className="space-y-2">
-                      <Label htmlFor="password_confirm">Confirm Password *</Label>
-                      <div className="relative">
-                        <Input
-                          id="password_confirm"
-                          type={showPasswordConfirm ? "text" : "password"}
-                          value={newUser.password_confirm}
-                          onChange={(e) => setNewUser({ ...newUser, password_confirm: e.target.value })}
-                          placeholder="Re-enter password"
-                        />
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="sm"
-                          className="absolute right-0 top-0 h-full px-3"
-                          onClick={() => setShowPasswordConfirm(!showPasswordConfirm)}
-                        >
-                          {showPasswordConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </Button>
-                      </div>
+                      <Label htmlFor="phone" className="flex items-center gap-2">
+                        <Phone className="h-4 w-4" />
+                        Phone Number
+                      </Label>
+                      <Input
+                        id="phone"
+                        type="tel"
+                        value={newUser.phone}
+                        onChange={(e) => setNewUser({ ...newUser, phone: e.target.value })}
+                        placeholder="(555) 123-4567"
+                      />
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-2">
-                        <Label htmlFor="role">Role</Label>
+                        <Label htmlFor="role">Role *</Label>
                         <Select value={newUser.role} onValueChange={(value) => setNewUser({ ...newUser, role: value })}>
                           <SelectTrigger>
                             <SelectValue />
@@ -590,7 +504,7 @@ export const UserManagement = () => {
                             <SelectItem value="regional_manager">Regional Manager</SelectItem>
                             <SelectItem value="office_admin">Office Admin</SelectItem>
                             <SelectItem value="corporate">Corporate</SelectItem>
-                            {currentUser?.role === 'master' && <SelectItem value="master">Master</SelectItem>}
+                            <SelectItem value="owner">Owner</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -600,6 +514,7 @@ export const UserManagement = () => {
                           id="title"
                           value={newUser.title}
                           onChange={(e) => setNewUser({ ...newUser, title: e.target.value })}
+                          placeholder="Sales Representative"
                         />
                       </div>
                     </div>
@@ -650,28 +565,13 @@ export const UserManagement = () => {
                       </div>
                     )}
 
-                    {currentUser?.role === 'master' && (
-                      <div className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          id="is_developer"
-                          checked={newUser.is_developer}
-                          onChange={(e) => setNewUser({ ...newUser, is_developer: e.target.checked })}
-                          className="h-4 w-4"
-                        />
-                        <Label htmlFor="is_developer" className="flex items-center gap-2">
-                          <Shield className="h-4 w-4" />
-                          Developer Access
-                        </Label>
-                      </div>
-                    )}
-
                     {/* Pay Structure Configuration for Sales Reps */}
                     {['sales_manager', 'regional_manager'].includes(newUser.role) && (
                       <RepPayStructureConfig
                         role={newUser.role}
-                        onChange={setPayStructure}
+                        onChange={(config) => setPayStructure(config)}
                         currentUser={currentUser}
+                        initialPayType={payStructure.pay_type}
                       />
                     )}
 
@@ -702,13 +602,12 @@ export const UserManagement = () => {
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         {user.first_name} {user.last_name}
-                        {user.is_developer && <Shield className="h-4 w-4 text-primary" />}
                       </div>
                     </TableCell>
                     <TableCell>{user.email}</TableCell>
                     <TableCell>
                       <Badge variant={getRoleBadgeVariant(user.role)}>
-                        {user.role}
+                        {user.role?.replace('_', ' ')}
                       </Badge>
                     </TableCell>
                     <TableCell>

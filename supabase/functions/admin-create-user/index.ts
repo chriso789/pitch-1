@@ -8,14 +8,15 @@ const corsHeaders = {
 
 interface CreateUserRequest {
   email: string;
-  password: string;
   firstName: string;
   lastName: string;
+  phone?: string;
   role: string;
   companyName: string;
-  assignedTenantId?: string; // Optional: assign user to a specific company
+  assignedTenantId?: string;
   title: string;
-  isDeveloper: boolean;
+  payType?: 'hourly' | 'commission';
+  hourlyRate?: number;
   payStructure?: {
     overhead_rate: number;
     commission_structure: 'profit_split' | 'sales_percentage';
@@ -34,7 +35,6 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error("No authorization header");
     }
 
-    // Initialize regular client to verify the calling user
     const supabase = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_ANON_KEY") ?? "",
@@ -46,46 +46,45 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error("Unauthorized");
     }
 
-    // Check if user is admin or master
     const { data: profile } = await supabase
       .from("profiles")
       .select("role, tenant_id")
       .eq("id", user.id)
       .single();
 
-    if (!profile || !['master', 'corporate', 'office_admin'].includes(profile.role)) {
+    if (!profile || !['master', 'corporate', 'office_admin', 'owner'].includes(profile.role)) {
       return new Response(
-        JSON.stringify({ error: "Only master, corporate, and office admin can create users" }),
+        JSON.stringify({ error: "Only master, owner, corporate, and office admin can create users" }),
         { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
     const {
       email,
-      password,
       firstName,
       lastName,
+      phone,
       role,
       companyName,
       assignedTenantId,
       title,
-      isDeveloper,
+      payType,
+      hourlyRate,
       payStructure
     }: CreateUserRequest = await req.json();
 
-    // Determine which tenant to assign user to
     const targetTenantId = assignedTenantId || profile.tenant_id;
 
-    // Validate required fields
-    if (!email || !password || !firstName || !lastName) {
+    // Validate required fields (password no longer required - using invite link)
+    if (!email || !firstName || !lastName) {
       return new Response(
-        JSON.stringify({ error: "Missing required fields" }),
+        JSON.stringify({ error: "Missing required fields: email, firstName, lastName" }),
         { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }
 
-    // Validate role against allowed enum values
-    const validRoles = ['master', 'corporate', 'office_admin', 'regional_manager', 'sales_manager', 'project_manager'];
+    // Validate role - now includes 'owner'
+    const validRoles = ['owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager', 'project_manager'];
     if (!validRoles.includes(role)) {
       return new Response(
         JSON.stringify({ error: `Invalid role: "${role}". Must be one of: ${validRoles.join(', ')}` }),
@@ -93,7 +92,6 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Initialize admin client
     const supabaseAdmin = createClient(
       Deno.env.get("SUPABASE_URL") ?? "",
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
@@ -105,22 +103,12 @@ const handler = async (req: Request): Promise<Response> => {
       }
     );
 
-    console.log('Creating user with admin API:', email, 'with role:', role, '(validated against:', validRoles.join(', '), ')');
+    console.log('Creating user with invite link:', email, 'role:', role);
 
-    // Double-check the role is correct before proceeding
-    if (role === 'admin' || !validRoles.includes(role)) {
-      console.error('CRITICAL: Invalid role detected after validation:', role);
-      return new Response(
-        JSON.stringify({ error: `Invalid role detected: "${role}". This should not happen.` }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
-    // Create user with admin API (bypasses rate limits)
+    // Create user WITHOUT password - use invite link flow
     const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
       email,
-      password,
-      email_confirm: true, // Auto-confirm email
+      email_confirm: false, // Will confirm via invite link
       user_metadata: {
         first_name: firstName,
         last_name: lastName
@@ -129,12 +117,9 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (createError) {
       console.error('Error creating user:', createError);
-      
-      // Handle specific errors
       if (createError.message.includes('already registered')) {
         throw new Error('A user with this email already exists');
       }
-      
       throw createError;
     }
 
@@ -142,27 +127,44 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('User creation failed');
     }
 
-    console.log('User created successfully, creating profile:', newUser.user.id);
+    // Generate invite link for password setup
+    const appUrl = Deno.env.get("APP_URL") || "https://pitch-1.lovable.app";
+    const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.generateLink({
+      type: 'invite',
+      email: email,
+      options: {
+        redirectTo: `${appUrl}/reset-password`
+      }
+    });
 
-    // Create profile data - explicitly log to verify role value
-    console.log('Building profileData with role:', role, 'type:', typeof role);
-    const profileData: any = {
+    if (inviteError) {
+      console.error('Error generating invite link:', inviteError);
+      await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
+      throw new Error('Failed to generate invite link');
+    }
+
+    const passwordSetupLink = inviteData?.properties?.action_link || '';
+    console.log('User created, invite link generated');
+
+    // Create profile data
+    const profileData: Record<string, unknown> = {
       id: newUser.user.id,
       email,
       first_name: firstName,
       last_name: lastName,
+      phone: phone || null,
       role,
       company_name: companyName,
       title,
-      is_developer: isDeveloper,
       is_active: true,
       tenant_id: targetTenantId,
-      active_tenant_id: targetTenantId
+      active_tenant_id: targetTenantId,
+      pay_type: payType || 'commission',
+      hourly_rate: payType === 'hourly' ? hourlyRate : null
     };
-    console.log('ProfileData role value:', profileData.role, 'Target tenant:', targetTenantId);
 
-    // Add pay structure for sales reps/managers
-    if (payStructure && ['sales_manager', 'regional_manager'].includes(role)) {
+    // Add commission structure for sales reps
+    if (payStructure && payType === 'commission' && ['sales_manager', 'regional_manager'].includes(role)) {
       profileData.overhead_rate = payStructure.overhead_rate;
       profileData.commission_structure = payStructure.commission_structure;
       profileData.commission_rate = payStructure.commission_rate;
@@ -170,19 +172,17 @@ const handler = async (req: Request): Promise<Response> => {
       profileData.pay_structure_created_at = new Date().toISOString();
     }
 
-    // Use upsert since trigger may have created a profile already
     const { error: profileError } = await supabaseAdmin
       .from('profiles')
       .upsert(profileData, { onConflict: 'id' });
 
     if (profileError) {
       console.error('Error creating profile:', profileError);
-      // Try to clean up the auth user if profile creation fails
       await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
       throw new Error(`Failed to create profile: ${profileError.message}`);
     }
 
-    // Verify profile was created before proceeding
+    // Verify profile was created
     const { data: verifyProfile, error: verifyError } = await supabaseAdmin
       .from('profiles')
       .select('id')
@@ -195,9 +195,9 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Profile creation could not be verified');
     }
 
-    console.log('Profile created and verified successfully');
+    console.log('Profile created and verified');
 
-    // Create user_roles entry for secure role-based access
+    // Create user_roles entry
     const { error: roleError } = await supabaseAdmin
       .from('user_roles')
       .insert({
@@ -209,13 +209,9 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (roleError) {
       console.error('Error creating user role:', roleError);
-      console.warn('User created but role assignment failed - user may need manual role assignment');
-    } else {
-      console.log('User role created successfully');
     }
 
-    // Create user_company_access entry for multi-tenant access control
-    // Note: user_company_access has FK to profiles.id, so profile must exist first
+    // Create user_company_access entry
     const { error: accessError } = await supabaseAdmin
       .from('user_company_access')
       .insert({
@@ -228,41 +224,40 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (accessError) {
       console.error('Error creating user company access:', accessError);
-      console.warn('User created but company access record failed');
-    } else {
-      console.log('User company access created successfully');
     }
 
-    // Send welcome email (without password)
+    // Send role-specific onboarding email
     try {
       await supabase.functions.invoke('send-user-invitation', {
         body: {
           email,
           firstName,
           lastName,
+          phone,
           role,
-          companyName
+          companyName,
+          payType: payType || 'commission',
+          hourlyRate: hourlyRate || null,
+          commissionRate: payStructure?.commission_rate || null,
+          overheadRate: payStructure?.overhead_rate || null,
+          passwordSetupLink,
+          settingsLink: `${appUrl}/settings`
         }
       });
-      console.log('Welcome email sent');
+      console.log('Onboarding email sent');
     } catch (emailError) {
-      console.warn('Failed to send welcome email:', emailError);
-      // Don't fail the entire request if email fails
+      console.warn('Failed to send onboarding email:', emailError);
     }
 
     // Log audit trail
     try {
       await supabaseAdmin.from('audit_log').insert({
         tenant_id: profile.tenant_id,
-        user_id: user.id,
-        action: 'INSERT',
         table_name: 'profiles',
         record_id: newUser.user.id,
-        new_data: profileData,
-        metadata: {
-          action_type: 'user_creation',
-          created_by_admin: true
-        }
+        action: 'INSERT',
+        new_values: profileData,
+        changed_by: user.id
       });
     } catch (auditError) {
       console.warn('Failed to log audit trail:', auditError);
@@ -276,20 +271,21 @@ const handler = async (req: Request): Promise<Response> => {
           email,
           first_name: firstName,
           last_name: lastName,
-          role
-        }
+          role,
+          pay_type: payType || 'commission'
+        },
+        message: 'User created successfully. An onboarding email has been sent with password setup instructions.'
       }),
       {
         status: 200,
         headers: { "Content-Type": "application/json", ...corsHeaders }
       }
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Error in admin-create-user function:", error);
+    const errorMessage = error instanceof Error ? error.message : "Failed to create user";
     return new Response(
-      JSON.stringify({
-        error: error.message || "Failed to create user"
-      }),
+      JSON.stringify({ error: errorMessage }),
       {
         status: 500,
         headers: { "Content-Type": "application/json", ...corsHeaders }
