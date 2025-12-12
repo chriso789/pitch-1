@@ -1,4 +1,4 @@
-import { Building2, ChevronDown, Check } from 'lucide-react';
+import { Building2, ChevronDown, Check, Settings } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -10,12 +10,14 @@ import {
 } from '@/components/ui/dropdown-menu';
 import { Badge } from '@/components/ui/badge';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
+import { useCurrentUser } from '@/hooks/useCurrentUser';
 
 export const CompanySwitcher = () => {
   const { companies, activeCompany, loading, switchCompany } = useCompanySwitcher();
+  const { user } = useCurrentUser();
 
-  // Hide if user only has access to one company
-  if (loading || companies.length <= 1) {
+  // Hide if user only has access to one company (unless master who can manage all)
+  if (loading || (companies.length <= 1 && user?.role !== 'master')) {
     return null;
   }
 
@@ -55,6 +57,18 @@ export const CompanySwitcher = () => {
             </div>
           </DropdownMenuItem>
         ))}
+        {user?.role === 'master' && (
+          <>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              onClick={() => window.location.href = '/admin/companies'}
+              className="cursor-pointer"
+            >
+              <Settings className="h-4 w-4 mr-2" />
+              Manage All Companies
+            </DropdownMenuItem>
+          </>
+        )}
       </DropdownMenuContent>
     </DropdownMenu>
   );
