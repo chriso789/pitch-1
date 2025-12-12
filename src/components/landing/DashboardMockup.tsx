@@ -56,9 +56,9 @@ const DashboardMockup = () => {
   ];
 
   return (
-    <div className="flex h-full min-h-[500px] bg-slate-900 text-slate-100 rounded-b-lg overflow-hidden">
-      {/* Sidebar */}
-      <div className="w-56 bg-slate-950 border-r border-slate-800 flex flex-col">
+    <div className="flex h-full min-h-[300px] md:min-h-[500px] bg-slate-900 text-slate-100 rounded-b-lg overflow-hidden">
+      {/* Sidebar - Hidden on mobile */}
+      <div className="hidden md:flex w-56 bg-slate-950 border-r border-slate-800 flex-col">
         {/* Logo */}
         <div className="p-4 border-b border-slate-800">
           <div className="flex items-center space-x-2">
@@ -117,61 +117,62 @@ const DashboardMockup = () => {
         <div className="p-6 space-y-6 overflow-auto h-[calc(100%-3.5rem)]">
           {/* Pipeline Status Row */}
           <div>
-            <h2 className="text-sm font-medium text-slate-400 mb-3">Pipeline Status</h2>
-            <div className="grid grid-cols-6 gap-3">
+            <h2 className="text-sm font-medium text-slate-400 mb-2 md:mb-3">Pipeline Status</h2>
+            <div className="grid grid-cols-3 md:grid-cols-6 gap-2 md:gap-3">
               {pipelineData.map((item, index) => (
-                <div key={index} className="bg-slate-800 rounded-lg p-3">
-                  <div className="flex items-center justify-between mb-2">
-                    <span className="text-xs text-slate-400">{item.label}</span>
-                    <div className={`w-2 h-2 rounded-full ${item.color}`}></div>
+                <div key={index} className="bg-slate-800 rounded-lg p-2 md:p-3">
+                  <div className="flex items-center justify-between mb-1 md:mb-2">
+                    <span className="text-[10px] md:text-xs text-slate-400">{item.label}</span>
+                    <div className={`w-1.5 md:w-2 h-1.5 md:h-2 rounded-full ${item.color}`}></div>
                   </div>
-                  <div className="text-2xl font-bold">{item.count}</div>
+                  <div className="text-lg md:text-2xl font-bold">{item.count}</div>
                 </div>
               ))}
             </div>
           </div>
 
           {/* KPIs Row */}
-          <div className="grid grid-cols-4 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-2 md:gap-4">
             {kpis.map((kpi, index) => (
-              <div key={index} className="bg-slate-800 rounded-lg p-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-slate-400">{kpi.label}</span>
-                  <kpi.icon className="w-4 h-4 text-slate-500" />
+              <div key={index} className="bg-slate-800 rounded-lg p-2 md:p-4">
+                <div className="flex items-center justify-between mb-1 md:mb-2">
+                  <span className="text-[10px] md:text-xs text-slate-400">{kpi.label}</span>
+                  <kpi.icon className="w-3 md:w-4 h-3 md:h-4 text-slate-500" />
                 </div>
-                <div className="text-2xl font-bold mb-1">{kpi.value}</div>
-                <div className={`text-xs flex items-center ${kpi.positive ? 'text-green-400' : 'text-red-400'}`}>
-                  {kpi.positive ? <TrendingUp className="w-3 h-3 mr-1" /> : <TrendingDown className="w-3 h-3 mr-1" />}
-                  {kpi.change} from last month
+                <div className="text-base md:text-2xl font-bold mb-0.5 md:mb-1">{kpi.value}</div>
+                <div className={`text-[10px] md:text-xs flex items-center ${kpi.positive ? 'text-green-400' : 'text-red-400'}`}>
+                  {kpi.positive ? <TrendingUp className="w-2.5 md:w-3 h-2.5 md:h-3 mr-0.5 md:mr-1" /> : <TrendingDown className="w-2.5 md:w-3 h-2.5 md:h-3 mr-0.5 md:mr-1" />}
+                  <span className="hidden sm:inline">{kpi.change} from last month</span>
+                  <span className="sm:hidden">{kpi.change}</span>
                 </div>
               </div>
             ))}
           </div>
 
-          {/* Recent Projects Table */}
-          <div>
-            <h2 className="text-sm font-medium text-slate-400 mb-3">Recent Projects</h2>
+          {/* Recent Projects Table - Hidden on very small screens, simplified on mobile */}
+          <div className="hidden sm:block">
+            <h2 className="text-sm font-medium text-slate-400 mb-2 md:mb-3">Recent Projects</h2>
             <div className="bg-slate-800 rounded-lg overflow-hidden">
-              <table className="w-full text-sm">
+              <table className="w-full text-xs md:text-sm">
                 <thead className="bg-slate-700/50">
                   <tr>
-                    <th className="text-left p-3 text-slate-400 font-medium">Project</th>
-                    <th className="text-left p-3 text-slate-400 font-medium">Address</th>
-                    <th className="text-left p-3 text-slate-400 font-medium">Status</th>
-                    <th className="text-right p-3 text-slate-400 font-medium">Value</th>
+                    <th className="text-left p-2 md:p-3 text-slate-400 font-medium">Project</th>
+                    <th className="text-left p-2 md:p-3 text-slate-400 font-medium hidden md:table-cell">Address</th>
+                    <th className="text-left p-2 md:p-3 text-slate-400 font-medium">Status</th>
+                    <th className="text-right p-2 md:p-3 text-slate-400 font-medium">Value</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-700">
-                  {recentProjects.map((project, index) => (
+                  {recentProjects.slice(0, 3).map((project, index) => (
                     <tr key={index} className="hover:bg-slate-700/30">
-                      <td className="p-3 font-medium">{project.name}</td>
-                      <td className="p-3 text-slate-400">{project.address}</td>
-                      <td className="p-3">
-                        <span className={`px-2 py-1 rounded-full text-xs ${project.statusColor} text-white`}>
+                      <td className="p-2 md:p-3 font-medium truncate max-w-[100px] md:max-w-none">{project.name}</td>
+                      <td className="p-2 md:p-3 text-slate-400 hidden md:table-cell">{project.address}</td>
+                      <td className="p-2 md:p-3">
+                        <span className={`px-1.5 md:px-2 py-0.5 md:py-1 rounded-full text-[10px] md:text-xs ${project.statusColor} text-white`}>
                           {project.status}
                         </span>
                       </td>
-                      <td className="p-3 text-right font-medium text-green-400">{project.value}</td>
+                      <td className="p-2 md:p-3 text-right font-medium text-green-400">{project.value}</td>
                     </tr>
                   ))}
                 </tbody>
