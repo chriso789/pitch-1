@@ -63,9 +63,15 @@ serve(async (req) => {
     const selectedImage = mapboxImage.url ? mapboxImage : googleImage
     const imageSource = selectedImage.source
     const imageYear = new Date().getFullYear()
-    const imageSize = selectedImage.source === 'mapbox' ? 1280 : 640
     
-    console.log(`✅ Using: ${imageSource} (${imageSize}x${imageSize})`)
+    // CRITICAL FIX: For coordinate conversion, we use LOGICAL size (what the zoom level represents)
+    // Mapbox @2x returns 1280px but represents the same geographic area as 640px at zoom 20
+    // The AI sees percentage coordinates (0-100), so image pixel dimensions don't matter for detection
+    // But for WKT conversion, we need the LOGICAL size that matches the zoom level
+    const logicalImageSize = 640  // This is the size at zoom 20 that determines meters-per-pixel
+    const actualImageSize = selectedImage.source === 'mapbox' ? 1280 : 640  // For logging only
+    
+    console.log(`✅ Using: ${imageSource} (${actualImageSize}x${actualImageSize} pixels, ${logicalImageSize}x${logicalImageSize} logical)`)
 
     // NEW VERTEX-BASED DETECTION APPROACH (Roofr-quality)
     // Pass 1: Isolate target building and get perimeter vertices
@@ -115,10 +121,11 @@ serve(async (req) => {
     const confidence = calculateConfidenceScore(aiAnalysis, measurements, solarData, selectedImage)
     
     // Convert derived lines to WKT (these are CONSTRAINED to perimeter)
+    // Use LOGICAL image size for proper geographic coordinate conversion
     const linearFeatures = convertDerivedLinesToWKT(
       derivedLines,
       coordinates,
-      imageSize,
+      logicalImageSize,  // FIXED: Use logical size, not actual pixel size
       IMAGE_ZOOM
     )
     
@@ -126,7 +133,7 @@ serve(async (req) => {
     const perimeterWkt = convertPerimeterToWKT(
       perimeterResult.vertices,
       coordinates,
-      imageSize,
+      logicalImageSize,  // FIXED: Use logical size
       IMAGE_ZOOM
     )
 
@@ -138,7 +145,7 @@ serve(async (req) => {
       selectedImage, solarData, aiAnalysis, scale, measurements, confidence,
       linearFeatures, imageSource, imageYear, perimeterWkt,
       visionEdges: { ridges: [], hips: [], valleys: [] }, // Replaced by vertex detection
-      imageSize
+      imageSize: logicalImageSize  // Store logical size for overlay rendering
     })
     
     const totalTime = Date.now() - startTime
@@ -274,37 +281,44 @@ async function fetchMapboxSatellite(coords: any) {
 }
 
 // PASS 1: Isolate target building - exclude adjacent structures
+// CRITICAL FIX: The target building is at the EXACT CENTER of the image
+// A typical residential roof is ~40-60 feet, which at zoom 20 is about 15-25% of a 640px image
 async function isolateTargetBuilding(imageUrl: string, address: string, coordinates: { lat: number; lng: number }) {
   if (!imageUrl) {
-    return { bounds: { topLeftX: 25, topLeftY: 25, bottomRightX: 75, bottomRightY: 75 }, confidence: 'low' }
+    // Default: small centered box for residential
+    return { bounds: { topLeftX: 35, topLeftY: 35, bottomRightX: 65, bottomRightY: 65 }, confidence: 'low' }
   }
 
-  const prompt = `Analyze this satellite image and identify the TARGET BUILDING only.
+  const prompt = `You are a roof measurement expert. Analyze this satellite image.
 
-The target building is the one at the CENTER of the image (the GPS coordinates point here).
-Exclude any adjacent buildings, sheds, garages, or outbuildings.
+TASK: Find the MAIN RESIDENTIAL BUILDING at the EXACT CENTER of the image.
+The GPS coordinates point to the center of this image, so the target house is in the middle.
 
-Return a TIGHT bounding box containing ONLY the target building's roof:
+Return a TIGHT bounding box that wraps ONLY the main roof:
 
 {
   "targetBuildingBounds": {
-    "topLeftX": 28.0,
-    "topLeftY": 22.0,
-    "bottomRightX": 72.0,
-    "bottomRightY": 78.0
+    "topLeftX": 38.5,
+    "topLeftY": 32.0,
+    "bottomRightX": 61.5,
+    "bottomRightY": 68.0
   },
-  "otherBuildingsDetected": 2,
+  "estimatedRoofWidthFt": 45,
+  "estimatedRoofLengthFt": 55,
+  "otherBuildingsDetected": 1,
   "targetBuildingType": "residential",
   "confidenceTargetIsCorrect": "high"
 }
 
-CRITICAL:
-- Use percentage coordinates (0-100) of image dimensions
-- The bounding box should tightly wrap ONLY the main building roof
-- Do NOT include trees, driveways, sheds, or adjacent properties
-- Return ONLY valid JSON, no explanation`
+CRITICAL RULES:
+1. The main house is CENTERED in the image (around 40-60% x and y range typically)
+2. Typical residential roofs are 35-65ft wide, which is about 15-30% of image width
+3. Do NOT include sheds, garages, driveways, pools, or adjacent properties
+4. A bounding box larger than 40% of image width is likely WRONG
+5. Use DECIMAL precision (e.g., 38.72, not 39)
+6. Return ONLY valid JSON, no explanation`
 
-  console.log('🏠 Pass 1: Isolating target building...')
+  console.log('🏠 Pass 1: Isolating target building at image center...')
   
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -320,25 +334,55 @@ CRITICAL:
     const data = await response.json()
     if (!response.ok || !data.choices?.[0]) {
       console.error('Building isolation failed:', data)
-      return { bounds: { topLeftX: 20, topLeftY: 20, bottomRightX: 80, bottomRightY: 80 }, confidence: 'low' }
+      return { bounds: { topLeftX: 35, topLeftY: 35, bottomRightX: 65, bottomRightY: 65 }, confidence: 'low' }
     }
     
     let content = data.choices[0].message?.content || ''
     content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
     
     const result = JSON.parse(content)
-    const bounds = result.targetBuildingBounds || { topLeftX: 20, topLeftY: 20, bottomRightX: 80, bottomRightY: 80 }
+    let bounds = result.targetBuildingBounds || { topLeftX: 35, topLeftY: 35, bottomRightX: 65, bottomRightY: 65 }
     
-    console.log(`✅ Pass 1 complete: target bounds (${bounds.topLeftX}%, ${bounds.topLeftY}%) to (${bounds.bottomRightX}%, ${bounds.bottomRightY}%), ${result.otherBuildingsDetected || 0} other buildings excluded`)
+    // VALIDATION: Ensure bounds are reasonable for residential
+    const width = bounds.bottomRightX - bounds.topLeftX
+    const height = bounds.bottomRightY - bounds.topLeftY
+    
+    // If detected bounds are too large (>45% of image), likely wrong - use tighter default
+    if (width > 45 || height > 45) {
+      console.warn(`⚠️ Detected bounds too large (${width.toFixed(1)}% x ${height.toFixed(1)}%), using centered default`)
+      bounds = { topLeftX: 35, topLeftY: 35, bottomRightX: 65, bottomRightY: 65 }
+    }
+    
+    // Ensure building is centered (within 30-70% range)
+    const centerX = (bounds.topLeftX + bounds.bottomRightX) / 2
+    const centerY = (bounds.topLeftY + bounds.bottomRightY) / 2
+    if (centerX < 30 || centerX > 70 || centerY < 30 || centerY > 70) {
+      console.warn(`⚠️ Building not centered (center at ${centerX.toFixed(1)}%, ${centerY.toFixed(1)}%), adjusting`)
+      // Shift bounds to center
+      const shiftX = 50 - centerX
+      const shiftY = 50 - centerY
+      bounds = {
+        topLeftX: bounds.topLeftX + shiftX,
+        topLeftY: bounds.topLeftY + shiftY,
+        bottomRightX: bounds.bottomRightX + shiftX,
+        bottomRightY: bounds.bottomRightY + shiftY
+      }
+    }
+    
+    console.log(`✅ Pass 1 complete: target bounds (${bounds.topLeftX.toFixed(1)}%, ${bounds.topLeftY.toFixed(1)}%) to (${bounds.bottomRightX.toFixed(1)}%, ${bounds.bottomRightY.toFixed(1)}%), ${result.otherBuildingsDetected || 0} other buildings excluded`)
     
     return { 
       bounds, 
       otherBuildings: result.otherBuildingsDetected || 0,
-      confidence: result.confidenceTargetIsCorrect || 'medium'
+      confidence: result.confidenceTargetIsCorrect || 'medium',
+      estimatedDimensions: {
+        widthFt: result.estimatedRoofWidthFt || 50,
+        lengthFt: result.estimatedRoofLengthFt || 50
+      }
     }
   } catch (err) {
     console.error('Building isolation error:', err)
-    return { bounds: { topLeftX: 20, topLeftY: 20, bottomRightX: 80, bottomRightY: 80 }, confidence: 'low' }
+    return { bounds: { topLeftX: 35, topLeftY: 35, bottomRightX: 65, bottomRightY: 65 }, confidence: 'low' }
   }
 }
 
@@ -715,38 +759,52 @@ function clipLineToPerimeter(line: DerivedLine, perimeterVertices: any[], bounds
 }
 
 // Convert derived lines to WKT format
+// CRITICAL FIX: Use actual analysis image size and proper coordinate conversion
+// For Mapbox 640x640@2x, the actual pixel dimensions are 1280x1280
+// But the coordinate conversion should use the logical size (640) for zoom calculations
 function convertDerivedLinesToWKT(
   derivedLines: DerivedLine[],
   imageCenter: { lat: number; lng: number },
-  imageSize: number,
+  imageSize: number,  // This is the LOGICAL size (640 for standard, 1280 for @2x)
   zoom: number
 ) {
+  // Use logical size for meter calculations
+  // At zoom 20, 1 pixel = metersPerPixel meters
   const metersPerPixel = (156543.03392 * Math.cos(imageCenter.lat * Math.PI / 180)) / Math.pow(2, zoom)
   const metersPerDegLat = 111320
   const metersPerDegLng = 111320 * Math.cos(imageCenter.lat * Math.PI / 180)
+  
+  console.log(`📐 WKT conversion: zoom=${zoom}, imageSize=${imageSize}, metersPerPixel=${metersPerPixel.toFixed(4)}`)
   
   const linearFeatures: any[] = []
   let featureId = 1
   
   derivedLines.forEach((line) => {
-    // Convert percentage to pixel offset from center
+    // Convert percentage (0-100) to pixel offset from center
+    // CRITICAL: percentage is relative to image size, center is at 50%
     const startPixelX = ((line.startX / 100) - 0.5) * imageSize
     const startPixelY = ((line.startY / 100) - 0.5) * imageSize
     const endPixelX = ((line.endX / 100) - 0.5) * imageSize
     const endPixelY = ((line.endY / 100) - 0.5) * imageSize
     
-    // Convert pixel offset to geographic offset
-    const startLngOffset = (startPixelX * metersPerPixel) / metersPerDegLng
-    const startLatOffset = -(startPixelY * metersPerPixel) / metersPerDegLat
-    const endLngOffset = (endPixelX * metersPerPixel) / metersPerDegLng
-    const endLatOffset = -(endPixelY * metersPerPixel) / metersPerDegLat
+    // Convert pixel offset to meters
+    const startMetersX = startPixelX * metersPerPixel
+    const startMetersY = startPixelY * metersPerPixel
+    const endMetersX = endPixelX * metersPerPixel
+    const endMetersY = endPixelY * metersPerPixel
+    
+    // Convert meters to geographic offset
+    const startLngOffset = startMetersX / metersPerDegLng
+    const startLatOffset = -startMetersY / metersPerDegLat  // Negative because Y increases downward
+    const endLngOffset = endMetersX / metersPerDegLng
+    const endLatOffset = -endMetersY / metersPerDegLat
     
     const startLng = imageCenter.lng + startLngOffset
     const startLat = imageCenter.lat + startLatOffset
     const endLng = imageCenter.lng + endLngOffset
     const endLat = imageCenter.lat + endLatOffset
     
-    // Calculate length
+    // Calculate length in feet
     const dx = (endLng - startLng) * metersPerDegLng
     const dy = (endLat - startLat) * metersPerDegLat
     const length_ft = Math.sqrt(dx * dx + dy * dy) * 3.28084
@@ -761,6 +819,13 @@ function convertDerivedLinesToWKT(
       })
     }
   })
+  
+  // Log total lengths by type for debugging
+  const typeTotals: Record<string, number> = {}
+  linearFeatures.forEach(f => {
+    typeTotals[f.type] = (typeTotals[f.type] || 0) + f.length_ft
+  })
+  console.log('📏 Linear feature totals:', typeTotals)
   
   return linearFeatures
 }
@@ -781,13 +846,32 @@ function convertPerimeterToWKT(
   const wktPoints = vertices.map((pt: any) => {
     const pixelX = ((pt.x / 100) - 0.5) * imageSize
     const pixelY = ((pt.y / 100) - 0.5) * imageSize
-    const lngOffset = (pixelX * metersPerPixel) / metersPerDegLng
-    const latOffset = -(pixelY * metersPerPixel) / metersPerDegLat
+    const metersX = pixelX * metersPerPixel
+    const metersY = pixelY * metersPerPixel
+    const lngOffset = metersX / metersPerDegLng
+    const latOffset = -metersY / metersPerDegLat
     return `${(imageCenter.lng + lngOffset).toFixed(8)} ${(imageCenter.lat + latOffset).toFixed(8)}`
   })
   
   // Close the polygon
   wktPoints.push(wktPoints[0])
+  
+  // Calculate perimeter for validation
+  let perimeterFt = 0
+  for (let i = 0; i < vertices.length; i++) {
+    const v1 = vertices[i]
+    const v2 = vertices[(i + 1) % vertices.length]
+    const dx = ((v2.x - v1.x) / 100) * imageSize * metersPerPixel
+    const dy = ((v2.y - v1.y) / 100) * imageSize * metersPerPixel
+    perimeterFt += Math.sqrt(dx * dx + dy * dy) * 3.28084
+  }
+  
+  console.log(`📐 Perimeter WKT: ${vertices.length} vertices, ~${perimeterFt.toFixed(0)} ft perimeter`)
+  
+  // Validate: typical residential perimeter is 150-400 ft
+  if (perimeterFt > 600) {
+    console.warn(`⚠️ Perimeter too large (${perimeterFt.toFixed(0)} ft), likely detection error`)
+  }
   
   return `POLYGON((${wktPoints.join(', ')}))`
 }
