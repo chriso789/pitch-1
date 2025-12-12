@@ -357,3 +357,10 @@ verify_jwt = true
 
 [functions.send-communication]
 verify_jwt = true
+
+# Roof Report Ingestion System (for bulk PDF training data)
+[functions.roof-report-ingest]
+verify_jwt = false
+
+[functions.roof-report-generator]
+verify_jwt = false
