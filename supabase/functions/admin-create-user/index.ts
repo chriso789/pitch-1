@@ -75,6 +75,21 @@ const handler = async (req: Request): Promise<Response> => {
 
     const targetTenantId = assignedTenantId || profile.tenant_id;
 
+    // SECURITY: Non-master users can ONLY create users in their own company
+    if (profile.role !== 'master' && targetTenantId !== profile.tenant_id) {
+      console.log('Security violation: Non-master user attempted to create user in different company', {
+        callerRole: profile.role,
+        callerTenantId: profile.tenant_id,
+        attemptedTenantId: targetTenantId
+      });
+      return new Response(
+        JSON.stringify({ 
+          error: "You can only create users for your own company" 
+        }),
+        { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
     // Validate required fields (password no longer required - using invite link)
     if (!email || !firstName || !lastName) {
       return new Response(
