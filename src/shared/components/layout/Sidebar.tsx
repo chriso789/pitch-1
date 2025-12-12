@@ -495,7 +495,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
                     ) : currentUser?.profileLoaded && currentUser?.role ? (
                       getRoleDisplayName(currentUser.role)
                     ) : (
-                      <span className="text-muted-foreground/50">Loading...</span>
+                      <div className="h-3 w-16 bg-muted-foreground/20 rounded animate-pulse" />
                     )}
                   </div>
                 </div>

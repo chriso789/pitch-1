@@ -47,6 +47,9 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
     // Check for cached profile first (preserved during company switch)
     const cached = getCachedUserProfile();
     
+    // If we have valid cached data with role, mark as loaded immediately
+    const hasValidCache = !!(cached?.role && cached?.first_name);
+    
     return {
       id: user.id,
       email: cached?.email || user.email || '',
@@ -56,7 +59,7 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
       role: cached?.role || '', // Use cached role, never fallback to 'user' - wait for DB
       tenant_id: user.user_metadata?.tenant_id || user.id,
       active_tenant_id: user.user_metadata?.tenant_id || user.id,
-      profileLoaded: false,
+      profileLoaded: hasValidCache, // Mark loaded if we have valid cached data
     };
   }, []);
 
@@ -105,8 +108,8 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
           profileLoaded: true,
         });
         
-        // Clear cached profile now that we have fresh data
-        clearCachedUserProfile();
+        // Delay clearing cache to ensure smooth transition
+        setTimeout(() => clearCachedUserProfile(), 500);
       }
 
       fetchedUserIdRef.current = userId;

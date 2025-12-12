@@ -69,8 +69,8 @@ export const useCompanySwitcher = () => {
     // Find company name for overlay
     const targetCompany = companies.find(c => c.tenant_id === tenantId);
     
-    // Cache user profile before reload to preserve username
-    if (profile) {
+    // Cache user profile before reload - only if fully loaded with valid role
+    if (profile && profile.profileLoaded && profile.role) {
       cacheUserProfile({
         first_name: profile.first_name,
         last_name: profile.last_name,
