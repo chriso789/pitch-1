@@ -494,8 +494,10 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
                       currentUser.title.charAt(0).toUpperCase() + currentUser.title.slice(1)
                     ) : currentUser?.role && currentUser.role !== '' ? (
                       getRoleDisplayName(currentUser.role)
-                    ) : (
+                    ) : userLoading ? (
                       <div className="h-3 w-16 bg-muted-foreground/20 rounded animate-pulse" />
+                    ) : (
+                      'User'
                     )}
                   </div>
                 </div>
