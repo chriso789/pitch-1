@@ -7512,8 +7512,13 @@ export type Database = {
           manager_id: string | null
           name: string
           phone: string | null
+          phone_porting_status: string | null
+          phone_setup_metadata: Json | null
           place_id: string | null
           qbo_location_ref: string | null
+          telnyx_messaging_profile_id: string | null
+          telnyx_phone_number: string | null
+          telnyx_voice_app_id: string | null
           tenant_id: string
           updated_at: string
           verified_address: Json | null
@@ -7536,8 +7541,13 @@ export type Database = {
           manager_id?: string | null
           name: string
           phone?: string | null
+          phone_porting_status?: string | null
+          phone_setup_metadata?: Json | null
           place_id?: string | null
           qbo_location_ref?: string | null
+          telnyx_messaging_profile_id?: string | null
+          telnyx_phone_number?: string | null
+          telnyx_voice_app_id?: string | null
           tenant_id: string
           updated_at?: string
           verified_address?: Json | null
@@ -7560,8 +7570,13 @@ export type Database = {
           manager_id?: string | null
           name?: string
           phone?: string | null
+          phone_porting_status?: string | null
+          phone_setup_metadata?: Json | null
           place_id?: string | null
           qbo_location_ref?: string | null
+          telnyx_messaging_profile_id?: string | null
+          telnyx_phone_number?: string | null
+          telnyx_voice_app_id?: string | null
           tenant_id?: string
           updated_at?: string
           verified_address?: Json | null
@@ -9072,6 +9087,91 @@ export type Database = {
             columns: ["reward_id"]
             isOneToOne: false
             referencedRelation: "achievement_rewards"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      phone_port_requests: {
+        Row: {
+          account_name: string | null
+          account_number: string | null
+          account_pin: string | null
+          billing_address: Json | null
+          completed_at: string | null
+          created_at: string | null
+          created_by: string | null
+          current_carrier: string | null
+          estimated_completion: string | null
+          id: string
+          location_id: string
+          phone_number: string
+          status: string | null
+          status_details: string | null
+          submitted_at: string | null
+          telnyx_port_order_id: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          account_name?: string | null
+          account_number?: string | null
+          account_pin?: string | null
+          billing_address?: Json | null
+          completed_at?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          current_carrier?: string | null
+          estimated_completion?: string | null
+          id?: string
+          location_id: string
+          phone_number: string
+          status?: string | null
+          status_details?: string | null
+          submitted_at?: string | null
+          telnyx_port_order_id?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          account_name?: string | null
+          account_number?: string | null
+          account_pin?: string | null
+          billing_address?: Json | null
+          completed_at?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          current_carrier?: string | null
+          estimated_completion?: string | null
+          id?: string
+          location_id?: string
+          phone_number?: string
+          status?: string | null
+          status_details?: string | null
+          submitted_at?: string | null
+          telnyx_port_order_id?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "phone_port_requests_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "phone_port_requests_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "phone_port_requests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]

@@ -364,3 +364,13 @@ verify_jwt = false
 
 [functions.roof-report-generator]
 verify_jwt = false
+
+# Telnyx Phone Setup Functions
+[functions.telnyx-search-numbers]
+verify_jwt = true
+
+[functions.telnyx-purchase-number]
+verify_jwt = true
+
+[functions.telnyx-port-request]
+verify_jwt = true
