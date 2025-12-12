@@ -3,7 +3,8 @@ import { GitHubConnectionGuide } from "./GitHubConnectionGuide";
 import { ClaudeAITester } from "./ClaudeAITester";
 import { GitHubActionsGuide } from "./GitHubActionsGuide";
 import { AIUsageDashboard } from "./AIUsageDashboard";
-import { Github, Sparkles, Workflow, BarChart3 } from "lucide-react";
+import { TelnyxIntegrationPanel } from "./TelnyxIntegrationPanel";
+import { Github, Sparkles, Workflow, BarChart3, Phone } from "lucide-react";
 
 export const IntegrationsSettings = () => {
   return (
@@ -15,8 +16,12 @@ export const IntegrationsSettings = () => {
         </p>
       </div>
 
-      <Tabs defaultValue="ai-analytics" className="space-y-6">
-        <TabsList>
+      <Tabs defaultValue="telnyx" className="space-y-6">
+        <TabsList className="flex-wrap">
+          <TabsTrigger value="telnyx" className="flex items-center gap-2">
+            <Phone className="h-4 w-4" />
+            Telnyx
+          </TabsTrigger>
           <TabsTrigger value="ai-analytics" className="flex items-center gap-2">
             <BarChart3 className="h-4 w-4" />
             AI Analytics
@@ -34,6 +39,10 @@ export const IntegrationsSettings = () => {
             Claude AI Testing
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="telnyx" className="space-y-6">
+          <TelnyxIntegrationPanel />
+        </TabsContent>
 
         <TabsContent value="ai-analytics" className="space-y-6">
           <AIUsageDashboard />
