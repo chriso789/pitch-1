@@ -1483,6 +1483,14 @@ export function MeasurementVerificationDialog({
                           enriched.analysis_zoom = dbMeasurement.analysis_zoom;
                         }
                         
+                        // CRITICAL FIX: Pass analysis_image_size for proper scaling
+                        // WKT was generated at 640x640, but display canvas may be larger
+                        if (dbMeasurement?.analysis_image_size) {
+                          enriched.analysis_image_size = dbMeasurement.analysis_image_size;
+                        } else {
+                          // Default to 640x640 (analyze-roof-aerial IMAGE_SIZE constant)
+                          enriched.analysis_image_size = { width: 640, height: 640 };
+                        }
                         return enriched;
                       })()}
                       tags={tags}
