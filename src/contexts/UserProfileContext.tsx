@@ -108,8 +108,8 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
           profileLoaded: true,
         });
         
-        // Delay clearing cache to ensure smooth transition
-        setTimeout(() => clearCachedUserProfile(), 500);
+        // Delay clearing cache to ensure smooth transition during company switch
+        setTimeout(() => clearCachedUserProfile(), 2000);
       }
 
       fetchedUserIdRef.current = userId;
@@ -136,9 +136,14 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
     // Immediately set instant profile from user_metadata
     const instantProfile = createInstantProfile(authUser);
     setProfile(instantProfile);
-    setLoading(false); // Mark as not loading - we have instant data!
+    
+    // Only mark as not loading if we have a valid cached role
+    // Otherwise, keep loading until full profile is fetched
+    if (instantProfile.profileLoaded && instantProfile.role) {
+      setLoading(false);
+    }
 
-    // Then fetch full profile in background (parallel)
+    // Fetch full profile in background (parallel)
     if (fetchedUserIdRef.current !== authUser.id) {
       fetchFullProfile(authUser.id);
     }

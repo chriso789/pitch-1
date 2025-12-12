@@ -492,7 +492,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
                   <div className="text-xs text-muted-foreground truncate">
                     {currentUser?.title ? (
                       currentUser.title.charAt(0).toUpperCase() + currentUser.title.slice(1)
-                    ) : currentUser?.role ? (
+                    ) : currentUser?.role && currentUser.role !== '' ? (
                       getRoleDisplayName(currentUser.role)
                     ) : (
                       <div className="h-3 w-16 bg-muted-foreground/20 rounded animate-pulse" />
@@ -512,7 +512,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
                   }
                 </p>
                 <p className="text-xs text-muted-foreground">{currentUser?.email || 'No email'}</p>
-                {currentUser?.role && (
+                {currentUser?.role && currentUser.role !== '' && (
                   <Badge variant={getRoleBadgeVariant(currentUser.role)} className="text-xs w-fit">
                     {getRoleDisplayName(currentUser.role)}
                   </Badge>
