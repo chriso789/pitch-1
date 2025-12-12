@@ -422,6 +422,7 @@ export function MeasurementVerificationDialog({
             types: [...new Set(roofMeasData.linear_features_wkt.map((f: any) => f.type))],
             hasPerimeter: !!roofMeasData.perimeter_wkt,
             analysisZoom: roofMeasData.analysis_zoom,
+            gps_coordinates: roofMeasData.gps_coordinates,
           });
         } else {
           console.log('⚠️ No WKT data in roof_measurements for:', pipelineEntryId);
@@ -482,8 +483,9 @@ export function MeasurementVerificationDialog({
           linear_features: roofMeasData.linear_features_wkt,
           perimeter_wkt: roofMeasData.perimeter_wkt,
           analysis_zoom: roofMeasData.analysis_zoom || 20,
+          gps_coordinates: roofMeasData.gps_coordinates, // CRITICAL: Include gps_coordinates
         };
-        console.log('✅ Merged WKT features:', roofMeasData.linear_features_wkt.length);
+        console.log('✅ Merged WKT features:', roofMeasData.linear_features_wkt.length, 'gps:', roofMeasData.gps_coordinates);
       }
       
       if (summary || roofMeasData?.linear_features_wkt) {
@@ -551,21 +553,32 @@ export function MeasurementVerificationDialog({
   
   // ✅ CRITICAL FIX: Single source of truth for overlay center coordinates
   // Both satellite image AND overlay MUST use these EXACT same values
+  // PRIORITY: gps_coordinates from roof_measurements > user-pin > verified address > props
   const overlayCoordinates = useMemo(() => {
-    // Priority 1: User-selected PIN (from StructureSelectionMap)
+    // Priority 1: gps_coordinates from roof_measurements (used during AI analysis - MOST ACCURATE)
+    // This ensures satellite image matches the EXACT coordinates where WKT geometry was generated
+    if (dbMeasurement?.gps_coordinates?.lat && dbMeasurement?.gps_coordinates?.lng) {
+      console.log('📍 Using gps_coordinates from roof_measurements:', dbMeasurement.gps_coordinates);
+      return { 
+        lat: dbMeasurement.gps_coordinates.lat, 
+        lng: dbMeasurement.gps_coordinates.lng, 
+        source: 'roof_measurements' 
+      };
+    }
+    // Priority 2: User-selected PIN (from StructureSelectionMap)
     if (adjustedCenterLat && adjustedCenterLng && adjustedCenterLat !== 0) {
       return { lat: adjustedCenterLat, lng: adjustedCenterLng, source: 'user-pin' };
-    }
-    // Priority 2: Props (user-selected from parent)
-    if (centerLat && centerLng && centerLat !== 0) {
-      return { lat: centerLat, lng: centerLng, source: 'props' };
     }
     // Priority 3: Verified address
     if (verifiedAddressLat && verifiedAddressLng) {
       return { lat: verifiedAddressLat, lng: verifiedAddressLng, source: 'verified' };
     }
+    // Priority 4: Props (fallback)
+    if (centerLat && centerLng && centerLat !== 0) {
+      return { lat: centerLat, lng: centerLng, source: 'props' };
+    }
     return { lat: 0, lng: 0, source: 'none' };
-  }, [adjustedCenterLat, adjustedCenterLng, centerLat, centerLng, verifiedAddressLat, verifiedAddressLng]);
+  }, [dbMeasurement?.gps_coordinates, adjustedCenterLat, adjustedCenterLng, centerLat, centerLng, verifiedAddressLat, verifiedAddressLng]);
   
   useEffect(() => {
     const fetchMapboxSatelliteImage = async () => {
