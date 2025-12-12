@@ -190,12 +190,42 @@ async function handleCallHangup(supabase: any, event: any, clientState: any) {
 async function handleRecordingSaved(supabase: any, event: any) {
   const callId = event.payload?.call_control_id;
   const recordingUrl = event.payload?.recording_urls?.mp3;
+  const durationSeconds = event.payload?.recording_duration_secs;
+
+  console.log('Recording saved:', { callId, recordingUrl, durationSeconds });
 
   if (recordingUrl) {
+    // Update calls table
     await supabase
       .from('calls')
       .update({ recording_url: recordingUrl })
       .eq('telnyx_call_control_id', callId);
+
+    // Get the call to find tenant_id and call_log_id
+    const { data: call } = await supabase
+      .from('calls')
+      .select('id, tenant_id, contact_id')
+      .eq('telnyx_call_control_id', callId)
+      .single();
+
+    if (call) {
+      // Also insert into call_recordings table for the Recording Library
+      const { error: recordingError } = await supabase
+        .from('call_recordings')
+        .insert({
+          tenant_id: call.tenant_id,
+          call_log_id: call.id,
+          recording_url: recordingUrl,
+          duration_seconds: durationSeconds || null,
+          transcription_status: 'pending',
+        });
+
+      if (recordingError) {
+        console.error('Error inserting call recording:', recordingError);
+      } else {
+        console.log('Call recording saved to call_recordings table');
+      }
+    }
   }
 }
 
