@@ -2,7 +2,8 @@ import { useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { setSwitchingFlag } from '@/components/layout/GlobalLoadingHandler';
+import { setSwitchingFlag, cacheUserProfile } from '@/components/layout/GlobalLoadingHandler';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 
 interface AccessibleCompany {
   tenant_id: string;
@@ -18,6 +19,7 @@ export const useCompanySwitcher = () => {
   const [activeCompanyId, setActiveCompanyId] = useState<string | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const { profile } = useUserProfile();
 
   const { data: companiesData, isLoading: loading, refetch } = useQuery({
     queryKey: ['accessible-companies'],
@@ -67,9 +69,19 @@ export const useCompanySwitcher = () => {
     // Find company name for overlay
     const targetCompany = companies.find(c => c.tenant_id === tenantId);
     
-    // Show overlay immediately
+    // Cache user profile before reload to preserve username
+    if (profile) {
+      cacheUserProfile({
+        first_name: profile.first_name,
+        last_name: profile.last_name,
+        email: profile.email,
+        role: profile.role,
+      });
+    }
+    
+    // Show overlay immediately with user's name
     setIsSwitching(true);
-    setSwitchingFlag(targetCompany?.tenant_name);
+    setSwitchingFlag(targetCompany?.tenant_name, profile ? `${profile.first_name} ${profile.last_name}` : undefined);
 
     try {
       // @ts-ignore - RPC function not yet in generated types
