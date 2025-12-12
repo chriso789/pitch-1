@@ -195,12 +195,8 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
     const grossProfit = exampleContractValue - totalJobCosts;
     const netProfit = grossProfit - overheadCost;
     
-    let commission = 0;
-    if (commissionType === 'percentage_selling_price') {
-      commission = (exampleContractValue * commissionRate) / 100;
-    } else {
-      commission = (netProfit * commissionRate) / 100;
-    }
+    // Commission is ALWAYS based on Net Profit
+    const commission = (netProfit * commissionRate) / 100;
     
     return {
       contractValue: exampleContractValue,
@@ -234,14 +230,11 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
               <SelectValue placeholder="Select commission type" />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="percentage_selling_price">Percent of Selling Price</SelectItem>
               <SelectItem value="profit_split">Profit Split</SelectItem>
             </SelectContent>
           </Select>
           <p className="text-sm text-muted-foreground">
-            {commissionType === 'percentage_selling_price' 
-              ? 'Commission calculated as a percentage of total contract value'
-              : 'Commission calculated as a percentage of profit (after costs & overhead)'}
+            Commission calculated as a percentage of Net Profit (after costs & overhead)
           </p>
         </div>
 
@@ -315,16 +308,9 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
               <span className="text-muted-foreground">Commission Rate:</span>
               <span className="font-medium">{commissionRate}%</span>
             </div>
-            {commissionType === 'profit_split' && (
-              <p className="text-xs text-muted-foreground italic">
-                (Applied to Net Profit)
-              </p>
-            )}
-            {commissionType === 'percentage_selling_price' && (
-              <p className="text-xs text-muted-foreground italic">
-                (Applied to Contract Value)
-              </p>
-            )}
+            <p className="text-xs text-muted-foreground italic">
+              ({commissionRate}% of ${breakdown.netProfit.toLocaleString()} Net Profit)
+            </p>
             <hr className="border-border" />
             <div className="flex justify-between text-base">
               <span className="font-medium">Commission Earned:</span>
