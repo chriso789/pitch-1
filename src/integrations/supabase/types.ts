@@ -10562,6 +10562,7 @@ export type Database = {
           current_location: Json | null
           email: string | null
           first_name: string | null
+          hourly_rate: number | null
           id: string
           is_active: boolean | null
           is_developer: boolean | null
@@ -10574,6 +10575,7 @@ export type Database = {
           pay_structure_created_at: string | null
           pay_structure_created_by: string | null
           pay_structure_display: Json | null
+          pay_type: string | null
           personal_overhead_rate: number | null
           phone: string | null
           photo_url: string | null
@@ -10597,6 +10599,7 @@ export type Database = {
           current_location?: Json | null
           email?: string | null
           first_name?: string | null
+          hourly_rate?: number | null
           id: string
           is_active?: boolean | null
           is_developer?: boolean | null
@@ -10609,6 +10612,7 @@ export type Database = {
           pay_structure_created_at?: string | null
           pay_structure_created_by?: string | null
           pay_structure_display?: Json | null
+          pay_type?: string | null
           personal_overhead_rate?: number | null
           phone?: string | null
           photo_url?: string | null
@@ -10632,6 +10636,7 @@ export type Database = {
           current_location?: Json | null
           email?: string | null
           first_name?: string | null
+          hourly_rate?: number | null
           id?: string
           is_active?: boolean | null
           is_developer?: boolean | null
@@ -10644,6 +10649,7 @@ export type Database = {
           pay_structure_created_at?: string | null
           pay_structure_created_by?: string | null
           pay_structure_display?: Json | null
+          pay_type?: string | null
           personal_overhead_rate?: number | null
           phone?: string | null
           photo_url?: string | null
@@ -19273,6 +19279,7 @@ export type Database = {
       achievement_type: "milestone" | "skill" | "streak" | "special"
       app_role:
         | "master"
+        | "owner"
         | "corporate"
         | "office_admin"
         | "regional_manager"
@@ -19522,6 +19529,7 @@ export const Constants = {
       achievement_type: ["milestone", "skill", "streak", "special"],
       app_role: [
         "master",
+        "owner",
         "corporate",
         "office_admin",
         "regional_manager",
