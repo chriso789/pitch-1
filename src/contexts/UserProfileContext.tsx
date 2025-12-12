@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '@/integrations/supabase/client';
+import { getCachedUserProfile, clearCachedUserProfile } from '@/components/layout/GlobalLoadingHandler';
 
 interface UserProfile {
   id: string;
@@ -41,18 +42,23 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
   const fetchedUserIdRef = useRef<string | null>(null);
   const isFetchingRef = useRef(false);
 
-  // Create instant profile from auth user_metadata (available immediately)
-  const createInstantProfile = useCallback((user: any): UserProfile => ({
-    id: user.id,
-    email: user.email || '',
-    first_name: user.user_metadata?.first_name || user.email?.split('@')[0] || 'User',
-    last_name: user.user_metadata?.last_name || '',
-    company_name: user.user_metadata?.company_name,
-    role: 'user', // Default until DB query completes
-    tenant_id: user.user_metadata?.tenant_id || user.id,
-    active_tenant_id: user.user_metadata?.tenant_id || user.id,
-    profileLoaded: false,
-  }), []);
+  // Create instant profile from auth user_metadata or cached profile (available immediately)
+  const createInstantProfile = useCallback((user: any): UserProfile => {
+    // Check for cached profile first (preserved during company switch)
+    const cached = getCachedUserProfile();
+    
+    return {
+      id: user.id,
+      email: cached?.email || user.email || '',
+      first_name: cached?.first_name || user.user_metadata?.first_name || user.email?.split('@')[0] || 'User',
+      last_name: cached?.last_name || user.user_metadata?.last_name || '',
+      company_name: user.user_metadata?.company_name,
+      role: cached?.role || 'user', // Use cached role or default until DB query completes
+      tenant_id: user.user_metadata?.tenant_id || user.id,
+      active_tenant_id: user.user_metadata?.tenant_id || user.id,
+      profileLoaded: false,
+    };
+  }, []);
 
   // Fetch full profile from database (parallel queries)
   const fetchFullProfile = useCallback(async (userId: string) => {
@@ -98,6 +104,9 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
           is_developer: dbProfile.is_developer,
           profileLoaded: true,
         });
+        
+        // Clear cached profile now that we have fresh data
+        clearCachedUserProfile();
       }
 
       fetchedUserIdRef.current = userId;

@@ -2,10 +2,19 @@ import { useState, useEffect } from 'react';
 import { CompanySwitchingOverlay } from './CompanySwitchingOverlay';
 
 const SWITCHING_KEY = 'company-switching';
+const USER_PROFILE_KEY = 'user-profile-cache';
 
 interface SwitchingData {
   companyName?: string;
+  userName?: string;
   timestamp: number;
+}
+
+interface UserProfileCache {
+  first_name: string;
+  last_name: string;
+  email: string;
+  role: string;
 }
 
 export const GlobalLoadingHandler = () => {
@@ -44,10 +53,34 @@ export const GlobalLoadingHandler = () => {
 };
 
 // Helper to set the switching flag (used by useCompanySwitcher)
-export const setSwitchingFlag = (companyName?: string) => {
+export const setSwitchingFlag = (companyName?: string, userName?: string) => {
   const data: SwitchingData = {
     companyName,
+    userName,
     timestamp: Date.now(),
   };
   localStorage.setItem(SWITCHING_KEY, JSON.stringify(data));
+};
+
+// Helper to cache user profile before reload
+export const cacheUserProfile = (profile: UserProfileCache) => {
+  localStorage.setItem(USER_PROFILE_KEY, JSON.stringify(profile));
+};
+
+// Helper to get cached user profile
+export const getCachedUserProfile = (): UserProfileCache | null => {
+  const cached = localStorage.getItem(USER_PROFILE_KEY);
+  if (cached) {
+    try {
+      return JSON.parse(cached);
+    } catch {
+      return null;
+    }
+  }
+  return null;
+};
+
+// Helper to clear cached profile (after successful load)
+export const clearCachedUserProfile = () => {
+  localStorage.removeItem(USER_PROFILE_KEY);
 };
