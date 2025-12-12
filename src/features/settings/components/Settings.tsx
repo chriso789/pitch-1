@@ -67,10 +67,21 @@ export const Settings = () => {
 
   useEffect(() => {
     // Wait for full profile to load with valid role before filtering tabs
+    // Also reload when active company changes
     if (currentUser?.profileLoaded === true && currentUser?.role) {
       loadTabConfiguration();
     }
-  }, [currentUser?.role, currentUser?.profileLoaded]);
+  }, [currentUser?.role, currentUser?.profileLoaded, activeCompanyId]);
+
+  // Master-only backend tabs that should be hidden when viewing another company
+  const masterBackendTabs = [
+    'platform-admin', 'developer', 'health', 'edge-functions', 
+    'subscription', 'security', 'pricing', 'quality-monitoring', 'demo-requests'
+  ];
+
+  // Check if user has switched to a different company
+  const isViewingDifferentCompany = currentUser?.tenant_id && activeCompanyId && 
+    currentUser.tenant_id !== activeCompanyId;
 
   const loadTabConfiguration = async () => {
     try {
@@ -83,10 +94,15 @@ export const Settings = () => {
       if (error) throw error;
 
       // Filter tabs based on user role
-      const filteredTabs = (data || []).filter(tab => {
+      let filteredTabs = (data || []).filter(tab => {
         if (!tab.required_role || tab.required_role.length === 0) return true;
         return tab.required_role.includes(currentUser?.role);
       });
+
+      // If master user is viewing a different company, hide master backend tabs
+      if (currentUser?.role === 'master' && isViewingDifferentCompany) {
+        filteredTabs = filteredTabs.filter(tab => !masterBackendTabs.includes(tab.tab_key));
+      }
 
       setTabConfig(filteredTabs);
     } catch (error) {
