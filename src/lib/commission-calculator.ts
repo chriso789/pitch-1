@@ -54,16 +54,10 @@ export function calculateCommission(input: CommissionInput): CommissionResult {
   // Calculate net profit available for splitting
   const netProfit = grossProfit - repOverheadAmount;
 
-  // Calculate commission based on type
-  let commissionAmount = 0;
-
-  if (commissionType === 'percentage_selling_price') {
-    // Selling Price Plan: commission on total contract value
-    commissionAmount = contractValue * (commissionRate / 100);
-  } else {
-    // Profit Split Plan: commission on net profit (after rep overhead)
-    commissionAmount = Math.max(0, netProfit * (commissionRate / 100));
-  }
+  // Calculate commission - ALWAYS based on Net Profit
+  // Commission = Net Profit × Rate %
+  // This ensures reps earn a percentage of actual profit, not contract value
+  const commissionAmount = Math.max(0, netProfit * (commissionRate / 100));
 
   return {
     contractValue,
