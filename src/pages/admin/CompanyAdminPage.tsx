@@ -91,6 +91,7 @@ const CompanyAdminPage = () => {
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+  const [seedingOwners, setSeedingOwners] = useState(false);
   const { toast } = useToast();
   const { user: currentUser } = useCurrentUser();
   const [searchParams] = useSearchParams();
@@ -479,6 +480,39 @@ const CompanyAdminPage = () => {
     c.subdomain?.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const seedCompanyOwners = async () => {
+    setSeedingOwners(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        toast({ title: "Not authenticated", variant: "destructive" });
+        return;
+      }
+
+      const { data, error } = await supabase.functions.invoke('seed-company-owners', {
+        headers: { Authorization: `Bearer ${session.access_token}` }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Owners Seeded Successfully",
+        description: `Created ${data?.created?.length || 0} owner profiles.`,
+      });
+      
+      console.log('[SeedOwners] Results:', data);
+    } catch (error: any) {
+      console.error('[SeedOwners] Error:', error);
+      toast({
+        title: "Error Seeding Owners",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setSeedingOwners(false);
+    }
+  };
+
   const stats = {
     total: companies.length,
     active: companies.filter(c => c.is_active).length,
@@ -499,10 +533,20 @@ const CompanyAdminPage = () => {
               Manage companies, demo requests, and feature access
             </p>
           </div>
-          <Button onClick={() => setCreateDialogOpen(true)}>
-            <Plus className="h-4 w-4 mr-2" />
-            Add Company
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button 
+              variant="outline"
+              onClick={seedCompanyOwners}
+              disabled={seedingOwners}
+            >
+              <Users className="h-4 w-4 mr-2" />
+              {seedingOwners ? "Creating Owners..." : "Seed Missing Owners"}
+            </Button>
+            <Button onClick={() => setCreateDialogOpen(true)}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Company
+            </Button>
+          </div>
         </div>
 
         {/* Main Tabs */}
@@ -588,17 +632,17 @@ const CompanyAdminPage = () => {
                 <CardDescription>{company.subdomain}</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="space-y-2 text-sm text-muted-foreground">
+                <div className="space-y-2 text-sm text-muted-foreground overflow-hidden">
                   {company.phone && (
-                    <div className="flex items-center gap-2">
-                      <Phone className="h-3 w-3" />
-                      {company.phone}
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <Phone className="h-3 w-3 flex-shrink-0" />
+                      <span className="truncate">{company.phone}</span>
                     </div>
                   )}
                   {company.email && (
-                    <div className="flex items-center gap-2">
-                      <Mail className="h-3 w-3" />
-                      {company.email}
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <Mail className="h-3 w-3 flex-shrink-0" />
+                      <span className="truncate">{company.email}</span>
                     </div>
                   )}
                   {company.subscription_tier && (
