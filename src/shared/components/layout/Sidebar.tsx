@@ -492,10 +492,10 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
                   <div className="text-xs text-muted-foreground truncate">
                     {currentUser?.title ? (
                       currentUser.title.charAt(0).toUpperCase() + currentUser.title.slice(1)
-                    ) : currentUser?.role ? (
+                    ) : currentUser?.profileLoaded && currentUser?.role ? (
                       getRoleDisplayName(currentUser.role)
                     ) : (
-                      'User'
+                      <span className="text-muted-foreground/50">Loading...</span>
                     )}
                   </div>
                 </div>
@@ -512,7 +512,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
                   }
                 </p>
                 <p className="text-xs text-muted-foreground">{currentUser?.email || 'No email'}</p>
-                {currentUser?.role && (
+                {currentUser?.profileLoaded && currentUser?.role && (
                   <Badge variant={getRoleBadgeVariant(currentUser.role)} className="text-xs w-fit">
                     {getRoleDisplayName(currentUser.role)}
                   </Badge>

@@ -53,7 +53,7 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
       first_name: cached?.first_name || user.user_metadata?.first_name || user.email?.split('@')[0] || 'User',
       last_name: cached?.last_name || user.user_metadata?.last_name || '',
       company_name: user.user_metadata?.company_name,
-      role: cached?.role || 'user', // Use cached role or default until DB query completes
+      role: cached?.role || '', // Use cached role, never fallback to 'user' - wait for DB
       tenant_id: user.user_metadata?.tenant_id || user.id,
       active_tenant_id: user.user_metadata?.tenant_id || user.id,
       profileLoaded: false,
