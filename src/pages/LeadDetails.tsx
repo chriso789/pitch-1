@@ -35,6 +35,7 @@ import { BackButton } from '@/shared/components/BackButton';
 import { useSendSMS } from '@/hooks/useSendSMS';
 import { useLeadDetails, LeadDetailsData, ApprovalRequirements } from '@/hooks/useLeadDetails';
 import { LeadDetailsSkeleton } from '@/components/lead-details/LeadDetailsSkeleton';
+import { AddressReverificationButton } from '@/components/measurements/AddressReverificationButton';
 
 const LeadDetails = () => {
   const { id } = useParams<{ id: string }>();
@@ -371,12 +372,33 @@ const LeadDetails = () => {
             {(lead.verified_address?.formatted_address || lead.contact?.address_street) && (
               <div className="flex items-start gap-2 mt-3 text-sm">
                 <MapPin className="h-4 w-4 text-primary mt-0.5 flex-shrink-0" />
-                <div>
+                <div className="flex-1">
                   <span className="text-xs text-muted-foreground font-medium uppercase tracking-wide">Lead Property</span>
-                  <p className="text-foreground font-medium">
-                    {lead.verified_address?.formatted_address || 
-                     `${lead.contact?.address_street}, ${lead.contact?.address_city}, ${lead.contact?.address_state} ${lead.contact?.address_zip}`}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-foreground font-medium">
+                      {lead.verified_address?.formatted_address || 
+                       `${lead.contact?.address_street}, ${lead.contact?.address_city}, ${lead.contact?.address_state} ${lead.contact?.address_zip}`}
+                    </p>
+                    {lead.contact?.id && (
+                      <AddressReverificationButton
+                        contactId={lead.contact.id}
+                        currentAddress={
+                          lead.verified_address?.formatted_address || 
+                          `${lead.contact?.address_street || ''}, ${lead.contact?.address_city || ''}, ${lead.contact?.address_state || ''} ${lead.contact?.address_zip || ''}`.trim()
+                        }
+                        onReverified={(newCoords) => {
+                          toast({
+                            title: "Coordinates Updated",
+                            description: "The property location has been re-verified. Measurements will now use the correct location.",
+                          });
+                          refetchLead();
+                        }}
+                        size="sm"
+                        variant="ghost"
+                        className="h-6 px-2 text-xs"
+                      />
+                    )}
+                  </div>
                 </div>
               </div>
             )}

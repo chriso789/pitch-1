@@ -164,25 +164,25 @@ export function PullMeasurementsButton({
 
   // Open structure selector using coordinates from the unified hook
   const handleOpenStructureSelector = useCallback(async () => {
-    // Load coordinates to ensure we have the latest
-    await loadCoordinates();
+    // Load coordinates to ensure we have the latest from database
+    const freshCoords = await loadCoordinates();
     
-    if (!verifiedCoords?.isValid) {
+    if (!freshCoords?.isValid) {
       toast({
         title: "Missing Location",
-        description: "Property coordinates not found. Please verify the address first.",
+        description: "Property coordinates not found. Please verify the address first using the 'Re-verify Address' button.",
         variant: "destructive"
       });
       return;
     }
 
-    console.log('📍 Opening structure selector with coords:', { 
-      lat: verifiedCoords.lat, 
-      lng: verifiedCoords.lng, 
-      source: coordSource 
+    console.log('📍 Opening structure selector with fresh coords:', { 
+      lat: freshCoords.lat, 
+      lng: freshCoords.lng, 
+      source: freshCoords.source 
     });
     setShowStructureSelector(true);
-  }, [verifiedCoords, coordSource, loadCoordinates, toast]);
+  }, [loadCoordinates, toast]);
 
   // Run AI analysis with the confirmed coordinates from PIN selection
   async function handlePull(confirmedLat: number, confirmedLng: number) {
