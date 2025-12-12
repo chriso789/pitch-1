@@ -34,6 +34,29 @@ const UserProfileContext = createContext<UserProfileContextType>({
   prefetch: () => {},
 });
 
+// Session storage key for role backup
+const SESSION_ROLE_KEY = 'pitch-user-role';
+
+// Helper to get role from session storage
+const getSessionRole = (): string => {
+  try {
+    return sessionStorage.getItem(SESSION_ROLE_KEY) || '';
+  } catch {
+    return '';
+  }
+};
+
+// Helper to set role in session storage
+const setSessionRole = (role: string) => {
+  try {
+    if (role) {
+      sessionStorage.setItem(SESSION_ROLE_KEY, role);
+    }
+  } catch {
+    // Ignore session storage errors
+  }
+};
+
 export const UserProfileProvider = ({ children }: { children: React.ReactNode }) => {
   const { user: authUser, loading: authLoading } = useAuth();
   const [profile, setProfile] = useState<UserProfile | null>(null);
@@ -41,14 +64,29 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
   const [error, setError] = useState<Error | null>(null);
   const fetchedUserIdRef = useRef<string | null>(null);
   const isFetchingRef = useRef(false);
+  const mountedRef = useRef(false);
+
+  // Reset fetchedUserIdRef on mount to ensure fresh fetch after page reload
+  useEffect(() => {
+    if (!mountedRef.current) {
+      mountedRef.current = true;
+      fetchedUserIdRef.current = null;
+    }
+  }, []);
 
   // Create instant profile from auth user_metadata or cached profile (available immediately)
   const createInstantProfile = useCallback((user: any): UserProfile => {
     // Check for cached profile first (preserved during company switch)
     const cached = getCachedUserProfile();
     
+    // Also check session storage as backup
+    const sessionRole = getSessionRole();
+    
+    // Use cached role, then session storage, then empty string
+    const effectiveRole = cached?.role || sessionRole || '';
+    
     // If we have valid cached data with role, mark as loaded immediately
-    const hasValidCache = !!(cached?.role && cached?.first_name);
+    const hasValidCache = !!(effectiveRole && (cached?.first_name || user.user_metadata?.first_name));
     
     return {
       id: user.id,
@@ -56,7 +94,7 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
       first_name: cached?.first_name || user.user_metadata?.first_name || user.email?.split('@')[0] || 'User',
       last_name: cached?.last_name || user.user_metadata?.last_name || '',
       company_name: user.user_metadata?.company_name,
-      role: cached?.role || '', // Use cached role, never fallback to 'user' - wait for DB
+      role: effectiveRole, // Use cached role or session storage, never fallback to 'user' - wait for DB
       tenant_id: user.user_metadata?.tenant_id || user.id,
       active_tenant_id: user.user_metadata?.tenant_id || user.id,
       profileLoaded: hasValidCache, // Mark loaded if we have valid cached data
@@ -93,6 +131,11 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
       const dbRole = roleResult.data?.role || dbProfile?.role || 'user';
 
       if (dbProfile) {
+        // Store role in session storage as backup
+        if (dbRole) {
+          setSessionRole(dbRole);
+        }
+        
         setProfile({
           id: userId,
           email: dbProfile.email || '',
@@ -108,8 +151,10 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
           profileLoaded: true,
         });
         
-        // Delay clearing cache to ensure smooth transition during company switch
-        setTimeout(() => clearCachedUserProfile(), 2000);
+        // Only clear cache after we have valid profile with role
+        if (dbRole) {
+          clearCachedUserProfile();
+        }
       }
 
       fetchedUserIdRef.current = userId;
