@@ -87,21 +87,32 @@ serve(async (req) => {
     let fromNumber = "";
     let sendError: string | null = null;
 
-    // Try Telnyx first
-    if (telnyxApiKey && telnyxMessagingProfile) {
+    // Get Telnyx phone number for "from" field
+    const telnyxPhoneNumber = Deno.env.get("TELNYX_PHONE_NUMBER");
+
+    // Try Telnyx first (requires both API key and phone number)
+    if (telnyxApiKey && telnyxPhoneNumber) {
       try {
+        const telnyxBody: any = {
+          from: telnyxPhoneNumber,
+          to: normalizedTo,
+          text: message,
+        };
+        
+        // Add messaging profile if configured
+        if (telnyxMessagingProfile) {
+          telnyxBody.messaging_profile_id = telnyxMessagingProfile;
+        }
+
+        console.log("Sending SMS via Telnyx:", { to: normalizedTo, from: telnyxPhoneNumber });
+        
         const telnyxResponse = await fetch("https://api.telnyx.com/v2/messages", {
           method: "POST",
           headers: {
             "Authorization": `Bearer ${telnyxApiKey}`,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({
-            from: telnyxMessagingProfile,
-            to: normalizedTo,
-            text: message,
-            messaging_profile_id: telnyxMessagingProfile,
-          }),
+          body: JSON.stringify(telnyxBody),
         });
 
         const telnyxData = await telnyxResponse.json();
