@@ -17,6 +17,7 @@ interface PipelineEntry {
     address_state?: string;
     latitude?: number;
     longitude?: number;
+    verified_address?: Record<string, any> | null;
   };
 }
 
@@ -46,14 +47,15 @@ const EnhancedMeasurement: React.FC = () => {
             address_city,
             address_state,
             latitude,
-            longitude
+            longitude,
+            verified_address
           )
         `)
         .eq('id', id)
         .single();
 
       if (error) throw error;
-      setPipelineEntry(data);
+      setPipelineEntry(data as unknown as PipelineEntry);
     } catch (error) {
       console.error('Error loading pipeline entry:', error);
       toast({
@@ -147,11 +149,11 @@ const EnhancedMeasurement: React.FC = () => {
           </CardHeader>
         </Card>
 
-        {/* Measurement Interface */}
+        {/* Measurement Interface - Use verified_address coordinates as priority */}
         <SatelliteMeasurement
           address={address}
-          latitude={pipelineEntry.contacts?.latitude}
-          longitude={pipelineEntry.contacts?.longitude}
+          latitude={pipelineEntry.contacts?.verified_address?.lat || pipelineEntry.contacts?.latitude}
+          longitude={pipelineEntry.contacts?.verified_address?.lng || pipelineEntry.contacts?.longitude}
           pipelineEntryId={id!}
           onMeasurementsSaved={handleMeasurementsSaved}
         />
