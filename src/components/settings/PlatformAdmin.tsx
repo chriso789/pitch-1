@@ -63,11 +63,46 @@ export const PlatformAdmin = () => {
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [seedingOwners, setSeedingOwners] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
     loadCompanies();
   }, []);
+
+  const seedCompanyOwners = async () => {
+    setSeedingOwners(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      if (!session) {
+        throw new Error("Not authenticated");
+      }
+
+      const { data, error } = await supabase.functions.invoke('seed-company-owners', {
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Owner Seeding Complete",
+        description: `Results: ${data.results?.map((r: any) => `${r.email}: ${r.status}`).join(', ')}`,
+      });
+
+      loadCompanies();
+    } catch (error: any) {
+      console.error('Seed owners error:', error);
+      toast({
+        title: "Seeding Failed",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setSeedingOwners(false);
+    }
+  };
 
   const loadCompanies = async () => {
     try {
@@ -157,10 +192,21 @@ export const PlatformAdmin = () => {
             Master-level access to manage all companies and onboarding
           </p>
         </div>
-        <Button className="gap-2" onClick={() => setOnboardingOpen(true)}>
-          <Plus className="h-4 w-4" />
-          Onboard New Company
-        </Button>
+        <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            className="gap-2" 
+            onClick={seedCompanyOwners}
+            disabled={seedingOwners}
+          >
+            <Users className="h-4 w-4" />
+            {seedingOwners ? "Creating Owners..." : "Seed Missing Owners"}
+          </Button>
+          <Button className="gap-2" onClick={() => setOnboardingOpen(true)}>
+            <Plus className="h-4 w-4" />
+            Onboard New Company
+          </Button>
+        </div>
         <EnhancedCompanyOnboarding
           open={onboardingOpen}
           onOpenChange={setOnboardingOpen}
