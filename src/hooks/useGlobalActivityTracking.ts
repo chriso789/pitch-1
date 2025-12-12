@@ -2,8 +2,8 @@ import { useEffect, useRef, useCallback } from 'react';
 import { useLocation } from 'react-router-dom';
 import { activityTracker } from '@/services/activityTracker';
 
-// Feature flag - disable in development for performance
-const ENABLE_ACTIVITY_TRACKING = import.meta.env.PROD;
+// Enable activity tracking in all environments for debugging
+const ENABLE_ACTIVITY_TRACKING = true;
 
 /**
  * Global activity tracking hook that tracks:
