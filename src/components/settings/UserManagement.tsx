@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -111,6 +111,16 @@ export const UserManagement = () => {
 
   const users = userData?.users || [];
   const currentUser = userData?.currentUser;
+
+  // Auto-set tenant for non-master users when dialog opens
+  useEffect(() => {
+    if (isAddUserOpen && currentUser?.role !== 'master' && currentUser?.tenant_id) {
+      setNewUser(prev => ({
+        ...prev,
+        selected_tenant_id: currentUser.tenant_id
+      }));
+    }
+  }, [isAddUserOpen, currentUser]);
 
   const loadUsers = () => {
     queryClient.invalidateQueries({ queryKey: ['user-management-data'] });
@@ -519,8 +529,8 @@ export const UserManagement = () => {
                       </div>
                     </div>
 
-                    {/* Company Assignment - Master users only */}
-                    {currentUser?.role === 'master' && (
+                    {/* Company Assignment - Master users only see dropdown */}
+                    {currentUser?.role === 'master' ? (
                       <div className="space-y-2">
                         <Label htmlFor="company">Assign to Company</Label>
                         <Select 
@@ -561,6 +571,17 @@ export const UserManagement = () => {
                         </Select>
                         <p className="text-xs text-muted-foreground">
                           User will only appear in this company's directory
+                        </p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Label>Company</Label>
+                        <div className="flex items-center gap-2 p-2 border rounded-md bg-muted">
+                          <Building2 className="h-4 w-4 text-muted-foreground" />
+                          <span className="text-sm">{currentUser?.resolved_company_name || 'Your Company'}</span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          New user will be added to your company
                         </p>
                       </div>
                     )}
