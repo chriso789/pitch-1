@@ -383,9 +383,14 @@ export function ComprehensiveMeasurementOverlay({
   }, [canvasWidth, canvasHeight]);
   
    /**
-    * FIXED: Simplified coordinate transformation - NO zoom scaling
-    * The satellite image and WKT are both generated at zoom=20 (analysis_zoom)
-    * Removing zoomScaleFactor prevents drift/misalignment
+    * FIXED: Coordinate transformation with proper scaling from analysis size to display size
+    * 
+    * The WKT coordinates were generated at analysis zoom level (20) for a 640x640 image.
+    * When displaying on a different canvas size (e.g., 1280x1000), we must scale accordingly.
+    * 
+    * Key insight: The meters-per-pixel at zoom 20 is for the ANALYSIS image (640x640).
+    * The display canvas may be larger, but covers the SAME geographic area, so we need
+    * to scale the pixel offsets proportionally.
     */
    const geoToCanvas = useCallback((lat: number, lng: number): Point => {
      // Use verified address as reference point (satellite image center)
@@ -395,36 +400,50 @@ export function ComprehensiveMeasurementOverlay({
      // Use analysis zoom from measurement (default 20)
      const analysisZoom = measurement?.analysis_zoom || 20;
      
-     // Calculate meters-per-pixel at analysis zoom level
+     // Get analysis image size (default 640x640 as used in analyze-roof-aerial edge function)
+     const analysisImageSize = measurement?.analysis_image_size?.width || 640;
+     
+     // Calculate meters-per-pixel at analysis zoom level for the ANALYSIS image
      // Formula: metersPerPixel = 156543.03392 * cos(lat * π/180) / (2^zoom)
-     const metersPerPixel = (156543.03392 * Math.cos(refLat * Math.PI / 180)) / Math.pow(2, analysisZoom);
+     const analysisMetersPerPixel = (156543.03392 * Math.cos(refLat * Math.PI / 180)) / Math.pow(2, analysisZoom);
      
      // Calculate offset from center in meters
      const latOffsetMeters = (lat - refLat) * 111320; // 1 degree lat ≈ 111.32km
      const lngOffsetMeters = (lng - refLng) * 111320 * Math.cos(((lat + refLat) / 2) * Math.PI / 180);
      
+     // Convert meters offset to ANALYSIS image pixels
+     const analysisPixelOffsetX = lngOffsetMeters / analysisMetersPerPixel;
+     const analysisPixelOffsetY = -latOffsetMeters / analysisMetersPerPixel; // Negative because canvas Y increases downward
+     
+     // CRITICAL FIX: Scale from analysis image space to display canvas space
+     // The display canvas covers the same geographic area but at different pixel dimensions
+     const scaleX = canvasWidth / analysisImageSize;
+     const scaleY = canvasHeight / analysisImageSize;
+     
      // Canvas center point
      const canvasCenterX = canvasWidth / 2;
      const canvasCenterY = canvasHeight / 2;
      
-     // FIXED: No zoomScaleFactor - both satellite and WKT use same zoom
-     const x = canvasCenterX + (lngOffsetMeters / metersPerPixel) + offsetX;
-     const y = canvasCenterY - (latOffsetMeters / metersPerPixel) + offsetY;
+     // Apply scaling and offset
+     const x = canvasCenterX + (analysisPixelOffsetX * scaleX) + offsetX;
+     const y = canvasCenterY + (analysisPixelOffsetY * scaleY) + offsetY;
      
-     // Debug log first call
-     if (lat !== 0 && lng !== 0) {
+     // Debug log (only first few calls to avoid spam)
+     if (lat !== 0 && lng !== 0 && showDebugOverlay) {
        console.log('📍 geoToCanvas:', {
          input: { lat: lat.toFixed(6), lng: lng.toFixed(6) },
          ref: { lat: refLat.toFixed(6), lng: refLng.toFixed(6) },
          offsetMeters: { lat: latOffsetMeters.toFixed(2), lng: lngOffsetMeters.toFixed(2) },
-         metersPerPixel: metersPerPixel.toFixed(4),
-         output: { x: x.toFixed(1), y: y.toFixed(1) },
+         analysisPixelOffset: { x: analysisPixelOffsetX.toFixed(1), y: analysisPixelOffsetY.toFixed(1) },
+         scale: { x: scaleX.toFixed(2), y: scaleY.toFixed(2) },
+         analysisSize: analysisImageSize,
          canvas: { width: canvasWidth, height: canvasHeight },
+         output: { x: x.toFixed(1), y: y.toFixed(1) },
        });
      }
      
      return { x, y };
-   }, [centerLat, centerLng, verifiedAddressLat, verifiedAddressLng, canvasWidth, canvasHeight, measurement?.analysis_zoom, offsetX, offsetY]);
+   }, [centerLat, centerLng, verifiedAddressLat, verifiedAddressLng, canvasWidth, canvasHeight, measurement?.analysis_zoom, measurement?.analysis_image_size, offsetX, offsetY, showDebugOverlay]);
 
   // Auto-save with database persistence
   const handleAutoSave = async () => {

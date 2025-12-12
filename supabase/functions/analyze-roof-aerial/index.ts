@@ -185,11 +185,13 @@ serve(async (req) => {
           materials: measurements.materials,
           predominantPitch: measurements.predominantPitch,
           linearFeaturesWkt: linearFeatures,
-          analysisZoom: IMAGE_ZOOM
+          analysisZoom: IMAGE_ZOOM,
+          analysisImageSize: { width: IMAGE_SIZE, height: IMAGE_SIZE }
         },
         linearFeaturesWkt: linearFeatures,
         perimeterWkt,
         analysisZoom: IMAGE_ZOOM,
+        analysisImageSize: { width: IMAGE_SIZE, height: IMAGE_SIZE },
         confidence: {
           score: confidence.score,
           rating: confidence.rating,

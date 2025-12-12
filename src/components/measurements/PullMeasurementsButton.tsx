@@ -59,6 +59,8 @@ function transformNewMeasurementToLegacyFormat(newData: any) {
     perimeter_wkt: perimeterWkt || measurements?.perimeterWkt || null,
     // Store analysis zoom for accurate coordinate transformation in overlay
     analysis_zoom: analysisZoom || measurements?.analysisZoom || 20,
+    // Store analysis image size for proper scaling (default 640x640)
+    analysis_image_size: measurements?.analysisImageSize || { width: 640, height: 640 },
     mapbox_visualization_url: images?.mapbox?.url || null,
     google_image_url: images?.google?.url || null,
     roof_type: aiAnalysis?.roofType || measurements?.roofType || 'unknown',
