@@ -182,7 +182,20 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error(`Failed to create profile: ${profileError.message}`);
     }
 
-    console.log('Profile created successfully');
+    // Verify profile was created before proceeding
+    const { data: verifyProfile, error: verifyError } = await supabaseAdmin
+      .from('profiles')
+      .select('id')
+      .eq('id', newUser.user.id)
+      .single();
+
+    if (verifyError || !verifyProfile) {
+      console.error('Profile verification failed:', verifyError);
+      await supabaseAdmin.auth.admin.deleteUser(newUser.user.id);
+      throw new Error('Profile creation could not be verified');
+    }
+
+    console.log('Profile created and verified successfully');
 
     // Create user_roles entry for secure role-based access
     const { error: roleError } = await supabaseAdmin
@@ -202,6 +215,7 @@ const handler = async (req: Request): Promise<Response> => {
     }
 
     // Create user_company_access entry for multi-tenant access control
+    // Note: user_company_access has FK to profiles.id, so profile must exist first
     const { error: accessError } = await supabaseAdmin
       .from('user_company_access')
       .insert({
