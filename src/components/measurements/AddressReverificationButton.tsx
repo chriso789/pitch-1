@@ -19,8 +19,7 @@ interface VerificationResult {
   lat: number;
   lng: number;
   formatted_address: string;
-  place_id: string;
-  address_components?: any[];
+  mapbox_id: string;
 }
 
 export function AddressReverificationButton({
@@ -51,28 +50,32 @@ export function AddressReverificationButton({
     setVerificationResult(null);
 
     try {
-      // Call Google Maps geocode API via edge function
-      const { data, error: geocodeError } = await supabase.functions.invoke('google-maps-proxy', {
-        body: {
-          endpoint: 'geocode',
-          params: {
-            address: currentAddress
-          }
-        }
-      });
+      // Fetch Mapbox token from edge function
+      const { data: tokenData, error: tokenError } = await supabase.functions.invoke('get-mapbox-token');
+      
+      if (tokenError || !tokenData?.token) {
+        throw new Error('Could not get Mapbox token');
+      }
 
-      if (geocodeError) throw geocodeError;
+      // Use Mapbox Geocoding API
+      const encodedAddress = encodeURIComponent(currentAddress);
+      const response = await fetch(
+        `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodedAddress}.json?access_token=${tokenData.token}&limit=1`
+      );
 
-      if (data?.results && data.results.length > 0) {
-        const result = data.results[0];
-        const location = result.geometry.location;
+      if (!response.ok) throw new Error('Mapbox geocoding failed');
+
+      const geocodeData = await response.json();
+
+      if (geocodeData?.features?.[0]) {
+        const feature = geocodeData.features[0];
+        const [lng, lat] = feature.center;
 
         setVerificationResult({
-          lat: location.lat,
-          lng: location.lng,
-          formatted_address: result.formatted_address,
-          place_id: result.place_id,
-          address_components: result.address_components
+          lat,
+          lng,
+          formatted_address: feature.place_name,
+          mapbox_id: feature.id
         });
       } else {
         setError('Could not find coordinates for this address. Please check the address and try again.');
@@ -99,7 +102,7 @@ export function AddressReverificationButton({
             lat: verificationResult.lat,
             lng: verificationResult.lng,
             formatted_address: verificationResult.formatted_address,
-            place_id: verificationResult.place_id,
+            mapbox_id: verificationResult.mapbox_id,
             verification_timestamp: new Date().toISOString(),
             verification_status: 'verified'
           },
@@ -158,7 +161,7 @@ export function AddressReverificationButton({
               Re-verify Property Address
             </DialogTitle>
             <DialogDescription>
-              Get fresh GPS coordinates from Google for accurate measurements
+              Get fresh GPS coordinates from Mapbox for accurate measurements
             </DialogDescription>
           </DialogHeader>
 
@@ -173,7 +176,7 @@ export function AddressReverificationButton({
             {isVerifying && !verificationResult && (
               <div className="flex items-center justify-center py-8">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
-                <span className="ml-2 text-muted-foreground">Verifying with Google...</span>
+                <span className="ml-2 text-muted-foreground">Verifying with Mapbox...</span>
               </div>
             )}
 
@@ -213,7 +216,7 @@ export function AddressReverificationButton({
                 </div>
 
                 <Badge variant="outline" className="w-full justify-center py-2">
-                  Google Place ID: {verificationResult.place_id?.substring(0, 20)}...
+                  Mapbox ID: {verificationResult.mapbox_id?.substring(0, 25)}...
                 </Badge>
               </div>
             )}
