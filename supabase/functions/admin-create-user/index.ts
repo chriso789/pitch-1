@@ -120,21 +120,60 @@ const handler = async (req: Request): Promise<Response> => {
 
     console.log('Creating user with invite link:', email, 'role:', role);
 
-    // Create user WITHOUT password - use invite link flow
-    const { data: newUser, error: createError } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      email_confirm: false, // Will confirm via invite link
-      user_metadata: {
-        first_name: firstName,
-        last_name: lastName
+    // Check if user already exists in auth but is orphaned (no profile)
+    const { data: existingUsers } = await supabaseAdmin.auth.admin.listUsers();
+    const existingAuthUser = existingUsers?.users?.find(u => u.email?.toLowerCase() === email.toLowerCase());
+    
+    let newUser: { user: typeof existingAuthUser } | null = null;
+    let createError: Error | null = null;
+    
+    if (existingAuthUser) {
+      // Check if profile exists for this auth user
+      const { data: existingProfile } = await supabaseAdmin
+        .from('profiles')
+        .select('id')
+        .eq('id', existingAuthUser.id)
+        .maybeSingle();
+      
+      if (!existingProfile) {
+        // Orphaned auth user - delete and recreate
+        console.log('Found orphaned auth user, deleting:', existingAuthUser.id);
+        await supabaseAdmin.auth.admin.deleteUser(existingAuthUser.id);
+        
+        // Now create fresh
+        const result = await supabaseAdmin.auth.admin.createUser({
+          email,
+          email_confirm: false,
+          user_metadata: {
+            first_name: firstName,
+            last_name: lastName
+          }
+        });
+        newUser = result.data;
+        createError = result.error;
+      } else {
+        // User exists with profile - return error
+        return new Response(
+          JSON.stringify({ error: "A user with this email already exists" }),
+          { status: 409, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
       }
-    });
+    } else {
+      // Create new user
+      const result = await supabaseAdmin.auth.admin.createUser({
+        email,
+        email_confirm: false,
+        user_metadata: {
+          first_name: firstName,
+          last_name: lastName
+        }
+      });
+      newUser = result.data;
+      createError = result.error;
+    }
 
     if (createError) {
       console.error('Error creating user:', createError);
-      if (createError.message.includes('already registered')) {
-        throw new Error('A user with this email already exists');
-      }
       throw createError;
     }
 
