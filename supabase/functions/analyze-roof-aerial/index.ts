@@ -598,47 +598,51 @@ function deriveLinesToPerimeter(
     }
   })
   
-  // 4. EAVE LINES: Horizontal perimeter edges (bottom edges)
+  // 4 & 5. EAVE and RAKE LINES: Classify perimeter edges based on roof type
+  // CRITICAL FIX: Proper eave vs rake classification
+  // - EAVES: Horizontal bottom edges of the roof (where gutters go, parallel to ground)
+  // - RAKES: ONLY sloped edges at GABLE ENDS (where pitched roof meets vertical wall)
+  // - HIP ROOFS: Have ALL eaves, NO rakes (because no gable ends)
+  // - GABLE ROOFS: Have eaves (parallel to ridge) and rakes (at gable peaks)
+  
+  const ridgeEnds = perimeterVertices.filter((v: any) => 
+    v.cornerType === 'ridge-end' || v.type === 'ridge-end'
+  )
+  
+  // Count hip corners to determine roof type
+  const hasSignificantRakes = ridgeEnds.length >= 2
+  
   for (let i = 0; i < perimeterVertices.length; i++) {
     const v1 = perimeterVertices[i]
     const v2 = perimeterVertices[(i + 1) % perimeterVertices.length]
     
-    // Eaves are typically horizontal (small Y difference) at bottom
-    const dy = Math.abs(v1.y - v2.y)
-    const dx = Math.abs(v1.x - v2.x)
-    const avgY = (v1.y + v2.y) / 2
+    // Skip if this edge was already classified as hip/valley entry
+    const v1IsHipCorner = v1.cornerType === 'hip-corner' || v1.type === 'hip-corner'
+    const v2IsHipCorner = v2.cornerType === 'hip-corner' || v2.type === 'hip-corner'
+    const v1IsRidgeEnd = v1.cornerType === 'ridge-end' || v1.type === 'ridge-end'
+    const v2IsRidgeEnd = v2.cornerType === 'ridge-end' || v2.type === 'ridge-end'
     
-    // Horizontal edge in bottom half = eave
-    if (dx > dy * 2 && avgY > (bounds.topLeftY + bounds.bottomRightY) / 2) {
+    // RAKES: Only if BOTH endpoints connect a ridge-end to an eave corner
+    // This is a sloped gable edge where roof pitch meets vertical wall
+    const isRakeEdge = (v1IsRidgeEnd || v2IsRidgeEnd) && 
+                       (!v1IsHipCorner && !v2IsHipCorner) &&
+                       hasSignificantRakes
+    
+    if (isRakeEdge) {
       lines.push({
-        type: 'eave',
+        type: 'rake',
         startX: v1.x,
         startY: v1.y,
         endX: v2.x,
         endY: v2.y,
         source: 'vertex_derived'
       })
-    }
-  }
-  
-  // 5. RAKE LINES: Sloped perimeter edges connecting to ridge ends (gable edges)
-  const ridgeEnds = perimeterVertices.filter((v: any) => 
-    v.cornerType === 'ridge-end' || v.type === 'ridge-end'
-  )
-  
-  for (let i = 0; i < perimeterVertices.length; i++) {
-    const v1 = perimeterVertices[i]
-    const v2 = perimeterVertices[(i + 1) % perimeterVertices.length]
-    
-    // Check if either endpoint is a ridge-end (gable peak)
-    const isRakeEdge = ridgeEnds.some((re: any) => 
-      (Math.abs(re.x - v1.x) < 3 && Math.abs(re.y - v1.y) < 3) ||
-      (Math.abs(re.x - v2.x) < 3 && Math.abs(re.y - v2.y) < 3)
-    )
-    
-    if (isRakeEdge) {
+    } else {
+      // EAVES: All other perimeter edges are eaves
+      // On hip roofs, ALL perimeter edges are eaves (where gutters attach)
+      // On gable roofs, eaves are the horizontal edges parallel to ridge
       lines.push({
-        type: 'rake',
+        type: 'eave',
         startX: v1.x,
         startY: v1.y,
         endX: v2.x,
@@ -652,7 +656,10 @@ function deriveLinesToPerimeter(
   const clippedLines = lines.map(line => clipLineToPerimeter(line, perimeterVertices, bounds))
     .filter(line => line !== null) as DerivedLine[]
   
-  console.log(`📐 Derived ${clippedLines.length} lines from ${perimeterVertices.length} perimeter + ${junctions.length} interior vertices`)
+  // Log summary for debugging
+  const eaveFt = clippedLines.filter(l => l.type === 'eave').length
+  const rakeFt = clippedLines.filter(l => l.type === 'rake').length
+  console.log(`📐 Derived ${clippedLines.length} lines: ${eaveFt} eave segments, ${rakeFt} rake segments, from ${perimeterVertices.length} perimeter + ${junctions.length} interior vertices`)
   
   return clippedLines
 }

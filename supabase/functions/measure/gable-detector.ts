@@ -1,5 +1,9 @@
 // Gable Detection and Eave/Rake Classification
-// Determines which boundary edges are eaves (horizontal) vs rakes (gable ends)
+// FIXED: Proper classification based on actual roof geometry
+// - EAVES: Horizontal bottom edges where gutters attach (parallel to ground)
+// - RAKES: ONLY sloped edges at GABLE ENDS where roof pitch meets vertical wall
+// - HIP ROOFS: ALL perimeter edges are eaves (no gable ends = no rakes)
+// - GABLE ROOFS: Eaves (parallel to ridge) + rakes (at gable peaks)
 
 type XY = [number, number]; // [lng, lat]
 
@@ -17,6 +21,7 @@ export interface BoundaryClassification {
 
 /**
  * Classify boundary edges into eaves and rakes based on building shape and skeleton
+ * CRITICAL FIX: Hip roofs have NO rakes, only gable roofs have rakes
  * @param ring Closed polygon (CCW orientation)
  * @param skeleton Straight skeleton edges
  * @returns Classification of boundary edges
@@ -33,11 +38,30 @@ export function classifyBoundaryEdges(
   const vertices = ring.slice(0, -1);
   const n = vertices.length;
   
-  // Find dominant ridge (longest ridge edge)
+  // Count ridge and hip edges to determine roof type
   const ridges = skeleton.filter(e => e.type === 'ridge');
+  const hips = skeleton.filter(e => e.type === 'hip');
+  
+  // ROOF TYPE DETECTION:
+  // - Hip roof: Has 4+ hip lines connecting ridge to perimeter corners
+  // - Gable roof: Has 0-2 hip lines, ridge terminates at gable peaks
+  // - Complex: Mix of both
+  const isHipRoof = hips.length >= 4 && ridges.length > 0;
+  const isGableRoof = hips.length <= 2 && ridges.length > 0;
+  
+  console.log(`Roof type detection: ${hips.length} hips, ${ridges.length} ridges → ${isHipRoof ? 'HIP' : isGableRoof ? 'GABLE' : 'COMPLEX'}`);
+  
+  if (isHipRoof) {
+    // HIP ROOF: ALL perimeter edges are EAVES
+    // No gable ends means no rakes
+    return {
+      eaveEdges: getAllBoundaryEdges(vertices),
+      rakeEdges: []
+    };
+  }
   
   if (ridges.length === 0) {
-    // No ridges found, treat all as eaves (conservative)
+    // Flat roof or no ridges found - treat all as eaves
     return {
       eaveEdges: getAllBoundaryEdges(vertices),
       rakeEdges: []
@@ -46,18 +70,17 @@ export function classifyBoundaryEdges(
   
   const dominantRidge = findLongestRidge(ridges);
   
-  // Check if building is rectangular
-  const isRectangular = checkRectangular(vertices);
-  
-  if (isRectangular && dominantRidge) {
-    // For rectangular buildings, classify by perpendicularity to ridge
-    return classifyRectangularBuilding(vertices, dominantRidge);
-  } else if (dominantRidge) {
-    // For complex shapes, use heuristic based on ridge direction
-    return classifyComplexBuilding(vertices, dominantRidge, ridges);
+  // For GABLE roofs: classify by perpendicularity to ridge
+  if (dominantRidge && isGableRoof) {
+    return classifyGableBuilding(vertices, dominantRidge);
   }
   
-  // Fallback: all eaves
+  // For COMPLEX shapes: use heuristic based on ridge direction
+  if (dominantRidge) {
+    return classifyComplexBuilding(vertices, dominantRidge, ridges, hips);
+  }
+  
+  // Fallback: all eaves (conservative)
   return {
     eaveEdges: getAllBoundaryEdges(vertices),
     rakeEdges: []
@@ -65,40 +88,10 @@ export function classifyBoundaryEdges(
 }
 
 /**
- * Check if building is approximately rectangular
+ * Classify edges for GABLE building (has true gable ends with rakes)
+ * Eaves run parallel to ridge, rakes are perpendicular at gable peaks
  */
-function checkRectangular(vertices: XY[]): boolean {
-  const n = vertices.length;
-  
-  // Must be 4 vertices
-  if (n !== 4) return false;
-  
-  // Check if all angles are approximately 90°
-  for (let i = 0; i < n; i++) {
-    const prev = vertices[(i - 1 + n) % n];
-    const curr = vertices[i];
-    const next = vertices[(i + 1) % n];
-    
-    const angle = calculateAngle(prev, curr, next);
-    
-    // Allow ±10° tolerance
-    if (Math.abs(angle - 90) > 10) {
-      return false;
-    }
-  }
-  
-  // Check aspect ratio (one pair of sides should be longer)
-  const side1 = distance(vertices[0], vertices[1]);
-  const side2 = distance(vertices[1], vertices[2]);
-  const aspectRatio = Math.max(side1, side2) / Math.min(side1, side2);
-  
-  return aspectRatio >= 1.25; // Gable buildings are typically elongated
-}
-
-/**
- * Classify edges for rectangular building
- */
-function classifyRectangularBuilding(
+function classifyGableBuilding(
   vertices: XY[],
   dominantRidge: SkeletonEdge
 ): BoundaryClassification {
@@ -109,66 +102,43 @@ function classifyRectangularBuilding(
   
   const eaveEdges: Array<[XY, XY]> = [];
   const rakeEdges: Array<[XY, XY]> = [];
+  const n = vertices.length;
   
-  // For each edge, check if parallel or perpendicular to ridge
-  for (let i = 0; i < 4; i++) {
-    const v1 = vertices[i];
-    const v2 = vertices[(i + 1) % 4];
+  // For rectangular buildings (4 vertices)
+  if (n === 4) {
+    for (let i = 0; i < 4; i++) {
+      const v1 = vertices[i];
+      const v2 = vertices[(i + 1) % 4];
+      
+      const edgeVector = normalizeVector([v2[0] - v1[0], v2[1] - v1[1]]);
+      const dotProduct = Math.abs(
+        ridgeVector[0] * edgeVector[0] + ridgeVector[1] * edgeVector[1]
+      );
+      
+      // Parallel to ridge (dot ~1) = EAVE
+      // Perpendicular to ridge (dot ~0) = RAKE
+      if (dotProduct > 0.7) {
+        eaveEdges.push([v1, v2]);
+      } else {
+        rakeEdges.push([v1, v2]);
+      }
+    }
     
-    const edgeVector = normalizeVector([v2[0] - v1[0], v2[1] - v1[1]]);
-    
-    // Calculate dot product to determine angle
-    const dotProduct = Math.abs(
-      ridgeVector[0] * edgeVector[0] + ridgeVector[1] * edgeVector[1]
-    );
-    
-    // If dot product close to 1, vectors are parallel (edge parallel to ridge = eave)
-    // If dot product close to 0, vectors are perpendicular (edge perpendicular to ridge = rake)
-    if (dotProduct > 0.7) {
-      // Parallel to ridge → eave (runs along ridge)
-      eaveEdges.push([v1, v2]);
-    } else {
-      // Perpendicular to ridge → rake (gable end)
-      rakeEdges.push([v1, v2]);
+    // Validate: gable should have 2 eaves and 2 rakes
+    if (eaveEdges.length === 2 && rakeEdges.length === 2) {
+      return { eaveEdges, rakeEdges };
     }
   }
   
-  // Validate: should have 2 eaves and 2 rakes
-  if (eaveEdges.length === 2 && rakeEdges.length === 2) {
-    return { eaveEdges, rakeEdges };
-  }
-  
-  // Fallback: all eaves if classification unclear
-  return {
-    eaveEdges: getAllBoundaryEdges(vertices),
-    rakeEdges: []
-  };
-}
-
-/**
- * Classify edges for complex building (L, T, U shapes)
- */
-function classifyComplexBuilding(
-  vertices: XY[],
-  dominantRidge: SkeletonEdge,
-  allRidges: SkeletonEdge[]
-): BoundaryClassification {
-  const eaveEdges: Array<[XY, XY]> = [];
-  const rakeEdges: Array<[XY, XY]> = [];
-  const n = vertices.length;
-  
-  // For complex shapes, use proximity to ridge endpoints as heuristic
-  // Edges near where ridge terminates → likely rakes
-  // Other edges → likely eaves
-  
-  const ridgeEndpoints = allRidges.flatMap(r => [r.start, r.end]);
+  // For non-rectangular gable buildings: find edges near ridge endpoints
+  const ridgeEndpoints = [dominantRidge.start, dominantRidge.end];
   
   for (let i = 0; i < n; i++) {
     const v1 = vertices[i];
     const v2 = vertices[(i + 1) % n];
     const edgeMidpoint = midpoint(v1, v2);
     
-    // Check if edge midpoint is close to any ridge endpoint
+    // Check if edge is near a ridge endpoint (gable peak)
     const minDistToRidgeEnd = Math.min(
       ...ridgeEndpoints.map(pt => distance(edgeMidpoint, pt))
     );
@@ -177,15 +147,70 @@ function classifyComplexBuilding(
     const avgEdgeLength = getAllBoundaryEdges(vertices)
       .reduce((sum, e) => sum + distance(e[0], e[1]), 0) / n;
     
-    // Classify as rake if:
-    // 1. Close to ridge endpoint (within 30% of average edge length)
-    // 2. And edge is shorter than average (typical for gable ends)
-    if (minDistToRidgeEnd < avgEdgeLength * 0.3 && edgeLength < avgEdgeLength * 1.2) {
+    // RAKE: Near ridge endpoint AND shorter than average (typical gable edge)
+    if (minDistToRidgeEnd < avgEdgeLength * 0.4 && edgeLength < avgEdgeLength * 0.9) {
       rakeEdges.push([v1, v2]);
     } else {
       eaveEdges.push([v1, v2]);
     }
   }
+  
+  return { eaveEdges, rakeEdges };
+}
+
+/**
+ * Classify edges for complex building (L, T, U shapes, or mixed hip/gable)
+ * Uses hip count to determine if sections have rakes
+ */
+function classifyComplexBuilding(
+  vertices: XY[],
+  dominantRidge: SkeletonEdge,
+  allRidges: SkeletonEdge[],
+  allHips: SkeletonEdge[]
+): BoundaryClassification {
+  const eaveEdges: Array<[XY, XY]> = [];
+  const rakeEdges: Array<[XY, XY]> = [];
+  const n = vertices.length;
+  
+  // Get all hip endpoints (where hips meet perimeter)
+  const hipEndpoints = allHips.flatMap(h => [h.start, h.end]);
+  
+  // Get all ridge endpoints (where ridges terminate)
+  const ridgeEndpoints = allRidges.flatMap(r => [r.start, r.end]);
+  
+  for (let i = 0; i < n; i++) {
+    const v1 = vertices[i];
+    const v2 = vertices[(i + 1) % n];
+    const edgeMidpoint = midpoint(v1, v2);
+    
+    // Check if edge is near a hip endpoint
+    const minDistToHip = hipEndpoints.length > 0
+      ? Math.min(...hipEndpoints.map(pt => distance(edgeMidpoint, pt)))
+      : Infinity;
+    
+    // Check if edge is near a ridge endpoint (potential gable end)
+    const minDistToRidge = ridgeEndpoints.length > 0
+      ? Math.min(...ridgeEndpoints.map(pt => distance(edgeMidpoint, pt)))
+      : Infinity;
+    
+    const edgeLength = distance(v1, v2);
+    const avgEdgeLength = getAllBoundaryEdges(vertices)
+      .reduce((sum, e) => sum + distance(e[0], e[1]), 0) / n;
+    
+    // EAVE: Near hip endpoint OR long edge (hip roofs have long eaves)
+    // RAKE: Near ridge endpoint AND not near hip AND short
+    const isNearHip = minDistToHip < avgEdgeLength * 0.4;
+    const isNearRidge = minDistToRidge < avgEdgeLength * 0.3;
+    const isShortEdge = edgeLength < avgEdgeLength * 0.8;
+    
+    if (isNearRidge && !isNearHip && isShortEdge) {
+      rakeEdges.push([v1, v2]);
+    } else {
+      eaveEdges.push([v1, v2]);
+    }
+  }
+  
+  console.log(`Complex building classification: ${eaveEdges.length} eaves, ${rakeEdges.length} rakes`);
   
   return { eaveEdges, rakeEdges };
 }
@@ -225,21 +250,6 @@ function getAllBoundaryEdges(vertices: XY[]): Array<[XY, XY]> {
 }
 
 // ===== Utility Functions =====
-
-function calculateAngle(prev: XY, curr: XY, next: XY): number {
-  const v1x = prev[0] - curr[0];
-  const v1y = prev[1] - curr[1];
-  const v2x = next[0] - curr[0];
-  const v2y = next[1] - curr[1];
-  
-  const dot = v1x * v2x + v1y * v2y;
-  const cross = v1x * v2y - v1y * v2x;
-  
-  let angle = Math.atan2(cross, dot) * 180 / Math.PI;
-  if (angle < 0) angle += 360;
-  
-  return angle;
-}
 
 function distance(a: XY, b: XY): number {
   return Math.sqrt((b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2);
