@@ -12706,6 +12706,104 @@ export type Database = {
         }
         Relationships: []
       }
+      roof_measurements_truth: {
+        Row: {
+          address: string | null
+          created_at: string
+          drip_edge_ft: number | null
+          eaves_ft: number | null
+          facet_count: number | null
+          flashing_ft: number | null
+          flat_area_sqft: number | null
+          hips_ft: number | null
+          id: string
+          latitude: number | null
+          longitude: number | null
+          parapet_walls_ft: number | null
+          pitched_area_sqft: number | null
+          pitches: Json | null
+          predominant_pitch: string | null
+          provider: string
+          rakes_ft: number | null
+          report_id: string
+          report_number: string | null
+          ridges_ft: number | null
+          step_flashing_ft: number | null
+          total_area_sqft: number | null
+          transitions_ft: number | null
+          unspecified_ft: number | null
+          valleys_ft: number | null
+          wall_flashing_ft: number | null
+          waste_table: Json | null
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string
+          drip_edge_ft?: number | null
+          eaves_ft?: number | null
+          facet_count?: number | null
+          flashing_ft?: number | null
+          flat_area_sqft?: number | null
+          hips_ft?: number | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          parapet_walls_ft?: number | null
+          pitched_area_sqft?: number | null
+          pitches?: Json | null
+          predominant_pitch?: string | null
+          provider: string
+          rakes_ft?: number | null
+          report_id: string
+          report_number?: string | null
+          ridges_ft?: number | null
+          step_flashing_ft?: number | null
+          total_area_sqft?: number | null
+          transitions_ft?: number | null
+          unspecified_ft?: number | null
+          valleys_ft?: number | null
+          wall_flashing_ft?: number | null
+          waste_table?: Json | null
+        }
+        Update: {
+          address?: string | null
+          created_at?: string
+          drip_edge_ft?: number | null
+          eaves_ft?: number | null
+          facet_count?: number | null
+          flashing_ft?: number | null
+          flat_area_sqft?: number | null
+          hips_ft?: number | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          parapet_walls_ft?: number | null
+          pitched_area_sqft?: number | null
+          pitches?: Json | null
+          predominant_pitch?: string | null
+          provider?: string
+          rakes_ft?: number | null
+          report_id?: string
+          report_number?: string | null
+          ridges_ft?: number | null
+          step_flashing_ft?: number | null
+          total_area_sqft?: number | null
+          transitions_ft?: number | null
+          unspecified_ft?: number | null
+          valleys_ft?: number | null
+          wall_flashing_ft?: number | null
+          waste_table?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_measurements_truth_report_id_fkey"
+            columns: ["report_id"]
+            isOneToOne: false
+            referencedRelation: "roof_vendor_reports"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       roof_pitch_multipliers: {
         Row: {
           degrees: number
@@ -12730,6 +12828,48 @@ export type Database = {
           rise?: number
           run?: number | null
           typical_regions?: string[] | null
+        }
+        Relationships: []
+      }
+      roof_vendor_reports: {
+        Row: {
+          address: string | null
+          created_at: string
+          extracted_text: string | null
+          file_bucket: string | null
+          file_path: string | null
+          file_url: string | null
+          id: string
+          lead_id: string | null
+          parsed: Json
+          provider: string
+          report_number: string | null
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string
+          extracted_text?: string | null
+          file_bucket?: string | null
+          file_path?: string | null
+          file_url?: string | null
+          id?: string
+          lead_id?: string | null
+          parsed?: Json
+          provider: string
+          report_number?: string | null
+        }
+        Update: {
+          address?: string | null
+          created_at?: string
+          extracted_text?: string | null
+          file_bucket?: string | null
+          file_path?: string | null
+          file_url?: string | null
+          id?: string
+          lead_id?: string | null
+          parsed?: Json
+          provider?: string
+          report_number?: string | null
         }
         Relationships: []
       }
