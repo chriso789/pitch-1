@@ -324,6 +324,106 @@ export type Database = {
           },
         ]
       }
+      ai_answering_config: {
+        Row: {
+          after_hours_greeting: string | null
+          ai_model: string | null
+          ai_voice: string | null
+          business_hours: Json | null
+          created_at: string | null
+          escalation_keywords: string[] | null
+          greeting_text: string | null
+          id: string
+          is_enabled: boolean | null
+          required_fields: string[] | null
+          temperature: number | null
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          after_hours_greeting?: string | null
+          ai_model?: string | null
+          ai_voice?: string | null
+          business_hours?: Json | null
+          created_at?: string | null
+          escalation_keywords?: string[] | null
+          greeting_text?: string | null
+          id?: string
+          is_enabled?: boolean | null
+          required_fields?: string[] | null
+          temperature?: number | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          after_hours_greeting?: string | null
+          ai_model?: string | null
+          ai_voice?: string | null
+          business_hours?: Json | null
+          created_at?: string | null
+          escalation_keywords?: string[] | null
+          greeting_text?: string | null
+          id?: string
+          is_enabled?: boolean | null
+          required_fields?: string[] | null
+          temperature?: number | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_answering_config_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_call_transcripts: {
+        Row: {
+          call_duration_seconds: number | null
+          caller_number: string | null
+          created_at: string | null
+          escalated_to_human: boolean | null
+          gathered_data: Json | null
+          id: string
+          sentiment: string | null
+          telnyx_call_control_id: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          call_duration_seconds?: number | null
+          caller_number?: string | null
+          created_at?: string | null
+          escalated_to_human?: boolean | null
+          gathered_data?: Json | null
+          id?: string
+          sentiment?: string | null
+          telnyx_call_control_id?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          call_duration_seconds?: number | null
+          caller_number?: string | null
+          created_at?: string | null
+          escalated_to_human?: boolean | null
+          gathered_data?: Json | null
+          id?: string
+          sentiment?: string | null
+          telnyx_call_control_id?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_call_transcripts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_chat_messages: {
         Row: {
           actions_taken: Json | null
