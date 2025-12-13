@@ -45,7 +45,7 @@ export const useCompanyActivityLog = (options: UseCompanyActivityLogOptions = {}
         .from('company_activity_log')
         .select(`
           *,
-          profiles!company_activity_log_user_id_fkey(email, full_name),
+          profiles!company_activity_log_user_id_fkey(email, first_name, last_name),
           tenants!company_activity_log_tenant_id_fkey(name)
         `)
         .order('created_at', { ascending: false })
@@ -71,7 +71,9 @@ export const useCompanyActivityLog = (options: UseCompanyActivityLogOptions = {}
       const transformedLogs: CompanyActivityLog[] = (data || []).map((log: any) => ({
         ...log,
         user_email: log.profiles?.email,
-        user_name: log.profiles?.full_name,
+        user_name: log.profiles 
+          ? `${log.profiles.first_name || ''} ${log.profiles.last_name || ''}`.trim() || null
+          : null,
         tenant_name: log.tenants?.name,
       }));
 
