@@ -74,7 +74,7 @@ export const UserManagement = () => {
     queryFn: async () => {
       const [authResult, profilesResult, rolesResult, tenantsResult, accessResult] = await Promise.all([
         supabase.auth.getUser(),
-        supabase.from('profiles').select('*').order('created_at', { ascending: false }),
+        supabase.from('profiles').select('*').neq('role', 'master').order('created_at', { ascending: false }),
         supabase.from('user_roles').select('user_id, role').order('role', { ascending: true }),
         supabase.from('tenants').select('id, name'),
         supabase.from('user_company_access').select('user_id, tenant_id, is_active')
