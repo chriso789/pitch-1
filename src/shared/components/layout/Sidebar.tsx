@@ -315,18 +315,18 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
 
   return (
     <div className={cn(
-      "bg-card border-r border-border shadow-soft h-screen flex flex-col transition-all duration-300",
+      "bg-card border-r border-border h-screen flex flex-col transition-all duration-300",
       isCollapsed ? "w-16" : "w-64"
     )}>
       {/* Logo & Header */}
-      <div className={cn("border-b border-border", isCollapsed ? "p-2" : "p-6")}>
+      <div className={cn("border-b border-border", isCollapsed ? "p-2" : "p-4")}>
         <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3")}>
-          <div className="w-10 h-10 gradient-primary rounded-lg flex items-center justify-center">
-            <Home className="h-6 w-6 text-white" />
+          <div className="w-9 h-9 gradient-primary rounded-lg flex items-center justify-center">
+            <Home className="h-5 w-5 text-white" />
           </div>
           {!isCollapsed && (
             <div>
-              <h1 className="text-xl font-bold gradient-primary bg-clip-text text-transparent">
+              <h1 className="text-lg font-bold gradient-primary bg-clip-text text-transparent">
                 PITCH
               </h1>
               <p className="text-xs text-muted-foreground">Roofing CRM</p>
@@ -335,97 +335,100 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
         </div>
       </div>
 
-      {/* Main Navigation */}
-      <div className="flex-1 p-4">
-        <nav className="space-y-2">
-          {navigation.map((item) => (
-            <Link
-              key={item.href}
-              to={item.path}
-              data-testid={item.testId}
-              onClick={onNavigate}
-              className={cn(
-                "w-full flex items-center rounded-lg text-left transition-smooth group touch-manipulation",
-                isCollapsed ? "px-2 py-2.5 justify-center" : "gap-3 px-3 py-2.5",
-                activeSection === item.href
-                  ? "bg-primary text-primary-foreground shadow-soft"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80"
-              )}
-              title={isCollapsed ? item.name : undefined}
-            >
-              <item.icon className={cn(
-                "h-5 w-5 flex-shrink-0",
-                activeSection === item.href 
-                  ? "text-primary-foreground" 
-                  : "text-muted-foreground group-hover:text-accent-foreground"
-              )} />
-              {!isCollapsed && (
-                <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{item.name}</div>
-                  <div className={cn(
-                    "text-xs truncate",
-                    activeSection === item.href
-                      ? "text-primary-foreground/80"
-                      : "text-muted-foreground group-hover:text-accent-foreground/80"
-                  )}>
-                    {item.description}
-                  </div>
-                </div>
-              )}
-            </Link>
-          ))}
-        </nav>
-      </div>
-
-      {/* Portal Navigation */}
-      <div className="px-4 pb-2">
-        <div className={cn("text-xs font-semibold text-muted-foreground mb-2", isCollapsed ? "text-center" : "px-3")}>
-          {!isCollapsed && "PORTALS"}
-        </div>
-        <nav className="space-y-1">
-          {portalNavigation
-            .filter(item => !item.masterOnly || currentUser?.role === 'master')
-            .map((item) => (
+      {/* Scrollable Navigation Area */}
+      <div className="flex-1 overflow-y-auto">
+        {/* Main Navigation Section */}
+        <div className="p-3">
+          {!isCollapsed && (
+            <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Main
+            </div>
+          )}
+          <nav className="space-y-0.5">
+            {navigation.map((item) => (
               <Link
                 key={item.href}
                 to={item.path}
+                data-testid={item.testId}
                 onClick={onNavigate}
                 className={cn(
-                  "w-full flex items-center rounded-lg text-left transition-smooth group touch-manipulation",
+                  "w-full flex items-center rounded-md text-left transition-colors group",
                   isCollapsed ? "px-2 py-2 justify-center" : "gap-3 px-3 py-2",
                   activeSection === item.href
-                    ? "bg-primary text-primary-foreground shadow-soft"
-                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80"
+                    ? "bg-primary/10 text-primary border-l-2 border-primary"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-l-2 border-transparent"
                 )}
                 title={isCollapsed ? item.name : undefined}
               >
                 <item.icon className={cn(
                   "h-4 w-4 flex-shrink-0",
                   activeSection === item.href 
-                    ? "text-primary-foreground" 
+                    ? "text-primary" 
                     : "text-muted-foreground group-hover:text-accent-foreground"
                 )} />
                 {!isCollapsed && (
-                  <div className="flex-1 min-w-0">
-                    <div className="text-sm font-medium truncate">{item.name}</div>
-                    <div className={cn(
-                      "text-xs truncate",
-                      activeSection === item.href
-                        ? "text-primary-foreground/80"
-                        : "text-muted-foreground group-hover:text-accent-foreground/80"
-                    )}>
-                      {item.description}
-                    </div>
-                  </div>
+                  <span className={cn(
+                    "text-sm font-medium truncate",
+                    activeSection === item.href ? "text-primary" : ""
+                  )}>
+                    {item.name}
+                  </span>
                 )}
               </Link>
             ))}
-        </nav>
+          </nav>
+        </div>
+
+        {/* Divider */}
+        <div className={cn("mx-3 border-t border-border", isCollapsed ? "my-2" : "my-1")} />
+
+        {/* Portal Navigation Section */}
+        <div className="p-3 pt-1">
+          {!isCollapsed && (
+            <div className="px-3 py-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+              Portals
+            </div>
+          )}
+          <nav className="space-y-0.5">
+            {portalNavigation
+              .filter(item => !item.masterOnly || currentUser?.role === 'master')
+              .map((item) => (
+                <Link
+                  key={item.href}
+                  to={item.path}
+                  onClick={onNavigate}
+                  className={cn(
+                    "w-full flex items-center rounded-md text-left transition-colors group",
+                    isCollapsed ? "px-2 py-2 justify-center" : "gap-3 px-3 py-2",
+                    activeSection === item.href
+                      ? "bg-primary/10 text-primary border-l-2 border-primary"
+                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-l-2 border-transparent"
+                  )}
+                  title={isCollapsed ? item.name : undefined}
+                >
+                  <item.icon className={cn(
+                    "h-4 w-4 flex-shrink-0",
+                    activeSection === item.href 
+                      ? "text-primary" 
+                      : "text-muted-foreground group-hover:text-accent-foreground"
+                  )} />
+                  {!isCollapsed && (
+                    <span className={cn(
+                      "text-sm font-medium truncate",
+                      activeSection === item.href ? "text-primary" : ""
+                    )}>
+                      {item.name}
+                    </span>
+                  )}
+                </Link>
+              ))}
+          </nav>
+        </div>
       </div>
 
-      {/* Bottom Navigation */}
-      <div className="p-4 border-t border-border">
-        <nav className="space-y-2">
+      {/* Bottom Navigation - Fixed */}
+      <div className="p-3 border-t border-border">
+        <nav className="space-y-0.5">
           {bottomNavigation.map((item) => (
             <Link
               key={item.href}
@@ -433,32 +436,27 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
               data-testid={item.testId}
               onClick={onNavigate}
               className={cn(
-                "w-full flex items-center rounded-lg text-left transition-smooth group touch-manipulation",
-                isCollapsed ? "px-2 py-2.5 justify-center" : "gap-3 px-3 py-2.5",
+                "w-full flex items-center rounded-md text-left transition-colors group",
+                isCollapsed ? "px-2 py-2 justify-center" : "gap-3 px-3 py-2",
                 activeSection === item.href
-                  ? "bg-primary text-primary-foreground shadow-soft"
-                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground active:bg-accent/80"
+                  ? "bg-primary/10 text-primary border-l-2 border-primary"
+                  : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-l-2 border-transparent"
               )}
               title={isCollapsed ? item.name : undefined}
             >
               <item.icon className={cn(
                 "h-4 w-4 flex-shrink-0",
                 activeSection === item.href 
-                  ? "text-primary-foreground" 
+                  ? "text-primary" 
                   : "text-muted-foreground group-hover:text-accent-foreground"
               )} />
               {!isCollapsed && (
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-medium truncate">{item.name}</div>
-                  <div className={cn(
-                    "text-xs truncate",
-                    activeSection === item.href
-                      ? "text-primary-foreground/80"
-                      : "text-muted-foreground group-hover:text-accent-foreground/80"
-                  )}>
-                    {item.description}
-                  </div>
-                </div>
+                <span className={cn(
+                  "text-sm font-medium truncate",
+                  activeSection === item.href ? "text-primary" : ""
+                )}>
+                  {item.name}
+                </span>
               )}
             </Link>
           ))}
