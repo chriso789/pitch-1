@@ -374,3 +374,15 @@ verify_jwt = true
 
 [functions.telnyx-ai-answering]
 verify_jwt = false
+
+[functions.messaging-inbound-webhook]
+verify_jwt = false
+
+[functions.messaging-send-sms]
+verify_jwt = true
+
+[functions.messaging-send-email]
+verify_jwt = true
+
+[functions.messaging-queue-processor]
+verify_jwt = false
