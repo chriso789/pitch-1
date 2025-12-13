@@ -971,27 +971,19 @@ function calculateDetailedMeasurements(aiAnalysis: any, scale: any, solarData: a
   const totalAdjustedArea = processedFacets.reduce((sum: number, f: any) => sum + f.adjustedAreaSqft, 0)
 
   // Use WKT-derived linear measurements if available, otherwise fall back to facet edges
-  const linearMeasurements = linearTotalsFromWKT ? {
-    eave: linearTotalsFromWKT.eave || 0,
-    rake: linearTotalsFromWKT.rake || 0,
-    hip: linearTotalsFromWKT.hip || 0,
-    valley: linearTotalsFromWKT.valley || 0,
-    ridge: linearTotalsFromWKT.ridge || 0,
+  // Use WKT totals directly - this is the primary source of linear measurements
+  const linearMeasurements = {
+    eave: linearTotalsFromWKT?.eave || 0,
+    rake: linearTotalsFromWKT?.rake || 0,
+    hip: linearTotalsFromWKT?.hip || 0,
+    valley: linearTotalsFromWKT?.valley || 0,
+    ridge: linearTotalsFromWKT?.ridge || 0,
     wallFlashing: 0,
     stepFlashing: 0,
     unspecified: 0
-  } : { eave: 0, rake: 0, hip: 0, valley: 0, ridge: 0, wallFlashing: 0, stepFlashing: 0, unspecified: 0 }
-  
-  // Fall back to facet edges if WKT totals are all zero
-  if (!linearTotalsFromWKT || (linearMeasurements.eave === 0 && linearMeasurements.hip === 0)) {
-    processedFacets.forEach((facet: any) => {
-      linearMeasurements.eave += facet.edges.eave || 0
-      linearMeasurements.rake += facet.edges.rake || 0
-      linearMeasurements.hip += facet.edges.hip || 0
-      linearMeasurements.valley += facet.edges.valley || 0
-      linearMeasurements.ridge += facet.edges.ridge || 0
-    })
   }
+  
+  console.log('📏 Linear measurements from WKT:', linearMeasurements)
 
   const complexity = determineComplexity(processedFacets.length, linearMeasurements)
   const wasteFactor = complexity === 'very_complex' ? 1.20 : complexity === 'complex' ? 1.15 : complexity === 'moderate' ? 1.12 : 1.10
@@ -1062,13 +1054,30 @@ function calculateAreaFromPerimeterVertices(
     return 1500 // Fallback
   }
   
-  const metersPerPixel = (156543.03392 * Math.cos(imageCenter.lat * Math.PI / 180)) / Math.pow(2, zoom)
+  console.log(`📐 Calculating area from ${vertices.length} vertices, first vertex:`, JSON.stringify(vertices[0]))
   
-  // Convert percentage vertices to feet from center
-  const feetVertices = vertices.map((v: any) => ({
-    x: ((v.x / 100) - 0.5) * imageSize * metersPerPixel * 3.28084,
-    y: ((v.y / 100) - 0.5) * imageSize * metersPerPixel * 3.28084
-  }))
+  const metersPerPixel = (156543.03392 * Math.cos(imageCenter.lat * Math.PI / 180)) / Math.pow(2, zoom)
+  console.log(`📐 Meters per pixel: ${metersPerPixel.toFixed(4)}, image size: ${imageSize}, zoom: ${zoom}`)
+  
+  // Handle both percentage (x/y) and geographic (lng/lat) vertex formats
+  const feetVertices = vertices.map((v: any) => {
+    // Check if vertices are in percentage format (0-100 range)
+    if (v.x !== undefined && v.y !== undefined) {
+      return {
+        x: ((v.x / 100) - 0.5) * imageSize * metersPerPixel * 3.28084,
+        y: ((v.y / 100) - 0.5) * imageSize * metersPerPixel * 3.28084
+      }
+    }
+    // Otherwise assume geographic coordinates (lng/lat)
+    const metersPerDegLat = 111320
+    const metersPerDegLng = 111320 * Math.cos(imageCenter.lat * Math.PI / 180)
+    return {
+      x: ((v.lng || 0) - imageCenter.lng) * metersPerDegLng * 3.28084,
+      y: ((v.lat || 0) - imageCenter.lat) * metersPerDegLat * 3.28084
+    }
+  })
+  
+  console.log(`📐 Converted vertices sample:`, JSON.stringify(feetVertices.slice(0, 2)))
   
   // Shoelace formula for polygon area
   let area = 0
@@ -1079,10 +1088,11 @@ function calculateAreaFromPerimeterVertices(
   }
   
   const calculatedArea = Math.abs(area / 2)
+  console.log(`📐 Calculated area: ${calculatedArea.toFixed(0)} sqft`)
   
   // Validate: typical residential roof is 1200-4000 sqft
   if (calculatedArea < 500 || calculatedArea > 8000) {
-    console.warn(`⚠️ Calculated area ${calculatedArea.toFixed(0)} sqft seems unusual`)
+    console.warn(`⚠️ Calculated area ${calculatedArea.toFixed(0)} sqft seems unusual for residential`)
   }
   
   return calculatedArea
