@@ -10,7 +10,7 @@ import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
 import { ArrowRight, Ruler, Edit, FileText, Calculator, Home, History, Loader2 } from 'lucide-react';
-import { SimpleMeasurementCanvas } from '@/components/measurements/SimpleMeasurementCanvas';
+import { InteractiveMapCanvas } from '@/components/measurements/InteractiveMapCanvas';
 import { ProfessionalMeasurementReport } from '@/components/measurements/ProfessionalMeasurementReport';
 import { ComprehensiveMeasurementOverlay } from '@/components/measurements/ComprehensiveMeasurementOverlay';
 import { MeasurementHistoryDialog } from '@/components/measurements/MeasurementHistoryDialog';
@@ -238,15 +238,22 @@ export default function ProfessionalMeasurement() {
             <div className="flex-1 overflow-auto">
               {/* Tab 1: Draw Measurements */}
               <TabsContent value="draw" className="h-full m-0 p-0">
-                <div className="h-full flex flex-col">
-                  <SimpleMeasurementCanvas
-                    satelliteImageUrl={satelliteImageUrl || realSatelliteUrl}
-                    address={propertyAddress}
-                    centerLat={lat}
-                    centerLng={lng}
-                    zoom={20}
-                    onMeasurementsChange={handleMeasurementsComplete}
-                  />
+                <div className="h-full flex flex-col min-h-[600px]">
+                  {mapboxToken && lat && lng ? (
+                    <InteractiveMapCanvas
+                      mapboxToken={mapboxToken}
+                      centerLat={lat}
+                      centerLng={lng}
+                      initialZoom={20}
+                      address={propertyAddress}
+                      onMeasurementsChange={handleMeasurementsComplete}
+                    />
+                  ) : (
+                    <div className="flex items-center justify-center h-full bg-muted">
+                      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                      <span className="ml-2">Loading map...</span>
+                    </div>
+                  )}
                   
                   {facets.length > 0 && (
                     <div className="p-4 border-t bg-background">
