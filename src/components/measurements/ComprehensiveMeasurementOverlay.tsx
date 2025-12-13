@@ -393,9 +393,11 @@ export function ComprehensiveMeasurementOverlay({
     * to scale the pixel offsets proportionally.
     */
    const geoToCanvas = useCallback((lat: number, lng: number): Point => {
-     // Use verified address as reference point (satellite image center)
-     const refLat = verifiedAddressLat || centerLat;
-     const refLng = verifiedAddressLng || centerLng;
+     // CRITICAL FIX: Use gps_coordinates from measurement (analysis center) as primary reference
+     // This ensures overlay aligns with the satellite image that was analyzed
+     const analysisCenter = measurement?.gps_coordinates;
+     const refLat = analysisCenter?.lat || verifiedAddressLat || centerLat;
+     const refLng = analysisCenter?.lng || verifiedAddressLng || centerLng;
      
      // Use analysis zoom from measurement (default 20)
      const analysisZoom = measurement?.analysis_zoom || 20;
@@ -433,6 +435,7 @@ export function ComprehensiveMeasurementOverlay({
        console.log('📍 geoToCanvas:', {
          input: { lat: lat.toFixed(6), lng: lng.toFixed(6) },
          ref: { lat: refLat.toFixed(6), lng: refLng.toFixed(6) },
+         source: analysisCenter ? 'gps_coordinates' : (verifiedAddressLat ? 'verified_address' : 'fallback'),
          offsetMeters: { lat: latOffsetMeters.toFixed(2), lng: lngOffsetMeters.toFixed(2) },
          analysisPixelOffset: { x: analysisPixelOffsetX.toFixed(1), y: analysisPixelOffsetY.toFixed(1) },
          scale: { x: scaleX.toFixed(2), y: scaleY.toFixed(2) },
@@ -443,7 +446,7 @@ export function ComprehensiveMeasurementOverlay({
      }
      
      return { x, y };
-   }, [centerLat, centerLng, verifiedAddressLat, verifiedAddressLng, canvasWidth, canvasHeight, measurement?.analysis_zoom, measurement?.analysis_image_size, offsetX, offsetY, showDebugOverlay]);
+   }, [centerLat, centerLng, verifiedAddressLat, verifiedAddressLng, canvasWidth, canvasHeight, measurement?.analysis_zoom, measurement?.analysis_image_size, measurement?.gps_coordinates, offsetX, offsetY, showDebugOverlay]);
 
   // Auto-save with database persistence
   const handleAutoSave = async () => {
@@ -1339,22 +1342,40 @@ export function ComprehensiveMeasurementOverlay({
     // Draw aggregate facet annotations
     drawAggregateFacetAnnotations();
     
-    // DEBUG: Draw center crosshair to verify coordinate alignment
-    // This shows where the overlay thinks the center is (should match satellite image center)
-    drawDebugCenterCrosshair();
+    // DEBUG: Draw center crosshair to verify coordinate alignment (only when debug mode enabled)
+    if (showDebugOverlay) {
+      drawDebugCenterCrosshair();
+    }
   };
   
-  // DEBUG: Draw a red crosshair at the center coordinates to verify alignment
+  // DEBUG: Draw a red crosshair at the analysis center coordinates to verify alignment
   const drawDebugCenterCrosshair = () => {
     if (!fabricCanvas) return;
     
-    // Get the canvas center point (should match satellite center)
-    const refLat = verifiedAddressLat || centerLat;
-    const refLng = verifiedAddressLng || centerLng;
+    // CRITICAL: Use the SAME reference as geoToCanvas - measurement.gps_coordinates first!
+    const analysisCenter = measurement?.gps_coordinates;
+    const refLat = analysisCenter?.lat || verifiedAddressLat || centerLat;
+    const refLng = analysisCenter?.lng || verifiedAddressLng || centerLng;
+    const coordSource = analysisCenter ? 'gps_coordinates' : (verifiedAddressLat ? 'verified_address' : 'fallback');
+    
+    // Transform the analysis center to canvas coordinates
     const centerPoint = geoToCanvas(refLat, refLng);
     
-    const crosshairSize = 20;
+    const crosshairSize = 30;
     const debugColor = '#ff0000'; // Red for visibility
+    
+    // Outer circle to make it more visible
+    const outerCircle = new Circle({
+      left: centerPoint.x - 15,
+      top: centerPoint.y - 15,
+      radius: 15,
+      fill: 'transparent',
+      stroke: debugColor,
+      strokeWidth: 2,
+      selectable: false,
+      evented: false,
+      data: { type: 'debug-crosshair' }
+    });
     
     // Horizontal line
     const hLine = new Line(
@@ -1384,25 +1405,27 @@ export function ComprehensiveMeasurementOverlay({
     
     // Center dot
     const dot = new Circle({
-      left: centerPoint.x - 3,
-      top: centerPoint.y - 3,
-      radius: 3,
+      left: centerPoint.x - 4,
+      top: centerPoint.y - 4,
+      radius: 4,
       fill: debugColor,
       selectable: false,
       evented: false,
       data: { type: 'debug-crosshair' }
     });
     
-    fabricCanvas.add(hLine, vLine, dot);
+    fabricCanvas.add(outerCircle, hLine, vLine, dot);
     
-    // Log debug info
-    console.log('🎯 DEBUG Crosshair:', {
-      refLat,
-      refLng,
-      canvasCenter: centerPoint,
+    // Log debug info with source tracking
+    console.log('🎯 DEBUG Analysis Center Crosshair:', {
+      source: coordSource,
+      refLat: refLat.toFixed(6),
+      refLng: refLng.toFixed(6),
+      canvasCenter: { x: centerPoint.x.toFixed(1), y: centerPoint.y.toFixed(1) },
       expectedCanvasCenter: { x: canvasWidth / 2, y: canvasHeight / 2 },
       analysisZoom: measurement?.analysis_zoom || 20,
-      displayZoom: (window as any).__currentDisplayZoom || 'unknown'
+      analysisImageSize: measurement?.analysis_image_size || { width: 640, height: 640 },
+      gps_coordinates: measurement?.gps_coordinates,
     });
   };
 
