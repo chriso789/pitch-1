@@ -18,6 +18,30 @@ serve(async (req) => {
     const { measurementId, companyInfo } = await req.json()
     console.log('📄 Generating PDF for:', measurementId)
 
+    // Validate measurementId before querying to avoid invalid UUID errors
+    if (!measurementId || typeof measurementId !== 'string') {
+      console.error('Missing measurementId in request body')
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Invalid measurement ID'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    const uuidRegex = /^[0-9a-fA-F-]{36}$/
+    if (!uuidRegex.test(measurementId)) {
+      console.error('Invalid UUID format for measurementId:', measurementId)
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Invalid measurement ID format'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
     // Fixed: Use correct table name roof_measurement_facets
@@ -25,11 +49,28 @@ serve(async (req) => {
       .from('roof_measurements')
       .select(`*, roof_measurement_facets (*)`)
       .eq('id', measurementId)
-      .single()
+      .maybeSingle()
 
-    if (measurementError || !measurement) {
-      console.error('Measurement error:', measurementError)
-      throw new Error('Measurement not found')
+    if (measurementError) {
+      console.error('Measurement query error:', measurementError)
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Failed to load measurement'
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
+    }
+
+    if (!measurement) {
+      console.error('Measurement not found for id:', measurementId)
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Measurement not found'
+      }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
     const html = generateReportHTML(measurement, companyInfo)

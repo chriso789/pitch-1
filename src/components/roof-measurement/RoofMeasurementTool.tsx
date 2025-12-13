@@ -185,6 +185,13 @@ export function RoofMeasurementTool({
 
   const generatePDF = async () => {
     if (!measurementData) return
+
+    // Guard against missing measurementId so we don't hit the edge function with "undefined"
+    if (!measurementData.measurementId) {
+      console.error('generatePDF: missing measurementId on measurementData', measurementData)
+      alert('No measurement record was found. Please run "Analyze Roof" again before generating a report.')
+      return
+    }
     
     try {
       const { data, error } = await supabase.functions.invoke('generate-roof-report', {
