@@ -13,25 +13,37 @@ interface CanvassContact {
   sub_status_name?: string;
   email?: string;
   ho_name?: string;
+  rep_name?: string;
   address?: string;
   city?: string;
   state?: string;
   zipcode?: string;
   last_note?: string;
+  present_at_location?: string;
 }
 
-// Map status names to qualification_status
+// Map status names to qualification_status - handles all 12 canvassing statuses
 function mapStatus(statusName: string | undefined): string {
   if (!statusName) return 'new';
   const normalized = statusName.toLowerCase().trim();
   
+  // Check "not interested" first (before "interested")
+  if (normalized.includes('not interested')) return 'not_interested';
   if (normalized.includes('interested')) return 'qualified';
   if (normalized.includes('storm damage')) return 'storm_damage';
   if (normalized.includes('old roof')) return 'old_roof_marketing';
   if (normalized.includes('new roof')) return 'new_roof';
-  if (normalized.includes('not interested')) return 'not_interested';
   if (normalized.includes('no answer')) return 'no_answer';
   if (normalized.includes('not home')) return 'not_home';
+  
+  // NEW mappings for additional statuses
+  if (normalized.includes('go back')) return 'go_back';
+  if (normalized.includes('contract signed')) return 'contract_signed';
+  if (normalized.includes('unqualified')) return 'unqualified';
+  if (normalized.includes('not contacted')) return 'not_contacted';
+  if (normalized.includes('inspection needed')) return 'inspection_needed';
+  if (normalized.includes('already solar')) return 'already_solar';
+  
   return 'new';
 }
 
@@ -146,7 +158,20 @@ serve(async (req) => {
           }
 
           const { firstName, lastName } = parseName(contact.ho_name);
-          const assignedTo = contact.email ? profilesByEmail.get(contact.email.toLowerCase()) : null;
+          
+          // Try email first, then rep_name for assignment
+          let assignedTo = contact.email ? profilesByEmail.get(contact.email.toLowerCase()) : null;
+          if (!assignedTo && contact.rep_name) {
+            const repProfile = (profiles || []).find(p => 
+              `${p.first_name} ${p.last_name}`.toLowerCase() === contact.rep_name?.toLowerCase()
+            );
+            assignedTo = repProfile?.id || null;
+          }
+          
+          // Parse sub_status for priority
+          const subStatus = contact.sub_status_name?.toLowerCase() || '';
+          const priority = subStatus.includes('high') ? 'high' : 
+                          subStatus.includes('medium') ? 'medium' : null;
           
           // Parse date/time
           let createdAt = new Date().toISOString();
@@ -176,8 +201,11 @@ serve(async (req) => {
             metadata: {
               imported_from: 'canvass_excel',
               original_status: contact.status_name,
-              original_sub_status: contact.sub_status_name,
+              sub_status: contact.sub_status_name,
+              priority,
+              rep_name: contact.rep_name,
               canvasser_email: contact.email,
+              present_at_location: contact.present_at_location === 'Y',
               import_date: new Date().toISOString(),
             },
           });
