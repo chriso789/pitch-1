@@ -168,8 +168,22 @@ const ContactProfile = () => {
                   {contact.contact_number && (
                     <Badge variant="secondary" className="text-sm">#{contact.contact_number}</Badge>
                   )}
-                  <Badge variant="outline" className="text-sm">
-                    {contact.qualification_status || 'Unqualified'}
+                  <Badge 
+                    className={`text-sm ${
+                      contact.qualification_status === 'qualified' || contact.qualification_status === 'interested' 
+                        ? 'bg-success text-success-foreground' 
+                        : contact.qualification_status === 'storm_damage_marketing'
+                        ? 'bg-warning text-warning-foreground'
+                        : contact.qualification_status === 'old_roof_marketing'
+                        ? 'bg-primary text-primary-foreground'
+                        : contact.qualification_status === 'not_interested'
+                        ? 'bg-destructive text-destructive-foreground'
+                        : contact.qualification_status === 'follow_up'
+                        ? 'bg-yellow-500 text-white'
+                        : 'bg-muted text-muted-foreground'
+                    }`}
+                  >
+                    {contact.qualification_status?.replace(/_/g, ' ') || 'Unqualified'}
                   </Badge>
                 </div>
               </div>

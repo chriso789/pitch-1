@@ -432,21 +432,22 @@ const Dashboard = () => {
     <div className="space-y-4 md:space-y-6">
       {/* Header */}
       <div className="flex flex-col gap-3 md:gap-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            {activeCompany && (
-              <Badge variant="outline" className="text-xs font-medium">
-                <Building2 className="h-3 w-3 mr-1" />
-                {activeCompany.tenant_name}
-              </Badge>
-            )}
+        <div className="flex items-center justify-between w-full">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-bold gradient-primary bg-clip-text text-transparent">
+              {activeCompany?.tenant_name || 'PITCH'} Dashboard
+            </h1>
+            <p className="text-sm md:text-base text-muted-foreground">
+              Welcome back! Here's your roofing business overview.
+            </p>
           </div>
-          <h1 className="text-2xl md:text-3xl font-bold gradient-primary bg-clip-text text-transparent">
-            {activeCompany?.tenant_name || 'PITCH'} Dashboard
-          </h1>
-          <p className="text-sm md:text-base text-muted-foreground">
-            Welcome back! Here's your roofing business overview.
-          </p>
+          {activeCompany?.logo_url && (
+            <img 
+              src={activeCompany.logo_url} 
+              alt={activeCompany.tenant_name}
+              className="h-12 w-auto object-contain rounded-md"
+            />
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <DateRangePicker
