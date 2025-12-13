@@ -222,11 +222,18 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       // Get pipeline entry details
       const { data: pipelineEntry } = await supabaseClient
         .from('pipeline_entries')
-        .select('contact_id, contacts(first_name, last_name, address, city, state, zip_code)')
+        .select('contact_id, metadata, contacts(first_name, last_name, address, city, state, zip_code)')
         .eq('id', pipelineEntryId)
         .single();
 
       const contact = pipelineEntry?.contacts;
+      const metadata = (pipelineEntry?.metadata as any) || {};
+
+      // Try to pull roof area from comprehensive measurements in metadata
+      const roofAreaSqFt =
+        metadata?.comprehensive_measurements?.roof_area_sq_ft ??
+        metadata?.comprehensive_measurements?.total_area_sqft ??
+        0;
 
       // Generate estimate number
       const { count } = await supabaseClient
@@ -236,28 +243,55 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
       const estimateNumber = `EST-${String((count || 0) + 1).padStart(5, '0')}`;
 
-      // Create the estimate
+      const customerName = contact
+        ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim()
+        : '';
+
+      const customerAddressParts = [
+        contact?.address,
+        [contact?.city, contact?.state].filter(Boolean).join(', '),
+        contact?.zip_code
+      ].filter(Boolean);
+
+      const customerAddress = customerAddressParts.join(' \u2022 ');
+
+      const propertyDetails = {
+        address_line1: contact?.address || '',
+        city: contact?.city || '',
+        state: contact?.state || '',
+        zip_code: contact?.zip_code || '',
+        contact_id: pipelineEntry?.contact_id || null
+      };
+
+      // Create the estimate aligned with enhanced_estimates schema
       const { data: newEstimate, error: createError } = await supabaseClient
         .from('enhanced_estimates')
         .insert({
           tenant_id: tenantId,
           pipeline_entry_id: pipelineEntryId,
-          contact_id: pipelineEntry?.contact_id,
           estimate_number: estimateNumber,
           status: 'draft',
           template_id: selectedTemplateId,
-          customer_name: contact ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() : '',
-          property_address: contact?.address || '',
-          property_city: contact?.city || '',
-          property_state: contact?.state || '',
-          property_zip: contact?.zip_code || '',
+          customer_name: customerName,
+          customer_address: customerAddress,
+          property_details: propertyDetails,
+          roof_area_sq_ft: roofAreaSqFt,
           material_cost: calculation.materials,
+          material_total: calculation.materials,
           labor_cost: calculation.labor,
-          overhead_cost: calculation.overhead,
-          total_cost: calculation.cost_pre_profit,
+          labor_total: calculation.labor,
+          overhead_amount: calculation.overhead,
+          subtotal: calculation.cost_pre_profit,
           selling_price: calculation.sale_price,
-          profit_amount: calculation.profit,
-          profit_margin: calculation.sale_price > 0 ? (calculation.profit / calculation.sale_price) * 100 : 0,
+          actual_profit_amount: calculation.profit,
+          actual_profit_percent:
+            calculation.sale_price > 0
+              ? (calculation.profit / calculation.sale_price) * 100
+              : 0,
+          calculation_metadata: {
+            source: 'multi_template_selector',
+            selected_template_id: selectedTemplateId
+          },
           created_by: user.id
         })
         .select()
@@ -268,12 +302,13 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       // Update pipeline entry with estimate reference
       await supabaseClient
         .from('pipeline_entries')
-        .update({ 
+        .update({
           estimate_id: newEstimate.id,
           metadata: {
-            ...(pipelineEntry?.metadata || {}),
+            ...metadata,
             selected_template_id: selectedTemplateId,
-            estimate_created_at: new Date().toISOString()
+            estimate_created_at: new Date().toISOString(),
+            enhanced_estimate_id: newEstimate.id
           }
         })
         .eq('id', pipelineEntryId);
