@@ -264,16 +264,7 @@ export function RoofrStyleReportPreview({
                           alt="Satellite view of property" 
                           className="w-full h-full object-cover"
                         />
-                        <div className="absolute inset-0 flex items-center justify-center">
-                          <RoofDiagramRenderer 
-                            measurement={measurement}
-                            tags={tags || {}}
-                            width={500}
-                            height={300}
-                            showSatellite={true}
-                            satelliteImageUrl={satelliteImageUrl}
-                          />
-                        </div>
+                        {/* Clean satellite image without overlay on cover page */}
                       </div>
                     ) : (
                       <div className="w-full h-full flex items-center justify-center bg-slate-200 dark:bg-slate-700">
