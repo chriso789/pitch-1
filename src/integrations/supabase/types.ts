@@ -7909,6 +7909,80 @@ export type Database = {
         }
         Relationships: []
       }
+      manager_override_earnings: {
+        Row: {
+          commission_earning_id: string | null
+          contract_value: number
+          created_at: string | null
+          id: string
+          job_number: string | null
+          manager_id: string | null
+          override_amount: number
+          override_rate: number
+          sales_rep_id: string | null
+          status: string | null
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          commission_earning_id?: string | null
+          contract_value?: number
+          created_at?: string | null
+          id?: string
+          job_number?: string | null
+          manager_id?: string | null
+          override_amount?: number
+          override_rate?: number
+          sales_rep_id?: string | null
+          status?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          commission_earning_id?: string | null
+          contract_value?: number
+          created_at?: string | null
+          id?: string
+          job_number?: string | null
+          manager_id?: string | null
+          override_amount?: number
+          override_rate?: number
+          sales_rep_id?: string | null
+          status?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manager_override_earnings_commission_earning_id_fkey"
+            columns: ["commission_earning_id"]
+            isOneToOne: false
+            referencedRelation: "commission_earnings"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manager_override_earnings_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manager_override_earnings_sales_rep_id_fkey"
+            columns: ["sales_rep_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manager_override_earnings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       marketing_sessions: {
         Row: {
           analytics_consent: boolean | null
@@ -10954,6 +11028,7 @@ export type Database = {
           is_suspended: boolean | null
           last_name: string | null
           location_updated_at: string | null
+          manager_override_rate: number | null
           metadata: Json | null
           overhead_rate: number | null
           pay_structure_created_at: string | null
@@ -10963,6 +11038,7 @@ export type Database = {
           personal_overhead_rate: number | null
           phone: string | null
           photo_url: string | null
+          reports_to_manager_id: string | null
           role: Database["public"]["Enums"]["app_role"] | null
           suspended_at: string | null
           suspended_by: string | null
@@ -10991,6 +11067,7 @@ export type Database = {
           is_suspended?: boolean | null
           last_name?: string | null
           location_updated_at?: string | null
+          manager_override_rate?: number | null
           metadata?: Json | null
           overhead_rate?: number | null
           pay_structure_created_at?: string | null
@@ -11000,6 +11077,7 @@ export type Database = {
           personal_overhead_rate?: number | null
           phone?: string | null
           photo_url?: string | null
+          reports_to_manager_id?: string | null
           role?: Database["public"]["Enums"]["app_role"] | null
           suspended_at?: string | null
           suspended_by?: string | null
@@ -11028,6 +11106,7 @@ export type Database = {
           is_suspended?: boolean | null
           last_name?: string | null
           location_updated_at?: string | null
+          manager_override_rate?: number | null
           metadata?: Json | null
           overhead_rate?: number | null
           pay_structure_created_at?: string | null
@@ -11037,6 +11116,7 @@ export type Database = {
           personal_overhead_rate?: number | null
           phone?: string | null
           photo_url?: string | null
+          reports_to_manager_id?: string | null
           role?: Database["public"]["Enums"]["app_role"] | null
           suspended_at?: string | null
           suspended_by?: string | null
@@ -11056,6 +11136,13 @@ export type Database = {
           {
             foreignKeyName: "profiles_created_by_master_fkey"
             columns: ["created_by_master"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "profiles_reports_to_manager_id_fkey"
+            columns: ["reports_to_manager_id"]
             isOneToOne: false
             referencedRelation: "profiles"
             referencedColumns: ["id"]
