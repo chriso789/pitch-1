@@ -28,6 +28,233 @@ import { AddEstimateLineDialog } from './estimates/AddEstimateLineDialog';
 import { PullMeasurementsButton } from './measurements/PullMeasurementsButton';
 import { useLatestMeasurement } from '@/hooks/useMeasurement';
 import { useLivePricing } from '@/hooks/useLivePricing';
+import { useUserProfile } from '@/contexts/UserProfileContext';
+
+// LineItemRow component for rendering individual line items
+const LineItemRow: React.FC<{
+  item: LineItem;
+  index: number;
+  updateLineItem: (index: number, field: keyof LineItem, value: any) => void;
+  removeLineItem: (index: number) => void;
+  lineItemsCount: number;
+  isPriceStale: (lastUpdated?: string) => boolean;
+  formatLastUpdated: (lastUpdated?: string) => string;
+}> = ({ item, index, updateLineItem, removeLineItem, lineItemsCount, isPriceStale, formatLastUpdated }) => (
+  <div className="border rounded-lg p-4 space-y-3">
+    <div className="flex justify-between items-center">
+      <div className="flex items-center gap-2">
+        <span className="text-sm font-medium">{item.item_name || `New ${item.item_category}`}</span>
+        {item.last_price_updated && isPriceStale(item.last_price_updated) && (
+          <Badge variant="destructive" className="text-xs">
+            <AlertTriangle className="h-3 w-3 mr-1" />
+            Stale Price
+          </Badge>
+        )}
+      </div>
+      <div className="flex items-center gap-2">
+        {item.last_price_updated && (
+          <span className="text-xs text-muted-foreground">
+            Updated: {formatLastUpdated(item.last_price_updated)}
+          </span>
+        )}
+        {lineItemsCount > 1 && (
+          <Button
+            onClick={() => removeLineItem(index)}
+            size="sm"
+            variant="ghost"
+            className="text-red-500 hover:text-red-700"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        )}
+      </div>
+    </div>
+    
+    <div className="grid grid-cols-2 gap-3">
+      <div className="space-y-2">
+        <Label>Item Name</Label>
+        <Input
+          value={item.item_name}
+          onChange={(e) => updateLineItem(index, 'item_name', e.target.value)}
+          placeholder="Enter item name"
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Description</Label>
+        <Input
+          value={item.description}
+          onChange={(e) => updateLineItem(index, 'description', e.target.value)}
+          placeholder="Enter description"
+        />
+      </div>
+    </div>
+
+    <div className="grid grid-cols-4 gap-3">
+      <div className="space-y-2">
+        <Label>Quantity</Label>
+        <Input
+          type="number"
+          value={item.quantity}
+          onChange={(e) => updateLineItem(index, 'quantity', parseFloat(e.target.value) || 0)}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Unit Cost</Label>
+        <Input
+          type="number"
+          value={item.unit_cost}
+          onChange={(e) => updateLineItem(index, 'unit_cost', parseFloat(e.target.value) || 0)}
+        />
+      </div>
+      <div className="space-y-2">
+        <Label>Unit Type</Label>
+        <Select
+          value={item.unit_type}
+          onValueChange={(value) => updateLineItem(index, 'unit_type', value)}
+        >
+          <SelectTrigger>
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="each">Each</SelectItem>
+            <SelectItem value="square">Square</SelectItem>
+            <SelectItem value="bundle">Bundle</SelectItem>
+            <SelectItem value="linear_ft">Linear Ft</SelectItem>
+            <SelectItem value="hour">Hour</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="space-y-2">
+        <Label>Markup %</Label>
+        <Input
+          type="number"
+          value={item.markup_percent}
+          onChange={(e) => updateLineItem(index, 'markup_percent', parseFloat(e.target.value) || 0)}
+        />
+      </div>
+    </div>
+  </div>
+);
+
+// PreCapCommissionCard - Auto-calculates commission based on logged-in user's profile settings
+const PreCapCommissionCard: React.FC<{
+  calculationResults: any;
+  formatCurrency: (amount: number) => string;
+}> = ({ calculationResults, formatCurrency }) => {
+  const { profile } = useUserProfile();
+  const [commissionSettings, setCommissionSettings] = useState<{
+    commission_rate: number;
+    commission_structure: string;
+    personal_overhead_rate: number;
+  } | null>(null);
+
+  useEffect(() => {
+    const fetchCommissionSettings = async () => {
+      if (!profile?.id) return;
+      
+      const { data } = await supabase
+        .from('profiles')
+        .select('commission_rate, commission_structure, personal_overhead_rate')
+        .eq('id', profile.id)
+        .single();
+      
+      if (data) {
+        setCommissionSettings({
+          commission_rate: data.commission_rate || 50,
+          commission_structure: data.commission_structure || 'profit_split',
+          personal_overhead_rate: data.personal_overhead_rate || 10
+        });
+      }
+    };
+    
+    fetchCommissionSettings();
+  }, [profile?.id]);
+
+  // Calculate commission based on user's settings
+  const calculateCommission = () => {
+    if (!calculationResults || !commissionSettings) return { netProfit: 0, commission: 0 };
+    
+    const sellingPrice = calculationResults.selling_price || 0;
+    const materialCost = calculationResults.material_cost || 0;
+    const laborCost = calculationResults.labor_cost || 0;
+    const grossProfit = sellingPrice - materialCost - laborCost;
+    
+    // Calculate rep overhead as % of selling price
+    const repOverhead = sellingPrice * (commissionSettings.personal_overhead_rate / 100);
+    const netProfit = grossProfit - repOverhead;
+    
+    // Calculate commission based on structure
+    let commission = 0;
+    if (commissionSettings.commission_structure === 'profit_split') {
+      commission = netProfit * (commissionSettings.commission_rate / 100);
+    } else {
+      // percent_of_sale
+      commission = sellingPrice * (commissionSettings.commission_rate / 100);
+    }
+    
+    return { netProfit: Math.max(0, netProfit), commission: Math.max(0, commission), grossProfit };
+  };
+
+  const { netProfit, commission, grossProfit } = calculateCommission();
+  const structureLabel = commissionSettings?.commission_structure === 'profit_split' 
+    ? 'Profit Split' 
+    : 'Percent of Sale';
+
+  if (!commissionSettings) {
+    return (
+      <div className="p-4 bg-muted/30 rounded-lg border border-border">
+        <div className="flex items-center gap-2 text-muted-foreground">
+          <Loader2 className="h-4 w-4 animate-spin" />
+          Loading commission settings...
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 bg-gradient-to-br from-primary/5 to-primary/10 rounded-lg border border-primary/20">
+      <div className="flex items-center gap-2 mb-3">
+        <DollarSign className="h-5 w-5 text-primary" />
+        <span className="font-semibold text-sm">Your Pre-Cap Commission</span>
+      </div>
+      
+      <div className="space-y-2 text-sm">
+        <div className="flex justify-between items-center">
+          <span className="text-muted-foreground">Commission Type:</span>
+          <Badge variant="secondary">{structureLabel}</Badge>
+        </div>
+        <div className="flex justify-between items-center">
+          <span className="text-muted-foreground">Your Rate:</span>
+          <span className="font-semibold">{commissionSettings.commission_rate}%</span>
+        </div>
+        
+        {calculationResults && (
+          <>
+            <Separator className="my-2" />
+            <div className="flex justify-between items-center">
+              <span className="text-muted-foreground">Gross Profit:</span>
+              <span className="font-medium">{formatCurrency(grossProfit || 0)}</span>
+            </div>
+            {commissionSettings.commission_structure === 'profit_split' && (
+              <div className="flex justify-between items-center">
+                <span className="text-muted-foreground">Net Profit:</span>
+                <span className="font-medium">{formatCurrency(netProfit)}</span>
+              </div>
+            )}
+            <div className="flex justify-between items-center pt-2 border-t border-border">
+              <span className="font-semibold text-foreground">Your Commission:</span>
+              <span className="text-xl font-bold text-primary">{formatCurrency(commission)}</span>
+            </div>
+          </>
+        )}
+      </div>
+      
+      <p className="text-xs text-muted-foreground mt-3">
+        Based on your commission settings
+      </p>
+    </div>
+  );
+};
 
 interface LineItem {
   item_category: string;
@@ -764,9 +991,24 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
     }
   };
 
-  const addLineItem = () => {
-    setShowAddLineDialog(true);
-    if (editingEstimateId) setHasUnsavedChanges(true);
+  const addLineItem = (category?: string) => {
+    if (category) {
+      // Direct add with specified category
+      setLineItems(prev => [...prev, {
+        item_category: category,
+        item_name: '',
+        description: '',
+        quantity: 1,
+        unit_cost: 0,
+        unit_type: category === 'labor' ? 'hour' : 'each',
+        markup_percent: 25
+      }]);
+      if (editingEstimateId) setHasUnsavedChanges(true);
+    } else {
+      // Open dialog for selection
+      setShowAddLineDialog(true);
+      if (editingEstimateId) setHasUnsavedChanges(true);
+    }
   };
 
   const handleAddLineFromDialog = (line: any) => {
@@ -1538,7 +1780,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                       )}
                       Refresh Pricing
                     </Button>
-                    <Button onClick={addLineItem} size="sm" variant="outline">
+                    <Button onClick={() => addLineItem()} size="sm" variant="outline">
                       <Plus className="h-4 w-4 mr-2" />
                       Add Item
                     </Button>
@@ -1546,139 +1788,124 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                 </div>
               </CardHeader>
               <CardContent className="space-y-4">
-                {lineItems.map((item, index) => (
-                  <div key={index} className="border rounded-lg p-4 space-y-3">
-                    <div className="flex justify-between items-center">
-                      <div className="flex items-center gap-2">
-                        <span className="text-sm font-medium">Item {index + 1}</span>
-                        {item.last_price_updated && isPriceStale(item.last_price_updated) && (
-                          <Badge variant="destructive" className="text-xs">
-                            <AlertTriangle className="h-3 w-3 mr-1" />
-                            Stale Price
-                          </Badge>
-                        )}
+                {/* Materials Section */}
+                {lineItems.some(item => item.item_category === 'material') && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 pb-2 border-b border-border">
+                      <div className="h-5 w-5 rounded bg-blue-500/20 flex items-center justify-center">
+                        <span className="text-xs">📦</span>
                       </div>
-                      <div className="flex items-center gap-2">
-                        {item.last_price_updated && (
-                          <span className="text-xs text-muted-foreground">
-                            Updated: {formatLastUpdated(item.last_price_updated)}
-                          </span>
-                        )}
-                        {lineItems.length > 1 && (
-                          <Button
-                            onClick={() => removeLineItem(index)}
-                            size="sm"
-                            variant="ghost"
-                            className="text-red-500 hover:text-red-700"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
-                        )}
-                      </div>
+                      <span className="font-semibold text-sm">Materials</span>
+                      <Badge variant="secondary" className="ml-auto text-xs">
+                        {lineItems.filter(item => item.item_category === 'material').length} items
+                      </Badge>
                     </div>
-                    
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-2">
-                        <Label>Category</Label>
-                        <Select
-                          value={item.item_category}
-                          onValueChange={(value) => updateLineItem(index, 'item_category', value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="material">Material</SelectItem>
-                            <SelectItem value="labor">Labor</SelectItem>
-                            <SelectItem value="equipment">Equipment</SelectItem>
-                            <SelectItem value="other">Other</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Item Name</Label>
-                        <Input
-                          value={item.item_name}
-                          onChange={(e) => updateLineItem(index, 'item_name', e.target.value)}
+                    {lineItems.map((item, index) => (
+                      item.item_category === 'material' && (
+                        <LineItemRow 
+                          key={index} 
+                          item={item} 
+                          index={index}
+                          updateLineItem={updateLineItem}
+                          removeLineItem={removeLineItem}
+                          lineItemsCount={lineItems.length}
+                          isPriceStale={isPriceStale}
+                          formatLastUpdated={formatLastUpdated}
                         />
-                      </div>
-                    </div>
+                      )
+                    ))}
+                    <Button
+                      onClick={() => addLineItem('material')}
+                      size="sm"
+                      variant="ghost"
+                      className="w-full border-dashed border"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Material
+                    </Button>
+                  </div>
+                )}
 
-                    <div className="space-y-2">
-                      <Label>Description</Label>
-                      <Input
-                        value={item.description}
-                        onChange={(e) => updateLineItem(index, 'description', e.target.value)}
-                      />
+                {/* Labor Section */}
+                {lineItems.some(item => item.item_category === 'labor') && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 pb-2 border-b border-border">
+                      <div className="h-5 w-5 rounded bg-green-500/20 flex items-center justify-center">
+                        <span className="text-xs">👷</span>
+                      </div>
+                      <span className="font-semibold text-sm">Labor</span>
+                      <Badge variant="secondary" className="ml-auto text-xs">
+                        {lineItems.filter(item => item.item_category === 'labor').length} items
+                      </Badge>
                     </div>
+                    {lineItems.map((item, index) => (
+                      item.item_category === 'labor' && (
+                        <LineItemRow 
+                          key={index} 
+                          item={item} 
+                          index={index}
+                          updateLineItem={updateLineItem}
+                          removeLineItem={removeLineItem}
+                          lineItemsCount={lineItems.length}
+                          isPriceStale={isPriceStale}
+                          formatLastUpdated={formatLastUpdated}
+                        />
+                      )
+                    ))}
+                    <Button
+                      onClick={() => addLineItem('labor')}
+                      size="sm"
+                      variant="ghost"
+                      className="w-full border-dashed border"
+                    >
+                      <Plus className="h-4 w-4 mr-2" />
+                      Add Labor
+                    </Button>
+                  </div>
+                )}
 
-                    <div className="grid grid-cols-5 gap-3">
-                      <div className="space-y-2">
-                        <Label>SKU</Label>
-                        <Input
-                          value={item.sku || ''}
-                          onChange={(e) => updateLineItem(index, 'sku', e.target.value)}
-                          placeholder="ABC123"
+                {/* Other Items (equipment, other) */}
+                {lineItems.some(item => !['material', 'labor'].includes(item.item_category)) && (
+                  <div className="space-y-3">
+                    <div className="flex items-center gap-2 pb-2 border-b border-border">
+                      <div className="h-5 w-5 rounded bg-orange-500/20 flex items-center justify-center">
+                        <span className="text-xs">🔧</span>
+                      </div>
+                      <span className="font-semibold text-sm">Other</span>
+                    </div>
+                    {lineItems.map((item, index) => (
+                      !['material', 'labor'].includes(item.item_category) && (
+                        <LineItemRow 
+                          key={index} 
+                          item={item} 
+                          index={index}
+                          updateLineItem={updateLineItem}
+                          removeLineItem={removeLineItem}
+                          lineItemsCount={lineItems.length}
+                          isPriceStale={isPriceStale}
+                          formatLastUpdated={formatLastUpdated}
                         />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Quantity</Label>
-                        <Input
-                          type="number"
-                          value={item.quantity}
-                          onChange={(e) => updateLineItem(index, 'quantity', parseFloat(e.target.value) || 0)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <Label>Unit Cost</Label>
-                          {item.last_price_updated && (
-                            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                              <Clock className="h-3 w-3" />
-                              {formatLastUpdated(item.last_price_updated)}
-                              {isPriceStale(item.last_price_updated) && (
-                                <Badge variant="outline" className="ml-1 text-yellow-600 border-yellow-600">
-                                  <AlertTriangle className="h-3 w-3 mr-1" />
-                                  Stale
-                                </Badge>
-                              )}
-                            </div>
-                          )}
-                        </div>
-                        <Input
-                          type="number"
-                          value={item.unit_cost}
-                          onChange={(e) => updateLineItem(index, 'unit_cost', parseFloat(e.target.value) || 0)}
-                        />
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Unit Type</Label>
-                        <Select
-                          value={item.unit_type}
-                          onValueChange={(value) => updateLineItem(index, 'unit_type', value)}
-                        >
-                          <SelectTrigger>
-                            <SelectValue />
-                          </SelectTrigger>
-                          <SelectContent>
-                            <SelectItem value="each">Each</SelectItem>
-                            <SelectItem value="square">Square</SelectItem>
-                            <SelectItem value="linear_ft">Linear Ft</SelectItem>
-                            <SelectItem value="hour">Hour</SelectItem>
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label>Markup %</Label>
-                        <Input
-                          type="number"
-                          value={item.markup_percent}
-                          onChange={(e) => updateLineItem(index, 'markup_percent', parseFloat(e.target.value) || 0)}
-                        />
-                      </div>
+                      )
+                    ))}
+                  </div>
+                )}
+
+                {/* Show empty state if no items after template selection */}
+                {lineItems.length === 0 && (
+                  <div className="text-center py-8 text-muted-foreground">
+                    <p>No line items yet. Add materials or labor to build your estimate.</p>
+                    <div className="flex gap-2 justify-center mt-4">
+                      <Button onClick={() => addLineItem('material')} size="sm" variant="outline">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Material
+                      </Button>
+                      <Button onClick={() => addLineItem('labor')} size="sm" variant="outline">
+                        <Plus className="h-4 w-4 mr-2" />
+                        Add Labor
+                      </Button>
                     </div>
                   </div>
-                ))}
+                )}
               </CardContent>
             </Card>
           )}
@@ -1736,88 +1963,11 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                 <div className="text-xs text-muted-foreground">15% - 50%</div>
               </div>
 
-              {/* Commission Slider */}
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <Label className="text-sm font-medium">Sales Commission (% of Selling Price)</Label>
-                  <span className="text-sm font-bold text-accent">{excelConfig.commission_percent}%</span>
-                </div>
-                <Slider
-                  value={[excelConfig.commission_percent]}
-                  onValueChange={(value) => setExcelConfig(prev => ({ ...prev, commission_percent: value[0] }))}
-                  min={2}
-                  max={10}
-                  step={0.5}
-                  className="w-full"
-                />
-                <div className="text-xs text-muted-foreground">2% - 10%</div>
-                
-                {/* Commission Split Preview */}
-                {(salesRepId || secondaryRepIds.length > 0) && (
-                  <div className="mt-3 p-3 bg-muted/50 rounded-lg border border-border/50">
-                    <div className="text-xs font-medium text-muted-foreground mb-2">Commission Split Preview</div>
-                    {(() => {
-                      const totalReps = (salesRepId ? 1 : 0) + secondaryRepIds.length;
-                      const commissionPerRep = totalReps > 0 ? excelConfig.commission_percent / totalReps : 0;
-                      const totalCommissionAmount = calculationResults?.sales_rep_commission_amount || 0;
-                      const amountPerRep = totalReps > 0 ? totalCommissionAmount / totalReps : 0;
-                      
-                      return (
-                        <div className="space-y-1.5">
-                          {salesRepId && selectedSalesRep && (
-                            <div className="flex justify-between items-center text-xs">
-                              <span className="text-foreground font-medium">
-                                {selectedSalesRep.first_name} {selectedSalesRep.last_name}
-                                <span className="text-primary ml-1">(Primary)</span>
-                              </span>
-                              <span className="font-semibold text-accent">
-                                {commissionPerRep.toFixed(1)}%
-                                {totalCommissionAmount > 0 && (
-                                  <span className="text-muted-foreground ml-1">
-                                    ({formatCurrency(amountPerRep)})
-                                  </span>
-                                )}
-                              </span>
-                            </div>
-                          )}
-                          {secondaryRepIds.map((repId, index) => {
-                            const rep = salesReps.find((r: any) => r.id === repId);
-                            return rep ? (
-                              <div key={repId} className="flex justify-between items-center text-xs">
-                                <span className="text-foreground font-medium">
-                                  {rep.first_name} {rep.last_name}
-                                  <span className="text-muted-foreground ml-1">(Secondary)</span>
-                                </span>
-                                <span className="font-semibold text-accent">
-                                  {commissionPerRep.toFixed(1)}%
-                                  {totalCommissionAmount > 0 && (
-                                    <span className="text-muted-foreground ml-1">
-                                      ({formatCurrency(amountPerRep)})
-                                    </span>
-                                  )}
-                                </span>
-                              </div>
-                            ) : null;
-                          })}
-                          {totalReps > 1 && (
-                            <div className="pt-1.5 mt-1.5 border-t border-border/50 flex justify-between items-center text-xs font-semibold">
-                              <span className="text-foreground">Total ({totalReps} reps)</span>
-                              <span className="text-primary">
-                                {excelConfig.commission_percent}%
-                                {totalCommissionAmount > 0 && (
-                                  <span className="text-muted-foreground ml-1">
-                                    ({formatCurrency(totalCommissionAmount)})
-                                  </span>
-                                )}
-                              </span>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-                  </div>
-                )}
-              </div>
+              {/* Your Pre-Cap Commission - Auto-calculated from logged-in user's profile */}
+              <PreCapCommissionCard 
+                calculationResults={calculationResults}
+                formatCurrency={formatCurrency}
+              />
 
               <Button 
                 onClick={calculateEstimate} 

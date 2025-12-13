@@ -425,11 +425,8 @@ export function PullMeasurementsButton({
   };
 
   const handleOpenManualTool = () => {
-    const params = new URLSearchParams();
-    if (lat) params.set('lat', lat.toString());
-    if (lng) params.set('lng', lng.toString());
-    if (address) params.set('address', address);
-    navigate(`/roof-measure/${propertyId}?${params.toString()}`);
+    // Navigate to professional measurement page for manual verification/drawing
+    navigate(`/professional-measurement/${propertyId}`);
   };
 
   // Handle structure selection from PIN map - immediately run AI analysis
