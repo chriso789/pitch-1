@@ -6913,6 +6913,66 @@ export type Database = {
           },
         ]
       }
+      inbound_messages: {
+        Row: {
+          body: string | null
+          contact_id: string | null
+          created_at: string | null
+          from_address: string
+          id: string
+          message_type: string
+          metadata: Json | null
+          provider: string | null
+          provider_message_id: string | null
+          received_at: string | null
+          tenant_id: string | null
+          to_address: string | null
+        }
+        Insert: {
+          body?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          from_address: string
+          id?: string
+          message_type: string
+          metadata?: Json | null
+          provider?: string | null
+          provider_message_id?: string | null
+          received_at?: string | null
+          tenant_id?: string | null
+          to_address?: string | null
+        }
+        Update: {
+          body?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          from_address?: string
+          id?: string
+          message_type?: string
+          metadata?: Json | null
+          provider?: string | null
+          provider_message_id?: string | null
+          received_at?: string | null
+          tenant_id?: string | null
+          to_address?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "inbound_messages_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "inbound_messages_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       industry_patents: {
         Row: {
           abstract: string | null
@@ -8454,6 +8514,44 @@ export type Database = {
         }
         Relationships: []
       }
+      messaging_providers: {
+        Row: {
+          config: Json | null
+          created_at: string | null
+          id: string
+          is_active: boolean | null
+          provider_type: string
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          config?: Json | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          provider_type: string
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          config?: Json | null
+          created_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          provider_type?: string
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "messaging_providers_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notification_executions: {
         Row: {
           automation_rule_id: string | null
@@ -8986,6 +9084,57 @@ export type Database = {
           video_type?: string
         }
         Relationships: []
+      }
+      opt_outs: {
+        Row: {
+          channel: string
+          contact_id: string | null
+          created_at: string | null
+          email: string | null
+          id: string
+          phone: string | null
+          reason: string | null
+          source: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          channel: string
+          contact_id?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          phone?: string | null
+          reason?: string | null
+          source?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          channel?: string
+          contact_id?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          phone?: string | null
+          reason?: string | null
+          source?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "opt_outs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opt_outs_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       outbox_events: {
         Row: {
@@ -18262,6 +18411,15 @@ export type Database = {
           target_lat: number
           target_lng: number
           user_location: Json
+        }
+        Returns: boolean
+      }
+      check_opt_out: {
+        Args: {
+          p_channel: string
+          p_email?: string
+          p_phone?: string
+          p_tenant_id: string
         }
         Returns: boolean
       }
