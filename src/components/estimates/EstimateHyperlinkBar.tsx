@@ -157,18 +157,49 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       const { data: { session } } = await supabase.auth.getSession();
       if (!session) throw new Error('No session');
 
-      const response = await supabase.functions.invoke('enhanced-roof-measurement', {
+      // Get property coordinates from pipeline entry
+      const { data: pipelineEntry, error: entryError } = await supabase
+        .from('pipeline_entries')
+        .select('id, contacts(latitude, longitude, address_street, address_city, address_state, address_zip, verified_address)')
+        .eq('id', pipelineEntryId)
+        .single();
+
+      if (entryError || !pipelineEntry) {
+        throw new Error('Failed to fetch pipeline entry');
+      }
+
+      const contact = pipelineEntry.contacts as any;
+      const verifiedAddress = contact?.verified_address as any;
+      
+      // Get coordinates - prefer verified address, fall back to contact coordinates
+      const lat = verifiedAddress?.geometry?.location?.lat || contact?.latitude;
+      const lng = verifiedAddress?.geometry?.location?.lng || contact?.longitude;
+      
+      if (!lat || !lng) {
+        throw new Error('No coordinates available. Please verify the property address first.');
+      }
+
+      const address = verifiedAddress?.formatted_address || 
+        `${contact?.address_street || ''}, ${contact?.address_city || ''}, ${contact?.address_state || ''} ${contact?.address_zip || ''}`.trim();
+
+      // Use the existing measure function with 'pull' action
+      const response = await supabase.functions.invoke('measure', {
         body: { 
-          pipeline_entry_id: pipelineEntryId,
-          pitch: "8/12" // Default pitch, can be made configurable
+          action: 'pull',
+          propertyId: pipelineEntryId,
+          lat,
+          lng,
+          address
         }
       });
 
       if (response.error) throw response.error;
+      if (!response.data?.ok) throw new Error(response.data?.error || 'Measurement failed');
 
+      const source = response.data?.data?.measurement?.source || 'satellite';
       toast({
         title: "Measurements Updated",
-        description: `Source: ${response.data.data_source} (${Math.round(response.data.confidence_score * 100)}% confidence)`,
+        description: `Source: ${source}`,
       });
 
       // Refresh the hyperlink data
