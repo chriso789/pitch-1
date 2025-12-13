@@ -63,7 +63,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
   const fetchTemplates = async (): Promise<void> => {
     try {
-      const result = await supabaseClient.from('templates').select('*').eq('active', true);
+      const result = await supabaseClient.from('estimate_calculation_templates').select('*').eq('is_active', true);
 
       if (result.error) throw result.error;
       
