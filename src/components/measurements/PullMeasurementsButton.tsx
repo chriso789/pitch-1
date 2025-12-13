@@ -6,10 +6,10 @@ import { useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Loader2, CheckCircle2, Pencil, Crosshair } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
-import { MeasurementVerificationDialog } from './MeasurementVerificationDialog';
 import { useImageCache } from '@/contexts/ImageCacheContext';
 import { StructureSelectionMap } from './StructureSelectionMap';
 import { useMeasurementCoordinates } from '@/hooks/useMeasurementCoordinates';
+import { RoofrStyleReportPreview } from './RoofrStyleReportPreview';
 
 // Pitch multipliers for area adjustment
 const PITCH_MULTIPLIERS: Record<string, number> = {
@@ -149,7 +149,14 @@ export function PullMeasurementsButton({
     satelliteImageUrl?: string;
     finalCoords?: { lat: number; lng: number };
   } | null>(null);
-  const [showVerificationDialog, setShowVerificationDialog] = useState(false);
+  const [showReportPreview, setShowReportPreview] = useState(false);
+  const [companyInfo, setCompanyInfo] = useState<{
+    name: string;
+    logo?: string;
+    phone?: string;
+    email?: string;
+    license?: string;
+  } | null>(null);
   
   // Use unified coordinate hook for single source of truth
   const { 
@@ -312,12 +319,40 @@ export function PullMeasurementsButton({
         }
       }
 
-      // Store final coords for verification dialog
+      // Store final coords for report preview
       const finalCoords = { lat: pullLat, lng: pullLng };
 
-      // Show verification dialog
+      // Fetch company info for report branding
+      const { data: { user: currentUser } } = await supabase.auth.getUser();
+      if (currentUser) {
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('tenant_id')
+          .eq('id', currentUser.id)
+          .single();
+        
+        if (profileData?.tenant_id) {
+          const { data: tenantData } = await supabase
+            .from('tenants')
+            .select('name, logo_url, phone, email, license_number')
+            .eq('id', profileData.tenant_id)
+            .single();
+          
+          if (tenantData) {
+            setCompanyInfo({
+              name: tenantData.name,
+              logo: tenantData.logo_url || undefined,
+              phone: tenantData.phone || undefined,
+              email: tenantData.email || undefined,
+              license: tenantData.license_number || undefined,
+            });
+          }
+        }
+      }
+
+      // Show full report preview (instead of verification dialog)
       setVerificationData({ measurement, tags, satelliteImageUrl, finalCoords });
-      setShowVerificationDialog(true);
+      setShowReportPreview(true);
       
       // Show confidence-based toast
       const confidenceScore = data.data?.confidence?.score || 0;
@@ -414,14 +449,45 @@ export function PullMeasurementsButton({
     setTimeout(() => setSuccess(false), 3000);
   };
 
-  const handleRejectMeasurements = () => {
-    setVerificationData(null);
-    setShowVerificationDialog(false);
-    toast({
-      title: "Measurements Rejected",
-      description: "Pull measurements again or enter manually",
-      variant: "destructive"
-    });
+  // Handle report generated - save to documents
+  const handleReportGenerated = async (reportUrl: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', user?.id || '')
+        .single();
+      
+      const filename = `Roof_Measurement_Report_${new Date().toISOString().split('T')[0]}.pdf`;
+      
+      await supabase.from('documents').insert({
+        tenant_id: profile?.tenant_id,
+        pipeline_entry_id: propertyId,
+        document_type: 'measurement_report',
+        filename,
+        file_path: reportUrl,
+        uploaded_by: user?.id,
+        description: `Roof Measurement Report for ${address || 'Property'}`,
+      });
+
+      toast({
+        title: "Report Saved",
+        description: "Measurement report saved to documents",
+      });
+    } catch (error) {
+      console.error('Failed to save report to documents:', error);
+    }
+  };
+
+  const handleCloseReport = () => {
+    setShowReportPreview(false);
+    // Trigger success callback with the measurements
+    if (verificationData) {
+      onSuccess?.(verificationData.measurement, verificationData.tags);
+      setSuccess(true);
+      setTimeout(() => setSuccess(false), 3000);
+    }
   };
 
   const handleOpenManualTool = () => {
@@ -501,25 +567,23 @@ export function PullMeasurementsButton({
         onLocationConfirmed={handleStructureConfirmed}
       />
 
-      {/* Verification Dialog */}
+      {/* Full Report Preview - auto-opens after AI analysis */}
       {verificationData && (
-        <MeasurementVerificationDialog
-          open={showVerificationDialog}
+        <RoofrStyleReportPreview
+          open={showReportPreview}
           onOpenChange={(open) => {
-            setShowVerificationDialog(open);
             if (!open) {
-              // Clear verification data when dialog is closed
-              setVerificationData(null);
+              handleCloseReport();
             }
           }}
+          measurementId={verificationData.measurement?.id}
           measurement={verificationData.measurement}
           tags={verificationData.tags}
-          satelliteImageUrl={verificationData.satelliteImageUrl}
-          centerLat={verificationData.finalCoords?.lat || lat}
-          centerLng={verificationData.finalCoords?.lng || lng}
+          address={address || 'Property'}
           pipelineEntryId={propertyId}
-          onAccept={handleAcceptMeasurements}
-          onReject={handleRejectMeasurements}
+          satelliteImageUrl={verificationData.satelliteImageUrl}
+          companyInfo={companyInfo || { name: 'PITCH CRM' }}
+          onReportGenerated={handleReportGenerated}
         />
       )}
     </>
