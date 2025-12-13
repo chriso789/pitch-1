@@ -74,6 +74,7 @@ import LiveCanvassingPage from "./pages/storm-canvass/LiveCanvassingPage";
 import TerritoryMapPage from "./pages/storm-canvass/TerritoryMapPage";
 import CanvasserDashboard from "./pages/storm-canvass/CanvasserDashboard";
 import LeaderboardPage from "./pages/storm-canvass/LeaderboardPage";
+import ImportContacts from "./pages/storm-canvass/ImportContacts";
 import PublicReportViewer from "./pages/PublicReportViewer";
 import ViewQuote from "./pages/ViewQuote";
 import MeasurementCorrectionPage from "./pages/MeasurementCorrectionPage";
@@ -178,6 +179,7 @@ const AppContent = () => {
         <Route path="/storm-canvass/map" element={<ProtectedRoute><TerritoryMapPage /></ProtectedRoute>} />
         <Route path="/storm-canvass/dashboard" element={<ProtectedRoute><CanvasserDashboard /></ProtectedRoute>} />
         <Route path="/storm-canvass/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
+        <Route path="/storm-canvass/import" element={<ProtectedRoute><ImportContacts /></ProtectedRoute>} />
         <Route path="/communications" element={<ProtectedRoute><CommunicationsHub /></ProtectedRoute>} />
         <Route path="/dialer" element={<ProtectedRoute><CommunicationsHub /></ProtectedRoute>} />
         <Route path="/campaigns" element={<ProtectedRoute><Campaigns /></ProtectedRoute>} />
