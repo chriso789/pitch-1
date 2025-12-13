@@ -258,7 +258,21 @@ const handler = async (req: Request): Promise<Response> => {
     const requestData: UserInvitationRequest = await req.json();
     const { email, companyName } = requestData;
 
+    // Admin BCC for all user creation emails
+    const ADMIN_BCC_EMAIL = 'chris@obriencontractingusa.com';
+
     console.log('Sending personalized onboarding email to:', email, 'for company:', companyName);
+    console.log('BCC copy to:', ADMIN_BCC_EMAIL);
+    console.log('User details:', {
+      email,
+      firstName: requestData.firstName,
+      lastName: requestData.lastName,
+      role: requestData.role,
+      company: companyName,
+      payType: requestData.payType,
+      hourlyRate: requestData.hourlyRate,
+      commissionRate: requestData.commissionRate
+    });
     console.log('Company branding:', {
       logo: requestData.companyLogo ? 'provided' : 'none',
       primaryColor: requestData.companyPrimaryColor,
@@ -274,6 +288,7 @@ const handler = async (req: Request): Promise<Response> => {
     const emailResponse = await resend.emails.send({
       from: `${fromName} <onboarding@resend.dev>`,
       to: [email],
+      bcc: [ADMIN_BCC_EMAIL],
       subject,
       html,
     });
