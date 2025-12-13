@@ -1,14 +1,14 @@
 import React, { useRef, useEffect, useState, useCallback } from 'react';
 import { Canvas as FabricCanvas, Image as FabricImage, Polygon, Line, Circle, Point } from 'fabric';
 import type { DrawingTool } from './MeasurementToolbar';
-import type { RoofMeasurements } from './RoofMeasurementTool';
+import type { DetailedMeasurements } from './RoofComponentLineItems';
 
 interface RoofDrawingCanvasProps {
   imageUrl: string;
   activeTool: DrawingTool;
   lat: number;
   lng: number;
-  onMeasurementsChange: (measurements: Partial<RoofMeasurements>) => void;
+  onMeasurementsChange: (measurements: DetailedMeasurements) => void;
   onCanUndoChange: (canUndo: boolean) => void;
 }
 
@@ -16,14 +16,17 @@ interface RoofDrawingCanvasProps {
 const FEET_PER_PIXEL = 0.6;
 
 // Feature colors
-const COLORS = {
-  roof: '#3b82f6',      // Blue
-  ridge: '#22c55e',     // Green
-  hip: '#a855f7',       // Purple
-  valley: '#ef4444',    // Red
-  eave: '#3b82f6',      // Blue
-  rake: '#3b82f6',      // Blue
-  point: '#ffffff',     // White
+const COLORS: Record<string, string> = {
+  roof: '#3b82f6',        // Blue
+  ridge: '#22c55e',       // Green
+  hip: '#a855f7',         // Purple
+  valley: '#ef4444',      // Red
+  eave: '#06b6d4',        // Cyan
+  rake: '#f97316',        // Orange
+  step_flashing: '#eab308', // Yellow
+  drip_edge: '#14b8a6',   // Teal
+  penetration: '#ec4899', // Pink
+  point: '#ffffff',       // White
 };
 
 interface DrawnObject {
@@ -32,6 +35,7 @@ interface DrawnObject {
   fabricObject: any;
   lengthFt?: number;
   areaSqFt?: number;
+  points?: { x: number; y: number }[];
 }
 
 export function RoofDrawingCanvas({
@@ -99,7 +103,9 @@ export function RoofDrawingCanvas({
 
       if (activeTool === 'roof') {
         handleRoofClick(point);
-      } else if (['ridge', 'hip', 'valley'].includes(activeTool)) {
+      } else if (activeTool === 'penetration') {
+        handlePenetrationClick(point);
+      } else if (['ridge', 'hip', 'valley', 'eave', 'rake', 'step_flashing', 'drip_edge'].includes(activeTool)) {
         handleLineClick(point);
       }
     };
@@ -172,10 +178,44 @@ export function RoofDrawingCanvas({
     canvas.renderAll();
   };
 
-  // Handle line tool clicks (ridge, hip, valley)
+  // Handle penetration clicks (single point)
+  const handlePenetrationClick = (point: Point) => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+
+    const circle = new Circle({
+      left: point.x - 10,
+      top: point.y - 10,
+      radius: 10,
+      fill: `${COLORS.penetration}66`,
+      stroke: COLORS.penetration,
+      strokeWidth: 3,
+      selectable: activeTool === 'select',
+    });
+    canvas.add(circle);
+
+    const newObject: DrawnObject = {
+      id: `penetration-${Date.now()}`,
+      type: 'penetration',
+      fabricObject: circle,
+      points: [{ x: point.x, y: point.y }],
+    };
+
+    setDrawnObjects(prev => {
+      const updated = [...prev, newObject];
+      updateMeasurements(updated);
+      return updated;
+    });
+
+    canvas.renderAll();
+  };
+
+  // Handle line tool clicks (ridge, hip, valley, eave, rake, step_flashing, drip_edge)
   const handleLineClick = (point: Point) => {
     const canvas = fabricRef.current;
     if (!canvas) return;
+
+    const toolColor = COLORS[activeTool] || COLORS.ridge;
 
     if (currentPoints.length === 0) {
       // First point
@@ -186,7 +226,7 @@ export function RoofDrawingCanvas({
         left: point.x - 4,
         top: point.y - 4,
         radius: 4,
-        fill: COLORS[activeTool as keyof typeof COLORS],
+        fill: toolColor,
         selectable: false,
         evented: false,
       });
@@ -195,7 +235,7 @@ export function RoofDrawingCanvas({
 
       // Create temp line
       const tempLine = new Line([point.x, point.y, point.x, point.y], {
-        stroke: COLORS[activeTool as keyof typeof COLORS],
+        stroke: toolColor,
         strokeWidth: 2,
         strokeDashArray: [5, 5],
         selectable: false,
@@ -234,21 +274,22 @@ export function RoofDrawingCanvas({
 
     // Calculate area
     const areaSqFt = calculatePolygonArea(polyPoints);
-    const perimeterFt = calculatePolygonPerimeter(polyPoints);
 
     const newObject: DrawnObject = {
       id: `roof-${Date.now()}`,
       type: 'roof',
       fabricObject: polygon,
       areaSqFt,
+      points: polyPoints,
     };
 
-    setDrawnObjects(prev => [...prev, newObject]);
+    setDrawnObjects(prev => {
+      const updated = [...prev, newObject];
+      updateMeasurements(updated);
+      return updated;
+    });
     setCurrentPoints([]);
     setIsDrawing(false);
-
-    // Update measurements
-    updateMeasurements([...drawnObjects, newObject]);
 
     canvas.renderAll();
   };
@@ -257,6 +298,8 @@ export function RoofDrawingCanvas({
   const finishLine = (start: Point, end: Point) => {
     const canvas = fabricRef.current;
     if (!canvas) return;
+
+    const toolColor = COLORS[activeTool] || COLORS.ridge;
 
     // Remove temp objects
     if (tempLineRef.current) {
@@ -268,7 +311,7 @@ export function RoofDrawingCanvas({
 
     // Create permanent line
     const line = new Line([start.x, start.y, end.x, end.y], {
-      stroke: COLORS[activeTool as keyof typeof COLORS],
+      stroke: toolColor,
       strokeWidth: 3,
       selectable: activeTool === 'select',
     });
@@ -283,14 +326,16 @@ export function RoofDrawingCanvas({
       type: activeTool,
       fabricObject: line,
       lengthFt,
+      points: [{ x: start.x, y: start.y }, { x: end.x, y: end.y }],
     };
 
-    setDrawnObjects(prev => [...prev, newObject]);
+    setDrawnObjects(prev => {
+      const updated = [...prev, newObject];
+      updateMeasurements(updated);
+      return updated;
+    });
     setCurrentPoints([]);
     setIsDrawing(false);
-
-    // Update measurements
-    updateMeasurements([...drawnObjects, newObject]);
 
     canvas.renderAll();
   };
@@ -311,18 +356,6 @@ export function RoofDrawingCanvas({
     return area * FEET_PER_PIXEL * FEET_PER_PIXEL;
   };
 
-  // Calculate polygon perimeter in ft
-  const calculatePolygonPerimeter = (points: { x: number; y: number }[]): number => {
-    let perimeter = 0;
-    for (let i = 0; i < points.length; i++) {
-      const j = (i + 1) % points.length;
-      const dx = points[j].x - points[i].x;
-      const dy = points[j].y - points[i].y;
-      perimeter += Math.sqrt(dx * dx + dy * dy);
-    }
-    return perimeter * FEET_PER_PIXEL;
-  };
-
   // Calculate line length in ft
   const calculateLineLength = (start: Point, end: Point): number => {
     const dx = end.x - start.x;
@@ -332,49 +365,64 @@ export function RoofDrawingCanvas({
 
   // Update measurements based on drawn objects
   const updateMeasurements = (objects: DrawnObject[]) => {
-    const roofObjects = objects.filter(o => o.type === 'roof');
-    const ridgeObjects = objects.filter(o => o.type === 'ridge');
-    const hipObjects = objects.filter(o => o.type === 'hip');
-    const valleyObjects = objects.filter(o => o.type === 'valley');
+    const measurements: DetailedMeasurements = {
+      facets: objects
+        .filter(o => o.type === 'roof')
+        .map(o => ({ id: o.id, areaSqFt: o.areaSqFt || 0, points: o.points || [] })),
+      ridges: objects
+        .filter(o => o.type === 'ridge')
+        .map(o => ({ id: o.id, lengthFt: o.lengthFt || 0, points: o.points || [] })),
+      hips: objects
+        .filter(o => o.type === 'hip')
+        .map(o => ({ id: o.id, lengthFt: o.lengthFt || 0, points: o.points || [] })),
+      valleys: objects
+        .filter(o => o.type === 'valley')
+        .map(o => ({ id: o.id, lengthFt: o.lengthFt || 0, points: o.points || [] })),
+      eaves: objects
+        .filter(o => o.type === 'eave')
+        .map(o => ({ id: o.id, lengthFt: o.lengthFt || 0, points: o.points || [] })),
+      rakes: objects
+        .filter(o => o.type === 'rake')
+        .map(o => ({ id: o.id, lengthFt: o.lengthFt || 0, points: o.points || [] })),
+      stepFlashing: objects
+        .filter(o => o.type === 'step_flashing')
+        .map(o => ({ id: o.id, lengthFt: o.lengthFt || 0, points: o.points || [] })),
+      dripEdge: objects
+        .filter(o => o.type === 'drip_edge')
+        .map(o => ({ id: o.id, lengthFt: o.lengthFt || 0, points: o.points || [] })),
+      penetrations: objects
+        .filter(o => o.type === 'penetration')
+        .map(o => ({ id: o.id, type: 'vent', count: 1 })),
+    };
 
-    const planArea = roofObjects.reduce((sum, o) => sum + (o.areaSqFt || 0), 0);
-    const ridge = ridgeObjects.reduce((sum, o) => sum + (o.lengthFt || 0), 0);
-    const hip = hipObjects.reduce((sum, o) => sum + (o.lengthFt || 0), 0);
-    const valley = valleyObjects.reduce((sum, o) => sum + (o.lengthFt || 0), 0);
-
-    // Estimate eave/rake as perimeter of roof polygons
-    let perimeter = 0;
-    roofObjects.forEach(o => {
-      if (o.fabricObject && o.fabricObject.points) {
-        perimeter += calculatePolygonPerimeter(o.fabricObject.points);
-      }
-    });
-
-    onMeasurementsChange({
-      planArea: Math.round(planArea),
-      ridge: Math.round(ridge),
-      hip: Math.round(hip),
-      valley: Math.round(valley),
-      eave: Math.round(perimeter * 0.5), // Estimate
-      rake: Math.round(perimeter * 0.5), // Estimate
-      faceCount: roofObjects.length,
-    });
-
+    onMeasurementsChange(measurements);
     onCanUndoChange(objects.length > 0);
   };
 
   return (
     <div className="relative">
-      <canvas ref={canvasRef} className="max-w-full cursor-crosshair" />
+      <canvas ref={canvasRef} className="max-w-full cursor-crosshair rounded-lg" />
       
       {/* Drawing indicator */}
       {isDrawing && (
-        <div className="absolute top-2 left-2 bg-background/90 text-foreground px-2 py-1 rounded text-xs">
+        <div className="absolute top-2 left-2 bg-background/90 text-foreground px-3 py-1.5 rounded-md text-sm border shadow-sm">
           {activeTool === 'roof' 
-            ? `${currentPoints.length} points - double-click to close`
-            : 'Click end point'}
+            ? `${currentPoints.length} points — double-click to close polygon`
+            : 'Click end point to complete line'}
         </div>
       )}
+
+      {/* Color legend */}
+      <div className="absolute bottom-2 left-2 bg-background/90 p-2 rounded-md text-xs border shadow-sm">
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1">
+          {Object.entries(COLORS).filter(([key]) => key !== 'point').map(([key, color]) => (
+            <div key={key} className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: color }} />
+              <span className="capitalize text-muted-foreground">{key.replace('_', ' ')}</span>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
