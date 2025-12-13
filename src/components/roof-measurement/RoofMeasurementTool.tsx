@@ -122,7 +122,8 @@ export function RoofMeasurementTool({
       if (functionError) throw functionError
       if (!data.success) throw new Error(data.error || 'Analysis failed')
 
-      setMeasurementData(data.data)
+      // Include measurementId in the state so generatePDF can access it
+      setMeasurementData({ ...data.data, measurementId: data.measurementId })
       
       if (onMeasurementComplete) {
         onMeasurementComplete(data.measurementId)
