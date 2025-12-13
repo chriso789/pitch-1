@@ -48,11 +48,12 @@ serve(async (req: Request) => {
   }
 
   try {
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      { auth: { autoRefreshToken: false, persistSession: false } }
-    );
+    const supabaseUrl = Deno.env.get("SUPABASE_URL") ?? "";
+    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "";
+    
+    const supabaseAdmin = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
 
     // Verify caller is master user
     const authHeader = req.headers.get("Authorization");
@@ -74,12 +75,6 @@ serve(async (req: Request) => {
     }
 
     // Check if user is master
-    const { data: callerProfile } = await supabaseAdmin
-      .from("profiles")
-      .select("id")
-      .eq("id", user.id)
-      .single();
-
     const { data: callerRole } = await supabaseAdmin
       .from("user_roles")
       .select("role")
@@ -95,6 +90,7 @@ serve(async (req: Request) => {
     }
 
     const results: { email: string; status: string; error?: string }[] = [];
+    const origin = req.headers.get("origin") || "https://pitch-1.lovable.app";
 
     for (const owner of OWNERS_TO_CREATE) {
       try {
@@ -142,7 +138,7 @@ serve(async (req: Request) => {
         const userId = newUser.user.id;
         console.log(`Created auth user: ${userId}`);
 
-        // Create profile
+        // Create profile with correct column name 'title' (not 'job_title')
         const { error: profileError } = await supabaseAdmin
           .from("profiles")
           .insert({
@@ -153,7 +149,7 @@ serve(async (req: Request) => {
             phone: owner.phone,
             tenant_id: owner.tenantId,
             active_tenant_id: owner.tenantId,
-            job_title: "Owner",
+            title: "Owner",
             pay_type: "commission"
           });
 
@@ -191,17 +187,66 @@ serve(async (req: Request) => {
           console.error(`Access error for ${owner.email}:`, accessError);
         }
 
+        // Fetch company branding for welcome email
+        const { data: companyData } = await supabaseAdmin
+          .from("tenants")
+          .select("name, logo_url, primary_color, secondary_color")
+          .eq("id", owner.tenantId)
+          .single();
+
         // Generate invite link for password setup
         const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
           type: "invite",
           email: owner.email,
           options: {
-            redirectTo: `${req.headers.get("origin") || "https://pitch-1.lovable.app"}/login`
+            redirectTo: `${origin}/login`
           }
         });
 
         if (linkError) {
           console.error(`Invite link error for ${owner.email}:`, linkError);
+        }
+
+        // Send personalized welcome email with company branding
+        if (linkData?.properties?.action_link) {
+          try {
+            const emailPayload = {
+              email: owner.email,
+              firstName: owner.firstName,
+              lastName: owner.lastName,
+              role: "owner",
+              companyName: companyData?.name || owner.companyName,
+              companyLogo: companyData?.logo_url || null,
+              companyPrimaryColor: companyData?.primary_color || "#1e3a5f",
+              companySecondaryColor: companyData?.secondary_color || "#3b82f6",
+              inviteLink: linkData.properties.action_link,
+              // Platform admin as the sender for owner invitations
+              ownerName: "Chris O'Brien",
+              ownerHeadshot: null,
+              ownerTitle: "Platform Administrator",
+              ownerEmail: "chrisobrien91@gmail.com"
+            };
+
+            console.log(`Sending welcome email to ${owner.email}...`);
+            
+            const emailResponse = await fetch(`${supabaseUrl}/functions/v1/send-user-invitation`, {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${serviceRoleKey}`,
+                "Content-Type": "application/json"
+              },
+              body: JSON.stringify(emailPayload)
+            });
+
+            if (!emailResponse.ok) {
+              const errorText = await emailResponse.text();
+              console.error(`Email send error for ${owner.email}:`, errorText);
+            } else {
+              console.log(`Welcome email sent to ${owner.email}`);
+            }
+          } catch (emailErr) {
+            console.error(`Email error for ${owner.email}:`, emailErr);
+          }
         }
 
         results.push({ 
