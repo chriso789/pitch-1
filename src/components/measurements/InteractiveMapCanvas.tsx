@@ -50,9 +50,11 @@ export function InteractiveMapCanvas({
   const [isMapLoaded, setIsMapLoaded] = useState(false);
   const [mode, setMode] = useState<'select' | 'draw'>('draw');
   const [mapStyle, setMapStyle] = useState<'satellite' | 'satellite-streets'>('satellite-streets');
-  const [currentZoom, setCurrentZoom] = useState(initialZoom);
+const [currentZoom, setCurrentZoom] = useState(initialZoom);
   const [pixelsPerFoot, setPixelsPerFoot] = useState(1);
+  const [lockedPixelsPerFoot, setLockedPixelsPerFoot] = useState<number | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
+  const [showZoomWarning, setShowZoomWarning] = useState(false);
 
   // Calculate pixels per foot based on zoom and latitude
   const calculatePixelsPerFoot = useCallback((zoom: number, lat: number) => {
@@ -60,6 +62,9 @@ export function InteractiveMapCanvas({
     const feetPerPixel = metersPerPixel * 3.28084;
     return 1 / feetPerPixel;
   }, []);
+
+  // Use locked scale when drawing to prevent mid-draw scale changes
+  const effectivePixelsPerFoot = lockedPixelsPerFoot ?? pixelsPerFoot;
 
   const {
     polygons,
@@ -75,11 +80,13 @@ export function InteractiveMapCanvas({
     getTotalArea,
     canUndo,
   } = useMeasurementDrawing({
-    pixelsPerFoot,
+    pixelsPerFoot: effectivePixelsPerFoot,
     snapThreshold: 15,
     onPolygonComplete: (polygon) => {
-      const area = calculatePolygonArea(polygon.points, pixelsPerFoot);
+      const area = calculatePolygonArea(polygon.points, effectivePixelsPerFoot);
       toast.success(`${polygon.label} completed: ${area.toFixed(0)} sq ft`);
+      // Unlock scale after polygon complete
+      setLockedPixelsPerFoot(null);
       updateMeasurements();
     },
   });
@@ -322,13 +329,22 @@ export function InteractiveMapCanvas({
   }, [polygons, pixelsPerFoot, getTotalArea, canvasSize, onMeasurementsChange]);
 
   const handleStartDrawing = () => {
+    // Lock pixelsPerFoot at drawing start to prevent mid-draw scale changes
+    setLockedPixelsPerFoot(pixelsPerFoot);
     setMode('draw');
     startDrawing();
     // Disable map drag when drawing
     if (mapRef.current) {
       mapRef.current.dragPan.disable();
     }
-    toast.info('Click to add corners. Double-click to close polygon.');
+    
+    // Show zoom warning if below recommended level
+    if (currentZoom < 19) {
+      setShowZoomWarning(true);
+      toast.warning(`Zoom level ${currentZoom.toFixed(1)} is below recommended (19+). Increase zoom for better accuracy.`);
+    } else {
+      toast.info('Click to add corners. Double-click to close polygon.');
+    }
   };
 
   const handleSelectMode = () => {
@@ -451,6 +467,25 @@ export function InteractiveMapCanvas({
         </div>
       </div>
 
+      {/* Zoom Warning Banner */}
+      {showZoomWarning && currentZoom < 19 && (
+        <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 bg-yellow-500/95 text-yellow-950 backdrop-blur rounded-lg px-4 py-2 shadow-lg flex items-center gap-2">
+          <ZoomIn className="h-4 w-4" />
+          <span className="text-sm font-medium">Zoom in for better accuracy (current: {currentZoom.toFixed(1)}, recommended: 19+)</span>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            className="h-6 px-2 text-yellow-950 hover:bg-yellow-600/50"
+            onClick={() => {
+              handleZoomIn();
+              if (currentZoom >= 18) setShowZoomWarning(false);
+            }}
+          >
+            Zoom In
+          </Button>
+        </div>
+      )}
+
       {/* Stats Panel */}
       <div className="absolute top-4 right-16 z-20 bg-background/95 backdrop-blur rounded-lg p-3 shadow-lg border">
         <div className="text-xs text-muted-foreground mb-1">Property</div>
@@ -466,9 +501,17 @@ export function InteractiveMapCanvas({
           </div>
         </div>
         <div className="mt-2 flex items-center gap-2">
-          <Badge variant="outline" className="text-xs">
-            Zoom: {currentZoom.toFixed(1)}
+          <Badge 
+            variant={currentZoom < 19 ? "destructive" : "outline"} 
+            className="text-xs"
+          >
+            Zoom: {currentZoom.toFixed(1)} {currentZoom < 19 ? '⚠️' : '✓'}
           </Badge>
+          {lockedPixelsPerFoot && (
+            <Badge variant="secondary" className="text-xs">
+              Scale Locked
+            </Badge>
+          )}
         </div>
       </div>
 
