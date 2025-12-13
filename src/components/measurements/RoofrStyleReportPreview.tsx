@@ -54,36 +54,71 @@ export function RoofrStyleReportPreview({
   // Debug: Log what data we're receiving
   console.log('📊 RoofrStyleReportPreview data:', { measurement, tags, satelliteImageUrl });
   
-  // Extract measurement data - check multiple sources
-  const totalArea = measurement?.summary?.total_area_sqft || 
+  // Calculate linear totals from WKT features if available
+  const calculateLinearFromWKT = () => {
+    const wktFeatures = measurement?.linear_features_wkt || [];
+    const totals: Record<string, number> = { eave: 0, rake: 0, hip: 0, valley: 0, ridge: 0 };
+    
+    if (wktFeatures.length > 0) {
+      wktFeatures.forEach((feature: any) => {
+        const type = feature.type?.toLowerCase();
+        if (type && totals.hasOwnProperty(type)) {
+          totals[type] += feature.length_ft || 0;
+        }
+      });
+    }
+    
+    return totals;
+  };
+  
+  const wktLinearTotals = calculateLinearFromWKT();
+  const hasWKTData = Object.values(wktLinearTotals).some(v => v > 0);
+  
+  // Extract measurement data - prioritize database columns over legacy fallbacks
+  const totalArea = measurement?.total_area_adjusted_sqft || 
+                    measurement?.total_area_flat_sqft ||
+                    measurement?.summary?.total_area_sqft || 
                     tags?.['roof.total_area'] || 
                     tags?.['roof.plan_area'] || 
                     measurement?.total_area_sqft || 0;
   const totalSquares = (totalArea / 100).toFixed(1);
-  const pitch = measurement?.summary?.pitch || 
-                measurement?.predominant_pitch || 
+  const pitch = measurement?.predominant_pitch || 
+                measurement?.summary?.pitch || 
                 tags?.['roof.pitch'] || '6/12';
-  const facetCount = measurement?.faces?.length || 
+  const facetCount = measurement?.facet_count || 
+                     measurement?.faces?.length || 
                      tags?.['roof.faces_count'] || 
                      measurement?.facetCount || 1;
   
-  // Linear features - check summary, tags, and direct measurement properties
-  const eaves = measurement?.summary?.eave_ft || 
-                tags?.['lf.eave'] || 
-                measurement?.linear_features?.eave || 0;
-  const rakes = measurement?.summary?.rake_ft || 
-                tags?.['lf.rake'] || 
-                measurement?.linear_features?.rake || 0;
-  const ridges = measurement?.summary?.ridge_ft || 
-                 tags?.['lf.ridge'] || 
-                 measurement?.linear_features?.ridge || 0;
-  const hips = measurement?.summary?.hip_ft || 
-               tags?.['lf.hip'] || 
-               measurement?.linear_features?.hip || 0;
-  const valleys = measurement?.summary?.valley_ft || 
-                  tags?.['lf.valley'] || 
-                  measurement?.linear_features?.valley || 0;
+  // Linear features - prioritize WKT-derived, then database columns, then legacy sources
+  const eaves = hasWKTData ? wktLinearTotals.eave : 
+                (measurement?.total_eave_length || 
+                 measurement?.summary?.eave_ft || 
+                 tags?.['lf.eave'] || 
+                 measurement?.linear_features?.eave || 0);
+  const rakes = hasWKTData ? wktLinearTotals.rake :
+                (measurement?.total_rake_length ||
+                 measurement?.summary?.rake_ft || 
+                 tags?.['lf.rake'] || 
+                 measurement?.linear_features?.rake || 0);
+  const ridges = hasWKTData ? wktLinearTotals.ridge :
+                 (measurement?.total_ridge_length ||
+                  measurement?.summary?.ridge_ft || 
+                  tags?.['lf.ridge'] || 
+                  measurement?.linear_features?.ridge || 0);
+  const hips = hasWKTData ? wktLinearTotals.hip :
+               (measurement?.total_hip_length ||
+                measurement?.summary?.hip_ft || 
+                tags?.['lf.hip'] || 
+                measurement?.linear_features?.hip || 0);
+  const valleys = hasWKTData ? wktLinearTotals.valley :
+                  (measurement?.total_valley_length ||
+                   measurement?.summary?.valley_ft || 
+                   tags?.['lf.valley'] || 
+                   measurement?.linear_features?.valley || 0);
   const stepFlashing = tags?.['lf.step'] || measurement?.linear_features?.step || 0;
+  
+  console.log('📐 Linear measurements:', { eaves, rakes, ridges, hips, valleys, hasWKTData });
   
   // Materials - calculate from actual measurements if tags missing
   const materials = {
