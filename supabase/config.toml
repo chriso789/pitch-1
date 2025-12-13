@@ -386,3 +386,12 @@ verify_jwt = true
 
 [functions.messaging-queue-processor]
 verify_jwt = false
+
+[functions.verify-email-domain]
+verify_jwt = true
+
+[functions.track-quote-view]
+verify_jwt = false
+
+[functions.send-quote-email]
+verify_jwt = true

@@ -3202,6 +3202,65 @@ export type Database = {
         }
         Relationships: []
       }
+      company_email_domains: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          domain: string
+          from_email: string
+          from_name: string
+          id: string
+          is_active: boolean | null
+          reply_to_email: string | null
+          resend_domain_id: string | null
+          tenant_id: string
+          updated_at: string | null
+          verification_status: string | null
+          verification_token: string | null
+          verified_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          domain: string
+          from_email: string
+          from_name: string
+          id?: string
+          is_active?: boolean | null
+          reply_to_email?: string | null
+          resend_domain_id?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          verification_status?: string | null
+          verification_token?: string | null
+          verified_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          domain?: string
+          from_email?: string
+          from_name?: string
+          id?: string
+          is_active?: boolean | null
+          reply_to_email?: string | null
+          resend_domain_id?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          verification_status?: string | null
+          verification_token?: string | null
+          verified_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_email_domains_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       company_onboarding_tokens: {
         Row: {
           created_at: string | null
@@ -12184,6 +12243,179 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      quote_tracking_links: {
+        Row: {
+          contact_id: string | null
+          created_at: string | null
+          estimate_id: string | null
+          expires_at: string | null
+          id: string
+          is_active: boolean | null
+          last_viewed_at: string | null
+          metadata: Json | null
+          pdf_url: string | null
+          pipeline_entry_id: string | null
+          proposal_id: string | null
+          recipient_email: string | null
+          recipient_name: string | null
+          sent_at: string | null
+          sent_by: string | null
+          tenant_id: string
+          token: string
+          token_hash: string
+          view_count: number | null
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string | null
+          estimate_id?: string | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_viewed_at?: string | null
+          metadata?: Json | null
+          pdf_url?: string | null
+          pipeline_entry_id?: string | null
+          proposal_id?: string | null
+          recipient_email?: string | null
+          recipient_name?: string | null
+          sent_at?: string | null
+          sent_by?: string | null
+          tenant_id: string
+          token: string
+          token_hash: string
+          view_count?: number | null
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string | null
+          estimate_id?: string | null
+          expires_at?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_viewed_at?: string | null
+          metadata?: Json | null
+          pdf_url?: string | null
+          pipeline_entry_id?: string | null
+          proposal_id?: string | null
+          recipient_email?: string | null
+          recipient_name?: string | null
+          sent_at?: string | null
+          sent_by?: string | null
+          tenant_id?: string
+          token?: string
+          token_hash?: string
+          view_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_tracking_links_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_tracking_links_estimate_id_fkey"
+            columns: ["estimate_id"]
+            isOneToOne: false
+            referencedRelation: "estimates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_tracking_links_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_tracking_links_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      quote_view_events: {
+        Row: {
+          duration_seconds: number | null
+          id: string
+          last_activity_at: string | null
+          metadata: Json | null
+          pages_viewed: number | null
+          scroll_depth_percent: number | null
+          session_id: string | null
+          tenant_id: string
+          tracking_link_id: string
+          viewed_at: string | null
+          viewer_browser: string | null
+          viewer_city: string | null
+          viewer_country: string | null
+          viewer_device: string | null
+          viewer_ip: string | null
+          viewer_os: string | null
+          viewer_region: string | null
+          viewer_user_agent: string | null
+        }
+        Insert: {
+          duration_seconds?: number | null
+          id?: string
+          last_activity_at?: string | null
+          metadata?: Json | null
+          pages_viewed?: number | null
+          scroll_depth_percent?: number | null
+          session_id?: string | null
+          tenant_id: string
+          tracking_link_id: string
+          viewed_at?: string | null
+          viewer_browser?: string | null
+          viewer_city?: string | null
+          viewer_country?: string | null
+          viewer_device?: string | null
+          viewer_ip?: string | null
+          viewer_os?: string | null
+          viewer_region?: string | null
+          viewer_user_agent?: string | null
+        }
+        Update: {
+          duration_seconds?: number | null
+          id?: string
+          last_activity_at?: string | null
+          metadata?: Json | null
+          pages_viewed?: number | null
+          scroll_depth_percent?: number | null
+          session_id?: string | null
+          tenant_id?: string
+          tracking_link_id?: string
+          viewed_at?: string | null
+          viewer_browser?: string | null
+          viewer_city?: string | null
+          viewer_country?: string | null
+          viewer_device?: string | null
+          viewer_ip?: string | null
+          viewer_os?: string | null
+          viewer_region?: string | null
+          viewer_user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "quote_view_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "quote_view_events_tracking_link_id_fkey"
+            columns: ["tracking_link_id"]
+            isOneToOne: false
+            referencedRelation: "quote_tracking_links"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       rate_limits: {
         Row: {
