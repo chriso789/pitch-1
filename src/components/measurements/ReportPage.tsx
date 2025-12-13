@@ -16,8 +16,7 @@ interface ReportPageProps {
 export function ReportPage({ pageNumber, companyInfo, title, children }: ReportPageProps) {
   return (
     <div 
-      className="bg-white dark:bg-card rounded-lg shadow-sm border p-8 min-h-[800px] relative"
-      style={{ aspectRatio: '8.5/11' }}
+      className="bg-white dark:bg-card rounded-lg shadow-sm border p-8 min-h-[600px] relative"
     >
       {/* Header */}
       {pageNumber > 1 && (

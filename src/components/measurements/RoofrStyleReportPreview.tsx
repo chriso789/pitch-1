@@ -1,10 +1,10 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Printer, Share2, ChevronLeft, ChevronRight, Loader2, FileText } from 'lucide-react';
+import { Download, Printer, Share2, ChevronLeft, ChevronRight, Loader2, FileText, ChevronsDown } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { ReportPage } from './ReportPage';
@@ -48,8 +48,31 @@ export function RoofrStyleReportPreview({
   const [currentPage, setCurrentPage] = useState(1);
   const [isGenerating, setIsGenerating] = useState(false);
   const [reportUrl, setReportUrl] = useState<string | null>(null);
+  const [showScrollHint, setShowScrollHint] = useState(true);
+  const scrollRef = useRef<HTMLDivElement>(null);
   
   const totalPages = 7;
+  
+  // Auto-scroll to top when page changes
+  useEffect(() => {
+    const scrollArea = document.querySelector('[data-radix-scroll-area-viewport]');
+    if (scrollArea) {
+      scrollArea.scrollTop = 0;
+      setShowScrollHint(true);
+    }
+  }, [currentPage]);
+  
+  // Hide scroll hint after user scrolls
+  useEffect(() => {
+    const handleScroll = () => {
+      setShowScrollHint(false);
+    };
+    const scrollArea = document.querySelector('[data-radix-scroll-area-viewport]');
+    if (scrollArea) {
+      scrollArea.addEventListener('scroll', handleScroll, { once: true });
+      return () => scrollArea.removeEventListener('scroll', handleScroll);
+    }
+  }, [currentPage]);
   
   // Debug: Log what data we're receiving
   console.log('📊 RoofrStyleReportPreview data:', { measurement, tags, satelliteImageUrl });
@@ -258,8 +281,8 @@ export function RoofrStyleReportPreview({
           </div>
 
           {/* Report Content */}
-          <ScrollArea className="flex-1">
-            <div className="p-6" id="roofr-report-content">
+          <ScrollArea className="flex-1 h-[calc(85vh-140px)]">
+            <div className="p-6 pb-16" id="roofr-report-content" ref={scrollRef}>
               {/* Page 1: Cover */}
               {currentPage === 1 && (
                 <ReportPage 
@@ -291,7 +314,7 @@ export function RoofrStyleReportPreview({
                   </div>
 
                   {/* Satellite Image with Roof Overlay */}
-                  <div className="aspect-video bg-muted rounded-lg overflow-hidden mb-4">
+                  <div className="aspect-[4/3] bg-muted rounded-lg overflow-hidden mb-4">
                     {satelliteImageUrl ? (
                       <div className="relative w-full h-full">
                         <img 
@@ -628,6 +651,16 @@ export function RoofrStyleReportPreview({
                 </ReportPage>
               )}
             </div>
+            
+            {/* Scroll Indicator */}
+            {showScrollHint && (
+              <div className="sticky bottom-0 left-0 right-0 flex justify-center py-3 bg-gradient-to-t from-background via-background/80 to-transparent pointer-events-none">
+                <div className="flex items-center gap-1 text-xs text-muted-foreground animate-bounce">
+                  <ChevronsDown className="h-4 w-4" />
+                  <span>Scroll for more</span>
+                </div>
+              </div>
+            )}
           </ScrollArea>
         </div>
 
