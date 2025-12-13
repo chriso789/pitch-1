@@ -51,29 +51,49 @@ export function RoofrStyleReportPreview({
   
   const totalPages = 7;
   
-  // Extract measurement data
-  const totalArea = measurement?.summary?.total_area_sqft || tags['roof.plan_area'] || 0;
+  // Debug: Log what data we're receiving
+  console.log('📊 RoofrStyleReportPreview data:', { measurement, tags, satelliteImageUrl });
+  
+  // Extract measurement data - check multiple sources
+  const totalArea = measurement?.summary?.total_area_sqft || 
+                    tags?.['roof.total_area'] || 
+                    tags?.['roof.plan_area'] || 
+                    measurement?.total_area_sqft || 0;
   const totalSquares = (totalArea / 100).toFixed(1);
-  const pitch = measurement?.summary?.pitch || measurement?.predominant_pitch || '6/12';
-  const facetCount = measurement?.faces?.length || tags['roof.faces_count'] || 0;
+  const pitch = measurement?.summary?.pitch || 
+                measurement?.predominant_pitch || 
+                tags?.['roof.pitch'] || '6/12';
+  const facetCount = measurement?.faces?.length || 
+                     tags?.['roof.faces_count'] || 
+                     measurement?.facetCount || 1;
   
-  // Linear features
-  const eaves = tags['lf.eave'] || measurement?.summary?.eave_ft || 0;
-  const rakes = tags['lf.rake'] || measurement?.summary?.rake_ft || 0;
-  const ridges = tags['lf.ridge'] || measurement?.summary?.ridge_ft || 0;
-  const hips = tags['lf.hip'] || measurement?.summary?.hip_ft || 0;
-  const valleys = tags['lf.valley'] || measurement?.summary?.valley_ft || 0;
-  const stepFlashing = tags['lf.step'] || 0;
+  // Linear features - check summary, tags, and direct measurement properties
+  const eaves = measurement?.summary?.eave_ft || 
+                tags?.['lf.eave'] || 
+                measurement?.linear_features?.eave || 0;
+  const rakes = measurement?.summary?.rake_ft || 
+                tags?.['lf.rake'] || 
+                measurement?.linear_features?.rake || 0;
+  const ridges = measurement?.summary?.ridge_ft || 
+                 tags?.['lf.ridge'] || 
+                 measurement?.linear_features?.ridge || 0;
+  const hips = measurement?.summary?.hip_ft || 
+               tags?.['lf.hip'] || 
+               measurement?.linear_features?.hip || 0;
+  const valleys = measurement?.summary?.valley_ft || 
+                  tags?.['lf.valley'] || 
+                  measurement?.linear_features?.valley || 0;
+  const stepFlashing = tags?.['lf.step'] || measurement?.linear_features?.step || 0;
   
-  // Materials
+  // Materials - calculate from actual measurements if tags missing
   const materials = {
-    shingleBundles: tags['materials.shingle_bundles'] || Math.ceil((totalArea * 1.1) / 33.3),
-    starterBundles: tags['materials.starter_bundles'] || Math.ceil((eaves + rakes) / 120),
-    iceWaterRolls: tags['materials.ice_water_rolls'] || Math.ceil(valleys / 66),
-    underlaymentRolls: tags['materials.underlayment_rolls'] || Math.ceil(totalArea / 400),
-    hipRidgeBundles: tags['materials.ridge_cap_bundles'] || Math.ceil((ridges + hips) / 35),
-    valleySheets: Math.ceil(valleys / 10),
-    dripEdgeSheets: tags['materials.drip_edge_sheets'] || Math.ceil((eaves + rakes) / 10),
+    shingleBundles: tags?.['materials.shingle_bundles'] || Math.ceil((totalArea * 1.1) / 33.3),
+    starterBundles: tags?.['materials.starter_bundles'] || Math.ceil((eaves + rakes) / 120),
+    iceWaterRolls: tags?.['materials.ice_water_rolls'] || Math.ceil(valleys / 66) || 0,
+    underlaymentRolls: tags?.['materials.underlayment_rolls'] || Math.ceil(totalArea / 400),
+    hipRidgeBundles: tags?.['materials.ridge_cap_bundles'] || Math.ceil((ridges + hips) / 35),
+    valleySheets: Math.ceil(valleys / 10) || 0,
+    dripEdgeSheets: tags?.['materials.drip_edge_sheets'] || Math.ceil((eaves + rakes) / 10),
   };
 
   // Calculate waste table values
@@ -134,14 +154,16 @@ export function RoofrStyleReportPreview({
   };
 
   const formatFeetInches = (feet: number) => {
+    if (!feet || feet === 0) return '0 ft';
     const wholeFeet = Math.floor(feet);
     const inches = Math.round((feet - wholeFeet) * 12);
-    return `${wholeFeet}ft ${inches}in`;
+    if (inches === 0) return `${wholeFeet} ft`;
+    return `${wholeFeet}' ${inches}"`;
   };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-5xl max-h-[90vh] p-0">
+      <DialogContent className="max-w-4xl max-h-[85vh] p-0 overflow-hidden">
         <DialogHeader className="p-4 border-b flex-row items-center justify-between">
           <div className="flex items-center gap-3">
             <FileText className="h-5 w-5 text-primary" />
@@ -218,29 +240,46 @@ export function RoofrStyleReportPreview({
                     <p className="text-lg font-medium">{address}</p>
                   </div>
 
-                  <div className="grid grid-cols-3 gap-4 mb-8">
-                    <div className="bg-primary/10 rounded-lg p-6 text-center">
-                      <div className="text-4xl font-bold text-primary">{Math.round(totalArea).toLocaleString()}</div>
-                      <div className="text-sm text-muted-foreground">Total Sq Ft</div>
+                  <div className="grid grid-cols-3 gap-3 mb-6">
+                    <div className="bg-primary/10 rounded-lg p-4 text-center">
+                      <div className="text-3xl font-bold text-primary">{Math.round(totalArea).toLocaleString()}</div>
+                      <div className="text-xs text-muted-foreground">Total Sq Ft</div>
                     </div>
-                    <div className="bg-primary/10 rounded-lg p-6 text-center">
-                      <div className="text-4xl font-bold text-primary">{facetCount}</div>
-                      <div className="text-sm text-muted-foreground">Facets</div>
+                    <div className="bg-primary/10 rounded-lg p-4 text-center">
+                      <div className="text-3xl font-bold text-primary">{facetCount}</div>
+                      <div className="text-xs text-muted-foreground">Facets</div>
                     </div>
-                    <div className="bg-primary/10 rounded-lg p-6 text-center">
-                      <div className="text-4xl font-bold text-primary">{pitch}</div>
-                      <div className="text-sm text-muted-foreground">Predominant Pitch</div>
+                    <div className="bg-primary/10 rounded-lg p-4 text-center">
+                      <div className="text-3xl font-bold text-primary">{pitch}</div>
+                      <div className="text-xs text-muted-foreground">Predominant Pitch</div>
                     </div>
                   </div>
 
-                  <div className="aspect-video bg-muted rounded-lg flex items-center justify-center mb-4">
-                    <RoofDiagramRenderer 
-                      measurement={measurement}
-                      tags={tags}
-                      width={600}
-                      height={400}
-                      showSatellite={true}
-                    />
+                  {/* Satellite Image with Roof Overlay */}
+                  <div className="aspect-video bg-muted rounded-lg overflow-hidden mb-4">
+                    {satelliteImageUrl ? (
+                      <div className="relative w-full h-full">
+                        <img 
+                          src={satelliteImageUrl} 
+                          alt="Satellite view of property" 
+                          className="w-full h-full object-cover"
+                        />
+                        <div className="absolute inset-0 flex items-center justify-center">
+                          <RoofDiagramRenderer 
+                            measurement={measurement}
+                            tags={tags || {}}
+                            width={500}
+                            height={300}
+                            showSatellite={false}
+                            satelliteImageUrl={satelliteImageUrl}
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center bg-slate-200 dark:bg-slate-700">
+                        <p className="text-muted-foreground text-sm">Satellite image loading...</p>
+                      </div>
+                    )}
                   </div>
 
                   <p className="text-xs text-muted-foreground text-center">

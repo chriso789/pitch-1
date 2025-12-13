@@ -49,9 +49,28 @@ export function RoofDiagramRenderer({
   satelliteImageUrl,
 }: RoofDiagramRendererProps) {
   
+  // Debug log to see what data we're getting
+  console.log('🎨 RoofDiagramRenderer:', { 
+    hasMeasurement: !!measurement, 
+    facesCount: measurement?.faces?.length,
+    satelliteImageUrl: satelliteImageUrl?.substring(0, 50),
+    showSatellite
+  });
+  
   // Parse facets from measurement data
   const facets = useMemo(() => {
-    if (!measurement?.faces) return [];
+    if (!measurement?.faces || measurement.faces.length === 0) {
+      // Generate a default placeholder facet if no data
+      console.log('⚠️ No faces data, generating placeholder');
+      return [{
+        id: 1,
+        number: 1,
+        area: measurement?.summary?.total_area_sqft || tags?.['roof.total_area'] || 0,
+        pitch: measurement?.summary?.pitch || measurement?.predominant_pitch || '6/12',
+        color: FACET_COLORS[0],
+        polygon: generateDefaultRoofShape(width, height),
+      }];
+    }
     
     return measurement.faces.map((face: any, index: number) => ({
       id: face.id || index,
@@ -62,7 +81,23 @@ export function RoofDiagramRenderer({
       // Generate mock polygon if no WKT (for display purposes)
       polygon: face.wkt ? parseWKTToSVG(face.wkt, width, height) : generateMockPolygon(index, measurement.faces.length, width, height),
     }));
-  }, [measurement, width, height]);
+  }, [measurement, tags, width, height]);
+
+  // Generate a simple house-shaped roof polygon
+  function generateDefaultRoofShape(w: number, h: number): string {
+    const padding = 80;
+    const cx = w / 2;
+    const cy = h / 2;
+    const roofWidth = w - padding * 2;
+    const roofHeight = h - padding * 2;
+    
+    // Simple gable roof shape
+    return `M ${padding} ${cy + roofHeight * 0.3} 
+            L ${cx} ${padding} 
+            L ${w - padding} ${cy + roofHeight * 0.3} 
+            L ${w - padding} ${h - padding} 
+            L ${padding} ${h - padding} Z`;
+  }
 
   // Parse linear features
   const linearFeatures = useMemo(() => {
@@ -77,7 +112,20 @@ export function RoofDiagramRenderer({
     // Extract from tags or measurement.linear_features
     const linearData = measurement?.linear_features_wkt || measurement?.linear_features || [];
     
-    if (Array.isArray(linearData)) {
+    // If linear_features is an object with type keys (like {ridge: 50, hip: 30})
+    if (linearData && typeof linearData === 'object' && !Array.isArray(linearData)) {
+      Object.entries(linearData).forEach(([type, length]) => {
+        if (typeof length === 'number' && length > 0) {
+          features.push({
+            type: type.toLowerCase(),
+            color: FEATURE_COLORS[type.toLowerCase() as keyof typeof FEATURE_COLORS] || FEATURE_COLORS.ridge,
+            path: generateLinearFeaturePath(type, width, height, features.length),
+            length: length,
+            dashed: type === 'step',
+          });
+        }
+      });
+    } else if (Array.isArray(linearData)) {
       linearData.forEach((feature: any) => {
         const type = feature.type?.toLowerCase() || 'ridge';
         features.push({
@@ -92,6 +140,28 @@ export function RoofDiagramRenderer({
 
     return features;
   }, [measurement, width, height]);
+
+  // Generate simple linear feature paths for display
+  function generateLinearFeaturePath(type: string, w: number, h: number, index: number): string {
+    const padding = 80;
+    const cx = w / 2;
+    const cy = h / 2;
+    
+    switch (type.toLowerCase()) {
+      case 'ridge':
+        return `M ${padding + 20} ${cy - 30} L ${w - padding - 20} ${cy - 30}`;
+      case 'hip':
+        return `M ${cx} ${padding + 30} L ${w - padding - 40} ${cy + 40}`;
+      case 'valley':
+        return `M ${padding + 40} ${cy} L ${cx} ${h - padding - 40}`;
+      case 'eave':
+        return `M ${padding} ${h - padding - 20} L ${w - padding} ${h - padding - 20}`;
+      case 'rake':
+        return `M ${padding + 10} ${cy + 50} L ${padding + 10} ${h - padding}`;
+      default:
+        return `M ${padding + index * 20} ${cy} L ${w - padding - index * 20} ${cy}`;
+    }
+  }
 
   // Generate mock facet polygon for visual representation
   function generateMockPolygon(index: number, total: number, w: number, h: number): string {
