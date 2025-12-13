@@ -2,8 +2,11 @@
  * Centralized Commission Calculator
  * 
  * Handles both commission types:
- * - Selling Price Plan: Commission = Contract Value × Rate %
- * - Profit Split Plan: Commission = (Gross Profit - Rep Overhead) × Rate %
+ * - Percent of Contract Price: Commission = Contract Value × Rate %
+ * - Profit Split: Commission = (Gross Profit - Rep Overhead) × Rate %
+ * 
+ * Also handles Manager Override calculations:
+ * - Manager Override = Contract Value × Manager Override Rate %
  */
 
 export interface CommissionInput {
@@ -12,7 +15,7 @@ export interface CommissionInput {
   actualLaborCost: number;
   adjustments: number; // Positive for credits, negative for chargebacks
   repOverheadRate: number; // Percentage (e.g., 5 for 5%)
-  commissionType: 'percentage_selling_price' | 'profit_split';
+  commissionType: 'percentage_contract_price' | 'profit_split';
   commissionRate: number; // Percentage (e.g., 10 for 10%)
 }
 
@@ -28,8 +31,25 @@ export interface CommissionResult {
   commissionAmount: number;
   commissionType: string;
   commissionRate: number;
+  commissionBase: number; // The base amount used for commission calculation
 }
 
+export interface ManagerOverrideInput {
+  contractValue: number;
+  managerOverrideRate: number; // Percentage (e.g., 3 for 3%)
+}
+
+export interface ManagerOverrideResult {
+  contractValue: number;
+  overrideRate: number;
+  overrideAmount: number;
+}
+
+/**
+ * Calculate commission based on type
+ * - Percent of Contract Price: Commission = Contract Value × Rate %
+ * - Profit Split: Commission = Net Profit × Rate %
+ */
 export function calculateCommission(input: CommissionInput): CommissionResult {
   const {
     contractValue,
@@ -54,10 +74,19 @@ export function calculateCommission(input: CommissionInput): CommissionResult {
   // Calculate net profit available for splitting
   const netProfit = grossProfit - repOverheadAmount;
 
-  // Calculate commission - ALWAYS based on Net Profit
-  // Commission = Net Profit × Rate %
-  // This ensures reps earn a percentage of actual profit, not contract value
-  const commissionAmount = Math.max(0, netProfit * (commissionRate / 100));
+  // Calculate commission based on type
+  let commissionAmount: number;
+  let commissionBase: number;
+
+  if (commissionType === 'percentage_contract_price') {
+    // Percent of Contract Price: Commission = Contract Value × Rate %
+    commissionBase = contractValue;
+    commissionAmount = contractValue * (commissionRate / 100);
+  } else {
+    // Profit Split: Commission = Net Profit × Rate %
+    commissionBase = netProfit;
+    commissionAmount = Math.max(0, netProfit * (commissionRate / 100));
+  }
 
   return {
     contractValue,
@@ -70,7 +99,24 @@ export function calculateCommission(input: CommissionInput): CommissionResult {
     netProfit,
     commissionAmount: Math.round(commissionAmount * 100) / 100,
     commissionType,
-    commissionRate
+    commissionRate,
+    commissionBase
+  };
+}
+
+/**
+ * Calculate manager override amount
+ * Manager Override = Contract Value × Manager Override Rate %
+ */
+export function calculateManagerOverride(input: ManagerOverrideInput): ManagerOverrideResult {
+  const { contractValue, managerOverrideRate } = input;
+  
+  const overrideAmount = contractValue * (managerOverrideRate / 100);
+
+  return {
+    contractValue,
+    overrideRate: managerOverrideRate,
+    overrideAmount: Math.round(overrideAmount * 100) / 100
   };
 }
 
