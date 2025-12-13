@@ -75,6 +75,7 @@ import TerritoryMapPage from "./pages/storm-canvass/TerritoryMapPage";
 import CanvasserDashboard from "./pages/storm-canvass/CanvasserDashboard";
 import LeaderboardPage from "./pages/storm-canvass/LeaderboardPage";
 import PublicReportViewer from "./pages/PublicReportViewer";
+import ViewQuote from "./pages/ViewQuote";
 import MeasurementCorrectionPage from "./pages/MeasurementCorrectionPage";
 import MeasurementAnalyticsPage from "./pages/MeasurementAnalyticsPage";
 import SmartTemplateEditorPage from "./pages/SmartTemplateEditorPage";
@@ -164,6 +165,7 @@ const AppContent = () => {
         <Route path="/portal/setup" element={<HomeownerSetupAccount />} />
         <Route path="/crew" element={<CrewPortalPage />} />
         <Route path="/homeowner" element={<HomeownerPortalPage />} />
+        <Route path="/view-quote/:token" element={<ViewQuote />} />
         
         {/* Protected application routes */}
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
