@@ -95,6 +95,23 @@ serve(async (req) => {
     )
     console.log(`⏱️ Line derivation complete: ${derivedLines.length} lines from vertices`)
     
+    // Calculate actual roof area from perimeter vertices using Shoelace formula
+    const actualAreaSqft = calculateAreaFromPerimeterVertices(
+      perimeterResult.vertices,
+      coordinates,
+      logicalImageSize,
+      IMAGE_ZOOM
+    )
+    console.log(`📐 Calculated area from perimeter: ${actualAreaSqft.toFixed(0)} sqft`)
+    
+    // Derive facet count from roof geometry (perimeter vertices and interior junctions)
+    const derivedFacetCount = deriveFacetCountFromGeometry(
+      perimeterResult.vertices,
+      interiorVertices.junctions,
+      perimeterResult.roofType
+    )
+    console.log(`📐 Derived facet count: ${derivedFacetCount}`)
+    
     // Convert legacy AI analysis format for backward compatibility
     const aiAnalysis = {
       roofType: perimeterResult.roofType || 'complex',
@@ -103,7 +120,7 @@ serve(async (req) => {
         shape: 'complex',
         estimatedPitch: '5/12',
         pitchConfidence: 'medium',
-        estimatedAreaSqft: 1500,
+        estimatedAreaSqft: actualAreaSqft, // Use calculated area instead of hardcoded 1500
         edges: { eave: 0, rake: 0, hip: 0, valley: 0, ridge: 0 },
         features: { chimneys: 0, skylights: 0, vents: 0 },
         orientation: 'mixed'
@@ -113,11 +130,25 @@ serve(async (req) => {
       edgeSegments: [],
       overallComplexity: perimeterResult.complexity || 'moderate',
       shadowAnalysis: { estimatedPitchRange: '4/12 to 7/12', confidence: 'medium' },
-      detectionNotes: 'Vertex-based detection'
+      detectionNotes: 'Vertex-based detection',
+      derivedFacetCount // Store for later use
     }
     
     const scale = calculateScale(solarData, selectedImage, aiAnalysis)
-    const measurements = calculateDetailedMeasurements(aiAnalysis, scale, solarData)
+    
+    // Pre-calculate linear features to use in measurements
+    const preLinearFeatures = convertDerivedLinesToWKT(
+      derivedLines,
+      coordinates,
+      logicalImageSize,
+      IMAGE_ZOOM
+    )
+    
+    // Calculate linear totals from WKT features
+    const linearTotalsFromWKT = calculateLinearTotalsFromWKT(preLinearFeatures)
+    console.log(`📐 Linear totals from WKT:`, linearTotalsFromWKT)
+    
+    const measurements = calculateDetailedMeasurements(aiAnalysis, scale, solarData, linearTotalsFromWKT)
     const confidence = calculateConfidenceScore(aiAnalysis, measurements, solarData, selectedImage)
     
     // Convert derived lines to WKT (these are CONSTRAINED to perimeter)
@@ -912,7 +943,7 @@ function calculateScale(solarData: any, image: any, aiAnalysis: any) {
   return { pixelsPerFoot: bestMethod.value, method: bestMethod.method, confidence: variance > 15 ? 'medium' : bestMethod.confidence, variance, allMethods: methods }
 }
 
-function calculateDetailedMeasurements(aiAnalysis: any, scale: any, solarData: any) {
+function calculateDetailedMeasurements(aiAnalysis: any, scale: any, solarData: any, linearTotalsFromWKT?: any) {
   const pitches = aiAnalysis.facets.map((f: any) => f.estimatedPitch)
   const predominantPitch = mostCommon(pitches)
   const pitchMultiplier = PITCH_MULTIPLIERS[predominantPitch] || 1.083
@@ -939,14 +970,28 @@ function calculateDetailedMeasurements(aiAnalysis: any, scale: any, solarData: a
   const totalFlatArea = processedFacets.reduce((sum: number, f: any) => sum + f.flatAreaSqft, 0)
   const totalAdjustedArea = processedFacets.reduce((sum: number, f: any) => sum + f.adjustedAreaSqft, 0)
 
-  const linearMeasurements = { eave: 0, rake: 0, hip: 0, valley: 0, ridge: 0, wallFlashing: 0, stepFlashing: 0, unspecified: 0 }
-  processedFacets.forEach((facet: any) => {
-    linearMeasurements.eave += facet.edges.eave || 0
-    linearMeasurements.rake += facet.edges.rake || 0
-    linearMeasurements.hip += facet.edges.hip || 0
-    linearMeasurements.valley += facet.edges.valley || 0
-    linearMeasurements.ridge += facet.edges.ridge || 0
-  })
+  // Use WKT-derived linear measurements if available, otherwise fall back to facet edges
+  const linearMeasurements = linearTotalsFromWKT ? {
+    eave: linearTotalsFromWKT.eave || 0,
+    rake: linearTotalsFromWKT.rake || 0,
+    hip: linearTotalsFromWKT.hip || 0,
+    valley: linearTotalsFromWKT.valley || 0,
+    ridge: linearTotalsFromWKT.ridge || 0,
+    wallFlashing: 0,
+    stepFlashing: 0,
+    unspecified: 0
+  } : { eave: 0, rake: 0, hip: 0, valley: 0, ridge: 0, wallFlashing: 0, stepFlashing: 0, unspecified: 0 }
+  
+  // Fall back to facet edges if WKT totals are all zero
+  if (!linearTotalsFromWKT || (linearMeasurements.eave === 0 && linearMeasurements.hip === 0)) {
+    processedFacets.forEach((facet: any) => {
+      linearMeasurements.eave += facet.edges.eave || 0
+      linearMeasurements.rake += facet.edges.rake || 0
+      linearMeasurements.hip += facet.edges.hip || 0
+      linearMeasurements.valley += facet.edges.valley || 0
+      linearMeasurements.ridge += facet.edges.ridge || 0
+    })
+  }
 
   const complexity = determineComplexity(processedFacets.length, linearMeasurements)
   const wasteFactor = complexity === 'very_complex' ? 1.20 : complexity === 'complex' ? 1.15 : complexity === 'moderate' ? 1.12 : 1.10
@@ -1005,6 +1050,110 @@ function calculateConfidenceScore(aiAnalysis: any, measurements: any, solarData:
   return { score, rating, factors, requiresReview }
 }
 
+// Calculate actual roof area from perimeter vertices using Shoelace formula
+function calculateAreaFromPerimeterVertices(
+  vertices: any[],
+  imageCenter: { lat: number; lng: number },
+  imageSize: number,
+  zoom: number
+): number {
+  if (!vertices || vertices.length < 3) {
+    console.warn('⚠️ Not enough vertices for area calculation, using fallback')
+    return 1500 // Fallback
+  }
+  
+  const metersPerPixel = (156543.03392 * Math.cos(imageCenter.lat * Math.PI / 180)) / Math.pow(2, zoom)
+  
+  // Convert percentage vertices to feet from center
+  const feetVertices = vertices.map((v: any) => ({
+    x: ((v.x / 100) - 0.5) * imageSize * metersPerPixel * 3.28084,
+    y: ((v.y / 100) - 0.5) * imageSize * metersPerPixel * 3.28084
+  }))
+  
+  // Shoelace formula for polygon area
+  let area = 0
+  for (let i = 0; i < feetVertices.length; i++) {
+    const j = (i + 1) % feetVertices.length
+    area += feetVertices[i].x * feetVertices[j].y
+    area -= feetVertices[j].x * feetVertices[i].y
+  }
+  
+  const calculatedArea = Math.abs(area / 2)
+  
+  // Validate: typical residential roof is 1200-4000 sqft
+  if (calculatedArea < 500 || calculatedArea > 8000) {
+    console.warn(`⚠️ Calculated area ${calculatedArea.toFixed(0)} sqft seems unusual`)
+  }
+  
+  return calculatedArea
+}
+
+// Derive facet count from roof geometry
+function deriveFacetCountFromGeometry(
+  perimeterVertices: any[],
+  interiorJunctions: any[],
+  roofType: string
+): number {
+  // Hip roof: typically 4 facets (4 hip corners on perimeter)
+  // Gable roof: typically 2 facets (2 ridge endpoints on perimeter)
+  // Complex: count based on interior junctions
+  
+  if (!perimeterVertices || perimeterVertices.length === 0) return 1
+  
+  // Count vertices by type
+  const hipCorners = perimeterVertices.filter((v: any) => 
+    v.cornerType === 'hip-corner' || v.type === 'hip-junction'
+  ).length
+  
+  const ridgeEnds = perimeterVertices.filter((v: any) => 
+    v.cornerType === 'ridge-end'
+  ).length
+  
+  const interiorCount = interiorJunctions?.length || 0
+  
+  // Derive facet count from geometry
+  if (roofType === 'hip' || hipCorners >= 4) {
+    // Hip roof: 4 main facets
+    return 4 + Math.floor(interiorCount / 2)
+  } else if (roofType === 'gable' || ridgeEnds >= 2) {
+    // Gable roof: 2 main facets
+    return 2 + Math.floor(interiorCount / 2)
+  } else if (hipCorners >= 2) {
+    // Partial hip: at least 3 facets
+    return Math.max(3, hipCorners + Math.floor(interiorCount / 2))
+  }
+  
+  // Complex or unknown: estimate from perimeter complexity
+  const vertexCount = perimeterVertices.length
+  if (vertexCount >= 12) return 6
+  if (vertexCount >= 8) return 4
+  if (vertexCount >= 6) return 3
+  
+  return 2 // Minimum for any roof
+}
+
+// Calculate linear totals from WKT features
+function calculateLinearTotalsFromWKT(linearFeatures: any[]): Record<string, number> {
+  const totals: Record<string, number> = {
+    eave: 0,
+    rake: 0,
+    hip: 0,
+    valley: 0,
+    ridge: 0
+  }
+  
+  if (!linearFeatures || linearFeatures.length === 0) return totals
+  
+  linearFeatures.forEach((feature: any) => {
+    const type = feature.type?.toLowerCase()
+    if (type && totals.hasOwnProperty(type)) {
+      totals[type] += feature.length_ft || 0
+    }
+  })
+  
+  return totals
+}
+
 async function saveMeasurementToDatabase(supabase: any, params: any) {
   const {
     address, coordinates, customerId, userId, googleImage, mapboxImage,
@@ -1039,7 +1188,7 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
     requires_manual_review: confidence.requiresReview,
     roof_type: aiAnalysis.roofType,
     complexity_rating: measurements.complexity,
-    facet_count: aiAnalysis.facets?.length || 1,
+    facet_count: aiAnalysis.derivedFacetCount || aiAnalysis.facets?.length || 1,
     total_eave_length: measurements.linearMeasurements?.eave || 0,
     total_rake_length: measurements.linearMeasurements?.rake || 0,
     total_hip_length: measurements.linearMeasurements?.hip || 0,
