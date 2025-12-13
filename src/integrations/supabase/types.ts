@@ -8418,6 +8418,82 @@ export type Database = {
           },
         ]
       }
+      measurement_verifications: {
+        Row: {
+          ai_total_sqft: number | null
+          created_at: string | null
+          edge_classifications: Json | null
+          id: string
+          manual_total_sqft: number | null
+          measurement_id: string
+          notes: string | null
+          pitch_assignments: Json | null
+          tenant_id: string
+          updated_at: string | null
+          validation_errors: Json | null
+          validation_passed: boolean | null
+          variance_pct: number | null
+          verification_method: string
+          verified_by: string | null
+        }
+        Insert: {
+          ai_total_sqft?: number | null
+          created_at?: string | null
+          edge_classifications?: Json | null
+          id?: string
+          manual_total_sqft?: number | null
+          measurement_id: string
+          notes?: string | null
+          pitch_assignments?: Json | null
+          tenant_id: string
+          updated_at?: string | null
+          validation_errors?: Json | null
+          validation_passed?: boolean | null
+          variance_pct?: number | null
+          verification_method: string
+          verified_by?: string | null
+        }
+        Update: {
+          ai_total_sqft?: number | null
+          created_at?: string | null
+          edge_classifications?: Json | null
+          id?: string
+          manual_total_sqft?: number | null
+          measurement_id?: string
+          notes?: string | null
+          pitch_assignments?: Json | null
+          tenant_id?: string
+          updated_at?: string | null
+          validation_errors?: Json | null
+          validation_passed?: boolean | null
+          variance_pct?: number | null
+          verification_method?: string
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "measurement_verifications_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_verifications_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_verifications_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       measurements: {
         Row: {
           created_at: string
@@ -12717,51 +12793,69 @@ export type Database = {
           azimuth_degrees: number | null
           created_at: string | null
           direction: string | null
+          edge_segments: Json | null
           facet_number: number
           geometry_wkt: string | null
           id: string
           is_flat: boolean | null
           measurement_id: string
+          measurement_method: string | null
           perimeter_ft: number | null
           pitch: string
           pitch_degrees: number | null
           pitch_factor: number | null
           plan_area_sqft: number | null
+          polygon_gps_coordinates: Json | null
           updated_at: string | null
+          verification_confidence: string | null
+          verified_at: string | null
+          verified_by_user_id: string | null
         }
         Insert: {
           area_sqft: number
           azimuth_degrees?: number | null
           created_at?: string | null
           direction?: string | null
+          edge_segments?: Json | null
           facet_number: number
           geometry_wkt?: string | null
           id?: string
           is_flat?: boolean | null
           measurement_id: string
+          measurement_method?: string | null
           perimeter_ft?: number | null
           pitch: string
           pitch_degrees?: number | null
           pitch_factor?: number | null
           plan_area_sqft?: number | null
+          polygon_gps_coordinates?: Json | null
           updated_at?: string | null
+          verification_confidence?: string | null
+          verified_at?: string | null
+          verified_by_user_id?: string | null
         }
         Update: {
           area_sqft?: number
           azimuth_degrees?: number | null
           created_at?: string | null
           direction?: string | null
+          edge_segments?: Json | null
           facet_number?: number
           geometry_wkt?: string | null
           id?: string
           is_flat?: boolean | null
           measurement_id?: string
+          measurement_method?: string | null
           perimeter_ft?: number | null
           pitch?: string
           pitch_degrees?: number | null
           pitch_factor?: number | null
           plan_area_sqft?: number | null
+          polygon_gps_coordinates?: Json | null
           updated_at?: string | null
+          verification_confidence?: string | null
+          verified_at?: string | null
+          verified_by_user_id?: string | null
         }
         Relationships: [
           {
@@ -13097,8 +13191,10 @@ export type Database = {
           facet_count: number | null
           google_maps_image_url: string | null
           google_maps_zoom_level: number | null
+          gps_accuracy_meters: number | null
           gps_coordinates: Json
           id: string
+          image_bounds: Json | null
           image_quality_score: number | null
           image_source: string | null
           image_year: number | null
@@ -13148,6 +13244,7 @@ export type Database = {
           updated_at: string | null
           validation_notes: string | null
           validation_status: string | null
+          verification_status: string | null
           vision_edges: Json | null
           waste_factor_percent: number | null
         }
@@ -13167,8 +13264,10 @@ export type Database = {
           facet_count?: number | null
           google_maps_image_url?: string | null
           google_maps_zoom_level?: number | null
+          gps_accuracy_meters?: number | null
           gps_coordinates: Json
           id?: string
+          image_bounds?: Json | null
           image_quality_score?: number | null
           image_source?: string | null
           image_year?: number | null
@@ -13218,6 +13317,7 @@ export type Database = {
           updated_at?: string | null
           validation_notes?: string | null
           validation_status?: string | null
+          verification_status?: string | null
           vision_edges?: Json | null
           waste_factor_percent?: number | null
         }
@@ -13237,8 +13337,10 @@ export type Database = {
           facet_count?: number | null
           google_maps_image_url?: string | null
           google_maps_zoom_level?: number | null
+          gps_accuracy_meters?: number | null
           gps_coordinates?: Json
           id?: string
+          image_bounds?: Json | null
           image_quality_score?: number | null
           image_source?: string | null
           image_year?: number | null
@@ -13288,6 +13390,7 @@ export type Database = {
           updated_at?: string | null
           validation_notes?: string | null
           validation_status?: string | null
+          verification_status?: string | null
           vision_edges?: Json | null
           waste_factor_percent?: number | null
         }
