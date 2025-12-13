@@ -1,4 +1,4 @@
-import React, { useRef, useEffect, useState, useCallback } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { Canvas as FabricCanvas, Image as FabricImage, Polygon, Line, Circle, Point } from 'fabric';
 import type { DrawingTool } from './MeasurementToolbar';
 import type { DetailedMeasurements } from './RoofComponentLineItems';
@@ -12,8 +12,18 @@ interface RoofDrawingCanvasProps {
   onCanUndoChange: (canUndo: boolean) => void;
 }
 
-// Zoom level 20: approximately 0.6 feet per pixel
-const FEET_PER_PIXEL = 0.6;
+// Calculate accurate feet-per-pixel based on latitude and zoom level using Web Mercator projection
+const calculateFeetPerPixel = (latitude: number, zoomLevel: number = 20, canvasSize: number = 800): number => {
+  // Web Mercator projection: meters per pixel at given zoom and latitude
+  const metersPerPixel = (156543.03392 * Math.cos(latitude * Math.PI / 180)) / Math.pow(2, zoomLevel);
+  const feetPerPixel = metersPerPixel * 3.28084;
+  
+  // Satellite tiles are 256px at each zoom level, scaled to canvas size
+  const tilePixels = 256;
+  const scaleFactor = tilePixels / canvasSize;
+  
+  return feetPerPixel * scaleFactor;
+};
 
 // Feature colors
 const COLORS: Record<string, string> = {
@@ -53,6 +63,9 @@ export function RoofDrawingCanvas({
   const [isDrawing, setIsDrawing] = useState(false);
   const tempLineRef = useRef<Line | null>(null);
   const tempPointsRef = useRef<Circle[]>([]);
+
+  // Calculate feet per pixel dynamically based on latitude
+  const feetPerPixel = useMemo(() => calculateFeetPerPixel(lat, 20, 800), [lat]);
 
   // Initialize canvas
   useEffect(() => {
@@ -340,8 +353,8 @@ export function RoofDrawingCanvas({
     canvas.renderAll();
   };
 
-  // Calculate polygon area in sq ft
-  const calculatePolygonArea = (points: { x: number; y: number }[]): number => {
+  // Calculate polygon area in sq ft using dynamic feetPerPixel
+  const calculatePolygonArea = useCallback((points: { x: number; y: number }[]): number => {
     if (points.length < 3) return 0;
 
     let area = 0;
@@ -352,16 +365,16 @@ export function RoofDrawingCanvas({
     }
     area = Math.abs(area) / 2;
 
-    // Convert pixels to sq ft
-    return area * FEET_PER_PIXEL * FEET_PER_PIXEL;
-  };
+    // Convert pixels to sq ft using dynamic scale
+    return area * feetPerPixel * feetPerPixel;
+  }, [feetPerPixel]);
 
-  // Calculate line length in ft
-  const calculateLineLength = (start: Point, end: Point): number => {
+  // Calculate line length in ft using dynamic feetPerPixel
+  const calculateLineLength = useCallback((start: Point, end: Point): number => {
     const dx = end.x - start.x;
     const dy = end.y - start.y;
-    return Math.sqrt(dx * dx + dy * dy) * FEET_PER_PIXEL;
-  };
+    return Math.sqrt(dx * dx + dy * dy) * feetPerPixel;
+  }, [feetPerPixel]);
 
   // Update measurements based on drawn objects
   const updateMeasurements = (objects: DrawnObject[]) => {
