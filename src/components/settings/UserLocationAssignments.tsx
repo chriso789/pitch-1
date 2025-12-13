@@ -45,10 +45,11 @@ export const UserLocationAssignments = ({ selectedUserId }: UserLocationAssignme
     try {
       setLoading(true);
       
-      // Fetch users
+      // Fetch users - exclude master role users who have platform-wide access
       const { data: usersData, error: usersError } = await supabase
         .from('profiles')
         .select('id, first_name, last_name, email, role')
+        .neq('role', 'master')
         .order('first_name');
 
       if (usersError) throw usersError;
