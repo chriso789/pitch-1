@@ -270,7 +270,7 @@ export function RoofrStyleReportPreview({
                             tags={tags || {}}
                             width={500}
                             height={300}
-                            showSatellite={false}
+                            showSatellite={true}
                             satelliteImageUrl={satelliteImageUrl}
                           />
                         </div>

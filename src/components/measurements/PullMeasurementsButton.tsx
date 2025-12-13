@@ -298,7 +298,7 @@ export function PullMeasurementsButton({
                 endpoint: 'satellite',
                 params: {
                   center: `${pullLat},${pullLng}`,
-                  zoom: '20',
+                  zoom: '21',
                   size: '1280x1280',
                   maptype: 'satellite',
                   scale: '2'

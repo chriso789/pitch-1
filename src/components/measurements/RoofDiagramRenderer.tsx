@@ -252,7 +252,7 @@ export function RoofDiagramRenderer({
           className="absolute inset-0 w-full h-full object-cover rounded"
         />
       ) : (
-        <div className="absolute inset-0 bg-slate-100 dark:bg-slate-800 rounded" />
+        <div className="absolute inset-0 bg-transparent rounded" />
       )}
 
       {/* SVG Overlay */}
