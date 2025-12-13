@@ -378,6 +378,11 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
                           </span>
                         </div>
                       )}
+                      {location.created_at && (
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground mb-1">
+                          <span>📅 Created: {new Date(location.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}</span>
+                        </div>
+                      )}
                       {location.latitude && location.longitude && (
                         <p className="text-xs text-muted-foreground mb-1">
                           📍 {location.latitude.toFixed(6)}, {location.longitude.toFixed(6)}
