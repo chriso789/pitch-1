@@ -205,6 +205,15 @@ const ContactForm: React.FC<ContactFormProps> = ({
       return;
     }
 
+    if (!formData.lead_source) {
+      toast({
+        title: "Validation Error",
+        description: "Lead source is required for tracking.",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
@@ -464,21 +473,24 @@ const ContactForm: React.FC<ContactFormProps> = ({
             </div>
           </div>
 
-          {/* Lead Source */}
+          {/* Lead Source - Required */}
           <div>
-            <label className="text-sm font-medium">Lead Source</label>
+            <label className="text-sm font-medium">Lead Source <span className="text-destructive">*</span></label>
             <Select 
               value={formData.lead_source} 
               onValueChange={(value) => handleInputChange("lead_source", value)}
               disabled={leadSourcesLoading}
             >
-              <SelectTrigger data-testid={TEST_IDS.contacts.form.leadSource}>
+              <SelectTrigger 
+                data-testid={TEST_IDS.contacts.form.leadSource}
+                className={!formData.lead_source ? "border-muted-foreground/50" : ""}
+              >
                 <SelectValue placeholder={
                   leadSourcesLoading 
                     ? "Loading lead sources..." 
                     : leadSources.length === 0
                       ? "No lead sources configured"
-                      : "Select lead source"
+                      : "Select lead source *"
                 } />
               </SelectTrigger>
               <SelectContent>
