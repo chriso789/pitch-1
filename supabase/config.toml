@@ -395,3 +395,6 @@ verify_jwt = false
 
 [functions.send-quote-email]
 verify_jwt = true
+
+[functions.import-canvass-contacts]
+verify_jwt = true
