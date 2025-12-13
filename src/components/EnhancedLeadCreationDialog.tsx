@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Separator } from "@/components/ui/separator";
 import {
   Select,
   SelectContent,
@@ -21,9 +22,10 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, MapPin, Check, AlertCircle, Loader2, User, Briefcase } from "lucide-react";
+import { Plus, MapPin, Check, AlertCircle, Loader2, User, Briefcase, Link2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { ContactSearchSelect } from "@/components/ContactSearchSelect";
 
 interface EnhancedLeadCreationDialogProps {
   trigger?: React.ReactNode;
@@ -52,6 +54,20 @@ interface SalesRep {
   role: string;
 }
 
+interface SelectedContact {
+  id: string;
+  first_name: string;
+  last_name: string;
+  email?: string;
+  phone?: string;
+  address_street?: string;
+  address_city?: string;
+  address_state?: string;
+  address_zip?: string;
+  latitude?: number;
+  longitude?: number;
+}
+
 export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProps> = ({
   trigger,
   contact,
@@ -73,6 +89,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
   const [addressLoading, setAddressLoading] = useState(false);
   const [salesReps, setSalesReps] = useState<SalesRep[]>([]);
   const [userProfile, setUserProfile] = useState<any>(null);
+  const [selectedContact, setSelectedContact] = useState<SelectedContact | null>(contact || null);
   
   const [formData, setFormData] = useState({
     name: "",
@@ -283,10 +300,11 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
   const validateForm = () => {
     const errors: string[] = [];
     
-    if (!formData.name.trim()) errors.push("Lead name is required");
-    if (!formData.phone.trim()) errors.push("Phone number is required");
+    // Either need selected contact OR new contact info
+    if (!selectedContact && !formData.name.trim()) errors.push("Lead name is required (or select existing contact)");
+    if (!selectedContact && !formData.phone.trim()) errors.push("Phone number is required (or select existing contact)");
     if (!formData.roofAge) errors.push("Roof age is required");
-    if (!selectedAddress) errors.push("Verified address is required");
+    if (!selectedAddress && !selectedContact) errors.push("Verified address is required (or select existing contact)");
     if (!formData.status) errors.push("Status selection is required");
     
     const roofAgeNum = parseInt(formData.roofAge);
@@ -298,6 +316,40 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     }
     
     return errors;
+  };
+
+  const handleContactSelect = (contact: SelectedContact | null) => {
+    setSelectedContact(contact);
+    if (contact) {
+      // Auto-fill form from selected contact
+      const fullAddress = [
+        contact.address_street,
+        contact.address_city,
+        contact.address_state,
+        contact.address_zip
+      ].filter(Boolean).join(", ");
+      
+      setFormData(prev => ({
+        ...prev,
+        name: `${contact.first_name} ${contact.last_name} - Roofing Project`,
+        phone: contact.phone || prev.phone,
+        address: fullAddress || prev.address,
+      }));
+      
+      if (fullAddress && contact.latitude && contact.longitude) {
+        setSelectedAddress({
+          place_id: `contact_${contact.id}`,
+          formatted_address: fullAddress,
+          geometry: {
+            location: {
+              lat: contact.latitude,
+              lng: contact.longitude
+            }
+          },
+          address_components: []
+        });
+      }
+    }
   };
 
   const handleSubmit = async () => {
@@ -317,17 +369,17 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("No authenticated user");
 
-      // Create or update contact if needed
-      let contactId = contact?.id;
+      // Use selected contact or create new one
+      let contactId = selectedContact?.id || contact?.id;
       
       if (!contactId) {
         // Create new contact from lead form data
         const addressComponents = selectedAddress?.address_components || [];
-        const streetNumber = addressComponents.find(c => c.types.includes('street_number'))?.long_name || '';
-        const route = addressComponents.find(c => c.types.includes('route'))?.long_name || '';
-        const city = addressComponents.find(c => c.types.includes('locality'))?.long_name || '';
-        const state = addressComponents.find(c => c.types.includes('administrative_area_level_1'))?.short_name || '';
-        const zipCode = addressComponents.find(c => c.types.includes('postal_code'))?.long_name || '';
+        const streetNumber = addressComponents.find((c: any) => c.types.includes('street_number'))?.long_name || '';
+        const route = addressComponents.find((c: any) => c.types.includes('route'))?.long_name || '';
+        const city = addressComponents.find((c: any) => c.types.includes('locality'))?.long_name || '';
+        const state = addressComponents.find((c: any) => c.types.includes('administrative_area_level_1'))?.short_name || '';
+        const zipCode = addressComponents.find((c: any) => c.types.includes('postal_code'))?.long_name || '';
 
         const nameParts = formData.name.split(' ');
         const firstName = nameParts[0] || 'Unknown';
@@ -447,6 +499,22 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         </DialogHeader>
 
         <div className="space-y-6">
+          {/* Contact Search/Link Section */}
+          {!contact && (
+            <div className="space-y-3">
+              <Label className="flex items-center gap-2 text-base font-semibold">
+                <Link2 className="h-4 w-4 text-primary" />
+                Link to Contact
+              </Label>
+              <ContactSearchSelect
+                selectedContact={selectedContact}
+                onContactSelect={handleContactSelect}
+                tenantId={userProfile?.tenant_id}
+              />
+              <Separator className="my-4" />
+            </div>
+          )}
+
           {contact && (
             <div className="flex items-center space-x-2">
               <Checkbox
