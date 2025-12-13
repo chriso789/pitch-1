@@ -17,6 +17,7 @@ import { PolygonEditor } from './PolygonEditor';
 import { ComprehensiveMeasurementOverlay } from './ComprehensiveMeasurementOverlay';
 import { ManualMeasurementEditor } from './ManualMeasurementEditor';
 import { FacetSplitterOverlay } from './FacetSplitterOverlay';
+import { SchematicRoofDiagram } from './SchematicRoofDiagram';
 import { MeasurementSystemLimitations } from '@/components/documentation/MeasurementSystemLimitations';
 import { ImageryAgeWarning } from './ImageryAgeWarning';
 import { HistoricalImageryComparison } from './HistoricalImageryComparison';
@@ -319,6 +320,9 @@ export function MeasurementVerificationDialog({
   const [showHistoricalComparison, setShowHistoricalComparison] = useState(false); // Historical imagery dialog
   const [validationOpen, setValidationOpen] = useState(false); // Validation report collapsible
   const [showReportPreview, setShowReportPreview] = useState(false); // Roofr-style report preview
+  
+  // View mode toggle: 'satellite' for overlay, 'schematic' for clean diagram
+  const [viewMode, setViewMode] = useState<'satellite' | 'schematic'>('schematic');
   
   // Manual overlay offset adjustment controls
   const [overlayOffsetX, setOverlayOffsetX] = useState(0); // Horizontal offset in pixels
@@ -1398,65 +1402,99 @@ export function MeasurementVerificationDialog({
             })()}
             
             {/* Left Panel: Visual Editor */}
-            {satelliteImageUrl && (measurement?.faces || buildingPolygon.length > 0) && (
+            {(measurement?.faces || buildingPolygon.length > 0) && (
               <div className="space-y-3">
-                {/* Zoom Control Toolbar */}
+                {/* View Mode Toggle + Controls */}
                 <div className="flex items-center gap-2 p-2 bg-muted/50 rounded-lg border flex-wrap">
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center">
-                        <ZoomIn className="h-4 w-4 text-muted-foreground" />
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>Satellite Zoom Level</TooltipContent>
-                  </Tooltip>
-                  <Slider
-                    value={[satelliteZoom]}
-                    onValueChange={(value) => setSatelliteZoom(value[0])}
-                    min={18}
-                    max={22}
-                    step={1}
-                    className="flex-1 max-w-[160px]"
-                    disabled={isLoadingSatellite}
-                  />
-                  <Badge variant="secondary" className="text-xs min-w-[32px] justify-center">
-                    {satelliteZoom}
-                  </Badge>
-                  {/* Auto-Zoom Button */}
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 text-xs"
-                        onClick={() => setSatelliteZoom(optimalZoom)}
-                        disabled={isLoadingSatellite}
-                      >
-                        Auto
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent>Auto-zoom based on roof size ({optimalZoom})</TooltipContent>
-                  </Tooltip>
-                  <div className="flex items-center gap-1.5 pl-2 border-l">
-                    <Select value={resolution} onValueChange={(v) => setResolution(v as ResolutionOption)} disabled={isLoadingSatellite}>
-                      <SelectTrigger className="h-7 w-[90px] text-xs">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="standard">Standard</SelectItem>
-                        <SelectItem value="hd">HD</SelectItem>
-                        <SelectItem value="ultra">Ultra HD</SelectItem>
-                      </SelectContent>
-                    </Select>
+                  {/* View Mode Toggle */}
+                  <div className="flex items-center gap-1 bg-background rounded-md p-0.5 border">
+                    <Button
+                      variant={viewMode === 'schematic' ? 'default' : 'ghost'}
+                      size="sm"
+                      className="h-7 text-xs px-3"
+                      onClick={() => setViewMode('schematic')}
+                    >
+                      <FileText className="h-3.5 w-3.5 mr-1.5" />
+                      Schematic
+                    </Button>
+                    <Button
+                      variant={viewMode === 'satellite' ? 'default' : 'ghost'}
+                      size="sm"
+                      className="h-7 text-xs px-3"
+                      onClick={() => setViewMode('satellite')}
+                    >
+                      <Satellite className="h-3.5 w-3.5 mr-1.5" />
+                      Satellite
+                    </Button>
                   </div>
-                  {isLoadingSatellite && (
-                    <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
+                  
+                  {/* Satellite-specific controls */}
+                  {viewMode === 'satellite' && (
+                    <>
+                      <Tooltip>
+                        <TooltipTrigger asChild>
+                          <div className="flex items-center">
+                            <ZoomIn className="h-4 w-4 text-muted-foreground" />
+                          </div>
+                        </TooltipTrigger>
+                        <TooltipContent>Satellite Zoom Level</TooltipContent>
+                      </Tooltip>
+                      <Slider
+                        value={[satelliteZoom]}
+                        onValueChange={(value) => setSatelliteZoom(value[0])}
+                        min={18}
+                        max={22}
+                        step={1}
+                        className="flex-1 max-w-[120px]"
+                        disabled={isLoadingSatellite}
+                      />
+                      <Badge variant="secondary" className="text-xs min-w-[32px] justify-center">
+                        {satelliteZoom}
+                      </Badge>
+                      <div className="flex items-center gap-1.5 pl-2 border-l">
+                        <Select value={resolution} onValueChange={(v) => setResolution(v as ResolutionOption)} disabled={isLoadingSatellite}>
+                          <SelectTrigger className="h-7 w-[80px] text-xs">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="standard">Standard</SelectItem>
+                            <SelectItem value="hd">HD</SelectItem>
+                            <SelectItem value="ultra">Ultra HD</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                      {isLoadingSatellite && (
+                        <RefreshCw className="h-4 w-4 animate-spin text-muted-foreground" />
+                      )}
+                    </>
                   )}
                 </div>
                 
-                {/* Satellite Image */}
+                {/* Roof Visualization */}
                 <div className="relative rounded-lg overflow-hidden border">
-                  {measurement?.faces ? (
+                  {viewMode === 'schematic' ? (
+                    /* Schematic Roof Diagram - Clean vector rendering */
+                    <SchematicRoofDiagram
+                      measurement={(() => {
+                        const enriched = { ...measurement };
+                        if (Array.isArray(dbMeasurement?.linear_features) && dbMeasurement.linear_features.length > 0) {
+                          enriched.linear_features = dbMeasurement.linear_features;
+                        }
+                        if (dbMeasurement?.perimeter_wkt) {
+                          enriched.perimeter_wkt = dbMeasurement.perimeter_wkt;
+                        }
+                        return enriched;
+                      })()}
+                      tags={tags}
+                      width={RESOLUTION_CONFIG[resolution].width}
+                      height={RESOLUTION_CONFIG[resolution].height}
+                      showLengthLabels={true}
+                      showLegend={true}
+                      showCompass={true}
+                      showTotals={true}
+                    />
+                  ) : measurement?.faces ? (
+                    /* Satellite Overlay View */
                     <ComprehensiveMeasurementOverlay
                       satelliteImageUrl={cleanSatelliteImageUrl}
                       measurement={(() => {
@@ -1524,7 +1562,8 @@ export function MeasurementVerificationDialog({
                   />
                 )}
                 
-                {/* Re-center Buttons */}
+                {/* Re-center Buttons - Only show in satellite mode */}
+                {viewMode === 'satellite' && (
                 <div className="absolute top-2 right-2 flex flex-col gap-1">
                   {/* Re-center on Roof Centroid Button */}
                   {measurement?.faces?.length > 0 && (
@@ -1587,6 +1626,7 @@ export function MeasurementVerificationDialog({
                     </Button>
                   )}
                 </div>
+                )}
                 
                 {/* Offline Notice */}
                 {!isOnline && (
@@ -1608,8 +1648,8 @@ export function MeasurementVerificationDialog({
                 </div>
               </div>
               
-              {/* Coordinate Accuracy Panel */}
-              {verifiedAddressLat && verifiedAddressLng && (
+              {/* Coordinate Accuracy Panel - Only show in satellite mode */}
+              {viewMode === 'satellite' && verifiedAddressLat && verifiedAddressLng && (
                 <div className={`p-3 rounded-lg border ${
                   coordinateMismatchDistance > 50 
                     ? 'bg-destructive/10 border-destructive' 
@@ -1690,7 +1730,8 @@ export function MeasurementVerificationDialog({
                 </div>
               )}
               
-              {/* Roof Feature Legend - Color-coded guide */}
+              {/* Roof Feature Legend - Only show in satellite mode */}
+              {viewMode === 'satellite' && (
               <div className="p-3 bg-muted/30 rounded-lg border">
                 <h4 className="text-xs font-semibold mb-2 uppercase tracking-wide text-muted-foreground">Overlay Legend</h4>
                 <div className="grid grid-cols-3 gap-x-3 gap-y-1.5 text-xs">
@@ -1723,7 +1764,7 @@ export function MeasurementVerificationDialog({
                   Solid lines = AI Vision (high confidence) • Dashed = AI estimated
                 </p>
               </div>
-              
+              )}
               {/* Source and Confidence */}
               <div className="space-y-2">
                 <div className="flex items-center justify-between p-3 bg-muted/50 rounded-lg">
