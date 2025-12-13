@@ -21,89 +21,41 @@ interface UserInvitationRequest {
   overheadRate?: number;
   passwordSetupLink?: string;
   settingsLink?: string;
+  // Company branding
+  companyLogo?: string;
+  companyPrimaryColor?: string;
+  companySecondaryColor?: string;
+  // Owner personal touch
+  ownerName?: string;
+  ownerHeadshot?: string;
+  ownerTitle?: string;
+  ownerEmail?: string;
 }
 
-// Role-specific email templates
 const getEmailTemplate = (data: UserInvitationRequest): { subject: string; html: string } => {
-  const { firstName, role, companyName, payType, hourlyRate, commissionRate, overheadRate, passwordSetupLink, settingsLink } = data;
+  const { 
+    firstName, 
+    role, 
+    companyName, 
+    payType, 
+    hourlyRate, 
+    commissionRate, 
+    overheadRate, 
+    passwordSetupLink, 
+    settingsLink,
+    companyLogo,
+    companyPrimaryColor,
+    companySecondaryColor,
+    ownerName,
+    ownerHeadshot,
+    ownerTitle
+  } = data;
   
-  const baseStyles = `
-    font-family: Arial, sans-serif;
-    max-width: 600px;
-    margin: 0 auto;
-    padding: 20px;
-    background-color: #f9fafb;
-  `;
-
-  const buttonStyle = (gradient: string) => `
-    display: inline-block;
-    background: ${gradient};
-    color: white;
-    padding: 14px 32px;
-    border-radius: 8px;
-    text-decoration: none;
-    font-weight: bold;
-    font-size: 16px;
-  `;
-
-  // Role-specific configurations
-  const roleConfigs: Record<string, { gradient: string; lightBg: string; border: string; textColor: string }> = {
-    owner: { gradient: 'linear-gradient(135deg, #1e40af 0%, #3b82f6 100%)', lightBg: '#eff6ff', border: '#bfdbfe', textColor: '#1e40af' },
-    corporate: { gradient: 'linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%)', lightBg: '#f5f3ff', border: '#ddd6fe', textColor: '#7c3aed' },
-    office_admin: { gradient: 'linear-gradient(135deg, #059669 0%, #34d399 100%)', lightBg: '#ecfdf5', border: '#a7f3d0', textColor: '#059669' },
-    regional_manager: { gradient: 'linear-gradient(135deg, #d97706 0%, #fbbf24 100%)', lightBg: '#fffbeb', border: '#fde68a', textColor: '#d97706' },
-    sales_manager: payType === 'hourly' 
-      ? { gradient: 'linear-gradient(135deg, #ea580c 0%, #fb923c 100%)', lightBg: '#fff7ed', border: '#fed7aa', textColor: '#ea580c' }
-      : { gradient: 'linear-gradient(135deg, #dc2626 0%, #f87171 100%)', lightBg: '#fef2f2', border: '#fecaca', textColor: '#dc2626' },
-    project_manager: { gradient: 'linear-gradient(135deg, #0891b2 0%, #22d3ee 100%)', lightBg: '#ecfeff', border: '#a5f3fc', textColor: '#0891b2' },
-  };
-
-  const config = roleConfigs[role] || roleConfigs.project_manager;
+  // Use company colors or defaults
+  const primaryColor = companyPrimaryColor || '#1e40af';
+  const secondaryColor = companySecondaryColor || '#3b82f6';
+  
   const roleDisplayName = role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
-
-  // Build pay structure section for sales roles
-  let payStructureSection = '';
-  if (['sales_manager', 'regional_manager'].includes(role)) {
-    if (payType === 'hourly' && hourlyRate) {
-      payStructureSection = `
-        <div style="background: ${config.lightBg}; border: 1px solid ${config.border}; border-radius: 8px; padding: 20px; margin: 20px 0;">
-          <h3 style="margin: 0 0 15px 0; color: ${config.textColor}; font-size: 16px;">💰 Your Compensation Structure</h3>
-          <div style="display: grid; gap: 10px;">
-            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid ${config.border};">
-              <span style="color: #6b7280;">Pay Type:</span>
-              <strong style="color: #374151;">Hourly</strong>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 8px 0;">
-              <span style="color: #6b7280;">Hourly Rate:</span>
-              <strong style="color: ${config.textColor};">$${hourlyRate}/hour</strong>
-            </div>
-          </div>
-        </div>
-      `;
-    } else if (commissionRate) {
-      payStructureSection = `
-        <div style="background: ${config.lightBg}; border: 1px solid ${config.border}; border-radius: 8px; padding: 20px; margin: 20px 0;">
-          <h3 style="margin: 0 0 15px 0; color: ${config.textColor}; font-size: 16px;">💰 Your Compensation Structure</h3>
-          <div style="display: grid; gap: 10px;">
-            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid ${config.border};">
-              <span style="color: #6b7280;">Pay Type:</span>
-              <strong style="color: #374151;">Commission</strong>
-            </div>
-            <div style="display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid ${config.border};">
-              <span style="color: #6b7280;">Commission Rate:</span>
-              <strong style="color: ${config.textColor};">${commissionRate}% Profit Split</strong>
-            </div>
-            ${overheadRate ? `
-            <div style="display: flex; justify-content: space-between; padding: 8px 0;">
-              <span style="color: #6b7280;">Overhead Rate:</span>
-              <strong style="color: #374151;">${overheadRate}%</strong>
-            </div>
-            ` : ''}
-          </div>
-        </div>
-      `;
-    }
-  }
 
   // Role-specific descriptions
   const roleDescriptions: Record<string, string> = {
@@ -117,45 +69,177 @@ const getEmailTemplate = (data: UserInvitationRequest): { subject: string; html:
 
   const description = roleDescriptions[role] || roleDescriptions.project_manager;
 
-  const subject = `Welcome to ${companyName} - ${roleDisplayName} Account Created`;
+  // Build pay structure section for sales roles
+  let payStructureSection = '';
+  if (['sales_manager', 'regional_manager'].includes(role)) {
+    if (payType === 'hourly' && hourlyRate) {
+      payStructureSection = `
+        <div style="background: linear-gradient(135deg, ${primaryColor}10 0%, ${secondaryColor}10 100%); border: 1px solid ${primaryColor}30; border-radius: 12px; padding: 24px; margin: 24px 0;">
+          <h3 style="margin: 0 0 16px 0; color: ${primaryColor}; font-size: 16px; font-weight: 600;">
+            💰 Your Compensation Structure
+          </h3>
+          <div style="display: grid; gap: 12px;">
+            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid ${primaryColor}20;">
+              <span style="color: #6b7280;">Pay Type:</span>
+              <strong style="color: #374151;">Hourly</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 10px 0;">
+              <span style="color: #6b7280;">Hourly Rate:</span>
+              <strong style="color: ${primaryColor}; font-size: 18px;">$${hourlyRate}/hour</strong>
+            </div>
+          </div>
+        </div>
+      `;
+    } else if (commissionRate) {
+      payStructureSection = `
+        <div style="background: linear-gradient(135deg, ${primaryColor}10 0%, ${secondaryColor}10 100%); border: 1px solid ${primaryColor}30; border-radius: 12px; padding: 24px; margin: 24px 0;">
+          <h3 style="margin: 0 0 16px 0; color: ${primaryColor}; font-size: 16px; font-weight: 600;">
+            💰 Your Compensation Structure
+          </h3>
+          <div style="display: grid; gap: 12px;">
+            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid ${primaryColor}20;">
+              <span style="color: #6b7280;">Pay Type:</span>
+              <strong style="color: #374151;">Commission</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid ${primaryColor}20;">
+              <span style="color: #6b7280;">Commission Rate:</span>
+              <strong style="color: ${primaryColor}; font-size: 18px;">${commissionRate}% Profit Split</strong>
+            </div>
+            ${overheadRate ? `
+            <div style="display: flex; justify-content: space-between; padding: 10px 0;">
+              <span style="color: #6b7280;">Overhead Rate:</span>
+              <strong style="color: #374151;">${overheadRate}%</strong>
+            </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }
+  }
+
+  // Build owner personal message section
+  let ownerSection = '';
+  if (ownerName) {
+    ownerSection = `
+      <div style="background: #f9fafb; border-radius: 12px; padding: 24px; margin: 32px 0; border: 1px solid #e5e7eb;">
+        <div style="display: flex; align-items: flex-start; gap: 16px;">
+          ${ownerHeadshot ? `
+            <img 
+              src="${ownerHeadshot}" 
+              alt="${ownerName}" 
+              style="width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 3px solid ${primaryColor};"
+            />
+          ` : `
+            <div style="width: 64px; height: 64px; border-radius: 50%; background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: bold;">
+              ${ownerName.charAt(0).toUpperCase()}
+            </div>
+          `}
+          <div style="flex: 1;">
+            <p style="margin: 0 0 8px 0; font-style: italic; color: #4b5563; font-size: 15px; line-height: 1.6;">
+              "Welcome to the ${companyName} family! We're thrilled to have you join our team. I'm personally excited about what we'll accomplish together. Don't hesitate to reach out if you need anything!"
+            </p>
+            <p style="margin: 0; font-weight: 600; color: ${primaryColor};">
+              — ${ownerName}
+            </p>
+            <p style="margin: 4px 0 0 0; font-size: 13px; color: #6b7280;">
+              ${ownerTitle || 'Owner'}, ${companyName}
+            </p>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  const subject = `Welcome to ${companyName} - Your Account is Ready! 🎉`;
 
   const html = `
 <!DOCTYPE html>
 <html>
-<head><meta charset="utf-8"></head>
-<body style="${baseStyles}">
-  <div style="background: ${config.gradient}; padding: 30px; border-radius: 12px 12px 0 0; text-align: center;">
-    <h1 style="color: white; margin: 0; font-size: 28px;">Welcome${['owner', 'corporate', 'office_admin'].includes(role) ? '' : ' to the Team'}, ${firstName}!</h1>
-    <p style="color: rgba(255,255,255,0.8); margin: 10px 0 0 0; font-size: 16px;">Your ${roleDisplayName} Account is Ready</p>
-  </div>
-  <div style="background: white; padding: 30px; border-radius: 0 0 12px 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-    <p style="font-size: 16px; color: #374151; line-height: 1.6;">
-      You have been added as a <strong style="color: ${config.textColor};">${roleDisplayName}</strong> at <strong>${companyName}</strong>.
-    </p>
-    <p style="font-size: 16px; color: #374151; line-height: 1.6;">
-      ${description}
-    </p>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
     
-    ${payStructureSection}
-    
-    <div style="margin: 30px 0; text-align: center;">
-      ${passwordSetupLink ? `
-        <a href="${passwordSetupLink}" style="${buttonStyle(config.gradient)}">Set Up Your Password</a>
+    <!-- Header with company branding -->
+    <div style="background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); padding: 40px 30px; border-radius: 16px 16px 0 0; text-align: center;">
+      ${companyLogo ? `
+        <img 
+          src="${companyLogo}" 
+          alt="${companyName}" 
+          style="max-height: 60px; max-width: 200px; margin-bottom: 20px;"
+        />
       ` : `
-        <p style="color: #6b7280; font-size: 14px;">Your administrator will provide your login credentials.</p>
+        <div style="margin-bottom: 16px;">
+          <span style="font-size: 32px; font-weight: bold; color: white;">${companyName}</span>
+        </div>
       `}
+      <h1 style="color: white; margin: 0 0 8px 0; font-size: 28px; font-weight: 700;">
+        Welcome to the Team, ${firstName}! 🎉
+      </h1>
+      <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 16px;">
+        Your ${roleDisplayName} account is ready
+      </p>
     </div>
     
-    ${settingsLink ? `
-    <p style="font-size: 14px; color: #6b7280; text-align: center;">
-      After setting your password, <a href="${settingsLink}" style="color: ${config.textColor};">complete your profile</a> to add your photo and details.
-    </p>
-    ` : ''}
-    
-    <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 30px;">
-      <p style="font-size: 14px; color: #6b7280; margin: 0; text-align: center;">
-        Questions? Contact your system administrator for assistance.
+    <!-- Main content -->
+    <div style="background: white; padding: 40px 30px; border-radius: 0 0 16px 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+      
+      <!-- Role badge -->
+      <div style="text-align: center; margin-bottom: 24px;">
+        <span style="display: inline-block; background: linear-gradient(135deg, ${primaryColor}15 0%, ${secondaryColor}15 100%); color: ${primaryColor}; padding: 8px 20px; border-radius: 20px; font-size: 14px; font-weight: 600; border: 1px solid ${primaryColor}30;">
+          ${roleDisplayName}
+        </span>
+      </div>
+      
+      <p style="font-size: 16px; color: #374151; line-height: 1.7; margin: 0 0 16px 0;">
+        You've been added as a <strong style="color: ${primaryColor};">${roleDisplayName}</strong> at <strong>${companyName}</strong>.
       </p>
+      
+      <p style="font-size: 16px; color: #6b7280; line-height: 1.7; margin: 0 0 24px 0;">
+        ${description}
+      </p>
+      
+      ${payStructureSection}
+      
+      <!-- CTA Button -->
+      <div style="text-align: center; margin: 32px 0;">
+        ${passwordSetupLink ? `
+          <a 
+            href="${passwordSetupLink}" 
+            style="display: inline-block; background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); color: white; padding: 16px 40px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 16px; box-shadow: 0 4px 14px ${primaryColor}40;"
+          >
+            Set Up Your Password
+          </a>
+          <p style="margin: 16px 0 0 0; font-size: 13px; color: #9ca3af;">
+            This link expires in 24 hours
+          </p>
+        ` : `
+          <p style="color: #6b7280; font-size: 14px; margin: 0;">
+            Your administrator will provide your login credentials.
+          </p>
+        `}
+      </div>
+      
+      ${settingsLink ? `
+        <p style="font-size: 14px; color: #6b7280; text-align: center; margin: 24px 0 0 0;">
+          After setting your password, <a href="${settingsLink}" style="color: ${primaryColor}; font-weight: 500;">complete your profile</a> to add your photo and details.
+        </p>
+      ` : ''}
+      
+      ${ownerSection}
+      
+      <!-- Footer -->
+      <div style="border-top: 1px solid #e5e7eb; padding-top: 24px; margin-top: 32px; text-align: center;">
+        <p style="font-size: 13px; color: #9ca3af; margin: 0 0 8px 0;">
+          Questions? Contact your system administrator for assistance.
+        </p>
+        <p style="font-size: 12px; color: #d1d5db; margin: 0;">
+          © ${new Date().getFullYear()} ${companyName}. All rights reserved.
+        </p>
+      </div>
+      
     </div>
   </div>
 </body>
@@ -172,14 +256,23 @@ const handler = async (req: Request): Promise<Response> => {
 
   try {
     const requestData: UserInvitationRequest = await req.json();
-    const { email } = requestData;
+    const { email, companyName } = requestData;
 
-    console.log('Sending role-specific onboarding email to:', email, 'role:', requestData.role);
+    console.log('Sending personalized onboarding email to:', email, 'for company:', companyName);
+    console.log('Company branding:', {
+      logo: requestData.companyLogo ? 'provided' : 'none',
+      primaryColor: requestData.companyPrimaryColor,
+      ownerName: requestData.ownerName,
+      ownerHeadshot: requestData.ownerHeadshot ? 'provided' : 'none'
+    });
 
     const { subject, html } = getEmailTemplate(requestData);
 
+    // Use company name in from field if available
+    const fromName = companyName || 'PITCH CRM';
+
     const emailResponse = await resend.emails.send({
-      from: "PITCH CRM <onboarding@resend.dev>",
+      from: `${fromName} <onboarding@resend.dev>`,
       to: [email],
       subject,
       html,

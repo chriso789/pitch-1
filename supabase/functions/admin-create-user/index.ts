@@ -280,7 +280,24 @@ const handler = async (req: Request): Promise<Response> => {
       console.error('Error creating user company access:', accessError);
     }
 
-    // Send role-specific onboarding email
+    // Fetch company branding details for the email
+    const { data: companyData } = await supabaseAdmin
+      .from('tenants')
+      .select('name, logo_url, primary_color, secondary_color, owner_name, owner_email')
+      .eq('id', targetTenantId)
+      .single();
+
+    // Fetch owner profile for personalized welcome message
+    const { data: ownerData } = await supabaseAdmin
+      .from('profiles')
+      .select('first_name, last_name, avatar_url, title, email')
+      .eq('tenant_id', targetTenantId)
+      .eq('role', 'owner')
+      .maybeSingle();
+
+    console.log('Company data for email:', companyData?.name, 'Owner:', ownerData?.first_name);
+
+    // Send role-specific onboarding email with company branding
     try {
       await supabase.functions.invoke('send-user-invitation', {
         body: {
@@ -289,16 +306,27 @@ const handler = async (req: Request): Promise<Response> => {
           lastName,
           phone,
           role,
-          companyName,
+          companyName: companyData?.name || companyName,
           payType: payType || 'commission',
           hourlyRate: hourlyRate || null,
           commissionRate: payStructure?.commission_rate || null,
           overheadRate: payStructure?.overhead_rate || null,
           passwordSetupLink,
-          settingsLink: `${appUrl}/settings`
+          settingsLink: `${appUrl}/settings`,
+          // Company branding
+          companyLogo: companyData?.logo_url || null,
+          companyPrimaryColor: companyData?.primary_color || '#1e40af',
+          companySecondaryColor: companyData?.secondary_color || '#3b82f6',
+          // Owner personal touch
+          ownerName: ownerData?.first_name 
+            ? `${ownerData.first_name} ${ownerData.last_name || ''}`.trim()
+            : companyData?.owner_name || null,
+          ownerHeadshot: ownerData?.avatar_url || null,
+          ownerTitle: ownerData?.title || 'Owner',
+          ownerEmail: ownerData?.email || companyData?.owner_email || null
         }
       });
-      console.log('Onboarding email sent');
+      console.log('Onboarding email sent with company branding');
     } catch (emailError) {
       console.warn('Failed to send onboarding email:', emailError);
     }
