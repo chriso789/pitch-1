@@ -10,6 +10,7 @@ interface RoofDiagramRendererProps {
   showLengthLabels?: boolean;
   showAreaLabels?: boolean;
   showPitchLabels?: boolean;
+  showFacetOverlay?: boolean;
   satelliteImageUrl?: string;
 }
 
@@ -46,6 +47,7 @@ export function RoofDiagramRenderer({
   showLengthLabels = false,
   showAreaLabels = false,
   showPitchLabels = false,
+  showFacetOverlay = true,
   satelliteImageUrl,
 }: RoofDiagramRendererProps) {
   
@@ -263,7 +265,7 @@ export function RoofDiagramRenderer({
         style={{ background: showSatellite ? 'transparent' : undefined }}
       >
         {/* Facet polygons */}
-        {facets.map((facet, i) => (
+        {showFacetOverlay && facets.map((facet, i) => (
           <g key={facet.id}>
             <path
               d={facet.polygon}
@@ -337,7 +339,7 @@ export function RoofDiagramRenderer({
         </g>
 
         {/* Facet numbers */}
-        {showLabels && facets.map((facet, i) => (
+        {showLabels && showFacetOverlay && facets.map((facet, i) => (
           <g key={`label-${facet.id}`}>
             <circle
               cx={width / 2 + (i - facets.length / 2) * 25}

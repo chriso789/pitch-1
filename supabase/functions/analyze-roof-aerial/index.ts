@@ -59,8 +59,8 @@ serve(async (req) => {
     
     console.log(`⏱️ Image fetch complete: ${Date.now() - startTime}ms`)
 
-    // Select best image (prefer Mapbox for higher resolution)
-    const selectedImage = mapboxImage.url ? mapboxImage : googleImage
+    // Select best image (prefer Google Maps for better measurement accuracy)
+    const selectedImage = googleImage.url ? googleImage : mapboxImage
     const imageSource = selectedImage.source
     const imageYear = new Date().getFullYear()
     
