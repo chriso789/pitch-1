@@ -79,7 +79,6 @@ const TAB_CATEGORIES: Record<string, { name: string; icon: keyof typeof LucideIc
 
 const TAB_TO_CATEGORY: Record<string, string> = {
   general: "general",
-  "lead-sources": "general",
   automations: "general",
   company: "business",
   users: "business",
@@ -102,11 +101,11 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   "demo-requests": "platform",
   subscription: "platform",
   "quality-monitoring": "platform",
+  "company-activity": "platform",
   portals: "general",
   reports: "system",
   measurements: "products",
   companies: "business",
-  "company-activity": "business",
 };
 
 export const Settings = () => {
@@ -125,7 +124,8 @@ export const Settings = () => {
 
   const masterBackendTabs = [
     'platform-admin', 'developer', 'health', 'edge-functions', 
-    'subscription', 'security', 'pricing', 'quality-monitoring', 'demo-requests'
+    'subscription', 'security', 'pricing', 'quality-monitoring', 'demo-requests',
+    'company-activity'
   ];
 
   const isViewingDifferentCompany = currentUser?.tenant_id && activeCompanyId && 
@@ -194,7 +194,20 @@ export const Settings = () => {
   const renderTabContent = () => {
     switch (activeTab) {
       case "general":
-        return <GeneralSettings />;
+        return (
+          <Tabs defaultValue="settings" className="w-full">
+            <TabsList>
+              <TabsTrigger value="settings">General Settings</TabsTrigger>
+              <TabsTrigger value="lead-sources">Lead Sources</TabsTrigger>
+            </TabsList>
+            <TabsContent value="settings">
+              <GeneralSettings />
+            </TabsContent>
+            <TabsContent value="lead-sources">
+              <LeadSources />
+            </TabsContent>
+          </Tabs>
+        );
       case "materials":
         return <MaterialCatalogManager />;
       case "estimates":
@@ -205,8 +218,6 @@ export const Settings = () => {
         return <SupplierManagement />;
       case "products":
         return <ProductCatalogManager />;
-      case "lead-sources":
-        return <LeadSources />;
       case "company":
         return (
           <div className="space-y-6">
