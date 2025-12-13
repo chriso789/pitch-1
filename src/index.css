@@ -2,7 +2,7 @@
 @tailwind components;
 @tailwind utilities;
 
-/* PITCH CRM Design System - Professional roofing industry styling */
+/* PITCH CRM Design System - Gamified Color Psychology */
 
 @layer base {
   :root {
@@ -16,23 +16,23 @@
     --popover: 0 0% 100%;
     --popover-foreground: 210 15% 12%;
 
-    /* Primary - Deep construction blue */
+    /* Primary - Deep construction blue (Trust & Focus) */
     --primary: 214 100% 25%;
     --primary-foreground: 0 0% 100%;
     --primary-light: 214 80% 45%;
     --primary-dark: 214 100% 20%;
 
-    /* Secondary - Warm construction orange */
+    /* Secondary - Warm construction orange (Action & Enthusiasm) */
     --secondary: 25 95% 53%;
     --secondary-foreground: 0 0% 100%;
     --secondary-light: 25 95% 65%;
 
-    /* Success - Trustworthy green */
+    /* Success - Trustworthy green (Wins & Completions) */
     --success: 142 76% 36%;
     --success-foreground: 0 0% 100%;
     --success-light: 142 76% 50%;
 
-    /* Warning - Construction yellow */
+    /* Warning - Construction yellow (Urgency & Attention) */
     --warning: 45 93% 47%;
     --warning-foreground: 210 15% 12%;
 
@@ -52,28 +52,47 @@
     --radius: 0.75rem;
 
     /* Pipeline Status Colors */
-    --status-lead: 45 93% 47%;           /* Yellow */
-    --status-legal: 25 95% 53%;          /* Orange */
-    --status-contingency: 214 80% 45%;   /* Blue */
-    --status-project: 142 76% 36%;       /* Green */
-    --status-completed: 142 50% 25%;     /* Dark Green */
-    --status-closed: 210 10% 55%;        /* Gray */
-    --status-lost: 0 84% 60%;            /* Red */
+    --status-lead: 45 93% 47%;
+    --status-legal: 25 95% 53%;
+    --status-contingency: 214 80% 45%;
+    --status-project: 142 76% 36%;
+    --status-completed: 142 50% 25%;
+    --status-closed: 210 10% 55%;
+    --status-lost: 0 84% 60%;
 
-    /* Gradients */
+    /* === GAMIFICATION COLOR PSYCHOLOGY === */
+    /* Dopamine Trigger Colors - Designed to provoke engagement */
+    --dopamine-action: 25 95% 55%;       /* Vibrant Orange - CTAs, excitement */
+    --dopamine-success: 145 80% 42%;     /* Bright Green - Wins, completions */
+    --dopamine-progress: 260 85% 55%;    /* Purple - Achievement, premium feel */
+    --dopamine-energy: 45 100% 50%;      /* Golden Yellow - Urgency, attention */
+    --dopamine-reward: 320 90% 55%;      /* Magenta - Celebrations, bonuses */
+
+    /* Glow Effects for Interactive Elements */
+    --glow-action: 0 0 20px hsl(25 95% 55% / 0.4);
+    --glow-success: 0 0 20px hsl(145 80% 42% / 0.4);
+    --glow-progress: 0 0 20px hsl(260 85% 55% / 0.4);
+    --glow-primary: 0 0 15px hsl(214 100% 25% / 0.3);
+
+    /* Achievement Gradients */
     --gradient-primary: linear-gradient(135deg, hsl(214 100% 25%), hsl(214 80% 45%));
     --gradient-secondary: linear-gradient(135deg, hsl(25 95% 53%), hsl(25 95% 65%));
     --gradient-success: linear-gradient(135deg, hsl(142 76% 36%), hsl(142 76% 50%));
     --gradient-hero: linear-gradient(135deg, hsl(214 100% 25%), hsl(214 80% 45%), hsl(142 76% 36%));
+    --gradient-achievement: linear-gradient(135deg, hsl(260 85% 55%), hsl(320 90% 55%));
+    --gradient-level-up: linear-gradient(135deg, hsl(45 100% 50%), hsl(25 95% 55%));
+    --gradient-streak: linear-gradient(135deg, hsl(145 80% 42%), hsl(170 85% 45%));
     
     /* Shadows */
     --shadow-soft: 0 2px 8px -2px hsl(214 100% 25% / 0.08);
     --shadow-medium: 0 4px 16px -4px hsl(214 100% 25% / 0.12);
     --shadow-strong: 0 8px 32px -8px hsl(214 100% 25% / 0.16);
+    --shadow-glow: 0 0 20px hsl(214 80% 45% / 0.25);
 
     /* Transitions */
     --transition-smooth: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     --transition-quick: all 0.15s ease-out;
+    --transition-bounce: all 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
   }
 
   .dark {
@@ -109,6 +128,20 @@
     --status-completed: 142 50% 35%;
     --status-closed: 210 15% 65%;
     --status-lost: 0 84% 65%;
+
+    /* Dark mode dopamine colors - slightly boosted for visibility */
+    --dopamine-action: 25 95% 60%;
+    --dopamine-success: 145 80% 50%;
+    --dopamine-progress: 260 85% 65%;
+    --dopamine-energy: 45 100% 55%;
+    --dopamine-reward: 320 90% 60%;
+
+    /* Enhanced glows for dark mode */
+    --glow-action: 0 0 25px hsl(25 95% 60% / 0.5);
+    --glow-success: 0 0 25px hsl(145 80% 50% / 0.5);
+    --glow-progress: 0 0 25px hsl(260 85% 65% / 0.5);
+    --glow-primary: 0 0 20px hsl(214 80% 45% / 0.4);
+    --shadow-glow: 0 0 25px hsl(214 80% 45% / 0.35);
 
     --sidebar-background: 214 50% 12%;
     --sidebar-foreground: 210 25% 95%;
@@ -146,6 +179,18 @@
   .gradient-hero {
     background: var(--gradient-hero);
   }
+
+  .gradient-achievement {
+    background: var(--gradient-achievement);
+  }
+
+  .gradient-level-up {
+    background: var(--gradient-level-up);
+  }
+
+  .gradient-streak {
+    background: var(--gradient-streak);
+  }
   
   .shadow-soft {
     box-shadow: var(--shadow-soft);
@@ -158,6 +203,10 @@
   .shadow-strong {
     box-shadow: var(--shadow-strong);
   }
+
+  .shadow-glow {
+    box-shadow: var(--shadow-glow);
+  }
   
   .transition-smooth {
     transition: var(--transition-smooth);
@@ -165,6 +214,142 @@
   
   .transition-quick {
     transition: var(--transition-quick);
+  }
+
+  .transition-bounce {
+    transition: var(--transition-bounce);
+  }
+
+  /* === GAMIFICATION UTILITY CLASSES === */
+
+  /* Gamified Button - Shine effect on hover */
+  .btn-gamified {
+    @apply relative overflow-hidden;
+    transition: var(--transition-bounce);
+  }
+
+  .btn-gamified:hover {
+    transform: scale(1.02);
+    box-shadow: var(--glow-action);
+  }
+
+  .btn-gamified:active {
+    transform: scale(0.98);
+  }
+
+  .btn-gamified::after {
+    content: '';
+    @apply absolute inset-0 pointer-events-none;
+    background: linear-gradient(
+      105deg,
+      transparent 40%,
+      rgba(255, 255, 255, 0.2) 45%,
+      rgba(255, 255, 255, 0.3) 50%,
+      rgba(255, 255, 255, 0.2) 55%,
+      transparent 60%
+    );
+    transform: translateX(-100%);
+    transition: transform 0.6s ease;
+  }
+
+  .btn-gamified:hover::after {
+    transform: translateX(100%);
+  }
+
+  /* Interactive Card - Lift on hover */
+  .card-interactive {
+    transition: var(--transition-smooth);
+  }
+
+  .card-interactive:hover {
+    transform: translateY(-2px);
+    box-shadow: var(--shadow-strong);
+    border-color: hsl(var(--primary) / 0.3);
+  }
+
+  /* Achievement Badge - Pulsing glow */
+  .badge-achievement {
+    @apply relative px-3 py-1 rounded-full font-semibold text-white;
+    background: var(--gradient-achievement);
+    animation: glow-pulse 2s infinite;
+  }
+
+  /* Progress bar with animated shine */
+  .progress-gamified {
+    @apply relative overflow-hidden rounded-full;
+  }
+
+  .progress-gamified::after {
+    content: '';
+    @apply absolute inset-0 pointer-events-none;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.3),
+      transparent
+    );
+    animation: shine 2s infinite;
+  }
+
+  /* Streak indicator with pulse */
+  .streak-indicator {
+    @apply font-bold px-4 py-2 rounded-full text-white;
+    background: var(--gradient-streak);
+    animation: glow-pulse 2s infinite;
+  }
+
+  /* Success glow for completed items */
+  .glow-success {
+    box-shadow: var(--glow-success);
+  }
+
+  /* Action glow for CTAs */
+  .glow-action {
+    box-shadow: var(--glow-action);
+  }
+
+  /* Progress glow for achievements */
+  .glow-progress {
+    box-shadow: var(--glow-progress);
+  }
+
+  /* Hover scale effect */
+  .hover-scale {
+    transition: var(--transition-bounce);
+  }
+
+  .hover-scale:hover {
+    transform: scale(1.05);
+  }
+
+  /* Hover lift effect */
+  .hover-lift {
+    transition: var(--transition-smooth);
+  }
+
+  .hover-lift:hover {
+    transform: translateY(-3px);
+    box-shadow: var(--shadow-medium);
+  }
+
+  /* Click bounce feedback */
+  .click-bounce:active {
+    transform: scale(0.95);
+    transition: transform 0.1s ease;
+  }
+
+  /* Sidebar item gamified hover */
+  .sidebar-item-gamified {
+    transition: var(--transition-quick);
+  }
+
+  .sidebar-item-gamified:hover {
+    transform: translateX(4px);
+    background: hsl(var(--primary) / 0.08);
+  }
+
+  .sidebar-item-gamified:active {
+    transform: translateX(2px) scale(0.99);
   }
 }
 

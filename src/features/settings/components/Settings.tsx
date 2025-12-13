@@ -113,7 +113,7 @@ export const Settings = () => {
   const [activeTab, setActiveTab] = useState<string>("general");
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const { toast } = useToast();
-  const { companies, activeCompany, activeCompanyId, loading: companiesLoading, switchCompany } = useCompanySwitcher();
+  const { activeCompany, activeCompanyId } = useCompanySwitcher();
 
   useEffect(() => {
     if (currentUser?.profileLoaded === true && currentUser?.role) {
@@ -373,60 +373,6 @@ export const Settings = () => {
           </p>
         </div>
         <div className="flex items-center gap-4">
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="gap-2">
-                <LucideIcons.Building2 className="h-4 w-4" />
-                <span className="max-w-[200px] truncate">
-                  {companiesLoading ? 'Loading...' : (activeCompany?.tenant_name || 'Select Company')}
-                </span>
-                <LucideIcons.ChevronDown className="h-4 w-4 opacity-50" />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-72">
-              <DropdownMenuLabel>Company Profile</DropdownMenuLabel>
-              <DropdownMenuSeparator />
-              {companies.length === 0 ? (
-                <DropdownMenuItem disabled>No companies available</DropdownMenuItem>
-              ) : (
-                companies.map((company) => (
-                  <DropdownMenuItem 
-                    key={company.tenant_id}
-                    onClick={() => switchCompany(company.tenant_id)}
-                    className="flex items-center justify-between cursor-pointer"
-                  >
-                    <div className="flex flex-col">
-                      <span className="font-medium">{company.tenant_name}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {company.location_count} location{company.location_count !== 1 ? 's' : ''}
-                      </span>
-                    </div>
-                    {company.tenant_id === activeCompanyId && (
-                      <LucideIcons.Check className="h-4 w-4 text-primary" />
-                    )}
-                  </DropdownMenuItem>
-                ))
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem 
-                onClick={() => window.location.href = '/admin/companies'}
-                className="cursor-pointer"
-              >
-                <LucideIcons.Settings className="h-4 w-4 mr-2" />
-                Manage All Companies
-              </DropdownMenuItem>
-              <DropdownMenuItem 
-                onClick={() => {
-                  window.location.href = '/admin/companies?action=create';
-                }}
-                className="cursor-pointer text-primary"
-              >
-                <LucideIcons.Plus className="h-4 w-4 mr-2" />
-                Add New Company
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-
           {currentUser?.role === 'master' && (
             <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
               <DialogTrigger asChild>
