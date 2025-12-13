@@ -173,8 +173,22 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
               <User className="h-4 w-4 text-success" />
               <div className="space-y-1">
                 <p className="text-sm font-medium leading-none">Status</p>
-                <Badge variant="outline" className="text-xs">
-                  {contact?.qualification_status || 'Unqualified'}
+                <Badge 
+                  className={`text-xs ${
+                    contact?.qualification_status === 'qualified' || contact?.qualification_status === 'interested' 
+                      ? 'bg-success text-success-foreground' 
+                      : contact?.qualification_status === 'storm_damage_marketing'
+                      ? 'bg-warning text-warning-foreground'
+                      : contact?.qualification_status === 'old_roof_marketing'
+                      ? 'bg-primary text-primary-foreground'
+                      : contact?.qualification_status === 'not_interested'
+                      ? 'bg-destructive text-destructive-foreground'
+                      : contact?.qualification_status === 'follow_up'
+                      ? 'bg-yellow-500 text-white'
+                      : 'bg-muted text-muted-foreground'
+                  }`}
+                >
+                  {contact?.qualification_status?.replace(/_/g, ' ') || 'Unqualified'}
                 </Badge>
               </div>
             </div>

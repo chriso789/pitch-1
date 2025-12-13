@@ -23,6 +23,7 @@ interface ContactFormData {
   company_name?: string;
   type: "homeowner" | "contractor" | "supplier" | "inspector" | "other";
   lead_source?: string;
+  qualification_status?: string;
   notes?: string;
   tags?: string[];
 }
@@ -61,6 +62,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
     company_name: initialData.company_name || "",
     type: initialData.type || "homeowner",
     lead_source: initialData.lead_source || "",
+    qualification_status: "",
     notes: initialData.notes || "",
     tags: initialData.tags || [],
   });
@@ -248,8 +250,9 @@ const ContactForm: React.FC<ContactFormProps> = ({
         notes: formData.notes || null,
         tags: formData.tags || [],
         
-        // Lead source
+        // Lead source and qualification
         lead_source: formData.lead_source || null,
+        qualification_status: formData.qualification_status || null,
         
         // System fields
         tenant_id: profile.tenant_id,
@@ -504,6 +507,29 @@ const ContactForm: React.FC<ContactFormProps> = ({
                     No lead sources available. Add them in Settings → Lead Sources.
                   </div>
                 )}
+              </SelectContent>
+            </Select>
+          </div>
+
+          {/* Qualification Status */}
+          <div>
+            <label className="text-sm font-medium">Qualification Status</label>
+            <Select 
+              value={formData.qualification_status} 
+              onValueChange={(value) => handleInputChange("qualification_status", value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select status..." />
+              </SelectTrigger>
+              <SelectContent className="bg-popover">
+                <SelectItem value="unqualified">Unqualified</SelectItem>
+                <SelectItem value="qualified">Qualified / Interested</SelectItem>
+                <SelectItem value="old_roof_marketing">Old Roof Marketing</SelectItem>
+                <SelectItem value="storm_damage_marketing">Storm Damage Marketing</SelectItem>
+                <SelectItem value="new_roof">New Roof</SelectItem>
+                <SelectItem value="not_interested">Not Interested</SelectItem>
+                <SelectItem value="follow_up">Follow Up</SelectItem>
+                <SelectItem value="contacted">Contacted</SelectItem>
               </SelectContent>
             </Select>
           </div>

@@ -13,6 +13,7 @@ interface AccessibleCompany {
   is_active: boolean;
   access_level: string;
   location_count: number;
+  logo_url?: string | null;
 }
 
 export const useCompanySwitcher = () => {
@@ -32,8 +33,21 @@ export const useCompanySwitcher = () => {
       
       if (tenantsResult.error) throw tenantsResult.error;
       
-      const companies = (tenantsResult.data as AccessibleCompany[]) || [];
+      const baseCompanies = (tenantsResult.data as AccessibleCompany[]) || [];
       const user = userResult.data?.user;
+      
+      // Fetch logo_url for each company from tenants table
+      const companyIds = baseCompanies.map(c => c.tenant_id);
+      const { data: tenantsData } = await supabase
+        .from('tenants')
+        .select('id, logo_url')
+        .in('id', companyIds);
+      
+      // Merge logo_url into companies
+      const companies = baseCompanies.map(c => ({
+        ...c,
+        logo_url: tenantsData?.find(t => t.id === c.tenant_id)?.logo_url || null
+      }));
       
       // Get active tenant from profile
       let activeTenantId: string | null = null;
