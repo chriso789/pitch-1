@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { EmailDomainSettings } from "./EmailDomainSettings";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -91,6 +92,7 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   pricing: "products",
   "voice-assistant": "communications",
   integrations: "communications",
+  email: "communications",
   developer: "system",
   health: "system",
   security: "system",
@@ -301,6 +303,8 @@ export const Settings = () => {
         return <SubscriptionManagement />;
       case "demo-requests":
         return <DemoRequestsPanel />;
+      case "email":
+        return <EmailDomainSettings />;
       case "portals":
         return (
           <Card>
