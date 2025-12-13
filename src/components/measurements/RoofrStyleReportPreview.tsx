@@ -8,7 +8,7 @@ import { Download, Printer, Share2, ChevronLeft, ChevronRight, Loader2, FileText
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { ReportPage } from './ReportPage';
-import { RoofDiagramRenderer } from './RoofDiagramRenderer';
+import { SchematicRoofDiagram } from './SchematicRoofDiagram';
 
 interface RoofrStyleReportPreviewProps {
   open: boolean;
@@ -340,20 +340,17 @@ export function RoofrStyleReportPreview({
               {/* Page 2: Clean Diagram */}
               {currentPage === 2 && (
                 <ReportPage pageNumber={2} companyInfo={companyInfo} title="Roof Diagram">
-                  <div className="aspect-square bg-white rounded-lg border flex items-center justify-center">
-                    <RoofDiagramRenderer 
+                  <div className="aspect-square bg-white rounded-lg border overflow-hidden">
+                    <SchematicRoofDiagram 
                       measurement={measurement}
                       tags={tags}
                       width={500}
                       height={500}
-                      showSatellite={false}
-                      showLabels={false}
+                      showLengthLabels={false}
+                      showLegend={true}
+                      showCompass={true}
+                      showTotals={true}
                     />
-                  </div>
-                  <div className="flex justify-end mt-4">
-                    <div className="text-xs text-muted-foreground">
-                      ↑ N
-                    </div>
                   </div>
                 </ReportPage>
               )}
@@ -395,14 +392,16 @@ export function RoofrStyleReportPreview({
                     </div>
                   </div>
 
-                  <div className="aspect-video bg-white rounded-lg border flex items-center justify-center">
-                    <RoofDiagramRenderer 
+                  <div className="aspect-video bg-white rounded-lg border overflow-hidden">
+                    <SchematicRoofDiagram 
                       measurement={measurement}
                       tags={tags}
                       width={550}
                       height={350}
-                      showSatellite={false}
                       showLengthLabels={true}
+                      showLegend={false}
+                      showCompass={true}
+                      showTotals={false}
                     />
                   </div>
 
@@ -446,14 +445,16 @@ export function RoofrStyleReportPreview({
                     </div>
                   </div>
 
-                  <div className="aspect-video bg-white rounded-lg border flex items-center justify-center">
-                    <RoofDiagramRenderer 
+                  <div className="aspect-video bg-white rounded-lg border overflow-hidden">
+                    <SchematicRoofDiagram 
                       measurement={measurement}
                       tags={tags}
                       width={550}
                       height={350}
-                      showSatellite={false}
-                      showAreaLabels={true}
+                      showLengthLabels={false}
+                      showLegend={true}
+                      showCompass={true}
+                      showTotals={true}
                     />
                   </div>
                 </ReportPage>
@@ -493,14 +494,16 @@ export function RoofrStyleReportPreview({
                     </div>
                   </div>
 
-                  <div className="aspect-video bg-white rounded-lg border flex items-center justify-center">
-                    <RoofDiagramRenderer 
+                  <div className="aspect-video bg-white rounded-lg border overflow-hidden">
+                    <SchematicRoofDiagram 
                       measurement={measurement}
                       tags={tags}
                       width={550}
                       height={350}
-                      showSatellite={false}
-                      showPitchLabels={true}
+                      showLengthLabels={true}
+                      showLegend={true}
+                      showCompass={true}
+                      showTotals={false}
                     />
                   </div>
                 </ReportPage>

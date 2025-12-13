@@ -44,7 +44,7 @@ function transformNewMeasurementToLegacyFormat(newData: any) {
       area_sqft: f.adjustedAreaSqft || f.area || 0,
       shape: f.shape || 'rectangle',
       orientation: f.orientation || 'unknown',
-      wkt: null,
+      wkt: f.wkt || f.polygon_wkt || null,
     })) || [],
     // CRITICAL FIX: Use WKT array from API response for accurate overlay rendering
     // This preserves the geographic coordinates detected by AI Vision
