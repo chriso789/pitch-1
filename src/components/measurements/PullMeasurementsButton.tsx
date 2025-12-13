@@ -178,11 +178,20 @@ export function PullMeasurementsButton({
     
     if (!freshCoords?.isValid) {
       toast({
-        title: "Missing Location",
-        description: "Property coordinates not found. Please verify the address first using the 'Re-verify Address' button.",
+        title: "Verified Address Required",
+        description: "Property coordinates not verified. Please use the 'Re-verify Address' button to confirm the exact property location before running AI measurements.",
         variant: "destructive"
       });
       return;
+    }
+
+    // Check if coordinates are from verified source
+    if (freshCoords.source !== 'contact_verified_address' && freshCoords.source !== 'user_pin_selection') {
+      toast({
+        title: "Address Verification Recommended",
+        description: `Using ${freshCoords.source} coordinates. For best accuracy, verify the address via Google Places first.`,
+        variant: "default"
+      });
     }
 
     console.log('📍 Opening structure selector with fresh coords:', { 
