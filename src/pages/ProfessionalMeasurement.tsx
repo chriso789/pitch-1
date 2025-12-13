@@ -1,12 +1,15 @@
 import { useState } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
+import { useQuery } from '@tanstack/react-query';
+import { supabase } from '@/integrations/supabase/client';
+import { useMapboxToken } from '@/hooks/useMapboxToken';
 import { Card } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Slider } from '@/components/ui/slider';
 import { Label } from '@/components/ui/label';
-import { ArrowRight, Ruler, Edit, FileText, Calculator, Home, History } from 'lucide-react';
+import { ArrowRight, Ruler, Edit, FileText, Calculator, Home, History, Loader2 } from 'lucide-react';
 import { SimpleMeasurementCanvas } from '@/components/measurements/SimpleMeasurementCanvas';
 import { ProfessionalMeasurementReport } from '@/components/measurements/ProfessionalMeasurementReport';
 import { ComprehensiveMeasurementOverlay } from '@/components/measurements/ComprehensiveMeasurementOverlay';
@@ -32,6 +35,53 @@ export default function ProfessionalMeasurement() {
   const [activeTab, setActiveTab] = useState('draw');
   const [showHistoryDialog, setShowHistoryDialog] = useState(false);
   
+  // Fetch Mapbox token
+  const { token: mapboxToken, loading: tokenLoading } = useMapboxToken();
+  
+  // Fetch pipeline entry with contact data
+  const { data: pipelineEntry, isLoading: entryLoading } = useQuery({
+    queryKey: ['pipeline-entry-measurement', id],
+    queryFn: async () => {
+      if (!id) return null;
+      const { data, error } = await supabase
+        .from('pipeline_entries')
+        .select(`
+          id,
+          contacts (
+            first_name,
+            last_name,
+            address_street,
+            address_city,
+            address_state,
+            latitude,
+            longitude,
+            verified_address
+          )
+        `)
+        .eq('id', id)
+        .single();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!id,
+  });
+
+  // Extract real property data
+  const contact = pipelineEntry?.contacts as any;
+  const propertyAddress = contact 
+    ? [contact.address_street, contact.address_city, contact.address_state].filter(Boolean).join(', ')
+    : 'Loading address...';
+  const customerName = contact 
+    ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unknown'
+    : 'Loading...';
+  const lat = contact?.verified_address?.lat || contact?.latitude || 0;
+  const lng = contact?.verified_address?.lng || contact?.longitude || 0;
+  
+  // Build real satellite URL
+  const realSatelliteUrl = mapboxToken && lat && lng
+    ? `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${lng},${lat},20,0/1200x800?access_token=${mapboxToken}`
+    : '';
+  
   // Measurement state
   const [facets, setFacets] = useState<Facet[]>([]);
   const [totalArea, setTotalArea] = useState(0);
@@ -45,10 +95,20 @@ export default function ProfessionalMeasurement() {
   const [wastePercentage, setWastePercentage] = useState(10);
   const [globalPitch, setGlobalPitch] = useState('6/12');
   const [complexityFactor, setComplexityFactor] = useState(1.0);
+
+  // Loading state
+  const isLoading = tokenLoading || entryLoading;
   
-  // Property info
-  const [propertyAddress] = useState('123 Main St, City, ST 12345');
-  const [customerName] = useState('John Doe');
+  if (isLoading) {
+    return (
+      <GlobalLayout>
+        <div className="flex items-center justify-center h-screen">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <span className="ml-2">Loading property data...</span>
+        </div>
+      </GlobalLayout>
+    );
+  }
 
   const handleMeasurementsComplete = (measurement: any) => {
     console.log('Measurements completed:', measurement);
@@ -180,8 +240,11 @@ export default function ProfessionalMeasurement() {
               <TabsContent value="draw" className="h-full m-0 p-0">
                 <div className="h-full flex flex-col">
                   <SimpleMeasurementCanvas
-                    satelliteImageUrl={satelliteImageUrl || 'https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/-122.4,37.8,18,0/1200x800?access_token=pk.eyJ1IjoibG92YWJsZS1kZW1vIiwiYSI6ImNtMXoxZHdwejBhMnAyanM0dzA3ZW1yMG4ifQ.demo'}
+                    satelliteImageUrl={satelliteImageUrl || realSatelliteUrl}
                     address={propertyAddress}
+                    centerLat={lat}
+                    centerLng={lng}
+                    zoom={20}
                     onMeasurementsChange={handleMeasurementsComplete}
                   />
                   
