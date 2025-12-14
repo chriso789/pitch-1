@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { wktPolygonToLatLngs, wktLineToLatLngs } from '@/lib/canvassiq/wkt';
 
 interface RoofDiagramRendererProps {
   measurement: any;
@@ -35,7 +36,64 @@ const FEATURE_COLORS = {
   eave: '#06b6d4',      // cyan
   rake: '#d946ef',      // magenta/fuchsia
   step: '#f59e0b',      // amber (dashed)
+  step_flashing: '#f59e0b',
 };
+
+// Helper to convert lat/lng coords to SVG coordinates
+function coordsToSVG(
+  coords: Array<{ lat: number; lng: number }>,
+  bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number },
+  width: number,
+  height: number,
+  padding: number = 40
+): string {
+  if (coords.length < 2) return '';
+  
+  const scaleX = (width - padding * 2) / (bounds.maxLng - bounds.minLng || 0.0001);
+  const scaleY = (height - padding * 2) / (bounds.maxLat - bounds.minLat || 0.0001);
+  const scale = Math.min(scaleX, scaleY);
+  
+  // Center the drawing
+  const drawWidth = (bounds.maxLng - bounds.minLng) * scale;
+  const drawHeight = (bounds.maxLat - bounds.minLat) * scale;
+  const offsetX = (width - drawWidth) / 2;
+  const offsetY = (height - drawHeight) / 2;
+  
+  const points = coords.map(c => {
+    const x = offsetX + (c.lng - bounds.minLng) * scale;
+    const y = offsetY + (bounds.maxLat - c.lat) * scale; // Flip Y axis
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  });
+  
+  return `M ${points.join(' L ')} Z`;
+}
+
+function lineToSVG(
+  coords: Array<{ lat: number; lng: number }>,
+  bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number },
+  width: number,
+  height: number,
+  padding: number = 40
+): string {
+  if (coords.length < 2) return '';
+  
+  const scaleX = (width - padding * 2) / (bounds.maxLng - bounds.minLng || 0.0001);
+  const scaleY = (height - padding * 2) / (bounds.maxLat - bounds.minLat || 0.0001);
+  const scale = Math.min(scaleX, scaleY);
+  
+  const drawWidth = (bounds.maxLng - bounds.minLng) * scale;
+  const drawHeight = (bounds.maxLat - bounds.minLat) * scale;
+  const offsetX = (width - drawWidth) / 2;
+  const offsetY = (height - drawHeight) / 2;
+  
+  const points = coords.map((c, i) => {
+    const x = offsetX + (c.lng - bounds.minLng) * scale;
+    const y = offsetY + (bounds.maxLat - c.lat) * scale;
+    return i === 0 ? `M ${x.toFixed(1)} ${y.toFixed(1)}` : `L ${x.toFixed(1)} ${y.toFixed(1)}`;
+  });
+  
+  return points.join(' ');
+}
 
 export function RoofDiagramRenderer({
   measurement,
@@ -51,57 +109,97 @@ export function RoofDiagramRenderer({
   satelliteImageUrl,
 }: RoofDiagramRendererProps) {
   
-  // Debug log to see what data we're getting
-  console.log('🎨 RoofDiagramRenderer:', { 
-    hasMeasurement: !!measurement, 
-    facesCount: measurement?.faces?.length,
-    satelliteImageUrl: satelliteImageUrl?.substring(0, 50),
-    showSatellite
-  });
+  // Calculate unified bounds from all geometry
+  const bounds = useMemo(() => {
+    const allCoords: Array<{ lat: number; lng: number }> = [];
+    
+    // From perimeter_wkt
+    if (measurement?.perimeter_wkt) {
+      const perimCoords = wktPolygonToLatLngs(measurement.perimeter_wkt);
+      allCoords.push(...perimCoords);
+    }
+    
+    // From linear_features_wkt
+    const linearData = measurement?.linear_features_wkt || measurement?.linear_features || [];
+    if (Array.isArray(linearData)) {
+      linearData.forEach((feature: any) => {
+        if (feature.wkt) {
+          const coords = wktLineToLatLngs(feature.wkt);
+          allCoords.push(...coords);
+        }
+      });
+    }
+    
+    // From faces with WKT
+    if (measurement?.faces) {
+      measurement.faces.forEach((face: any) => {
+        if (face.wkt) {
+          const coords = wktPolygonToLatLngs(face.wkt);
+          allCoords.push(...coords);
+        }
+      });
+    }
+    
+    if (allCoords.length === 0) {
+      return { minLat: 0, maxLat: 1, minLng: 0, maxLng: 1 };
+    }
+    
+    const lats = allCoords.map(c => c.lat);
+    const lngs = allCoords.map(c => c.lng);
+    
+    return {
+      minLat: Math.min(...lats),
+      maxLat: Math.max(...lats),
+      minLng: Math.min(...lngs),
+      maxLng: Math.max(...lngs),
+    };
+  }, [measurement]);
   
-  // Parse facets from measurement data
+  // Parse perimeter from perimeter_wkt
+  const perimeterPath = useMemo(() => {
+    if (!measurement?.perimeter_wkt) return null;
+    
+    const coords = wktPolygonToLatLngs(measurement.perimeter_wkt);
+    if (coords.length < 3) return null;
+    
+    return coordsToSVG(coords, bounds, width, height);
+  }, [measurement?.perimeter_wkt, bounds, width, height]);
+  
+  // Parse facets from measurement data - prioritize perimeter_wkt if faces have no WKT
   const facets = useMemo(() => {
-    if (!measurement?.faces || measurement.faces.length === 0) {
-      // Generate a default placeholder facet if no data
-      console.log('⚠️ No faces data, generating placeholder');
+    // If we have faces with real WKT geometry, use them
+    if (measurement?.faces && measurement.faces.length > 0 && measurement.faces[0]?.wkt) {
+      return measurement.faces.map((face: any, index: number) => {
+        const coords = wktPolygonToLatLngs(face.wkt);
+        return {
+          id: face.id || index,
+          number: face.facet_number || index + 1,
+          area: face.area_sqft || face.plan_area_sqft || 0,
+          pitch: face.pitch || '6/12',
+          color: FACET_COLORS[index % FACET_COLORS.length],
+          polygon: coordsToSVG(coords, bounds, width, height),
+        };
+      });
+    }
+    
+    // If we have perimeter_wkt but no face WKT, use perimeter as single facet
+    if (perimeterPath) {
       return [{
         id: 1,
         number: 1,
         area: measurement?.summary?.total_area_sqft || tags?.['roof.total_area'] || 0,
         pitch: measurement?.summary?.pitch || measurement?.predominant_pitch || '6/12',
         color: FACET_COLORS[0],
-        polygon: generateDefaultRoofShape(width, height),
+        polygon: perimeterPath,
       }];
     }
     
-    return measurement.faces.map((face: any, index: number) => ({
-      id: face.id || index,
-      number: face.facet_number || index + 1,
-      area: face.area_sqft || face.plan_area_sqft || 0,
-      pitch: face.pitch || '6/12',
-      color: FACET_COLORS[index % FACET_COLORS.length],
-      // Generate mock polygon if no WKT (for display purposes)
-      polygon: face.wkt ? parseWKTToSVG(face.wkt, width, height) : generateMockPolygon(index, measurement.faces.length, width, height),
-    }));
-  }, [measurement, tags, width, height]);
+    // No real geometry - return empty (no fake shapes)
+    console.log('⚠️ No WKT geometry available for roof diagram');
+    return [];
+  }, [measurement, tags, bounds, width, height, perimeterPath]);
 
-  // Generate a simple house-shaped roof polygon
-  function generateDefaultRoofShape(w: number, h: number): string {
-    const padding = 80;
-    const cx = w / 2;
-    const cy = h / 2;
-    const roofWidth = w - padding * 2;
-    const roofHeight = h - padding * 2;
-    
-    // Simple gable roof shape
-    return `M ${padding} ${cy + roofHeight * 0.3} 
-            L ${cx} ${padding} 
-            L ${w - padding} ${cy + roofHeight * 0.3} 
-            L ${w - padding} ${h - padding} 
-            L ${padding} ${h - padding} Z`;
-  }
-
-  // Parse linear features
+  // Parse linear features from WKT
   const linearFeatures = useMemo(() => {
     const features: Array<{
       type: string;
@@ -111,138 +209,33 @@ export function RoofDiagramRenderer({
       dashed?: boolean;
     }> = [];
 
-    // Extract from tags or measurement.linear_features
     const linearData = measurement?.linear_features_wkt || measurement?.linear_features || [];
     
-    // If linear_features is an object with type keys (like {ridge: 50, hip: 30})
-    if (linearData && typeof linearData === 'object' && !Array.isArray(linearData)) {
-      Object.entries(linearData).forEach(([type, length]) => {
-        if (typeof length === 'number' && length > 0) {
-          features.push({
-            type: type.toLowerCase(),
-            color: FEATURE_COLORS[type.toLowerCase() as keyof typeof FEATURE_COLORS] || FEATURE_COLORS.ridge,
-            path: generateLinearFeaturePath(type, width, height, features.length),
-            length: length,
-            dashed: type === 'step',
-          });
-        }
-      });
-    } else if (Array.isArray(linearData)) {
+    if (Array.isArray(linearData)) {
       linearData.forEach((feature: any) => {
         const type = feature.type?.toLowerCase() || 'ridge';
-        features.push({
-          type,
-          color: FEATURE_COLORS[type as keyof typeof FEATURE_COLORS] || FEATURE_COLORS.ridge,
-          path: feature.wkt ? parseLineWKTToSVG(feature.wkt, width, height) : '',
-          length: feature.length_ft || 0,
-          dashed: type === 'step',
-        });
+        
+        // Only render if we have WKT geometry
+        if (feature.wkt) {
+          const coords = wktLineToLatLngs(feature.wkt);
+          if (coords.length >= 2) {
+            features.push({
+              type,
+              color: FEATURE_COLORS[type as keyof typeof FEATURE_COLORS] || FEATURE_COLORS.ridge,
+              path: lineToSVG(coords, bounds, width, height),
+              length: feature.length_ft || 0,
+              dashed: type === 'step' || type === 'step_flashing',
+            });
+          }
+        }
       });
     }
 
     return features;
-  }, [measurement, width, height]);
+  }, [measurement, bounds, width, height]);
 
-  // Generate simple linear feature paths for display
-  function generateLinearFeaturePath(type: string, w: number, h: number, index: number): string {
-    const padding = 80;
-    const cx = w / 2;
-    const cy = h / 2;
-    
-    switch (type.toLowerCase()) {
-      case 'ridge':
-        return `M ${padding + 20} ${cy - 30} L ${w - padding - 20} ${cy - 30}`;
-      case 'hip':
-        return `M ${cx} ${padding + 30} L ${w - padding - 40} ${cy + 40}`;
-      case 'valley':
-        return `M ${padding + 40} ${cy} L ${cx} ${h - padding - 40}`;
-      case 'eave':
-        return `M ${padding} ${h - padding - 20} L ${w - padding} ${h - padding - 20}`;
-      case 'rake':
-        return `M ${padding + 10} ${cy + 50} L ${padding + 10} ${h - padding}`;
-      default:
-        return `M ${padding + index * 20} ${cy} L ${w - padding - index * 20} ${cy}`;
-    }
-  }
-
-  // Generate mock facet polygon for visual representation
-  function generateMockPolygon(index: number, total: number, w: number, h: number): string {
-    const centerX = w / 2;
-    const centerY = h / 2;
-    const radius = Math.min(w, h) * 0.35;
-    
-    // Create pie-slice style polygons
-    const angleStart = (index / total) * Math.PI * 2 - Math.PI / 2;
-    const angleEnd = ((index + 1) / total) * Math.PI * 2 - Math.PI / 2;
-    
-    const x1 = centerX + Math.cos(angleStart) * radius;
-    const y1 = centerY + Math.sin(angleStart) * radius;
-    const x2 = centerX + Math.cos(angleEnd) * radius;
-    const y2 = centerY + Math.sin(angleEnd) * radius;
-    
-    return `M ${centerX} ${centerY} L ${x1} ${y1} A ${radius} ${radius} 0 0 1 ${x2} ${y2} Z`;
-  }
-
-  // Parse WKT POLYGON to SVG path
-  function parseWKTToSVG(wkt: string, w: number, h: number): string {
-    if (!wkt) return '';
-    
-    const match = wkt.match(/POLYGON\(\(([^)]+)\)\)/);
-    if (!match) return '';
-    
-    const coords = match[1].split(',').map(pair => {
-      const [lng, lat] = pair.trim().split(' ').map(Number);
-      return { lat, lng };
-    });
-    
-    if (coords.length < 3) return '';
-    
-    // Find bounds
-    const lats = coords.map(c => c.lat);
-    const lngs = coords.map(c => c.lng);
-    const minLat = Math.min(...lats), maxLat = Math.max(...lats);
-    const minLng = Math.min(...lngs), maxLng = Math.max(...lngs);
-    
-    // Convert to SVG coordinates with padding
-    const padding = 50;
-    const scaleX = (w - padding * 2) / (maxLng - minLng || 1);
-    const scaleY = (h - padding * 2) / (maxLat - minLat || 1);
-    const scale = Math.min(scaleX, scaleY);
-    
-    const points = coords.map(c => {
-      const x = padding + (c.lng - minLng) * scale;
-      const y = padding + (maxLat - c.lat) * scale; // Flip Y
-      return `${x},${y}`;
-    });
-    
-    return `M ${points.join(' L ')} Z`;
-  }
-
-  // Parse WKT LINESTRING to SVG path
-  function parseLineWKTToSVG(wkt: string, w: number, h: number): string {
-    if (!wkt) return '';
-    
-    const match = wkt.match(/LINESTRING\(([^)]+)\)/);
-    if (!match) return '';
-    
-    const coords = match[1].split(',').map(pair => {
-      const [lng, lat] = pair.trim().split(' ').map(Number);
-      return { lat, lng };
-    });
-    
-    if (coords.length < 2) return '';
-    
-    // Use same bounds as facets for consistency
-    // For standalone use, calculate from line coords
-    const points = coords.map((c, i) => {
-      // Simple normalized positioning (0-1 range assumed)
-      const x = 50 + (c.lng + 82) * 100; // Rough conversion
-      const y = 50 + (28 - c.lat) * 100;
-      return i === 0 ? `M ${x} ${y}` : `L ${x} ${y}`;
-    });
-    
-    return points.join(' ');
-  }
+  // Check if we have any real geometry
+  const hasGeometry = perimeterPath || facets.length > 0 || linearFeatures.length > 0;
 
   return (
     <div className="relative" style={{ width, height }}>
@@ -254,7 +247,14 @@ export function RoofDiagramRenderer({
           className="absolute inset-0 w-full h-full object-cover rounded"
         />
       ) : (
-        <div className="absolute inset-0 bg-transparent rounded" />
+        <div className="absolute inset-0 bg-muted/20 rounded" />
+      )}
+
+      {/* No geometry message */}
+      {!hasGeometry && !showSatellite && (
+        <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+          <p className="text-sm">No roof geometry available</p>
+        </div>
       )}
 
       {/* SVG Overlay */}
