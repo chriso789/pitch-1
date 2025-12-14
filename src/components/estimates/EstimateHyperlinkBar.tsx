@@ -2,17 +2,14 @@ import React, { useEffect, useState } from 'react';
 import { cn } from '@/lib/utils';
 import { 
   Calculator, 
-  MapPin, 
   Package, 
   Hammer, 
   Settings, 
   TrendingUp, 
   DollarSign,
-  RefreshCw,
   FileText
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useToast } from '@/hooks/use-toast';
 
 interface HyperlinkBarData {
   estimate_id: string;
@@ -70,9 +67,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
 }) => {
   const [hyperlinkData, setHyperlinkData] = useState<HyperlinkBarData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [measuringRoof, setMeasuringRoof] = useState(false);
   const [salesRepOverheadRate, setSalesRepOverheadRate] = useState<number>(0);
-  const { toast } = useToast();
 
   // Fetch hyperlink bar data using the new RPC function
   useEffect(() => {
@@ -141,91 +136,12 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     return `${squares.toFixed(1)} sq`;
   };
 
-  const handleRefreshMeasurements = async (e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    
-    if (!pipelineEntryId || measuringRoof) return;
-
-    setMeasuringRoof(true);
-    toast({
-      title: "Updating Measurements",
-      description: "Fetching latest roof measurements from satellite data...",
-    });
-
-    try {
-      const { data: { session } } = await supabase.auth.getSession();
-      if (!session) throw new Error('No session');
-
-      // Get property coordinates from pipeline entry
-      const { data: pipelineEntry, error: entryError } = await supabase
-        .from('pipeline_entries')
-        .select('id, contacts(latitude, longitude, address_street, address_city, address_state, address_zip, verified_address)')
-        .eq('id', pipelineEntryId)
-        .single();
-
-      if (entryError || !pipelineEntry) {
-        throw new Error('Failed to fetch pipeline entry');
-      }
-
-      const contact = pipelineEntry.contacts as any;
-      const verifiedAddress = contact?.verified_address as any;
-      
-      // Get coordinates - prefer verified address, fall back to contact coordinates
-      const lat = verifiedAddress?.geometry?.location?.lat || contact?.latitude;
-      const lng = verifiedAddress?.geometry?.location?.lng || contact?.longitude;
-      
-      if (!lat || !lng) {
-        throw new Error('No coordinates available. Please verify the property address first.');
-      }
-
-      const address = verifiedAddress?.formatted_address || 
-        `${contact?.address_street || ''}, ${contact?.address_city || ''}, ${contact?.address_state || ''} ${contact?.address_zip || ''}`.trim();
-
-      // Use the existing measure function with 'pull' action
-      const response = await supabase.functions.invoke('measure', {
-        body: { 
-          action: 'pull',
-          propertyId: pipelineEntryId,
-          lat,
-          lng,
-          address
-        }
-      });
-
-      if (response.error) throw response.error;
-      if (!response.data?.ok) throw new Error(response.data?.error || 'Measurement failed');
-
-      const source = response.data?.data?.measurement?.source || 'satellite';
-      toast({
-        title: "Measurements Updated",
-        description: `Source: ${source}`,
-      });
-
-      // Refresh the hyperlink data
-      const { data } = await supabase
-        .rpc('api_estimate_hyperlink_bar', { p_estimate_id: pipelineEntryId });
-      if (data) setHyperlinkData(data as unknown as HyperlinkBarData);
-
-    } catch (error) {
-      console.error('Measurement update error:', error);
-      toast({
-        title: "Measurement Update Failed",
-        description: error instanceof Error ? error.message : "Please try again",
-        variant: "destructive"
-      });
-    } finally {
-      setMeasuringRoof(false);
-    }
-  };
-
   // Use RPC data if available, otherwise fallback to passed calculations
   const isReady = hyperlinkData?.ready || !!(calculations?.materials_cost && calculations?.labor_cost);
 
   const getIconForSection = (key: string) => {
     switch (key) {
       case 'estimate': return Calculator;
-      case 'measurements': return MapPin;
       case 'materials': return Package;
       case 'labor': return Hammer;
       case 'overhead': return Settings;
@@ -243,7 +159,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     return salePrice * (salesRepOverheadRate / 100);
   };
 
-  // Use sections from RPC if available, otherwise build fallback
+  // Use sections from RPC if available, otherwise build fallback - measurements tab removed
   const links = hyperlinkData ? [
     {
       id: 'documents',
@@ -253,16 +169,6 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       hint: null,
       description: 'Project documents and files'
     },
-    ...hyperlinkData.sections
-      .filter(section => section.key === 'measurements')
-      .map(section => ({
-        id: section.key,
-        label: section.label,
-        icon: getIconForSection(section.key),
-        value: section.extra?.squares ? formatSquares(section.extra.squares) : '—',
-        hint: section.pending ? 'Pending' : null,
-        description: getDescriptionForSection(section.key)
-      })),
     {
       id: 'estimate',
       label: 'Estimate',
@@ -299,14 +205,6 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       value: '—',
       hint: null,
       description: 'Project documents and files'
-    },
-    {
-      id: 'measurements',
-      label: 'Measurements',
-      icon: MapPin,
-      value: calculations?.measurements?.has_template ? '✓ Mapped' : '—',
-      hint: !calculations?.measurements?.has_template ? 'Bind to template' : null,
-      description: 'Roof measurements and template mapping'
     },
     {
       id: 'estimate',
@@ -415,19 +313,6 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
             <div className="flex items-center space-x-1 mb-1">
               <IconComponent className="h-4 w-4" />
               <span className="text-sm font-medium truncate">{link.label}</span>
-              {link.id === 'measurements' && pipelineEntryId && (
-                <button
-                  onClick={handleRefreshMeasurements}
-                  disabled={measuringRoof}
-                  className={cn(
-                    "ml-1 p-0.5 rounded hover:bg-primary/10 transition-colors",
-                    measuringRoof && "animate-spin"
-                  )}
-                  title="Refresh measurements from satellite data"
-                >
-                  <RefreshCw className="h-3 w-3" />
-                </button>
-              )}
             </div>
             
             <div className="flex items-center space-x-1">

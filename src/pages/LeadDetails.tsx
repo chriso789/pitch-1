@@ -15,7 +15,7 @@ import {
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import SatelliteMeasurement from '@/components/SatelliteMeasurement';
+
 import EstimateHyperlinkBar from '@/components/estimates/EstimateHyperlinkBar';
 import ProfitSlider from '@/components/estimates/ProfitSlider';
 import { CompactCommunicationHub } from '@/components/communication/CompactCommunicationHub';
@@ -179,38 +179,6 @@ const LeadDetails = () => {
               refetchRequirements();
             }}
           />
-        );
-      case 'measurements':
-        return (
-          <div className="space-y-6">
-            <MeasurementGating
-              pipelineEntryId={id!}
-              onReadinessChange={handleReadinessChange}
-            />
-            
-            {measurementData?.tags && (
-              <LinearFeaturesPanel 
-                tags={measurementData.tags}
-                loading={measurementLoading}
-              />
-            )}
-            
-            <SatelliteMeasurement
-              address={lead?.verified_address?.formatted_address || `${lead?.contact?.address_street}, ${lead?.contact?.address_city}, ${lead?.contact?.address_state}`}
-              latitude={(lead?.contact?.verified_address as any)?.lat || lead?.contact?.latitude || lead?.verified_address?.geometry?.location?.lat}
-              longitude={(lead?.contact?.verified_address as any)?.lng || lead?.contact?.longitude || lead?.verified_address?.geometry?.location?.lng}
-              pipelineEntryId={id!}
-              measurementTags={measurementData?.tags}
-              onMeasurementsSaved={(measurements) => {
-                toast({
-                  title: "Measurements Saved",
-                  description: `Property measurements saved successfully. Area: ${measurements.adjustedArea} sq ft`,
-                });
-                refetchRequirements();
-                refetchMeasurements();
-              }}
-            />
-          </div>
         );
       case 'materials':
         return (
