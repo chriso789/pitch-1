@@ -9,7 +9,8 @@ import {
   ClipboardCheck, 
   Camera, 
   BarChart, 
-  Settings
+  Settings,
+  Upload
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 
@@ -175,6 +176,31 @@ export default function StormCanvassPro() {
           <CardContent>
             <Button className="w-full" variant="outline">
               Configure
+            </Button>
+          </CardContent>
+        </Card>
+
+        {/* Import Contacts */}
+        <Card className="hover:shadow-lg transition-shadow">
+          <CardHeader>
+            <div className="flex items-center gap-2">
+              <div className="p-2 bg-primary/10 rounded-lg">
+                <Upload className="h-5 w-5 text-primary" />
+              </div>
+              <CardTitle className="text-lg">Import Contacts</CardTitle>
+            </div>
+            <CardDescription>
+              Bulk import canvass contacts from Excel spreadsheets with rep assignment
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Button 
+              className="w-full" 
+              size="lg"
+              onClick={() => navigate('/storm-canvass/import')}
+            >
+              <Upload className="h-4 w-4 mr-2" />
+              Import from Excel
             </Button>
           </CardContent>
         </Card>
