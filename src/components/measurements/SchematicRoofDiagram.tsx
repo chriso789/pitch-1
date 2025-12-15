@@ -40,75 +40,6 @@ function calculateSegmentLength(p1: { lat: number; lng: number }, p2: { lat: num
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Calculate distance between two GPS points in degrees (for snapping threshold)
-function gpsDistance(p1: { lat: number; lng: number }, p2: { lat: number; lng: number }): number {
-  return Math.sqrt(Math.pow(p2.lat - p1.lat, 2) + Math.pow(p2.lng - p1.lng, 2));
-}
-
-// Snap a point to the nearest perimeter vertex if within threshold
-function snapToNearestVertex(
-  point: { lat: number; lng: number },
-  vertices: { lat: number; lng: number }[],
-  threshold = 0.00003 // ~10 feet at mid-latitudes
-): { lat: number; lng: number } {
-  let nearest = point;
-  let minDist = Infinity;
-  
-  for (const v of vertices) {
-    const dist = gpsDistance(point, v);
-    if (dist < minDist && dist < threshold) {
-      minDist = dist;
-      nearest = v;
-    }
-  }
-  
-  return nearest;
-}
-
-// Find the closest point on a line segment to a given point
-function snapToNearestEdge(
-  point: { lat: number; lng: number },
-  vertices: { lat: number; lng: number }[],
-  threshold = 0.00003
-): { lat: number; lng: number } {
-  let nearest = point;
-  let minDist = Infinity;
-  
-  // First try vertex snapping
-  const vertexSnap = snapToNearestVertex(point, vertices, threshold);
-  if (vertexSnap !== point) {
-    return vertexSnap;
-  }
-  
-  // Then try edge snapping
-  for (let i = 0; i < vertices.length - 1; i++) {
-    const v1 = vertices[i];
-    const v2 = vertices[i + 1];
-    
-    // Project point onto line segment
-    const dx = v2.lng - v1.lng;
-    const dy = v2.lat - v1.lat;
-    const lenSq = dx * dx + dy * dy;
-    
-    if (lenSq === 0) continue;
-    
-    let t = ((point.lng - v1.lng) * dx + (point.lat - v1.lat) * dy) / lenSq;
-    t = Math.max(0, Math.min(1, t));
-    
-    const closestPoint = {
-      lat: v1.lat + t * dy,
-      lng: v1.lng + t * dx,
-    };
-    
-    const dist = gpsDistance(point, closestPoint);
-    if (dist < minDist && dist < threshold) {
-      minDist = dist;
-      nearest = closestPoint;
-    }
-  }
-  
-  return nearest;
-}
 
 export function SchematicRoofDiagram({
   measurement,
@@ -147,29 +78,11 @@ export function SchematicRoofDiagram({
       allLatLngs = [...perimeterCoords];
     }
     
-    // Extract linear features with WKT and snap to perimeter
+    // Extract linear features with WKT - use original coordinates (no snapping)
     const linearFeaturesData: Array<{ type: string; coords: { lat: number; lng: number }[]; length: number }> = [];
     const features = measurement?.linear_features || measurement?.linear_features_wkt || [];
     
-    if (Array.isArray(features) && perimeterCoords.length > 0) {
-      features.forEach((f: LinearFeature) => {
-        if (f.wkt) {
-          const coords = wktLineToLatLngs(f.wkt);
-          if (coords.length >= 2) {
-            // Snap endpoints to nearest perimeter vertex/edge for alignment
-            const snappedCoords = coords.map(c => snapToNearestEdge(c, perimeterCoords, 0.00005));
-            
-            allLatLngs.push(...snappedCoords);
-            linearFeaturesData.push({
-              type: f.type?.toLowerCase() || 'ridge',
-              coords: snappedCoords,
-              length: f.length_ft || f.length || calculateSegmentLength(snappedCoords[0], snappedCoords[snappedCoords.length - 1]),
-            });
-          }
-        }
-      });
-    } else if (Array.isArray(features)) {
-      // No perimeter to snap to, just use raw coords
+    if (Array.isArray(features)) {
       features.forEach((f: LinearFeature) => {
         if (f.wkt) {
           const coords = wktLineToLatLngs(f.wkt);
@@ -178,7 +91,7 @@ export function SchematicRoofDiagram({
             linearFeaturesData.push({
               type: f.type?.toLowerCase() || 'ridge',
               coords,
-              length: f.length_ft || f.length || 0,
+              length: f.length_ft || f.length || calculateSegmentLength(coords[0], coords[coords.length - 1]),
             });
           }
         }
