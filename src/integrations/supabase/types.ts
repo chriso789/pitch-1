@@ -9549,6 +9549,56 @@ export type Database = {
           },
         ]
       }
+      phone_number_routing: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          is_primary: boolean | null
+          number_type: string
+          system_number: string
+          telnyx_connection_id: string | null
+          telnyx_messaging_profile_id: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_primary?: boolean | null
+          number_type: string
+          system_number: string
+          telnyx_connection_id?: string | null
+          telnyx_messaging_profile_id?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_primary?: boolean | null
+          number_type?: string
+          system_number?: string
+          telnyx_connection_id?: string | null
+          telnyx_messaging_profile_id?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "phone_number_routing_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       phone_port_requests: {
         Row: {
           account_name: string | null
@@ -18938,6 +18988,17 @@ export type Database = {
       }
       est_sanitize_formula: { Args: { expr: string }; Returns: string }
       extract_tokens: { Args: { t: string }; Returns: string[] }
+      find_contact_by_phone: {
+        Args: { p_phone: string; p_tenant_id?: string }
+        Returns: {
+          assigned_to: string
+          contact_id: string
+          first_name: string
+          last_name: string
+          pipeline_entry_id: string
+          tenant_id: string
+        }[]
+      }
       format_clj_number: {
         Args: { contact_num: number; job_num?: number; lead_num?: number }
         Returns: string
@@ -19115,6 +19176,11 @@ export type Database = {
       get_next_lead_number: {
         Args: { contact_id_param: string }
         Returns: number
+      }
+      get_tenant_sms_number: { Args: { p_tenant_id: string }; Returns: string }
+      get_tenant_voice_number: {
+        Args: { p_tenant_id: string }
+        Returns: string
       }
       get_user_accessible_tenants: {
         Args: never
