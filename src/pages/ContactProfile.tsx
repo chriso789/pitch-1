@@ -45,8 +45,21 @@ const ContactProfile = () => {
   const [activeTab, setActiveTab] = useState("details");
   const [selectedPipelineEntry, setSelectedPipelineEntry] = useState<any>(null);
 
+  // Safety guard: handle invalid IDs like "new"
   useEffect(() => {
-    if (id) {
+    if (id === 'new' || !id) {
+      toast({
+        title: "Invalid Route",
+        description: "Please use the contact form to create a new contact.",
+        variant: "destructive",
+      });
+      navigate('/client-list');
+      return;
+    }
+  }, [id, navigate, toast]);
+
+  useEffect(() => {
+    if (id && id !== 'new') {
       fetchContactData();
     }
   }, [id]);

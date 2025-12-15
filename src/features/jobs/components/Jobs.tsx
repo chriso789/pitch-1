@@ -323,7 +323,10 @@ export const Jobs = () => {
             Manage and track all your roofing jobs
           </p>
         </div>
-        <Button onClick={() => navigate('/job/new')}>
+        <Button onClick={() => {
+          toast.info("Jobs are created from contacts. Go to a contact profile and create a lead, then convert it to a job.");
+          navigate('/client-list');
+        }}>
           <Plus className="h-4 w-4 mr-2" />
           New Job
         </Button>
@@ -441,7 +444,10 @@ export const Jobs = () => {
                 </p>
               </div>
               {!searchTerm && statusFilter === 'all' && (
-                <Button onClick={() => navigate('/job/new')}>
+                <Button onClick={() => {
+                  toast.info("Jobs are created from contacts. Create a contact first, then create a lead and convert it to a job.");
+                  navigate('/client-list');
+                }}>
                   <Plus className="h-4 w-4 mr-2" />
                   Create First Job
                 </Button>
