@@ -4980,6 +4980,7 @@ export type Database = {
           id: string
           is_signed_pdf: boolean | null
           is_visible_to_homeowner: boolean | null
+          location_id: string | null
           mime_type: string | null
           pipeline_entry_id: string | null
           project_id: string | null
@@ -5001,6 +5002,7 @@ export type Database = {
           id?: string
           is_signed_pdf?: boolean | null
           is_visible_to_homeowner?: boolean | null
+          location_id?: string | null
           mime_type?: string | null
           pipeline_entry_id?: string | null
           project_id?: string | null
@@ -5022,6 +5024,7 @@ export type Database = {
           id?: string
           is_signed_pdf?: boolean | null
           is_visible_to_homeowner?: boolean | null
+          location_id?: string | null
           mime_type?: string | null
           pipeline_entry_id?: string | null
           project_id?: string | null
@@ -5043,6 +5046,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
             referencedColumns: ["id"]
           },
           {
@@ -6416,6 +6426,7 @@ export type Database = {
           id: string
           labor_cost: number | null
           line_items: Json | null
+          location_id: string | null
           material_cost: number | null
           measurement_id: string | null
           overhead_amount: number | null
@@ -6442,6 +6453,7 @@ export type Database = {
           id?: string
           labor_cost?: number | null
           line_items?: Json | null
+          location_id?: string | null
           material_cost?: number | null
           measurement_id?: string | null
           overhead_amount?: number | null
@@ -6468,6 +6480,7 @@ export type Database = {
           id?: string
           labor_cost?: number | null
           line_items?: Json | null
+          location_id?: string | null
           material_cost?: number | null
           measurement_id?: string | null
           overhead_amount?: number | null
@@ -6490,6 +6503,13 @@ export type Database = {
             columns: ["created_by"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "estimates_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
             referencedColumns: ["id"]
           },
           {
@@ -19278,7 +19298,9 @@ export type Database = {
           tenant_subdomain: string
         }[]
       }
+      get_user_active_location_id: { Args: never; Returns: string }
       get_user_active_tenant_id: { Args: never; Returns: string }
+      get_user_location_ids: { Args: never; Returns: string[] }
       get_user_tenant_id:
         | { Args: never; Returns: string }
         | { Args: { _user_id: string }; Returns: string }
@@ -20093,6 +20115,7 @@ export type Database = {
         }
         Returns: string
       }
+      user_has_full_location_access: { Args: never; Returns: boolean }
       validate_canvass_token: {
         Args: { p_token: string }
         Returns: {
