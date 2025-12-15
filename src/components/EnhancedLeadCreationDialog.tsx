@@ -381,29 +381,48 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         const state = addressComponents.find((c: any) => c.types.includes('administrative_area_level_1'))?.short_name || '';
         const zipCode = addressComponents.find((c: any) => c.types.includes('postal_code'))?.long_name || '';
 
-        const nameParts = formData.name.split(' ');
-        const firstName = nameParts[0] || 'Unknown';
-        const lastName = nameParts.slice(1).join(' ') || 'Contact';
+        const streetAddress = `${streetNumber} ${route}`.trim();
 
-        const { data: newContact, error: contactError } = await supabase
+        // Check for existing contact at same address to prevent duplicates
+        const { data: existingContact } = await supabase
           .from('contacts')
-          .insert({
-            tenant_id: userProfile.tenant_id,
-            first_name: firstName,
-            last_name: lastName,
-            phone: formData.phone,
-            address_street: `${streetNumber} ${route}`.trim(),
-            address_city: city,
-            address_state: state,
-            address_zip: zipCode,
-            type: 'homeowner',
-            created_by: user.id,
-          })
-          .select()
-          .single();
+          .select('id, first_name, last_name')
+          .eq('tenant_id', userProfile.tenant_id)
+          .eq('address_street', streetAddress)
+          .maybeSingle();
 
-        if (contactError) throw contactError;
-        contactId = newContact.id;
+        if (existingContact) {
+          // Use existing contact instead of creating duplicate
+          contactId = existingContact.id;
+          toast({
+            title: "Using Existing Contact",
+            description: `Found existing contact "${existingContact.first_name} ${existingContact.last_name}" at this address.`,
+          });
+        } else {
+          const nameParts = formData.name.split(' ');
+          const firstName = nameParts[0] || 'Unknown';
+          const lastName = nameParts.slice(1).join(' ') || 'Contact';
+
+          const { data: newContact, error: contactError } = await supabase
+            .from('contacts')
+            .insert({
+              tenant_id: userProfile.tenant_id,
+              first_name: firstName,
+              last_name: lastName,
+              phone: formData.phone,
+              address_street: streetAddress,
+              address_city: city,
+              address_state: state,
+              address_zip: zipCode,
+              type: 'homeowner',
+              created_by: user.id,
+            })
+            .select()
+            .single();
+
+          if (contactError) throw contactError;
+          contactId = newContact.id;
+        }
       }
 
       // Create pipeline entry (lead)
@@ -414,7 +433,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         priority: formData.priority,
         estimated_value: formData.estimatedValue ? parseFloat(formData.estimatedValue) : null,
         roof_type: (formData.roofType as "cedar" | "flat" | "metal" | "other" | "shingle" | "slate" | "tile") || null,
-        assigned_to: formData.salesReps[0] || null, // Assign to first selected rep
+        assigned_to: formData.salesReps[0] || user.id, // Auto-assign to creator if no rep selected
         notes: formData.description,
         created_by: user.id,
         metadata: {
