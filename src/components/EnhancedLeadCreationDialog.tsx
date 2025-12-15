@@ -97,7 +97,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
     address: "",
     phone: "",
     roofAge: "",
-    status: "",
+    status: "lead",
     priority: "medium" as const,
     estimatedValue: "",
     roofType: "",
@@ -217,7 +217,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         .from('profiles')
         .select('id, first_name, last_name, role')
         .eq('tenant_id', profile.tenant_id)
-        .in('role', ['master', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'])
+        .in('role', ['master', 'corporate', 'office_admin', 'regional_manager', 'sales_manager', 'project_manager', 'owner'])
         .eq('is_active', true)
         .order('first_name');
 
