@@ -12924,6 +12924,70 @@ export type Database = {
           },
         ]
       }
+      roof_edges: {
+        Row: {
+          confidence: number | null
+          created_at: string | null
+          edge_type: string
+          end_point: Json
+          id: string
+          length_ft: number
+          line_wkt: string | null
+          measurement_id: string
+          organization_id: string | null
+          source: string | null
+          start_point: Json
+        }
+        Insert: {
+          confidence?: number | null
+          created_at?: string | null
+          edge_type: string
+          end_point: Json
+          id?: string
+          length_ft: number
+          line_wkt?: string | null
+          measurement_id: string
+          organization_id?: string | null
+          source?: string | null
+          start_point: Json
+        }
+        Update: {
+          confidence?: number | null
+          created_at?: string | null
+          edge_type?: string
+          end_point?: Json
+          id?: string
+          length_ft?: number
+          line_wkt?: string | null
+          measurement_id?: string
+          organization_id?: string | null
+          source?: string | null
+          start_point?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_edges_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roof_edges_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roof_edges_organization_id_fkey"
+            columns: ["organization_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       roof_facets: {
         Row: {
           area_sqft: number
@@ -13313,6 +13377,7 @@ export type Database = {
       }
       roof_measurements: {
         Row: {
+          ai_analysis: Json | null
           ai_detection_data: Json
           ai_model_version: string | null
           analysis_image_size: Json | null
@@ -13329,6 +13394,7 @@ export type Database = {
           google_maps_image_url: string | null
           google_maps_zoom_level: number | null
           gps_accuracy_meters: number | null
+          gps_analysis: Json | null
           gps_coordinates: Json
           id: string
           image_bounds: Json | null
@@ -13341,6 +13407,7 @@ export type Database = {
           material_calculations: Json | null
           measured_by: string | null
           measurement_confidence: number | null
+          meters_per_pixel: number | null
           notes: string | null
           organization_id: string | null
           perimeter_wkt: string | null
@@ -13365,7 +13432,11 @@ export type Database = {
           solar_api_response: Json | null
           solar_building_footprint_sqft: number | null
           solar_panel_count: number | null
+          stories: number | null
           tags: string[] | null
+          target_lat: number | null
+          target_lng: number | null
+          target_method: string | null
           total_area_adjusted_sqft: number | null
           total_area_flat_sqft: number | null
           total_eave_length: number | null
@@ -13386,6 +13457,7 @@ export type Database = {
           waste_factor_percent: number | null
         }
         Insert: {
+          ai_analysis?: Json | null
           ai_detection_data: Json
           ai_model_version?: string | null
           analysis_image_size?: Json | null
@@ -13402,6 +13474,7 @@ export type Database = {
           google_maps_image_url?: string | null
           google_maps_zoom_level?: number | null
           gps_accuracy_meters?: number | null
+          gps_analysis?: Json | null
           gps_coordinates: Json
           id?: string
           image_bounds?: Json | null
@@ -13414,6 +13487,7 @@ export type Database = {
           material_calculations?: Json | null
           measured_by?: string | null
           measurement_confidence?: number | null
+          meters_per_pixel?: number | null
           notes?: string | null
           organization_id?: string | null
           perimeter_wkt?: string | null
@@ -13438,7 +13512,11 @@ export type Database = {
           solar_api_response?: Json | null
           solar_building_footprint_sqft?: number | null
           solar_panel_count?: number | null
+          stories?: number | null
           tags?: string[] | null
+          target_lat?: number | null
+          target_lng?: number | null
+          target_method?: string | null
           total_area_adjusted_sqft?: number | null
           total_area_flat_sqft?: number | null
           total_eave_length?: number | null
@@ -13459,6 +13537,7 @@ export type Database = {
           waste_factor_percent?: number | null
         }
         Update: {
+          ai_analysis?: Json | null
           ai_detection_data?: Json
           ai_model_version?: string | null
           analysis_image_size?: Json | null
@@ -13475,6 +13554,7 @@ export type Database = {
           google_maps_image_url?: string | null
           google_maps_zoom_level?: number | null
           gps_accuracy_meters?: number | null
+          gps_analysis?: Json | null
           gps_coordinates?: Json
           id?: string
           image_bounds?: Json | null
@@ -13487,6 +13567,7 @@ export type Database = {
           material_calculations?: Json | null
           measured_by?: string | null
           measurement_confidence?: number | null
+          meters_per_pixel?: number | null
           notes?: string | null
           organization_id?: string | null
           perimeter_wkt?: string | null
@@ -13511,7 +13592,11 @@ export type Database = {
           solar_api_response?: Json | null
           solar_building_footprint_sqft?: number | null
           solar_panel_count?: number | null
+          stories?: number | null
           tags?: string[] | null
+          target_lat?: number | null
+          target_lng?: number | null
+          target_method?: string | null
           total_area_adjusted_sqft?: number | null
           total_area_flat_sqft?: number | null
           total_eave_length?: number | null

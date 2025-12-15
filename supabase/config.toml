@@ -398,3 +398,15 @@ verify_jwt = true
 
 [functions.import-canvass-contacts]
 verify_jwt = true
+
+[functions.fetch-mapbox-imagery]
+verify_jwt = true
+
+[functions.detect-building-structure]
+verify_jwt = true
+
+[functions.calculate-roof-measurements]
+verify_jwt = true
+
+[functions.measurement-calibration]
+verify_jwt = true
