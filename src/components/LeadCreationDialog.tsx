@@ -300,21 +300,9 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       formData.name.trim() !== "" &&
       formData.phone.trim() !== "" &&
       selectedAddress !== null &&
-      formData.status !== "" &&
-      formData.assignedTo.length > 0  // At least one rep required for measurement flow
+      formData.status !== ""
+      // Sales rep assignment is now optional - auto-assigns to creator
     );
-    
-    // Debug logging to help identify what's missing
-    console.log('Form validation check:', {
-      name: formData.name.trim() !== "",
-      phone: formData.phone.trim() !== "",
-      hasSelectedAddress: selectedAddress !== null,
-      status: formData.status !== "",
-      assignedTo: formData.assignedTo.length > 0,
-      isValid: valid,
-      currentFormData: formData,
-      currentSelectedAddress: selectedAddress
-    });
     
     return valid;
   }, [formData, selectedAddress]);
@@ -384,14 +372,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       return false;
     }
 
-    if (formData.assignedTo.length === 0) {
-      toast({
-        title: "Sales Representative Required",
-        description: "Please assign at least one sales representative to proceed with measurements",
-        variant: "destructive",
-      });
-      return false;
-    }
+    // Sales rep assignment is optional - will auto-assign to creator if none selected
 
     return true;
   };
@@ -422,27 +403,46 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
         const getComponent = (type: string) => 
           addressComponents.find(comp => comp.types.includes(type))?.long_name || '';
 
-        const { data: newContact, error: contactError } = await supabase
-          .from('contacts')
-          .insert({
-            tenant_id: userProfile.tenant_id,
-            first_name: formData.name.split(' ')[0],
-            last_name: formData.name.split(' ').slice(1).join(' ') || '',
-            phone: formData.phone,
-            address_street: getComponent('street_number') + ' ' + getComponent('route'),
-            address_city: getComponent('locality'),
-            address_state: getComponent('administrative_area_level_1'),
-            address_zip: getComponent('postal_code'),
-            latitude: selectedAddress?.geometry?.location?.lat,
-            longitude: selectedAddress?.geometry?.location?.lng,
-            verified_address: selectedAddress,
-            created_by: session.user.id
-          } as any)
-          .select()
-          .single();
+        const streetAddress = (getComponent('street_number') + ' ' + getComponent('route')).trim();
 
-        if (contactError) throw contactError;
-        contactId = newContact.id;
+        // Check for existing contact at same address to prevent duplicates
+        const { data: existingContact } = await supabase
+          .from('contacts')
+          .select('id, first_name, last_name')
+          .eq('tenant_id', userProfile.tenant_id)
+          .eq('address_street', streetAddress)
+          .maybeSingle();
+
+        if (existingContact) {
+          // Use existing contact instead of creating duplicate
+          contactId = existingContact.id;
+          toast({
+            title: "Using Existing Contact",
+            description: `Found existing contact "${existingContact.first_name} ${existingContact.last_name}" at this address.`,
+          });
+        } else {
+          const { data: newContact, error: contactError } = await supabase
+            .from('contacts')
+            .insert({
+              tenant_id: userProfile.tenant_id,
+              first_name: formData.name.split(' ')[0],
+              last_name: formData.name.split(' ').slice(1).join(' ') || '',
+              phone: formData.phone,
+              address_street: streetAddress,
+              address_city: getComponent('locality'),
+              address_state: getComponent('administrative_area_level_1'),
+              address_zip: getComponent('postal_code'),
+              latitude: selectedAddress?.geometry?.location?.lat,
+              longitude: selectedAddress?.geometry?.location?.lng,
+              verified_address: selectedAddress,
+              created_by: session.user.id
+            } as any)
+            .select()
+            .single();
+
+          if (contactError) throw contactError;
+          contactId = newContact.id;
+        }
       }
 
       // Create pipeline entry
@@ -455,7 +455,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
           roof_type: formData.roofType || null,
           priority: formData.priority,
           estimated_value: formData.estimatedValue ? parseFloat(formData.estimatedValue) : null,
-          assigned_to: formData.assignedTo[0] || null, // Single assignment for now
+          assigned_to: formData.assignedTo[0] || session.user.id, // Auto-assign to creator if no rep selected
           notes: formData.notes || null,
           created_by: session.user.id,
           metadata: {
@@ -482,10 +482,8 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       markAsSaved();
       setOpen(false);
       
-      // Navigate to lead details if at least one rep is assigned
-      if (formData.assignedTo.length > 0) {
-        navigate(`/lead/${pipelineEntry.id}`);
-      }
+      // Always navigate to lead details
+      navigate(`/lead/${pipelineEntry.id}`);
       
       // Reset form
       const resetFormData = {
