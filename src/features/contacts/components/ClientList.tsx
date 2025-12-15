@@ -34,8 +34,10 @@ import {
   Settings,
   Users,
   Briefcase,
-  ArrowUpDown
+  ArrowUpDown,
+  UserPlus
 } from "lucide-react";
+import { ContactFormDialog } from "@/components/ContactFormDialog";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 
@@ -406,16 +408,25 @@ export const ClientList = () => {
             <Settings className="h-4 w-4 mr-2" />
             Set as Default
           </Button>
-          <Button onClick={() => {
-            if (activeView === 'contacts') {
-              navigate('/contact/new');
-            } else {
-              navigate('/job/new');
-            }
-          }}>
-            <Plus className="h-4 w-4 mr-2" />
-            New {activeView === 'contacts' ? 'Contact' : 'Job'}
-          </Button>
+          {activeView === 'contacts' ? (
+            <ContactFormDialog
+              onContactCreated={() => fetchData()}
+              trigger={
+                <Button>
+                  <UserPlus className="h-4 w-4 mr-2" />
+                  New Contact
+                </Button>
+              }
+            />
+          ) : (
+            <Button onClick={() => {
+              toast.info("Jobs are created from contacts. Go to a contact profile and create a lead, then convert it to a job.");
+              setActiveView('contacts');
+            }}>
+              <Plus className="h-4 w-4 mr-2" />
+              New Job
+            </Button>
+          )}
         </div>
       </div>
 

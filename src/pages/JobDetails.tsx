@@ -84,8 +84,21 @@ const JobDetails = () => {
     salesRepCommission: 0
   });
 
+  // Safety guard: handle invalid IDs like "new"
   useEffect(() => {
-    if (id) {
+    if (id === 'new' || !id) {
+      toast({
+        title: 'Invalid Route',
+        description: 'Jobs are created from contacts. Please go to a contact profile to create a job.',
+        variant: 'destructive'
+      });
+      navigate('/jobs');
+      return;
+    }
+  }, [id, navigate]);
+
+  useEffect(() => {
+    if (id && id !== 'new') {
       fetchJobDetails();
       fetchBudgetItems();
       fetchFinancialSummary();
