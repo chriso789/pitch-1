@@ -22,6 +22,13 @@ interface CanvassContact {
   present_at_location?: string;
 }
 
+// Email alias mapping for rep assignment
+const EMAIL_ALIASES: Record<string, string> = {
+  'support@obriencontractingusa.com': 'chrisobrien91@gmail.com',
+  'info@obriencontractingusa.com': 'chrisobrien91@gmail.com',
+  'chris@obriencontractingusa.com': 'chrisobrien91@gmail.com',
+};
+
 // Map status names to qualification_status - handles all 12 canvassing statuses
 function mapStatus(statusName: string | undefined): string {
   if (!statusName) return 'new';
@@ -36,7 +43,7 @@ function mapStatus(statusName: string | undefined): string {
   if (normalized.includes('no answer')) return 'no_answer';
   if (normalized.includes('not home')) return 'not_home';
   
-  // NEW mappings for additional statuses
+  // Additional status mappings
   if (normalized.includes('go back')) return 'go_back';
   if (normalized.includes('contract signed')) return 'contract_signed';
   if (normalized.includes('unqualified')) return 'unqualified';
@@ -63,6 +70,13 @@ function parseName(hoName: string | undefined): { firstName: string; lastName: s
   const firstName = parts[0];
   const lastName = parts.slice(1).join(' ');
   return { firstName, lastName };
+}
+
+// Resolve email through alias mapping
+function resolveEmail(email: string | undefined): string | undefined {
+  if (!email) return undefined;
+  const normalized = email.toLowerCase().trim();
+  return EMAIL_ALIASES[normalized] || normalized;
 }
 
 serve(async (req) => {
@@ -93,7 +107,7 @@ serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    // Get user's tenant
+    // Get user's tenant and location
     const { data: profile } = await supabase
       .from('profiles')
       .select('tenant_id, active_tenant_id')
@@ -105,13 +119,32 @@ serve(async (req) => {
     }
 
     const tenantId = profile.active_tenant_id || profile.tenant_id;
-    const { contacts } = await req.json() as { contacts: CanvassContact[] };
+    
+    // Get user's active location for assignment
+    const { data: userLocation } = await supabase
+      .from('user_location_assignments')
+      .select('location_id')
+      .eq('user_id', user.id)
+      .eq('is_active', true)
+      .order('created_at', { ascending: true })
+      .limit(1)
+      .single();
+
+    const defaultLocationId = userLocation?.location_id || null;
+    
+    const { contacts, location_id } = await req.json() as { 
+      contacts: CanvassContact[]; 
+      location_id?: string;
+    };
+
+    // Use provided location_id or fall back to user's location
+    const assignLocationId = location_id || defaultLocationId;
 
     if (!contacts || !Array.isArray(contacts)) {
       throw new Error('Invalid contacts data');
     }
 
-    console.log(`Processing ${contacts.length} contacts for tenant ${tenantId}`);
+    console.log(`Processing ${contacts.length} contacts for tenant ${tenantId}, location ${assignLocationId}`);
 
     // Get all profiles for rep assignment lookup
     const { data: profiles } = await supabase
@@ -119,9 +152,19 @@ serve(async (req) => {
       .select('id, email, first_name, last_name')
       .eq('tenant_id', tenantId);
 
-    const profilesByEmail = new Map(
-      (profiles || []).map(p => [p.email?.toLowerCase(), p.id])
-    );
+    // Build lookup maps with alias support
+    const profilesByEmail = new Map<string, string>();
+    const profilesByName = new Map<string, string>();
+    
+    for (const p of profiles || []) {
+      if (p.email) {
+        profilesByEmail.set(p.email.toLowerCase(), p.id);
+      }
+      const fullName = `${p.first_name || ''} ${p.last_name || ''}`.trim().toLowerCase();
+      if (fullName) {
+        profilesByName.set(fullName, p.id);
+      }
+    }
 
     // Get existing contacts to check for duplicates (by address)
     const { data: existingContacts } = await supabase
@@ -140,6 +183,7 @@ serve(async (req) => {
       duplicates: 0,
       errors: 0,
       errorMessages: [] as string[],
+      repAssignments: {} as Record<string, number>,
     };
 
     // Process in batches of 50
@@ -159,14 +203,29 @@ serve(async (req) => {
 
           const { firstName, lastName } = parseName(contact.ho_name);
           
-          // Try email first, then rep_name for assignment
-          let assignedTo = contact.email ? profilesByEmail.get(contact.email.toLowerCase()) : null;
+          // Try email first (with alias resolution), then rep_name for assignment
+          const resolvedEmail = resolveEmail(contact.email);
+          let assignedTo = resolvedEmail ? profilesByEmail.get(resolvedEmail) : null;
+          
+          // Fallback to rep_name matching
           if (!assignedTo && contact.rep_name) {
-            const repProfile = (profiles || []).find(p => 
-              `${p.first_name} ${p.last_name}`.toLowerCase() === contact.rep_name?.toLowerCase()
-            );
-            assignedTo = repProfile?.id || null;
+            const repNameNormalized = contact.rep_name.toLowerCase().trim();
+            assignedTo = profilesByName.get(repNameNormalized);
+            
+            // Try partial name matching if exact match fails
+            if (!assignedTo) {
+              for (const [name, id] of profilesByName.entries()) {
+                if (name.includes(repNameNormalized) || repNameNormalized.includes(name)) {
+                  assignedTo = id;
+                  break;
+                }
+              }
+            }
           }
+          
+          // Track rep assignments
+          const repKey = assignedTo || 'unassigned';
+          results.repAssignments[repKey] = (results.repAssignments[repKey] || 0) + 1;
           
           // Parse sub_status for priority
           const subStatus = contact.sub_status_name?.toLowerCase() || '';
@@ -187,6 +246,7 @@ serve(async (req) => {
 
           toInsert.push({
             tenant_id: tenantId,
+            location_id: assignLocationId,
             first_name: firstName,
             last_name: lastName,
             address_street: contact.address || '',
