@@ -188,10 +188,23 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
 
   const loadSalesReps = async () => {
     try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', user.id)
+        .maybeSingle();
+
+      if (!profile?.tenant_id) return;
+
       const { data: profiles, error } = await supabase
         .from('profiles')
         .select('id, first_name, last_name, role')
-        .in('role', ['sales_manager', 'regional_manager', 'corporate', 'master'])
+        .eq('tenant_id', profile.tenant_id)
+        .in('role', ['sales_manager', 'regional_manager', 'corporate', 'master', 'owner', 'project_manager', 'office_admin'])
+        .eq('is_active', true)
         .order('first_name');
 
       if (error) throw error;
