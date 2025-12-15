@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -49,9 +49,63 @@ export function RoofrStyleReportPreview({
   const [isGenerating, setIsGenerating] = useState(false);
   const [reportUrl, setReportUrl] = useState<string | null>(null);
   const [showScrollHint, setShowScrollHint] = useState(true);
+  const [roofMeasurementData, setRoofMeasurementData] = useState<any>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   
   const totalPages = 7;
+  
+  // Fetch roof_measurements data with WKT geometry by address
+  useEffect(() => {
+    async function fetchRoofMeasurements() {
+      // We have the address prop - use it to find WKT data
+      if (!address) return;
+      
+      try {
+        // Normalize address for search (extract street number and name)
+        const normalizedAddress = address.split(',')[0].trim().toUpperCase();
+        
+        const { data, error } = await supabase
+          .from('roof_measurements')
+          .select('perimeter_wkt, linear_features_wkt, property_address')
+          .ilike('property_address', `%${normalizedAddress}%`)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        
+        if (error) {
+          console.log('No roof_measurements found:', error.message);
+          return;
+        }
+        
+        if (data) {
+          const wktFeatures = data.linear_features_wkt as any[];
+          console.log('📐 Fetched roof_measurements with WKT:', {
+            perimeter_wkt: (data.perimeter_wkt as string)?.substring(0, 50),
+            linear_features_wkt: wktFeatures?.length || 0,
+            property_address: data.property_address,
+          });
+          setRoofMeasurementData(data);
+        }
+      } catch (err) {
+        console.error('Error fetching roof_measurements:', err);
+      }
+    }
+    
+    if (open) {
+      fetchRoofMeasurements();
+    }
+  }, [open, address]);
+  
+  // Merge measurement with WKT data from roof_measurements
+  const enrichedMeasurement = useMemo(() => {
+    if (!roofMeasurementData) return measurement;
+    
+    return {
+      ...measurement,
+      perimeter_wkt: roofMeasurementData.perimeter_wkt || measurement?.perimeter_wkt,
+      linear_features_wkt: roofMeasurementData.linear_features_wkt || measurement?.linear_features_wkt,
+    };
+  }, [measurement, roofMeasurementData]);
   
   // Auto-scroll to top when page changes
   useEffect(() => {
@@ -75,7 +129,7 @@ export function RoofrStyleReportPreview({
   }, [currentPage]);
   
   // Debug: Log what data we're receiving
-  console.log('📊 RoofrStyleReportPreview data:', { measurement, tags, satelliteImageUrl });
+  console.log('📊 RoofrStyleReportPreview data:', { measurement: enrichedMeasurement, tags, satelliteImageUrl });
   
   // Calculate linear totals from WKT features if available
   const calculateLinearFromWKT = () => {
@@ -342,7 +396,7 @@ export function RoofrStyleReportPreview({
                 <ReportPage pageNumber={2} companyInfo={companyInfo} title="Roof Diagram">
                   <div className="aspect-square bg-white rounded-lg border overflow-hidden">
                     <SchematicRoofDiagram 
-                      measurement={measurement}
+                      measurement={enrichedMeasurement}
                       tags={tags}
                       width={500}
                       height={500}
@@ -394,7 +448,7 @@ export function RoofrStyleReportPreview({
 
                   <div className="aspect-video bg-white rounded-lg border overflow-hidden">
                     <SchematicRoofDiagram 
-                      measurement={measurement}
+                      measurement={enrichedMeasurement}
                       tags={tags}
                       width={550}
                       height={350}
@@ -447,7 +501,7 @@ export function RoofrStyleReportPreview({
 
                   <div className="aspect-video bg-white rounded-lg border overflow-hidden">
                     <SchematicRoofDiagram 
-                      measurement={measurement}
+                      measurement={enrichedMeasurement}
                       tags={tags}
                       width={550}
                       height={350}
@@ -496,7 +550,7 @@ export function RoofrStyleReportPreview({
 
                   <div className="aspect-video bg-white rounded-lg border overflow-hidden">
                     <SchematicRoofDiagram 
-                      measurement={measurement}
+                      measurement={enrichedMeasurement}
                       tags={tags}
                       width={550}
                       height={350}
