@@ -10,20 +10,9 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Upload, FileSpreadsheet, CheckCircle2, XCircle, AlertCircle, ArrowLeft } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
+import { ColumnMapper, ColumnMapping } from '@/components/storm-canvass/ColumnMapper';
 
-interface ParsedContact {
-  date_in_tz?: string;
-  time_in_tz?: string;
-  status_name?: string;
-  sub_status_name?: string;
-  email?: string;
-  ho_name?: string;
-  address?: string;
-  city?: string;
-  state?: string;
-  zipcode?: string;
-  last_note?: string;
-}
+type ImportStep = 'upload' | 'map' | 'preview' | 'importing' | 'complete';
 
 interface ImportResults {
   imported: number;
@@ -34,9 +23,24 @@ interface ImportResults {
 
 export default function ImportContacts() {
   const navigate = useNavigate();
+  const [step, setStep] = useState<ImportStep>('upload');
   const [file, setFile] = useState<File | null>(null);
-  const [parsedData, setParsedData] = useState<ParsedContact[]>([]);
-  const [isImporting, setIsImporting] = useState(false);
+  const [rawData, setRawData] = useState<Record<string, unknown>[]>([]);
+  const [excelColumns, setExcelColumns] = useState<string[]>([]);
+  const [columnMapping, setColumnMapping] = useState<ColumnMapping>({
+    name: null,
+    address: null,
+    city: null,
+    state: null,
+    zipcode: null,
+    phone: null,
+    email: null,
+    status: null,
+    repName: null,
+    repEmail: null,
+    notes: null,
+  });
+  const [mappedData, setMappedData] = useState<Record<string, unknown>[]>([]);
   const [progress, setProgress] = useState(0);
   const [results, setResults] = useState<ImportResults | null>(null);
 
@@ -54,10 +58,15 @@ export default function ImportContacts() {
         const workbook = XLSX.read(data, { type: 'array' });
         const sheetName = workbook.SheetNames[0];
         const worksheet = workbook.Sheets[sheetName];
-        const jsonData = XLSX.utils.sheet_to_json<ParsedContact>(worksheet);
+        const jsonData = XLSX.utils.sheet_to_json<Record<string, unknown>>(worksheet);
         
-        setParsedData(jsonData);
-        toast.success(`Parsed ${jsonData.length} contacts from file`);
+        // Extract column headers from first row
+        const headers = Object.keys(jsonData[0] || {});
+        
+        setRawData(jsonData);
+        setExcelColumns(headers);
+        setStep('map');
+        toast.success(`Found ${jsonData.length} rows with ${headers.length} columns`);
       } catch (error) {
         console.error('Parse error:', error);
         toast.error('Failed to parse file. Please ensure it\'s a valid Excel file.');
@@ -66,18 +75,46 @@ export default function ImportContacts() {
     reader.readAsArrayBuffer(uploadedFile);
   }, []);
 
+  const handleMappingConfirm = useCallback(() => {
+    // Transform raw data using the column mapping
+    const transformed = rawData.map(row => {
+      const mapped: Record<string, unknown> = {};
+      
+      // Map each field using the column mapping
+      if (columnMapping.name) mapped.ho_name = row[columnMapping.name];
+      if (columnMapping.address) mapped.address = row[columnMapping.address];
+      if (columnMapping.city) mapped.city = row[columnMapping.city];
+      if (columnMapping.state) mapped.state = row[columnMapping.state];
+      if (columnMapping.zipcode) mapped.zipcode = row[columnMapping.zipcode];
+      if (columnMapping.phone) mapped.phone = row[columnMapping.phone];
+      if (columnMapping.email) mapped.email = row[columnMapping.email];
+      if (columnMapping.status) mapped.status_name = row[columnMapping.status];
+      if (columnMapping.repName) mapped.rep_name = row[columnMapping.repName];
+      if (columnMapping.repEmail) mapped.rep_email = row[columnMapping.repEmail];
+      if (columnMapping.notes) mapped.last_note = row[columnMapping.notes];
+      
+      return mapped;
+    });
+
+    setMappedData(transformed);
+    setStep('preview');
+  }, [rawData, columnMapping]);
+
   const handleImport = async () => {
-    if (parsedData.length === 0) {
+    if (mappedData.length === 0) {
       toast.error('No data to import');
       return;
     }
 
-    setIsImporting(true);
+    setStep('importing');
     setProgress(10);
 
     try {
       const { data, error } = await supabase.functions.invoke('import-canvass-contacts', {
-        body: { contacts: parsedData },
+        body: { 
+          contacts: mappedData,
+          columnMapping 
+        },
       });
 
       setProgress(100);
@@ -85,6 +122,7 @@ export default function ImportContacts() {
       if (error) throw error;
 
       setResults(data.results);
+      setStep('complete');
       
       if (data.results.imported > 0) {
         toast.success(`Successfully imported ${data.results.imported} contacts`);
@@ -100,16 +138,15 @@ export default function ImportContacts() {
     } catch (error) {
       console.error('Import error:', error);
       toast.error('Import failed: ' + (error as Error).message);
-    } finally {
-      setIsImporting(false);
+      setStep('preview');
     }
   };
 
-  const getStatusBadge = (status: string | undefined) => {
+  const getStatusBadge = (status: unknown) => {
     if (!status) return <Badge variant="outline">Unknown</Badge>;
     
-    const normalized = status.toLowerCase();
-    if (normalized.includes('interested')) {
+    const normalized = String(status).toLowerCase();
+    if (normalized.includes('interested') && !normalized.includes('not')) {
       return <Badge className="bg-green-500/20 text-green-700">Interested</Badge>;
     }
     if (normalized.includes('storm')) {
@@ -121,7 +158,29 @@ export default function ImportContacts() {
     if (normalized.includes('not interested')) {
       return <Badge className="bg-red-500/20 text-red-700">Not Interested</Badge>;
     }
-    return <Badge variant="outline">{status}</Badge>;
+    return <Badge variant="outline">{String(status)}</Badge>;
+  };
+
+  const resetImport = () => {
+    setStep('upload');
+    setFile(null);
+    setRawData([]);
+    setExcelColumns([]);
+    setMappedData([]);
+    setResults(null);
+    setColumnMapping({
+      name: null,
+      address: null,
+      city: null,
+      state: null,
+      zipcode: null,
+      phone: null,
+      email: null,
+      status: null,
+      repName: null,
+      repEmail: null,
+      notes: null,
+    });
   };
 
   return (
@@ -133,12 +192,42 @@ export default function ImportContacts() {
           </Button>
           <div>
             <h1 className="text-2xl font-bold">Import Canvass Contacts</h1>
-            <p className="text-muted-foreground">Upload your canvass Excel file to import contacts</p>
+            <p className="text-muted-foreground">
+              {step === 'upload' && 'Step 1: Upload your Excel file'}
+              {step === 'map' && 'Step 2: Map columns to CRM fields'}
+              {step === 'preview' && 'Step 3: Review and import'}
+              {step === 'importing' && 'Importing contacts...'}
+              {step === 'complete' && 'Import complete!'}
+            </p>
           </div>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2">
-          {/* Upload Section */}
+        {/* Step Progress Indicator */}
+        <div className="flex items-center gap-2">
+          {['upload', 'map', 'preview', 'complete'].map((s, i) => (
+            <React.Fragment key={s}>
+              <div 
+                className={`flex items-center justify-center w-8 h-8 rounded-full text-sm font-medium ${
+                  step === s || (step === 'importing' && s === 'preview')
+                    ? 'bg-primary text-primary-foreground' 
+                    : step === 'complete' || ['upload', 'map', 'preview'].indexOf(step) > i
+                      ? 'bg-green-500 text-white'
+                      : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                {step === 'complete' || ['upload', 'map', 'preview'].indexOf(step) > i ? (
+                  <CheckCircle2 className="h-4 w-4" />
+                ) : (
+                  i + 1
+                )}
+              </div>
+              {i < 3 && <div className="flex-1 h-0.5 bg-muted" />}
+            </React.Fragment>
+          ))}
+        </div>
+
+        {/* Upload Step */}
+        {step === 'upload' && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
@@ -149,12 +238,15 @@ export default function ImportContacts() {
                 Upload an Excel (.xlsx) or CSV file with canvass contacts
               </CardDescription>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
+            <CardContent>
+              <label className="flex flex-col items-center justify-center w-full h-48 border-2 border-dashed rounded-lg cursor-pointer hover:bg-muted/50 transition-colors">
                 <div className="flex flex-col items-center justify-center pt-5 pb-6">
-                  <FileSpreadsheet className="w-8 h-8 mb-2 text-muted-foreground" />
-                  <p className="text-sm text-muted-foreground">
+                  <FileSpreadsheet className="w-12 h-12 mb-3 text-muted-foreground" />
+                  <p className="text-lg font-medium">
                     {file ? file.name : 'Click to upload or drag and drop'}
+                  </p>
+                  <p className="text-sm text-muted-foreground mt-1">
+                    Excel (.xlsx, .xls) or CSV files supported
                   </p>
                 </div>
                 <input
@@ -164,115 +256,127 @@ export default function ImportContacts() {
                   onChange={handleFileUpload}
                 />
               </label>
-
-              {parsedData.length > 0 && (
-                <div className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                  <span className="text-sm font-medium">{parsedData.length} contacts ready</span>
-                  <Button onClick={handleImport} disabled={isImporting}>
-                    {isImporting ? 'Importing...' : 'Import All'}
-                  </Button>
-                </div>
-              )}
-
-              {isImporting && (
-                <div className="space-y-2">
-                  <Progress value={progress} />
-                  <p className="text-sm text-muted-foreground text-center">
-                    Importing contacts...
-                  </p>
-                </div>
-              )}
             </CardContent>
           </Card>
+        )}
 
-          {/* Results Section */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Import Results</CardTitle>
-            </CardHeader>
-            <CardContent>
-              {results ? (
-                <div className="space-y-4">
-                  <div className="grid grid-cols-3 gap-4">
-                    <div className="flex items-center gap-2 p-3 bg-green-500/10 rounded-lg">
-                      <CheckCircle2 className="h-5 w-5 text-green-600" />
-                      <div>
-                        <p className="text-2xl font-bold">{results.imported}</p>
-                        <p className="text-xs text-muted-foreground">Imported</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 p-3 bg-yellow-500/10 rounded-lg">
-                      <AlertCircle className="h-5 w-5 text-yellow-600" />
-                      <div>
-                        <p className="text-2xl font-bold">{results.duplicates}</p>
-                        <p className="text-xs text-muted-foreground">Duplicates</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-2 p-3 bg-red-500/10 rounded-lg">
-                      <XCircle className="h-5 w-5 text-red-600" />
-                      <div>
-                        <p className="text-2xl font-bold">{results.errors}</p>
-                        <p className="text-xs text-muted-foreground">Errors</p>
-                      </div>
-                    </div>
-                  </div>
+        {/* Column Mapping Step */}
+        {step === 'map' && (
+          <ColumnMapper
+            excelColumns={excelColumns}
+            mapping={columnMapping}
+            onMappingChange={setColumnMapping}
+            onConfirm={handleMappingConfirm}
+            sampleData={rawData.slice(0, 3)}
+          />
+        )}
 
-                  {results.imported > 0 && (
-                    <Button 
-                      className="w-full" 
-                      onClick={() => navigate('/client-list')}
-                    >
-                      View Imported Contacts
+        {/* Preview Step */}
+        {(step === 'preview' || step === 'importing') && (
+          <div className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <span>Preview ({mappedData.length} contacts)</span>
+                  <div className="flex gap-2">
+                    <Button variant="outline" onClick={() => setStep('map')}>
+                      Back to Mapping
                     </Button>
-                  )}
+                    <Button onClick={handleImport} disabled={step === 'importing'}>
+                      {step === 'importing' ? 'Importing...' : `Import ${mappedData.length} Contacts`}
+                    </Button>
+                  </div>
+                </CardTitle>
+                <CardDescription>
+                  Review the mapped data before importing
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                {step === 'importing' && (
+                  <div className="space-y-2 mb-4">
+                    <Progress value={progress} />
+                    <p className="text-sm text-muted-foreground text-center">
+                      Importing contacts...
+                    </p>
+                  </div>
+                )}
+                
+                <div className="overflow-x-auto">
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Name</TableHead>
+                        <TableHead>Address</TableHead>
+                        <TableHead>City</TableHead>
+                        <TableHead>State</TableHead>
+                        <TableHead>Phone</TableHead>
+                        <TableHead>Status</TableHead>
+                        <TableHead>Rep</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {mappedData.slice(0, 20).map((contact, index) => (
+                        <TableRow key={index}>
+                          <TableCell className="font-medium">{String(contact.ho_name || '-')}</TableCell>
+                          <TableCell className="max-w-[200px] truncate">{String(contact.address || '-')}</TableCell>
+                          <TableCell>{String(contact.city || '-')}</TableCell>
+                          <TableCell>{String(contact.state || '-')}</TableCell>
+                          <TableCell>{String(contact.phone || '-')}</TableCell>
+                          <TableCell>{getStatusBadge(contact.status_name)}</TableCell>
+                          <TableCell className="text-xs">{String(contact.rep_name || contact.rep_email || '-')}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
                 </div>
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <FileSpreadsheet className="h-12 w-12 mx-auto mb-2 opacity-50" />
-                  <p>Upload a file to see import results</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </div>
+                {mappedData.length > 20 && (
+                  <p className="text-sm text-muted-foreground mt-2 text-center">
+                    Showing first 20 of {mappedData.length} contacts
+                  </p>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
-        {/* Preview Table */}
-        {parsedData.length > 0 && (
+        {/* Complete Step */}
+        {step === 'complete' && results && (
           <Card>
             <CardHeader>
-              <CardTitle>Preview ({Math.min(20, parsedData.length)} of {parsedData.length})</CardTitle>
-              <CardDescription>
-                First 20 rows from your file
-              </CardDescription>
+              <CardTitle>Import Complete</CardTitle>
             </CardHeader>
-            <CardContent>
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Name</TableHead>
-                      <TableHead>Address</TableHead>
-                      <TableHead>City</TableHead>
-                      <TableHead>State</TableHead>
-                      <TableHead>Status</TableHead>
-                      <TableHead>Rep Email</TableHead>
-                      <TableHead>Date</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {parsedData.slice(0, 20).map((contact, index) => (
-                      <TableRow key={index}>
-                        <TableCell className="font-medium">{contact.ho_name || '-'}</TableCell>
-                        <TableCell className="max-w-[200px] truncate">{contact.address || '-'}</TableCell>
-                        <TableCell>{contact.city || '-'}</TableCell>
-                        <TableCell>{contact.state || '-'}</TableCell>
-                        <TableCell>{getStatusBadge(contact.status_name)}</TableCell>
-                        <TableCell className="text-xs">{contact.email || '-'}</TableCell>
-                        <TableCell className="text-xs">{contact.date_in_tz || '-'}</TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-3 gap-4">
+                <div className="flex items-center gap-2 p-4 bg-green-500/10 rounded-lg">
+                  <CheckCircle2 className="h-6 w-6 text-green-600" />
+                  <div>
+                    <p className="text-3xl font-bold">{results.imported}</p>
+                    <p className="text-sm text-muted-foreground">Imported</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 p-4 bg-yellow-500/10 rounded-lg">
+                  <AlertCircle className="h-6 w-6 text-yellow-600" />
+                  <div>
+                    <p className="text-3xl font-bold">{results.duplicates}</p>
+                    <p className="text-sm text-muted-foreground">Duplicates</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 p-4 bg-red-500/10 rounded-lg">
+                  <XCircle className="h-6 w-6 text-red-600" />
+                  <div>
+                    <p className="text-3xl font-bold">{results.errors}</p>
+                    <p className="text-sm text-muted-foreground">Errors</p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <Button onClick={() => navigate('/client-list')} className="flex-1">
+                  View Imported Contacts
+                </Button>
+                <Button variant="outline" onClick={resetImport}>
+                  Import More
+                </Button>
               </div>
             </CardContent>
           </Card>

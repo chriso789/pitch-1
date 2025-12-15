@@ -14,6 +14,8 @@ interface CanvassContact {
   email?: string;
   ho_name?: string;
   rep_name?: string;
+  rep_email?: string;
+  phone?: string;
   address?: string;
   city?: string;
   state?: string;
@@ -203,9 +205,15 @@ serve(async (req) => {
 
           const { firstName, lastName } = parseName(contact.ho_name);
           
-          // Try email first (with alias resolution), then rep_name for assignment
+          // Try rep_email first (with alias resolution), then email, then rep_name for assignment
+          const resolvedRepEmail = resolveEmail(contact.rep_email);
           const resolvedEmail = resolveEmail(contact.email);
-          let assignedTo = resolvedEmail ? profilesByEmail.get(resolvedEmail) : null;
+          let assignedTo = resolvedRepEmail ? profilesByEmail.get(resolvedRepEmail) : null;
+          
+          // Fallback to email field
+          if (!assignedTo && resolvedEmail) {
+            assignedTo = profilesByEmail.get(resolvedEmail);
+          }
           
           // Fallback to rep_name matching
           if (!assignedTo && contact.rep_name) {
@@ -253,8 +261,11 @@ serve(async (req) => {
             address_city: contact.city || '',
             address_state: contact.state || '',
             address_zip: contact.zipcode || '',
+            phone: contact.phone || null,
             lead_source: 'Door Knock',
             qualification_status: mapStatus(contact.status_name),
+            assigned_to: assignedTo,
+            notes: contact.last_note || null,
             assigned_to: assignedTo,
             notes: contact.last_note || null,
             created_at: createdAt,
