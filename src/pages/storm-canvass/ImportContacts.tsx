@@ -19,6 +19,7 @@ interface ImportResults {
   duplicates: number;
   errors: number;
   errorMessages: string[];
+  repAssignments?: Record<string, number>;
 }
 
 export default function ImportContacts() {
@@ -39,6 +40,10 @@ export default function ImportContacts() {
     repName: null,
     repEmail: null,
     notes: null,
+    skiptraceFirstName: null,
+    skiptraceLastName: null,
+    skiptracePhone: null,
+    skiptraceEmail: null,
   });
   const [mappedData, setMappedData] = useState<Record<string, unknown>[]>([]);
   const [progress, setProgress] = useState(0);
@@ -92,6 +97,12 @@ export default function ImportContacts() {
       if (columnMapping.repName) mapped.rep_name = row[columnMapping.repName];
       if (columnMapping.repEmail) mapped.rep_email = row[columnMapping.repEmail];
       if (columnMapping.notes) mapped.last_note = row[columnMapping.notes];
+      
+      // Map skiptrace fields (higher quality data)
+      if (columnMapping.skiptraceFirstName) mapped.skiptrace_first_name = row[columnMapping.skiptraceFirstName];
+      if (columnMapping.skiptraceLastName) mapped.skiptrace_last_name = row[columnMapping.skiptraceLastName];
+      if (columnMapping.skiptracePhone) mapped.skiptrace_phone = row[columnMapping.skiptracePhone];
+      if (columnMapping.skiptraceEmail) mapped.skiptrace_email = row[columnMapping.skiptraceEmail];
       
       return mapped;
     });
@@ -161,6 +172,26 @@ export default function ImportContacts() {
     return <Badge variant="outline">{String(status)}</Badge>;
   };
 
+  const getDisplayName = (contact: Record<string, unknown>): string => {
+    // Prefer skiptrace names over raw name field
+    const first = contact.skiptrace_first_name as string;
+    const last = contact.skiptrace_last_name as string;
+    if (first || last) {
+      return `${first || ''} ${last || ''}`.trim();
+    }
+    return String(contact.ho_name || '-');
+  };
+
+  const getDisplayPhone = (contact: Record<string, unknown>): string => {
+    // Prefer skiptrace phone
+    return String(contact.skiptrace_phone || contact.phone || '-');
+  };
+
+  const getDisplayEmail = (contact: Record<string, unknown>): string => {
+    // Prefer skiptrace email
+    return String(contact.skiptrace_email || contact.email || '-');
+  };
+
   const resetImport = () => {
     setStep('upload');
     setFile(null);
@@ -180,6 +211,10 @@ export default function ImportContacts() {
       repName: null,
       repEmail: null,
       notes: null,
+      skiptraceFirstName: null,
+      skiptraceLastName: null,
+      skiptracePhone: null,
+      skiptraceEmail: null,
     });
   };
 
@@ -317,11 +352,11 @@ export default function ImportContacts() {
                     <TableBody>
                       {mappedData.slice(0, 20).map((contact, index) => (
                         <TableRow key={index}>
-                          <TableCell className="font-medium">{String(contact.ho_name || '-')}</TableCell>
+                          <TableCell className="font-medium">{getDisplayName(contact)}</TableCell>
                           <TableCell className="max-w-[200px] truncate">{String(contact.address || '-')}</TableCell>
                           <TableCell>{String(contact.city || '-')}</TableCell>
                           <TableCell>{String(contact.state || '-')}</TableCell>
-                          <TableCell>{String(contact.phone || '-')}</TableCell>
+                          <TableCell>{getDisplayPhone(contact)}</TableCell>
                           <TableCell>{getStatusBadge(contact.status_name)}</TableCell>
                           <TableCell className="text-xs">{String(contact.rep_name || contact.rep_email || '-')}</TableCell>
                         </TableRow>
@@ -369,6 +404,22 @@ export default function ImportContacts() {
                   </div>
                 </div>
               </div>
+
+              {results.repAssignments && Object.keys(results.repAssignments).length > 0 && (
+                <div className="p-4 bg-muted/30 rounded-lg">
+                  <h4 className="font-medium mb-2">Rep Assignments</h4>
+                  <div className="grid grid-cols-2 gap-2 text-sm">
+                    {Object.entries(results.repAssignments).map(([rep, count]) => (
+                      <div key={rep} className="flex justify-between">
+                        <span className="text-muted-foreground truncate">
+                          {rep === 'unassigned' ? 'Unassigned' : rep}
+                        </span>
+                        <span className="font-medium">{count}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <div className="flex gap-3">
                 <Button onClick={() => navigate('/client-list')} className="flex-1">

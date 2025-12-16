@@ -17,6 +17,11 @@ export interface ColumnMapping {
   repName: string | null;
   repEmail: string | null;
   notes: string | null;
+  // Skiptrace fields for enriched data
+  skiptraceFirstName: string | null;
+  skiptraceLastName: string | null;
+  skiptracePhone: string | null;
+  skiptraceEmail: string | null;
 }
 
 interface ColumnMapperProps {
@@ -30,12 +35,16 @@ interface ColumnMapperProps {
 // CRM fields with their display names and whether they're required
 const CRM_FIELDS: { key: keyof ColumnMapping; label: string; required: boolean; hint: string }[] = [
   { key: 'name', label: 'Name (First & Last)', required: true, hint: 'Homeowner full name' },
+  { key: 'skiptraceFirstName', label: 'First Name (Skiptrace)', required: false, hint: 'Skiptrace first name' },
+  { key: 'skiptraceLastName', label: 'Last Name (Skiptrace)', required: false, hint: 'Skiptrace last name' },
   { key: 'address', label: 'Street Address', required: true, hint: 'Property address' },
   { key: 'city', label: 'City', required: false, hint: 'City name' },
   { key: 'state', label: 'State', required: false, hint: 'State abbreviation' },
   { key: 'zipcode', label: 'Zip Code', required: false, hint: 'Postal code' },
   { key: 'phone', label: 'Phone Number', required: false, hint: 'Contact phone' },
+  { key: 'skiptracePhone', label: 'Phone (Skiptrace)', required: false, hint: 'Skiptrace phone number' },
   { key: 'email', label: 'Email', required: false, hint: 'Contact email' },
+  { key: 'skiptraceEmail', label: 'Email (Skiptrace)', required: false, hint: 'Skiptrace email' },
   { key: 'status', label: 'Status', required: false, hint: 'Lead status/disposition' },
   { key: 'repName', label: 'Rep Name', required: false, hint: 'Assigned sales rep name' },
   { key: 'repEmail', label: 'Rep Email', required: false, hint: 'Rep email for assignment' },
@@ -45,15 +54,19 @@ const CRM_FIELDS: { key: keyof ColumnMapping; label: string; required: boolean; 
 // Common column name patterns for auto-detection
 const COLUMN_PATTERNS: Record<keyof ColumnMapping, string[]> = {
   name: ['ho_name', 'homeowner', 'name', 'customer_name', 'customer', 'full_name', 'contact_name', 'owner'],
+  skiptraceFirstName: ['skiptrace:name.first', 'skiptrace_first', 'first_name', 'firstname'],
+  skiptraceLastName: ['skiptrace:name.last', 'skiptrace_last', 'last_name', 'lastname'],
   address: ['address', 'street', 'street_address', 'property_address', 'addr', 'address1'],
   city: ['city', 'town', 'municipality'],
   state: ['state', 'st', 'province', 'region'],
   zipcode: ['zipcode', 'zip', 'zip_code', 'postal', 'postal_code', 'postalcode'],
   phone: ['phone', 'phone_number', 'phonenumber', 'tel', 'telephone', 'mobile', 'cell'],
+  skiptracePhone: ['skiptrace:phonenumbers.0.number', 'skiptrace_phone', 'skiptrace:phone'],
   email: ['email', 'email_address', 'e-mail', 'mail'],
+  skiptraceEmail: ['skiptrace:emails.0.email', 'skiptrace_email', 'skiptrace:email'],
   status: ['status', 'status_name', 'disposition', 'lead_status', 'result'],
   repName: ['rep_name', 'rep', 'sales_rep', 'assigned_to', 'salesperson', 'representative'],
-  repEmail: ['rep_email', 'agent_email', 'salesperson_email'],
+  repEmail: ['rep email', 'rep_email', 'agent_email', 'salesperson_email'],
   notes: ['notes', 'note', 'last_note', 'comments', 'comment', 'remarks'],
 };
 
@@ -72,10 +85,12 @@ export function ColumnMapper({
     for (const [field, patterns] of Object.entries(COLUMN_PATTERNS)) {
       const matchedColumn = excelColumns.find(col => {
         const normalizedCol = col.toLowerCase().replace(/[^a-z0-9]/g, '');
-        return patterns.some(pattern => 
-          normalizedCol === pattern.replace(/[^a-z0-9]/g, '') ||
-          normalizedCol.includes(pattern.replace(/[^a-z0-9]/g, ''))
-        );
+        return patterns.some(pattern => {
+          const normalizedPattern = pattern.replace(/[^a-z0-9]/g, '');
+          return normalizedCol === normalizedPattern ||
+            normalizedCol.includes(normalizedPattern) ||
+            col.toLowerCase().includes(pattern.toLowerCase());
+        });
       });
       if (matchedColumn) {
         detected[field as keyof ColumnMapping] = matchedColumn;
