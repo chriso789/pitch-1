@@ -22,6 +22,11 @@ interface CanvassContact {
   zipcode?: string;
   last_note?: string;
   present_at_location?: string;
+  // Skiptrace fields (higher quality data)
+  skiptrace_first_name?: string;
+  skiptrace_last_name?: string;
+  skiptrace_phone?: string;
+  skiptrace_email?: string;
 }
 
 // Email alias mapping for rep assignment
@@ -29,6 +34,7 @@ const EMAIL_ALIASES: Record<string, string> = {
   'support@obriencontractingusa.com': 'chrisobrien91@gmail.com',
   'info@obriencontractingusa.com': 'chrisobrien91@gmail.com',
   'chris@obriencontractingusa.com': 'chrisobrien91@gmail.com',
+  'uri@obriencontractingusa.com': 'uri@obriencontractingusa.com', // Will be created as full user
 };
 
 // Map status names to qualification_status - handles all 12 canvassing statuses
@@ -57,7 +63,15 @@ function mapStatus(statusName: string | undefined): string {
 }
 
 // Parse homeowner name into first and last
-function parseName(hoName: string | undefined): { firstName: string; lastName: string } {
+function parseName(hoName: string | undefined, skiptraceFirst?: string, skiptraceLast?: string): { firstName: string; lastName: string } {
+  // Prefer skiptrace names (higher quality data)
+  if (skiptraceFirst || skiptraceLast) {
+    return {
+      firstName: skiptraceFirst?.trim() || 'Unknown',
+      lastName: skiptraceLast?.trim() || '',
+    };
+  }
+  
   if (!hoName || hoName.trim() === '') {
     return { firstName: 'Unknown', lastName: 'Homeowner' };
   }
@@ -168,6 +182,8 @@ serve(async (req) => {
       }
     }
 
+    console.log(`Found ${profilesByEmail.size} profiles by email, ${profilesByName.size} by name`);
+
     // Get existing contacts to check for duplicates (by address)
     const { data: existingContacts } = await supabase
       .from('contacts')
@@ -203,17 +219,20 @@ serve(async (req) => {
             continue;
           }
 
-          const { firstName, lastName } = parseName(contact.ho_name);
+          // Use skiptrace names if available
+          const { firstName, lastName } = parseName(
+            contact.ho_name, 
+            contact.skiptrace_first_name, 
+            contact.skiptrace_last_name
+          );
           
-          // Try rep_email first (with alias resolution), then email, then rep_name for assignment
+          // Prefer skiptrace phone/email over raw fields
+          const contactPhone = contact.skiptrace_phone || contact.phone || null;
+          const contactEmail = contact.skiptrace_email || contact.email || null;
+          
+          // Try rep_email first (with alias resolution), then rep_name for assignment
           const resolvedRepEmail = resolveEmail(contact.rep_email);
-          const resolvedEmail = resolveEmail(contact.email);
           let assignedTo = resolvedRepEmail ? profilesByEmail.get(resolvedRepEmail) : null;
-          
-          // Fallback to email field
-          if (!assignedTo && resolvedEmail) {
-            assignedTo = profilesByEmail.get(resolvedEmail);
-          }
           
           // Fallback to rep_name matching
           if (!assignedTo && contact.rep_name) {
@@ -231,9 +250,9 @@ serve(async (req) => {
             }
           }
           
-          // Track rep assignments
-          const repKey = assignedTo || 'unassigned';
-          results.repAssignments[repKey] = (results.repAssignments[repKey] || 0) + 1;
+          // Track rep assignments for reporting
+          const repDisplay = contact.rep_email || contact.rep_name || 'unassigned';
+          results.repAssignments[repDisplay] = (results.repAssignments[repDisplay] || 0) + 1;
           
           // Parse sub_status for priority
           const subStatus = contact.sub_status_name?.toLowerCase() || '';
@@ -261,11 +280,10 @@ serve(async (req) => {
             address_city: contact.city || '',
             address_state: contact.state || '',
             address_zip: contact.zipcode || '',
-            phone: contact.phone || null,
+            phone: contactPhone,
+            email: contactEmail,
             lead_source: 'Door Knock',
             qualification_status: mapStatus(contact.status_name),
-            assigned_to: assignedTo,
-            notes: contact.last_note || null,
             assigned_to: assignedTo,
             notes: contact.last_note || null,
             created_at: createdAt,
@@ -275,7 +293,13 @@ serve(async (req) => {
               sub_status: contact.sub_status_name,
               priority,
               rep_name: contact.rep_name,
-              canvasser_email: contact.email,
+              rep_email: contact.rep_email,
+              skiptrace_data: {
+                first_name: contact.skiptrace_first_name,
+                last_name: contact.skiptrace_last_name,
+                phone: contact.skiptrace_phone,
+                email: contact.skiptrace_email,
+              },
               present_at_location: contact.present_at_location === 'Y',
               import_date: new Date().toISOString(),
             },
@@ -285,7 +309,7 @@ serve(async (req) => {
           existingAddresses.add(addressKey);
         } catch (e) {
           results.errors++;
-          results.errorMessages.push(`Row error: ${e.message}`);
+          results.errorMessages.push(`Row error: ${(e as Error).message}`);
         }
       }
 
@@ -318,7 +342,7 @@ serve(async (req) => {
   } catch (error) {
     console.error('Import error:', error);
     return new Response(
-      JSON.stringify({ error: error.message }),
+      JSON.stringify({ error: (error as Error).message }),
       { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
   }
