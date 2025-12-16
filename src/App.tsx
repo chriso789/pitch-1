@@ -92,7 +92,7 @@ import PortalLoginPage from "./pages/PortalLoginPage";
 import MonitoringPage from "./pages/admin/MonitoringPage";
 import HomeownerSetupAccount from "./pages/HomeownerSetupAccount";
 import CommissionReport from "./pages/CommissionReport";
-
+import RoofMeasurementTrainer from "./pages/RoofMeasurementTrainer";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
