@@ -410,3 +410,6 @@ verify_jwt = true
 
 [functions.measurement-calibration]
 verify_jwt = true
+
+[functions.generate-presentation]
+verify_jwt = true

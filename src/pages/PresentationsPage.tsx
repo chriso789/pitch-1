@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Plus, Search } from "lucide-react";
+import { Plus, Search, Sparkles } from "lucide-react";
 import { GlobalLayout } from "@/shared/components/layout/GlobalLayout";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,12 +9,16 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { PresentationCard } from "@/components/presentations/PresentationCard";
 import { useToast } from "@/components/ui/use-toast";
+import { AIGenerationDialog } from "@/components/presentations/AIGenerationDialog";
+import { useGeneratePresentation } from "@/hooks/useGeneratePresentation";
 
 const PresentationsPage = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeTab, setActiveTab] = useState("all");
+  const [showAIDialog, setShowAIDialog] = useState(false);
+  const { generatePresentation, isGenerating } = useGeneratePresentation();
 
   const { data: presentations, isLoading, refetch } = useQuery({
     queryKey: ["presentations", activeTab],
@@ -92,6 +96,16 @@ const PresentationsPage = () => {
     p.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
+  const handleAIGenerate = async (templateId: string, mode: 'auto' | 'semi') => {
+    // For now, create a new presentation without a pipeline entry
+    // In a full implementation, you'd select a project/lead first
+    toast({
+      title: "Select a project first",
+      description: "To generate an AI presentation, please select a project from the pipeline first, or create a blank presentation.",
+    });
+    setShowAIDialog(false);
+  };
+
   return (
     <GlobalLayout>
       <div className="p-6 space-y-6">
@@ -103,10 +117,20 @@ const PresentationsPage = () => {
               Create and manage sales presentations
             </p>
           </div>
-          <Button onClick={handleCreatePresentation} className="gap-2">
-            <Plus className="h-4 w-4" />
-            Create Presentation
-          </Button>
+          <div className="flex gap-2">
+            <Button 
+              variant="outline" 
+              onClick={() => setShowAIDialog(true)} 
+              className="gap-2"
+            >
+              <Sparkles className="h-4 w-4" />
+              AI Generate
+            </Button>
+            <Button onClick={handleCreatePresentation} className="gap-2">
+              <Plus className="h-4 w-4" />
+              Create Blank
+            </Button>
+          </div>
         </div>
 
         {/* Search & Filters */}
@@ -159,6 +183,13 @@ const PresentationsPage = () => {
           </TabsContent>
         </Tabs>
       </div>
+
+      <AIGenerationDialog
+        open={showAIDialog}
+        onOpenChange={setShowAIDialog}
+        onGenerate={handleAIGenerate}
+        isGenerating={isGenerating}
+      />
     </GlobalLayout>
   );
 };
