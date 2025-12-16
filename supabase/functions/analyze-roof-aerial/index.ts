@@ -2,6 +2,24 @@ import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 import { encode as base64Encode } from 'https://deno.land/std@0.168.0/encoding/base64.ts'
 
+// Import worksheet engine - single source of truth for calculations
+import {
+  parsePitch,
+  getSlopeFactorFromPitch,
+  calculateSurfaceArea,
+  sumLinearSegments,
+  recommendWaste,
+  calculateOrder,
+  runQCChecks,
+  buildWorksheetFromAI,
+  convertPerimeterToPlane,
+  convertAILinesToSegments,
+  deriveComplexityFromSegments,
+  type PitchInfo,
+  type LinearSegment,
+  type WorksheetJSON,
+} from '../_shared/roofWorksheetEngine.ts'
+
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!
 const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY')!
 const GOOGLE_SOLAR_API_KEY = Deno.env.get('GOOGLE_SOLAR_API_KEY')!
@@ -11,12 +29,6 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 const IMAGE_ZOOM = 20
 const IMAGE_SIZE = 640
-
-const PITCH_MULTIPLIERS: { [key: string]: number } = {
-  '1/12': 1.0035, '2/12': 1.0138, '3/12': 1.0308, '4/12': 1.0541,
-  '5/12': 1.0833, '6/12': 1.1180, '7/12': 1.1577, '8/12': 1.2019,
-  '9/12': 1.2500, '10/12': 1.3017, '11/12': 1.3566, '12/12': 1.4142
-}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
