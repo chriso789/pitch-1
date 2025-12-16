@@ -3151,6 +3151,44 @@ export type Database = {
           },
         ]
       }
+      company_credentials: {
+        Row: {
+          created_at: string | null
+          credential_type: string
+          expiration_date: string | null
+          id: string
+          image_url: string | null
+          name: string
+          tenant_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          credential_type: string
+          expiration_date?: string | null
+          id?: string
+          image_url?: string | null
+          name: string
+          tenant_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          credential_type?: string
+          expiration_date?: string | null
+          id?: string
+          image_url?: string | null
+          name?: string
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_credentials_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       company_deletion_backups: {
         Row: {
           backup_size_bytes: number | null
@@ -10444,14 +10482,132 @@ export type Database = {
           },
         ]
       }
+      presentation_template_slides: {
+        Row: {
+          ai_prompt: string | null
+          content_template: Json
+          created_at: string | null
+          id: string
+          is_required: boolean | null
+          media_source: string | null
+          media_type: string | null
+          skip_if_empty: string[] | null
+          slide_order: number
+          slide_type: string
+          template_id: string | null
+          title: string | null
+        }
+        Insert: {
+          ai_prompt?: string | null
+          content_template?: Json
+          created_at?: string | null
+          id?: string
+          is_required?: boolean | null
+          media_source?: string | null
+          media_type?: string | null
+          skip_if_empty?: string[] | null
+          slide_order: number
+          slide_type: string
+          template_id?: string | null
+          title?: string | null
+        }
+        Update: {
+          ai_prompt?: string | null
+          content_template?: Json
+          created_at?: string | null
+          id?: string
+          is_required?: boolean | null
+          media_source?: string | null
+          media_type?: string | null
+          skip_if_empty?: string[] | null
+          slide_order?: number
+          slide_type?: string
+          template_id?: string | null
+          title?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presentation_template_slides_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "presentation_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      presentation_templates: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          is_system: boolean | null
+          name: string
+          slide_count: number | null
+          tenant_id: string | null
+          thumbnail_url: string | null
+          updated_at: string | null
+          vertical: string
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_system?: boolean | null
+          name: string
+          slide_count?: number | null
+          tenant_id?: string | null
+          thumbnail_url?: string | null
+          updated_at?: string | null
+          vertical: string
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_system?: boolean | null
+          name?: string
+          slide_count?: number | null
+          tenant_id?: string | null
+          thumbnail_url?: string | null
+          updated_at?: string | null
+          vertical?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presentation_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "presentation_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       presentations: {
         Row: {
           created_at: string
           created_by: string | null
           description: string | null
+          generation_mode: string | null
+          generation_status: string | null
           id: string
           is_template: boolean
+          missing_data: Json | null
           name: string
+          pipeline_entry_id: string | null
+          source_template_id: string | null
           template_type: string
           tenant_id: string
           updated_at: string
@@ -10460,9 +10616,14 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          generation_mode?: string | null
+          generation_status?: string | null
           id?: string
           is_template?: boolean
+          missing_data?: Json | null
           name: string
+          pipeline_entry_id?: string | null
+          source_template_id?: string | null
           template_type?: string
           tenant_id: string
           updated_at?: string
@@ -10471,14 +10632,34 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           description?: string | null
+          generation_mode?: string | null
+          generation_status?: string | null
           id?: string
           is_template?: boolean
+          missing_data?: Json | null
           name?: string
+          pipeline_entry_id?: string | null
+          source_template_id?: string | null
           template_type?: string
           tenant_id?: string
           updated_at?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "presentations_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "presentations_source_template_id_fkey"
+            columns: ["source_template_id"]
+            isOneToOne: false
+            referencedRelation: "presentation_templates"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       price_cache: {
         Row: {
@@ -15005,6 +15186,42 @@ export type Database = {
         }
         Relationships: []
       }
+      smart_tag_definitions: {
+        Row: {
+          category: string
+          created_at: string | null
+          data_source: string
+          default_value: string | null
+          description: string | null
+          field_path: string
+          format_type: string | null
+          id: string
+          tag_key: string
+        }
+        Insert: {
+          category: string
+          created_at?: string | null
+          data_source: string
+          default_value?: string | null
+          description?: string | null
+          field_path: string
+          format_type?: string | null
+          id?: string
+          tag_key: string
+        }
+        Update: {
+          category?: string
+          created_at?: string | null
+          data_source?: string
+          default_value?: string | null
+          description?: string | null
+          field_path?: string
+          format_type?: string | null
+          id?: string
+          tag_key?: string
+        }
+        Relationships: []
+      }
       smart_word_definitions: {
         Row: {
           category: string | null
@@ -16653,6 +16870,7 @@ export type Database = {
       }
       tenants: {
         Row: {
+          about_us: string | null
           address_city: string | null
           address_state: string | null
           address_street: string | null
@@ -16664,6 +16882,7 @@ export type Database = {
           email: string | null
           features_enabled: string[] | null
           id: string
+          insurance_info: string | null
           is_active: boolean | null
           license_number: string | null
           logo_url: string | null
@@ -16673,6 +16892,7 @@ export type Database = {
           owner_email: string | null
           owner_name: string | null
           owner_phone: string | null
+          payment_terms: string | null
           phone: string | null
           primary_color: string | null
           secondary_color: string | null
@@ -16684,11 +16904,13 @@ export type Database = {
           subscription_status: string | null
           subscription_tier: string | null
           updated_at: string | null
+          warranty_terms: string | null
           website: string | null
           website_metadata: Json | null
           website_verified: boolean | null
         }
         Insert: {
+          about_us?: string | null
           address_city?: string | null
           address_state?: string | null
           address_street?: string | null
@@ -16700,6 +16922,7 @@ export type Database = {
           email?: string | null
           features_enabled?: string[] | null
           id?: string
+          insurance_info?: string | null
           is_active?: boolean | null
           license_number?: string | null
           logo_url?: string | null
@@ -16709,6 +16932,7 @@ export type Database = {
           owner_email?: string | null
           owner_name?: string | null
           owner_phone?: string | null
+          payment_terms?: string | null
           phone?: string | null
           primary_color?: string | null
           secondary_color?: string | null
@@ -16720,11 +16944,13 @@ export type Database = {
           subscription_status?: string | null
           subscription_tier?: string | null
           updated_at?: string | null
+          warranty_terms?: string | null
           website?: string | null
           website_metadata?: Json | null
           website_verified?: boolean | null
         }
         Update: {
+          about_us?: string | null
           address_city?: string | null
           address_state?: string | null
           address_street?: string | null
@@ -16736,6 +16962,7 @@ export type Database = {
           email?: string | null
           features_enabled?: string[] | null
           id?: string
+          insurance_info?: string | null
           is_active?: boolean | null
           license_number?: string | null
           logo_url?: string | null
@@ -16745,6 +16972,7 @@ export type Database = {
           owner_email?: string | null
           owner_name?: string | null
           owner_phone?: string | null
+          payment_terms?: string | null
           phone?: string | null
           primary_color?: string | null
           secondary_color?: string | null
@@ -16756,6 +16984,7 @@ export type Database = {
           subscription_status?: string | null
           subscription_tier?: string | null
           updated_at?: string | null
+          warranty_terms?: string | null
           website?: string | null
           website_metadata?: Json | null
           website_verified?: boolean | null
