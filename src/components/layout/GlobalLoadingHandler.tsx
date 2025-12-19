@@ -15,6 +15,7 @@ interface UserProfileCache {
   last_name: string;
   email: string;
   role: string;
+  title?: string;
 }
 
 export const GlobalLoadingHandler = () => {

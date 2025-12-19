@@ -34,8 +34,9 @@ const UserProfileContext = createContext<UserProfileContextType>({
   prefetch: () => {},
 });
 
-// Session storage key for role backup
+// Session storage keys for role and title backup
 const SESSION_ROLE_KEY = 'pitch-user-role';
+const SESSION_TITLE_KEY = 'pitch-user-title';
 
 // Helper to get role from session storage
 const getSessionRole = (): string => {
@@ -51,6 +52,26 @@ const setSessionRole = (role: string) => {
   try {
     if (role) {
       sessionStorage.setItem(SESSION_ROLE_KEY, role);
+    }
+  } catch {
+    // Ignore session storage errors
+  }
+};
+
+// Helper to get title from session storage
+const getSessionTitle = (): string => {
+  try {
+    return sessionStorage.getItem(SESSION_TITLE_KEY) || '';
+  } catch {
+    return '';
+  }
+};
+
+// Helper to set title in session storage
+const setSessionTitle = (title: string) => {
+  try {
+    if (title) {
+      sessionStorage.setItem(SESSION_TITLE_KEY, title);
     }
   } catch {
     // Ignore session storage errors
@@ -81,9 +102,12 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
     
     // Also check session storage as backup
     const sessionRole = getSessionRole();
+    const sessionTitle = getSessionTitle();
     
     // Use cached role, then session storage, then empty string
     const effectiveRole = cached?.role || sessionRole || '';
+    // Use cached title, then session storage, then empty string
+    const effectiveTitle = cached?.title || sessionTitle || '';
     
     // If we have valid cached data with role, mark as loaded immediately
     const hasValidCache = !!(effectiveRole && (cached?.first_name || user.user_metadata?.first_name));
@@ -97,6 +121,7 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
       role: effectiveRole, // Use cached role or session storage, never fallback to 'user' - wait for DB
       tenant_id: user.user_metadata?.tenant_id || user.id,
       active_tenant_id: user.user_metadata?.tenant_id || user.id,
+      title: effectiveTitle, // Use cached title from session storage
       profileLoaded: hasValidCache, // Mark loaded if we have valid cached data
     };
   }, []);
@@ -131,9 +156,12 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
       const dbRole = roleResult.data?.role || dbProfile?.role || 'user';
 
       if (dbProfile) {
-        // Store role in session storage as backup
+        // Store role and title in session storage as backup
         if (dbRole) {
           setSessionRole(dbRole);
+        }
+        if (dbProfile.title) {
+          setSessionTitle(dbProfile.title);
         }
         
         setProfile({

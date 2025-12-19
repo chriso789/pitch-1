@@ -45,6 +45,7 @@ import { TEST_IDS } from "@/../tests/utils/test-ids";
 import { getRoleDisplayName } from "@/lib/roleUtils";
 import { clearAllSessionData } from "@/services/sessionManager";
 import { useQueryClient } from "@tanstack/react-query";
+import { QuickLocationSwitcher } from "@/components/layout/QuickLocationSwitcher";
 
 interface SidebarProps {
   isCollapsed?: boolean;
@@ -332,6 +333,10 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
               <p className="text-xs text-muted-foreground">Roofing CRM</p>
             </div>
           )}
+        </div>
+        {/* Quick Location Switcher */}
+        <div className="mt-3">
+          <QuickLocationSwitcher isCollapsed={isCollapsed} />
         </div>
       </div>
 
