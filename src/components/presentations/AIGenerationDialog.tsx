@@ -77,7 +77,7 @@ export function AIGenerationDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[600px]">
+      <DialogContent className="sm:max-w-[600px] max-h-[90vh] flex flex-col overflow-hidden">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Sparkles className="h-5 w-5 text-primary" />
@@ -88,7 +88,7 @@ export function AIGenerationDialog({
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-6 py-4">
+        <div className="space-y-6 py-4 flex-1 overflow-y-auto min-h-0">
           {/* Template Selection */}
           <div className="space-y-3">
             <Label className="text-sm font-medium">Choose Template</Label>
