@@ -413,3 +413,9 @@ verify_jwt = true
 
 [functions.generate-presentation]
 verify_jwt = true
+
+[functions.communication-router]
+verify_jwt = false
+
+[functions.call-forwarding]
+verify_jwt = false
