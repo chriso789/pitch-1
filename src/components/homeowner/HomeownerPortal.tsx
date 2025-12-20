@@ -116,10 +116,11 @@ export function HomeownerPortal() {
       const { data: contact } = await supabase
         .from("contacts")
         .select("*")
-        .eq("email", user?.email)
+        .eq("email", user?.email as string)
         .single();
 
       if (contact) {
+        setContactInfo(contact as any);
         setContactInfo(contact);
 
         // Get project for this contact
