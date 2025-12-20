@@ -194,24 +194,36 @@ serve(async (req) => {
     }
 
     // Final fallback to environment variable
-    if (!fromNum) {
+    if (!fromNum || fromNum.trim() === '') {
       fromNum = TELNYX_PHONE_NUMBER;
       console.log('Using environment variable phone number:', fromNum);
     }
 
-    if (!fromNum) {
+    // Ensure we have a valid number
+    if (!fromNum || fromNum.trim() === '') {
+      console.error('No from number configured. Tenant:', tenantId, 'Location:', resolvedLocationId);
       throw new Error('No from number configured. Please set up a phone number for your location or add TELNYX_PHONE_NUMBER secret.');
     }
 
     // Format and validate from number
-    const formattedFrom = formatToE164(fromNum);
+    const formattedFrom = formatToE164(fromNum.trim());
     if (!isValidE164(formattedFrom)) {
-      throw new Error(`Invalid from phone number format: ${fromNum}. Must be E.164 format.`);
+      console.error('Invalid from phone number:', fromNum, 'Formatted:', formattedFrom);
+      // If our formatting didn't work, try using the env variable as ultimate fallback
+      if (TELNYX_PHONE_NUMBER && isValidE164(formatToE164(TELNYX_PHONE_NUMBER))) {
+        console.log('Falling back to TELNYX_PHONE_NUMBER env var due to invalid location number');
+        fromNum = TELNYX_PHONE_NUMBER;
+      } else {
+        throw new Error(`Invalid from phone number format: ${fromNum}. Must be E.164 format (e.g., +12345678901).`);
+      }
     }
+
+    // Re-format the final from number
+    const finalFromNumber = formatToE164(fromNum.trim());
 
     console.log('Sending SMS via Telnyx:', {
       to: formattedTo,
-      from: formattedFrom,
+      from: finalFromNumber,
       messageLength: message.length,
       profileId: TELNYX_SMS_PROFILE_ID,
       locationId: resolvedLocationId || 'none'
@@ -225,7 +237,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: formattedFrom,
+        from: finalFromNumber,
         to: formattedTo,
         text: message,
         messaging_profile_id: TELNYX_SMS_PROFILE_ID,
@@ -260,7 +272,7 @@ serve(async (req) => {
     console.log('Telnyx SMS sent successfully:', {
       messageId: data.data?.id,
       to: formattedTo,
-      from: formattedFrom,
+      from: finalFromNumber,
       locationId: resolvedLocationId
     });
 
@@ -277,7 +289,7 @@ serve(async (req) => {
         metadata: {
           message_id: data.data?.id,
           to_number: formattedTo,
-          from_number: formattedFrom,
+          from_number: finalFromNumber,
           sent_via: 'telnyx',
           messaging_profile_id: TELNYX_SMS_PROFILE_ID,
           location_id: resolvedLocationId || null,
@@ -310,7 +322,7 @@ serve(async (req) => {
         messageId: data.data?.id,
         message: 'SMS sent successfully',
         to: formattedTo,
-        from: formattedFrom,
+        from: finalFromNumber,
         locationId: resolvedLocationId
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
