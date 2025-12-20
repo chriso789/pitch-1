@@ -194,33 +194,29 @@ serve(async (req) => {
       }
     }
 
-    // Final fallback to environment variable
-    if (!fromNum || fromNum.trim() === '') {
-      fromNum = TELNYX_PHONE_NUMBER;
-      console.log('Using environment variable phone number:', fromNum);
-    }
-
-    // Ensure we have a valid number
-    if (!fromNum || fromNum.trim() === '') {
-      console.error('No from number configured. Tenant:', tenantId, 'Location:', resolvedLocationId);
-      throw new Error('No from number configured. Please set up a phone number for your location or add TELNYX_PHONE_NUMBER secret.');
+    // Final fallback to environment variable ONLY when tenant context is missing
+    // In multi-tenant mode we require a configured location/communication preference number.
+    if ((!fromNum || fromNum.trim() === '')) {
+      if (!tenantId) {
+        fromNum = TELNYX_PHONE_NUMBER;
+        console.log('Using environment variable phone number:', fromNum);
+      } else {
+        console.error('No from number configured for tenant. Tenant:', tenantId, 'Location:', resolvedLocationId);
+        throw new Error(
+          'No from number configured for your account. Please provision a Telnyx phone number and assign it to a location (Admin → Phone Settings).'
+        );
+      }
     }
 
     // Format and validate from number
     const formattedFrom = formatToE164(fromNum.trim());
     if (!isValidE164(formattedFrom)) {
       console.error('Invalid from phone number:', fromNum, 'Formatted:', formattedFrom);
-      // If our formatting didn't work, try using the env variable as ultimate fallback
-      if (TELNYX_PHONE_NUMBER && isValidE164(formatToE164(TELNYX_PHONE_NUMBER))) {
-        console.log('Falling back to TELNYX_PHONE_NUMBER env var due to invalid location number');
-        fromNum = TELNYX_PHONE_NUMBER;
-      } else {
-        throw new Error(`Invalid from phone number format: ${fromNum}. Must be E.164 format (e.g., +12345678901).`);
-      }
+      throw new Error(`Invalid from phone number format: ${fromNum}. Must be E.164 format (e.g., +12345678901).`);
     }
 
     // Re-format the final from number
-    const finalFromNumber = formatToE164(fromNum.trim());
+    const finalFromNumber = formattedFrom;
 
     console.log('Sending SMS via Telnyx:', {
       to: formattedTo,
@@ -262,12 +258,19 @@ serve(async (req) => {
         errors: data.errors || data
       });
       
-      const errorMessage = data.errors?.[0]?.detail 
+       const errorMessage = data.errors?.[0]?.detail 
         || data.errors?.[0]?.title 
         || data.message 
         || `Telnyx API error: ${response.status}`;
-      
-      throw new Error(errorMessage);
+
+       // Make the most common configuration error actionable
+       if (/invalid source number/i.test(errorMessage)) {
+         throw new Error(
+           'Invalid source number. The selected “from” number is not an active Telnyx number on your messaging profile. Provision/assign a Telnyx number in Admin → Phone Settings, then try again.'
+         );
+       }
+
+       throw new Error(errorMessage);
     }
 
     console.log('Telnyx SMS sent successfully:', {
