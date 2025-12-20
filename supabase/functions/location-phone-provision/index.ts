@@ -82,10 +82,21 @@ serve(async (req: Request) => {
 });
 
 // ============================================
-// SEARCH - Find available phone numbers
+// FLORIDA FALLBACK AREA CODES
+// ============================================
+const FLORIDA_FALLBACK_AREA_CODES: Record<string, string[]> = {
+  '561': ['561', '954', '786', '305', '772'],  // East Coast: Palm Beach → Broward → Miami → Miami → Treasure Coast
+  '239': ['239', '941', '863', '727', '813'],  // West Coast: Naples → Sarasota → Polk → Clearwater → Tampa
+};
+
+// Catchy number patterns to prioritize (7663 = ROOF)
+const CATCHY_PATTERNS = ['7663', '7665', '2255', '0000', '1111', '2222', '7777', '8888'];
+
+// ============================================
+// SEARCH - Find available phone numbers with fallback
 // ============================================
 async function handleSearch(request: SearchRequest): Promise<Response> {
-  const { areaCode, country = 'US', limit = 10, features = ['sms', 'voice'] } = request;
+  const { areaCode, country = 'US', limit = 20, features = ['sms'] } = request;
 
   console.log('🔍 Searching for numbers:', { areaCode, country, limit, features });
 
@@ -93,56 +104,149 @@ async function handleSearch(request: SearchRequest): Promise<Response> {
     throw new Error('Area code must be exactly 3 digits');
   }
 
-  // Build Telnyx search URL
-  const params = new URLSearchParams({
-    'filter[phone_number][starts_with]': `1${areaCode}`,
-    'filter[country_code]': country,
-    'filter[features]': features.join(','),
-    'filter[limit]': limit.toString(),
-    'filter[best_effort]': 'true'
-  });
+  // Get fallback area codes for this region
+  const areaCodesToTry = FLORIDA_FALLBACK_AREA_CODES[areaCode] || [areaCode];
+  console.log('📍 Area codes to try:', areaCodesToTry);
 
-  const searchUrl = `https://api.telnyx.com/v2/available_phone_numbers?${params}`;
-  console.log('Telnyx search URL:', searchUrl);
+  let allNumbers: any[] = [];
+  let successfulAreaCode = '';
 
-  const response = await fetch(searchUrl, {
-    method: 'GET',
-    headers: {
-      'Authorization': `Bearer ${TELNYX_API_KEY}`,
-      'Content-Type': 'application/json'
+  // Try each area code until we find numbers
+  for (const tryAreaCode of areaCodesToTry) {
+    console.log(`🔎 Trying area code: ${tryAreaCode}`);
+    
+    const params = new URLSearchParams({
+      'filter[phone_number][starts_with]': `+1${tryAreaCode}`,
+      'filter[country_code]': country,
+      'filter[limit]': limit.toString(),
+      'filter[best_effort]': 'true'
+    });
+
+    // Only add features filter if specified (sms is more widely available)
+    if (features.length > 0) {
+      params.set('filter[features]', features.join(','));
     }
-  });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error('Telnyx search failed:', response.status, errorText);
-    throw new Error(`Telnyx search failed: ${response.status} - ${errorText}`);
+    const searchUrl = `https://api.telnyx.com/v2/available_phone_numbers?${params}`;
+    console.log('Telnyx search URL:', searchUrl);
+
+    const response = await fetch(searchUrl, {
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${TELNYX_API_KEY}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.warn(`⚠️ Search failed for ${tryAreaCode}:`, response.status, errorText);
+      continue; // Try next area code
+    }
+
+    const data = await response.json();
+    const foundNumbers = data.data || [];
+    console.log(`✅ Found ${foundNumbers.length} numbers in area code ${tryAreaCode}`);
+
+    if (foundNumbers.length > 0) {
+      allNumbers = foundNumbers;
+      successfulAreaCode = tryAreaCode;
+      break; // Found numbers, stop searching
+    }
   }
 
-  const data = await response.json();
-  console.log('✅ Found', data.data?.length || 0, 'available numbers');
+  // If still no numbers, try a broader search without area code filter
+  if (allNumbers.length === 0) {
+    console.log('🌐 Trying broader Florida search...');
+    const broadParams = new URLSearchParams({
+      'filter[country_code]': 'US',
+      'filter[administrative_area]': 'FL',
+      'filter[features]': 'sms',
+      'filter[limit]': limit.toString(),
+      'filter[best_effort]': 'true'
+    });
+
+    const broadResponse = await fetch(
+      `https://api.telnyx.com/v2/available_phone_numbers?${broadParams}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${TELNYX_API_KEY}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (broadResponse.ok) {
+      const broadData = await broadResponse.json();
+      allNumbers = broadData.data || [];
+      successfulAreaCode = 'FL-ANY';
+      console.log(`✅ Broad search found ${allNumbers.length} Florida numbers`);
+    }
+  }
+
+  // Sort numbers to prioritize catchy patterns
+  const sortedNumbers = sortByCatchiness(allNumbers);
 
   // Format the results nicely
-  const numbers = (data.data || []).map((num: any) => ({
+  const numbers = sortedNumbers.map((num: any) => ({
     phoneNumber: num.phone_number,
     formatted: formatPhoneNumber(num.phone_number),
-    region: num.region_information?.[0]?.region_name || 'Unknown',
+    region: num.region_information?.[0]?.region_name || 'Florida',
     city: num.region_information?.[0]?.rate_center || 'Unknown',
     features: num.features || [],
     monthlyRate: num.cost_information?.monthly_cost || 'N/A',
     upfrontCost: num.cost_information?.upfront_cost || 'N/A',
-    reservable: num.reservable || false
+    reservable: num.reservable || false,
+    isCatchy: isCatchyNumber(num.phone_number)
   }));
 
   return new Response(
     JSON.stringify({ 
       success: true, 
       areaCode,
+      searchedAreaCode: successfulAreaCode || areaCode,
+      triedAreaCodes: areaCodesToTry,
       count: numbers.length,
       numbers 
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
+}
+
+// ============================================
+// HELPER: Check if number contains catchy pattern
+// ============================================
+function isCatchyNumber(phone: string): boolean {
+  const digits = phone.replace(/\D/g, '').slice(-4); // Last 4 digits
+  return CATCHY_PATTERNS.some(pattern => digits.includes(pattern)) ||
+         /(\d)\1{2,}/.test(digits); // Repeating digits like 7777
+}
+
+// ============================================
+// HELPER: Sort numbers by catchiness
+// ============================================
+function sortByCatchiness(numbers: any[]): any[] {
+  return [...numbers].sort((a, b) => {
+    const aDigits = a.phone_number.replace(/\D/g, '');
+    const bDigits = b.phone_number.replace(/\D/g, '');
+    
+    // Prioritize 7663 (ROOF)
+    const aHasROOF = aDigits.includes('7663');
+    const bHasROOF = bDigits.includes('7663');
+    if (aHasROOF && !bHasROOF) return -1;
+    if (bHasROOF && !aHasROOF) return 1;
+
+    // Then other catchy patterns
+    const aCatchy = isCatchyNumber(a.phone_number);
+    const bCatchy = isCatchyNumber(b.phone_number);
+    if (aCatchy && !bCatchy) return -1;
+    if (bCatchy && !aCatchy) return 1;
+
+    // Then by repeating digits
+    const aRepeats = (aDigits.match(/(\d)\1+/g) || []).join('').length;
+    const bRepeats = (bDigits.match(/(\d)\1+/g) || []).join('').length;
+    return bRepeats - aRepeats;
+  });
 }
 
 // ============================================
