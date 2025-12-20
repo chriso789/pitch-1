@@ -254,19 +254,31 @@ async function handlePurchase(request: PurchaseRequest, supabase: any): Promise<
 
   console.log('💳 Purchasing number:', { phoneNumber, locationId, tenantId, setAsDefault });
 
-  // Step 1: Order the number
+  // Step 1: Build order payload (messaging_profile_id is optional)
+  const orderPayload: Record<string, any> = {
+    phone_numbers: [{ phone_number: phoneNumber }],
+    customer_reference: `loc_${locationId}_tenant_${tenantId}`
+  };
+
+  // Only include connection_id if set
+  if (TELNYX_CONNECTION_ID) {
+    orderPayload.connection_id = TELNYX_CONNECTION_ID;
+  }
+
+  // Only include messaging_profile_id if set and valid
+  if (TELNYX_SMS_PROFILE_ID && TELNYX_SMS_PROFILE_ID.length > 10) {
+    orderPayload.messaging_profile_id = TELNYX_SMS_PROFILE_ID;
+  }
+
+  console.log('📦 Order payload:', JSON.stringify(orderPayload, null, 2));
+
   const orderResponse = await fetch('https://api.telnyx.com/v2/number_orders', {
     method: 'POST',
     headers: {
       'Authorization': `Bearer ${TELNYX_API_KEY}`,
       'Content-Type': 'application/json'
     },
-    body: JSON.stringify({
-      phone_numbers: [{ phone_number: phoneNumber }],
-      connection_id: TELNYX_CONNECTION_ID,
-      messaging_profile_id: TELNYX_SMS_PROFILE_ID,
-      customer_reference: `loc_${locationId}_tenant_${tenantId}`
-    })
+    body: JSON.stringify(orderPayload)
   });
 
   if (!orderResponse.ok) {
