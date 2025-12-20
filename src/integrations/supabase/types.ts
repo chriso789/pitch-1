@@ -2860,10 +2860,13 @@ export type Database = {
       communication_history: {
         Row: {
           ai_insights: Json | null
+          carrier_error_code: string | null
           communication_type: string
           contact_id: string | null
           content: string | null
           created_at: string
+          delivery_status: string | null
+          delivery_status_updated_at: string | null
           direction: string
           id: string
           metadata: Json | null
@@ -2878,10 +2881,13 @@ export type Database = {
         }
         Insert: {
           ai_insights?: Json | null
+          carrier_error_code?: string | null
           communication_type: string
           contact_id?: string | null
           content?: string | null
           created_at?: string
+          delivery_status?: string | null
+          delivery_status_updated_at?: string | null
           direction: string
           id?: string
           metadata?: Json | null
@@ -2896,10 +2902,13 @@ export type Database = {
         }
         Update: {
           ai_insights?: Json | null
+          carrier_error_code?: string | null
           communication_type?: string
           contact_id?: string | null
           content?: string | null
           created_at?: string
+          delivery_status?: string | null
+          delivery_status_updated_at?: string | null
           direction?: string
           id?: string
           metadata?: Json | null
