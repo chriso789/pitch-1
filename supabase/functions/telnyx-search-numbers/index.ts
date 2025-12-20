@@ -28,8 +28,9 @@ serve(async (req) => {
     const searchParams = new URLSearchParams({
       'filter[phone_number][starts_with]': `+1${areaCode}`,
       'filter[country_code]': country,
-      'filter[features]': 'sms,voice',
+      'filter[features]': 'sms',
       'filter[limit]': limit.toString(),
+      'filter[best_effort]': 'true',
     });
 
     const response = await fetch(
