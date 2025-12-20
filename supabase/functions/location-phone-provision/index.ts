@@ -105,9 +105,9 @@ const FLORIDA_FALLBACK_AREA_CODES: Record<string, string[]> = {
   // East Coast Florida - stay on east coast
   '561': ['561', '954', '772', '305', '786'],  // Palm Beach → Broward → Treasure Coast → Miami
   // West Coast Florida - Sarasota/North Port region (941)
-  '941': ['941', '239', '863', '727', '813'],  // Sarasota → Naples → Polk → Clearwater → Tampa
+  '941': ['941', '239', '727', '813'],  // Sarasota → Naples → Clearwater → Tampa
   // Naples/Fort Myers (239)
-  '239': ['239', '941', '863', '727', '813'],  // Naples → Sarasota → Polk → Clearwater → Tampa
+  '239': ['239', '941', '727', '813'],  // Naples → Sarasota → Clearwater → Tampa
 };
 
 // Catchy number patterns to prioritize (7663 = ROOF)
