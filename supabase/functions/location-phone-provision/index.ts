@@ -16,6 +16,7 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 interface SearchRequest {
   action: 'search';
   areaCode: string;
+  zipCode?: string;
   country?: string;
   limit?: number;
   features?: string[];
@@ -82,11 +83,31 @@ serve(async (req: Request) => {
 });
 
 // ============================================
-// FLORIDA FALLBACK AREA CODES
+// ZIP CODE TO AREA CODE MAPPING (most accurate)
+// ============================================
+const ZIP_TO_AREA_CODE: Record<string, string> = {
+  // East Coast - Boca Raton / Palm Beach area (561)
+  '33431': '561', '33432': '561', '33433': '561', '33434': '561', '33486': '561',
+  '33487': '561', '33496': '561', '33498': '561', '33428': '561', '33444': '561',
+  // West Coast - North Port / Sarasota area (941 - NOT 239!)
+  '34286': '941', '34287': '941', '34288': '941', '34289': '941',
+  '34229': '941', '34230': '941', '34231': '941', '34232': '941', '34233': '941',
+  '34234': '941', '34235': '941', '34236': '941', '34237': '941', '34238': '941',
+  // Naples / Fort Myers area (actual 239 territory)
+  '34101': '239', '34102': '239', '34103': '239', '34104': '239', '34105': '239',
+  '33901': '239', '33902': '239', '33903': '239', '33904': '239', '33905': '239',
+};
+
+// ============================================
+// FLORIDA FALLBACK AREA CODES (same coast only)
 // ============================================
 const FLORIDA_FALLBACK_AREA_CODES: Record<string, string[]> = {
-  '561': ['561', '954', '786', '305', '772'],  // East Coast: Palm Beach → Broward → Miami → Miami → Treasure Coast
-  '239': ['239', '941', '863', '727', '813'],  // West Coast: Naples → Sarasota → Polk → Clearwater → Tampa
+  // East Coast Florida - stay on east coast
+  '561': ['561', '954', '772', '305', '786'],  // Palm Beach → Broward → Treasure Coast → Miami
+  // West Coast Florida - Sarasota/North Port region (941)
+  '941': ['941', '239', '863', '727', '813'],  // Sarasota → Naples → Polk → Clearwater → Tampa
+  // Naples/Fort Myers (239)
+  '239': ['239', '941', '863', '727', '813'],  // Naples → Sarasota → Polk → Clearwater → Tampa
 };
 
 // Catchy number patterns to prioritize (7663 = ROOF)
@@ -96,16 +117,23 @@ const CATCHY_PATTERNS = ['7663', '7665', '2255', '0000', '1111', '2222', '7777',
 // SEARCH - Find available phone numbers with fallback
 // ============================================
 async function handleSearch(request: SearchRequest): Promise<Response> {
-  const { areaCode, country = 'US', limit = 20, features = ['sms'] } = request;
+  const { areaCode, zipCode, country = 'US', limit = 20, features = ['sms'] } = request;
 
-  console.log('🔍 Searching for numbers:', { areaCode, country, limit, features });
+  console.log('🔍 Searching for numbers:', { areaCode, zipCode, country, limit, features });
 
-  if (!areaCode || areaCode.length !== 3) {
+  // Priority 1: Use ZIP code mapping if available (most accurate)
+  let effectiveAreaCode = areaCode;
+  if (zipCode && ZIP_TO_AREA_CODE[zipCode]) {
+    effectiveAreaCode = ZIP_TO_AREA_CODE[zipCode];
+    console.log(`📍 ZIP ${zipCode} mapped to area code ${effectiveAreaCode}`);
+  }
+
+  if (!effectiveAreaCode || effectiveAreaCode.length !== 3) {
     throw new Error('Area code must be exactly 3 digits');
   }
 
-  // Get fallback area codes for this region
-  const areaCodesToTry = FLORIDA_FALLBACK_AREA_CODES[areaCode] || [areaCode];
+  // Get fallback area codes for this region (same coast only)
+  const areaCodesToTry = FLORIDA_FALLBACK_AREA_CODES[effectiveAreaCode] || [effectiveAreaCode];
   console.log('📍 Area codes to try:', areaCodesToTry);
 
   let allNumbers: any[] = [];

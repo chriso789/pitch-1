@@ -13,6 +13,7 @@ interface Location {
   is_primary: boolean;
   address_city: string | null;
   address_state: string | null;
+  address_zip: string | null;
 }
 
 interface AvailableNumber {
@@ -56,7 +57,7 @@ export const PhoneProvisioningPanel = () => {
 
       const { data, error } = await supabase
         .from('locations')
-        .select('id, name, telnyx_phone_number, is_primary, address_city, address_state')
+        .select('id, name, telnyx_phone_number, is_primary, address_city, address_state, address_zip')
         .eq('tenant_id', tenantId)
         .order('is_primary', { ascending: false });
 
@@ -100,18 +101,25 @@ export const PhoneProvisioningPanel = () => {
   };
 
   const getAreaCodeForLocation = (location: Location): string => {
-    // East Coast (Florida East) - Boca Raton area
+    // East Coast (Florida East) - Boca Raton area = 561
     if (location.name.toLowerCase().includes('east') || 
         location.address_city?.toLowerCase().includes('boca') ||
         location.address_city?.toLowerCase().includes('delray') ||
         location.address_city?.toLowerCase().includes('palm beach')) {
       return '561';
     }
-    // West Coast (Florida West) - Naples/Fort Myers area
+    // West Coast (Florida West) - North Port / Sarasota area = 941 (NOT 239!)
+    // North Port ZIP 34286 is in the 941 area code, not 239
     if (location.name.toLowerCase().includes('west') ||
-        location.address_city?.toLowerCase().includes('naples') ||
-        location.address_city?.toLowerCase().includes('fort myers') ||
-        location.address_city?.toLowerCase().includes('north port')) {
+        location.address_city?.toLowerCase().includes('north port') ||
+        location.address_city?.toLowerCase().includes('sarasota') ||
+        location.address_city?.toLowerCase().includes('venice') ||
+        location.address_city?.toLowerCase().includes('port charlotte')) {
+      return '941';
+    }
+    // Naples / Fort Myers area = 239
+    if (location.address_city?.toLowerCase().includes('naples') ||
+        location.address_city?.toLowerCase().includes('fort myers')) {
       return '239';
     }
     // Default to 561 for Florida
@@ -128,7 +136,7 @@ export const PhoneProvisioningPanel = () => {
       const areaCode = getAreaCodeForLocation(location);
       console.log(`Searching for ${areaCode} numbers for ${location.name}...`);
 
-      // Step 1: Search for available numbers
+      // Step 1: Search for available numbers (pass ZIP for accurate mapping)
       const { data: searchResult, error: searchError } = await supabase.functions.invoke(
         'location-phone-provision',
         {
@@ -136,6 +144,7 @@ export const PhoneProvisioningPanel = () => {
             action: 'search',
             locationId: location.id,
             areaCode: areaCode,
+            zipCode: location.address_zip, // Pass ZIP for backend mapping
             limit: 50 // Get more to find catchy ones
           }
         }
