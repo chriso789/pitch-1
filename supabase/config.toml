@@ -419,3 +419,6 @@ verify_jwt = false
 
 [functions.call-forwarding]
 verify_jwt = false
+
+[functions.location-phone-provision]
+verify_jwt = true
