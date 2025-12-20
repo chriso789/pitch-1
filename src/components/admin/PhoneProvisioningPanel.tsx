@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Phone, Loader2, CheckCircle, AlertCircle, Search, RefreshCw } from "lucide-react";
+import { Phone, Loader2, CheckCircle, AlertCircle, Search, RefreshCw, Wrench } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 
@@ -14,6 +14,7 @@ interface Location {
   address_city: string | null;
   address_state: string | null;
   address_zip: string | null;
+  tenant_id: string;
 }
 
 interface AvailableNumber {
@@ -25,7 +26,7 @@ interface AvailableNumber {
   features: string[];
 }
 
-type ProvisionStatus = 'idle' | 'searching' | 'selecting' | 'purchasing' | 'configuring' | 'complete' | 'error';
+type ProvisionStatus = 'idle' | 'searching' | 'selecting' | 'purchasing' | 'configuring' | 'fixing' | 'complete' | 'error';
 
 export const PhoneProvisioningPanel = () => {
   const { toast } = useToast();
@@ -35,6 +36,7 @@ export const PhoneProvisioningPanel = () => {
   const [provisionStatus, setProvisionStatus] = useState<ProvisionStatus>('idle');
   const [statusMessage, setStatusMessage] = useState('');
   const [availableNumbers, setAvailableNumbers] = useState<AvailableNumber[]>([]);
+  const [fixingLocation, setFixingLocation] = useState<string | null>(null);
 
   useEffect(() => {
     fetchLocations();
@@ -57,7 +59,7 @@ export const PhoneProvisioningPanel = () => {
 
       const { data, error } = await supabase
         .from('locations')
-        .select('id, name, telnyx_phone_number, is_primary, address_city, address_state, address_zip')
+        .select('id, name, telnyx_phone_number, is_primary, address_city, address_state, address_zip, tenant_id')
         .eq('tenant_id', tenantId)
         .order('is_primary', { ascending: false });
 
@@ -223,6 +225,79 @@ export const PhoneProvisioningPanel = () => {
     }
   };
 
+  // Fix Configuration - reconfigure an existing number's messaging profile
+  const fixConfiguration = async (location: Location) => {
+    if (!location.telnyx_phone_number) {
+      toast({
+        title: "No Number to Fix",
+        description: "This location doesn't have a phone number assigned yet.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    setFixingLocation(location.id);
+    setProvisioningLocation(location.id);
+    setProvisionStatus('fixing');
+    setStatusMessage('Fixing messaging configuration...');
+
+    try {
+      console.log(`🔧 Fixing configuration for ${location.telnyx_phone_number}...`);
+
+      const { data: result, error } = await supabase.functions.invoke(
+        'telnyx-configure-number',
+        {
+          body: {
+            phoneNumber: location.telnyx_phone_number,
+            locationId: location.id,
+            tenantId: location.tenant_id,
+            forceUpdate: true
+          }
+        }
+      );
+
+      if (error) throw error;
+      if (!result?.success) {
+        throw new Error(result?.error || 'Failed to configure number');
+      }
+
+      console.log('✅ Configuration result:', result);
+
+      setProvisionStatus('complete');
+      setStatusMessage('Configuration fixed successfully!');
+
+      const warnings = result.warnings?.filter(Boolean) || [];
+      
+      toast({
+        title: "Configuration Fixed",
+        description: warnings.length > 0 
+          ? `Number configured with warnings: ${warnings.join(', ')}`
+          : `${location.telnyx_phone_number} is now properly configured for SMS and Voice.`,
+      });
+
+      await fetchLocations();
+
+    } catch (err: any) {
+      console.error('Fix configuration error:', err);
+      setProvisionStatus('error');
+      setStatusMessage(err.message || 'Failed to fix configuration');
+      toast({
+        title: "Configuration Fix Failed",
+        description: err.message || 'Please check your Telnyx settings.',
+        variant: "destructive"
+      });
+    } finally {
+      setFixingLocation(null);
+      // Reset status after a delay
+      setTimeout(() => {
+        if (provisionStatus !== 'error') {
+          setProvisionStatus('idle');
+          setProvisioningLocation(null);
+        }
+      }, 3000);
+    }
+  };
+
   const formatPhoneDisplay = (phone: string | null): string => {
     if (!phone) return 'Not configured';
     const digits = phone.replace(/\D/g, '');
@@ -241,6 +316,7 @@ export const PhoneProvisioningPanel = () => {
       case 'selecting':
       case 'purchasing':
       case 'configuring':
+      case 'fixing':
         return <Loader2 className="h-4 w-4 animate-spin" />;
       case 'complete':
         return <CheckCircle className="h-4 w-4 text-green-500" />;
@@ -325,15 +401,29 @@ export const PhoneProvisioningPanel = () => {
                     </span>
                   </div>
                 ) : (
-                  <Button
-                    onClick={() => provisionNumber(location)}
-                    disabled={provisioningLocation !== null && provisionStatus !== 'idle' && provisionStatus !== 'complete' && provisionStatus !== 'error'}
-                    variant={location.telnyx_phone_number ? "outline" : "default"}
-                    size="sm"
-                  >
-                    <Search className="h-4 w-4 mr-2" />
-                    {location.telnyx_phone_number ? 'Replace Number' : `Provision ${getAreaCodeForLocation(location)} Number`}
-                  </Button>
+                  <div className="flex gap-2">
+                    {location.telnyx_phone_number && (
+                      <Button
+                        onClick={() => fixConfiguration(location)}
+                        disabled={fixingLocation !== null || (provisioningLocation !== null && provisionStatus !== 'idle' && provisionStatus !== 'complete' && provisionStatus !== 'error')}
+                        variant="outline"
+                        size="sm"
+                        title="Fix messaging configuration for this number"
+                      >
+                        <Wrench className="h-4 w-4 mr-1" />
+                        Fix Config
+                      </Button>
+                    )}
+                    <Button
+                      onClick={() => provisionNumber(location)}
+                      disabled={provisioningLocation !== null && provisionStatus !== 'idle' && provisionStatus !== 'complete' && provisionStatus !== 'error'}
+                      variant={location.telnyx_phone_number ? "outline" : "default"}
+                      size="sm"
+                    >
+                      <Search className="h-4 w-4 mr-2" />
+                      {location.telnyx_phone_number ? 'Replace' : `Provision ${getAreaCodeForLocation(location)}`}
+                    </Button>
+                  </div>
                 )}
               </div>
             </div>

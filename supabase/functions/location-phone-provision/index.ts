@@ -281,20 +281,33 @@ async function handlePurchase(request: PurchaseRequest, supabase: any): Promise<
   const { phoneNumber, locationId, tenantId, setAsDefault = false, label } = request;
 
   console.log('💳 Purchasing number:', { phoneNumber, locationId, tenantId, setAsDefault });
+  console.log('📋 Environment check:', {
+    hasApiKey: !!TELNYX_API_KEY,
+    connectionId: TELNYX_CONNECTION_ID || 'NOT SET',
+    smsProfileId: TELNYX_SMS_PROFILE_ID || 'NOT SET'
+  });
 
-  // Step 1: Build order payload - messaging_profile_id omitted (can be configured after purchase)
+  // Step 1: Build order payload - ALWAYS include messaging_profile_id for SMS
   const orderPayload: Record<string, any> = {
     phone_numbers: [{ phone_number: phoneNumber }],
     customer_reference: `loc_${locationId}_tenant_${tenantId}`
   };
 
-  // Only include connection_id if set and valid
+  // Include connection_id for voice
   if (TELNYX_CONNECTION_ID && TELNYX_CONNECTION_ID.length > 5) {
     orderPayload.connection_id = TELNYX_CONNECTION_ID;
+    console.log('📞 Including voice connection:', TELNYX_CONNECTION_ID);
+  } else {
+    console.warn('⚠️ TELNYX_CONNECTION_ID not set - voice may not work');
   }
 
-  // NOTE: messaging_profile_id intentionally omitted - Telnyx rejects invalid IDs
-  // SMS messaging can be configured separately after the number is purchased
+  // CRITICAL: Include messaging_profile_id for SMS capability
+  if (TELNYX_SMS_PROFILE_ID && TELNYX_SMS_PROFILE_ID.length > 5) {
+    orderPayload.messaging_profile_id = TELNYX_SMS_PROFILE_ID;
+    console.log('💬 Including messaging profile:', TELNYX_SMS_PROFILE_ID);
+  } else {
+    console.warn('⚠️ TELNYX_SMS_PROFILE_ID not set - SMS will not work until manually configured');
+  }
 
   console.log('📦 Order payload:', JSON.stringify(orderPayload, null, 2));
 
@@ -309,26 +322,42 @@ async function handlePurchase(request: PurchaseRequest, supabase: any): Promise<
 
   if (!orderResponse.ok) {
     const errorText = await orderResponse.text();
-    console.error('Telnyx order failed:', orderResponse.status, errorText);
+    console.error('❌ Telnyx order failed:', orderResponse.status, errorText);
     throw new Error(`Failed to order number: ${errorText}`);
   }
 
   const orderData = await orderResponse.json();
   console.log('📋 Order created:', orderData.data?.id);
 
-  // Step 2: Wait briefly for order to process
-  await new Promise(resolve => setTimeout(resolve, 2000));
+  // Step 2: Wait for order to process (numbers need time to become active)
+  console.log('⏳ Waiting for number to activate...');
+  await new Promise(resolve => setTimeout(resolve, 3000));
 
-  // Step 3: Configure the number with webhooks
+  // Step 3: Configure the number with webhooks and verify messaging profile
+  console.log('⚙️ Configuring number post-purchase...');
   const configResult = await configureNumber(phoneNumber);
   console.log('⚙️ Number configured:', configResult);
 
-  // Step 4: Update the location in database
+  if (!configResult.success) {
+    console.warn('⚠️ Post-purchase configuration had issues:', configResult.error);
+  }
+
+  // Step 4: Update the location in database with full metadata
   const { data: locationData, error: locationError } = await supabase
     .from('locations')
     .update({
       telnyx_phone_number: phoneNumber,
+      telnyx_messaging_profile_id: TELNYX_SMS_PROFILE_ID || null,
+      telnyx_voice_app_id: TELNYX_CONNECTION_ID || null,
       phone_porting_status: 'active',
+      phone_setup_metadata: {
+        setup_type: 'new_purchase',
+        order_id: orderData.data?.id,
+        purchased_at: new Date().toISOString(),
+        messaging_profile_id: TELNYX_SMS_PROFILE_ID,
+        connection_id: TELNYX_CONNECTION_ID,
+        config_result: configResult
+      },
       updated_at: new Date().toISOString()
     })
     .eq('id', locationId)
@@ -336,7 +365,7 @@ async function handlePurchase(request: PurchaseRequest, supabase: any): Promise<
     .single();
 
   if (locationError) {
-    console.error('Failed to update location:', locationError);
+    console.error('❌ Failed to update location:', locationError);
     throw new Error(`Number purchased but failed to update location: ${locationError.message}`);
   }
 
@@ -371,9 +400,13 @@ async function handlePurchase(request: PurchaseRequest, supabase: any): Promise<
       order_id: orderData.data?.id,
       set_as_default: setAsDefault,
       label: label || null,
-      configured: configResult.success
+      configured: configResult.success,
+      messaging_profile_id: TELNYX_SMS_PROFILE_ID,
+      connection_id: TELNYX_CONNECTION_ID
     }
   });
+
+  console.log('✅ Purchase complete!');
 
   return new Response(
     JSON.stringify({
@@ -387,7 +420,8 @@ async function handlePurchase(request: PurchaseRequest, supabase: any): Promise<
         name: locationData.name
       },
       setAsDefault,
-      configResult
+      configResult,
+      smsReady: configResult.success && !!configResult.details?.messagingProfileId
     }),
     { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
   );
