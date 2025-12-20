@@ -282,21 +282,19 @@ async function handlePurchase(request: PurchaseRequest, supabase: any): Promise<
 
   console.log('💳 Purchasing number:', { phoneNumber, locationId, tenantId, setAsDefault });
 
-  // Step 1: Build order payload (messaging_profile_id is optional)
+  // Step 1: Build order payload - messaging_profile_id omitted (can be configured after purchase)
   const orderPayload: Record<string, any> = {
     phone_numbers: [{ phone_number: phoneNumber }],
     customer_reference: `loc_${locationId}_tenant_${tenantId}`
   };
 
-  // Only include connection_id if set
-  if (TELNYX_CONNECTION_ID) {
+  // Only include connection_id if set and valid
+  if (TELNYX_CONNECTION_ID && TELNYX_CONNECTION_ID.length > 5) {
     orderPayload.connection_id = TELNYX_CONNECTION_ID;
   }
 
-  // Only include messaging_profile_id if set and valid
-  if (TELNYX_SMS_PROFILE_ID && TELNYX_SMS_PROFILE_ID.length > 10) {
-    orderPayload.messaging_profile_id = TELNYX_SMS_PROFILE_ID;
-  }
+  // NOTE: messaging_profile_id intentionally omitted - Telnyx rejects invalid IDs
+  // SMS messaging can be configured separately after the number is purchased
 
   console.log('📦 Order payload:', JSON.stringify(orderPayload, null, 2));
 
