@@ -1233,6 +1233,66 @@ export type Database = {
         }
         Relationships: []
       }
+      call_activity_log: {
+        Row: {
+          activity: string
+          call_control_id: string | null
+          created_at: string | null
+          duration_seconds: number | null
+          from_number: string
+          id: string
+          location_id: string | null
+          metadata: Json | null
+          status: string | null
+          tenant_id: string | null
+          to_number: string
+          updated_at: string | null
+        }
+        Insert: {
+          activity: string
+          call_control_id?: string | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          from_number: string
+          id?: string
+          location_id?: string | null
+          metadata?: Json | null
+          status?: string | null
+          tenant_id?: string | null
+          to_number: string
+          updated_at?: string | null
+        }
+        Update: {
+          activity?: string
+          call_control_id?: string | null
+          created_at?: string | null
+          duration_seconds?: number | null
+          from_number?: string
+          id?: string
+          location_id?: string | null
+          metadata?: Json | null
+          status?: string | null
+          tenant_id?: string | null
+          to_number?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "call_activity_log_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "call_activity_log_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       call_dispositions: {
         Row: {
           call_id: string | null
@@ -15745,6 +15805,7 @@ export type Database = {
           from_number: string
           id: string
           is_read: boolean | null
+          location_id: string | null
           media_urls: string[] | null
           provider: string | null
           provider_message_id: string | null
@@ -15764,6 +15825,7 @@ export type Database = {
           from_number: string
           id?: string
           is_read?: boolean | null
+          location_id?: string | null
           media_urls?: string[] | null
           provider?: string | null
           provider_message_id?: string | null
@@ -15783,6 +15845,7 @@ export type Database = {
           from_number?: string
           id?: string
           is_read?: boolean | null
+          location_id?: string | null
           media_urls?: string[] | null
           provider?: string | null
           provider_message_id?: string | null
@@ -15798,6 +15861,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_messages_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
             referencedColumns: ["id"]
           },
           {
@@ -15825,6 +15895,7 @@ export type Database = {
           is_archived: boolean | null
           last_message_at: string | null
           last_message_preview: string | null
+          location_id: string | null
           phone_number: string
           tenant_id: string
           unread_count: number | null
@@ -15838,6 +15909,7 @@ export type Database = {
           is_archived?: boolean | null
           last_message_at?: string | null
           last_message_preview?: string | null
+          location_id?: string | null
           phone_number: string
           tenant_id: string
           unread_count?: number | null
@@ -15851,6 +15923,7 @@ export type Database = {
           is_archived?: boolean | null
           last_message_at?: string | null
           last_message_preview?: string | null
+          location_id?: string | null
           phone_number?: string
           tenant_id?: string
           unread_count?: number | null
@@ -15869,6 +15942,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_threads_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
             referencedColumns: ["id"]
           },
           {

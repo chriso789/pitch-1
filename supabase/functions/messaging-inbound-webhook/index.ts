@@ -14,7 +14,7 @@ serve(async (req) => {
   try {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '', // Service role for webhook
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
     const contentType = req.headers.get('content-type') || '';
@@ -45,21 +45,19 @@ serve(async (req) => {
             provider: 'telnyx',
           };
 
+          // Route inbound message by looking up destination phone number
+          const routing = await routeInboundMessage(supabaseClient, messageData.to);
+          
+          console.log('Inbound routing result:', routing);
+
           // Check for STOP keywords
           const bodyLower = (messageData.body || '').toLowerCase().trim();
           if (['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit'].includes(bodyLower)) {
-            const { data: provider } = await supabaseClient
-              .from('messaging_providers')
-              .select('tenant_id')
-              .eq('provider_type', 'telnyx_sms')
-              .limit(1)
-              .single();
-
-            if (provider) {
+            if (routing.tenantId) {
               const { data: contact } = await supabaseClient
                 .from('contacts')
                 .select('id')
-                .eq('tenant_id', provider.tenant_id)
+                .eq('tenant_id', routing.tenantId)
                 .eq('phone', messageData.from)
                 .limit(1)
                 .single();
@@ -67,7 +65,7 @@ serve(async (req) => {
               await supabaseClient
                 .from('opt_outs')
                 .insert({
-                  tenant_id: provider.tenant_id,
+                  tenant_id: routing.tenantId,
                   contact_id: contact?.id,
                   channel: 'sms',
                   phone: messageData.from,
@@ -76,77 +74,22 @@ serve(async (req) => {
                 });
             }
           }
+
+          // Process the inbound message with location awareness
+          if (routing.tenantId) {
+            await processInboundSMS(supabaseClient, messageData, routing);
+          }
         } else if (event.event_type === 'message.finalized') {
-          // Delivery status update from Telnyx
           console.log('Telnyx delivery status:', payload.to?.[0]?.status);
         }
       } else {
         // Not a Telnyx message webhook, might be SendGrid or other JSON
-        // Re-process as SendGrid events
         const events = parsed;
         
         // Process each event (SendGrid sends arrays)
         if (Array.isArray(events)) {
           for (const event of events) {
-            if (event.event === 'bounce' || event.event === 'dropped') {
-              const { data: provider } = await supabaseClient
-                .from('messaging_providers')
-                .select('tenant_id')
-                .eq('provider_type', 'sendgrid_email')
-                .limit(1)
-                .single();
-
-              if (provider) {
-                const { data: contact } = await supabaseClient
-                  .from('contacts')
-                  .select('id')
-                  .eq('tenant_id', provider.tenant_id)
-                  .eq('email', event.email)
-                  .limit(1)
-                  .single();
-
-                await supabaseClient
-                  .from('opt_outs')
-                  .insert({
-                    tenant_id: provider.tenant_id,
-                    contact_id: contact?.id,
-                    channel: 'email',
-                    email: event.email,
-                    reason: event.reason || 'Bounce',
-                    source: 'bounce',
-                  });
-              }
-            }
-
-            if (event.event === 'unsubscribe' || event.event === 'spamreport') {
-              const { data: provider } = await supabaseClient
-                .from('messaging_providers')
-                .select('tenant_id')
-                .eq('provider_type', 'sendgrid_email')
-                .limit(1)
-                .single();
-
-              if (provider) {
-                const { data: contact } = await supabaseClient
-                  .from('contacts')
-                  .select('id')
-                  .eq('tenant_id', provider.tenant_id)
-                  .eq('email', event.email)
-                  .limit(1)
-                  .single();
-
-                await supabaseClient
-                  .from('opt_outs')
-                  .insert({
-                    tenant_id: provider.tenant_id,
-                    contact_id: contact?.id,
-                    channel: 'email',
-                    email: event.email,
-                    reason: event.event,
-                    source: event.event === 'spamreport' ? 'complaint' : 'user_request',
-                  });
-              }
-            }
+            await processSendGridEvent(supabaseClient, event);
           }
         }
       }
@@ -161,34 +104,28 @@ serve(async (req) => {
         body: formData.get('Body'),
         messageSid: formData.get('MessageSid'),
         type: 'sms',
+        provider: 'twilio',
       };
+
+      // Route inbound message
+      const routing = await routeInboundMessage(supabaseClient, messageData.to);
 
       // Check for STOP keywords
       const bodyLower = (messageData.body || '').toLowerCase().trim();
       if (['stop', 'stopall', 'unsubscribe', 'cancel', 'end', 'quit'].includes(bodyLower)) {
-        // Find tenant by phone number
-        const { data: provider } = await supabaseClient
-          .from('messaging_providers')
-          .select('tenant_id')
-          .eq('provider_type', 'twilio_sms')
-          .limit(1)
-          .single();
-
-        if (provider) {
-          // Find contact by phone
+        if (routing.tenantId) {
           const { data: contact } = await supabaseClient
             .from('contacts')
             .select('id')
-            .eq('tenant_id', provider.tenant_id)
+            .eq('tenant_id', routing.tenantId)
             .eq('phone', messageData.from)
             .limit(1)
             .single();
 
-          // Add to opt-outs
           await supabaseClient
             .from('opt_outs')
             .insert({
-              tenant_id: provider.tenant_id,
+              tenant_id: routing.tenantId,
               contact_id: contact?.id,
               channel: 'sms',
               phone: messageData.from,
@@ -197,150 +134,10 @@ serve(async (req) => {
             });
         }
       }
-    }
 
-    // Store inbound message (for SMS) and update thread
-    if (messageData && messageData.type === 'sms') {
-      const providerType = messageData.provider === 'telnyx' ? 'telnyx_sms' : 'twilio_sms';
-      
-      // Find tenant - first try messaging_providers, then fall back to finding by phone
-      let tenantId: string | null = null;
-      let contactId: string | null = null;
-
-      const { data: provider } = await supabaseClient
-        .from('messaging_providers')
-        .select('tenant_id')
-        .eq('provider_type', providerType)
-        .limit(1)
-        .single();
-
-      if (provider) {
-        tenantId = provider.tenant_id;
-      } else {
-        // Fallback: find tenant by matching phone number in sms_threads
-        const { data: thread } = await supabaseClient
-          .from('sms_threads')
-          .select('tenant_id, contact_id')
-          .eq('phone_number', messageData.from)
-          .limit(1)
-          .single();
-        
-        if (thread) {
-          tenantId = thread.tenant_id;
-          contactId = thread.contact_id;
-        }
-      }
-
-      if (tenantId) {
-        // Find contact by phone if not already found
-        if (!contactId) {
-          const { data: contact } = await supabaseClient
-            .from('contacts')
-            .select('id')
-            .eq('tenant_id', tenantId)
-            .eq('phone', messageData.from)
-            .limit(1)
-            .single();
-          
-          contactId = contact?.id || null;
-        }
-
-        // Store in inbound_messages for legacy
-        await supabaseClient
-          .from('inbound_messages')
-          .insert({
-            tenant_id: tenantId,
-            contact_id: contactId,
-            message_type: 'sms',
-            from_address: messageData.from,
-            to_address: messageData.to,
-            body: messageData.body,
-            provider_message_id: messageData.messageSid,
-            received_at: new Date().toISOString(),
-          });
-
-        // Find or create SMS thread
-        let threadId: string | null = null;
-        
-        const { data: existingThread } = await supabaseClient
-          .from('sms_threads')
-          .select('id')
-          .eq('tenant_id', tenantId)
-          .eq('phone_number', messageData.from)
-          .single();
-
-        if (existingThread) {
-          threadId = existingThread.id;
-          
-          // Update thread with new message info
-          await supabaseClient
-            .from('sms_threads')
-            .update({
-              last_message_at: new Date().toISOString(),
-              last_message_preview: (messageData.body || '').substring(0, 100),
-              unread_count: existingThread.unread_count ? existingThread.unread_count + 1 : 1,
-            })
-            .eq('id', threadId);
-        } else {
-          // Create new thread for this inbound message
-          const { data: newThread } = await supabaseClient
-            .from('sms_threads')
-            .insert({
-              tenant_id: tenantId,
-              phone_number: messageData.from,
-              contact_id: contactId,
-              last_message_at: new Date().toISOString(),
-              last_message_preview: (messageData.body || '').substring(0, 100),
-              unread_count: 1,
-            })
-            .select('id')
-            .single();
-
-          threadId = newThread?.id || null;
-        }
-
-        // Insert message into sms_messages
-        if (threadId) {
-          await supabaseClient
-            .from('sms_messages')
-            .insert({
-              tenant_id: tenantId,
-              thread_id: threadId,
-              contact_id: contactId,
-              direction: 'inbound',
-              from_number: messageData.from,
-              to_number: messageData.to,
-              body: messageData.body,
-              status: 'received',
-              provider: messageData.provider || 'twilio',
-              provider_message_id: messageData.messageSid,
-              sent_at: new Date().toISOString(),
-            });
-        }
-
-        // Also log to communication_history
-        await supabaseClient
-          .from('communication_history')
-          .insert({
-            tenant_id: tenantId,
-            contact_id: contactId,
-            type: 'sms',
-            direction: 'inbound',
-            content: messageData.body,
-            phone_number: messageData.from,
-            status: 'received',
-            metadata: {
-              provider: messageData.provider || 'twilio',
-              provider_message_id: messageData.messageSid,
-              thread_id: threadId,
-            },
-          });
-
-        console.log('Inbound SMS stored:', { 
-          from: messageData.from, 
-          provider: messageData.provider || 'twilio',
-          threadId 
-        });
+      // Process the inbound message with location awareness
+      if (routing.tenantId) {
+        await processInboundSMS(supabaseClient, messageData, routing);
       }
     }
 
@@ -359,3 +156,263 @@ serve(async (req) => {
     );
   }
 });
+
+interface RoutingResult {
+  tenantId: string | null;
+  locationId: string | null;
+  locationName: string | null;
+  assignedReps: string[];
+}
+
+async function routeInboundMessage(supabase: any, toNumber: string): Promise<RoutingResult> {
+  const cleanedPhone = toNumber?.replace(/[^\d+]/g, '') || '';
+  
+  console.log('Routing inbound for destination:', cleanedPhone);
+
+  // 1. Look up location by telnyx_phone_number
+  const { data: location } = await supabase
+    .from('locations')
+    .select('id, name, tenant_id, manager_id, telnyx_phone_number')
+    .or(`telnyx_phone_number.eq.${cleanedPhone},telnyx_phone_number.eq.+${cleanedPhone.replace(/^\+/, '')}`)
+    .single();
+
+  if (location) {
+    console.log('Found location by phone number:', location.name);
+    
+    // Get assigned reps for this location
+    const { data: assignments } = await supabase
+      .from('user_location_assignments')
+      .select('user_id')
+      .eq('location_id', location.id);
+
+    const assignedReps = assignments?.map((a: any) => a.user_id) || [];
+    if (location.manager_id && !assignedReps.includes(location.manager_id)) {
+      assignedReps.unshift(location.manager_id);
+    }
+
+    return {
+      tenantId: location.tenant_id,
+      locationId: location.id,
+      locationName: location.name,
+      assignedReps,
+    };
+  }
+
+  // 2. Fall back to communication_preferences
+  const { data: prefs } = await supabase
+    .from('communication_preferences')
+    .select('tenant_id')
+    .or(`sms_from_number.eq.${cleanedPhone},sms_from_number.eq.+${cleanedPhone.replace(/^\+/, '')}`)
+    .single();
+
+  if (prefs) {
+    return {
+      tenantId: prefs.tenant_id,
+      locationId: null,
+      locationName: null,
+      assignedReps: [],
+    };
+  }
+
+  // 3. Fall back to messaging_providers
+  const { data: provider } = await supabase
+    .from('messaging_providers')
+    .select('tenant_id')
+    .eq('provider_type', 'telnyx_sms')
+    .limit(1)
+    .single();
+
+  return {
+    tenantId: provider?.tenant_id || null,
+    locationId: null,
+    locationName: null,
+    assignedReps: [],
+  };
+}
+
+async function processInboundSMS(supabase: any, messageData: any, routing: RoutingResult) {
+  const { tenantId, locationId, assignedReps } = routing;
+
+  // Find contact by phone
+  let contactId: string | null = null;
+  const { data: contact } = await supabase
+    .from('contacts')
+    .select('id')
+    .eq('tenant_id', tenantId)
+    .or(`phone.eq.${messageData.from},phone.eq.+${messageData.from?.replace(/^\+/, '')}`)
+    .limit(1)
+    .single();
+  
+  contactId = contact?.id || null;
+
+  // Store in inbound_messages for legacy
+  await supabase
+    .from('inbound_messages')
+    .insert({
+      tenant_id: tenantId,
+      contact_id: contactId,
+      message_type: 'sms',
+      from_address: messageData.from,
+      to_address: messageData.to,
+      body: messageData.body,
+      provider_message_id: messageData.messageSid,
+      received_at: new Date().toISOString(),
+    });
+
+  // Find or create SMS thread with location awareness
+  let threadId: string | null = null;
+  
+  const { data: existingThread } = await supabase
+    .from('sms_threads')
+    .select('id, unread_count')
+    .eq('tenant_id', tenantId)
+    .eq('phone_number', messageData.from)
+    .single();
+
+  if (existingThread) {
+    threadId = existingThread.id;
+    
+    // Update thread with new message info and location
+    await supabase
+      .from('sms_threads')
+      .update({
+        last_message_at: new Date().toISOString(),
+        last_message_preview: (messageData.body || '').substring(0, 100),
+        unread_count: (existingThread.unread_count || 0) + 1,
+        location_id: locationId, // Update location if we have it
+      })
+      .eq('id', threadId);
+  } else {
+    // Create new thread with location
+    const { data: newThread } = await supabase
+      .from('sms_threads')
+      .insert({
+        tenant_id: tenantId,
+        phone_number: messageData.from,
+        contact_id: contactId,
+        location_id: locationId,
+        last_message_at: new Date().toISOString(),
+        last_message_preview: (messageData.body || '').substring(0, 100),
+        unread_count: 1,
+      })
+      .select('id')
+      .single();
+
+    threadId = newThread?.id || null;
+  }
+
+  // Insert message into sms_messages with location
+  if (threadId) {
+    await supabase
+      .from('sms_messages')
+      .insert({
+        tenant_id: tenantId,
+        thread_id: threadId,
+        contact_id: contactId,
+        location_id: locationId,
+        direction: 'inbound',
+        from_number: messageData.from,
+        to_number: messageData.to,
+        body: messageData.body,
+        status: 'received',
+        provider: messageData.provider || 'telnyx',
+        provider_message_id: messageData.messageSid,
+        sent_at: new Date().toISOString(),
+      });
+  }
+
+  // Log to communication_history with location
+  await supabase
+    .from('communication_history')
+    .insert({
+      tenant_id: tenantId,
+      contact_id: contactId,
+      type: 'sms',
+      direction: 'inbound',
+      content: messageData.body,
+      phone_number: messageData.from,
+      status: 'received',
+      metadata: {
+        provider: messageData.provider || 'telnyx',
+        provider_message_id: messageData.messageSid,
+        thread_id: threadId,
+        location_id: locationId,
+      },
+    });
+
+  // Send realtime notification to assigned reps
+  if (assignedReps.length > 0) {
+    console.log('Notifying assigned reps:', assignedReps);
+    // Could broadcast via Supabase Realtime channel here
+  }
+
+  console.log('Inbound SMS stored:', { 
+    from: messageData.from, 
+    provider: messageData.provider,
+    threadId,
+    locationId,
+    assignedReps: assignedReps.length
+  });
+}
+
+async function processSendGridEvent(supabase: any, event: any) {
+  if (event.event === 'bounce' || event.event === 'dropped') {
+    const { data: provider } = await supabase
+      .from('messaging_providers')
+      .select('tenant_id')
+      .eq('provider_type', 'sendgrid_email')
+      .limit(1)
+      .single();
+
+    if (provider) {
+      const { data: contact } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('tenant_id', provider.tenant_id)
+        .eq('email', event.email)
+        .limit(1)
+        .single();
+
+      await supabase
+        .from('opt_outs')
+        .insert({
+          tenant_id: provider.tenant_id,
+          contact_id: contact?.id,
+          channel: 'email',
+          email: event.email,
+          reason: event.reason || 'Bounce',
+          source: 'bounce',
+        });
+    }
+  }
+
+  if (event.event === 'unsubscribe' || event.event === 'spamreport') {
+    const { data: provider } = await supabase
+      .from('messaging_providers')
+      .select('tenant_id')
+      .eq('provider_type', 'sendgrid_email')
+      .limit(1)
+      .single();
+
+    if (provider) {
+      const { data: contact } = await supabase
+        .from('contacts')
+        .select('id')
+        .eq('tenant_id', provider.tenant_id)
+        .eq('email', event.email)
+        .limit(1)
+        .single();
+
+      await supabase
+        .from('opt_outs')
+        .insert({
+          tenant_id: provider.tenant_id,
+          contact_id: contact?.id,
+          channel: 'email',
+          email: event.email,
+          reason: event.event,
+          source: event.event === 'spamreport' ? 'complaint' : 'user_request',
+        });
+    }
+  }
+}
