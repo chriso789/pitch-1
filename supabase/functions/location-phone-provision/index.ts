@@ -187,17 +187,14 @@ async function handleSearch(request: SearchRequest): Promise<Response> {
   // Sort numbers to prioritize catchy patterns
   const sortedNumbers = sortByCatchiness(allNumbers);
 
-  // Format the results nicely
+  // Format the results to match the frontend AvailableNumber interface
   const numbers = sortedNumbers.map((num: any) => ({
-    phoneNumber: num.phone_number,
+    phone_number: num.phone_number,
     formatted: formatPhoneNumber(num.phone_number),
+    locality: num.region_information?.[0]?.rate_center || 'Unknown',
     region: num.region_information?.[0]?.region_name || 'Florida',
-    city: num.region_information?.[0]?.rate_center || 'Unknown',
+    monthly_cost: num.cost_information?.monthly_cost || 'N/A',
     features: num.features || [],
-    monthlyRate: num.cost_information?.monthly_cost || 'N/A',
-    upfrontCost: num.cost_information?.upfront_cost || 'N/A',
-    reservable: num.reservable || false,
-    isCatchy: isCatchyNumber(num.phone_number)
   }));
 
   return new Response(
