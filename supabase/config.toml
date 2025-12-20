@@ -422,3 +422,6 @@ verify_jwt = false
 
 [functions.location-phone-provision]
 verify_jwt = true
+
+[functions.telnyx-configure-number]
+verify_jwt = true
