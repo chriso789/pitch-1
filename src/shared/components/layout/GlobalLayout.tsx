@@ -4,6 +4,7 @@ import Sidebar from "./Sidebar";
 import { CLJSearchBar } from "@/components/CLJSearchBar";
 import { CompanySwitcher } from "@/components/layout/CompanySwitcher";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
+import { LocationSwitcher } from "@/shared/components/LocationSwitcher";
 import { useIsMobile } from "@/hooks/use-mobile";
 import { cn } from "@/lib/utils";
 
@@ -31,6 +32,7 @@ export const GlobalLayout = ({ children }: GlobalLayoutProps) => {
             <CLJSearchBar />
             <div className="flex items-center gap-1 md:gap-2">
               <NotificationCenter />
+              <LocationSwitcher />
               <CompanySwitcher />
             </div>
           </div>

@@ -161,17 +161,18 @@ serve(async (req) => {
         }
       }
 
-      // Try any location with a phone number
+      // Try any location with a VALID phone number (not null or empty)
       if (!fromNum) {
         const { data: anyLocation } = await supabaseAdmin
           .from('locations')
           .select('id, telnyx_phone_number')
           .eq('tenant_id', tenantId)
           .not('telnyx_phone_number', 'is', null)
+          .neq('telnyx_phone_number', '')
           .limit(1)
-          .single();
+          .maybeSingle();
 
-        if (anyLocation?.telnyx_phone_number) {
+        if (anyLocation?.telnyx_phone_number && anyLocation.telnyx_phone_number.trim() !== '') {
           fromNum = anyLocation.telnyx_phone_number;
           resolvedLocationId = anyLocation.id;
           console.log('Using available location phone number:', fromNum);
