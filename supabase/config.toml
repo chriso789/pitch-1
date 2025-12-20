@@ -425,3 +425,6 @@ verify_jwt = true
 
 [functions.telnyx-configure-number]
 verify_jwt = true
+
+[functions.telnyx-sms-status-webhook]
+verify_jwt = false

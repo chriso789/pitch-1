@@ -5,7 +5,7 @@
 
 import { useState, useEffect, useRef } from 'react';
 import { format } from 'date-fns';
-import { Send, Phone, User, Loader2, ChevronLeft } from 'lucide-react';
+import { Send, Phone, User, Loader2, ChevronLeft, Check, CheckCheck, Clock, XCircle, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
@@ -21,6 +21,51 @@ interface SMSConversationThreadProps {
   onBack?: () => void;
   onCall?: (phoneNumber: string) => void;
 }
+
+// Delivery status icon component
+const DeliveryStatusIcon = ({ status, isOutbound }: { status?: string; isOutbound: boolean }) => {
+  const iconClass = cn(
+    'h-3.5 w-3.5',
+    isOutbound ? 'text-primary-foreground/70' : 'text-muted-foreground'
+  );
+
+  switch (status) {
+    case 'delivered':
+      return (
+        <span className="flex items-center" title="Delivered">
+          <CheckCheck className={cn(iconClass, 'text-green-400')} />
+        </span>
+      );
+    case 'sent':
+      return (
+        <span className="flex items-center" title="Sent">
+          <Check className={cn(iconClass, isOutbound ? 'text-primary-foreground/70' : '')} />
+        </span>
+      );
+    case 'queued':
+    case 'sending':
+    case 'pending':
+      return (
+        <span className="flex items-center" title="Sending...">
+          <Clock className={cn(iconClass, 'opacity-60')} />
+        </span>
+      );
+    case 'failed':
+    case 'undelivered':
+      return (
+        <span className="flex items-center" title="Failed to deliver">
+          <XCircle className={cn('h-3.5 w-3.5 text-red-400')} />
+        </span>
+      );
+    default:
+      // Unknown or no status - show single check
+      return (
+        <span className="flex items-center" title={status || 'Sent'}>
+          <Check className={iconClass} />
+        </span>
+      );
+  }
+};
 
 export const SMSConversationThread = ({
   thread,
@@ -170,7 +215,7 @@ export const SMSConversationThread = ({
                       )}>
                         <p className="text-sm whitespace-pre-wrap break-words">{msg.body}</p>
                         <div className={cn(
-                          'flex items-center gap-1 mt-1',
+                          'flex items-center gap-1.5 mt-1',
                           isOutbound ? 'justify-end' : 'justify-start'
                         )}>
                           <span className={cn(
@@ -180,16 +225,10 @@ export const SMSConversationThread = ({
                             {format(new Date(msg.created_at), 'h:mm a')}
                           </span>
                           {isOutbound && (
-                            <Badge 
-                              variant="outline" 
-                              className={cn(
-                                'text-[10px] h-4 px-1',
-                                msg.status === 'delivered' && 'border-green-500 text-green-500',
-                                msg.status === 'failed' && 'border-red-500 text-red-500'
-                              )}
-                            >
-                              {msg.status}
-                            </Badge>
+                            <DeliveryStatusIcon 
+                              status={msg.delivery_status || msg.status} 
+                              isOutbound={isOutbound}
+                            />
                           )}
                         </div>
                       </div>

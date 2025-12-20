@@ -280,7 +280,7 @@ serve(async (req) => {
       locationId: resolvedLocationId
     });
 
-    // Log to communication history with location_id
+    // Log to communication history with location_id and initial delivery status
     if (tenantId) {
       await supabaseAdmin.from('communication_history').insert({
         tenant_id: tenantId,
@@ -290,6 +290,8 @@ serve(async (req) => {
         communication_type: 'sms',
         direction: 'outbound',
         content: message,
+        delivery_status: 'queued',
+        delivery_status_updated_at: new Date().toISOString(),
         metadata: {
           message_id: data.data?.id,
           to_number: formattedTo,

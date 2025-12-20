@@ -58,6 +58,7 @@ export interface SMSMessage {
   to_number: string;
   body: string;
   status: string;
+  delivery_status?: string;
   provider: string | null;
   is_read: boolean;
   created_at: string;
