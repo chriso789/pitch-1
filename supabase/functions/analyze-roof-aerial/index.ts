@@ -328,10 +328,11 @@ async function fetchMapboxSatellite(coords: any) {
 // PASS 1: Isolate target building - exclude adjacent structures
 // CRITICAL FIX: The target building is at the EXACT CENTER of the image
 // A typical residential roof is ~40-60 feet, which at zoom 20 is about 15-25% of a 640px image
+// IMPROVED: Tighter bounds validation to reduce over-measurement
 async function isolateTargetBuilding(imageUrl: string, address: string, coordinates: { lat: number; lng: number }) {
   if (!imageUrl) {
     // Default: small centered box for residential
-    return { bounds: { topLeftX: 35, topLeftY: 35, bottomRightX: 65, bottomRightY: 65 }, confidence: 'low' }
+    return { bounds: { topLeftX: 38, topLeftY: 38, bottomRightX: 62, bottomRightY: 62 }, confidence: 'low' }
   }
 
   const prompt = `You are a roof measurement expert. Analyze this satellite image.
@@ -339,17 +340,22 @@ async function isolateTargetBuilding(imageUrl: string, address: string, coordina
 TASK: Find the MAIN RESIDENTIAL BUILDING at the EXACT CENTER of the image.
 The GPS coordinates point to the center of this image, so the target house is in the middle.
 
-Return a TIGHT bounding box that wraps ONLY the main roof:
+Return a TIGHT bounding box that wraps ONLY the main roof - do NOT include:
+- Detached garages or carports
+- Sheds or outbuildings
+- Swimming pools
+- Driveways or patios
+- Adjacent properties
 
 {
   "targetBuildingBounds": {
-    "topLeftX": 38.5,
-    "topLeftY": 32.0,
-    "bottomRightX": 61.5,
-    "bottomRightY": 68.0
+    "topLeftX": 40.5,
+    "topLeftY": 38.0,
+    "bottomRightX": 59.5,
+    "bottomRightY": 62.0
   },
-  "estimatedRoofWidthFt": 45,
-  "estimatedRoofLengthFt": 55,
+  "estimatedRoofWidthFt": 38,
+  "estimatedRoofLengthFt": 48,
   "otherBuildingsDetected": 1,
   "targetBuildingType": "residential",
   "confidenceTargetIsCorrect": "high"
@@ -357,11 +363,12 @@ Return a TIGHT bounding box that wraps ONLY the main roof:
 
 CRITICAL RULES:
 1. The main house is CENTERED in the image (around 40-60% x and y range typically)
-2. Typical residential roofs are 35-65ft wide, which is about 15-30% of image width
+2. Typical residential roofs are 30-55ft wide, which is about 12-25% of image width
 3. Do NOT include sheds, garages, driveways, pools, or adjacent properties
-4. A bounding box larger than 40% of image width is likely WRONG
-5. Use DECIMAL precision (e.g., 38.72, not 39)
-6. Return ONLY valid JSON, no explanation`
+4. A bounding box larger than 35% of image width is likely WRONG for single-family residential
+5. For a standard 2000sqft house, expect bounds of ~20-25% width
+6. Use DECIMAL precision (e.g., 38.72, not 39)
+7. Return ONLY valid JSON, no explanation`
 
   console.log('🏠 Pass 1: Isolating target building at image center...')
   
@@ -379,30 +386,40 @@ CRITICAL RULES:
     const data = await response.json()
     if (!response.ok || !data.choices?.[0]) {
       console.error('Building isolation failed:', data)
-      return { bounds: { topLeftX: 35, topLeftY: 35, bottomRightX: 65, bottomRightY: 65 }, confidence: 'low' }
+      return { bounds: { topLeftX: 38, topLeftY: 38, bottomRightX: 62, bottomRightY: 62 }, confidence: 'low' }
     }
     
     let content = data.choices[0].message?.content || ''
     content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
     
     const result = JSON.parse(content)
-    let bounds = result.targetBuildingBounds || { topLeftX: 35, topLeftY: 35, bottomRightX: 65, bottomRightY: 65 }
+    let bounds = result.targetBuildingBounds || { topLeftX: 38, topLeftY: 38, bottomRightX: 62, bottomRightY: 62 }
     
     // VALIDATION: Ensure bounds are reasonable for residential
     const width = bounds.bottomRightX - bounds.topLeftX
     const height = bounds.bottomRightY - bounds.topLeftY
     
-    // If detected bounds are too large (>45% of image), likely wrong - use tighter default
-    if (width > 45 || height > 45) {
-      console.warn(`⚠️ Detected bounds too large (${width.toFixed(1)}% x ${height.toFixed(1)}%), using centered default`)
-      bounds = { topLeftX: 35, topLeftY: 35, bottomRightX: 65, bottomRightY: 65 }
+    // TIGHTENED: If detected bounds are too large (>35% of image), likely wrong - use tighter default
+    // 35% at zoom 20 is about 70ft which is already large for residential
+    if (width > 35 || height > 35) {
+      console.warn(`⚠️ Detected bounds too large (${width.toFixed(1)}% x ${height.toFixed(1)}%), reducing to centered default`)
+      // Calculate a proportionally smaller box centered at the detected location
+      const detectedCenterX = (bounds.topLeftX + bounds.bottomRightX) / 2
+      const detectedCenterY = (bounds.topLeftY + bounds.bottomRightY) / 2
+      const maxSize = 30 // Max 30% of image
+      bounds = {
+        topLeftX: detectedCenterX - maxSize / 2,
+        topLeftY: detectedCenterY - maxSize / 2,
+        bottomRightX: detectedCenterX + maxSize / 2,
+        bottomRightY: detectedCenterY + maxSize / 2
+      }
     }
     
     // Ensure building is centered (within 30-70% range)
     const centerX = (bounds.topLeftX + bounds.bottomRightX) / 2
     const centerY = (bounds.topLeftY + bounds.bottomRightY) / 2
-    if (centerX < 30 || centerX > 70 || centerY < 30 || centerY > 70) {
-      console.warn(`⚠️ Building not centered (center at ${centerX.toFixed(1)}%, ${centerY.toFixed(1)}%), adjusting`)
+    if (centerX < 35 || centerX > 65 || centerY < 35 || centerY > 65) {
+      console.warn(`⚠️ Building not centered (center at ${centerX.toFixed(1)}%, ${centerY.toFixed(1)}%), adjusting to center`)
       // Shift bounds to center
       const shiftX = 50 - centerX
       const shiftY = 50 - centerY
@@ -414,20 +431,22 @@ CRITICAL RULES:
       }
     }
     
-    console.log(`✅ Pass 1 complete: target bounds (${bounds.topLeftX.toFixed(1)}%, ${bounds.topLeftY.toFixed(1)}%) to (${bounds.bottomRightX.toFixed(1)}%, ${bounds.bottomRightY.toFixed(1)}%), ${result.otherBuildingsDetected || 0} other buildings excluded`)
+    const finalWidth = bounds.bottomRightX - bounds.topLeftX
+    const finalHeight = bounds.bottomRightY - bounds.topLeftY
+    console.log(`✅ Pass 1 complete: target bounds (${bounds.topLeftX.toFixed(1)}%, ${bounds.topLeftY.toFixed(1)}%) to (${bounds.bottomRightX.toFixed(1)}%, ${bounds.bottomRightY.toFixed(1)}%), size: ${finalWidth.toFixed(1)}% x ${finalHeight.toFixed(1)}%, ${result.otherBuildingsDetected || 0} other buildings excluded`)
     
     return { 
       bounds, 
       otherBuildings: result.otherBuildingsDetected || 0,
       confidence: result.confidenceTargetIsCorrect || 'medium',
       estimatedDimensions: {
-        widthFt: result.estimatedRoofWidthFt || 50,
-        lengthFt: result.estimatedRoofLengthFt || 50
+        widthFt: result.estimatedRoofWidthFt || 45,
+        lengthFt: result.estimatedRoofLengthFt || 45
       }
     }
   } catch (err) {
     console.error('Building isolation error:', err)
-    return { bounds: { topLeftX: 35, topLeftY: 35, bottomRightX: 65, bottomRightY: 65 }, confidence: 'low' }
+    return { bounds: { topLeftX: 38, topLeftY: 38, bottomRightX: 62, bottomRightY: 62 }, confidence: 'low' }
   }
 }
 

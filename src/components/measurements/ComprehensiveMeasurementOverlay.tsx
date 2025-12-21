@@ -139,7 +139,7 @@ interface GeoBounds {
   centerLng: number;
 }
 
-type EditMode = 'select' | 'add-ridge' | 'add-hip' | 'add-valley' | 'add-facet' | 'delete' | 'add-marker' | 'add-note' | 'add-damage' | 'split-facet' | 'merge-facets';
+type EditMode = 'select' | 'add-ridge' | 'add-hip' | 'add-valley' | 'add-facet' | 'delete' | 'add-marker' | 'add-note' | 'add-damage' | 'split-facet' | 'merge-facets' | 'draw-perimeter';
 
 // Color palette for distinct facet colors
 const FACET_COLOR_PALETTE = [
@@ -198,6 +198,8 @@ export function ComprehensiveMeasurementOverlay({
     annotations: false,
   });
   const [drawPoints, setDrawPoints] = useState<Point[]>([]);
+  const [perimeterPoints, setPerimeterPoints] = useState<Point[]>([]);
+  const [perimeterArea, setPerimeterArea] = useState<number>(0);
   const [hasChanges, setHasChanges] = useState(false);
   const [noteDialogOpen, setNoteDialogOpen] = useState(false);
   const [pendingAnnotation, setPendingAnnotation] = useState<{ position: Point; type: 'note' | 'damage' } | null>(null);
@@ -892,6 +894,8 @@ export function ComprehensiveMeasurementOverlay({
         handleAddLine(point);
       } else if (editMode === 'add-facet') {
         handleAddFacetPoint(point);
+      } else if (editMode === 'draw-perimeter') {
+        handleAddPerimeterPoint(point);
       } else if (editMode === 'add-marker') {
         handleAddAnnotation(point, 'marker');
       } else if (editMode === 'add-note') {
@@ -2477,6 +2481,204 @@ export function ComprehensiveMeasurementOverlay({
     }
   };
 
+  // Calculate area from canvas points using proper geographic conversion
+  const calculateAreaFromCanvasPoints = (points: Point[]): number => {
+    if (points.length < 3) return 0;
+    
+    // Get reference coordinates and scale
+    const refLat = measurement?.gps_coordinates?.lat || verifiedAddressLat || centerLat;
+    const analysisZoom = measurement?.analysis_zoom || 20;
+    const analysisImageSize = measurement?.analysis_image_size?.width || 640;
+    
+    // Calculate meters-per-pixel at analysis zoom level
+    const metersPerPixel = (156543.03392 * Math.cos(refLat * Math.PI / 180)) / Math.pow(2, analysisZoom);
+    
+    // Scale from canvas to analysis image size
+    const scaleX = analysisImageSize / canvasWidth;
+    const scaleY = analysisImageSize / canvasHeight;
+    
+    // Convert canvas points to feet
+    const feetPoints = points.map(p => ({
+      x: (p.x - canvasWidth / 2) * scaleX * metersPerPixel * 3.28084,
+      y: (p.y - canvasHeight / 2) * scaleY * metersPerPixel * 3.28084
+    }));
+    
+    // Shoelace formula for polygon area
+    let area = 0;
+    for (let i = 0; i < feetPoints.length; i++) {
+      const j = (i + 1) % feetPoints.length;
+      area += feetPoints[i].x * feetPoints[j].y;
+      area -= feetPoints[j].x * feetPoints[i].y;
+    }
+    
+    return Math.abs(area / 2);
+  };
+
+  const handleAddPerimeterPoint = (point: Point) => {
+    const newPoints = [...perimeterPoints, point];
+    setPerimeterPoints(newPoints);
+    drawTempPerimeterPoint(point);
+    
+    // Calculate real-time area
+    if (newPoints.length >= 3) {
+      const area = calculateAreaFromCanvasPoints(newPoints);
+      setPerimeterArea(area);
+    }
+
+    // Draw connecting lines
+    if (newPoints.length > 1) {
+      drawTempPerimeterLine(newPoints[newPoints.length - 2], point);
+    }
+
+    // Check if user clicked near the first point to close the polygon
+    if (newPoints.length > 2) {
+      const first = newPoints[0];
+      const dist = Math.sqrt(Math.pow(point.x - first.x, 2) + Math.pow(point.y - first.y, 2));
+      if (dist < 20) {
+        // Close the polygon and save
+        completePerimeterDrawing(newPoints);
+        return;
+      }
+    }
+
+    if (newPoints.length === 1) {
+      toast.info("Trace roof perimeter. Click near first point to close polygon.");
+    }
+  };
+
+  const drawTempPerimeterPoint = (point: Point) => {
+    if (!fabricCanvas) return;
+
+    const circle = new Circle({
+      left: point.x,
+      top: point.y,
+      radius: 6,
+      fill: perimeterPoints.length === 0 ? '#22c55e' : '#f97316', // Green for first, orange for others
+      stroke: 'white',
+      strokeWidth: 2,
+      originX: 'center',
+      originY: 'center',
+      selectable: false,
+    });
+    (circle as any).data = { type: 'temp-perimeter' };
+    fabricCanvas.add(circle);
+    fabricCanvas.renderAll();
+  };
+
+  const drawTempPerimeterLine = (from: Point, to: Point) => {
+    if (!fabricCanvas) return;
+
+    const line = new Line([from.x, from.y, to.x, to.y], {
+      stroke: '#f97316',
+      strokeWidth: 3,
+      strokeDashArray: [5, 3],
+      selectable: false,
+    });
+    (line as any).data = { type: 'temp-perimeter' };
+    fabricCanvas.add(line);
+    fabricCanvas.renderAll();
+  };
+
+  const completePerimeterDrawing = (points: Point[]) => {
+    pushToUndoStack();
+    
+    const finalArea = calculateAreaFromCanvasPoints(points);
+    
+    // Get pitch multiplier from existing measurement or default to 5/12
+    const pitch = measurement?.predominant_pitch || '5/12';
+    const pitchMultiplier = getPitchMultiplier(pitch);
+    const adjustedArea = finalArea * pitchMultiplier;
+    
+    // Create WKT polygon from points
+    const refLat = measurement?.gps_coordinates?.lat || verifiedAddressLat || centerLat;
+    const refLng = measurement?.gps_coordinates?.lng || verifiedAddressLng || centerLng;
+    const analysisZoom = measurement?.analysis_zoom || 20;
+    const analysisImageSize = measurement?.analysis_image_size?.width || 640;
+    const metersPerPixel = (156543.03392 * Math.cos(refLat * Math.PI / 180)) / Math.pow(2, analysisZoom);
+    const metersPerDegLat = 111320;
+    const metersPerDegLng = 111320 * Math.cos(refLat * Math.PI / 180);
+    
+    const scaleX = analysisImageSize / canvasWidth;
+    const scaleY = analysisImageSize / canvasHeight;
+    
+    const wktPoints = points.map(p => {
+      const metersX = (p.x - canvasWidth / 2) * scaleX * metersPerPixel;
+      const metersY = (p.y - canvasHeight / 2) * scaleY * metersPerPixel;
+      const lng = refLng + (metersX / metersPerDegLng);
+      const lat = refLat - (metersY / metersPerDegLat);
+      return `${lng.toFixed(8)} ${lat.toFixed(8)}`;
+    });
+    wktPoints.push(wktPoints[0]); // Close the polygon
+    const perimeterWkt = `POLYGON((${wktPoints.join(', ')}))`;
+    
+    // Calculate perimeter length
+    let perimeterLength = 0;
+    for (let i = 0; i < points.length; i++) {
+      const j = (i + 1) % points.length;
+      const dx = (points[j].x - points[i].x) * scaleX * metersPerPixel * 3.28084;
+      const dy = (points[j].y - points[i].y) * scaleY * metersPerPixel * 3.28084;
+      perimeterLength += Math.sqrt(dx * dx + dy * dy);
+    }
+    
+    // Update measurement with new perimeter data
+    const updatedMeasurement = {
+      ...measurement,
+      total_area_flat_sqft: finalArea,
+      total_area_adjusted_sqft: adjustedArea,
+      total_squares: adjustedArea / 100,
+      perimeter_wkt: perimeterWkt,
+      perimeter_ft: Math.round(perimeterLength),
+      manual_perimeter: true,
+      manual_perimeter_points: points.length,
+    };
+    
+    // Update tags with eave length (perimeter approximation)
+    const updatedTags = {
+      ...tags,
+      'roof.plan_area': finalArea,
+      'roof.total_area': adjustedArea,
+      'lf.eave': perimeterLength,
+    };
+    
+    setHasChanges(true);
+    onMeasurementUpdate(updatedMeasurement, updatedTags);
+    
+    // Clear temp drawings
+    clearTempPerimeterDrawings();
+    setPerimeterPoints([]);
+    setPerimeterArea(0);
+    setEditMode('select');
+    
+    toast.success(`Perimeter saved: ${Math.round(adjustedArea).toLocaleString()} sq ft (${(adjustedArea / 100).toFixed(2)} squares)`);
+  };
+
+  const clearTempPerimeterDrawings = () => {
+    if (!fabricCanvas) return;
+    const tempObjects = fabricCanvas.getObjects().filter((obj: FabricObject) => 
+      (obj as any).data?.type === 'temp-perimeter'
+    );
+    tempObjects.forEach(obj => fabricCanvas.remove(obj));
+    fabricCanvas.renderAll();
+  };
+
+  const cancelPerimeterDrawing = () => {
+    clearTempPerimeterDrawings();
+    setPerimeterPoints([]);
+    setPerimeterArea(0);
+    setEditMode('select');
+    toast.info('Perimeter drawing cancelled');
+  };
+
+  const getPitchMultiplier = (pitch: string): number => {
+    const pitchMultipliers: Record<string, number> = {
+      '0/12': 1.000, 'flat': 1.000,
+      '1/12': 1.003, '2/12': 1.014, '3/12': 1.031, '4/12': 1.054,
+      '5/12': 1.083, '6/12': 1.118, '7/12': 1.158, '8/12': 1.202,
+      '9/12': 1.250, '10/12': 1.302, '11/12': 1.357, '12/12': 1.414,
+    };
+    return pitchMultipliers[pitch] || pitchMultipliers['5/12'];
+  };
+
   const drawTempPoint = (point: Point) => {
     if (!fabricCanvas) return;
 
@@ -2780,6 +2982,8 @@ export function ComprehensiveMeasurementOverlay({
         return 'Click to place a note with custom text.';
       case 'add-damage':
         return 'Click to mark a damage indicator with notes.';
+      case 'draw-perimeter':
+        return 'Click to trace roof perimeter. Click near first point to close. Area updates in real-time.';
       default:
         return '';
     }
@@ -2877,6 +3081,14 @@ export function ComprehensiveMeasurementOverlay({
             onClick={() => setEditMode('add-marker')}
           >
             <MapPin className="h-4 w-4 mr-1" /> Marker
+          </Button>
+          <Button 
+            size="sm" 
+            variant={editMode === 'draw-perimeter' ? 'default' : 'outline'} 
+            onClick={() => editMode === 'draw-perimeter' ? cancelPerimeterDrawing() : setEditMode('draw-perimeter')}
+            className={editMode === 'draw-perimeter' ? 'bg-orange-500 hover:bg-orange-600' : ''}
+          >
+            <Square className="h-4 w-4 mr-1" /> {editMode === 'draw-perimeter' ? `Drawing (${perimeterArea > 0 ? Math.round(perimeterArea).toLocaleString() + ' sqft' : '0'})` : 'Draw Perimeter'}
           </Button>
           <Button 
             size="sm" 
