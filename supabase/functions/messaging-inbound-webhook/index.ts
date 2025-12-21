@@ -79,8 +79,11 @@ serve(async (req) => {
           if (routing.tenantId) {
             await processInboundSMS(supabaseClient, messageData, routing);
           }
-        } else if (event.event_type === 'message.finalized') {
-          console.log('Telnyx delivery status:', payload.to?.[0]?.status);
+        } else if (event.event_type === 'message.finalized' || 
+                   event.event_type === 'message.sent' || 
+                   event.event_type === 'message.delivery_failed') {
+          // Handle delivery status updates
+          await handleDeliveryStatusUpdate(supabaseClient, event, payload);
         }
       } else {
         // Not a Telnyx message webhook, might be SendGrid or other JSON
@@ -464,6 +467,106 @@ async function processInboundSMS(supabase: any, messageData: any, routing: Routi
     locationId,
     assignedReps: assignedReps.length
   });
+}
+
+async function handleDeliveryStatusUpdate(supabase: any, event: any, payload: any) {
+  const messageId = payload.id;
+  const telnyxStatus = payload.to?.[0]?.status || event.event_type.replace('message.', '');
+  const errorCode = payload.errors?.[0]?.code || payload.to?.[0]?.carrier?.error_code;
+  const errorMessage = payload.errors?.[0]?.title || payload.to?.[0]?.carrier?.error_message;
+  
+  console.log(`[Delivery Status] Processing ${event.event_type} for message ${messageId}`);
+  console.log(`[Delivery Status] Telnyx status: ${telnyxStatus}, Error: ${errorCode} - ${errorMessage}`);
+  
+  // Map Telnyx statuses to our delivery_status
+  const statusMap: Record<string, string> = {
+    'queued': 'queued',
+    'sending': 'sending', 
+    'sent': 'sent',
+    'delivered': 'delivered',
+    'delivery_failed': 'failed',
+    'sending_failed': 'failed',
+    'finalized': 'delivered', // Telnyx uses finalized for completed delivery
+  };
+  
+  const deliveryStatus = statusMap[telnyxStatus] || telnyxStatus;
+  const now = new Date().toISOString();
+  
+  // Update communication_history by message_id in metadata
+  const { data: commRecords, error: commFindError } = await supabase
+    .from('communication_history')
+    .select('id, tenant_id, metadata')
+    .filter('metadata->>message_id', 'eq', messageId);
+  
+  if (commFindError) {
+    console.error('[Delivery Status] Error finding communication_history:', commFindError);
+  } else if (commRecords && commRecords.length > 0) {
+    for (const record of commRecords) {
+      const updatedMetadata = {
+        ...record.metadata,
+        telnyx_status: telnyxStatus,
+        last_status_update: now,
+        ...(errorCode && { carrier_error_code: errorCode }),
+        ...(errorMessage && { carrier_error_message: errorMessage }),
+      };
+      
+      const { error: updateError } = await supabase
+        .from('communication_history')
+        .update({
+          delivery_status: deliveryStatus,
+          delivery_status_updated_at: now,
+          carrier_error_code: errorCode || null,
+          metadata: updatedMetadata,
+        })
+        .eq('id', record.id);
+      
+      if (updateError) {
+        console.error(`[Delivery Status] Error updating communication_history ${record.id}:`, updateError);
+      } else {
+        console.log(`[Delivery Status] Updated communication_history ${record.id} to: ${deliveryStatus}`);
+      }
+    }
+  } else {
+    console.log(`[Delivery Status] No communication_history record found for message_id: ${messageId}`);
+  }
+  
+  // Also update sms_messages by provider_message_id
+  const { data: smsRecords, error: smsFindError } = await supabase
+    .from('sms_messages')
+    .select('id, thread_id')
+    .eq('provider_message_id', messageId);
+  
+  if (smsFindError) {
+    console.error('[Delivery Status] Error finding sms_messages:', smsFindError);
+  } else if (smsRecords && smsRecords.length > 0) {
+    for (const record of smsRecords) {
+      const { error: updateError } = await supabase
+        .from('sms_messages')
+        .update({
+          delivery_status: deliveryStatus,
+          ...(deliveryStatus === 'failed' && { error_message: errorMessage || errorCode }),
+        })
+        .eq('id', record.id);
+      
+      if (updateError) {
+        console.error(`[Delivery Status] Error updating sms_messages ${record.id}:`, updateError);
+      } else {
+        console.log(`[Delivery Status] Updated sms_messages ${record.id} to: ${deliveryStatus}`);
+      }
+    }
+  } else {
+    console.log(`[Delivery Status] No sms_messages record found for provider_message_id: ${messageId}`);
+  }
+  
+  // Log failures with detailed info
+  if (deliveryStatus === 'failed') {
+    console.warn(`[Delivery Status] ⚠️ Message ${messageId} FAILED:`, {
+      errorCode,
+      errorMessage,
+      carrier: payload.to?.[0]?.carrier,
+      toNumber: payload.to?.[0]?.phone_number,
+    });
+  }
 }
 
 async function processSendGridEvent(supabase: any, event: any) {
