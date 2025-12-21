@@ -18,6 +18,7 @@ interface ContactImportData {
   address_zip?: string;
   lead_source?: string;
   tags?: string;
+  notes?: string; // Contains secondary addresses, phones, emails from import
 }
 
 interface ContactBulkImportProps {
@@ -43,7 +44,7 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'lname': 'last_name',
   'surname': 'last_name',
   'family name': 'last_name',
-  'name': 'full_name', // Special: will be split
+  'name': 'full_name',
   'full_name': 'full_name',
   'fullname': 'full_name',
   'full name': 'full_name',
@@ -51,14 +52,33 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'customer name': 'full_name',
   'client name': 'full_name',
   
-  // Email variations
+  // Primary Email variations
   'email': 'email',
   'email_address': 'email',
   'email address': 'email',
   'e-mail': 'email',
   'emailaddress': 'email',
+  'email_1': 'email',
+  'email 1': 'email',
+  'email1': 'email',
+  'primary email': 'email',
+  'primary_email': 'email',
+  'contact email': 'email',
+  'main email': 'email',
+  'home email': 'email',
+  'work email': 'email',
   
-  // Phone variations
+  // Secondary Email variations (stored in notes)
+  'email_2': 'secondary_email',
+  'email 2': 'secondary_email',
+  'email2': 'secondary_email',
+  'secondary email': 'secondary_email',
+  'secondary_email': 'secondary_email',
+  'alternate email': 'secondary_email',
+  'alt email': 'secondary_email',
+  'other email': 'secondary_email',
+  
+  // Primary Phone variations
   'phone': 'phone',
   'phone_number': 'phone',
   'phone number': 'phone',
@@ -68,6 +88,29 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'cell': 'phone',
   'cell phone': 'phone',
   'mobile phone': 'phone',
+  'phone_1': 'phone',
+  'phone 1': 'phone',
+  'phone1': 'phone',
+  'primary phone': 'phone',
+  'primary_phone': 'phone',
+  'main phone': 'phone',
+  'contact phone': 'phone',
+  'mobile number': 'phone',
+  'cell number': 'phone',
+  'home phone': 'phone',
+  'work phone': 'phone',
+  
+  // Secondary Phone variations (stored in notes)
+  'phone_2': 'secondary_phone',
+  'phone 2': 'secondary_phone',
+  'phone2': 'secondary_phone',
+  'secondary phone': 'secondary_phone',
+  'secondary_phone': 'secondary_phone',
+  'alternate phone': 'secondary_phone',
+  'alt phone': 'secondary_phone',
+  'other phone': 'secondary_phone',
+  'home phone 2': 'secondary_phone',
+  'work phone 2': 'secondary_phone',
   
   // Company variations
   'company_name': 'company_name',
@@ -78,22 +121,29 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'business name': 'company_name',
   'organization': 'company_name',
   
-  // Address variations
+  // Primary Address variations
   'address_street': 'address_street',
   'address': 'address_street',
   'street': 'address_street',
   'street address': 'address_street',
   'address1': 'address_street',
   'address_1': 'address_street',
+  'address 1': 'address_street',
   'address line 1': 'address_street',
+  'street_address': 'address_street',
+  'primary address': 'address_street',
   
   'address_city': 'address_city',
   'city': 'address_city',
+  'city_1': 'address_city',
+  'city 1': 'address_city',
   
   'address_state': 'address_state',
   'state': 'address_state',
   'province': 'address_state',
   'region': 'address_state',
+  'state_1': 'address_state',
+  'state 1': 'address_state',
   
   'address_zip': 'address_zip',
   'zip': 'address_zip',
@@ -104,6 +154,32 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'postal_code': 'address_zip',
   'postal code': 'address_zip',
   'postalcode': 'address_zip',
+  'zip_1': 'address_zip',
+  'zip 1': 'address_zip',
+  
+  // Secondary Address variations (stored in notes)
+  'address_2': 'secondary_address',
+  'address 2': 'secondary_address',
+  'address2': 'secondary_address',
+  'secondary address': 'secondary_address',
+  'secondary_address': 'secondary_address',
+  'mailing address': 'secondary_address',
+  'mailing_address': 'secondary_address',
+  'alternate address': 'secondary_address',
+  'other address': 'secondary_address',
+  
+  'city_2': 'secondary_city',
+  'city 2': 'secondary_city',
+  'secondary city': 'secondary_city',
+  
+  'state_2': 'secondary_state',
+  'state 2': 'secondary_state',
+  'secondary state': 'secondary_state',
+  
+  'zip_2': 'secondary_zip',
+  'zip 2': 'secondary_zip',
+  'zipcode_2': 'secondary_zip',
+  'secondary zip': 'secondary_zip',
   
   // Lead source variations
   'lead_source': 'lead_source',
@@ -158,6 +234,52 @@ function splitFullName(fullName: string): { firstName: string; lastName: string 
 }
 
 /**
+ * Build additional info notes from secondary data
+ */
+function buildSecondaryDataNotes(data: Record<string, any>): string {
+  const lines: string[] = [];
+  
+  // Secondary Phone
+  if (data.secondary_phone) {
+    const phone = String(data.secondary_phone).trim();
+    if (phone) lines.push(`Secondary Phone: ${phone}`);
+  }
+  
+  // Secondary Email
+  if (data.secondary_email) {
+    const email = String(data.secondary_email).trim();
+    if (email) lines.push(`Secondary Email: ${email}`);
+  }
+  
+  // Secondary Address
+  const secondaryAddressParts: string[] = [];
+  if (data.secondary_address) {
+    const addr = String(data.secondary_address).trim();
+    if (addr) secondaryAddressParts.push(addr);
+  }
+  if (data.secondary_city) {
+    const city = String(data.secondary_city).trim();
+    if (city) secondaryAddressParts.push(city);
+  }
+  if (data.secondary_state) {
+    const state = String(data.secondary_state).trim();
+    if (state) secondaryAddressParts.push(state);
+  }
+  if (data.secondary_zip) {
+    const zip = String(data.secondary_zip).trim();
+    if (zip) secondaryAddressParts.push(zip);
+  }
+  
+  if (secondaryAddressParts.length > 0) {
+    lines.push(`Secondary Address: ${secondaryAddressParts.join(', ')}`);
+  }
+  
+  if (lines.length === 0) return '';
+  
+  return `--- Additional Contact Information (from import) ---\n${lines.join('\n')}`;
+}
+
+/**
  * Normalize a CSV row using smart column mapping
  */
 function normalizeRow(rawRow: Record<string, any>): ContactImportData {
@@ -170,10 +292,12 @@ function normalizeRow(rawRow: Record<string, any>): ContactImportData {
     const mappedField = COLUMN_MAPPINGS[normalizedKey];
     
     if (mappedField === 'full_name') {
-      // Store full name for splitting later
       fullName = String(value || '').trim();
     } else if (mappedField) {
-      normalized[mappedField] = value;
+      // Only set if we don't already have a value (first match wins for primary fields)
+      if (!normalized[mappedField] || mappedField.startsWith('secondary_')) {
+        normalized[mappedField] = value;
+      }
     }
   }
   
@@ -194,6 +318,9 @@ function normalizeRow(rawRow: Record<string, any>): ContactImportData {
     }
   }
   
+  // Build notes from secondary data
+  const secondaryNotes = buildSecondaryDataNotes(normalized);
+  
   return {
     first_name: String(normalized.first_name || '').trim(),
     last_name: String(normalized.last_name || '').trim(),
@@ -206,6 +333,7 @@ function normalizeRow(rawRow: Record<string, any>): ContactImportData {
     address_zip: normalized.address_zip ? String(normalized.address_zip).trim() : undefined,
     lead_source: normalized.lead_source ? String(normalized.lead_source).trim() : undefined,
     tags: normalized.tags ? String(normalized.tags).trim() : undefined,
+    notes: secondaryNotes || undefined,
   };
 }
 
@@ -302,6 +430,7 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
             address_zip: row.address_zip || null,
             lead_source: row.lead_source || 'csv_import',
             tags: row.tags ? row.tags.split(',').map((t: string) => t.trim()) : [],
+            notes: row.notes || null,
             tenant_id: profile.tenant_id,
             location_id: currentLocationId || null,
             type: 'homeowner' as const,
@@ -414,15 +543,16 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
           {preview.length > 0 && (
             <div className="space-y-2">
               <p className="text-sm font-medium">Preview ({totalRows} total rows, showing first 5):</p>
-              <div className="border rounded-lg overflow-hidden">
+              <div className="border rounded-lg overflow-hidden overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted">
                     <tr>
-                      <th className="px-3 py-2 text-left">First Name</th>
-                      <th className="px-3 py-2 text-left">Last Name</th>
-                      <th className="px-3 py-2 text-left">Email</th>
-                      <th className="px-3 py-2 text-left">Phone</th>
-                      <th className="px-3 py-2 text-left">City</th>
+                      <th className="px-3 py-2 text-left whitespace-nowrap">First Name</th>
+                      <th className="px-3 py-2 text-left whitespace-nowrap">Last Name</th>
+                      <th className="px-3 py-2 text-left whitespace-nowrap">Email</th>
+                      <th className="px-3 py-2 text-left whitespace-nowrap">Phone</th>
+                      <th className="px-3 py-2 text-left whitespace-nowrap">City</th>
+                      <th className="px-3 py-2 text-left whitespace-nowrap">Additional Info</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -430,9 +560,16 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
                       <tr key={i} className="border-t">
                         <td className="px-3 py-2">{row.first_name || '-'}</td>
                         <td className="px-3 py-2">{row.last_name || '-'}</td>
-                        <td className="px-3 py-2">{row.email || '-'}</td>
+                        <td className="px-3 py-2 max-w-[150px] truncate" title={row.email}>{row.email || '-'}</td>
                         <td className="px-3 py-2">{row.phone || '-'}</td>
                         <td className="px-3 py-2">{row.address_city || '-'}</td>
+                        <td className="px-3 py-2">
+                          {row.notes ? (
+                            <span className="text-xs text-muted-foreground" title={row.notes}>
+                              ✓ Has secondary data
+                            </span>
+                          ) : '-'}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
