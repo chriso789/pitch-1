@@ -144,26 +144,21 @@ export function PortalAuthentication() {
 
       if (sessionError) throw sessionError;
 
-      // In production, send email with magic link
-      // For now, simulate success
-      setEmailSent(true);
+      // Store session immediately and navigate
+      localStorage.setItem("homeowner_session", JSON.stringify({
+        token,
+        contactId: contact.id,
+        tenantId: contact.tenant_id,
+        email: homeownerEmail.trim().toLowerCase(),
+        expiresAt
+      }));
       
       toast({
-        title: "Check Your Email",
-        description: "We've sent you a login link"
+        title: "Welcome!",
+        description: `Logged in as ${contact.first_name || "Homeowner"}`
       });
 
-      // For demo purposes, auto-login after 2 seconds
-      setTimeout(() => {
-        localStorage.setItem("homeowner_session", JSON.stringify({
-          token,
-          contactId: contact.id,
-          tenantId: contact.tenant_id,
-          email: homeownerEmail,
-          expiresAt
-        }));
-        navigate("/homeowner");
-      }, 2000);
+      navigate("/homeowner");
 
     } catch (error: any) {
       toast({

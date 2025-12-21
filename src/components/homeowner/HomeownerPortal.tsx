@@ -108,26 +108,40 @@ export function HomeownerPortal() {
     try {
       setIsLoading(true);
       
-      // For demo purposes, load sample data
-      // In production, this would use the homeowner's session token
-      const { data: { user } } = await supabase.auth.getUser();
-      
-      // Get contact info
-      const { data: contact } = await supabase
-        .from("contacts")
-        .select("*")
-        .eq("email", user?.email as string)
-        .single();
+      // Get session from localStorage
+      const sessionData = localStorage.getItem("homeowner_session");
+      if (!sessionData) {
+        console.error("No homeowner session found");
+        setIsLoading(false);
+        return;
+      }
 
+      const session = JSON.parse(sessionData);
+      
+      // Validate session against database and get contact
+      const { data: dbSession, error: sessionError } = await supabase
+        .from("homeowner_portal_sessions")
+        .select("*, contact:contacts(*)")
+        .eq("token", session.token)
+        .gt("expires_at", new Date().toISOString())
+        .maybeSingle();
+
+      if (sessionError || !dbSession) {
+        console.error("Invalid or expired session");
+        localStorage.removeItem("homeowner_session");
+        setIsLoading(false);
+        return;
+      }
+
+      const contact = dbSession.contact;
       if (contact) {
-        setContactInfo(contact as any);
         setContactInfo(contact);
 
         // Get project for this contact
         const { data: projectData } = await (supabase as any)
           .from("projects")
           .select("*")
-          .eq("contact_id", (contact as any).id)
+          .eq("contact_id", contact.id)
           .order("created_at", { ascending: false })
           .limit(1)
           .maybeSingle();
