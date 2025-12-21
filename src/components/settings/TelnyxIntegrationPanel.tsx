@@ -78,7 +78,8 @@ export function TelnyxIntegrationPanel() {
   const telnyxConfig = {
     smsProfileId: '40019b10-e9de-48f9-9947-827fbc6b76df',
     voiceAppId: '2849056557713327385',
-    connectionId: '2704206458946977384'
+    // Use the same ID as the call control application for both the Voice App ID and the Connection ID.
+    connectionId: '2849056557713327385'
   };
 
   const copyToClipboard = async (text: string, label: string) => {
@@ -605,17 +606,17 @@ export function TelnyxIntegrationPanel() {
             <ChecklistItem 
               checked={hasActiveNumbers} 
               label="Phone numbers active in Telnyx" 
-              note={hasActiveNumbers ? `${locations?.filter(l => l.phone_porting_status === 'active').length} active` : "Check phone status above"}
+              note={hasActiveNumbers ? `${locations?.filter(l => l.phone_porting_status === 'active').length} active` : 'Check phone status above'}
             />
             <ChecklistItem 
               checked={hasActiveNumbers} 
               label="Numbers assigned to Voice App" 
-              note={hasActiveNumbers ? "Configured" : "Assign in Telnyx Portal"}
+              note={hasActiveNumbers ? 'Configured' : 'Assign in Telnyx Portal'}
             />
             <ChecklistItem 
               checked={hasActiveNumbers} 
               label="Numbers assigned to Messaging Profile" 
-              note={hasActiveNumbers ? "Configured" : "Assign in Telnyx Portal"}
+              note={hasActiveNumbers ? 'Configured' : 'Assign in Telnyx Portal'}
             />
             <ChecklistItem 
               checked={testResults.sms?.success || false} 
