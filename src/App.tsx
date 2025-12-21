@@ -89,6 +89,7 @@ import PublicSignatureCapture from "./pages/PublicSignatureCapture";
 import CrewPortalPage from "./pages/CrewPortalPage";
 import HomeownerPortalPage from "./pages/HomeownerPortalPage";
 import PortalLoginPage from "./pages/PortalLoginPage";
+import { HomeownerProtectedRoute } from "./components/auth/HomeownerProtectedRoute";
 import MonitoringPage from "./pages/admin/MonitoringPage";
 import HomeownerSetupAccount from "./pages/HomeownerSetupAccount";
 import CommissionReport from "./pages/CommissionReport";
@@ -166,7 +167,7 @@ const AppContent = () => {
         <Route path="/portal/login" element={<PortalLoginPage />} />
         <Route path="/portal/setup" element={<HomeownerSetupAccount />} />
         <Route path="/crew" element={<CrewPortalPage />} />
-        <Route path="/homeowner" element={<HomeownerPortalPage />} />
+        <Route path="/homeowner" element={<HomeownerProtectedRoute><HomeownerPortalPage /></HomeownerProtectedRoute>} />
         <Route path="/view-quote/:token" element={<ViewQuote />} />
         
         {/* Protected application routes */}
