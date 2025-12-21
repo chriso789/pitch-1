@@ -958,11 +958,11 @@ function calculateScale(solarData: any, image: any, aiAnalysis: any) {
 function calculateDetailedMeasurements(aiAnalysis: any, scale: any, solarData: any, linearTotalsFromWKT?: any) {
   const pitches = aiAnalysis.facets.map((f: any) => f.estimatedPitch)
   const predominantPitch = mostCommon(pitches)
-  const pitchMultiplier = PITCH_MULTIPLIERS[predominantPitch] || 1.083
+  const pitchMultiplier = getSlopeFactorFromPitch(predominantPitch) || 1.083
 
   const processedFacets = aiAnalysis.facets.map((facet: any) => {
     const facetPitch = facet.estimatedPitch
-    const facetMultiplier = PITCH_MULTIPLIERS[facetPitch] || pitchMultiplier
+    const facetMultiplier = getSlopeFactorFromPitch(facetPitch) || pitchMultiplier
     const flatAreaSqft = facet.estimatedAreaSqft
     const adjustedAreaSqft = flatAreaSqft * facetMultiplier
     return {
