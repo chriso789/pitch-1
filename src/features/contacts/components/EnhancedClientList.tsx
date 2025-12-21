@@ -41,7 +41,8 @@ import {
   Trash2,
   MessageSquare,
   Plus,
-  CheckCircle2
+  CheckCircle2,
+  Upload
 } from "lucide-react";
 import { ActionsSelector } from "@/components/ui/actions-selector";
 import { FloatingChatWidget } from "@/components/messaging/FloatingChatWidget";
@@ -59,6 +60,7 @@ import ContactFormDialog from "@/components/ContactFormDialog";
 import EnhancedLeadCreationDialog from "@/components/EnhancedLeadCreationDialog";
 import PermanentDeleteDialog from "@/components/PermanentDeleteDialog";
 import TaskAssignmentDialog from "@/components/TaskAssignmentDialog";
+import { ContactBulkImport } from "./ContactBulkImport";
 import { TEST_IDS } from "../../../../tests/utils/test-ids";
 
 interface Contact {
@@ -137,6 +139,9 @@ export const EnhancedClientList = () => {
   
   // Location filtering state
   const [currentLocationId, setCurrentLocationId] = useState<string | null>(null);
+  
+  // Import dialog state
+  const [showImportDialog, setShowImportDialog] = useState(false);
 
   // Load current location setting from app_settings
   const loadCurrentLocationSetting = useCallback(async () => {
@@ -876,6 +881,15 @@ export const EnhancedClientList = () => {
           <Button
             variant="outline"
             size="sm"
+            onClick={() => setShowImportDialog(true)}
+            className="shadow-soft transition-smooth"
+          >
+            <Upload className="h-4 w-4 mr-2" />
+            Import CSV
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
             onClick={() => savePreferredView(activeView)}
             className="shadow-soft transition-smooth"
           >
@@ -1411,6 +1425,14 @@ export const EnhancedClientList = () => {
           trigger={<div style={{ display: 'none' }} />}
         />
       )}
+
+      {/* Contact Import Dialog */}
+      <ContactBulkImport
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        onImportComplete={fetchData}
+        currentLocationId={currentLocationId}
+      />
     </div>
   );
 };
