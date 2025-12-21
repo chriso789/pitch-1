@@ -136,6 +136,8 @@ export const QuickLocationSwitcher = ({ isCollapsed = false, onLocationChange }:
           setting_key: 'current_location_id',
           setting_value: locationId || 'null',
           tenant_id: activeTenantId
+        }, {
+          onConflict: 'user_id,tenant_id,setting_key'
         });
 
       if (error) throw error;
