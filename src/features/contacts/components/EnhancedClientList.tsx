@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -134,11 +134,59 @@ export const EnhancedClientList = () => {
   const [activeChatContact, setActiveChatContact] = useState<{ id: string; name: string; phone: string } | null>(null);
   const [activeEmailContact, setActiveEmailContact] = useState<{ id: string; name: string; email: string } | null>(null);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number; address: string } | null>(null);
+  
+  // Location filtering state
+  const [currentLocationId, setCurrentLocationId] = useState<string | null>(null);
+
+  // Load current location setting from app_settings
+  const loadCurrentLocationSetting = useCallback(async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: setting } = await supabase
+        .from('app_settings')
+        .select('setting_value')
+        .eq('user_id', user.id)
+        .eq('setting_key', 'current_location_id')
+        .maybeSingle();
+
+      if (setting?.setting_value && setting.setting_value !== 'null') {
+        setCurrentLocationId(setting.setting_value as string);
+      } else {
+        setCurrentLocationId(null);
+      }
+    } catch (error) {
+      console.error('Error loading current location setting:', error);
+    }
+  }, []);
 
   useEffect(() => {
     loadUserPreferences();
+    loadCurrentLocationSetting();
     fetchData();
   }, []);
+
+  // Subscribe to location changes from QuickLocationSwitcher
+  useEffect(() => {
+    const channel = supabase.channel('location-changes')
+      .on('broadcast', { event: 'location_changed' }, (payload) => {
+        console.log('Location changed event received:', payload);
+        setCurrentLocationId(payload.payload?.locationId || null);
+      })
+      .subscribe();
+      
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, []);
+
+  // Refetch data when location changes
+  useEffect(() => {
+    if (userProfile) {
+      fetchData();
+    }
+  }, [currentLocationId]);
 
   useEffect(() => {
     setActiveView(preferredView);
@@ -237,13 +285,19 @@ export const EnhancedClientList = () => {
 
       // Query contacts with proper tenant filtering (master sees all)
       console.log("Fetching contacts...");
+      console.log("Current location filter:", currentLocationId);
       const isMaster = profile.role === 'master';
-      const contactsQuery = supabase
+      let contactsQuery = supabase
         .from("contacts")
         .select("*");
       
       if (!isMaster) {
-        contactsQuery.eq('tenant_id', profile.tenant_id);
+        contactsQuery = contactsQuery.eq('tenant_id', profile.tenant_id);
+      }
+      
+      // Apply location filter if a specific location is selected
+      if (currentLocationId) {
+        contactsQuery = contactsQuery.eq('location_id', currentLocationId);
       }
       
       const { data: contactsData, error: contactsError } = await contactsQuery
