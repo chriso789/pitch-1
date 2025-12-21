@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { 
   DropdownMenu, 
@@ -12,6 +12,7 @@ import { toast } from "@/components/ui/use-toast";
 import { MapPin, ChevronDown, Building2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
+import { useUserProfile } from "@/contexts/UserProfileContext";
 
 interface Location {
   id: string;
@@ -31,28 +32,37 @@ export const QuickLocationSwitcher = ({ isCollapsed = false, onLocationChange }:
   const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
   const [loading, setLoading] = useState(true);
   const queryClient = useQueryClient();
+  const { profile } = useUserProfile();
+  
+  // Get active tenant ID - prefer active_tenant_id, fallback to tenant_id
+  const activeTenantId = profile?.active_tenant_id || profile?.tenant_id;
 
-  useEffect(() => {
-    fetchUserLocations();
-    loadCurrentLocationSetting();
-  }, []);
+  const fetchUserLocations = useCallback(async () => {
+    // Don't fetch if no active tenant
+    if (!activeTenantId) {
+      setLocations([]);
+      setLoading(false);
+      return;
+    }
 
-  const fetchUserLocations = async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
       // Get user's profile to check role
-      const { data: profile } = await supabase
+      const { data: userProfile } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', user.id)
         .single();
 
-      let locationsQuery = supabase.from('locations').select('id, name, address_city, address_state');
+      let locationsQuery = supabase
+        .from('locations')
+        .select('id, name, address_city, address_state')
+        .eq('tenant_id', activeTenantId); // Filter by active tenant
 
       // If user is not admin/manager, only show locations they're assigned to
-      if (profile?.role !== 'corporate' && profile?.role !== 'master' && profile?.role !== 'office_admin') {
+      if (userProfile?.role !== 'corporate' && userProfile?.role !== 'master' && userProfile?.role !== 'office_admin') {
         const { data: assignments } = await supabase
           .from('user_location_assignments')
           .select('location_id')
@@ -80,9 +90,9 @@ export const QuickLocationSwitcher = ({ isCollapsed = false, onLocationChange }:
     } finally {
       setLoading(false);
     }
-  };
+  }, [activeTenantId]);
 
-  const loadCurrentLocationSetting = async () => {
+  const loadCurrentLocationSetting = useCallback(async () => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
@@ -97,22 +107,27 @@ export const QuickLocationSwitcher = ({ isCollapsed = false, onLocationChange }:
       if (setting?.setting_value && setting.setting_value !== 'null') {
         const locationId = setting.setting_value as string;
         setCurrentLocationId(locationId);
+      } else {
+        setCurrentLocationId(null);
       }
     } catch (error) {
       console.error('Error loading current location setting:', error);
     }
-  };
+  }, []);
+
+  // Refetch locations when active tenant changes
+  useEffect(() => {
+    if (activeTenantId) {
+      setLoading(true);
+      fetchUserLocations();
+      loadCurrentLocationSetting();
+    }
+  }, [activeTenantId, fetchUserLocations, loadCurrentLocationSetting]);
 
   const handleLocationSelect = async (locationId: string | null) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
-
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('tenant_id')
-        .eq('id', user.id)
-        .single();
 
       const { error } = await supabase
         .from('app_settings')
@@ -120,7 +135,7 @@ export const QuickLocationSwitcher = ({ isCollapsed = false, onLocationChange }:
           user_id: user.id,
           setting_key: 'current_location_id',
           setting_value: locationId || 'null',
-          tenant_id: profileData?.tenant_id
+          tenant_id: activeTenantId
         });
 
       if (error) throw error;
@@ -150,11 +165,21 @@ export const QuickLocationSwitcher = ({ isCollapsed = false, onLocationChange }:
     }
   };
 
-  // Update current location when locations list changes
+  // Update current location display when locations list changes
   useEffect(() => {
     if (locations.length > 0 && currentLocationId) {
       const location = locations.find(l => l.id === currentLocationId);
-      setCurrentLocation(location || null);
+      if (location) {
+        setCurrentLocation(location);
+      } else {
+        // Location doesn't exist in current tenant - reset to "All Locations"
+        setCurrentLocationId(null);
+        setCurrentLocation(null);
+        // Clear the saved setting since it's no longer valid for this tenant
+        handleLocationSelect(null);
+      }
+    } else if (!currentLocationId) {
+      setCurrentLocation(null);
     }
   }, [locations, currentLocationId]);
 
