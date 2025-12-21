@@ -23,7 +23,8 @@ import { useQuery } from '@tanstack/react-query';
 
 const WEBHOOK_URLS = {
   voice: 'https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/voice-inbound',
-  sms: 'https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/messaging-inbound-webhook'
+  sms: 'https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/messaging-inbound-webhook',
+  smsStatus: 'https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/telnyx-sms-status-webhook'
 };
 
 const TELNYX_PORTAL_LINKS = {
@@ -444,7 +445,7 @@ export function TelnyxIntegrationPanel() {
           </div>
 
           <div className="space-y-2">
-            <Label className="text-muted-foreground text-sm">SMS Webhook (Messaging Profile)</Label>
+            <Label className="text-muted-foreground text-sm">SMS Inbound Webhook (Messaging Profile)</Label>
             <div className="flex items-center gap-2">
               <Input
                 value={WEBHOOK_URLS.sms}
@@ -454,11 +455,35 @@ export function TelnyxIntegrationPanel() {
               <Button
                 variant="outline"
                 size="icon"
-                onClick={() => copyToClipboard(WEBHOOK_URLS.sms, 'SMS webhook URL')}
+                onClick={() => copyToClipboard(WEBHOOK_URLS.sms, 'SMS inbound webhook URL')}
               >
                 <Copy className="h-4 w-4" />
               </Button>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-muted-foreground text-sm flex items-center gap-2">
+              SMS Delivery Status Webhook
+              <Badge variant="outline" className="text-[10px] bg-yellow-500/10 text-yellow-600 border-yellow-500/20">Required</Badge>
+            </Label>
+            <div className="flex items-center gap-2">
+              <Input
+                value={WEBHOOK_URLS.smsStatus}
+                readOnly
+                className="font-mono text-xs"
+              />
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => copyToClipboard(WEBHOOK_URLS.smsStatus, 'SMS status webhook URL')}
+              >
+                <Copy className="h-4 w-4" />
+              </Button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Configure this in Telnyx Portal → Messaging → Profile → Outbound → Webhook URL
+            </p>
           </div>
 
           <div className="flex items-start gap-2 p-3 bg-muted rounded-lg">
@@ -466,6 +491,23 @@ export function TelnyxIntegrationPanel() {
             <p className="text-sm text-muted-foreground">
               Make sure these URLs are configured in your Telnyx Portal under the Voice Application and Messaging Profile settings.
             </p>
+          </div>
+
+          {/* 10DLC Warning */}
+          <div className="flex items-start gap-2 p-3 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+            <AlertCircle className="h-4 w-4 text-yellow-600 mt-0.5 flex-shrink-0" />
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-yellow-600">10DLC Registration Required</p>
+              <p className="text-xs text-muted-foreground">
+                US phone numbers require 10DLC campaign registration for SMS. Without it, messages may be silently filtered by carriers.
+              </p>
+              <Button variant="link" size="sm" className="h-auto p-0 text-xs" asChild>
+                <a href="https://portal.telnyx.com/#/app/messaging/campaigns" target="_blank" rel="noopener noreferrer">
+                  Check 10DLC Status in Telnyx Portal
+                  <ExternalLink className="h-3 w-3 ml-1" />
+                </a>
+              </Button>
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -617,6 +659,16 @@ export function TelnyxIntegrationPanel() {
               checked={hasActiveNumbers} 
               label="Numbers assigned to Messaging Profile" 
               note={hasActiveNumbers ? 'Configured' : 'Assign in Telnyx Portal'}
+            />
+            <ChecklistItem 
+              checked={false} 
+              label="10DLC Campaign registered" 
+              note="Required for US SMS delivery"
+            />
+            <ChecklistItem 
+              checked={false} 
+              label="SMS status webhook configured" 
+              note="For delivery tracking"
             />
             <ChecklistItem 
               checked={testResults.sms?.success || false} 

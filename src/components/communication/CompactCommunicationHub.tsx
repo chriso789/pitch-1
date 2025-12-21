@@ -33,6 +33,7 @@ interface ActivityItem {
   direction: 'inbound' | 'outbound';
   content: string;
   created_at: string;
+  delivery_status?: string | null;
 }
 
 export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = ({
@@ -57,7 +58,7 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
       // Fetch communication history (SMS + Email)
       const { data: commHistory } = await supabase
         .from('communication_history')
-        .select('id, communication_type, direction, content, subject, created_at')
+        .select('id, communication_type, direction, content, subject, created_at, delivery_status')
         .eq('contact_id', contactId)
         .order('created_at', { ascending: false })
         .limit(10);
@@ -79,7 +80,8 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
           content: item.communication_type === 'email' 
             ? item.subject || 'No subject' 
             : item.content?.substring(0, 50) + (item.content?.length > 50 ? '...' : ''),
-          created_at: item.created_at
+          created_at: item.created_at,
+          delivery_status: item.delivery_status
         })),
         ...(callLogs || []).map(item => ({
           id: item.id,
@@ -150,6 +152,24 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
         return <Mail className="h-3 w-3" />;
       default:
         return <MessageSquare className="h-3 w-3" />;
+    }
+  };
+
+  const getDeliveryStatusBadge = (status: string | null | undefined) => {
+    if (!status) return null;
+    
+    switch (status.toLowerCase()) {
+      case 'delivered':
+        return <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-green-500/10 text-green-600 border-green-500/20">Delivered</Badge>;
+      case 'sent':
+        return <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-blue-500/10 text-blue-600 border-blue-500/20">Sent</Badge>;
+      case 'queued':
+        return <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-yellow-500/10 text-yellow-600 border-yellow-500/20">Queued</Badge>;
+      case 'failed':
+      case 'undelivered':
+        return <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-red-500/10 text-red-600 border-red-500/20">Failed</Badge>;
+      default:
+        return <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">{status}</Badge>;
     }
   };
 
@@ -237,6 +257,7 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
                         ) : (
                           <ArrowDownLeft className="h-2.5 w-2.5 text-muted-foreground" />
                         )}
+                        {activity.type === 'sms' && activity.direction === 'outbound' && getDeliveryStatusBadge(activity.delivery_status)}
                       </div>
                       <p className="truncate text-muted-foreground mt-0.5">
                         {activity.content}
