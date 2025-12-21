@@ -144,6 +144,13 @@ export const QuickLocationSwitcher = ({ isCollapsed = false, onLocationChange }:
       const location = locations.find(l => l.id === locationId);
       setCurrentLocation(location || null);
       
+      // Broadcast location change to other components (like EnhancedClientList)
+      await supabase.channel('location-changes').send({
+        type: 'broadcast',
+        event: 'location_changed',
+        payload: { locationId }
+      });
+      
       // Invalidate queries to refresh data with new location filter
       queryClient.invalidateQueries();
       
