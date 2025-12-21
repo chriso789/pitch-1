@@ -231,19 +231,147 @@ async function routeInboundMessage(supabase: any, toNumber: string): Promise<Rou
 }
 
 async function processInboundSMS(supabase: any, messageData: any, routing: RoutingResult) {
-  const { tenantId, locationId, assignedReps } = routing;
+  const { tenantId, locationId, assignedReps, locationName } = routing;
+  const cleanedFromPhone = messageData.from?.replace(/[^\d+]/g, '') || '';
 
-  // Find contact by phone
+  console.log(`[SMS Routing] Processing inbound from ${cleanedFromPhone} to location: ${locationName || 'unknown'} (${locationId || 'no location'})`);
+
+  // STEP 1: Check for existing thread with this phone + location to find the right contact
+  // This ensures replies go to the same contact we previously messaged
   let contactId: string | null = null;
-  const { data: contact } = await supabase
-    .from('contacts')
-    .select('id')
-    .eq('tenant_id', tenantId)
-    .or(`phone.eq.${messageData.from},phone.eq.+${messageData.from?.replace(/^\+/, '')}`)
-    .limit(1)
-    .single();
-  
-  contactId = contact?.id || null;
+  let threadId: string | null = null;
+  let pipelineEntryId: string | null = null;
+
+  // First, look for an existing thread at THIS LOCATION with this phone number
+  if (locationId) {
+    const { data: locationThread } = await supabase
+      .from('sms_threads')
+      .select('id, contact_id, unread_count')
+      .eq('tenant_id', tenantId)
+      .eq('location_id', locationId)
+      .or(`phone_number.eq.${cleanedFromPhone},phone_number.eq.+${cleanedFromPhone.replace(/^\+/, '')}`)
+      .order('last_message_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (locationThread) {
+      threadId = locationThread.id;
+      contactId = locationThread.contact_id;
+      console.log(`[SMS Routing] Found existing thread at location: thread=${threadId}, contact=${contactId}`);
+      
+      // Update thread
+      await supabase
+        .from('sms_threads')
+        .update({
+          last_message_at: new Date().toISOString(),
+          last_message_preview: (messageData.body || '').substring(0, 100),
+          unread_count: (locationThread.unread_count || 0) + 1,
+        })
+        .eq('id', threadId);
+    }
+  }
+
+  // STEP 2: If no thread found at location, look for contact at this location
+  if (!contactId && locationId) {
+    const { data: locationContact } = await supabase
+      .from('contacts')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .eq('location_id', locationId)
+      .or(`phone.eq.${cleanedFromPhone},phone.eq.+${cleanedFromPhone.replace(/^\+/, '')}`)
+      .limit(1)
+      .single();
+
+    if (locationContact) {
+      contactId = locationContact.id;
+      console.log(`[SMS Routing] Found contact at location: ${contactId}`);
+    }
+  }
+
+  // STEP 3: Fallback - look for any thread with this phone number (for existing conversations)
+  if (!threadId) {
+    const { data: anyThread } = await supabase
+      .from('sms_threads')
+      .select('id, contact_id, unread_count, location_id')
+      .eq('tenant_id', tenantId)
+      .or(`phone_number.eq.${cleanedFromPhone},phone_number.eq.+${cleanedFromPhone.replace(/^\+/, '')}`)
+      .order('last_message_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (anyThread) {
+      threadId = anyThread.id;
+      // Only use contact from existing thread if we don't have one yet
+      if (!contactId) {
+        contactId = anyThread.contact_id;
+      }
+      console.log(`[SMS Routing] Found existing thread (any location): thread=${threadId}, contact=${contactId}`);
+      
+      // Update thread with new location and message
+      await supabase
+        .from('sms_threads')
+        .update({
+          last_message_at: new Date().toISOString(),
+          last_message_preview: (messageData.body || '').substring(0, 100),
+          unread_count: (anyThread.unread_count || 0) + 1,
+          location_id: locationId || anyThread.location_id, // Update to new location if we have one
+        })
+        .eq('id', threadId);
+    }
+  }
+
+  // STEP 4: If still no contact, look for any contact in tenant with this phone
+  if (!contactId) {
+    const { data: anyContact } = await supabase
+      .from('contacts')
+      .select('id')
+      .eq('tenant_id', tenantId)
+      .or(`phone.eq.${cleanedFromPhone},phone.eq.+${cleanedFromPhone.replace(/^\+/, '')}`)
+      .limit(1)
+      .single();
+
+    if (anyContact) {
+      contactId = anyContact.id;
+      console.log(`[SMS Routing] Found contact (tenant-wide): ${contactId}`);
+    }
+  }
+
+  // STEP 5: Find active pipeline entry for this contact at this location
+  if (contactId && locationId) {
+    const { data: pipeline } = await supabase
+      .from('pipeline_entries')
+      .select('id')
+      .eq('contact_id', contactId)
+      .eq('location_id', locationId)
+      .not('status', 'in', '(closed_won,closed_lost,disqualified)')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (pipeline) {
+      pipelineEntryId = pipeline.id;
+      console.log(`[SMS Routing] Found pipeline entry at location: ${pipelineEntryId}`);
+    }
+  }
+
+  // Fallback: pipeline entry without location filter
+  if (!pipelineEntryId && contactId) {
+    const { data: anyPipeline } = await supabase
+      .from('pipeline_entries')
+      .select('id')
+      .eq('contact_id', contactId)
+      .not('status', 'in', '(closed_won,closed_lost,disqualified)')
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .single();
+
+    if (anyPipeline) {
+      pipelineEntryId = anyPipeline.id;
+      console.log(`[SMS Routing] Found pipeline entry (any location): ${pipelineEntryId}`);
+    }
+  }
+
+  console.log(`[SMS Routing] Final routing: contact=${contactId}, thread=${threadId}, pipeline=${pipelineEntryId}, location=${locationId}`);
 
   // Store in inbound_messages for legacy
   await supabase
@@ -259,36 +387,13 @@ async function processInboundSMS(supabase: any, messageData: any, routing: Routi
       received_at: new Date().toISOString(),
     });
 
-  // Find or create SMS thread with location awareness
-  let threadId: string | null = null;
-  
-  const { data: existingThread } = await supabase
-    .from('sms_threads')
-    .select('id, unread_count')
-    .eq('tenant_id', tenantId)
-    .eq('phone_number', messageData.from)
-    .single();
-
-  if (existingThread) {
-    threadId = existingThread.id;
-    
-    // Update thread with new message info and location
-    await supabase
-      .from('sms_threads')
-      .update({
-        last_message_at: new Date().toISOString(),
-        last_message_preview: (messageData.body || '').substring(0, 100),
-        unread_count: (existingThread.unread_count || 0) + 1,
-        location_id: locationId, // Update location if we have it
-      })
-      .eq('id', threadId);
-  } else {
-    // Create new thread with location
+  // Create thread if we still don't have one
+  if (!threadId) {
     const { data: newThread } = await supabase
       .from('sms_threads')
       .insert({
         tenant_id: tenantId,
-        phone_number: messageData.from,
+        phone_number: cleanedFromPhone,
         contact_id: contactId,
         location_id: locationId,
         last_message_at: new Date().toISOString(),
@@ -299,6 +404,7 @@ async function processInboundSMS(supabase: any, messageData: any, routing: Routi
       .single();
 
     threadId = newThread?.id || null;
+    console.log(`[SMS Routing] Created new thread: ${threadId}`);
   }
 
   // Insert message into sms_messages with location
@@ -310,6 +416,7 @@ async function processInboundSMS(supabase: any, messageData: any, routing: Routi
         thread_id: threadId,
         contact_id: contactId,
         location_id: locationId,
+        pipeline_entry_id: pipelineEntryId,
         direction: 'inbound',
         from_number: messageData.from,
         to_number: messageData.to,
@@ -321,12 +428,13 @@ async function processInboundSMS(supabase: any, messageData: any, routing: Routi
       });
   }
 
-  // Log to communication_history with location
+  // Log to communication_history with location and pipeline entry
   await supabase
     .from('communication_history')
     .insert({
       tenant_id: tenantId,
       contact_id: contactId,
+      pipeline_entry_id: pipelineEntryId,
       type: 'sms',
       direction: 'inbound',
       content: messageData.body,
@@ -337,19 +445,22 @@ async function processInboundSMS(supabase: any, messageData: any, routing: Routi
         provider_message_id: messageData.messageSid,
         thread_id: threadId,
         location_id: locationId,
+        location_name: locationName,
       },
     });
 
   // Send realtime notification to assigned reps
   if (assignedReps.length > 0) {
-    console.log('Notifying assigned reps:', assignedReps);
+    console.log(`[SMS Routing] Notifying ${assignedReps.length} reps for location: ${locationName}`);
     // Could broadcast via Supabase Realtime channel here
   }
 
-  console.log('Inbound SMS stored:', { 
+  console.log('[SMS Routing] Inbound SMS stored:', { 
     from: messageData.from, 
     provider: messageData.provider,
     threadId,
+    contactId,
+    pipelineEntryId,
     locationId,
     assignedReps: assignedReps.length
   });
