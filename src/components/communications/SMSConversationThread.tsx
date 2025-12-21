@@ -23,7 +23,7 @@ interface SMSConversationThreadProps {
 }
 
 // Delivery status icon component
-const DeliveryStatusIcon = ({ status, isOutbound }: { status?: string; isOutbound: boolean }) => {
+const DeliveryStatusIcon = ({ status, errorMessage, isOutbound }: { status?: string; errorMessage?: string; isOutbound: boolean }) => {
   const iconClass = cn(
     'h-3.5 w-3.5',
     isOutbound ? 'text-primary-foreground/70' : 'text-muted-foreground'
@@ -52,8 +52,12 @@ const DeliveryStatusIcon = ({ status, isOutbound }: { status?: string; isOutboun
       );
     case 'failed':
     case 'undelivered':
+    case 'delivery_failed':
       return (
-        <span className="flex items-center" title="Failed to deliver">
+        <span 
+          className="flex items-center cursor-help" 
+          title={errorMessage || "Failed to deliver - check 10DLC registration"}
+        >
           <XCircle className={cn('h-3.5 w-3.5 text-red-400')} />
         </span>
       );
@@ -65,6 +69,28 @@ const DeliveryStatusIcon = ({ status, isOutbound }: { status?: string; isOutboun
         </span>
       );
   }
+};
+
+// Failed message alert component
+const FailedMessageAlert = ({ count }: { count: number }) => {
+  if (count === 0) return null;
+  
+  return (
+    <div className="mx-4 mb-2 p-3 bg-destructive/10 border border-destructive/30 rounded-lg">
+      <div className="flex items-start gap-2">
+        <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+        <div className="text-sm">
+          <p className="font-medium text-destructive">
+            {count} message{count > 1 ? 's' : ''} failed to deliver
+          </p>
+          <p className="text-muted-foreground text-xs mt-1">
+            This may be due to 10DLC registration requirements. US carriers require SMS campaigns to be registered. 
+            Check your Telnyx messaging profile settings.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
 };
 
 export const SMSConversationThread = ({
@@ -177,6 +203,14 @@ export const SMSConversationThread = ({
       </CardHeader>
 
       <CardContent className="flex-1 flex flex-col p-0 overflow-hidden">
+        {/* Failed message alert */}
+        <FailedMessageAlert 
+          count={messages.filter(m => 
+            m.direction === 'outbound' && 
+            (m.delivery_status === 'failed' || m.delivery_status === 'delivery_failed' || m.delivery_status === 'undelivered')
+          ).length} 
+        />
+        
         {/* Messages */}
         <ScrollArea className="flex-1 p-4" ref={scrollRef}>
           {loading ? (
@@ -191,6 +225,7 @@ export const SMSConversationThread = ({
             <div className="space-y-3">
               {messages.map((msg, index) => {
                 const isOutbound = msg.direction === 'outbound';
+                const isFailed = msg.delivery_status === 'failed' || msg.delivery_status === 'delivery_failed' || msg.delivery_status === 'undelivered';
                 const showTimestamp = index === 0 || 
                   new Date(msg.created_at).getTime() - new Date(messages[index - 1].created_at).getTime() > 300000;
                 
@@ -210,7 +245,9 @@ export const SMSConversationThread = ({
                       <div className={cn(
                         'max-w-[80%] rounded-2xl px-4 py-2',
                         isOutbound 
-                          ? 'bg-primary text-primary-foreground rounded-br-sm' 
+                          ? isFailed 
+                            ? 'bg-destructive/80 text-destructive-foreground rounded-br-sm'
+                            : 'bg-primary text-primary-foreground rounded-br-sm' 
                           : 'bg-muted rounded-bl-sm'
                       )}>
                         <p className="text-sm whitespace-pre-wrap break-words">{msg.body}</p>
@@ -227,6 +264,7 @@ export const SMSConversationThread = ({
                           {isOutbound && (
                             <DeliveryStatusIcon 
                               status={msg.delivery_status || msg.status} 
+                              errorMessage={msg.error_message}
                               isOutbound={isOutbound}
                             />
                           )}
