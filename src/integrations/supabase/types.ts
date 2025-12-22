@@ -3536,6 +3536,8 @@ export type Database = {
       contacts: {
         Row: {
           acquisition_cost: number | null
+          additional_emails: string[] | null
+          additional_phones: string[] | null
           address_city: string | null
           address_state: string | null
           address_street: string | null
@@ -3578,6 +3580,8 @@ export type Database = {
           qualification_status: string | null
           referral_source: string | null
           scoring_details: Json | null
+          secondary_email: string | null
+          secondary_phone: string | null
           tags: string[] | null
           tenant_id: string | null
           total_campaigns_completed: number | null
@@ -3587,6 +3591,8 @@ export type Database = {
         }
         Insert: {
           acquisition_cost?: number | null
+          additional_emails?: string[] | null
+          additional_phones?: string[] | null
           address_city?: string | null
           address_state?: string | null
           address_street?: string | null
@@ -3629,6 +3635,8 @@ export type Database = {
           qualification_status?: string | null
           referral_source?: string | null
           scoring_details?: Json | null
+          secondary_email?: string | null
+          secondary_phone?: string | null
           tags?: string[] | null
           tenant_id?: string | null
           total_campaigns_completed?: number | null
@@ -3638,6 +3646,8 @@ export type Database = {
         }
         Update: {
           acquisition_cost?: number | null
+          additional_emails?: string[] | null
+          additional_phones?: string[] | null
           address_city?: string | null
           address_state?: string | null
           address_street?: string | null
@@ -3680,6 +3690,8 @@ export type Database = {
           qualification_status?: string | null
           referral_source?: string | null
           scoring_details?: Json | null
+          secondary_email?: string | null
+          secondary_phone?: string | null
           tags?: string[] | null
           tenant_id?: string | null
           total_campaigns_completed?: number | null
