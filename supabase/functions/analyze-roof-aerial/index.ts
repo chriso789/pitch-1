@@ -108,13 +108,15 @@ serve(async (req) => {
     console.log(`⏱️ Line derivation complete: ${derivedLines.length} lines from vertices`)
     
     // Calculate actual roof area from perimeter vertices using Shoelace formula
+    // IMPROVED: Pass solarData for validation and fallback
     const actualAreaSqft = calculateAreaFromPerimeterVertices(
       perimeterResult.vertices,
       coordinates,
       logicalImageSize,
-      IMAGE_ZOOM
+      IMAGE_ZOOM,
+      solarData  // Pass Solar API data for validation
     )
-    console.log(`📐 Calculated area from perimeter: ${actualAreaSqft.toFixed(0)} sqft`)
+    console.log(`📐 Validated area from perimeter: ${actualAreaSqft.toFixed(0)} sqft`)
     
     // Derive facet count from roof geometry AND detected lines
     // First, calculate linear features to count hip lines
@@ -1085,16 +1087,32 @@ function calculateConfidenceScore(aiAnalysis: any, measurements: any, solarData:
   return { score, rating, factors, requiresReview }
 }
 
+// HARD CAPS for residential roof area validation
+const ROOF_AREA_CAPS = {
+  MIN_RESIDENTIAL: 500,      // Minimum realistic residential roof
+  MAX_RESIDENTIAL: 5000,     // Maximum single-family residential (typical 1200-3500)
+  MAX_LARGE_HOME: 8000,      // Maximum for large/luxury homes
+  SOLAR_VARIANCE_THRESHOLD: 0.5  // 50% variance triggers Solar API override
+}
+
 // Calculate actual roof area from perimeter vertices using Shoelace formula
+// IMPROVED: Now accepts solarData for validation and uses it as ground truth when AI fails
 function calculateAreaFromPerimeterVertices(
   vertices: any[],
   imageCenter: { lat: number; lng: number },
   imageSize: number,
-  zoom: number
+  zoom: number,
+  solarData?: any  // Optional Solar API data for validation
 ): number {
+  // FALLBACK: If no vertices or Solar API available, use Solar API footprint
   if (!vertices || vertices.length < 3) {
-    console.warn('⚠️ Not enough vertices for area calculation, using fallback')
-    return 1500 // Fallback
+    console.warn('⚠️ Not enough vertices for area calculation')
+    if (solarData?.available && solarData?.buildingFootprintSqft) {
+      console.log(`📐 Using Solar API footprint as fallback: ${solarData.buildingFootprintSqft.toFixed(0)} sqft`)
+      return solarData.buildingFootprintSqft
+    }
+    console.warn('⚠️ No Solar API data, using conservative residential fallback: 1500 sqft')
+    return 1500 // Conservative fallback
   }
   
   console.log(`📐 Calculating area from ${vertices.length} vertices, first vertex:`, JSON.stringify(vertices[0]))
@@ -1130,14 +1148,51 @@ function calculateAreaFromPerimeterVertices(
     area -= feetVertices[j].x * feetVertices[i].y
   }
   
-  const calculatedArea = Math.abs(area / 2)
-  console.log(`📐 Calculated area: ${calculatedArea.toFixed(0)} sqft`)
+  let calculatedArea = Math.abs(area / 2)
+  console.log(`📐 Raw calculated area: ${calculatedArea.toFixed(0)} sqft`)
   
-  // Validate: typical residential roof is 1200-4000 sqft
-  if (calculatedArea < 500 || calculatedArea > 8000) {
-    console.warn(`⚠️ Calculated area ${calculatedArea.toFixed(0)} sqft seems unusual for residential`)
+  // VALIDATION 1: Check against Solar API if available (GROUND TRUTH)
+  if (solarData?.available && solarData?.buildingFootprintSqft) {
+    const solarFootprint = solarData.buildingFootprintSqft
+    const variance = Math.abs(calculatedArea - solarFootprint) / solarFootprint
+    
+    console.log(`📐 Solar API validation: calculated=${calculatedArea.toFixed(0)}, solar=${solarFootprint.toFixed(0)}, variance=${(variance * 100).toFixed(1)}%`)
+    
+    // If AI detection is >50% off from Solar API, use Solar API as ground truth
+    if (variance > ROOF_AREA_CAPS.SOLAR_VARIANCE_THRESHOLD) {
+      console.warn(`⚠️ AI area ${calculatedArea.toFixed(0)} sqft is ${(variance * 100).toFixed(1)}% off from Solar API ${solarFootprint.toFixed(0)} sqft`)
+      console.log(`📐 OVERRIDE: Using Solar API footprint as ground truth`)
+      calculatedArea = solarFootprint
+    }
   }
   
+  // VALIDATION 2: Hard caps for unrealistic measurements
+  if (calculatedArea < ROOF_AREA_CAPS.MIN_RESIDENTIAL) {
+    console.warn(`⚠️ Area ${calculatedArea.toFixed(0)} sqft below minimum, capping at ${ROOF_AREA_CAPS.MIN_RESIDENTIAL}`)
+    calculatedArea = ROOF_AREA_CAPS.MIN_RESIDENTIAL
+  }
+  
+  if (calculatedArea > ROOF_AREA_CAPS.MAX_RESIDENTIAL) {
+    // Check if Solar API confirms it's a large property
+    const solarConfirmsLarge = solarData?.buildingFootprintSqft && solarData.buildingFootprintSqft > ROOF_AREA_CAPS.MAX_RESIDENTIAL
+    
+    if (!solarConfirmsLarge) {
+      console.warn(`⚠️ Area ${calculatedArea.toFixed(0)} sqft exceeds residential cap of ${ROOF_AREA_CAPS.MAX_RESIDENTIAL}`)
+      
+      // If Solar API available, use it; otherwise cap
+      if (solarData?.available && solarData?.buildingFootprintSqft) {
+        console.log(`📐 OVERRIDE: Using Solar API footprint ${solarData.buildingFootprintSqft.toFixed(0)} sqft`)
+        calculatedArea = solarData.buildingFootprintSqft
+      } else {
+        console.log(`📐 HARD CAP: Limiting to ${ROOF_AREA_CAPS.MAX_RESIDENTIAL} sqft (typical max residential)`)
+        calculatedArea = ROOF_AREA_CAPS.MAX_RESIDENTIAL
+      }
+    } else {
+      console.log(`📐 Solar API confirms large property: ${solarData.buildingFootprintSqft.toFixed(0)} sqft`)
+    }
+  }
+  
+  console.log(`📐 Final validated area: ${calculatedArea.toFixed(0)} sqft`)
   return calculatedArea
 }
 
