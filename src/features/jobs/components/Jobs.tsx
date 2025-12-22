@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { ActionsSelector } from "@/components/ui/actions-selector";
+import { useLocation } from "@/contexts/LocationContext";
 import { 
   Search, 
   Plus, 
@@ -56,6 +57,7 @@ interface Job {
 
 export const Jobs = () => {
   const navigate = useNavigate();
+  const { currentLocationId } = useLocation();
   const [jobs, setJobs] = useState<Job[]>([]);
   const [filteredJobs, setFilteredJobs] = useState<Job[]>([]);
   const [loading, setLoading] = useState(true);
@@ -67,7 +69,7 @@ export const Jobs = () => {
 
   useEffect(() => {
     fetchJobs();
-  }, []);
+  }, [currentLocationId]);
 
   useEffect(() => {
     filterJobs();
@@ -156,6 +158,25 @@ export const Jobs = () => {
         }
       }
       // Admins and masters see all jobs (no additional filtering)
+
+      // Apply current location filter if selected
+      if (currentLocationId) {
+        // Get contacts in the selected location
+        const { data: contactsInLocation } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('location_id', currentLocationId);
+
+        const contactIds = contactsInLocation?.map(c => c.id) || [];
+        if (contactIds.length > 0) {
+          query = query.in('contact_id', contactIds);
+        } else {
+          setJobs([]);
+          setFilteredJobs([]);
+          setLoading(false);
+          return;
+        }
+      }
 
       const { data, error } = await query;
 
