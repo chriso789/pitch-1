@@ -142,16 +142,13 @@ export const EnhancedClientList = () => {
   // Import dialog state
   const [showImportDialog, setShowImportDialog] = useState(false);
 
-  useEffect(() => {
-    loadUserPreferences();
-    fetchData();
-  }, []);
-
   // Refetch data when location changes
   useEffect(() => {
-    if (userProfile) {
-      fetchData();
-    }
+    loadUserPreferences();
+  }, []);
+
+  useEffect(() => {
+    fetchData();
   }, [currentLocationId]);
 
   useEffect(() => {
@@ -226,7 +223,8 @@ export const EnhancedClientList = () => {
     }
   };
 
-  const fetchData = async () => {
+  const fetchData = useCallback(async () => {
+    console.log("fetchData called with currentLocationId:", currentLocationId);
     setLoading(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -390,7 +388,7 @@ export const EnhancedClientList = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [currentLocationId]);
 
   const filterData = () => {
     console.log(`=== FilterData called ===`);
