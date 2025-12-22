@@ -196,6 +196,34 @@ const COLUMN_MAPPINGS: Record<string, string> = {
 };
 
 /**
+ * Fuzzy match column name if no direct mapping found
+ * Checks if column name CONTAINS key terms
+ */
+function fuzzyMatchColumn(columnName: string): string | null {
+  const normalized = columnName.toLowerCase().trim();
+  
+  // Check for email (primary first, then secondary)
+  if (normalized.includes('email') || normalized.includes('e-mail') || normalized.includes('mail')) {
+    // Check if it's clearly a secondary/alternate email
+    if (normalized.includes('2') || normalized.includes('secondary') || normalized.includes('alt') || normalized.includes('other')) {
+      return 'secondary_email';
+    }
+    return 'email';
+  }
+  
+  // Check for phone/mobile/cell (primary first, then secondary)
+  if (normalized.includes('phone') || normalized.includes('mobile') || normalized.includes('cell') || normalized.includes('tel')) {
+    // Check if it's clearly a secondary/alternate phone
+    if (normalized.includes('2') || normalized.includes('secondary') || normalized.includes('alt') || normalized.includes('other')) {
+      return 'secondary_phone';
+    }
+    return 'phone';
+  }
+  
+  return null;
+}
+
+/**
  * Split a full name into first and last name parts
  */
 function splitFullName(fullName: string): { firstName: string; lastName: string } {
@@ -280,7 +308,7 @@ function buildSecondaryDataNotes(data: Record<string, any>): string {
 }
 
 /**
- * Normalize a CSV row using smart column mapping
+ * Normalize a CSV row using smart column mapping with fuzzy fallback
  */
 function normalizeRow(rawRow: Record<string, any>): ContactImportData {
   const normalized: Record<string, any> = {};
@@ -289,7 +317,14 @@ function normalizeRow(rawRow: Record<string, any>): ContactImportData {
   // First pass: map columns to normalized names
   for (const [rawKey, value] of Object.entries(rawRow)) {
     const normalizedKey = rawKey.toLowerCase().trim();
-    const mappedField = COLUMN_MAPPINGS[normalizedKey];
+    
+    // Try direct mapping first
+    let mappedField = COLUMN_MAPPINGS[normalizedKey];
+    
+    // If no direct mapping, try fuzzy matching
+    if (!mappedField) {
+      mappedField = fuzzyMatchColumn(normalizedKey) || undefined;
+    }
     
     if (mappedField === 'full_name') {
       fullName = String(value || '').trim();
@@ -338,24 +373,35 @@ function normalizeRow(rawRow: Record<string, any>): ContactImportData {
 }
 
 /**
- * Detect which columns were mapped from the CSV
+ * Detect which columns were mapped from the CSV and which were unmatched
  */
-function detectMappedColumns(rawHeaders: string[]): { original: string; mappedTo: string }[] {
-  const mappings: { original: string; mappedTo: string }[] = [];
+function detectMappedColumns(rawHeaders: string[]): { 
+  mapped: { original: string; mappedTo: string }[]; 
+  unmatched: string[];
+} {
+  const mapped: { original: string; mappedTo: string }[] = [];
+  const unmatched: string[] = [];
   
   for (const header of rawHeaders) {
     const normalizedKey = header.toLowerCase().trim();
-    const mappedField = COLUMN_MAPPINGS[normalizedKey];
+    let mappedField = COLUMN_MAPPINGS[normalizedKey];
+    
+    // Try fuzzy matching if no direct mapping
+    if (!mappedField) {
+      mappedField = fuzzyMatchColumn(normalizedKey) || undefined;
+    }
     
     if (mappedField) {
-      mappings.push({
+      mapped.push({
         original: header,
         mappedTo: mappedField === 'full_name' ? 'first_name + last_name (split)' : mappedField
       });
+    } else {
+      unmatched.push(header);
     }
   }
   
-  return mappings;
+  return { mapped, unmatched };
 }
 
 export function ContactBulkImport({ open, onOpenChange, onImportComplete, currentLocationId }: ContactBulkImportProps) {
@@ -363,6 +409,7 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
   const [preview, setPreview] = useState<ContactImportData[]>([]);
   const [totalRows, setTotalRows] = useState(0);
   const [columnMappings, setColumnMappings] = useState<{ original: string; mappedTo: string }[]>([]);
+  const [unmatchedColumns, setUnmatchedColumns] = useState<string[]>([]);
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -376,8 +423,9 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
         
         // Detect column mappings for display
         if (results.meta.fields) {
-          const mappings = detectMappedColumns(results.meta.fields);
-          setColumnMappings(mappings);
+          const { mapped, unmatched } = detectMappedColumns(results.meta.fields);
+          setColumnMappings(mapped);
+          setUnmatchedColumns(unmatched);
         }
         
         // Normalize all rows using smart mapping
@@ -451,6 +499,7 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
           setPreview([]);
           setTotalRows(0);
           setColumnMappings([]);
+          setUnmatchedColumns([]);
         } catch (error: any) {
           console.error('Error importing contacts:', error);
           toast.error("Import Failed: " + error.message);
@@ -476,6 +525,7 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
     setPreview([]);
     setTotalRows(0);
     setColumnMappings([]);
+    setUnmatchedColumns([]);
   };
 
   return (
@@ -534,6 +584,26 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
                     title={`"${mapping.original}" → ${mapping.mappedTo}`}
                   >
                     {mapping.original} → {mapping.mappedTo}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Unmatched Columns Warning */}
+          {unmatchedColumns.length > 0 && (
+            <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                <span className="text-sm font-medium text-amber-700">Unmatched Columns (skipped):</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {unmatchedColumns.map((col, i) => (
+                  <span 
+                    key={i} 
+                    className="text-xs px-2 py-1 bg-background rounded border text-muted-foreground"
+                  >
+                    {col}
                   </span>
                 ))}
               </div>
