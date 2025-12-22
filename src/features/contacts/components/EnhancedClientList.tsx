@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useLocation } from "@/contexts/LocationContext";
@@ -588,6 +588,12 @@ export const EnhancedClientList = () => {
           case 'lead_score':
             aValue = a.lead_score || 0;
             bValue = b.lead_score || 0;
+            break;
+          case 'assigned_to':
+            const aRepName = a.assigned_to ? (locationReps.find(r => r.id === a.assigned_to)?.first_name || '') : '';
+            const bRepName = b.assigned_to ? (locationReps.find(r => r.id === b.assigned_to)?.first_name || '') : '';
+            aValue = aRepName.toLowerCase();
+            bValue = bRepName.toLowerCase();
             break;
           case 'created_at':
           default:
@@ -1347,6 +1353,11 @@ export const EnhancedClientList = () => {
                             Score <ArrowUpDown className="ml-2 h-4 w-4" />
                           </Button>
                         </TableHead>
+                        <TableHead>
+                          <Button variant="ghost" onClick={() => handleSort('assigned_to')} className="p-0 h-auto font-medium">
+                            Assigned Rep <ArrowUpDown className="ml-2 h-4 w-4" />
+                          </Button>
+                        </TableHead>
                         <TableHead>Address</TableHead>
                         <TableHead>Actions</TableHead>
                       </>
@@ -1420,6 +1431,19 @@ export const EnhancedClientList = () => {
                             <div className="flex items-center gap-2">
                               <Star className="h-4 w-4 text-warning fill-warning" />
                               <span className="font-medium">{item.lead_score || 0}</span>
+                            </div>
+                          </TableCell>
+                          <TableCell>
+                            <div className="flex items-center gap-2 text-sm">
+                              <Users className="h-3 w-3 text-muted-foreground" />
+                              <span className={item.assigned_to ? '' : 'text-muted-foreground italic'}>
+                                {item.assigned_to 
+                                  ? (() => {
+                                      const rep = locationReps.find(r => r.id === item.assigned_to);
+                                      return rep ? `${rep.first_name} ${rep.last_name}`.trim() : 'Unknown';
+                                    })()
+                                  : 'Unassigned'}
+                              </span>
                             </div>
                           </TableCell>
                           <TableCell>
