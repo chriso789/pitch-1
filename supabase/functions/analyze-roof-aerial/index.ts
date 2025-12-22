@@ -116,13 +116,25 @@ serve(async (req) => {
     )
     console.log(`📐 Calculated area from perimeter: ${actualAreaSqft.toFixed(0)} sqft`)
     
-    // Derive facet count from roof geometry (perimeter vertices and interior junctions)
+    // Derive facet count from roof geometry AND detected lines
+    // First, calculate linear features to count hip lines
+    const preLinearFeaturesForFacets = convertDerivedLinesToWKT(
+      derivedLines,
+      coordinates,
+      logicalImageSize,
+      IMAGE_ZOOM
+    )
+    const hipLineCount = preLinearFeaturesForFacets.filter((f: any) => f.type === 'hip').length
+    const ridgeLineCount = preLinearFeaturesForFacets.filter((f: any) => f.type === 'ridge').length
+    
     const derivedFacetCount = deriveFacetCountFromGeometry(
       perimeterResult.vertices,
       interiorVertices.junctions,
-      perimeterResult.roofType
+      perimeterResult.roofType,
+      hipLineCount,
+      ridgeLineCount
     )
-    console.log(`📐 Derived facet count: ${derivedFacetCount}`)
+    console.log(`📐 Derived facet count: ${derivedFacetCount} (from ${hipLineCount} hips, ${ridgeLineCount} ridges)`)
     
     // Convert legacy AI analysis format for backward compatibility
     const aiAnalysis = {
@@ -1129,48 +1141,63 @@ function calculateAreaFromPerimeterVertices(
   return calculatedArea
 }
 
-// Derive facet count from roof geometry
+// Derive facet count from roof geometry AND detected linear features
 function deriveFacetCountFromGeometry(
   perimeterVertices: any[],
   interiorJunctions: any[],
-  roofType: string
+  roofType: string,
+  hipLineCount: number = 0,
+  ridgeLineCount: number = 0
 ): number {
-  // Hip roof: typically 4 facets (4 hip corners on perimeter)
-  // Gable roof: typically 2 facets (2 ridge endpoints on perimeter)
-  // Complex: count based on interior junctions
+  // IMPROVED: Use detected hip/ridge lines as primary source
+  // Hip roof: typically 4 facets = 4 hip lines
+  // Cross-hip: 6-8 facets = 6-8 hip lines
+  // Gable roof: typically 2 facets = 0 hip lines, 1 ridge
   
-  if (!perimeterVertices || perimeterVertices.length === 0) return 1
+  console.log(`📐 Facet derivation: hipLines=${hipLineCount}, ridgeLines=${ridgeLineCount}, roofType=${roofType}`)
   
-  // Count vertices by type
-  const hipCorners = perimeterVertices.filter((v: any) => 
+  // PRIMARY: Use detected hip line count
+  if (hipLineCount >= 4) {
+    // Hip roofs: facet count equals hip line count
+    // 4 hips = 4 facets (simple hip)
+    // 6+ hips = cross-hip or complex (more facets)
+    return hipLineCount
+  }
+  
+  // SECONDARY: Check perimeter vertices for hip corners
+  const hipCorners = perimeterVertices?.filter((v: any) => 
     v.cornerType === 'hip-corner' || v.type === 'hip-junction'
-  ).length
+  ).length || 0
   
-  const ridgeEnds = perimeterVertices.filter((v: any) => 
+  const ridgeEnds = perimeterVertices?.filter((v: any) => 
     v.cornerType === 'ridge-end'
-  ).length
+  ).length || 0
   
   const interiorCount = interiorJunctions?.length || 0
   
-  // Derive facet count from geometry
-  if (roofType === 'hip' || hipCorners >= 4) {
-    // Hip roof: 4 main facets
-    return 4 + Math.floor(interiorCount / 2)
-  } else if (roofType === 'gable' || ridgeEnds >= 2) {
-    // Gable roof: 2 main facets
-    return 2 + Math.floor(interiorCount / 2)
-  } else if (hipCorners >= 2) {
-    // Partial hip: at least 3 facets
-    return Math.max(3, hipCorners + Math.floor(interiorCount / 2))
+  // Use hip corners if we have them
+  if (hipCorners >= 4) {
+    return hipCorners + Math.floor(interiorCount / 2)
   }
   
-  // Complex or unknown: estimate from perimeter complexity
-  const vertexCount = perimeterVertices.length
+  // Check for gable roof
+  if (roofType === 'gable' || (ridgeLineCount >= 1 && hipLineCount === 0)) {
+    return 2 + Math.floor(interiorCount / 2)
+  }
+  
+  // Partial hip (2-3 hip lines)
+  if (hipLineCount >= 2) {
+    return Math.max(4, hipLineCount + 1)
+  }
+  
+  // FALLBACK: Estimate from perimeter complexity
+  const vertexCount = perimeterVertices?.length || 0
   if (vertexCount >= 12) return 6
   if (vertexCount >= 8) return 4
-  if (vertexCount >= 6) return 3
+  if (vertexCount >= 6) return 4 // Changed from 3 to 4 - more typical
   
-  return 2 // Minimum for any roof
+  // Default to 4 for residential (most common)
+  return 4
 }
 
 // Calculate linear totals from WKT features
