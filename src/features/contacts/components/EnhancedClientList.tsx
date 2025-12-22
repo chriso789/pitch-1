@@ -13,6 +13,8 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Table,
   TableBody,
@@ -127,7 +129,8 @@ export const EnhancedClientList = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [repFilter, setRepFilter] = useState("all");
+  const [selectedReps, setSelectedReps] = useState<string[]>([]);
+  const [repFilterOpen, setRepFilterOpen] = useState(false);
   const [locationReps, setLocationReps] = useState<{id: string, first_name: string, last_name: string}[]>([]);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [sortField, setSortField] = useState<string>('created_at');
@@ -170,9 +173,9 @@ export const EnhancedClientList = () => {
 
   useEffect(() => {
     filterData();
-  }, [contacts, jobs, activeView, searchTerm, statusFilter, repFilter, sortField, sortDirection]);
+  }, [contacts, jobs, activeView, searchTerm, statusFilter, selectedReps, sortField, sortDirection]);
 
-  // Fetch reps assigned to current location
+  // Fetch reps assigned to current location using two-step query
   useEffect(() => {
     const fetchLocationReps = async () => {
       if (!currentLocationId || !userProfile?.tenant_id) {
@@ -181,23 +184,45 @@ export const EnhancedClientList = () => {
       }
       
       try {
-        const { data, error } = await supabase
+        // Step 1: Get user IDs from user_location_assignments
+        const { data: assignments, error: assignmentsError } = await supabase
           .from('user_location_assignments')
-          .select('user_id, profiles!inner(id, first_name, last_name)')
+          .select('user_id')
           .eq('location_id', currentLocationId)
-          .eq('tenant_id', userProfile.tenant_id);
+          .eq('tenant_id', userProfile.tenant_id)
+          .eq('is_active', true);
         
-        if (error) {
-          console.error('Error fetching location reps:', error);
+        if (assignmentsError) {
+          console.error('Error fetching location assignments:', assignmentsError);
           return;
         }
         
-        const reps = (data || []).map((assignment: any) => ({
-          id: assignment.profiles.id,
-          first_name: assignment.profiles.first_name || '',
-          last_name: assignment.profiles.last_name || ''
+        const userIds = assignments?.map(a => a.user_id) || [];
+        console.log('Location user IDs:', userIds);
+        
+        if (userIds.length === 0) {
+          setLocationReps([]);
+          return;
+        }
+        
+        // Step 2: Get profiles for those user IDs
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name')
+          .in('id', userIds);
+        
+        if (profilesError) {
+          console.error('Error fetching profiles:', profilesError);
+          return;
+        }
+        
+        const reps = (profiles || []).map((profile: any) => ({
+          id: profile.id,
+          first_name: profile.first_name || '',
+          last_name: profile.last_name || ''
         }));
         
+        console.log('Location reps loaded:', reps);
         setLocationReps(reps);
       } catch (error) {
         console.error('Error fetching location reps:', error);
@@ -209,7 +234,7 @@ export const EnhancedClientList = () => {
 
   // Reset rep filter when location changes
   useEffect(() => {
-    setRepFilter("all");
+    setSelectedReps([]);
   }, [currentLocationId]);
 
   const loadUserPreferences = async () => {
@@ -485,13 +510,16 @@ export const EnhancedClientList = () => {
         filtered = filtered.filter(contact => contact.qualification_status === statusFilter);
       }
 
-      // Filter by representative
-      if (repFilter !== "all") {
-        if (repFilter === "unassigned") {
-          filtered = filtered.filter((contact: any) => !contact.assigned_to);
-        } else {
-          filtered = filtered.filter((contact: any) => contact.assigned_to === repFilter);
-        }
+      // Filter by representative (multi-select)
+      if (selectedReps.length > 0) {
+        const hasUnassigned = selectedReps.includes('unassigned');
+        const repIds = selectedReps.filter(r => r !== 'unassigned');
+        
+        filtered = filtered.filter((contact: any) => {
+          if (hasUnassigned && !contact.assigned_to) return true;
+          if (repIds.length > 0 && repIds.includes(contact.assigned_to)) return true;
+          return false;
+        });
       }
 
       filtered = sortData(filtered, activeView);
@@ -1088,22 +1116,98 @@ export const EnhancedClientList = () => {
                 </SelectContent>
               </Select>
 
-              {/* Rep Filter - Only show for contacts view */}
-              {activeView === 'contacts' && locationReps.length > 0 && (
-                <Select value={repFilter} onValueChange={setRepFilter}>
-                  <SelectTrigger className="w-48">
-                    <SelectValue placeholder="Filter by Rep" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All Reps</SelectItem>
-                    {locationReps.map((rep) => (
-                      <SelectItem key={rep.id} value={rep.id}>
-                        {rep.first_name} {rep.last_name}
-                      </SelectItem>
-                    ))}
-                    <SelectItem value="unassigned">Unassigned</SelectItem>
-                  </SelectContent>
-                </Select>
+              {/* Rep Filter - Multi-select with Popover */}
+              {activeView === 'contacts' && (
+                <Popover open={repFilterOpen} onOpenChange={setRepFilterOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-52 justify-between">
+                      <span className="truncate">
+                        {selectedReps.length === 0 
+                          ? "All Reps" 
+                          : selectedReps.length === 1
+                            ? selectedReps[0] === 'unassigned' 
+                              ? 'Unassigned'
+                              : locationReps.find(r => r.id === selectedReps[0])
+                                ? `${locationReps.find(r => r.id === selectedReps[0])?.first_name} ${locationReps.find(r => r.id === selectedReps[0])?.last_name}`
+                                : 'Selected'
+                            : `${selectedReps.length} Reps Selected`}
+                      </span>
+                      <Users className="h-4 w-4 ml-2 shrink-0 opacity-50" />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-56 p-2" align="start">
+                    <div className="space-y-1">
+                      {/* All Reps option */}
+                      <div 
+                        className="flex items-center gap-2 p-2 rounded hover:bg-muted cursor-pointer"
+                        onClick={() => {
+                          setSelectedReps([]);
+                          setRepFilterOpen(false);
+                        }}
+                      >
+                        <div className={`h-4 w-4 rounded border flex items-center justify-center ${selectedReps.length === 0 ? 'bg-primary border-primary' : 'border-input'}`}>
+                          {selectedReps.length === 0 && <span className="text-primary-foreground text-xs">✓</span>}
+                        </div>
+                        <span className="text-sm font-medium">All Reps</span>
+                      </div>
+                      
+                      <div className="border-t my-2" />
+                      
+                      {/* Individual reps */}
+                      {locationReps.map((rep) => (
+                        <div 
+                          key={rep.id}
+                          className="flex items-center gap-2 p-2 rounded hover:bg-muted cursor-pointer"
+                          onClick={() => {
+                            setSelectedReps(prev => 
+                              prev.includes(rep.id) 
+                                ? prev.filter(r => r !== rep.id)
+                                : [...prev, rep.id]
+                            );
+                          }}
+                        >
+                          <Checkbox 
+                            checked={selectedReps.includes(rep.id)}
+                            onCheckedChange={(checked) => {
+                              setSelectedReps(prev => 
+                                checked 
+                                  ? [...prev, rep.id]
+                                  : prev.filter(r => r !== rep.id)
+                              );
+                            }}
+                          />
+                          <span className="text-sm">{rep.first_name} {rep.last_name}</span>
+                        </div>
+                      ))}
+                      
+                      <div className="border-t my-2" />
+                      
+                      {/* Unassigned option */}
+                      <div 
+                        className="flex items-center gap-2 p-2 rounded hover:bg-muted cursor-pointer"
+                        onClick={() => {
+                          setSelectedReps(prev => 
+                            prev.includes('unassigned') 
+                              ? prev.filter(r => r !== 'unassigned')
+                              : [...prev, 'unassigned']
+                          );
+                        }}
+                      >
+                        <Checkbox 
+                          checked={selectedReps.includes('unassigned')}
+                          onCheckedChange={(checked) => {
+                            setSelectedReps(prev => 
+                              checked 
+                                ? [...prev, 'unassigned']
+                                : prev.filter(r => r !== 'unassigned')
+                            );
+                          }}
+                        />
+                        <span className="text-sm text-muted-foreground">Unassigned</span>
+                      </div>
+                    </div>
+                  </PopoverContent>
+                </Popover>
               )}
             </div>
           </div>
