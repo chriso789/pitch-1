@@ -205,6 +205,22 @@ serve(async (req) => {
       imageSize: logicalImageSize  // Store logical size for overlay rendering
     })
     
+    // NEW: Generate and save facet polygons to roof_measurement_facets
+    const facetPolygons = generateFacetPolygons(
+      perimeterResult.vertices,
+      interiorVertices.junctions,
+      derivedLines,
+      coordinates,
+      logicalImageSize,
+      IMAGE_ZOOM,
+      derivedFacetCount,
+      measurements.predominantPitch
+    )
+    
+    if (facetPolygons.length > 0) {
+      await saveFacetsToDatabase(supabase, measurementRecord.id, facetPolygons, measurements)
+    }
+    
     const totalTime = Date.now() - startTime
     console.log(`✅ Complete in ${totalTime}ms! Confidence: ${confidence.score}%`)
 
@@ -1335,4 +1351,256 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
 
   console.log('💾 Saved measurement:', data.id)
   return data
+}
+
+// Generate facet polygons from perimeter vertices and interior junctions
+// This creates approximate facet regions based on the detected roof geometry
+function generateFacetPolygons(
+  perimeterVertices: any[],
+  interiorJunctions: any[],
+  derivedLines: DerivedLine[],
+  imageCenter: { lat: number; lng: number },
+  imageSize: number,
+  zoom: number,
+  facetCount: number,
+  predominantPitch: string
+): any[] {
+  if (!perimeterVertices || perimeterVertices.length < 4) {
+    console.log('⚠️ Not enough vertices to generate facet polygons')
+    return []
+  }
+  
+  console.log(`📐 Generating ${facetCount} facet polygons from ${perimeterVertices.length} vertices`)
+  
+  const facetPolygons: any[] = []
+  const metersPerPixel = (156543.03392 * Math.cos(imageCenter.lat * Math.PI / 180)) / Math.pow(2, zoom)
+  const metersPerDegLat = 111320
+  const metersPerDegLng = 111320 * Math.cos(imageCenter.lat * Math.PI / 180)
+  
+  // Helper: Convert percentage coordinates to lat/lng
+  const toLatLng = (pt: { x: number; y: number }) => {
+    const pixelX = ((pt.x / 100) - 0.5) * imageSize
+    const pixelY = ((pt.y / 100) - 0.5) * imageSize
+    const metersX = pixelX * metersPerPixel
+    const metersY = pixelY * metersPerPixel
+    return {
+      lng: imageCenter.lng + (metersX / metersPerDegLng),
+      lat: imageCenter.lat - (metersY / metersPerDegLat)
+    }
+  }
+  
+  // Get ridge lines for splitting
+  const ridgeLines = derivedLines.filter(l => l.type === 'ridge')
+  const hipLines = derivedLines.filter(l => l.type === 'hip')
+  
+  // Calculate perimeter centroid
+  const centroidX = perimeterVertices.reduce((sum, v) => sum + v.x, 0) / perimeterVertices.length
+  const centroidY = perimeterVertices.reduce((sum, v) => sum + v.y, 0) / perimeterVertices.length
+  const centroid = toLatLng({ x: centroidX, y: centroidY })
+  
+  // Calculate total perimeter area for distribution
+  const totalArea = calculatePolygonAreaFromPercentVertices(perimeterVertices, imageCenter, imageSize, zoom)
+  const areaPerFacet = totalArea / facetCount
+  
+  // Determine facet directions based on hip line count
+  const directions = ['north', 'south', 'east', 'west', 'northeast', 'southeast', 'southwest', 'northwest']
+  
+  // For hip roofs (4+ facets), create radial slices from centroid to perimeter
+  if (facetCount >= 4 && (hipLines.length >= 2 || ridgeLines.length >= 1)) {
+    // Group perimeter vertices by quadrant
+    const verticesWithAngles = perimeterVertices.map(v => {
+      const angle = Math.atan2(v.y - centroidY, v.x - centroidX) * 180 / Math.PI
+      return { ...v, angle: (angle + 360) % 360 }
+    }).sort((a, b) => a.angle - b.angle)
+    
+    // Divide perimeter into facetCount segments
+    const segmentSize = Math.ceil(verticesWithAngles.length / facetCount)
+    
+    for (let i = 0; i < facetCount; i++) {
+      const startIdx = i * segmentSize
+      const endIdx = Math.min((i + 1) * segmentSize, verticesWithAngles.length)
+      const segmentVertices = verticesWithAngles.slice(startIdx, endIdx)
+      
+      if (segmentVertices.length >= 2) {
+        // Create facet polygon: centroid + perimeter segment
+        const facetPoints: { lng: number; lat: number }[] = [centroid]
+        segmentVertices.forEach(v => {
+          facetPoints.push(toLatLng(v))
+        })
+        facetPoints.push(centroid) // Close polygon
+        
+        // Calculate facet centroid
+        const facetCentroidLng = facetPoints.reduce((sum, p) => sum + p.lng, 0) / facetPoints.length
+        const facetCentroidLat = facetPoints.reduce((sum, p) => sum + p.lat, 0) / facetPoints.length
+        
+        // Determine primary direction based on facet position relative to building center
+        const avgAngle = segmentVertices.reduce((sum, v) => sum + v.angle, 0) / segmentVertices.length
+        const primaryDirection = getDirectionFromAngle(avgAngle)
+        
+        facetPolygons.push({
+          facetNumber: i + 1,
+          points: facetPoints,
+          centroid: { lng: facetCentroidLng, lat: facetCentroidLat },
+          primaryDirection,
+          azimuthDegrees: avgAngle,
+          shapeType: 'triangular',
+          areaEstimate: areaPerFacet
+        })
+      }
+    }
+  } else if (facetCount === 2 && ridgeLines.length >= 1) {
+    // Gable roof: split by ridge line
+    const ridge = ridgeLines[0]
+    const ridgeMidY = (ridge.startY + ridge.endY) / 2
+    
+    // North side (above ridge)
+    const northVertices = perimeterVertices.filter(v => v.y < ridgeMidY)
+    // South side (below ridge)
+    const southVertices = perimeterVertices.filter(v => v.y >= ridgeMidY)
+    
+    if (northVertices.length >= 2) {
+      const facetPoints = northVertices.map(toLatLng)
+      facetPoints.push(facetPoints[0]) // Close
+      const facetCentroidLng = facetPoints.reduce((sum, p) => sum + p.lng, 0) / facetPoints.length
+      const facetCentroidLat = facetPoints.reduce((sum, p) => sum + p.lat, 0) / facetPoints.length
+      
+      facetPolygons.push({
+        facetNumber: 1,
+        points: facetPoints,
+        centroid: { lng: facetCentroidLng, lat: facetCentroidLat },
+        primaryDirection: 'north',
+        azimuthDegrees: 0,
+        shapeType: 'rectangular',
+        areaEstimate: areaPerFacet
+      })
+    }
+    
+    if (southVertices.length >= 2) {
+      const facetPoints = southVertices.map(toLatLng)
+      facetPoints.push(facetPoints[0]) // Close
+      const facetCentroidLng = facetPoints.reduce((sum, p) => sum + p.lng, 0) / facetPoints.length
+      const facetCentroidLat = facetPoints.reduce((sum, p) => sum + p.lat, 0) / facetPoints.length
+      
+      facetPolygons.push({
+        facetNumber: 2,
+        points: facetPoints,
+        centroid: { lng: facetCentroidLng, lat: facetCentroidLat },
+        primaryDirection: 'south',
+        azimuthDegrees: 180,
+        shapeType: 'rectangular',
+        areaEstimate: areaPerFacet
+      })
+    }
+  }
+  
+  // If we couldn't generate enough facets, create equal area divisions
+  if (facetPolygons.length < facetCount) {
+    console.log(`📐 Fallback: Creating ${facetCount} equal-area facet regions`)
+    const perimeterLatLngs = perimeterVertices.map(toLatLng)
+    
+    // Create simple equal divisions along the perimeter
+    const verticesPerFacet = Math.ceil(perimeterVertices.length / facetCount)
+    
+    for (let i = facetPolygons.length; i < facetCount; i++) {
+      const startIdx = i * verticesPerFacet
+      const endIdx = Math.min((i + 1) * verticesPerFacet, perimeterVertices.length)
+      const segmentVertices = perimeterVertices.slice(startIdx, endIdx)
+      
+      if (segmentVertices.length >= 2) {
+        const facetPoints = segmentVertices.map(toLatLng)
+        facetPoints.push(centroid)
+        facetPoints.push(facetPoints[0])
+        
+        const facetCentroidLng = facetPoints.reduce((sum, p) => sum + p.lng, 0) / facetPoints.length
+        const facetCentroidLat = facetPoints.reduce((sum, p) => sum + p.lat, 0) / facetPoints.length
+        
+        facetPolygons.push({
+          facetNumber: i + 1,
+          points: facetPoints,
+          centroid: { lng: facetCentroidLng, lat: facetCentroidLat },
+          primaryDirection: directions[i % directions.length],
+          azimuthDegrees: (i * 360 / facetCount),
+          shapeType: 'complex',
+          areaEstimate: areaPerFacet
+        })
+      }
+    }
+  }
+  
+  console.log(`📐 Generated ${facetPolygons.length} facet polygons`)
+  return facetPolygons
+}
+
+// Calculate polygon area from percentage-based vertices
+function calculatePolygonAreaFromPercentVertices(
+  vertices: any[],
+  imageCenter: { lat: number; lng: number },
+  imageSize: number,
+  zoom: number
+): number {
+  if (!vertices || vertices.length < 3) return 0
+  
+  const metersPerPixel = (156543.03392 * Math.cos(imageCenter.lat * Math.PI / 180)) / Math.pow(2, zoom)
+  
+  const feetVertices = vertices.map(v => ({
+    x: ((v.x / 100) - 0.5) * imageSize * metersPerPixel * 3.28084,
+    y: ((v.y / 100) - 0.5) * imageSize * metersPerPixel * 3.28084
+  }))
+  
+  let area = 0
+  for (let i = 0; i < feetVertices.length; i++) {
+    const j = (i + 1) % feetVertices.length
+    area += feetVertices[i].x * feetVertices[j].y
+    area -= feetVertices[j].x * feetVertices[i].y
+  }
+  
+  return Math.abs(area / 2)
+}
+
+// Get compass direction from angle
+function getDirectionFromAngle(angleDegrees: number): string {
+  const normalized = (angleDegrees + 360) % 360
+  if (normalized >= 337.5 || normalized < 22.5) return 'east'
+  if (normalized >= 22.5 && normalized < 67.5) return 'southeast'
+  if (normalized >= 67.5 && normalized < 112.5) return 'south'
+  if (normalized >= 112.5 && normalized < 157.5) return 'southwest'
+  if (normalized >= 157.5 && normalized < 202.5) return 'west'
+  if (normalized >= 202.5 && normalized < 247.5) return 'northwest'
+  if (normalized >= 247.5 && normalized < 292.5) return 'north'
+  return 'northeast'
+}
+
+// Save facet polygons to database
+async function saveFacetsToDatabase(
+  supabase: any,
+  measurementId: string,
+  facetPolygons: any[],
+  measurements: any
+): Promise<void> {
+  const pitchMultiplier = getSlopeFactorFromPitch(measurements.predominantPitch) || 1.083
+  
+  const facetRecords = facetPolygons.map(facet => ({
+    measurement_id: measurementId,
+    facet_number: facet.facetNumber,
+    polygon_points: facet.points,
+    centroid: facet.centroid,
+    shape_type: facet.shapeType,
+    area_flat_sqft: facet.areaEstimate,
+    pitch: measurements.predominantPitch,
+    pitch_multiplier: pitchMultiplier,
+    area_adjusted_sqft: facet.areaEstimate * pitchMultiplier,
+    primary_direction: facet.primaryDirection,
+    azimuth_degrees: facet.azimuthDegrees,
+    detection_confidence: 70 // Default moderate confidence for AI-generated facets
+  }))
+  
+  const { error } = await supabase
+    .from('roof_measurement_facets')
+    .insert(facetRecords)
+  
+  if (error) {
+    console.error('⚠️ Failed to save facets:', error.message)
+  } else {
+    console.log(`💾 Saved ${facetRecords.length} facet records`)
+  }
 }
