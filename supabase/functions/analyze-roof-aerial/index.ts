@@ -1206,24 +1206,46 @@ function calculateAreaFromPerimeterVertices(
   let calculatedArea = Math.abs(area / 2)
   console.log(`📐 Raw calculated area: ${calculatedArea.toFixed(0)} sqft`)
   
-  // VALIDATION 1: Check against Solar API if available (GROUND TRUTH)
+  // VALIDATION 1: Check against Solar API if available
+  // CRITICAL FIX FOR SCREEN ENCLOSURES:
+  // - In Florida, screen enclosures (lanais/pool cages) cause AI to detect LARGER area than actual roof
+  // - Solar API also includes the full building footprint (including screen enclosure)
+  // - The ACTUAL shingled roof is SMALLER than both AI and Solar detect
+  // - Solution: For Florida addresses, use the SMALLER of AI Vision vs Solar API
+  //   This works because:
+  //   - If AI correctly excludes screen enclosure → AI area is smaller → use it
+  //   - If Solar correctly represents roof without enclosure → Solar is smaller → use it
+  //   - Using the minimum helps exclude screen enclosures from either source
+  
   if (solarData?.available && solarData?.buildingFootprintSqft) {
     const solarFootprint = solarData.buildingFootprintSqft
     const variance = Math.abs(calculatedArea - solarFootprint) / solarFootprint
     
-    // Use tighter threshold for Florida (25%) where screen enclosures are common
+    // Check if Florida address (screen enclosures very common)
     const isFlorida = address ? isFloridaAddress(address) : false
-    const varianceThreshold = isFlorida ? 
-      ROOF_AREA_CAPS.FLORIDA_VARIANCE_THRESHOLD : 
-      ROOF_AREA_CAPS.SOLAR_VARIANCE_THRESHOLD
     
-    console.log(`📐 Solar API validation: calculated=${calculatedArea.toFixed(0)}, solar=${solarFootprint.toFixed(0)}, variance=${(variance * 100).toFixed(1)}%${isFlorida ? ' (Florida: tighter 25% threshold)' : ''}`)
+    console.log(`📐 Solar API validation: AI_calculated=${calculatedArea.toFixed(0)}, solar=${solarFootprint.toFixed(0)}, variance=${(variance * 100).toFixed(1)}%${isFlorida ? ' (Florida: using minimum area strategy)' : ''}`)
     
-    // If AI detection is off from Solar API, use Solar API as ground truth
-    if (variance > varianceThreshold) {
-      console.warn(`⚠️ AI area ${calculatedArea.toFixed(0)} sqft is ${(variance * 100).toFixed(1)}% off from Solar API ${solarFootprint.toFixed(0)} sqft (threshold: ${(varianceThreshold * 100).toFixed(0)}%)`)
-      console.log(`📐 OVERRIDE: Using Solar API footprint as ground truth - likely screen enclosure included in AI detection`)
-      calculatedArea = solarFootprint
+    if (isFlorida) {
+      // FLORIDA STRATEGY: Use the SMALLER area to exclude screen enclosures
+      // Screen enclosures make BOTH AI and Solar report larger areas
+      // The smaller value is more likely to be the actual shingled roof
+      if (calculatedArea > solarFootprint) {
+        console.log(`📐 FLORIDA FIX: AI area (${calculatedArea.toFixed(0)} sqft) > Solar (${solarFootprint.toFixed(0)} sqft) - using Solar as it likely excludes screen enclosure`)
+        calculatedArea = solarFootprint
+      } else {
+        console.log(`📐 FLORIDA FIX: AI area (${calculatedArea.toFixed(0)} sqft) < Solar (${solarFootprint.toFixed(0)} sqft) - keeping AI as it likely excludes screen enclosure`)
+        // Keep calculatedArea as-is since it's smaller
+      }
+    } else {
+      // NON-FLORIDA: Standard variance check
+      const varianceThreshold = ROOF_AREA_CAPS.SOLAR_VARIANCE_THRESHOLD
+      
+      if (variance > varianceThreshold) {
+        console.warn(`⚠️ AI area ${calculatedArea.toFixed(0)} sqft is ${(variance * 100).toFixed(1)}% off from Solar API ${solarFootprint.toFixed(0)} sqft (threshold: ${(varianceThreshold * 100).toFixed(0)}%)`)
+        console.log(`📐 OVERRIDE: Using Solar API footprint as ground truth`)
+        calculatedArea = solarFootprint
+      }
     }
   }
   

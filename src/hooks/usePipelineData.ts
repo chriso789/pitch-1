@@ -1,6 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
+import { useLocation } from '@/contexts/LocationContext';
+import { useEffect } from 'react';
 
 export interface PipelineEntry {
   id: string;
@@ -8,6 +10,7 @@ export interface PipelineEntry {
   contact_id: string;
   status: string;
   created_at: string;
+  location_id?: string;
   contacts: {
     id: string;
     contact_number: string;
@@ -35,8 +38,8 @@ export const LEAD_STAGES = [
   { name: "Approved/Project", key: "project", color: "bg-emerald-600" }
 ] as const;
 
-async function fetchPipelineEntries(): Promise<PipelineEntry[]> {
-  const { data, error } = await supabase
+async function fetchPipelineEntries(locationId: string | null): Promise<PipelineEntry[]> {
+  let query = supabase
     .from('pipeline_entries')
     .select(`
       id,
@@ -44,6 +47,7 @@ async function fetchPipelineEntries(): Promise<PipelineEntry[]> {
       contact_id,
       status,
       created_at,
+      location_id,
       contacts!inner (
         id,
         contact_number,
@@ -62,8 +66,14 @@ async function fetchPipelineEntries(): Promise<PipelineEntry[]> {
         pipeline_entry_id
       )
     `)
-    .eq('is_deleted', false)
-    .order('created_at', { ascending: false });
+    .eq('is_deleted', false);
+  
+  // Filter by location if a location is selected
+  if (locationId) {
+    query = query.eq('location_id', locationId);
+  }
+  
+  const { data, error } = await query.order('created_at', { ascending: false });
 
   if (error) throw error;
   if (!data) return [];
@@ -74,6 +84,7 @@ async function fetchPipelineEntries(): Promise<PipelineEntry[]> {
     contact_id: entry.contact_id,
     status: entry.status,
     created_at: entry.created_at,
+    location_id: entry.location_id,
     contacts: Array.isArray(entry.contacts) ? entry.contacts[0] : entry.contacts,
     project: entry.projects ? (Array.isArray(entry.projects) ? entry.projects[0] : entry.projects) : undefined
   }));
@@ -89,15 +100,26 @@ function groupByStatus(entries: PipelineEntry[]): Record<string, PipelineEntry[]
 
 export function usePipelineData() {
   const { profile } = useUserProfile();
+  const { currentLocationId } = useLocation();
   const queryClient = useQueryClient();
 
   const query = useQuery({
-    queryKey: ['pipeline-entries'],
-    queryFn: fetchPipelineEntries,
+    queryKey: ['pipeline-entries', currentLocationId],
+    queryFn: () => fetchPipelineEntries(currentLocationId),
     staleTime: 30 * 1000, // 30 seconds - data is fresh
     gcTime: 5 * 60 * 1000, // 5 minutes in cache
     refetchOnWindowFocus: false,
   });
+  
+  // Listen for location changes and invalidate cache immediately
+  useEffect(() => {
+    const handleLocationChange = () => {
+      queryClient.invalidateQueries({ queryKey: ['pipeline-entries'] });
+    };
+    
+    window.addEventListener('location-changed', handleLocationChange);
+    return () => window.removeEventListener('location-changed', handleLocationChange);
+  }, [queryClient]);
 
   const userCanDelete = profile?.role && ['master', 'corporate', 'office_admin'].includes(profile.role);
 
