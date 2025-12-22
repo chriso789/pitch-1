@@ -11,7 +11,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { MapPin, Building2 } from "lucide-react";
+import { MapPin, Building2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 interface Location {
@@ -30,6 +30,23 @@ interface LocationSelectionDialogProps {
 export function LocationSelectionDialog({ userId, onLocationSelected }: LocationSelectionDialogProps) {
   const [selectedLocation, setSelectedLocation] = useState<string>("");
   const [open, setOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  // Fetch user's tenant ID for saving settings
+  const { data: profile } = useQuery({
+    queryKey: ['user-profile-tenant', userId],
+    queryFn: async () => {
+      const { data } = await supabase
+        .from('profiles')
+        .select('active_tenant_id, tenant_id')
+        .eq('id', userId)
+        .single();
+      return data;
+    },
+    enabled: !!userId,
+  });
+
+  const activeTenantId = profile?.active_tenant_id || profile?.tenant_id;
 
   // Fetch user's assigned locations
   const { data: assignments } = useQuery({
@@ -60,34 +77,77 @@ export function LocationSelectionDialog({ userId, onLocationSelected }: Location
 
   const locations = assignments || [];
 
+  // Check if user needs to select a location (only on initial load)
   useEffect(() => {
-    // Check if user has active location in session
-    const activeLocationId = sessionStorage.getItem('active_location_id');
-    
-    if (!activeLocationId && locations && locations.length > 1) {
-      // User has multiple locations but no active one selected
-      setOpen(true);
-    } else if (!activeLocationId && locations && locations.length === 1) {
-      // User has only one location, auto-select it
-      const locationId = locations[0].id;
-      sessionStorage.setItem('active_location_id', locationId);
-      onLocationSelected(locationId);
-    } else if (activeLocationId) {
-      // User already has active location
-      onLocationSelected(activeLocationId);
-    }
-  }, [locations, onLocationSelected]);
+    const checkExistingLocation = async () => {
+      if (!userId || !activeTenantId || !locations || locations.length <= 1) return;
 
-  const handleConfirm = () => {
+      // Check if user already has a saved location in database
+      const { data: existingSetting } = await supabase
+        .from('app_settings')
+        .select('setting_value')
+        .eq('user_id', userId)
+        .eq('tenant_id', activeTenantId)
+        .eq('setting_key', 'current_location_id')
+        .maybeSingle();
+
+      if (existingSetting?.setting_value) {
+        // User already has a saved location, use it
+        onLocationSelected(existingSetting.setting_value as string);
+      } else {
+        // No saved location, show dialog for selection
+        setOpen(true);
+      }
+    };
+
+    if (locations && locations.length === 1) {
+      // User has only one location, auto-select it and save
+      const locationId = locations[0].id;
+      onLocationSelected(locationId);
+    } else if (locations && locations.length > 1 && activeTenantId) {
+      checkExistingLocation();
+    }
+  }, [locations, userId, activeTenantId, onLocationSelected]);
+
+  const handleConfirm = async () => {
     if (!selectedLocation) {
       toast.error('Please select a location');
       return;
     }
 
-    sessionStorage.setItem('active_location_id', selectedLocation);
-    onLocationSelected(selectedLocation);
-    setOpen(false);
-    toast.success('Location selected');
+    if (!activeTenantId) {
+      toast.error('Unable to save location preference');
+      return;
+    }
+
+    setIsSaving(true);
+    try {
+      // Save to database (app_settings table)
+      const { error } = await supabase
+        .from('app_settings')
+        .upsert({
+          user_id: userId,
+          setting_key: 'current_location_id',
+          setting_value: selectedLocation,
+          tenant_id: activeTenantId
+        }, {
+          onConflict: 'user_id,tenant_id,setting_key'
+        });
+
+      if (error) throw error;
+
+      // Also store in localStorage for cross-tab sync
+      localStorage.setItem('pitch_current_location', selectedLocation);
+
+      onLocationSelected(selectedLocation);
+      setOpen(false);
+      toast.success('Location selected');
+    } catch (error) {
+      console.error('Error saving location:', error);
+      toast.error('Failed to save location preference');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (!locations || locations.length <= 1) {
@@ -127,8 +187,15 @@ export function LocationSelectionDialog({ userId, onLocationSelected }: Location
         </div>
 
         <div className="flex justify-end">
-          <Button onClick={handleConfirm} disabled={!selectedLocation}>
-            Continue
+          <Button onClick={handleConfirm} disabled={!selectedLocation || isSaving}>
+            {isSaving ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Saving...
+              </>
+            ) : (
+              'Continue'
+            )}
           </Button>
         </div>
       </DialogContent>
