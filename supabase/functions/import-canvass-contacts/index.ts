@@ -184,17 +184,21 @@ serve(async (req) => {
 
     console.log(`Found ${profilesByEmail.size} profiles by email, ${profilesByName.size} by name`);
 
-    // Get existing contacts to check for duplicates (by address)
+    // Get existing contacts to check for duplicates (by address) - only non-deleted
     const { data: existingContacts } = await supabase
       .from('contacts')
       .select('id, address_street, address_city, address_state, address_zip')
-      .eq('tenant_id', tenantId);
+      .eq('tenant_id', tenantId)
+      .eq('is_deleted', false);
 
     const existingAddresses = new Set(
       (existingContacts || []).map(c => 
-        `${c.address_street || ''}-${c.address_city || ''}-${c.address_state || ''}-${c.address_zip || ''}`.toLowerCase()
+        `${c.address_street || ''}-${c.address_city || ''}-${c.address_state || ''}-${c.address_zip || ''}`.toLowerCase().trim()
       )
     );
+
+    // Track addresses within current import to prevent batch duplicates
+    const batchAddresses = new Set<string>();
 
     const results = {
       imported: 0,
@@ -212,12 +216,16 @@ serve(async (req) => {
 
       for (const contact of batch) {
         try {
-          // Check for duplicate by address
-          const addressKey = `${contact.address || ''}-${contact.city || ''}-${contact.state || ''}-${contact.zipcode || ''}`.toLowerCase();
-          if (existingAddresses.has(addressKey)) {
+          // Check for duplicate by address - both existing DB AND current import batch
+          const addressKey = `${contact.address || ''}-${contact.city || ''}-${contact.state || ''}-${contact.zipcode || ''}`.toLowerCase().trim();
+          
+          if (existingAddresses.has(addressKey) || batchAddresses.has(addressKey)) {
             results.duplicates++;
             continue;
           }
+          
+          // Add to batch set IMMEDIATELY to prevent duplicates within same batch
+          batchAddresses.add(addressKey);
 
           // Use skiptrace names if available
           const { firstName, lastName } = parseName(
@@ -304,9 +312,6 @@ serve(async (req) => {
               import_date: new Date().toISOString(),
             },
           });
-
-          // Add to existing set to prevent duplicates within this import
-          existingAddresses.add(addressKey);
         } catch (e) {
           results.errors++;
           results.errorMessages.push(`Row error: ${(e as Error).message}`);
