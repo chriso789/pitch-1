@@ -23,6 +23,14 @@ interface ContactImportData {
   lead_source?: string;
   tags?: string;
   notes?: string;
+  sales_rep_name?: string; // Name from CSV to match against profiles
+}
+
+interface ProfileMatch {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
 }
 
 interface ContactBulkImportProps {
@@ -238,6 +246,28 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'tag': 'tags',
   'labels': 'tags',
   'categories': 'tags',
+  
+  // Sales Rep / Assigned To variations
+  'assigned_to': 'sales_rep_name',
+  'assigned to': 'sales_rep_name',
+  'assignedto': 'sales_rep_name',
+  'sales_rep': 'sales_rep_name',
+  'sales rep': 'sales_rep_name',
+  'salesrep': 'sales_rep_name',
+  'salesman': 'sales_rep_name',
+  'rep': 'sales_rep_name',
+  'rep name': 'sales_rep_name',
+  'property owner': 'sales_rep_name',
+  'property_owner': 'sales_rep_name',
+  'propertyowner': 'sales_rep_name',
+  'account owner': 'sales_rep_name',
+  'account_owner': 'sales_rep_name',
+  'owner': 'sales_rep_name',
+  'agent': 'sales_rep_name',
+  'agent name': 'sales_rep_name',
+  'created by': 'sales_rep_name',
+  'createdby': 'sales_rep_name',
+  'created_by': 'sales_rep_name',
 };
 
 /**
@@ -407,6 +437,8 @@ function normalizeRow(rawRow: Record<string, any>): ContactImportData {
       mappedFields['secondary_phone'] = true;
     } else if (mappedField === 'additional_phone') {
       allPhones.push(valueStr);
+    } else if (mappedField === 'sales_rep_name') {
+      normalized.sales_rep_name = valueStr;
     } else if (mappedField) {
       // Only set if we don't already have a value (first match wins)
       if (!normalized[mappedField]) {
@@ -456,7 +488,46 @@ function normalizeRow(rawRow: Record<string, any>): ContactImportData {
     lead_source: normalized.lead_source || undefined,
     tags: normalized.tags || undefined,
     notes: secondaryNotes || undefined,
+    sales_rep_name: normalized.sales_rep_name || undefined,
   };
+}
+
+/**
+ * Match a sales rep name from CSV to a profile ID
+ */
+function matchSalesRepToProfile(
+  repName: string | undefined,
+  profiles: ProfileMatch[]
+): string | null {
+  if (!repName || !profiles.length) return null;
+  
+  const normalized = repName.toLowerCase().trim();
+  if (!normalized) return null;
+  
+  for (const profile of profiles) {
+    const firstName = profile.first_name?.toLowerCase().trim() || '';
+    const lastName = profile.last_name?.toLowerCase().trim() || '';
+    const fullName = `${firstName} ${lastName}`.trim();
+    const reverseName = `${lastName} ${firstName}`.trim();
+    const emailPrefix = profile.email?.toLowerCase().split('@')[0] || '';
+    
+    // Exact full name match
+    if (normalized === fullName || normalized === reverseName) return profile.id;
+    
+    // Email prefix match (e.g., "john.smith" matches john.smith@company.com)
+    if (emailPrefix && normalized === emailPrefix) return profile.id;
+    
+    // First name only match (when there's only first name in CSV)
+    if (firstName && normalized === firstName && !normalized.includes(' ')) return profile.id;
+    
+    // Last name only match
+    if (lastName && normalized === lastName && !normalized.includes(' ')) return profile.id;
+    
+    // Contains match for partial names (e.g., "John" matches "John Smith")
+    if (fullName && (fullName.includes(normalized) || normalized.includes(fullName))) return profile.id;
+  }
+  
+  return null; // No match found
 }
 
 /**
@@ -495,6 +566,7 @@ function detectMappedColumns(rawHeaders: string[]): {
 
 export function ContactBulkImport({ open, onOpenChange, onImportComplete, currentLocationId }: ContactBulkImportProps) {
   const [importing, setImporting] = useState(false);
+  const [importProgress, setImportProgress] = useState<string>('');
   const [preview, setPreview] = useState<ContactImportData[]>([]);
   const [totalRows, setTotalRows] = useState(0);
   const [columnMappings, setColumnMappings] = useState<{ original: string; mappedTo: string }[]>([]);
@@ -535,6 +607,7 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
     if (!file) return;
 
     setImporting(true);
+    setImportProgress('Preparing import...');
     
     Papa.parse(file, {
       header: true,
@@ -552,40 +625,87 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
 
           if (!profile?.tenant_id) throw new Error('No tenant found');
 
+          // Fetch all profiles for sales rep matching
+          setImportProgress('Loading sales reps...');
+          const { data: allProfiles } = await supabase
+            .from('profiles')
+            .select('id, first_name, last_name, email')
+            .eq('tenant_id', profile.tenant_id);
+
+          const profilesForMatching: ProfileMatch[] = allProfiles || [];
+
           const rawData = results.data as Record<string, any>[];
           const normalizedData = rawData.map(row => normalizeRow(row));
           
-          const contacts = normalizedData.map(row => ({
-            first_name: row.first_name || 'Unknown',
-            last_name: row.last_name || '',
-            email: row.email || null,
-            phone: row.phone || null,
-            secondary_email: row.secondary_email || null,
-            secondary_phone: row.secondary_phone || null,
-            additional_emails: row.additional_emails?.length ? row.additional_emails : [],
-            additional_phones: row.additional_phones?.length ? row.additional_phones : [],
-            company_name: row.company_name || null,
-            address_street: row.address_street || null,
-            address_city: row.address_city || null,
-            address_state: row.address_state || null,
-            address_zip: row.address_zip || null,
-            lead_source: row.lead_source || 'csv_import',
-            tags: row.tags ? row.tags.split(',').map((t: string) => t.trim()) : [],
-            notes: row.notes || null,
-            tenant_id: profile.tenant_id,
-            location_id: currentLocationId || null,
-            type: 'homeowner' as const,
-            is_deleted: false
-          }));
+          // Track unmatched sales reps
+          const unmatchedReps = new Set<string>();
+          
+          const contacts = normalizedData.map(row => {
+            // Match sales rep name to profile ID
+            const assignedTo = matchSalesRepToProfile(row.sales_rep_name, profilesForMatching);
+            
+            // Track if we couldn't match a sales rep
+            if (row.sales_rep_name && !assignedTo) {
+              unmatchedReps.add(row.sales_rep_name);
+            }
+            
+            return {
+              first_name: row.first_name || 'Unknown',
+              last_name: row.last_name || '',
+              email: row.email || null,
+              phone: row.phone || null,
+              secondary_email: row.secondary_email || null,
+              secondary_phone: row.secondary_phone || null,
+              additional_emails: row.additional_emails?.length ? row.additional_emails : [],
+              additional_phones: row.additional_phones?.length ? row.additional_phones : [],
+              company_name: row.company_name || null,
+              address_street: row.address_street || null,
+              address_city: row.address_city || null,
+              address_state: row.address_state || null,
+              address_zip: row.address_zip || null,
+              lead_source: row.lead_source || 'csv_import',
+              tags: row.tags ? row.tags.split(',').map((t: string) => t.trim()) : [],
+              notes: row.notes || null,
+              tenant_id: profile.tenant_id,
+              location_id: currentLocationId || null,
+              type: 'homeowner' as const,
+              is_deleted: false,
+              assigned_to: assignedTo,
+            };
+          });
 
-          const { data, error } = await supabase
-            .from('contacts')
-            .insert(contacts)
-            .select();
+          // Batch insert to prevent timeout for large imports
+          const batchSize = 100;
+          let successCount = 0;
+          const totalBatches = Math.ceil(contacts.length / batchSize);
 
-          if (error) throw error;
+          for (let i = 0; i < contacts.length; i += batchSize) {
+            const batchNumber = Math.floor(i / batchSize) + 1;
+            setImportProgress(`Importing batch ${batchNumber} of ${totalBatches}...`);
+            
+            const batch = contacts.slice(i, i + batchSize);
+            const { data, error } = await supabase
+              .from('contacts')
+              .insert(batch)
+              .select();
 
-          toast.success(`Imported ${data.length} contacts successfully`);
+            if (error) {
+              console.error(`Batch ${batchNumber} failed:`, error);
+              throw error;
+            }
+            
+            successCount += data?.length || 0;
+          }
+
+          // Show success message
+          toast.success(`Imported ${successCount} contacts successfully`);
+          
+          // Warn about unmatched sales reps
+          if (unmatchedReps.size > 0) {
+            const repsList = [...unmatchedReps].slice(0, 5).join(', ');
+            const moreCount = unmatchedReps.size > 5 ? ` and ${unmatchedReps.size - 5} more` : '';
+            toast.warning(`Some sales reps not found in system: ${repsList}${moreCount}. These contacts were left unassigned.`);
+          }
 
           onImportComplete();
           onOpenChange(false);
@@ -593,11 +713,13 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
           setTotalRows(0);
           setColumnMappings([]);
           setUnmatchedColumns([]);
+          setImportProgress('');
         } catch (error: any) {
           console.error('Error importing contacts:', error);
           toast.error("Import Failed: " + error.message);
         } finally {
           setImporting(false);
+          setImportProgress('');
         }
       }
     });
@@ -728,6 +850,7 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
                       <th className="px-3 py-2 text-left whitespace-nowrap">Email</th>
                       <th className="px-3 py-2 text-left whitespace-nowrap">Phone</th>
                       <th className="px-3 py-2 text-left whitespace-nowrap">City</th>
+                      <th className="px-3 py-2 text-left whitespace-nowrap">Sales Rep</th>
                       <th className="px-3 py-2 text-left whitespace-nowrap">Contact Info</th>
                     </tr>
                   </thead>
@@ -741,6 +864,13 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
                           <td className="px-3 py-2 max-w-[150px] truncate" title={row.email}>{row.email || '-'}</td>
                           <td className="px-3 py-2">{row.phone || '-'}</td>
                           <td className="px-3 py-2">{row.address_city || '-'}</td>
+                          <td className="px-3 py-2">
+                            {row.sales_rep_name ? (
+                              <span className="text-xs px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded">
+                                {row.sales_rep_name}
+                              </span>
+                            ) : '-'}
+                          </td>
                           <td className="px-3 py-2">
                             <div className="flex gap-2">
                               {emailCount > 1 && (
@@ -766,11 +896,11 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
           )}
 
           <div className="flex gap-2 justify-end">
-            <Button variant="outline" onClick={handleClose}>
+            <Button variant="outline" onClick={handleClose} disabled={importing}>
               Cancel
             </Button>
             <Button onClick={handleImport} disabled={importing || preview.length === 0}>
-              {importing ? "Importing..." : `Import ${totalRows} Contacts`}
+              {importing ? (importProgress || "Importing...") : `Import ${totalRows} Contacts`}
             </Button>
           </div>
         </div>
