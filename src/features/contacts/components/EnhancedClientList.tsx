@@ -306,17 +306,41 @@ export const EnhancedClientList = () => {
         contactsQuery = contactsQuery.eq('location_id', currentLocationId);
       }
       
-      const { data: contactsData, error: contactsError } = await contactsQuery
-        .eq('is_deleted', false)
-        .order("created_at", { ascending: false })
-        .range(0, 9999);
+      // Paginated fetch to bypass Supabase 1000 row server limit
+      const BATCH_SIZE = 1000;
+      let allContacts: any[] = [];
+      let from = 0;
+      let hasMore = true;
+      let batchNumber = 0;
 
-      if (contactsError) {
-        console.error("Contacts query error:", contactsError);
-        throw contactsError;
+      while (hasMore) {
+        batchNumber++;
+        const { data: batchData, error: batchError } = await supabase
+          .from("contacts")
+          .select("*")
+          .eq('is_deleted', false)
+          .match(isMaster ? {} : { tenant_id: profile.tenant_id })
+          .match(currentLocationId ? { location_id: currentLocationId } : {})
+          .order("created_at", { ascending: false })
+          .range(from, from + BATCH_SIZE - 1);
+
+        if (batchError) {
+          console.error("Contacts batch query error:", batchError);
+          throw batchError;
+        }
+
+        if (batchData && batchData.length > 0) {
+          allContacts = [...allContacts, ...batchData];
+          console.log(`Batch ${batchNumber}: fetched ${batchData.length} contacts (total: ${allContacts.length})`);
+          from += BATCH_SIZE;
+          hasMore = batchData.length === BATCH_SIZE;
+        } else {
+          hasMore = false;
+        }
       }
 
-      console.log("Contacts fetched:", contactsData?.length || 0, "at", new Date().toISOString(), "- range(0,9999) applied");
+      const contactsData = allContacts;
+      console.log("All contacts fetched:", contactsData.length, "in", batchNumber, "batches at", new Date().toISOString());
 
       // Query jobs with proper tenant filtering and separately fetch contacts
       console.log("Fetching jobs...");
