@@ -266,7 +266,8 @@ export const EnhancedClientList = () => {
       
       const { data: contactsData, error: contactsError } = await contactsQuery
         .eq('is_deleted', false)
-        .order("created_at", { ascending: false });
+        .order("created_at", { ascending: false })
+        .range(0, 9999);
 
       if (contactsError) {
         console.error("Contacts query error:", contactsError);
