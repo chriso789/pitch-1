@@ -38,6 +38,7 @@ import { useSendSMS } from '@/hooks/useSendSMS';
 import { useLeadDetails, LeadDetailsData, ApprovalRequirements } from '@/hooks/useLeadDetails';
 import { LeadDetailsSkeleton } from '@/components/lead-details/LeadDetailsSkeleton';
 import { AddressReverificationButton } from '@/components/measurements/AddressReverificationButton';
+import { ProductTemplateApplicator } from '@/components/estimates/ProductTemplateApplicator';
 
 const LeadDetails = () => {
   const { id } = useParams<{ id: string }>();
@@ -247,18 +248,10 @@ const LeadDetails = () => {
               <CardTitle>Material Specifications</CardTitle>
             </CardHeader>
             <CardContent>
-              {measurementReadiness.isReady ? (
-                <div className="text-center py-12">
-                  <Package className="h-12 w-12 text-primary mx-auto mb-4" />
-                  <p className="text-muted-foreground mb-4">Material calculations ready</p>
-                  <p className="text-sm text-success">Based on {measurementReadiness.data?.roof_area_sq_ft} sq ft roof area</p>
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <Package className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground mb-4">Complete measurements and template binding first</p>
-                </div>
-              )}
+              <ProductTemplateApplicator
+                leadId={id || ''}
+                measurementData={measurementReadiness.data}
+              />
             </CardContent>
           </Card>
         );
