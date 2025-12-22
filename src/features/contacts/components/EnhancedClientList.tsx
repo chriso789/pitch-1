@@ -316,7 +316,7 @@ export const EnhancedClientList = () => {
         throw contactsError;
       }
 
-      console.log("Contacts fetched:", contactsData?.length || 0);
+      console.log("Contacts fetched:", contactsData?.length || 0, "at", new Date().toISOString(), "- range(0,9999) applied");
 
       // Query jobs with proper tenant filtering and separately fetch contacts
       console.log("Fetching jobs...");
