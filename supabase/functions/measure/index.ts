@@ -412,6 +412,78 @@ function buildSmartTags(meas: MeasureResult) {
   return tags;
 }
 
+// Unified measurement summary builder
+// Construct an augmented summary with unified keys used by the new roof_measurements schema
+function buildUnifiedSummary(meas: MeasureResult): MeasureSummary & Record<string, any> {
+  const summary = meas.summary || {} as MeasureSummary;
+  const faces = meas.faces || [];
+
+  // Collect linear features from measurement-level and per-face
+  let linear: any[] = [];
+  const rawLinear = meas.linear_features;
+  if (Array.isArray(rawLinear)) {
+    linear = rawLinear.concat(...faces.map(f => f.linear_features || []));
+  } else if (rawLinear && typeof rawLinear === 'object') {
+    linear = Object.entries(rawLinear)
+      .filter(([_, v]) => typeof v === 'number' && v > 0)
+      .map(([type, length_ft]) => ({ type, length_ft }));
+    faces.forEach(f => {
+      if (Array.isArray(f.linear_features)) {
+        linear.push(...f.linear_features);
+      }
+    });
+  }
+
+  // Calculate totals from faces
+  const totalPlanSqft = faces.reduce((s, f) => s + (f.plan_area_sqft || 0), 0);
+  const totalAdjustedSqft = faces.reduce((s, f) => s + (f.area_sqft || 0), 0);
+  const totalSquares = totalAdjustedSqft / 100;
+  const wastePct = summary.waste_pct || 10;
+  const totalSquaresWithWaste = totalSquares * (1 + wastePct / 100);
+
+  // Calculate average pitch factor
+  const avgPitchFactor = faces.length
+    ? faces.reduce((s, f) => s + pitchFactor(f.pitch), 0) / faces.length
+    : 1;
+
+  // Determine predominant pitch (most area)
+  const pitchAreas: Record<string, number> = {};
+  faces.forEach(f => {
+    const p = f.pitch || 'unknown';
+    pitchAreas[p] = (pitchAreas[p] || 0) + (f.area_sqft || 0);
+  });
+  const predominantPitch = Object.entries(pitchAreas).sort((a, b) => b[1] - a[1])[0]?.[0] || '4/12';
+
+  // Calculate linear feature totals
+  const lfBy = (types: string[]) =>
+    linear.filter(l => types.includes(l.type || 'unknown'))
+          .reduce((s, l) => s + (l.length_ft || 0), 0);
+
+  const totalEave = lfBy(['eave']);
+  const totalRake = lfBy(['rake']);
+  const totalHip = lfBy(['hip']);
+  const totalValley = lfBy(['valley']);
+  const totalRidge = lfBy(['ridge']);
+
+  return {
+    ...summary,
+    // New unified keys for roof_measurements schema
+    total_area_flat_sqft: round(totalPlanSqft),
+    total_area_adjusted_sqft: round(totalAdjustedSqft),
+    total_squares: round(totalSquares, 2),
+    waste_factor_percent: round(wastePct, 2),
+    total_squares_with_waste: round(totalSquaresWithWaste, 2),
+    predominant_pitch: predominantPitch,
+    pitch_factor: round(avgPitchFactor, 3),
+    facet_count: faces.length,
+    total_eave_length: round(totalEave, 2),
+    total_rake_length: round(totalRake, 2),
+    total_hip_length: round(totalHip, 2),
+    total_valley_length: round(totalValley, 2),
+    total_ridge_length: round(totalRidge, 2),
+  };
+}
+
 // Helper: Calculate roof complexity (1-5 scale)
 function calculateComplexity(faces: RoofFace[], linear: LinearFeature[]): number {
   let score = 1;
@@ -1360,8 +1432,12 @@ serve(async (req) => {
           verified_at: new Date().toISOString()
         };
 
+        // Build unified summary to include new measurement fields
+        const unifiedSummary = buildUnifiedSummary(verifiedMeasurement as MeasureResult);
+        const verifiedWithSummary = { ...verifiedMeasurement, summary: unifiedSummary };
+
         // Save to database
-        const row = await persistMeasurement(supabase, verifiedMeasurement, userId);
+        const row = await persistMeasurement(supabase, verifiedWithSummary as MeasureResult, userId);
         
         // Update tags with verified status
         const updatedTags = {
@@ -1372,6 +1448,16 @@ serve(async (req) => {
         };
         
         await persistTags(supabase, row.id, propertyId, updatedTags, userId);
+
+        // Persist facets and waste calculations with unified summary fields
+        await persistFacets(supabase, row.id, verifiedWithSummary.faces || []);
+        await persistWasteCalculations(
+          supabase, 
+          row.id, 
+          unifiedSummary.total_area_flat_sqft || unifiedSummary.total_area_sqft, 
+          unifiedSummary.total_squares, 
+          updatedTags
+        );
 
         // Generate Mapbox visualization (non-blocking)
         try {
