@@ -108,13 +108,14 @@ serve(async (req) => {
     console.log(`⏱️ Line derivation complete: ${derivedLines.length} lines from vertices`)
     
     // Calculate actual roof area from perimeter vertices using Shoelace formula
-    // IMPROVED: Pass solarData for validation and fallback
+    // IMPROVED: Pass solarData for validation and address for Florida-specific thresholds
     const actualAreaSqft = calculateAreaFromPerimeterVertices(
       perimeterResult.vertices,
       coordinates,
       logicalImageSize,
       IMAGE_ZOOM,
-      solarData  // Pass Solar API data for validation
+      solarData,  // Pass Solar API data for validation
+      address     // Pass address for Florida-specific variance threshold
     )
     console.log(`📐 Validated area from perimeter: ${actualAreaSqft.toFixed(0)} sqft`)
     
@@ -370,12 +371,22 @@ async function isolateTargetBuilding(imageUrl: string, address: string, coordina
 TASK: Find the MAIN RESIDENTIAL BUILDING at the EXACT CENTER of the image.
 The GPS coordinates point to the center of this image, so the target house is in the middle.
 
-Return a TIGHT bounding box that wraps ONLY the main roof - do NOT include:
+Return a TIGHT bounding box that wraps ONLY the SHINGLED/TILED ROOF - do NOT include:
 - Detached garages or carports
 - Sheds or outbuildings
 - Swimming pools
 - Driveways or patios
 - Adjacent properties
+- SCREEN ENCLOSURES (lanais/pool cages) - these have a metal frame grid structure, NOT shingles
+- Covered patios with flat or metal roofs
+- Screened-in porches with transparent or mesh roofing
+- Carports or awnings
+
+SCREEN ENCLOSURE IDENTIFICATION:
+- Screen enclosures appear as RECTANGULAR metal frame structures with a visible GRID PATTERN
+- They are typically adjacent to or extending from the main house
+- They have a DIFFERENT texture than shingles - look for mesh/grid vs shingle lines
+- Common in Florida - often covers pool areas
 
 {
   "targetBuildingBounds": {
@@ -387,6 +398,7 @@ Return a TIGHT bounding box that wraps ONLY the main roof - do NOT include:
   "estimatedRoofWidthFt": 38,
   "estimatedRoofLengthFt": 48,
   "otherBuildingsDetected": 1,
+  "screenEnclosureDetected": false,
   "targetBuildingType": "residential",
   "confidenceTargetIsCorrect": "high"
 }
@@ -397,8 +409,9 @@ CRITICAL RULES:
 3. Do NOT include sheds, garages, driveways, pools, or adjacent properties
 4. A bounding box larger than 35% of image width is likely WRONG for single-family residential
 5. For a standard 2000sqft house, expect bounds of ~20-25% width
-6. Use DECIMAL precision (e.g., 38.72, not 39)
-7. Return ONLY valid JSON, no explanation`
+6. EXCLUDE screen enclosures/lanais - measure ONLY the shingled/tiled roof area
+7. Use DECIMAL precision (e.g., 38.72, not 39)
+8. Return ONLY valid JSON, no explanation`
 
   console.log('🏠 Pass 1: Isolating target building at image center...')
   
@@ -490,12 +503,15 @@ async function detectPerimeterVertices(imageUrl: string, bounds: any) {
 
 TASK: Return the roof perimeter as a list of CORNER VERTICES in CLOCKWISE order.
 Start from the topmost corner and trace around the entire visible roof edge.
+Trace ONLY the SHINGLED or TILED roof material - NOT screen enclosures or covered patios.
 
 The target building is within bounds: top-left (${bounds.topLeftX}%, ${bounds.topLeftY}%) to bottom-right (${bounds.bottomRightX}%, ${bounds.bottomRightY}%)
 
 {
   "roofType": "hip|gable|complex",
   "complexity": "simple|moderate|complex",
+  "screenEnclosureExcluded": false,
+  "roofMaterial": "shingle|tile|metal",
   "vertices": [
     {"x": 30.5, "y": 25.2, "cornerType": "hip-corner"},
     {"x": 50.0, "y": 24.8, "cornerType": "ridge-end"},
@@ -508,9 +524,23 @@ The target building is within bounds: top-left (${bounds.topLeftX}%, ${bounds.to
   ]
 }
 
+CRITICAL - EXCLUDE FROM PERIMETER:
+- SCREEN ENCLOSURES (lanais/pool cages) - metal frame grid structures with mesh/screen
+- Pool cages - rectangular frame structures, often adjacent to house
+- Covered patios with flat roofs
+- Carports or awnings
+- Any structure that is NOT shingled/tiled roofing
+
+HOW TO IDENTIFY SCREEN ENCLOSURES:
+- They appear as geometric METAL FRAME GRIDS with transparent or mesh covering
+- They have a regular grid pattern visible from above (unlike shingle lines)
+- They are typically rectangular and extend from one side of the house
+- They do NOT have shingle texture - look for the difference in surface pattern
+
 CRITICAL RULES:
 - Use DECIMAL PRECISION (e.g., 34.72 not 35)
-- Trace the EXACT visible roof edge (follow shadow lines and shingle patterns)
+- Trace ONLY the SHINGLED/TILED roof surface - follow shingle lines and ridge patterns
+- STOP the perimeter where roof shingles end and screen enclosure begins
 - Include EVERY corner where the roof perimeter changes direction
 - cornerType: "hip-corner" (where hip meets eave), "ridge-end" (gable peak), "eave-corner" (horizontal edge corner), "valley-entry" (where valley meets perimeter)
 - Stay WITHIN the target building bounds
@@ -1108,17 +1138,26 @@ const ROOF_AREA_CAPS = {
   MIN_RESIDENTIAL: 500,      // Minimum realistic residential roof
   MAX_RESIDENTIAL: 5000,     // Maximum single-family residential (typical 1200-3500)
   MAX_LARGE_HOME: 8000,      // Maximum for large/luxury homes
-  SOLAR_VARIANCE_THRESHOLD: 0.5  // 50% variance triggers Solar API override
+  SOLAR_VARIANCE_THRESHOLD: 0.5,  // 50% variance triggers Solar API override (default)
+  FLORIDA_VARIANCE_THRESHOLD: 0.25  // 25% for Florida (screen enclosures common)
+}
+
+// Check if address is in Florida (screen enclosures/lanais very common)
+function isFloridaAddress(address: string): boolean {
+  const fl = address.toLowerCase()
+  return fl.includes(', fl ') || fl.includes(', fl,') || fl.includes(' florida') || fl.endsWith(', fl')
 }
 
 // Calculate actual roof area from perimeter vertices using Shoelace formula
 // IMPROVED: Now accepts solarData for validation and uses it as ground truth when AI fails
+// Added address parameter to apply tighter variance for Florida (screen enclosure detection)
 function calculateAreaFromPerimeterVertices(
   vertices: any[],
   imageCenter: { lat: number; lng: number },
   imageSize: number,
   zoom: number,
-  solarData?: any  // Optional Solar API data for validation
+  solarData?: any,  // Optional Solar API data for validation
+  address?: string  // Optional address for Florida-specific validation
 ): number {
   // FALLBACK: If no vertices or Solar API available, use Solar API footprint
   if (!vertices || vertices.length < 3) {
@@ -1172,12 +1211,18 @@ function calculateAreaFromPerimeterVertices(
     const solarFootprint = solarData.buildingFootprintSqft
     const variance = Math.abs(calculatedArea - solarFootprint) / solarFootprint
     
-    console.log(`📐 Solar API validation: calculated=${calculatedArea.toFixed(0)}, solar=${solarFootprint.toFixed(0)}, variance=${(variance * 100).toFixed(1)}%`)
+    // Use tighter threshold for Florida (25%) where screen enclosures are common
+    const isFlorida = address ? isFloridaAddress(address) : false
+    const varianceThreshold = isFlorida ? 
+      ROOF_AREA_CAPS.FLORIDA_VARIANCE_THRESHOLD : 
+      ROOF_AREA_CAPS.SOLAR_VARIANCE_THRESHOLD
     
-    // If AI detection is >50% off from Solar API, use Solar API as ground truth
-    if (variance > ROOF_AREA_CAPS.SOLAR_VARIANCE_THRESHOLD) {
-      console.warn(`⚠️ AI area ${calculatedArea.toFixed(0)} sqft is ${(variance * 100).toFixed(1)}% off from Solar API ${solarFootprint.toFixed(0)} sqft`)
-      console.log(`📐 OVERRIDE: Using Solar API footprint as ground truth`)
+    console.log(`📐 Solar API validation: calculated=${calculatedArea.toFixed(0)}, solar=${solarFootprint.toFixed(0)}, variance=${(variance * 100).toFixed(1)}%${isFlorida ? ' (Florida: tighter 25% threshold)' : ''}`)
+    
+    // If AI detection is off from Solar API, use Solar API as ground truth
+    if (variance > varianceThreshold) {
+      console.warn(`⚠️ AI area ${calculatedArea.toFixed(0)} sqft is ${(variance * 100).toFixed(1)}% off from Solar API ${solarFootprint.toFixed(0)} sqft (threshold: ${(varianceThreshold * 100).toFixed(0)}%)`)
+      console.log(`📐 OVERRIDE: Using Solar API footprint as ground truth - likely screen enclosure included in AI detection`)
       calculatedArea = solarFootprint
     }
   }
