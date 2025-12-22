@@ -11,6 +11,10 @@ interface ContactImportData {
   last_name: string;
   email?: string;
   phone?: string;
+  secondary_email?: string;
+  secondary_phone?: string;
+  additional_emails?: string[];
+  additional_phones?: string[];
   company_name?: string;
   address_street?: string;
   address_city?: string;
@@ -18,7 +22,7 @@ interface ContactImportData {
   address_zip?: string;
   lead_source?: string;
   tags?: string;
-  notes?: string; // Contains secondary addresses, phones, emails from import
+  notes?: string;
 }
 
 interface ContactBulkImportProps {
@@ -67,8 +71,12 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'main email': 'email',
   'home email': 'email',
   'work email': 'email',
+  'email 1 - value': 'email',
+  'person.email': 'email',
+  'skiptrace:email': 'email',
+  'skiptrace:person.email': 'email',
   
-  // Secondary Email variations (stored in notes)
+  // Secondary Email variations
   'email_2': 'secondary_email',
   'email 2': 'secondary_email',
   'email2': 'secondary_email',
@@ -77,6 +85,17 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'alternate email': 'secondary_email',
   'alt email': 'secondary_email',
   'other email': 'secondary_email',
+  'email 2 - value': 'secondary_email',
+  
+  // Additional Emails (3+)
+  'email_3': 'additional_email',
+  'email 3': 'additional_email',
+  'email3': 'additional_email',
+  'email 3 - value': 'additional_email',
+  'email_4': 'additional_email',
+  'email 4': 'additional_email',
+  'email4': 'additional_email',
+  'email 4 - value': 'additional_email',
   
   // Primary Phone variations
   'phone': 'phone',
@@ -99,8 +118,13 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'cell number': 'phone',
   'home phone': 'phone',
   'work phone': 'phone',
+  'phone 1 - value': 'phone',
+  'phone number 1 - value': 'phone',
+  'person.phone': 'phone',
+  'skiptrace:phone': 'phone',
+  'skiptrace:person.phone': 'phone',
   
-  // Secondary Phone variations (stored in notes)
+  // Secondary Phone variations
   'phone_2': 'secondary_phone',
   'phone 2': 'secondary_phone',
   'phone2': 'secondary_phone',
@@ -111,6 +135,20 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'other phone': 'secondary_phone',
   'home phone 2': 'secondary_phone',
   'work phone 2': 'secondary_phone',
+  'phone 2 - value': 'secondary_phone',
+  'phone number 2 - value': 'secondary_phone',
+  
+  // Additional Phones (3+)
+  'phone_3': 'additional_phone',
+  'phone 3': 'additional_phone',
+  'phone3': 'additional_phone',
+  'phone 3 - value': 'additional_phone',
+  'phone number 3 - value': 'additional_phone',
+  'phone_4': 'additional_phone',
+  'phone 4': 'additional_phone',
+  'phone4': 'additional_phone',
+  'phone 4 - value': 'additional_phone',
+  'phone number 4 - value': 'additional_phone',
   
   // Company variations
   'company_name': 'company_name',
@@ -132,11 +170,16 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'address line 1': 'address_street',
   'street_address': 'address_street',
   'primary address': 'address_street',
+  'property address': 'address_street',
+  'property.address': 'address_street',
+  'skiptrace:property.address': 'address_street',
+  'skiptrace:property.address.address': 'address_street',
   
   'address_city': 'address_city',
   'city': 'address_city',
   'city_1': 'address_city',
   'city 1': 'address_city',
+  'property.city': 'address_city',
   
   'address_state': 'address_state',
   'state': 'address_state',
@@ -144,6 +187,7 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'region': 'address_state',
   'state_1': 'address_state',
   'state 1': 'address_state',
+  'property.state': 'address_state',
   
   'address_zip': 'address_zip',
   'zip': 'address_zip',
@@ -156,8 +200,9 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'postalcode': 'address_zip',
   'zip_1': 'address_zip',
   'zip 1': 'address_zip',
+  'property.zip': 'address_zip',
   
-  // Secondary Address variations (stored in notes)
+  // Secondary Address variations (stored in notes - NOT email!)
   'address_2': 'secondary_address',
   'address 2': 'secondary_address',
   'address2': 'secondary_address',
@@ -198,24 +243,51 @@ const COLUMN_MAPPINGS: Record<string, string> = {
 /**
  * Fuzzy match column name if no direct mapping found
  * Checks if column name CONTAINS key terms
+ * IMPORTANT: Excludes 'address' columns from email matching!
  */
-function fuzzyMatchColumn(columnName: string): string | null {
+function fuzzyMatchColumn(columnName: string, existingMappings: Record<string, boolean>): string | null {
   const normalized = columnName.toLowerCase().trim();
   
-  // Check for email (primary first, then secondary)
-  if (normalized.includes('email') || normalized.includes('e-mail') || normalized.includes('mail')) {
+  // Skip columns that contain 'address' - they should NOT match as email!
+  if (normalized.includes('address') || normalized.includes('street') || normalized.includes('mailing')) {
+    return null;
+  }
+  
+  // Skip columns that are clearly metadata/type columns
+  if (normalized.includes('type') || normalized.includes('label') || normalized.includes('status')) {
+    return null;
+  }
+  
+  // Check for email - must contain 'email' or 'e-mail', NOT just 'mail' (which matches 'mailing')
+  if (normalized.includes('email') || normalized.includes('e-mail')) {
+    // Check if it's clearly a 3rd+ email
+    if (normalized.includes('3') || normalized.includes('4') || normalized.includes('5')) {
+      return 'additional_email';
+    }
     // Check if it's clearly a secondary/alternate email
     if (normalized.includes('2') || normalized.includes('secondary') || normalized.includes('alt') || normalized.includes('other')) {
-      return 'secondary_email';
+      return existingMappings['secondary_email'] ? 'additional_email' : 'secondary_email';
+    }
+    // Primary email (if not already mapped)
+    if (existingMappings['email']) {
+      return existingMappings['secondary_email'] ? 'additional_email' : 'secondary_email';
     }
     return 'email';
   }
   
-  // Check for phone/mobile/cell (primary first, then secondary)
+  // Check for phone/mobile/cell
   if (normalized.includes('phone') || normalized.includes('mobile') || normalized.includes('cell') || normalized.includes('tel')) {
+    // Check if it's clearly a 3rd+ phone
+    if (normalized.includes('3') || normalized.includes('4') || normalized.includes('5')) {
+      return 'additional_phone';
+    }
     // Check if it's clearly a secondary/alternate phone
     if (normalized.includes('2') || normalized.includes('secondary') || normalized.includes('alt') || normalized.includes('other')) {
-      return 'secondary_phone';
+      return existingMappings['secondary_phone'] ? 'additional_phone' : 'secondary_phone';
+    }
+    // Primary phone (if not already mapped)
+    if (existingMappings['phone']) {
+      return existingMappings['secondary_phone'] ? 'additional_phone' : 'secondary_phone';
     }
     return 'phone';
   }
@@ -236,7 +308,6 @@ function splitFullName(fullName: string): { firstName: string; lastName: string 
     return { firstName: '', lastName: '' };
   }
   
-  // Split by whitespace
   const parts = trimmed.split(/\s+/).filter(Boolean);
   
   if (parts.length === 0) {
@@ -244,17 +315,13 @@ function splitFullName(fullName: string): { firstName: string; lastName: string 
   }
   
   if (parts.length === 1) {
-    // Just one name - use as first name
     return { firstName: parts[0], lastName: '' };
   }
   
   if (parts.length === 2) {
-    // Standard "First Last" format
     return { firstName: parts[0], lastName: parts[1] };
   }
   
-  // More than 2 parts - assume first word is first name, rest is last name
-  // This handles "Mary Jane Watson" -> "Mary" + "Jane Watson"
   return {
     firstName: parts[0],
     lastName: parts.slice(1).join(' ')
@@ -262,24 +329,12 @@ function splitFullName(fullName: string): { firstName: string; lastName: string 
 }
 
 /**
- * Build additional info notes from secondary data
+ * Build additional info notes from secondary address data
  */
-function buildSecondaryDataNotes(data: Record<string, any>): string {
+function buildSecondaryAddressNotes(data: Record<string, any>): string {
   const lines: string[] = [];
   
-  // Secondary Phone
-  if (data.secondary_phone) {
-    const phone = String(data.secondary_phone).trim();
-    if (phone) lines.push(`Secondary Phone: ${phone}`);
-  }
-  
-  // Secondary Email
-  if (data.secondary_email) {
-    const email = String(data.secondary_email).trim();
-    if (email) lines.push(`Secondary Email: ${email}`);
-  }
-  
-  // Secondary Address
+  // Secondary Address only (phones and emails are now stored in their own columns)
   const secondaryAddressParts: string[] = [];
   if (data.secondary_address) {
     const addr = String(data.secondary_address).trim();
@@ -304,7 +359,7 @@ function buildSecondaryDataNotes(data: Record<string, any>): string {
   
   if (lines.length === 0) return '';
   
-  return `--- Additional Contact Information (from import) ---\n${lines.join('\n')}`;
+  return `--- Additional Information (from import) ---\n${lines.join('\n')}`;
 }
 
 /**
@@ -312,31 +367,59 @@ function buildSecondaryDataNotes(data: Record<string, any>): string {
  */
 function normalizeRow(rawRow: Record<string, any>): ContactImportData {
   const normalized: Record<string, any> = {};
+  const mappedFields: Record<string, boolean> = {};
   let fullName = '';
+  
+  // Collect all emails and phones
+  const allEmails: string[] = [];
+  const allPhones: string[] = [];
   
   // First pass: map columns to normalized names
   for (const [rawKey, value] of Object.entries(rawRow)) {
     const normalizedKey = rawKey.toLowerCase().trim();
+    const valueStr = value ? String(value).trim() : '';
+    
+    if (!valueStr) continue; // Skip empty values
     
     // Try direct mapping first
     let mappedField = COLUMN_MAPPINGS[normalizedKey];
     
     // If no direct mapping, try fuzzy matching
     if (!mappedField) {
-      mappedField = fuzzyMatchColumn(normalizedKey) || undefined;
+      mappedField = fuzzyMatchColumn(normalizedKey, mappedFields) || undefined;
     }
     
     if (mappedField === 'full_name') {
-      fullName = String(value || '').trim();
+      fullName = valueStr;
+    } else if (mappedField === 'email') {
+      allEmails.push(valueStr);
+      mappedFields['email'] = true;
+    } else if (mappedField === 'secondary_email') {
+      allEmails.push(valueStr);
+      mappedFields['secondary_email'] = true;
+    } else if (mappedField === 'additional_email') {
+      allEmails.push(valueStr);
+    } else if (mappedField === 'phone') {
+      allPhones.push(valueStr);
+      mappedFields['phone'] = true;
+    } else if (mappedField === 'secondary_phone') {
+      allPhones.push(valueStr);
+      mappedFields['secondary_phone'] = true;
+    } else if (mappedField === 'additional_phone') {
+      allPhones.push(valueStr);
     } else if (mappedField) {
-      // Only set if we don't already have a value (first match wins for primary fields)
-      if (!normalized[mappedField] || mappedField.startsWith('secondary_')) {
-        normalized[mappedField] = value;
+      // Only set if we don't already have a value (first match wins)
+      if (!normalized[mappedField]) {
+        normalized[mappedField] = valueStr;
       }
     }
   }
   
-  // Second pass: split full name if we don't have explicit first/last names
+  // Deduplicate emails and phones
+  const uniqueEmails = [...new Set(allEmails.filter(e => e && e.includes('@')))];
+  const uniquePhones = [...new Set(allPhones.filter(p => p && p.length >= 7))];
+  
+  // Split full name if we don't have explicit first/last names
   if (fullName && !normalized.first_name && !normalized.last_name) {
     const { firstName, lastName } = splitFullName(fullName);
     normalized.first_name = firstName;
@@ -353,21 +436,25 @@ function normalizeRow(rawRow: Record<string, any>): ContactImportData {
     }
   }
   
-  // Build notes from secondary data
-  const secondaryNotes = buildSecondaryDataNotes(normalized);
+  // Build notes from secondary address data only
+  const secondaryNotes = buildSecondaryAddressNotes(normalized);
   
   return {
     first_name: String(normalized.first_name || '').trim(),
     last_name: String(normalized.last_name || '').trim(),
-    email: normalized.email ? String(normalized.email).trim() : undefined,
-    phone: normalized.phone ? String(normalized.phone).trim() : undefined,
-    company_name: normalized.company_name ? String(normalized.company_name).trim() : undefined,
-    address_street: normalized.address_street ? String(normalized.address_street).trim() : undefined,
-    address_city: normalized.address_city ? String(normalized.address_city).trim() : undefined,
-    address_state: normalized.address_state ? String(normalized.address_state).trim() : undefined,
-    address_zip: normalized.address_zip ? String(normalized.address_zip).trim() : undefined,
-    lead_source: normalized.lead_source ? String(normalized.lead_source).trim() : undefined,
-    tags: normalized.tags ? String(normalized.tags).trim() : undefined,
+    email: uniqueEmails[0] || undefined,
+    phone: uniquePhones[0] || undefined,
+    secondary_email: uniqueEmails[1] || undefined,
+    secondary_phone: uniquePhones[1] || undefined,
+    additional_emails: uniqueEmails.slice(2),
+    additional_phones: uniquePhones.slice(2),
+    company_name: normalized.company_name || undefined,
+    address_street: normalized.address_street || undefined,
+    address_city: normalized.address_city || undefined,
+    address_state: normalized.address_state || undefined,
+    address_zip: normalized.address_zip || undefined,
+    lead_source: normalized.lead_source || undefined,
+    tags: normalized.tags || undefined,
     notes: secondaryNotes || undefined,
   };
 }
@@ -381,6 +468,7 @@ function detectMappedColumns(rawHeaders: string[]): {
 } {
   const mapped: { original: string; mappedTo: string }[] = [];
   const unmatched: string[] = [];
+  const mappedFields: Record<string, boolean> = {};
   
   for (const header of rawHeaders) {
     const normalizedKey = header.toLowerCase().trim();
@@ -388,7 +476,7 @@ function detectMappedColumns(rawHeaders: string[]): {
     
     // Try fuzzy matching if no direct mapping
     if (!mappedField) {
-      mappedField = fuzzyMatchColumn(normalizedKey) || undefined;
+      mappedField = fuzzyMatchColumn(normalizedKey, mappedFields) || undefined;
     }
     
     if (mappedField) {
@@ -396,6 +484,7 @@ function detectMappedColumns(rawHeaders: string[]): {
         original: header,
         mappedTo: mappedField === 'full_name' ? 'first_name + last_name (split)' : mappedField
       });
+      mappedFields[mappedField] = true;
     } else {
       unmatched.push(header);
     }
@@ -471,6 +560,10 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
             last_name: row.last_name || '',
             email: row.email || null,
             phone: row.phone || null,
+            secondary_email: row.secondary_email || null,
+            secondary_phone: row.secondary_phone || null,
+            additional_emails: row.additional_emails?.length ? row.additional_emails : [],
+            additional_phones: row.additional_phones?.length ? row.additional_phones : [],
             company_name: row.company_name || null,
             address_street: row.address_street || null,
             address_city: row.address_city || null,
@@ -511,7 +604,7 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
   };
 
   const downloadTemplate = () => {
-    const csv = "first_name,last_name,email,phone,company_name,address_street,address_city,address_state,address_zip,lead_source,tags\nJohn,Doe,john@example.com,555-123-4567,Acme Corp,123 Main St,Miami,FL,33101,website,\"roofing,residential\"\nJane,Smith,jane@example.com,555-987-6543,,456 Oak Ave,Tampa,FL,33602,referral,commercial";
+    const csv = "first_name,last_name,email,phone,secondary_email,secondary_phone,company_name,address_street,address_city,address_state,address_zip,lead_source,tags\nJohn,Doe,john@example.com,555-123-4567,john.backup@example.com,555-999-8888,Acme Corp,123 Main St,Miami,FL,33101,website,\"roofing,residential\"\nJane,Smith,jane@example.com,555-987-6543,,,,456 Oak Ave,Tampa,FL,33602,referral,commercial";
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -528,13 +621,26 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
     setUnmatchedColumns([]);
   };
 
+  // Count total contact methods for preview
+  const countContactMethods = (row: ContactImportData) => {
+    let emailCount = 0;
+    let phoneCount = 0;
+    if (row.email) emailCount++;
+    if (row.secondary_email) emailCount++;
+    emailCount += row.additional_emails?.length || 0;
+    if (row.phone) phoneCount++;
+    if (row.secondary_phone) phoneCount++;
+    phoneCount += row.additional_phones?.length || 0;
+    return { emailCount, phoneCount };
+  };
+
   return (
     <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>Import Contacts</DialogTitle>
           <DialogDescription>
-            Upload a CSV file to import multiple contacts at once. Column names are automatically detected.
+            Upload a CSV file to import multiple contacts at once. Column names are automatically detected including multiple emails and phone numbers.
           </DialogDescription>
         </DialogHeader>
 
@@ -544,7 +650,7 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
             <div className="text-sm">
               <p className="font-medium">Smart Column Detection:</p>
               <p className="text-muted-foreground">
-                Automatically maps columns like "name", "Name", "Full Name", "firstName", "email address", "phone number", "city", "zip", etc.
+                Automatically maps columns like "name", "email", "phone", "Email 1 - Value", "Phone Number 1 - Value", skip trace data, and more. Multiple emails/phones are captured.
               </p>
             </div>
           </div>
@@ -622,26 +728,37 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
                       <th className="px-3 py-2 text-left whitespace-nowrap">Email</th>
                       <th className="px-3 py-2 text-left whitespace-nowrap">Phone</th>
                       <th className="px-3 py-2 text-left whitespace-nowrap">City</th>
-                      <th className="px-3 py-2 text-left whitespace-nowrap">Additional Info</th>
+                      <th className="px-3 py-2 text-left whitespace-nowrap">Contact Info</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {preview.map((row, i) => (
-                      <tr key={i} className="border-t">
-                        <td className="px-3 py-2">{row.first_name || '-'}</td>
-                        <td className="px-3 py-2">{row.last_name || '-'}</td>
-                        <td className="px-3 py-2 max-w-[150px] truncate" title={row.email}>{row.email || '-'}</td>
-                        <td className="px-3 py-2">{row.phone || '-'}</td>
-                        <td className="px-3 py-2">{row.address_city || '-'}</td>
-                        <td className="px-3 py-2">
-                          {row.notes ? (
-                            <span className="text-xs text-muted-foreground" title={row.notes}>
-                              ✓ Has secondary data
-                            </span>
-                          ) : '-'}
-                        </td>
-                      </tr>
-                    ))}
+                    {preview.map((row, i) => {
+                      const { emailCount, phoneCount } = countContactMethods(row);
+                      return (
+                        <tr key={i} className="border-t">
+                          <td className="px-3 py-2">{row.first_name || '-'}</td>
+                          <td className="px-3 py-2">{row.last_name || '-'}</td>
+                          <td className="px-3 py-2 max-w-[150px] truncate" title={row.email}>{row.email || '-'}</td>
+                          <td className="px-3 py-2">{row.phone || '-'}</td>
+                          <td className="px-3 py-2">{row.address_city || '-'}</td>
+                          <td className="px-3 py-2">
+                            <div className="flex gap-2">
+                              {emailCount > 1 && (
+                                <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
+                                  {emailCount} emails
+                                </span>
+                              )}
+                              {phoneCount > 1 && (
+                                <span className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 rounded">
+                                  {phoneCount} phones
+                                </span>
+                              )}
+                              {emailCount <= 1 && phoneCount <= 1 && '-'}
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>

@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { useForm } from 'react-hook-form';
+import { useForm, useFieldArray } from 'react-hook-form';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -19,7 +18,9 @@ import {
   Calendar,
   Star,
   Tag,
-  Briefcase
+  Briefcase,
+  Plus,
+  Trash2
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -28,6 +29,25 @@ import { HomeownerPortalAccess } from "./HomeownerPortalAccess";
 interface ContactDetailsTabProps {
   contact: any;
   onContactUpdate: (updatedContact: any) => void;
+}
+
+interface FormData {
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone: string;
+  secondary_email: string;
+  secondary_phone: string;
+  additional_emails: { value: string }[];
+  additional_phones: { value: string }[];
+  company_name: string;
+  address_street: string;
+  address_city: string;
+  address_state: string;
+  address_zip: string;
+  notes: string;
+  lead_source: string;
+  tags: string;
 }
 
 export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({ 
@@ -65,12 +85,16 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
     }
   };
 
-  const form = useForm({
+  const form = useForm<FormData>({
     defaultValues: {
       first_name: contact?.first_name || '',
       last_name: contact?.last_name || '',
       email: contact?.email || '',
       phone: contact?.phone || '',
+      secondary_email: contact?.secondary_email || '',
+      secondary_phone: contact?.secondary_phone || '',
+      additional_emails: (contact?.additional_emails || []).map((e: string) => ({ value: e })),
+      additional_phones: (contact?.additional_phones || []).map((p: string) => ({ value: p })),
       company_name: contact?.company_name || '',
       address_street: contact?.address_street || '',
       address_city: contact?.address_city || '',
@@ -82,14 +106,40 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
     }
   });
 
-  const onSubmit = async (data: any) => {
+  const { fields: emailFields, append: appendEmail, remove: removeEmail } = useFieldArray({
+    control: form.control,
+    name: 'additional_emails'
+  });
+
+  const { fields: phoneFields, append: appendPhone, remove: removePhone } = useFieldArray({
+    control: form.control,
+    name: 'additional_phones'
+  });
+
+  const onSubmit = async (data: FormData) => {
     try {
+      const updateData = {
+        first_name: data.first_name,
+        last_name: data.last_name,
+        email: data.email || null,
+        phone: data.phone || null,
+        secondary_email: data.secondary_email || null,
+        secondary_phone: data.secondary_phone || null,
+        additional_emails: data.additional_emails.map(e => e.value).filter(v => v.trim()),
+        additional_phones: data.additional_phones.map(p => p.value).filter(v => v.trim()),
+        company_name: data.company_name || null,
+        address_street: data.address_street || null,
+        address_city: data.address_city || null,
+        address_state: data.address_state || null,
+        address_zip: data.address_zip || null,
+        notes: data.notes || null,
+        lead_source: data.lead_source || null,
+        tags: data.tags ? data.tags.split(',').map((tag: string) => tag.trim()) : []
+      };
+
       const { error } = await supabase
         .from('contacts')
-        .update({
-          ...data,
-          tags: data.tags ? data.tags.split(',').map((tag: string) => tag.trim()) : []
-        })
+        .update(updateData)
         .eq('id', contact.id);
 
       if (error) throw error;
@@ -99,7 +149,7 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
         description: "Contact updated successfully",
       });
 
-      onContactUpdate({ ...contact, ...data });
+      onContactUpdate({ ...contact, ...updateData });
       setIsEditing(false);
     } catch (error) {
       console.error('Error updating contact:', error);
@@ -121,6 +171,19 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
     ].filter(Boolean);
     return parts.join(', ') || 'No address available';
   };
+
+  // Gather all emails and phones for display
+  const allEmails = [
+    contact?.email,
+    contact?.secondary_email,
+    ...(contact?.additional_emails || [])
+  ].filter(Boolean);
+
+  const allPhones = [
+    contact?.phone,
+    contact?.secondary_phone,
+    ...(contact?.additional_phones || [])
+  ].filter(Boolean);
 
   return (
     <div className="space-y-6">
@@ -270,35 +333,161 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
                       </FormItem>
                     )}
                   />
+                </div>
+
+                {/* Email Section */}
+                <div className="space-y-3">
+                  <FormLabel className="text-sm font-medium flex items-center gap-2">
+                    <Mail className="h-4 w-4" />
+                    Email Addresses
+                  </FormLabel>
                   
-                  <FormField
-                    control={form.control}
-                    name="email"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Email</FormLabel>
-                        <FormControl>
-                          <Input type="email" {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <div className="relative">
+                              <Input type="email" placeholder="Primary email" {...field} />
+                              <Badge className="absolute right-2 top-1/2 -translate-y-1/2 text-xs" variant="secondary">Primary</Badge>
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="secondary_email"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <Input type="email" placeholder="Secondary email" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  {emailFields.map((field, index) => (
+                    <div key={field.id} className="flex gap-2">
+                      <FormField
+                        control={form.control}
+                        name={`additional_emails.${index}.value`}
+                        render={({ field }) => (
+                          <FormItem className="flex-1">
+                            <FormControl>
+                              <Input type="email" placeholder={`Additional email ${index + 1}`} {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removeEmail(index)}
+                        className="text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => appendEmail({ value: '' })}
+                    className="w-full"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Email
+                  </Button>
+                </div>
+
+                {/* Phone Section */}
+                <div className="space-y-3">
+                  <FormLabel className="text-sm font-medium flex items-center gap-2">
+                    <Phone className="h-4 w-4" />
+                    Phone Numbers
+                  </FormLabel>
                   
-                  <FormField
-                    control={form.control}
-                    name="phone"
-                    render={({ field }) => (
-                      <FormItem>
-                        <FormLabel>Phone</FormLabel>
-                        <FormControl>
-                          <Input {...field} />
-                        </FormControl>
-                        <FormMessage />
-                      </FormItem>
-                    )}
-                  />
-                  
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <FormField
+                      control={form.control}
+                      name="phone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <div className="relative">
+                              <Input placeholder="Primary phone" {...field} />
+                              <Badge className="absolute right-2 top-1/2 -translate-y-1/2 text-xs" variant="secondary">Primary</Badge>
+                            </div>
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                    
+                    <FormField
+                      control={form.control}
+                      name="secondary_phone"
+                      render={({ field }) => (
+                        <FormItem>
+                          <FormControl>
+                            <Input placeholder="Secondary phone" {...field} />
+                          </FormControl>
+                          <FormMessage />
+                        </FormItem>
+                      )}
+                    />
+                  </div>
+
+                  {phoneFields.map((field, index) => (
+                    <div key={field.id} className="flex gap-2">
+                      <FormField
+                        control={form.control}
+                        name={`additional_phones.${index}.value`}
+                        render={({ field }) => (
+                          <FormItem className="flex-1">
+                            <FormControl>
+                              <Input placeholder={`Additional phone ${index + 1}`} {...field} />
+                            </FormControl>
+                            <FormMessage />
+                          </FormItem>
+                        )}
+                      />
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => removePhone(index)}
+                        className="text-destructive"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    </div>
+                  ))}
+
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => appendPhone({ value: '' })}
+                    className="w-full"
+                  >
+                    <Plus className="h-4 w-4 mr-2" />
+                    Add Phone
+                  </Button>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <FormField
                     control={form.control}
                     name="company_name"
@@ -438,22 +627,42 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
                     </div>
                   </div>
 
-                  {contact?.email && (
-                    <div className="flex items-center gap-3">
-                      <Mail className="h-5 w-5 text-muted-foreground" />
-                      <div>
-                        <p className="text-sm text-muted-foreground">Email</p>
-                        <p className="font-medium">{contact.email}</p>
+                  {/* Email Display - Show all emails */}
+                  {allEmails.length > 0 && (
+                    <div className="flex items-start gap-3">
+                      <Mail className="h-5 w-5 text-muted-foreground mt-1" />
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground">
+                          Email{allEmails.length > 1 ? 's' : ''}
+                        </p>
+                        {allEmails.map((email, index) => (
+                          <div key={index} className="flex items-center gap-2">
+                            <p className="font-medium">{email}</p>
+                            {index === 0 && allEmails.length > 1 && (
+                              <Badge variant="secondary" className="text-xs">Primary</Badge>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
 
-                  {contact?.phone && (
-                    <div className="flex items-center gap-3">
-                      <Phone className="h-5 w-5 text-muted-foreground" />
-                      <div>
-                        <p className="text-sm text-muted-foreground">Phone</p>
-                        <p className="font-medium">{contact.phone}</p>
+                  {/* Phone Display - Show all phones */}
+                  {allPhones.length > 0 && (
+                    <div className="flex items-start gap-3">
+                      <Phone className="h-5 w-5 text-muted-foreground mt-1" />
+                      <div className="space-y-1">
+                        <p className="text-sm text-muted-foreground">
+                          Phone{allPhones.length > 1 ? 's' : ''}
+                        </p>
+                        {allPhones.map((phone, index) => (
+                          <div key={index} className="flex items-center gap-2">
+                            <p className="font-medium">{phone}</p>
+                            {index === 0 && allPhones.length > 1 && (
+                              <Badge variant="secondary" className="text-xs">Primary</Badge>
+                            )}
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -483,22 +692,20 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
                       <p className="text-sm text-muted-foreground mb-2">Tags</p>
                       <div className="flex flex-wrap gap-2">
                         {contact.tags.map((tag: string, index: number) => (
-                          <Badge key={index} variant="secondary" className="text-xs">
-                            {tag}
-                          </Badge>
+                          <Badge key={index} variant="outline">{tag}</Badge>
                         ))}
                       </div>
                     </div>
                   )}
+
+                  {contact?.notes && (
+                    <div>
+                      <p className="text-sm text-muted-foreground mb-2">Notes</p>
+                      <p className="text-sm whitespace-pre-wrap">{contact.notes}</p>
+                    </div>
+                  )}
                 </div>
               </div>
-
-              {contact?.notes && (
-                <div className="pt-4 border-t">
-                  <p className="text-sm text-muted-foreground mb-2">Notes</p>
-                  <p className="text-sm bg-muted/50 p-3 rounded-md">{contact.notes}</p>
-                </div>
-              )}
             </div>
           )}
         </CardContent>
