@@ -14,7 +14,7 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, MapPin, Check, AlertCircle, Loader2, Users } from "lucide-react";
+import { Plus, MapPin, Check, AlertCircle, Loader2, Users, X } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
@@ -42,6 +42,7 @@ interface SalesRep {
   id: string;
   first_name: string;
   last_name: string;
+  role?: string;
 }
 
 export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
@@ -143,7 +144,8 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
           name: `${contact.first_name || ''} ${contact.last_name || ''}`.trim(),
           phone: contact.phone || "",
           address: fullAddress,
-          useSameInfo: true
+          useSameInfo: true,
+          assignedTo: contact.assigned_to ? [contact.assigned_to] : []
         };
         
         // Trigger address verification if address exists
@@ -199,13 +201,36 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
 
       if (!profile?.tenant_id) return;
 
-      const { data: profiles, error } = await supabase
+      // First, try to get the contact's location
+      let locationId = contact?.location_id;
+      
+      // If contact has location, filter reps by location assignments
+      let repIds: string[] = [];
+      if (locationId) {
+        const { data: locationAssignments } = await supabase
+          .from('user_location_assignments')
+          .select('user_id')
+          .eq('location_id', locationId)
+          .eq('is_active', true);
+        
+        repIds = (locationAssignments || []).map(a => a.user_id);
+      }
+
+      // Build query for profiles
+      let query = supabase
         .from('profiles')
         .select('id, first_name, last_name, role')
         .eq('tenant_id', profile.tenant_id)
         .in('role', ['sales_manager', 'regional_manager', 'corporate', 'master', 'owner', 'project_manager', 'office_admin'])
         .eq('is_active', true)
         .order('first_name');
+
+      // If we have location-based rep IDs, filter by them
+      if (locationId && repIds.length > 0) {
+        query = query.in('id', repIds);
+      }
+
+      const { data: profiles, error } = await query;
 
       if (error) throw error;
       setSalesReps(profiles || []);
@@ -285,23 +310,33 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
     setShowAddressPicker(false);
   };
 
-  const handleSalesRepToggle = (repId: string) => {
+  const handleAddRep = (repId: string) => {
+    if (formData.assignedTo.length < 2 && !formData.assignedTo.includes(repId)) {
+      setFormData(prev => ({
+        ...prev,
+        assignedTo: [...prev.assignedTo, repId]
+      }));
+    }
+  };
+
+  const handleRemoveRep = (repId: string) => {
     setFormData(prev => ({
       ...prev,
-      assignedTo: prev.assignedTo.includes(repId)
-        ? prev.assignedTo.filter(id => id !== repId)
-        : [...prev.assignedTo, repId]
+      assignedTo: prev.assignedTo.filter(id => id !== repId)
     }));
   };
 
-  // Enhanced validation with illumination logic
+  // Enhanced validation with illumination logic - must match validateForm requirements
   const isFormValid = React.useMemo(() => {
+    const roofAgeNum = parseInt(formData.roofAge);
     const valid = (
       formData.name.trim() !== "" &&
       formData.phone.trim() !== "" &&
       selectedAddress !== null &&
-      formData.status !== ""
-      // Sales rep assignment is now optional - auto-assigns to creator
+      formData.status !== "" &&
+      formData.roofAge !== "" &&
+      formData.roofType !== "" &&
+      !isNaN(roofAgeNum) && roofAgeNum >= 0 && roofAgeNum <= 100
     );
     
     return valid;
@@ -724,26 +759,55 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
             </div>
           )}
 
-          {/* Sales Rep Selection */}
+          {/* Sales Rep Selection - Dropdown with Chips, Max 2 */}
           <div>
-            <Label className="flex items-center gap-2">
+            <Label className="flex items-center gap-2 mb-2">
               <Users className="h-4 w-4" />
-              Assign Sales Representatives
+              Assign Sales Representatives (up to 2)
             </Label>
-            <div className="grid grid-cols-2 gap-2 mt-2">
-              {salesReps.map(rep => (
-                <div key={rep.id} className="flex items-center space-x-2">
-                  <Checkbox
-                    id={`rep-${rep.id}`}
-                    checked={formData.assignedTo.includes(rep.id)}
-                    onCheckedChange={() => handleSalesRepToggle(rep.id)}
-                  />
-                  <Label htmlFor={`rep-${rep.id}`} className="text-sm">
-                    {rep.first_name} {rep.last_name}
-                  </Label>
-                </div>
-              ))}
-            </div>
+            
+            {/* Show selected reps as chips */}
+            {formData.assignedTo.length > 0 && (
+              <div className="flex flex-wrap gap-2 mb-2">
+                {formData.assignedTo.map(repId => {
+                  const rep = salesReps.find(r => r.id === repId);
+                  return rep ? (
+                    <Badge key={repId} variant="secondary" className="flex items-center gap-1 py-1 px-2">
+                      {rep.first_name} {rep.last_name}
+                      <X 
+                        className="h-3 w-3 cursor-pointer hover:text-destructive" 
+                        onClick={() => handleRemoveRep(repId)}
+                      />
+                    </Badge>
+                  ) : null;
+                })}
+              </div>
+            )}
+            
+            {/* Dropdown to add reps (max 2) */}
+            {formData.assignedTo.length < 2 && (
+              <Select onValueChange={handleAddRep} value="">
+                <SelectTrigger>
+                  <SelectValue placeholder={formData.assignedTo.length === 0 ? "Select sales representative..." : "Add another rep..."} />
+                </SelectTrigger>
+                <SelectContent>
+                  {salesReps
+                    .filter(rep => !formData.assignedTo.includes(rep.id))
+                    .map(rep => (
+                      <SelectItem key={rep.id} value={rep.id}>
+                        {rep.first_name} {rep.last_name}
+                      </SelectItem>
+                    ))}
+                  {salesReps.filter(rep => !formData.assignedTo.includes(rep.id)).length === 0 && (
+                    <div className="px-2 py-1.5 text-sm text-muted-foreground">No available reps</div>
+                  )}
+                </SelectContent>
+              </Select>
+            )}
+            
+            {formData.assignedTo.length === 2 && (
+              <p className="text-xs text-muted-foreground mt-1">Maximum 2 representatives assigned</p>
+            )}
           </div>
 
           <div>
