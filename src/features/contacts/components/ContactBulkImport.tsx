@@ -1,10 +1,12 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Upload, FileText, AlertCircle, CheckCircle2 } from "lucide-react";
+import { Upload, FileText, AlertCircle, CheckCircle2, MapPin } from "lucide-react";
 import Papa from "papaparse";
 import { supabase } from "@/integrations/supabase/client";
+import { useLocation } from "@/contexts/LocationContext";
 
 interface ContactImportData {
   first_name: string;
@@ -565,6 +567,7 @@ function detectMappedColumns(rawHeaders: string[]): {
 }
 
 export function ContactBulkImport({ open, onOpenChange, onImportComplete, currentLocationId }: ContactBulkImportProps) {
+  const { currentLocation } = useLocation();
   const [importing, setImporting] = useState(false);
   const [importProgress, setImportProgress] = useState<string>('');
   const [preview, setPreview] = useState<ContactImportData[]>([]);
@@ -760,9 +763,31 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>Import Contacts</DialogTitle>
+          <DialogTitle className="flex items-center gap-2">
+            Import Contacts
+            {currentLocation ? (
+              <Badge variant="secondary" className="ml-2 font-normal">
+                <MapPin className="h-3 w-3 mr-1" />
+                {currentLocation.name}
+              </Badge>
+            ) : (
+              <Badge variant="outline" className="ml-2 font-normal text-amber-600 border-amber-300">
+                <AlertCircle className="h-3 w-3 mr-1" />
+                All Locations
+              </Badge>
+            )}
+          </DialogTitle>
           <DialogDescription>
-            Upload a CSV file to import multiple contacts at once. Column names are automatically detected including multiple emails and phone numbers.
+            Upload a CSV file to import multiple contacts at once.
+            {currentLocation ? (
+              <span className="block mt-1 text-primary font-medium">
+                Contacts will be imported to: {currentLocation.name}
+              </span>
+            ) : (
+              <span className="block mt-1 text-amber-600 font-medium">
+                ⚠️ No location selected. Contacts will be imported without a location assignment.
+              </span>
+            )}
           </DialogDescription>
         </DialogHeader>
 
