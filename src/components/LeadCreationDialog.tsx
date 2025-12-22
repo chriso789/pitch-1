@@ -289,8 +289,14 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
           })
         );
 
-        setAddressSuggestions(detailedSuggestions.filter(Boolean));
+        const validSuggestions = detailedSuggestions.filter(Boolean);
+        setAddressSuggestions(validSuggestions);
         setShowAddressPicker(true);
+        
+        // Auto-select first suggestion when pre-filling from a contact
+        if (validSuggestions.length > 0 && contact) {
+          setSelectedAddress(validSuggestions[0]);
+        }
       }
     } catch (error) {
       console.error('Address verification error:', error);
@@ -716,8 +722,12 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
                 id="address"
                 value={formData.address}
                 onChange={(e) => {
-                  setFormData(prev => ({ ...prev, address: e.target.value }));
-                  setSelectedAddress(null);
+                  const newAddress = e.target.value;
+                  setFormData(prev => ({ ...prev, address: newAddress }));
+                  // Only clear selectedAddress if user typed something different
+                  if (selectedAddress && newAddress !== selectedAddress.formatted_address) {
+                    setSelectedAddress(null);
+                  }
                 }}
                 placeholder="Start typing address..."
                 disabled={formData.useSameInfo}
