@@ -329,15 +329,32 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
   // Enhanced validation with illumination logic - must match validateForm requirements
   const isFormValid = React.useMemo(() => {
     const roofAgeNum = parseInt(formData.roofAge);
-    const valid = (
-      formData.name.trim() !== "" &&
-      formData.phone.trim() !== "" &&
-      selectedAddress !== null &&
-      formData.status !== "" &&
-      formData.roofAge !== "" &&
-      formData.roofType !== "" &&
-      !isNaN(roofAgeNum) && roofAgeNum >= 0 && roofAgeNum <= 100
-    );
+    
+    // Debug each validation condition individually
+    const checks = {
+      name: formData.name.trim() !== "",
+      phone: formData.phone.trim() !== "",
+      selectedAddress: selectedAddress !== null,
+      status: formData.status !== "",
+      roofAge: formData.roofAge !== "",
+      roofType: formData.roofType !== "",
+      roofAgeValid: !isNaN(roofAgeNum) && roofAgeNum >= 0 && roofAgeNum <= 100
+    };
+    
+    console.log('🔍 Form Validation Debug:', {
+      checks,
+      values: {
+        name: `"${formData.name}"`,
+        phone: `"${formData.phone}"`,
+        roofAge: `"${formData.roofAge}"`,
+        roofType: `"${formData.roofType}"`,
+        status: `"${formData.status}"`,
+        hasSelectedAddress: !!selectedAddress
+      }
+    });
+    
+    const valid = Object.values(checks).every(Boolean);
+    console.log('✅ isFormValid:', valid);
     
     return valid;
   }, [formData, selectedAddress]);
