@@ -179,11 +179,57 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
     ...(contact?.additional_emails || [])
   ].filter(Boolean);
 
-  const allPhones = [
+  // Helper to format phone numbers
+  const formatPhoneNumber = (phone: string): string => {
+    const cleaned = String(phone).replace(/\D/g, '');
+    if (cleaned.length === 10) {
+      return `(${cleaned.slice(0, 3)}) ${cleaned.slice(3, 6)}-${cleaned.slice(6)}`;
+    }
+    if (cleaned.length === 11 && cleaned.startsWith('1')) {
+      return `(${cleaned.slice(1, 4)}) ${cleaned.slice(4, 7)}-${cleaned.slice(7)}`;
+    }
+    return phone;
+  };
+
+  // Helper to check if a string is a valid phone number (7-15 digits)
+  const isValidPhone = (item: any): boolean => {
+    const numericOnly = String(item).replace(/\D/g, '');
+    return numericOnly.length >= 7 && numericOnly.length <= 15;
+  };
+
+  // Known landline carriers to detect
+  const landlineCarriers = ['BELL', 'FRONTIER', 'AT&T', 'VERIZON', 'CENTURYLINK', 'WINDSTREAM', 'CONSOLIDATED', 'EMBARQ'];
+
+  // Parse and clean phone data - filter out carrier names and dates
+  const rawPhoneData = [
     contact?.phone,
     contact?.secondary_phone,
     ...(contact?.additional_phones || [])
   ].filter(Boolean);
+
+  // Detect if a phone number is a landline based on adjacent carrier info
+  const detectLandline = (phone: string): boolean => {
+    const phoneIndex = rawPhoneData.indexOf(phone);
+    const surrounding = rawPhoneData.slice(Math.max(0, phoneIndex - 2), phoneIndex + 3);
+    return surrounding.some(item => 
+      typeof item === 'string' && 
+      landlineCarriers.some(carrier => String(item).toUpperCase().includes(carrier))
+    );
+  };
+
+  // Filter to only valid phone numbers and add metadata
+  const parsedPhones = rawPhoneData
+    .filter(isValidPhone)
+    .map((phone, index) => ({
+      number: formatPhoneNumber(String(phone)),
+      raw: String(phone),
+      isLandline: detectLandline(String(phone)),
+      isPrimary: index === 0
+    }))
+    // Remove duplicates based on raw number
+    .filter((phone, index, arr) => 
+      arr.findIndex(p => p.raw.replace(/\D/g, '') === phone.raw.replace(/\D/g, '')) === index
+    );
 
   return (
     <div className="space-y-6">
@@ -647,19 +693,24 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
                     </div>
                   )}
 
-                  {/* Phone Display - Show all phones */}
-                  {allPhones.length > 0 && (
+                  {/* Phone Display - Show only valid phone numbers */}
+                  {parsedPhones.length > 0 && (
                     <div className="flex items-start gap-3">
                       <Phone className="h-5 w-5 text-muted-foreground mt-1" />
                       <div className="space-y-1">
                         <p className="text-sm text-muted-foreground">
-                          Phone{allPhones.length > 1 ? 's' : ''}
+                          Phone{parsedPhones.length > 1 ? 's' : ''}
                         </p>
-                        {allPhones.map((phone, index) => (
+                        {parsedPhones.map((phone, index) => (
                           <div key={index} className="flex items-center gap-2">
-                            <p className="font-medium">{phone}</p>
-                            {index === 0 && allPhones.length > 1 && (
-                              <Badge variant="secondary" className="text-xs">Primary</Badge>
+                            <p className="font-medium">{phone.number}</p>
+                            {phone.isPrimary && parsedPhones.length > 1 && (
+                              <Badge className="text-xs bg-orange-500 hover:bg-orange-600">Primary</Badge>
+                            )}
+                            {phone.isLandline && (
+                              <Badge variant="outline" className="text-xs text-green-600 border-green-600">
+                                Landline ✓
+                              </Badge>
                             )}
                           </div>
                         ))}
