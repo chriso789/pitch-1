@@ -3533,6 +3533,39 @@ export type Database = {
         }
         Relationships: []
       }
+      contact_renumber_audit: {
+        Row: {
+          contact_id: string
+          id: string
+          migrated_at: string | null
+          new_clj_formatted: string | null
+          new_contact_number: string | null
+          old_clj_formatted: string | null
+          old_contact_number: string | null
+          table_name: string
+        }
+        Insert: {
+          contact_id: string
+          id?: string
+          migrated_at?: string | null
+          new_clj_formatted?: string | null
+          new_contact_number?: string | null
+          old_clj_formatted?: string | null
+          old_contact_number?: string | null
+          table_name?: string
+        }
+        Update: {
+          contact_id?: string
+          id?: string
+          migrated_at?: string | null
+          new_clj_formatted?: string | null
+          new_contact_number?: string | null
+          old_clj_formatted?: string | null
+          old_contact_number?: string | null
+          table_name?: string
+        }
+        Relationships: []
+      }
       contacts: {
         Row: {
           acquisition_cost: number | null
