@@ -66,7 +66,24 @@ export function RoofrStyleReportPreview({
         
         const { data, error } = await supabase
           .from('roof_measurements')
-          .select('perimeter_wkt, linear_features_wkt, property_address')
+          .select(`
+            id,
+            facet_count,
+            total_area_flat_sqft,
+            total_area_adjusted_sqft,
+            predominant_pitch,
+            measurement_confidence,
+            roof_type,
+            complexity_rating,
+            total_eave_length,
+            total_rake_length,
+            total_hip_length,
+            total_valley_length,
+            total_ridge_length,
+            perimeter_wkt,
+            linear_features_wkt,
+            property_address
+          `)
           .ilike('property_address', `%${normalizedAddress}%`)
           .order('created_at', { ascending: false })
           .limit(1)
@@ -79,7 +96,10 @@ export function RoofrStyleReportPreview({
         
         if (data) {
           const wktFeatures = data.linear_features_wkt as any[];
-          console.log('📐 Fetched roof_measurements with WKT:', {
+          console.log('📐 Fetched roof_measurements with full data:', {
+            id: data.id,
+            facet_count: data.facet_count,
+            total_area: data.total_area_adjusted_sqft,
             perimeter_wkt: (data.perimeter_wkt as string)?.substring(0, 50),
             linear_features_wkt: wktFeatures?.length || 0,
             property_address: data.property_address,
@@ -96,12 +116,27 @@ export function RoofrStyleReportPreview({
     }
   }, [open, address]);
   
-  // Merge measurement with WKT data from roof_measurements
+  // Merge measurement with full data from roof_measurements DB
   const enrichedMeasurement = useMemo(() => {
     if (!roofMeasurementData) return measurement;
     
     return {
       ...measurement,
+      // Core data from DB - this is the source of truth
+      facet_count: roofMeasurementData.facet_count,
+      total_area_flat_sqft: roofMeasurementData.total_area_flat_sqft,
+      total_area_adjusted_sqft: roofMeasurementData.total_area_adjusted_sqft,
+      predominant_pitch: roofMeasurementData.predominant_pitch,
+      measurement_confidence: roofMeasurementData.measurement_confidence,
+      roof_type: roofMeasurementData.roof_type,
+      complexity_rating: roofMeasurementData.complexity_rating,
+      // Linear measurements from DB
+      total_eave_length: roofMeasurementData.total_eave_length,
+      total_rake_length: roofMeasurementData.total_rake_length,
+      total_hip_length: roofMeasurementData.total_hip_length,
+      total_valley_length: roofMeasurementData.total_valley_length,
+      total_ridge_length: roofMeasurementData.total_ridge_length,
+      // WKT geometry
       perimeter_wkt: roofMeasurementData.perimeter_wkt || measurement?.perimeter_wkt,
       linear_features_wkt: roofMeasurementData.linear_features_wkt || measurement?.linear_features_wkt,
     };
@@ -151,48 +186,52 @@ export function RoofrStyleReportPreview({
   const wktLinearTotals = calculateLinearFromWKT();
   const hasWKTData = Object.values(wktLinearTotals).some(v => v > 0);
   
-  // Extract measurement data - prioritize database columns over legacy fallbacks
-  const totalArea = measurement?.total_area_adjusted_sqft || 
-                    measurement?.total_area_flat_sqft ||
+  // Extract measurement data - prioritize enrichedMeasurement (DB truth) over legacy fallbacks
+  const totalArea = enrichedMeasurement?.total_area_adjusted_sqft || 
+                    enrichedMeasurement?.total_area_flat_sqft ||
                     measurement?.summary?.total_area_sqft || 
                     tags?.['roof.total_area'] || 
                     tags?.['roof.plan_area'] || 
                     measurement?.total_area_sqft || 0;
   const totalSquares = (totalArea / 100).toFixed(1);
-  const pitch = measurement?.predominant_pitch || 
+  const pitch = enrichedMeasurement?.predominant_pitch || 
                 measurement?.summary?.pitch || 
                 tags?.['roof.pitch'] || '6/12';
-  const facetCount = measurement?.facet_count || 
+  
+  // CRITICAL: Facet count from database is the source of truth
+  const facetCount = enrichedMeasurement?.facet_count || 
+                     roofMeasurementData?.facet_count ||
+                     measurement?.facet_count || 
                      measurement?.faces?.length || 
                      tags?.['roof.faces_count'] || 
-                     measurement?.facetCount || 1;
+                     measurement?.facetCount || 4; // Default to 4 (typical residential hip roof)
   
-  // Linear features - prioritize WKT-derived, then database columns, then legacy sources
-  const eaves = hasWKTData ? wktLinearTotals.eave : 
-                (measurement?.total_eave_length || 
-                 measurement?.summary?.eave_ft || 
-                 tags?.['lf.eave'] || 
-                 measurement?.linear_features?.eave || 0);
-  const rakes = hasWKTData ? wktLinearTotals.rake :
-                (measurement?.total_rake_length ||
-                 measurement?.summary?.rake_ft || 
-                 tags?.['lf.rake'] || 
-                 measurement?.linear_features?.rake || 0);
-  const ridges = hasWKTData ? wktLinearTotals.ridge :
-                 (measurement?.total_ridge_length ||
-                  measurement?.summary?.ridge_ft || 
-                  tags?.['lf.ridge'] || 
-                  measurement?.linear_features?.ridge || 0);
-  const hips = hasWKTData ? wktLinearTotals.hip :
-               (measurement?.total_hip_length ||
-                measurement?.summary?.hip_ft || 
-                tags?.['lf.hip'] || 
-                measurement?.linear_features?.hip || 0);
-  const valleys = hasWKTData ? wktLinearTotals.valley :
-                  (measurement?.total_valley_length ||
-                   measurement?.summary?.valley_ft || 
-                   tags?.['lf.valley'] || 
-                   measurement?.linear_features?.valley || 0);
+  // Linear features - prioritize DB columns (enrichedMeasurement), then WKT-derived, then legacy
+  const eaves = enrichedMeasurement?.total_eave_length || 
+                (hasWKTData ? wktLinearTotals.eave : 
+                 (measurement?.summary?.eave_ft || 
+                  tags?.['lf.eave'] || 
+                  measurement?.linear_features?.eave || 0));
+  const rakes = enrichedMeasurement?.total_rake_length ||
+                (hasWKTData ? wktLinearTotals.rake :
+                 (measurement?.summary?.rake_ft || 
+                  tags?.['lf.rake'] || 
+                  measurement?.linear_features?.rake || 0));
+  const ridges = enrichedMeasurement?.total_ridge_length ||
+                 (hasWKTData ? wktLinearTotals.ridge :
+                  (measurement?.summary?.ridge_ft || 
+                   tags?.['lf.ridge'] || 
+                   measurement?.linear_features?.ridge || 0));
+  const hips = enrichedMeasurement?.total_hip_length ||
+               (hasWKTData ? wktLinearTotals.hip :
+                (measurement?.summary?.hip_ft || 
+                 tags?.['lf.hip'] || 
+                 measurement?.linear_features?.hip || 0));
+  const valleys = enrichedMeasurement?.total_valley_length ||
+                  (hasWKTData ? wktLinearTotals.valley :
+                   (measurement?.summary?.valley_ft || 
+                    tags?.['lf.valley'] || 
+                    measurement?.linear_features?.valley || 0));
   const stepFlashing = tags?.['lf.step'] || measurement?.linear_features?.step || 0;
   
   console.log('📐 Linear measurements:', { eaves, rakes, ridges, hips, valleys, hasWKTData });
@@ -275,7 +314,7 @@ export function RoofrStyleReportPreview({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-4xl max-h-[85vh] p-0 overflow-hidden">
+      <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden flex flex-col">
         <DialogHeader className="p-4 border-b flex-row items-center justify-between">
           <div className="flex items-center gap-3">
             <FileText className="h-5 w-5 text-primary" />
@@ -335,8 +374,8 @@ export function RoofrStyleReportPreview({
           </div>
 
           {/* Report Content */}
-          <ScrollArea className="flex-1 h-[calc(85vh-140px)]">
-            <div className="p-6 pb-16" id="roofr-report-content" ref={scrollRef}>
+          <ScrollArea className="flex-1 h-[calc(90vh-180px)]">
+            <div className="p-6 pb-24" id="roofr-report-content" ref={scrollRef}>
               {/* Page 1: Cover */}
               {currentPage === 1 && (
                 <ReportPage 

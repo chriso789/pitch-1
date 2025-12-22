@@ -1,5 +1,6 @@
-import { useMemo } from 'react';
+import { useMemo, useEffect, useState } from 'react';
 import { wktLineToLatLngs, wktPolygonToLatLngs } from '@/lib/canvassiq/wkt';
+import { supabase } from '@/integrations/supabase/client';
 
 // Roofr exact color palette
 const FEATURE_COLORS = {
@@ -12,6 +13,18 @@ const FEATURE_COLORS = {
   perimeter: '#343A40', // Dark outline
 };
 
+// Facet color palette - distinct colors for each facet
+const FACET_COLORS = [
+  'rgba(59, 130, 246, 0.3)',   // Blue
+  'rgba(239, 68, 68, 0.3)',    // Red
+  'rgba(34, 197, 94, 0.3)',    // Green
+  'rgba(251, 191, 36, 0.3)',   // Yellow
+  'rgba(139, 92, 246, 0.3)',   // Purple
+  'rgba(236, 72, 153, 0.3)',   // Pink
+  'rgba(20, 184, 166, 0.3)',   // Teal
+  'rgba(249, 115, 22, 0.3)',   // Orange
+];
+
 interface LinearFeature {
   type: string;
   wkt?: string;
@@ -19,15 +32,28 @@ interface LinearFeature {
   length?: number;
 }
 
+interface FacetData {
+  id: string;
+  facet_number: number;
+  polygon_points: { lat: number; lng: number }[];
+  centroid: { lat: number; lng: number };
+  area_flat_sqft: number;
+  area_adjusted_sqft: number;
+  pitch: string;
+  primary_direction: string;
+}
+
 interface SchematicRoofDiagramProps {
   measurement: any;
   tags: Record<string, any>;
+  measurementId?: string;
   width?: number;
   height?: number;
   showLengthLabels?: boolean;
   showLegend?: boolean;
   showCompass?: boolean;
   showTotals?: boolean;
+  showFacets?: boolean;
   backgroundColor?: string;
 }
 
@@ -44,16 +70,58 @@ function calculateSegmentLength(p1: { lat: number; lng: number }, p2: { lat: num
 export function SchematicRoofDiagram({
   measurement,
   tags,
+  measurementId,
   width = 600,
   height = 500,
   showLengthLabels = true,
   showLegend = true,
   showCompass = true,
   showTotals = true,
+  showFacets = true,
   backgroundColor = '#FFFFFF',
 }: SchematicRoofDiagramProps) {
+  const [facets, setFacets] = useState<FacetData[]>([]);
+  
+  // Fetch facets from database if measurementId is provided
+  useEffect(() => {
+    async function fetchFacets() {
+      if (!measurementId) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('roof_measurement_facets')
+          .select('*')
+          .eq('measurement_id', measurementId)
+          .order('facet_number', { ascending: true });
+        
+        if (error) {
+          console.log('No facets found:', error.message);
+          return;
+        }
+        
+        if (data && data.length > 0) {
+          console.log(`📐 Loaded ${data.length} facets from database`);
+          setFacets(data.map(f => ({
+            id: f.id,
+            facet_number: f.facet_number,
+            polygon_points: f.polygon_points as { lat: number; lng: number }[],
+            centroid: f.centroid as { lat: number; lng: number },
+            area_flat_sqft: f.area_flat_sqft || 0,
+            area_adjusted_sqft: f.area_adjusted_sqft || 0,
+            pitch: f.pitch || '',
+            primary_direction: f.primary_direction || ''
+          })));
+        }
+      } catch (err) {
+        console.error('Error fetching facets:', err);
+      }
+    }
+    
+    fetchFacets();
+  }, [measurementId]);
+  
   // Parse and transform coordinates to SVG space
-  const { perimeterPath, perimeterSegments, linearFeatures, bounds, svgPadding } = useMemo(() => {
+  const { perimeterPath, perimeterSegments, linearFeatures, bounds, svgPadding, facetPaths } = useMemo(() => {
     const padding = 60;
     const segments: Array<{ type: string; points: { x: number; y: number }[]; length: number; color: string }> = [];
     let allLatLngs: { lat: number; lng: number }[] = [];
@@ -78,6 +146,13 @@ export function SchematicRoofDiagram({
       allLatLngs = [...perimeterCoords];
     }
     
+    // Add facet coordinates to bounds calculation
+    facets.forEach(facet => {
+      if (facet.polygon_points && Array.isArray(facet.polygon_points)) {
+        allLatLngs.push(...facet.polygon_points);
+      }
+    });
+    
     // Extract linear features with WKT - use original coordinates (no snapping)
     const linearFeaturesData: Array<{ type: string; coords: { lat: number; lng: number }[]; length: number }> = [];
     const features = measurement?.linear_features || measurement?.linear_features_wkt || [];
@@ -100,7 +175,7 @@ export function SchematicRoofDiagram({
     
     // Calculate bounds
     if (allLatLngs.length === 0) {
-      return { perimeterPath: '', perimeterSegments: [], linearFeatures: [], bounds: null, svgPadding: padding };
+      return { perimeterPath: '', perimeterSegments: [], linearFeatures: [], bounds: null, svgPadding: padding, facetPaths: [] };
     }
     
     const lats = allLatLngs.map(c => c.lat);
@@ -163,25 +238,49 @@ export function SchematicRoofDiagram({
       };
     });
     
+    // Build facet paths
+    const facetPathsData = facets.map((facet, index) => {
+      if (!facet.polygon_points || facet.polygon_points.length < 3) return null;
+      
+      const svgCoords = facet.polygon_points.map(toSvg);
+      const pathD = `M ${svgCoords.map(c => `${c.x},${c.y}`).join(' L ')} Z`;
+      const centroidSvg = facet.centroid ? toSvg(facet.centroid) : {
+        x: svgCoords.reduce((sum, c) => sum + c.x, 0) / svgCoords.length,
+        y: svgCoords.reduce((sum, c) => sum + c.y, 0) / svgCoords.length,
+      };
+      
+      return {
+        facetNumber: facet.facet_number,
+        path: pathD,
+        centroid: centroidSvg,
+        color: FACET_COLORS[index % FACET_COLORS.length],
+        area: facet.area_adjusted_sqft || facet.area_flat_sqft,
+        pitch: facet.pitch,
+        direction: facet.primary_direction,
+      };
+    }).filter(Boolean);
+    
     return {
       perimeterPath: pathD,
       perimeterSegments: perimSegs,
       linearFeatures: linFeatures,
       bounds: { minLat, maxLat, minLng, maxLng },
       svgPadding: padding,
+      facetPaths: facetPathsData,
     };
-  }, [measurement, width, height]);
+  }, [measurement, width, height, facets]);
 
   // Extract totals from tags or measurement summary
   const totals = useMemo(() => ({
-    ridge: tags['lf.ridge'] || measurement?.summary?.ridge_ft || 0,
-    hip: tags['lf.hip'] || measurement?.summary?.hip_ft || 0,
-    valley: tags['lf.valley'] || measurement?.summary?.valley_ft || 0,
-    eave: tags['lf.eave'] || measurement?.summary?.eave_ft || 0,
-    rake: tags['lf.rake'] || measurement?.summary?.rake_ft || 0,
+    ridge: tags['lf.ridge'] || measurement?.total_ridge_length || measurement?.summary?.ridge_ft || 0,
+    hip: tags['lf.hip'] || measurement?.total_hip_length || measurement?.summary?.hip_ft || 0,
+    valley: tags['lf.valley'] || measurement?.total_valley_length || measurement?.summary?.valley_ft || 0,
+    eave: tags['lf.eave'] || measurement?.total_eave_length || measurement?.summary?.eave_ft || 0,
+    rake: tags['lf.rake'] || measurement?.total_rake_length || measurement?.summary?.rake_ft || 0,
     step: tags['lf.step'] || measurement?.summary?.step_ft || 0,
-    total_area: tags['roof.total_area'] || measurement?.summary?.total_area_sqft || 0,
-  }), [tags, measurement]);
+    total_area: tags['roof.total_area'] || measurement?.total_area_adjusted_sqft || measurement?.summary?.total_area_sqft || 0,
+    facet_count: measurement?.facet_count || facets.length || 0,
+  }), [tags, measurement, facets]);
 
   // If no geometry, show placeholder with totals
   if (!bounds) {
@@ -203,14 +302,14 @@ export function SchematicRoofDiagram({
               { label: 'Hips', value: totals.hip, color: FEATURE_COLORS.hip },
               { label: 'Valleys', value: totals.valley, color: FEATURE_COLORS.valley },
               { label: 'Rakes', value: totals.rake, color: FEATURE_COLORS.rake },
-              { label: 'Step', value: totals.step, color: FEATURE_COLORS.step },
+              { label: 'Facets', value: totals.facet_count, color: '#374151' },
             ].map(({ label, value, color }) => (
               <div key={label} className="text-center p-2">
                 <div 
                   className="text-lg font-bold"
                   style={{ color }}
                 >
-                  {Math.round(value)}'
+                  {label === 'Facets' ? value : `${Math.round(value)}'`}
                 </div>
                 <div className="text-xs text-muted-foreground">{label}</div>
               </div>
@@ -226,6 +325,49 @@ export function SchematicRoofDiagram({
       <svg width={width} height={height} className="absolute inset-0">
         {/* White background */}
         <rect x={0} y={0} width={width} height={height} fill={backgroundColor} />
+        
+        {/* Facet polygons (rendered first so they're behind lines) */}
+        {showFacets && facetPaths.map((facet: any, i: number) => (
+          <g key={`facet-${facet.facetNumber}`}>
+            <path
+              d={facet.path}
+              fill={facet.color}
+              stroke={FACET_COLORS[i % FACET_COLORS.length].replace('0.3', '0.8')}
+              strokeWidth={1.5}
+            />
+            {/* Facet number label */}
+            <circle
+              cx={facet.centroid.x}
+              cy={facet.centroid.y}
+              r={14}
+              fill="white"
+              stroke="#374151"
+              strokeWidth={1}
+            />
+            <text
+              x={facet.centroid.x}
+              y={facet.centroid.y + 4}
+              textAnchor="middle"
+              fontSize={12}
+              fontWeight="bold"
+              fill="#374151"
+            >
+              {facet.facetNumber}
+            </text>
+            {/* Area label below number */}
+            {facet.area > 0 && (
+              <text
+                x={facet.centroid.x}
+                y={facet.centroid.y + 28}
+                textAnchor="middle"
+                fontSize={9}
+                fill="#6b7280"
+              >
+                {Math.round(facet.area)} sqft
+              </text>
+            )}
+          </g>
+        ))}
         
         {/* Perimeter outline (thick dark line) */}
         {perimeterPath && (
@@ -368,6 +510,11 @@ export function SchematicRoofDiagram({
               </div>
             ))}
           </div>
+          {facets.length > 0 && (
+            <div className="mt-2 pt-2 border-t text-[10px] text-muted-foreground">
+              {facets.length} Facets Detected
+            </div>
+          )}
         </div>
       )}
       
@@ -376,6 +523,9 @@ export function SchematicRoofDiagram({
         <div className="absolute top-3 left-3 bg-white/95 backdrop-blur border rounded-lg px-3 py-1.5 shadow-sm">
           <div className="text-[10px] text-muted-foreground uppercase">Total Area</div>
           <div className="text-lg font-bold">{Math.round(totals.total_area).toLocaleString()} sq ft</div>
+          {totals.facet_count > 0 && (
+            <div className="text-[10px] text-muted-foreground">{totals.facet_count} Facets</div>
+          )}
         </div>
       )}
     </div>
