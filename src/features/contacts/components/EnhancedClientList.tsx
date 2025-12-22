@@ -127,6 +127,8 @@ export const EnhancedClientList = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [repFilter, setRepFilter] = useState("all");
+  const [locationReps, setLocationReps] = useState<{id: string, first_name: string, last_name: string}[]>([]);
   const [userProfile, setUserProfile] = useState<any>(null);
   const [sortField, setSortField] = useState<string>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
@@ -168,7 +170,47 @@ export const EnhancedClientList = () => {
 
   useEffect(() => {
     filterData();
-  }, [contacts, jobs, activeView, searchTerm, statusFilter, sortField, sortDirection]);
+  }, [contacts, jobs, activeView, searchTerm, statusFilter, repFilter, sortField, sortDirection]);
+
+  // Fetch reps assigned to current location
+  useEffect(() => {
+    const fetchLocationReps = async () => {
+      if (!currentLocationId || !userProfile?.tenant_id) {
+        setLocationReps([]);
+        return;
+      }
+      
+      try {
+        const { data, error } = await supabase
+          .from('user_location_assignments')
+          .select('user_id, profiles!inner(id, first_name, last_name)')
+          .eq('location_id', currentLocationId)
+          .eq('tenant_id', userProfile.tenant_id);
+        
+        if (error) {
+          console.error('Error fetching location reps:', error);
+          return;
+        }
+        
+        const reps = (data || []).map((assignment: any) => ({
+          id: assignment.profiles.id,
+          first_name: assignment.profiles.first_name || '',
+          last_name: assignment.profiles.last_name || ''
+        }));
+        
+        setLocationReps(reps);
+      } catch (error) {
+        console.error('Error fetching location reps:', error);
+      }
+    };
+    
+    fetchLocationReps();
+  }, [currentLocationId, userProfile?.tenant_id]);
+
+  // Reset rep filter when location changes
+  useEffect(() => {
+    setRepFilter("all");
+  }, [currentLocationId]);
 
   const loadUserPreferences = async () => {
     try {
@@ -417,6 +459,15 @@ export const EnhancedClientList = () => {
 
       if (statusFilter !== "all") {
         filtered = filtered.filter(contact => contact.qualification_status === statusFilter);
+      }
+
+      // Filter by representative
+      if (repFilter !== "all") {
+        if (repFilter === "unassigned") {
+          filtered = filtered.filter((contact: any) => !contact.assigned_to);
+        } else {
+          filtered = filtered.filter((contact: any) => contact.assigned_to === repFilter);
+        }
       }
 
       filtered = sortData(filtered, activeView);
@@ -1012,6 +1063,24 @@ export const EnhancedClientList = () => {
                   )}
                 </SelectContent>
               </Select>
+
+              {/* Rep Filter - Only show for contacts view */}
+              {activeView === 'contacts' && locationReps.length > 0 && (
+                <Select value={repFilter} onValueChange={setRepFilter}>
+                  <SelectTrigger className="w-48">
+                    <SelectValue placeholder="Filter by Rep" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Reps</SelectItem>
+                    {locationReps.map((rep) => (
+                      <SelectItem key={rep.id} value={rep.id}>
+                        {rep.first_name} {rep.last_name}
+                      </SelectItem>
+                    ))}
+                    <SelectItem value="unassigned">Unassigned</SelectItem>
+                  </SelectContent>
+                </Select>
+              )}
             </div>
           </div>
         </CardContent>
