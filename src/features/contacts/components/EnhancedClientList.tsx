@@ -136,6 +136,21 @@ export const EnhancedClientList = () => {
   const [sortField, setSortField] = useState<string>('created_at');
   const [sortDirection, setSortDirection] = useState<'asc' | 'desc'>('desc');
   const [pipelineLeads, setPipelineLeads] = useState<any[]>([]);
+  
+  // Pagination state
+  const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(25);
+  
+  // Pagination calculations
+  const totalPages = Math.ceil(filteredData.length / pageSize);
+  const startIndex = (currentPage - 1) * pageSize;
+  const endIndex = startIndex + pageSize;
+  const paginatedData = filteredData.slice(startIndex, endIndex);
+  
+  // Reset page when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchTerm, statusFilter, selectedReps, activeView]);
   const [selectedContactForJob, setSelectedContactForJob] = useState<Contact | null>(null);
   const [showJobDialog, setShowJobDialog] = useState(false);
   
@@ -1122,6 +1137,25 @@ export const EnhancedClientList = () => {
                 </SelectContent>
               </Select>
 
+              {/* Page Size Selector */}
+              <Select 
+                value={pageSize.toString()} 
+                onValueChange={(v) => { 
+                  setPageSize(Number(v)); 
+                  setCurrentPage(1); 
+                }}
+              >
+                <SelectTrigger className="w-32">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="10">10 per page</SelectItem>
+                  <SelectItem value="25">25 per page</SelectItem>
+                  <SelectItem value="50">50 per page</SelectItem>
+                  <SelectItem value="100">100 per page</SelectItem>
+                </SelectContent>
+              </Select>
+
               {/* Rep Filter - Multi-select with Popover */}
               {activeView === 'contacts' && (
                 <Popover open={repFilterOpen} onOpenChange={setRepFilterOpen}>
@@ -1391,7 +1425,7 @@ export const EnhancedClientList = () => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filteredData.map((item: any, index) => (
+                  {paginatedData.map((item: any, index) => (
                     <TableRow 
                       key={item.id} 
                       className="hover:bg-muted/50 transition-colors"
@@ -1507,6 +1541,36 @@ export const EnhancedClientList = () => {
                   ))}
                 </TableBody>
               </Table>
+            </div>
+          )}
+          
+          {/* Pagination Controls */}
+          {filteredData.length > 0 && (
+            <div className="flex items-center justify-between px-2 py-4 border-t">
+              <div className="text-sm text-muted-foreground">
+                Showing {startIndex + 1}-{Math.min(endIndex, filteredData.length)} of {filteredData.length} {activeView}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  disabled={currentPage === 1} 
+                  onClick={() => setCurrentPage(p => p - 1)}
+                >
+                  Previous
+                </Button>
+                <span className="text-sm px-2">
+                  Page {currentPage} of {totalPages}
+                </span>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  disabled={currentPage === totalPages || totalPages === 0} 
+                  onClick={() => setCurrentPage(p => p + 1)}
+                >
+                  Next
+                </Button>
+              </div>
             </div>
           )}
         </CardContent>
