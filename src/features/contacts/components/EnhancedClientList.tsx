@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
+import { useLocation } from "@/contexts/LocationContext";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -115,6 +116,7 @@ type ViewType = 'contacts' | 'jobs';
 
 export const EnhancedClientList = () => {
   const navigate = useNavigate();
+  const { currentLocationId } = useLocation();
   const [activeView, setActiveView] = useState<ViewType>('contacts');
   const [preferredView, setPreferredView] = useState<ViewType>('contacts');
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -137,53 +139,12 @@ export const EnhancedClientList = () => {
   const [activeEmailContact, setActiveEmailContact] = useState<{ id: string; name: string; email: string } | null>(null);
   const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number; address: string } | null>(null);
   
-  // Location filtering state
-  const [currentLocationId, setCurrentLocationId] = useState<string | null>(null);
-  
   // Import dialog state
   const [showImportDialog, setShowImportDialog] = useState(false);
 
-  // Load current location setting from app_settings
-  const loadCurrentLocationSetting = useCallback(async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: setting } = await supabase
-        .from('app_settings')
-        .select('setting_value')
-        .eq('user_id', user.id)
-        .eq('setting_key', 'current_location_id')
-        .maybeSingle();
-
-      if (setting?.setting_value && setting.setting_value !== 'null') {
-        setCurrentLocationId(setting.setting_value as string);
-      } else {
-        setCurrentLocationId(null);
-      }
-    } catch (error) {
-      console.error('Error loading current location setting:', error);
-    }
-  }, []);
-
   useEffect(() => {
     loadUserPreferences();
-    loadCurrentLocationSetting();
     fetchData();
-  }, []);
-
-  // Subscribe to location changes from QuickLocationSwitcher
-  useEffect(() => {
-    const channel = supabase.channel('location-changes')
-      .on('broadcast', { event: 'location_changed' }, (payload) => {
-        console.log('Location changed event received:', payload);
-        setCurrentLocationId(payload.payload?.locationId || null);
-      })
-      .subscribe();
-      
-    return () => {
-      supabase.removeChannel(channel);
-    };
   }, []);
 
   // Refetch data when location changes

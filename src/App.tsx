@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { AuthProvider } from "@/contexts/AuthContext";
 import { UserProfileProvider } from "@/contexts/UserProfileContext";
 import { ImageCacheProvider } from "@/contexts/ImageCacheContext";
+import { LocationProvider } from "@/contexts/LocationContext";
 import { useGlobalActivityTracking } from "@/hooks/useGlobalActivityTracking";
 import { SessionExpiryHandler } from "@/components/auth/SessionExpiryHandler";
 import { GlobalLoadingHandler } from "@/components/layout/GlobalLoadingHandler";
@@ -250,15 +251,17 @@ const App = () => {
     <QueryClientProvider client={queryClient}>
       <AuthProvider>
         <UserProfileProvider>
-          <ErrorTrackingProvider>
-            <TooltipProvider>
-              <ImageCacheProvider>
-                <BrowserRouter>
-                  <AppContent />
-                </BrowserRouter>
-              </ImageCacheProvider>
-            </TooltipProvider>
-          </ErrorTrackingProvider>
+          <LocationProvider>
+            <ErrorTrackingProvider>
+              <TooltipProvider>
+                <ImageCacheProvider>
+                  <BrowserRouter>
+                    <AppContent />
+                  </BrowserRouter>
+                </ImageCacheProvider>
+              </TooltipProvider>
+            </ErrorTrackingProvider>
+          </LocationProvider>
         </UserProfileProvider>
       </AuthProvider>
     </QueryClientProvider>
