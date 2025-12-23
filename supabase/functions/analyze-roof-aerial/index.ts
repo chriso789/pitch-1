@@ -198,15 +198,45 @@ serve(async (req) => {
     console.log(`📏 Generated ${linearFeatures.length} vertex-derived linear features`)
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    
+    // Extract vertex stats from perimeter detection
+    const vertexStats = perimeterResult.vertexStats || {
+      hipCornerCount: perimeterResult.vertices.filter((v: any) => v.cornerType === 'hip-corner').length,
+      valleyEntryCount: perimeterResult.vertices.filter((v: any) => v.cornerType === 'valley-entry').length,
+      gablePeakCount: perimeterResult.vertices.filter((v: any) => v.cornerType === 'gable-peak').length,
+      totalCount: perimeterResult.vertices.length
+    }
+    
     const measurementRecord = await saveMeasurementToDatabase(supabase, {
       address, coordinates, customerId, userId, googleImage, mapboxImage,
       selectedImage, solarData, aiAnalysis, scale, measurements, confidence,
       linearFeatures, imageSource, imageYear, perimeterWkt,
-      visionEdges: { ridges: [], hips: [], valleys: [] }, // Replaced by vertex detection
-      imageSize: logicalImageSize  // Store logical size for overlay rendering
+      visionEdges: { ridges: [], hips: [], valleys: [] },
+      imageSize: logicalImageSize,
+      vertexStats  // Pass vertex stats to save
     })
     
-    // NEW: Generate and save facet polygons to roof_measurement_facets
+    // NEW: Save vertices and edges to dedicated tables for Roofr-quality tracking
+    await saveVerticesToDatabase(
+      supabase,
+      measurementRecord.id,
+      perimeterResult.vertices,
+      interiorVertices.junctions,
+      coordinates,
+      logicalImageSize,
+      IMAGE_ZOOM
+    )
+    
+    await saveEdgesToDatabase(
+      supabase,
+      measurementRecord.id,
+      derivedLines,
+      coordinates,
+      logicalImageSize,
+      IMAGE_ZOOM
+    )
+    
+    // Generate and save facet polygons to roof_measurement_facets
     const facetPolygons = generateFacetPolygons(
       perimeterResult.vertices,
       interiorVertices.junctions,
@@ -494,59 +524,75 @@ CRITICAL RULES:
 }
 
 // PASS 2: Detect perimeter vertices (roof polygon corners)
+// ENHANCED: Roofr-quality vertex detection - detect EVERY vertex where roofline direction changes
 async function detectPerimeterVertices(imageUrl: string, bounds: any) {
   if (!imageUrl) {
-    return { vertices: [], roofType: 'unknown', complexity: 'moderate' }
+    return { vertices: [], roofType: 'unknown', complexity: 'moderate', vertexStats: {} }
   }
 
-  const prompt = `You are a roof measurement expert. Trace the EXACT roof boundary as a CLOSED POLYGON.
+  // ENHANCED PROMPT: Request EVERY vertex, not simplified 6-12
+  const prompt = `You are a professional roof measurement expert trained to match EagleView/Roofr accuracy (98%+).
 
-TASK: Return the roof perimeter as a list of CORNER VERTICES in CLOCKWISE order.
-Start from the topmost corner and trace around the entire visible roof edge.
-Trace ONLY the SHINGLED or TILED roof material - NOT screen enclosures or covered patios.
+TASK: Trace the COMPLETE roof boundary as a CLOSED POLYGON with EVERY VERTEX where the roofline changes direction.
 
 The target building is within bounds: top-left (${bounds.topLeftX}%, ${bounds.topLeftY}%) to bottom-right (${bounds.bottomRightX}%, ${bounds.bottomRightY}%)
 
+CRITICAL VERTEX DETECTION RULES:
+1. Count EVERY vertex where the roof edge changes direction - typical residential roofs have 12-30+ vertices
+2. Include micro-corners from dormers, bump-outs, L-shapes, and garage extensions
+3. For complex roofs (hip with dormers, cross-gables), expect 15-25+ vertices
+4. For simple rectangular hip roofs, expect 8-12 vertices minimum
+5. Each hip corner, valley entry, gable peak, and eave corner is a SEPARATE vertex
+
+VERTEX TYPE CLASSIFICATION:
+- "hip-corner": Where a hip line meets the eave (diagonal corners on hip roofs) - CRITICAL for facet count
+- "valley-entry": Where a valley line enters from the perimeter (internal corner going inward)
+- "gable-peak": Top of gable end where ridge terminates at perimeter (triangular peak)
+- "eave-corner": Where two eave lines meet at 90° (rectangular corners, no hip/valley)
+- "rake-corner": Where rake edge meets eave (bottom of gable end)
+- "dormer-junction": Where dormer connects to main roof perimeter
+
+EXCLUDE FROM PERIMETER (do NOT trace these):
+- Screen enclosures (lanais/pool cages) - metal frame grid structures
+- Covered patios with flat/metal roofs
+- Carports, awnings, pergolas
+- Adjacent outbuildings
+
+RESPONSE FORMAT:
 {
-  "roofType": "hip|gable|complex",
-  "complexity": "simple|moderate|complex",
-  "screenEnclosureExcluded": false,
+  "roofType": "hip|gable|cross-gable|hip-with-dormers|complex",
+  "complexity": "simple|moderate|complex|very-complex",
+  "estimatedFacetCount": 6,
   "roofMaterial": "shingle|tile|metal",
+  "screenEnclosureExcluded": false,
+  "vertexCountExpected": 14,
   "vertices": [
-    {"x": 30.5, "y": 25.2, "cornerType": "hip-corner"},
-    {"x": 50.0, "y": 24.8, "cornerType": "ridge-end"},
-    {"x": 70.2, "y": 25.5, "cornerType": "hip-corner"},
-    {"x": 72.0, "y": 50.0, "cornerType": "eave-corner"},
-    {"x": 70.5, "y": 75.0, "cornerType": "hip-corner"},
-    {"x": 50.0, "y": 76.2, "cornerType": "ridge-end"},
-    {"x": 30.0, "y": 75.5, "cornerType": "hip-corner"},
-    {"x": 28.0, "y": 50.0, "cornerType": "eave-corner"}
-  ]
+    {"x": 30.52, "y": 25.18, "cornerType": "hip-corner", "notes": "NW hip corner"},
+    {"x": 45.00, "y": 24.50, "cornerType": "gable-peak", "notes": "front gable peak"},
+    {"x": 50.25, "y": 26.00, "cornerType": "valley-entry", "notes": "valley between main and garage"},
+    {"x": 70.18, "y": 25.45, "cornerType": "hip-corner", "notes": "NE hip corner"},
+    {"x": 72.00, "y": 40.00, "cornerType": "eave-corner", "notes": "east side bump-out corner"},
+    ...more vertices in CLOCKWISE order...
+  ],
+  "qualityCheck": {
+    "hipCornerCount": 4,
+    "valleyEntryCount": 2,
+    "gablePeakCount": 0,
+    "eaveCornerCount": 4,
+    "totalVertexCount": 14,
+    "perimeterApproxFeet": 180
+  }
 }
 
-CRITICAL - EXCLUDE FROM PERIMETER:
-- SCREEN ENCLOSURES (lanais/pool cages) - metal frame grid structures with mesh/screen
-- Pool cages - rectangular frame structures, often adjacent to house
-- Covered patios with flat roofs
-- Carports or awnings
-- Any structure that is NOT shingled/tiled roofing
+QUALITY VALIDATION:
+- For hip roofs: hipCornerCount should be 4+ (one per direction)
+- For gable roofs: gablePeakCount should be 2+ (front and back peaks)
+- Facet count ≈ hipCornerCount for pure hip roofs
+- Facet count = 2 + (gablePeakCount) for pure gable roofs
 
-HOW TO IDENTIFY SCREEN ENCLOSURES:
-- They appear as geometric METAL FRAME GRIDS with transparent or mesh covering
-- They have a regular grid pattern visible from above (unlike shingle lines)
-- They are typically rectangular and extend from one side of the house
-- They do NOT have shingle texture - look for the difference in surface pattern
+Use DECIMAL PRECISION (e.g., 34.72 not 35). Return ONLY valid JSON.`
 
-CRITICAL RULES:
-- Use DECIMAL PRECISION (e.g., 34.72 not 35)
-- Trace ONLY the SHINGLED/TILED roof surface - follow shingle lines and ridge patterns
-- STOP the perimeter where roof shingles end and screen enclosure begins
-- Include EVERY corner where the roof perimeter changes direction
-- cornerType: "hip-corner" (where hip meets eave), "ridge-end" (gable peak), "eave-corner" (horizontal edge corner), "valley-entry" (where valley meets perimeter)
-- Stay WITHIN the target building bounds
-- Return ONLY valid JSON, no explanation`
-
-  console.log('📐 Pass 2: Detecting perimeter vertices...')
+  console.log('📐 Pass 2: Enhanced vertex detection (Roofr-quality)...')
   
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -555,14 +601,14 @@ CRITICAL RULES:
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: imageUrl } }] }],
-        max_completion_tokens: 1500
+        max_completion_tokens: 2500  // Increased for more vertices
       })
     })
 
     const data = await response.json()
     if (!response.ok || !data.choices?.[0]) {
       console.error('Perimeter detection failed:', data)
-      return { vertices: createFallbackPerimeter(bounds), roofType: 'unknown', complexity: 'moderate' }
+      return { vertices: createFallbackPerimeter(bounds), roofType: 'unknown', complexity: 'moderate', vertexStats: {} }
     }
     
     let content = data.choices[0].message?.content || ''
@@ -578,22 +624,44 @@ CRITICAL RULES:
     const result = JSON.parse(content)
     const vertices = result.vertices || []
     
-    // Validate vertices are within bounds
+    // Validate vertices are within bounds (with tolerance)
     const validVertices = vertices.filter((v: any) => 
       v.x >= bounds.topLeftX - 5 && v.x <= bounds.bottomRightX + 5 &&
       v.y >= bounds.topLeftY - 5 && v.y <= bounds.bottomRightY + 5
     )
     
-    console.log(`✅ Pass 2 complete: ${validVertices.length} perimeter vertices detected, roofType: ${result.roofType}`)
+    // Extract vertex statistics for database
+    const vertexStats = {
+      hipCornerCount: validVertices.filter((v: any) => v.cornerType === 'hip-corner').length,
+      valleyEntryCount: validVertices.filter((v: any) => v.cornerType === 'valley-entry').length,
+      gablePeakCount: validVertices.filter((v: any) => v.cornerType === 'gable-peak').length,
+      eaveCornerCount: validVertices.filter((v: any) => v.cornerType === 'eave-corner').length,
+      rakeCornerCount: validVertices.filter((v: any) => v.cornerType === 'rake-corner').length,
+      dormerJunctionCount: validVertices.filter((v: any) => v.cornerType === 'dormer-junction').length,
+      totalCount: validVertices.length,
+      estimatedFacetCount: result.estimatedFacetCount || 4
+    }
+    
+    console.log(`✅ Pass 2 complete: ${validVertices.length} perimeter vertices detected`)
+    console.log(`   Vertex breakdown: ${vertexStats.hipCornerCount} hip-corners, ${vertexStats.valleyEntryCount} valley-entries, ${vertexStats.gablePeakCount} gable-peaks, ${vertexStats.eaveCornerCount} eave-corners`)
+    console.log(`   Estimated facets: ${vertexStats.estimatedFacetCount}, roofType: ${result.roofType}`)
+    
+    // Validate vertex count matches expected
+    if (result.qualityCheck?.totalVertexCount && Math.abs(validVertices.length - result.qualityCheck.totalVertexCount) > 2) {
+      console.warn(`⚠️ Vertex count mismatch: got ${validVertices.length}, expected ${result.qualityCheck.totalVertexCount}`)
+    }
     
     return { 
       vertices: validVertices.length >= 4 ? validVertices : createFallbackPerimeter(bounds),
       roofType: result.roofType || 'complex',
-      complexity: result.complexity || 'moderate'
+      complexity: result.complexity || 'moderate',
+      vertexStats,
+      estimatedFacetCount: result.estimatedFacetCount,
+      qualityCheck: result.qualityCheck
     }
   } catch (err) {
     console.error('Perimeter detection error:', err)
-    return { vertices: createFallbackPerimeter(bounds), roofType: 'unknown', complexity: 'moderate' }
+    return { vertices: createFallbackPerimeter(bounds), roofType: 'unknown', complexity: 'moderate', vertexStats: {} }
   }
 }
 
@@ -607,40 +675,68 @@ function createFallbackPerimeter(bounds: any): Vertex[] {
 }
 
 // PASS 3: Detect interior junction points (where ridges/hips/valleys meet)
+// ENHANCED: More detailed junction detection to match Roofr facet accuracy
 async function detectInteriorJunctions(imageUrl: string, perimeterVertices: any[], bounds: any) {
   if (!imageUrl || perimeterVertices.length < 4) {
-    return { junctions: [], ridgeEndpoints: [] }
+    return { junctions: [], ridgeEndpoints: [], valleyJunctions: [] }
   }
 
-  const prompt = `You are a roof measurement expert. Detect the INTERIOR JUNCTION POINTS where roof features meet.
+  // Count vertex types from perimeter for context
+  const hipCorners = perimeterVertices.filter((v: any) => v.cornerType === 'hip-corner').length
+  const valleyEntries = perimeterVertices.filter((v: any) => v.cornerType === 'valley-entry').length
+  const gablePeaks = perimeterVertices.filter((v: any) => v.cornerType === 'gable-peak').length
+  
+  const prompt = `You are a professional roof measurement expert. Detect ALL INTERIOR JUNCTION POINTS where roof features meet.
 
-The roof perimeter has been traced. Now identify the INTERIOR vertices:
-- Where ridge lines meet hip lines (ridge-hip junction)
-- Where multiple hips converge (hip-junction)
-- Where valleys meet other features (valley-junction)
+The roof perimeter has ${perimeterVertices.length} vertices including ${hipCorners} hip-corners, ${valleyEntries} valley-entries, and ${gablePeaks} gable-peaks.
 
+TASK: Identify every INTERIOR vertex where roof lines intersect:
+
+INTERIOR JUNCTION TYPES:
+- "ridge-hip-junction": Where the main ridge line terminates and hips branch out (most common)
+- "ridge-valley-junction": Where ridge meets a valley (T-intersection)  
+- "hip-hip-junction": Where two hip lines meet at the apex
+- "valley-hip-junction": Where a valley line meets a hip line
+- "ridge-termination": Where a ridge ends (not at a junction)
+- "hip-peak": Central peak where multiple hips converge
+
+GEOMETRIC RULES FOR VALIDATION:
+- For a 4-facet hip roof: expect 2 ridge-hip-junctions (one at each end of ridge)
+- For a 6-facet hip roof: expect 2 ridge-hip-junctions + possibly 1-2 additional junctions
+- Number of hip lines from perimeter should roughly equal number connecting to interior junctions
+- Each valley-entry on perimeter should connect to an interior valley junction
+
+RESPONSE FORMAT:
 {
   "junctions": [
-    {"x": 35.5, "y": 48.0, "type": "ridge-hip-junction"},
-    {"x": 65.2, "y": 47.5, "type": "ridge-hip-junction"}
+    {"x": 35.50, "y": 48.00, "type": "ridge-hip-junction", "connectedHipCount": 2},
+    {"x": 65.20, "y": 47.50, "type": "ridge-hip-junction", "connectedHipCount": 2}
   ],
   "ridgeEndpoints": [
-    {"x": 35.5, "y": 48.0},
-    {"x": 65.2, "y": 47.5}
+    {"x": 35.50, "y": 48.00},
+    {"x": 65.20, "y": 47.50}
   ],
-  "valleyJunctions": [],
-  "roofPeakType": "single-ridge|multiple-ridge|hip-peak"
+  "valleyJunctions": [
+    {"x": 50.00, "y": 55.00, "type": "valley-hip-junction", "connectedValleyCount": 1}
+  ],
+  "roofPeakType": "single-ridge|multiple-ridge|hip-peak|flat",
+  "ridgeCount": 1,
+  "estimatedHipLineCount": 4,
+  "qualityCheck": {
+    "junctionCount": 2,
+    "ridgeSegmentCount": 1,
+    "allHipsAccountedFor": true
+  }
 }
 
 CRITICAL RULES:
 - Junction points are INSIDE the roof, not on the perimeter
-- These are the peak points where roof planes meet
-- Ridge endpoints are where the main ridge line terminates
 - Use DECIMAL PRECISION (e.g., 45.72)
 - Stay WITHIN bounds: (${bounds.topLeftX}%, ${bounds.topLeftY}%) to (${bounds.bottomRightX}%, ${bounds.bottomRightY}%)
+- For hip roofs: hipCornerCount on perimeter should ≈ number of hip lines connecting to junctions
 - Return ONLY valid JSON`
 
-  console.log('🔺 Pass 3: Detecting interior junction vertices...')
+  console.log('🔺 Pass 3: Enhanced interior junction detection...')
   
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -649,34 +745,60 @@ CRITICAL RULES:
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: imageUrl } }] }],
-        max_completion_tokens: 1000
+        max_completion_tokens: 1500
       })
     })
 
     const data = await response.json()
     if (!response.ok || !data.choices?.[0]) {
       console.error('Junction detection failed:', data)
-      return { junctions: [], ridgeEndpoints: [] }
+      return { junctions: [], ridgeEndpoints: [], valleyJunctions: [] }
     }
     
     let content = data.choices[0].message?.content || ''
     content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
     
+    // Fix truncated JSON
+    if (!content.endsWith('}')) {
+      const openBraces = (content.match(/{/g) || []).length
+      const closeBraces = (content.match(/}/g) || []).length
+      for (let i = 0; i < openBraces - closeBraces; i++) content += '}'
+    }
+    
     const result = JSON.parse(content)
     const junctions = result.junctions || []
     const ridgeEndpoints = result.ridgeEndpoints || []
+    const valleyJunctions = result.valleyJunctions || []
     
-    console.log(`✅ Pass 3 complete: ${junctions.length} junction points, ${ridgeEndpoints.length} ridge endpoints`)
+    // Validate junctions are within bounds
+    const validJunctions = junctions.filter((j: any) =>
+      j.x >= bounds.topLeftX - 3 && j.x <= bounds.bottomRightX + 3 &&
+      j.y >= bounds.topLeftY - 3 && j.y <= bounds.bottomRightY + 3
+    )
+    
+    console.log(`✅ Pass 3 complete: ${validJunctions.length} interior junctions, ${ridgeEndpoints.length} ridge endpoints`)
+    console.log(`   Ridge count: ${result.ridgeCount || 1}, estimated hip lines: ${result.estimatedHipLineCount || hipCorners}`)
+    
+    // Validate: hip corners on perimeter should roughly match hip lines to interior
+    if (hipCorners > 0 && result.estimatedHipLineCount) {
+      const hipLineVariance = Math.abs(hipCorners - result.estimatedHipLineCount)
+      if (hipLineVariance > 2) {
+        console.warn(`⚠️ Hip line count mismatch: ${hipCorners} perimeter hip-corners vs ${result.estimatedHipLineCount} estimated hip lines`)
+      }
+    }
     
     return { 
-      junctions,
+      junctions: validJunctions,
       ridgeEndpoints,
-      valleyJunctions: result.valleyJunctions || [],
-      peakType: result.roofPeakType
+      valleyJunctions,
+      peakType: result.roofPeakType,
+      ridgeCount: result.ridgeCount || 1,
+      estimatedHipLineCount: result.estimatedHipLineCount || hipCorners,
+      qualityCheck: result.qualityCheck
     }
   } catch (err) {
     console.error('Junction detection error:', err)
-    return { junctions: [], ridgeEndpoints: [] }
+    return { junctions: [], ridgeEndpoints: [], valleyJunctions: [] }
   }
 }
 
@@ -1364,7 +1486,8 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
   const {
     address, coordinates, customerId, userId, googleImage, mapboxImage,
     selectedImage, solarData, aiAnalysis, scale, measurements, confidence,
-    linearFeatures, imageSource, imageYear, perimeterWkt, visionEdges, imageSize
+    linearFeatures, imageSource, imageYear, perimeterWkt, visionEdges, imageSize,
+    vertexStats  // NEW: vertex statistics
   } = params
 
   const { data, error } = await supabase.from('roof_measurements').insert({
@@ -1408,7 +1531,14 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
     roof_perimeter: aiAnalysis.roofPerimeter,
     analysis_zoom: IMAGE_ZOOM,
     analysis_image_size: { width: imageSize, height: imageSize },
-    validation_status: 'pending'
+    validation_status: 'pending',
+    // NEW: Vertex statistics for Roofr-quality tracking
+    vertex_count: vertexStats?.totalCount || 0,
+    perimeter_vertex_count: vertexStats?.totalCount || 0,
+    interior_vertex_count: 0, // Will be updated after interior detection
+    hip_corner_count: vertexStats?.hipCornerCount || 0,
+    valley_entry_count: vertexStats?.valleyEntryCount || 0,
+    gable_peak_count: vertexStats?.gablePeakCount || 0
   }).select().single()
 
   if (error) {
@@ -1418,6 +1548,198 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
 
   console.log('💾 Saved measurement:', data.id)
   return data
+}
+
+// Save vertices to dedicated table for Roofr-quality tracking
+async function saveVerticesToDatabase(
+  supabase: any,
+  measurementId: string,
+  perimeterVertices: any[],
+  interiorJunctions: any[],
+  imageCenter: { lat: number; lng: number },
+  imageSize: number,
+  zoom: number
+): Promise<void> {
+  const metersPerPixel = (156543.03392 * Math.cos(imageCenter.lat * Math.PI / 180)) / Math.pow(2, zoom)
+  const metersPerDegLat = 111320
+  const metersPerDegLng = 111320 * Math.cos(imageCenter.lat * Math.PI / 180)
+  
+  // Convert percentage to lat/lng
+  const toLatLng = (x: number, y: number) => {
+    const pixelX = ((x / 100) - 0.5) * imageSize
+    const pixelY = ((y / 100) - 0.5) * imageSize
+    const metersX = pixelX * metersPerPixel
+    const metersY = pixelY * metersPerPixel
+    return {
+      lat: imageCenter.lat - (metersY / metersPerDegLat),
+      lng: imageCenter.lng + (metersX / metersPerDegLng)
+    }
+  }
+  
+  // Map cornerType to valid vertex_type enum
+  const mapCornerType = (cornerType: string): string => {
+    const mapping: Record<string, string> = {
+      'hip-corner': 'hip-corner',
+      'valley-entry': 'valley-entry',
+      'gable-peak': 'gable-peak',
+      'eave-corner': 'eave-corner',
+      'rake-corner': 'rake-corner',
+      'dormer-junction': 'dormer-junction',
+      'ridge-end': 'gable-peak',
+      'corner': 'eave-corner'
+    }
+    return mapping[cornerType] || 'unclassified'
+  }
+  
+  // Map junction type to valid vertex_type enum
+  const mapJunctionType = (type: string): string => {
+    const mapping: Record<string, string> = {
+      'ridge-hip-junction': 'ridge-hip-junction',
+      'ridge-valley-junction': 'ridge-valley-junction',
+      'hip-hip-junction': 'hip-hip-junction',
+      'valley-hip-junction': 'valley-hip-junction',
+      'ridge-termination': 'ridge-termination',
+      'hip-peak': 'hip-peak'
+    }
+    return mapping[type] || 'ridge-hip-junction'
+  }
+  
+  const vertexRecords: any[] = []
+  
+  // Process perimeter vertices
+  perimeterVertices.forEach((v, index) => {
+    const coords = toLatLng(v.x, v.y)
+    vertexRecords.push({
+      measurement_id: measurementId,
+      x_percent: v.x,
+      y_percent: v.y,
+      lat: coords.lat,
+      lng: coords.lng,
+      location_type: 'perimeter',
+      vertex_type: mapCornerType(v.cornerType || v.type || 'corner'),
+      sequence_order: index,
+      detection_confidence: 75,
+      detection_source: 'ai_vision'
+    })
+  })
+  
+  // Process interior junctions
+  interiorJunctions.forEach((j, index) => {
+    const coords = toLatLng(j.x, j.y)
+    vertexRecords.push({
+      measurement_id: measurementId,
+      x_percent: j.x,
+      y_percent: j.y,
+      lat: coords.lat,
+      lng: coords.lng,
+      location_type: 'interior',
+      vertex_type: mapJunctionType(j.type || 'ridge-hip-junction'),
+      sequence_order: index,
+      detection_confidence: 70,
+      detection_source: 'ai_vision'
+    })
+  })
+  
+  if (vertexRecords.length > 0) {
+    const { error } = await supabase
+      .from('roof_measurement_vertices')
+      .insert(vertexRecords)
+    
+    if (error) {
+      console.error('⚠️ Failed to save vertices:', error.message)
+    } else {
+      console.log(`💾 Saved ${vertexRecords.length} vertices (${perimeterVertices.length} perimeter, ${interiorJunctions.length} interior)`)
+    }
+  }
+  
+  // Update measurement record with interior vertex count
+  if (interiorJunctions.length > 0) {
+    await supabase
+      .from('roof_measurements')
+      .update({ 
+        interior_vertex_count: interiorJunctions.length,
+        vertex_count: perimeterVertices.length + interiorJunctions.length,
+        edge_count: 0 // Will be updated by saveEdgesToDatabase
+      })
+      .eq('id', measurementId)
+  }
+}
+
+// Save edges to dedicated table for Roofr-quality tracking
+async function saveEdgesToDatabase(
+  supabase: any,
+  measurementId: string,
+  derivedLines: DerivedLine[],
+  imageCenter: { lat: number; lng: number },
+  imageSize: number,
+  zoom: number
+): Promise<void> {
+  const metersPerPixel = (156543.03392 * Math.cos(imageCenter.lat * Math.PI / 180)) / Math.pow(2, zoom)
+  const metersPerDegLat = 111320
+  const metersPerDegLng = 111320 * Math.cos(imageCenter.lat * Math.PI / 180)
+  
+  // Convert percentage to lat/lng
+  const toLatLng = (x: number, y: number) => {
+    const pixelX = ((x / 100) - 0.5) * imageSize
+    const pixelY = ((y / 100) - 0.5) * imageSize
+    const metersX = pixelX * metersPerPixel
+    const metersY = pixelY * metersPerPixel
+    return {
+      lat: imageCenter.lat - (metersY / metersPerDegLat),
+      lng: imageCenter.lng + (metersX / metersPerDegLng)
+    }
+  }
+  
+  // Calculate length in feet from percentage coordinates
+  const calculateLengthFt = (startX: number, startY: number, endX: number, endY: number): number => {
+    const startPixelX = ((startX / 100) - 0.5) * imageSize
+    const startPixelY = ((startY / 100) - 0.5) * imageSize
+    const endPixelX = ((endX / 100) - 0.5) * imageSize
+    const endPixelY = ((endY / 100) - 0.5) * imageSize
+    
+    const dx = (endPixelX - startPixelX) * metersPerPixel
+    const dy = (endPixelY - startPixelY) * metersPerPixel
+    return Math.sqrt(dx * dx + dy * dy) * 3.28084
+  }
+  
+  const edgeRecords: any[] = []
+  
+  derivedLines.forEach((line) => {
+    const startCoords = toLatLng(line.startX, line.startY)
+    const endCoords = toLatLng(line.endX, line.endY)
+    const lengthFt = calculateLengthFt(line.startX, line.startY, line.endX, line.endY)
+    
+    // Determine if perimeter or interior based on edge type
+    const isInterior = ['ridge', 'hip', 'valley'].includes(line.type)
+    
+    edgeRecords.push({
+      measurement_id: measurementId,
+      edge_type: line.type,
+      edge_position: isInterior ? 'interior' : 'perimeter',
+      length_ft: Math.round(lengthFt * 10) / 10,
+      wkt_geometry: `LINESTRING(${startCoords.lng.toFixed(8)} ${startCoords.lat.toFixed(8)}, ${endCoords.lng.toFixed(8)} ${endCoords.lat.toFixed(8)})`,
+      detection_confidence: 70,
+      detection_source: 'vertex_derived'
+    })
+  })
+  
+  if (edgeRecords.length > 0) {
+    const { error } = await supabase
+      .from('roof_measurement_edges')
+      .insert(edgeRecords)
+    
+    if (error) {
+      console.error('⚠️ Failed to save edges:', error.message)
+    } else {
+      console.log(`💾 Saved ${edgeRecords.length} edges`)
+      
+      // Update measurement record with edge count
+      await supabase
+        .from('roof_measurements')
+        .update({ edge_count: edgeRecords.length })
+        .eq('id', measurementId)
+    }
+  }
 }
 
 // Generate facet polygons from perimeter vertices and interior junctions

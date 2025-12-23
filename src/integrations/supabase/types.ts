@@ -13510,6 +13510,89 @@ export type Database = {
           },
         ]
       }
+      roof_measurement_edges: {
+        Row: {
+          created_at: string | null
+          detection_confidence: number | null
+          detection_source: string | null
+          edge_position: string
+          edge_type: string
+          end_vertex_id: string | null
+          id: string
+          is_manually_adjusted: boolean | null
+          left_facet_id: string | null
+          length_ft: number
+          measurement_id: string | null
+          right_facet_id: string | null
+          start_vertex_id: string | null
+          updated_at: string | null
+          wkt_geometry: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          detection_confidence?: number | null
+          detection_source?: string | null
+          edge_position: string
+          edge_type: string
+          end_vertex_id?: string | null
+          id?: string
+          is_manually_adjusted?: boolean | null
+          left_facet_id?: string | null
+          length_ft: number
+          measurement_id?: string | null
+          right_facet_id?: string | null
+          start_vertex_id?: string | null
+          updated_at?: string | null
+          wkt_geometry?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          detection_confidence?: number | null
+          detection_source?: string | null
+          edge_position?: string
+          edge_type?: string
+          end_vertex_id?: string | null
+          id?: string
+          is_manually_adjusted?: boolean | null
+          left_facet_id?: string | null
+          length_ft?: number
+          measurement_id?: string | null
+          right_facet_id?: string | null
+          start_vertex_id?: string | null
+          updated_at?: string | null
+          wkt_geometry?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_measurement_edges_end_vertex_id_fkey"
+            columns: ["end_vertex_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_vertices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roof_measurement_edges_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roof_measurement_edges_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roof_measurement_edges_start_vertex_id_fkey"
+            columns: ["start_vertex_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_vertices"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       roof_measurement_facets: {
         Row: {
           adjacent_facet_ids: string[] | null
@@ -13690,6 +13773,75 @@ export type Database = {
           },
         ]
       }
+      roof_measurement_vertices: {
+        Row: {
+          connected_vertex_ids: string[] | null
+          created_at: string | null
+          detection_confidence: number | null
+          detection_source: string | null
+          id: string
+          is_manually_adjusted: boolean | null
+          lat: number | null
+          lng: number | null
+          location_type: string
+          measurement_id: string | null
+          sequence_order: number | null
+          updated_at: string | null
+          vertex_type: string
+          x_percent: number
+          y_percent: number
+        }
+        Insert: {
+          connected_vertex_ids?: string[] | null
+          created_at?: string | null
+          detection_confidence?: number | null
+          detection_source?: string | null
+          id?: string
+          is_manually_adjusted?: boolean | null
+          lat?: number | null
+          lng?: number | null
+          location_type: string
+          measurement_id?: string | null
+          sequence_order?: number | null
+          updated_at?: string | null
+          vertex_type: string
+          x_percent: number
+          y_percent: number
+        }
+        Update: {
+          connected_vertex_ids?: string[] | null
+          created_at?: string | null
+          detection_confidence?: number | null
+          detection_source?: string | null
+          id?: string
+          is_manually_adjusted?: boolean | null
+          lat?: number | null
+          lng?: number | null
+          location_type?: string
+          measurement_id?: string | null
+          sequence_order?: number | null
+          updated_at?: string | null
+          vertex_type?: string
+          x_percent?: number
+          y_percent?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_measurement_vertices_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roof_measurement_vertices_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       roof_measurements: {
         Row: {
           ai_analysis: Json | null
@@ -13704,18 +13856,22 @@ export type Database = {
           customer_id: string | null
           detection_confidence: number | null
           detection_timestamp: string | null
+          edge_count: number | null
           edge_segments: Json | null
           facet_count: number | null
+          gable_peak_count: number | null
           google_maps_image_url: string | null
           google_maps_zoom_level: number | null
           gps_accuracy_meters: number | null
           gps_analysis: Json | null
           gps_coordinates: Json
+          hip_corner_count: number | null
           id: string
           image_bounds: Json | null
           image_quality_score: number | null
           image_source: string | null
           image_year: number | null
+          interior_vertex_count: number | null
           is_archived: boolean | null
           linear_features_wkt: Json | null
           mapbox_image_url: string | null
@@ -13725,6 +13881,7 @@ export type Database = {
           meters_per_pixel: number | null
           notes: string | null
           organization_id: string | null
+          perimeter_vertex_count: number | null
           perimeter_wkt: string | null
           pitch_degrees: number | null
           pitch_multiplier: number | null
@@ -13767,7 +13924,9 @@ export type Database = {
           updated_at: string | null
           validation_notes: string | null
           validation_status: string | null
+          valley_entry_count: number | null
           verification_status: string | null
+          vertex_count: number | null
           vision_edges: Json | null
           waste_factor_percent: number | null
         }
@@ -13784,18 +13943,22 @@ export type Database = {
           customer_id?: string | null
           detection_confidence?: number | null
           detection_timestamp?: string | null
+          edge_count?: number | null
           edge_segments?: Json | null
           facet_count?: number | null
+          gable_peak_count?: number | null
           google_maps_image_url?: string | null
           google_maps_zoom_level?: number | null
           gps_accuracy_meters?: number | null
           gps_analysis?: Json | null
           gps_coordinates: Json
+          hip_corner_count?: number | null
           id?: string
           image_bounds?: Json | null
           image_quality_score?: number | null
           image_source?: string | null
           image_year?: number | null
+          interior_vertex_count?: number | null
           is_archived?: boolean | null
           linear_features_wkt?: Json | null
           mapbox_image_url?: string | null
@@ -13805,6 +13968,7 @@ export type Database = {
           meters_per_pixel?: number | null
           notes?: string | null
           organization_id?: string | null
+          perimeter_vertex_count?: number | null
           perimeter_wkt?: string | null
           pitch_degrees?: number | null
           pitch_multiplier?: number | null
@@ -13847,7 +14011,9 @@ export type Database = {
           updated_at?: string | null
           validation_notes?: string | null
           validation_status?: string | null
+          valley_entry_count?: number | null
           verification_status?: string | null
+          vertex_count?: number | null
           vision_edges?: Json | null
           waste_factor_percent?: number | null
         }
@@ -13864,18 +14030,22 @@ export type Database = {
           customer_id?: string | null
           detection_confidence?: number | null
           detection_timestamp?: string | null
+          edge_count?: number | null
           edge_segments?: Json | null
           facet_count?: number | null
+          gable_peak_count?: number | null
           google_maps_image_url?: string | null
           google_maps_zoom_level?: number | null
           gps_accuracy_meters?: number | null
           gps_analysis?: Json | null
           gps_coordinates?: Json
+          hip_corner_count?: number | null
           id?: string
           image_bounds?: Json | null
           image_quality_score?: number | null
           image_source?: string | null
           image_year?: number | null
+          interior_vertex_count?: number | null
           is_archived?: boolean | null
           linear_features_wkt?: Json | null
           mapbox_image_url?: string | null
@@ -13885,6 +14055,7 @@ export type Database = {
           meters_per_pixel?: number | null
           notes?: string | null
           organization_id?: string | null
+          perimeter_vertex_count?: number | null
           perimeter_wkt?: string | null
           pitch_degrees?: number | null
           pitch_multiplier?: number | null
@@ -13927,7 +14098,9 @@ export type Database = {
           updated_at?: string | null
           validation_notes?: string | null
           validation_status?: string | null
+          valley_entry_count?: number | null
           verification_status?: string | null
+          vertex_count?: number | null
           vision_edges?: Json | null
           waste_factor_percent?: number | null
         }
