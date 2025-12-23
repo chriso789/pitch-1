@@ -524,75 +524,109 @@ CRITICAL RULES:
 }
 
 // PASS 2: Detect perimeter vertices (roof polygon corners)
-// ENHANCED: Roofr-quality vertex detection - detect EVERY vertex where roofline direction changes
+// ENHANCED: Roofr/Planimeter-quality vertex detection with segment-by-segment tracing
+// Target: 98%+ accuracy to match EagleView/Planimeter (within 5% of actual area)
 async function detectPerimeterVertices(imageUrl: string, bounds: any) {
   if (!imageUrl) {
-    return { vertices: [], roofType: 'unknown', complexity: 'moderate', vertexStats: {} }
+    return { vertices: [], roofType: 'unknown', complexity: 'moderate', vertexStats: {}, perimeterValidation: null }
   }
 
-  // ENHANCED PROMPT: Request EVERY vertex, not simplified 6-12
-  const prompt = `You are a professional roof measurement expert trained to match EagleView/Roofr accuracy (98%+).
+  // Calculate expected bounds dimensions for context
+  const boundsWidth = bounds.bottomRightX - bounds.topLeftX
+  const boundsHeight = bounds.bottomRightY - bounds.topLeftY
+  
+  // ENHANCED PROMPT: Segment-by-segment tracing with Planimeter-quality accuracy
+  const prompt = `You are a PROFESSIONAL ROOF MEASUREMENT EXPERT trained to match Planimeter/EagleView accuracy (98%+).
 
-TASK: Trace the COMPLETE roof boundary as a CLOSED POLYGON with EVERY VERTEX where the roofline changes direction.
+CRITICAL MISSION: Trace the COMPLETE roof boundary as a CLOSED POLYGON with EVERY SINGLE VERTEX.
+This measurement will be used for a real roofing estimate - accuracy is critical for material ordering.
 
-The target building is within bounds: top-left (${bounds.topLeftX}%, ${bounds.topLeftY}%) to bottom-right (${bounds.bottomRightX}%, ${bounds.bottomRightY}%)
+The target building is within bounds: top-left (${bounds.topLeftX.toFixed(1)}%, ${bounds.topLeftY.toFixed(1)}%) to bottom-right (${bounds.bottomRightX.toFixed(1)}%, ${bounds.bottomRightY.toFixed(1)}%)
+Approximate building size: ${boundsWidth.toFixed(1)}% x ${boundsHeight.toFixed(1)}% of image
 
-CRITICAL VERTEX DETECTION RULES:
-1. Count EVERY vertex where the roof edge changes direction - typical residential roofs have 12-30+ vertices
-2. Include micro-corners from dormers, bump-outs, L-shapes, and garage extensions
-3. For complex roofs (hip with dormers, cross-gables), expect 15-25+ vertices
-4. For simple rectangular hip roofs, expect 8-12 vertices minimum
-5. Each hip corner, valley entry, gable peak, and eave corner is a SEPARATE vertex
+════════════════════════════════════════════════════════════════════════════════
+SEGMENT-BY-SEGMENT TRACING METHODOLOGY (Planimeter-style)
+════════════════════════════════════════════════════════════════════════════════
 
-VERTEX TYPE CLASSIFICATION:
-- "hip-corner": Where a hip line meets the eave (diagonal corners on hip roofs) - CRITICAL for facet count
-- "valley-entry": Where a valley line enters from the perimeter (internal corner going inward)
-- "gable-peak": Top of gable end where ridge terminates at perimeter (triangular peak)
-- "eave-corner": Where two eave lines meet at 90° (rectangular corners, no hip/valley)
-- "rake-corner": Where rake edge meets eave (bottom of gable end)
-- "dormer-junction": Where dormer connects to main roof perimeter
+1. START at the NORTHERNMOST point of the roof (lowest Y value)
+2. TRACE CLOCKWISE around the ENTIRE roof perimeter
+3. At EVERY direction change (even small 3-foot jogs), place a vertex
+4. Include bump-outs, L-shapes, garage extensions, dormers - trace EVERYTHING
+5. Return to starting point to close the polygon
 
-EXCLUDE FROM PERIMETER (do NOT trace these):
-- Screen enclosures (lanais/pool cages) - metal frame grid structures
+VERTEX PLACEMENT RULES (CRITICAL FOR ACCURACY):
+- Place a vertex at EVERY corner, angle change, or bump-out
+- Typical residential roofs have 12-30+ vertices (NOT just 4-8)
+- An L-shaped ranch home has 8+ vertices minimum
+- A cross-gable or hip-with-dormers has 15-25+ vertices
+- If a wall segment is >30ft without a vertex, you're likely MISSING corners
+
+VERTEX COUNT VALIDATION:
+- Expected: approximately 1 vertex per 15-25 feet of perimeter
+- A 300ft perimeter should have ~12-20 vertices
+- A 400ft perimeter should have ~16-27 vertices
+- If you detect fewer than 10 vertices, LOOK HARDER for bump-outs
+
+════════════════════════════════════════════════════════════════════════════════
+VERTEX CLASSIFICATION (for facet identification)
+════════════════════════════════════════════════════════════════════════════════
+
+- "hip-corner": Diagonal corner where hip line meets eave (45° corners on hip roofs)
+- "valley-entry": Interior corner where valley enters (concave corner going inward)
+- "gable-peak": Top of gable end where ridge terminates (triangular apex)
+- "eave-corner": Right-angle corner where two eaves meet (90° convex corners)
+- "rake-corner": Bottom corner of gable end (where rake meets eave)
+- "bump-out-corner": Small extension corner (garage, bay window, etc.)
+
+EXCLUDE FROM TRACING:
+- Screen enclosures (metal grid structures, lanais)
 - Covered patios with flat/metal roofs
 - Carports, awnings, pergolas
 - Adjacent outbuildings
 
-RESPONSE FORMAT:
+════════════════════════════════════════════════════════════════════════════════
+RESPONSE FORMAT (JSON only)
+════════════════════════════════════════════════════════════════════════════════
+
 {
-  "roofType": "hip|gable|cross-gable|hip-with-dormers|complex",
+  "roofType": "hip|gable|cross-gable|hip-with-dormers|L-shaped|T-shaped|complex",
   "complexity": "simple|moderate|complex|very-complex",
   "estimatedFacetCount": 6,
   "roofMaterial": "shingle|tile|metal",
-  "screenEnclosureExcluded": false,
-  "vertexCountExpected": 14,
   "vertices": [
-    {"x": 30.52, "y": 25.18, "cornerType": "hip-corner", "notes": "NW hip corner"},
-    {"x": 45.00, "y": 24.50, "cornerType": "gable-peak", "notes": "front gable peak"},
-    {"x": 50.25, "y": 26.00, "cornerType": "valley-entry", "notes": "valley between main and garage"},
-    {"x": 70.18, "y": 25.45, "cornerType": "hip-corner", "notes": "NE hip corner"},
-    {"x": 72.00, "y": 40.00, "cornerType": "eave-corner", "notes": "east side bump-out corner"},
-    ...more vertices in CLOCKWISE order...
+    {"x": 30.52, "y": 25.18, "cornerType": "hip-corner", "edgeLengthToNextFt": 45},
+    {"x": 45.00, "y": 24.50, "cornerType": "eave-corner", "edgeLengthToNextFt": 22},
+    {"x": 50.25, "y": 26.00, "cornerType": "bump-out-corner", "edgeLengthToNextFt": 8},
+    ...continue in CLOCKWISE order until back to start...
   ],
+  "segmentValidation": {
+    "totalVertexCount": 16,
+    "estimatedPerimeterFt": 300,
+    "avgSegmentLengthFt": 18.75,
+    "longestSegmentFt": 45,
+    "shortestSegmentFt": 6,
+    "segmentLengths": [45, 22, 8, 30, 15, 28, 12, 40, 18, 22, 8, 6, 20, 14, 12]
+  },
   "qualityCheck": {
     "hipCornerCount": 4,
     "valleyEntryCount": 2,
     "gablePeakCount": 0,
-    "eaveCornerCount": 4,
-    "totalVertexCount": 14,
-    "perimeterApproxFeet": 180
+    "eaveCornerCount": 6,
+    "bumpOutCornerCount": 4,
+    "allCornersTraced": true,
+    "perimeterClosedProperly": true
   }
 }
 
-QUALITY VALIDATION:
-- For hip roofs: hipCornerCount should be 4+ (one per direction)
-- For gable roofs: gablePeakCount should be 2+ (front and back peaks)
-- Facet count ≈ hipCornerCount for pure hip roofs
-- Facet count = 2 + (gablePeakCount) for pure gable roofs
+ACCURACY REQUIREMENTS:
+- Use DECIMAL PRECISION (e.g., 34.72 not 35)
+- Each vertex should be accurate to within 1-2 feet
+- The total area calculated from these vertices must be within 5% of actual
+- Missing even ONE corner can cause 5-15% area error
 
-Use DECIMAL PRECISION (e.g., 34.72 not 35). Return ONLY valid JSON.`
+Return ONLY valid JSON, no explanation text.`
 
-  console.log('📐 Pass 2: Enhanced vertex detection (Roofr-quality)...')
+  console.log('📐 Pass 2: Planimeter-quality vertex detection with segment validation...')
   
   try {
     const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -601,14 +635,14 @@ Use DECIMAL PRECISION (e.g., 34.72 not 35). Return ONLY valid JSON.`
       body: JSON.stringify({
         model: 'google/gemini-2.5-flash',
         messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: imageUrl } }] }],
-        max_completion_tokens: 2500  // Increased for more vertices
+        max_completion_tokens: 4000  // Increased for more detailed response
       })
     })
 
     const data = await response.json()
     if (!response.ok || !data.choices?.[0]) {
       console.error('Perimeter detection failed:', data)
-      return { vertices: createFallbackPerimeter(bounds), roofType: 'unknown', complexity: 'moderate', vertexStats: {} }
+      return { vertices: createFallbackPerimeter(bounds), roofType: 'unknown', complexity: 'moderate', vertexStats: {}, perimeterValidation: null }
     }
     
     let content = data.choices[0].message?.content || ''
@@ -630,25 +664,48 @@ Use DECIMAL PRECISION (e.g., 34.72 not 35). Return ONLY valid JSON.`
       v.y >= bounds.topLeftY - 5 && v.y <= bounds.bottomRightY + 5
     )
     
-    // Extract vertex statistics for database
+    // Extract vertex statistics
     const vertexStats = {
       hipCornerCount: validVertices.filter((v: any) => v.cornerType === 'hip-corner').length,
       valleyEntryCount: validVertices.filter((v: any) => v.cornerType === 'valley-entry').length,
       gablePeakCount: validVertices.filter((v: any) => v.cornerType === 'gable-peak').length,
       eaveCornerCount: validVertices.filter((v: any) => v.cornerType === 'eave-corner').length,
       rakeCornerCount: validVertices.filter((v: any) => v.cornerType === 'rake-corner').length,
-      dormerJunctionCount: validVertices.filter((v: any) => v.cornerType === 'dormer-junction').length,
+      bumpOutCornerCount: validVertices.filter((v: any) => v.cornerType === 'bump-out-corner').length,
       totalCount: validVertices.length,
       estimatedFacetCount: result.estimatedFacetCount || 4
     }
     
-    console.log(`✅ Pass 2 complete: ${validVertices.length} perimeter vertices detected`)
-    console.log(`   Vertex breakdown: ${vertexStats.hipCornerCount} hip-corners, ${vertexStats.valleyEntryCount} valley-entries, ${vertexStats.gablePeakCount} gable-peaks, ${vertexStats.eaveCornerCount} eave-corners`)
-    console.log(`   Estimated facets: ${vertexStats.estimatedFacetCount}, roofType: ${result.roofType}`)
+    // Extract segment validation data
+    const segmentValidation = result.segmentValidation || {
+      totalVertexCount: validVertices.length,
+      estimatedPerimeterFt: 0,
+      segmentLengths: []
+    }
     
-    // Validate vertex count matches expected
-    if (result.qualityCheck?.totalVertexCount && Math.abs(validVertices.length - result.qualityCheck.totalVertexCount) > 2) {
-      console.warn(`⚠️ Vertex count mismatch: got ${validVertices.length}, expected ${result.qualityCheck.totalVertexCount}`)
+    console.log(`✅ Pass 2 complete: ${validVertices.length} perimeter vertices detected`)
+    console.log(`   Vertex breakdown: ${vertexStats.hipCornerCount} hip-corners, ${vertexStats.valleyEntryCount} valley-entries, ${vertexStats.gablePeakCount} gable-peaks, ${vertexStats.eaveCornerCount} eave-corners, ${vertexStats.bumpOutCornerCount} bump-outs`)
+    console.log(`   Perimeter estimate: ~${segmentValidation.estimatedPerimeterFt || 'unknown'} ft`)
+    
+    // Log segment lengths for Planimeter-style validation
+    if (segmentValidation.segmentLengths && segmentValidation.segmentLengths.length > 0) {
+      console.log(`   Segment lengths (ft): ${segmentValidation.segmentLengths.join(', ')}`)
+      
+      // Flag any segments > 50ft as potential missed corners
+      const longSegments = segmentValidation.segmentLengths.filter((len: number) => len > 50)
+      if (longSegments.length > 0) {
+        console.warn(`   ⚠️ ${longSegments.length} segments > 50ft detected - may have missed corners: ${longSegments.join(', ')} ft`)
+      }
+    }
+    
+    // VALIDATION: Check vertex count against expected (1 per ~20ft perimeter)
+    if (segmentValidation.estimatedPerimeterFt) {
+      const expectedMinVertices = Math.floor(segmentValidation.estimatedPerimeterFt / 25)
+      const expectedMaxVertices = Math.ceil(segmentValidation.estimatedPerimeterFt / 15)
+      
+      if (validVertices.length < expectedMinVertices) {
+        console.warn(`⚠️ VERTEX COUNT LOW: ${validVertices.length} vertices for ${segmentValidation.estimatedPerimeterFt}ft perimeter (expected ${expectedMinVertices}-${expectedMaxVertices})`)
+      }
     }
     
     return { 
@@ -657,11 +714,19 @@ Use DECIMAL PRECISION (e.g., 34.72 not 35). Return ONLY valid JSON.`
       complexity: result.complexity || 'moderate',
       vertexStats,
       estimatedFacetCount: result.estimatedFacetCount,
-      qualityCheck: result.qualityCheck
+      qualityCheck: result.qualityCheck,
+      segmentValidation,
+      perimeterValidation: {
+        estimatedPerimeterFt: segmentValidation.estimatedPerimeterFt,
+        vertexCount: validVertices.length,
+        avgSegmentLength: segmentValidation.avgSegmentLengthFt,
+        longestSegment: segmentValidation.longestSegmentFt,
+        segmentLengths: segmentValidation.segmentLengths
+      }
     }
   } catch (err) {
     console.error('Perimeter detection error:', err)
-    return { vertices: createFallbackPerimeter(bounds), roofType: 'unknown', complexity: 'moderate', vertexStats: {} }
+    return { vertices: createFallbackPerimeter(bounds), roofType: 'unknown', complexity: 'moderate', vertexStats: {}, perimeterValidation: null }
   }
 }
 
@@ -1087,6 +1152,7 @@ function convertDerivedLinesToWKT(
 }
 
 // Convert perimeter vertices to WKT polygon
+// ENHANCED: Detailed segment-by-segment logging for Planimeter comparison
 function convertPerimeterToWKT(
   vertices: any[],
   imageCenter: { lat: number; lng: number },
@@ -1112,21 +1178,46 @@ function convertPerimeterToWKT(
   // Close the polygon
   wktPoints.push(wktPoints[0])
   
-  // Calculate perimeter for validation
-  let perimeterFt = 0
+  // Calculate perimeter with segment-by-segment breakdown (Planimeter-style)
+  let totalPerimeterFt = 0
+  const segmentLengths: number[] = []
+  
   for (let i = 0; i < vertices.length; i++) {
     const v1 = vertices[i]
     const v2 = vertices[(i + 1) % vertices.length]
     const dx = ((v2.x - v1.x) / 100) * imageSize * metersPerPixel
     const dy = ((v2.y - v1.y) / 100) * imageSize * metersPerPixel
-    perimeterFt += Math.sqrt(dx * dx + dy * dy) * 3.28084
+    const segmentFt = Math.sqrt(dx * dx + dy * dy) * 3.28084
+    segmentLengths.push(Math.round(segmentFt * 10) / 10)
+    totalPerimeterFt += segmentFt
   }
   
-  console.log(`📐 Perimeter WKT: ${vertices.length} vertices, ~${perimeterFt.toFixed(0)} ft perimeter`)
+  // Log segment-by-segment breakdown like Planimeter does
+  console.log(`📐 Perimeter WKT: ${vertices.length} vertices, ${totalPerimeterFt.toFixed(1)} ft total perimeter`)
+  console.log(`📐 Segment lengths (ft): ${segmentLengths.join(', ')}`)
   
   // Validate: typical residential perimeter is 150-400 ft
-  if (perimeterFt > 600) {
-    console.warn(`⚠️ Perimeter too large (${perimeterFt.toFixed(0)} ft), likely detection error`)
+  if (totalPerimeterFt < 100) {
+    console.warn(`⚠️ Perimeter too small (${totalPerimeterFt.toFixed(0)} ft), likely detection error`)
+  }
+  if (totalPerimeterFt > 600) {
+    console.warn(`⚠️ Perimeter too large (${totalPerimeterFt.toFixed(0)} ft), likely detection error`)
+  }
+  
+  // Flag long segments that may indicate missed corners
+  const longSegments = segmentLengths.filter(len => len > 60)
+  if (longSegments.length > 0) {
+    console.warn(`⚠️ ${longSegments.length} segments > 60ft - check for missed corners: ${longSegments.join(', ')} ft`)
+  }
+  
+  // Calculate average segment length
+  const avgSegment = totalPerimeterFt / vertices.length
+  console.log(`📐 Average segment: ${avgSegment.toFixed(1)} ft (expect 15-25 ft for residential)`)
+  
+  // Validate vertex count vs perimeter
+  const expectedMinVertices = Math.floor(totalPerimeterFt / 30) // At least 1 per 30ft
+  if (vertices.length < expectedMinVertices) {
+    console.warn(`⚠️ LOW VERTEX COUNT: ${vertices.length} vertices for ${totalPerimeterFt.toFixed(0)}ft perimeter (need at least ${expectedMinVertices})`)
   }
   
   return `POLYGON((${wktPoints.join(', ')}))`
@@ -1256,12 +1347,14 @@ function calculateConfidenceScore(aiAnalysis: any, measurements: any, solarData:
 }
 
 // HARD CAPS for residential roof area validation
+// TIGHTENED: Lower variance thresholds to catch missed vertices
 const ROOF_AREA_CAPS = {
   MIN_RESIDENTIAL: 500,      // Minimum realistic residential roof
-  MAX_RESIDENTIAL: 5000,     // Maximum single-family residential (typical 1200-3500)
+  MAX_RESIDENTIAL: 5500,     // Maximum single-family residential (typical 1200-4000)
   MAX_LARGE_HOME: 8000,      // Maximum for large/luxury homes
-  SOLAR_VARIANCE_THRESHOLD: 0.5,  // 50% variance triggers Solar API override (default)
-  FLORIDA_VARIANCE_THRESHOLD: 0.25  // 25% for Florida (screen enclosures common)
+  SOLAR_VARIANCE_THRESHOLD: 0.15,   // 15% variance triggers validation (was 50% - too lenient)
+  FLORIDA_VARIANCE_THRESHOLD: 0.10, // 10% for Florida (screen enclosures very common)
+  PLANIMETER_TARGET_ACCURACY: 0.05  // Target: within 5% of Planimeter/EagleView
 }
 
 // Check if address is in Florida (screen enclosures/lanais very common)
@@ -1328,46 +1421,75 @@ function calculateAreaFromPerimeterVertices(
   let calculatedArea = Math.abs(area / 2)
   console.log(`📐 Raw calculated area: ${calculatedArea.toFixed(0)} sqft`)
   
-  // VALIDATION 1: Check against Solar API if available
-  // CRITICAL FIX FOR SCREEN ENCLOSURES:
-  // - In Florida, screen enclosures (lanais/pool cages) cause AI to detect LARGER area than actual roof
-  // - Solar API also includes the full building footprint (including screen enclosure)
-  // - The ACTUAL shingled roof is SMALLER than both AI and Solar detect
-  // - Solution: For Florida addresses, use the SMALLER of AI Vision vs Solar API
-  //   This works because:
-  //   - If AI correctly excludes screen enclosure → AI area is smaller → use it
-  //   - If Solar correctly represents roof without enclosure → Solar is smaller → use it
-  //   - Using the minimum helps exclude screen enclosures from either source
+  // Calculate perimeter for validation (Planimeter-style cross-check)
+  let perimeterFt = 0
+  const segmentLengths: number[] = []
+  for (let i = 0; i < feetVertices.length; i++) {
+    const v1 = feetVertices[i]
+    const v2 = feetVertices[(i + 1) % feetVertices.length]
+    const segLen = Math.sqrt(Math.pow(v2.x - v1.x, 2) + Math.pow(v2.y - v1.y, 2))
+    segmentLengths.push(segLen)
+    perimeterFt += segLen
+  }
   
+  console.log(`📐 Calculated perimeter: ${perimeterFt.toFixed(1)} ft from ${feetVertices.length} vertices`)
+  
+  // PLANIMETER-STYLE VALIDATION: Check area/perimeter ratio
+  // For a square: Area = (Perimeter/4)^2, so Area/Perimeter = Perimeter/16
+  // For residential roofs, typical ratio is Area/Perimeter = 10-20
+  const areaPerimeterRatio = calculatedArea / perimeterFt
+  console.log(`📐 Area/Perimeter ratio: ${areaPerimeterRatio.toFixed(1)} (expect 10-20 for residential)`)
+  
+  if (areaPerimeterRatio < 8) {
+    console.warn(`⚠️ Low area/perimeter ratio (${areaPerimeterRatio.toFixed(1)}) - polygon may be too narrow or missing vertices`)
+  }
+  if (areaPerimeterRatio > 25) {
+    console.warn(`⚠️ High area/perimeter ratio (${areaPerimeterRatio.toFixed(1)}) - polygon may be too simplified`)
+  }
+  
+  // VALIDATION 1: Check against Solar API if available
   if (solarData?.available && solarData?.buildingFootprintSqft) {
     const solarFootprint = solarData.buildingFootprintSqft
     const variance = Math.abs(calculatedArea - solarFootprint) / solarFootprint
     
     // Check if Florida address (screen enclosures very common)
     const isFlorida = address ? isFloridaAddress(address) : false
+    const varianceThreshold = isFlorida ? ROOF_AREA_CAPS.FLORIDA_VARIANCE_THRESHOLD : ROOF_AREA_CAPS.SOLAR_VARIANCE_THRESHOLD
     
-    console.log(`📐 Solar API validation: AI_calculated=${calculatedArea.toFixed(0)}, solar=${solarFootprint.toFixed(0)}, variance=${(variance * 100).toFixed(1)}%${isFlorida ? ' (Florida: using minimum area strategy)' : ''}`)
+    console.log(`📐 Solar API validation: AI_calculated=${calculatedArea.toFixed(0)}, solar=${solarFootprint.toFixed(0)}, variance=${(variance * 100).toFixed(1)}%, threshold=${(varianceThreshold * 100).toFixed(0)}%${isFlorida ? ' (Florida)' : ''}`)
     
-    if (isFlorida) {
-      // FLORIDA STRATEGY: Use the SMALLER area to exclude screen enclosures
-      // Screen enclosures make BOTH AI and Solar report larger areas
-      // The smaller value is more likely to be the actual shingled roof
-      if (calculatedArea > solarFootprint) {
-        console.log(`📐 FLORIDA FIX: AI area (${calculatedArea.toFixed(0)} sqft) > Solar (${solarFootprint.toFixed(0)} sqft) - using Solar as it likely excludes screen enclosure`)
+    if (variance > varianceThreshold) {
+      // AI area differs significantly from Solar API
+      if (calculatedArea < solarFootprint * 0.85) {
+        // AI detected SMALLER than Solar - likely missing vertices/area
+        console.warn(`⚠️ AI area ${calculatedArea.toFixed(0)} sqft is ${((1 - calculatedArea/solarFootprint) * 100).toFixed(1)}% UNDER Solar API`)
+        
+        // Check if we have few vertices (indicating missed corners)
+        const vertexCount = feetVertices.length
+        const expectedVertices = Math.ceil(perimeterFt / 20) // ~1 vertex per 20ft
+        
+        if (vertexCount < expectedVertices) {
+          console.warn(`⚠️ LIKELY MISSING CORNERS: ${vertexCount} vertices vs ${expectedVertices} expected for ${perimeterFt.toFixed(0)}ft perimeter`)
+          console.log(`📐 OVERRIDE: Using Solar API footprint as more accurate source`)
+          calculatedArea = solarFootprint
+        } else {
+          // Blend: weighted average favoring Solar API when AI is under
+          const blendedArea = (calculatedArea * 0.3) + (solarFootprint * 0.7)
+          console.log(`📐 BLEND: Using weighted average ${blendedArea.toFixed(0)} sqft (30% AI + 70% Solar)`)
+          calculatedArea = blendedArea
+        }
+      } else if (isFlorida && calculatedArea > solarFootprint * 1.1) {
+        // Florida: AI detected LARGER - likely including screen enclosure
+        console.log(`📐 FLORIDA FIX: AI area (${calculatedArea.toFixed(0)} sqft) > Solar (${solarFootprint.toFixed(0)} sqft) - using Solar to exclude screen enclosure`)
         calculatedArea = solarFootprint
-      } else {
-        console.log(`📐 FLORIDA FIX: AI area (${calculatedArea.toFixed(0)} sqft) < Solar (${solarFootprint.toFixed(0)} sqft) - keeping AI as it likely excludes screen enclosure`)
-        // Keep calculatedArea as-is since it's smaller
-      }
-    } else {
-      // NON-FLORIDA: Standard variance check
-      const varianceThreshold = ROOF_AREA_CAPS.SOLAR_VARIANCE_THRESHOLD
-      
-      if (variance > varianceThreshold) {
-        console.warn(`⚠️ AI area ${calculatedArea.toFixed(0)} sqft is ${(variance * 100).toFixed(1)}% off from Solar API ${solarFootprint.toFixed(0)} sqft (threshold: ${(varianceThreshold * 100).toFixed(0)}%)`)
+      } else if (calculatedArea > solarFootprint * 1.2) {
+        // AI detected significantly LARGER - likely over-detection
+        console.warn(`⚠️ AI area ${calculatedArea.toFixed(0)} sqft is ${((calculatedArea/solarFootprint - 1) * 100).toFixed(1)}% OVER Solar API`)
         console.log(`📐 OVERRIDE: Using Solar API footprint as ground truth`)
         calculatedArea = solarFootprint
       }
+    } else {
+      console.log(`📐 ✅ AI measurement within ${(variance * 100).toFixed(1)}% of Solar API (threshold: ${(varianceThreshold * 100).toFixed(0)}%)`)
     }
   }
   
@@ -1397,7 +1519,7 @@ function calculateAreaFromPerimeterVertices(
     }
   }
   
-  console.log(`📐 Final validated area: ${calculatedArea.toFixed(0)} sqft`)
+  console.log(`📐 Final validated area: ${calculatedArea.toFixed(0)} sqft (target accuracy: ±${(ROOF_AREA_CAPS.PLANIMETER_TARGET_ACCURACY * 100).toFixed(0)}%)`)
   return calculatedArea
 }
 
