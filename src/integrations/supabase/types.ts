@@ -9964,6 +9964,7 @@ export type Database = {
       pipeline_entries: {
         Row: {
           assigned_to: string | null
+          calculation_template_id: string | null
           clj_formatted_number: string | null
           contact_id: string | null
           contact_number: number | null
@@ -10000,6 +10001,7 @@ export type Database = {
         }
         Insert: {
           assigned_to?: string | null
+          calculation_template_id?: string | null
           clj_formatted_number?: string | null
           contact_id?: string | null
           contact_number?: number | null
@@ -10036,6 +10038,7 @@ export type Database = {
         }
         Update: {
           assigned_to?: string | null
+          calculation_template_id?: string | null
           clj_formatted_number?: string | null
           contact_id?: string | null
           contact_number?: number | null
@@ -10076,6 +10079,13 @@ export type Database = {
             columns: ["assigned_to"]
             isOneToOne: false
             referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipeline_entries_calculation_template_id_fkey"
+            columns: ["calculation_template_id"]
+            isOneToOne: false
+            referencedRelation: "estimate_calculation_templates"
             referencedColumns: ["id"]
           },
           {
