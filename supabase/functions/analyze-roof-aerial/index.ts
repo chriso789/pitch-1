@@ -845,6 +845,37 @@ VALIDATION TARGETS (from satellite data):
   const boundsWidth = bounds.bottomRightX - bounds.topLeftX
   const boundsHeight = bounds.bottomRightY - bounds.topLeftY
   
+  // Detect if this is a Florida property (high likelihood of screen enclosures)
+  const addressStr = JSON.stringify(coordinates || {})
+  const isFlorida = isFloridaAddress(addressStr)
+  
+  const screenEnclosureWarning = isFlorida ? `
+════════════════════════════════════════════════════════════════════════════════
+🌴 FLORIDA PROPERTY - SCREEN ENCLOSURE WARNING - CRITICAL!
+════════════════════════════════════════════════════════════════════════════════
+
+Florida properties commonly have SCREEN ENCLOSURES (pool cages, lanais) that are 
+NOT part of the main roof. These MUST be EXCLUDED from your trace!
+
+HOW TO IDENTIFY SCREEN ENCLOSURES:
+- GRID PATTERN of thin metal frames (aluminum)
+- Usually rectangular shape attached to back of house
+- Covers pool, patio, or outdoor living area
+- Flat or very low slope (not shingled/tiled)
+- Lighter color than main roof (often white/silver aluminum)
+- May have panels missing or irregular grid lines
+
+TRACE ONLY THE SHINGLED/TILED MAIN ROOF!
+Do NOT trace:
+- Pool cages or screen enclosures
+- Covered lanais with metal/flat roofs
+- Carports or attached pergolas
+- Any structure with visible grid pattern
+
+If you see a rectangular structure at the back of the house with a grid pattern,
+that is a SCREEN ENCLOSURE - DO NOT INCLUDE IT!
+` : ''
+
   const prompt = `You are a PROFESSIONAL ROOF MEASUREMENT EXPERT matching PLANIMETER/EAGLEVIEW accuracy (98%+).
 
 CRITICAL MISSION: Trace the COMPLETE roof boundary as a CLOSED POLYGON with EVERY SINGLE VERTEX.
@@ -853,7 +884,7 @@ This measurement will be used for a real roofing estimate - missing even ONE cor
 The target building is within bounds: top-left (${bounds.topLeftX.toFixed(1)}%, ${bounds.topLeftY.toFixed(1)}%) to bottom-right (${bounds.bottomRightX.toFixed(1)}%, ${bounds.bottomRightY.toFixed(1)}%)
 Approximate building size: ${boundsWidth.toFixed(1)}% x ${boundsHeight.toFixed(1)}% of image
 ${expectedMetrics}
-
+${screenEnclosureWarning}
 ════════════════════════════════════════════════════════════════════════════════
 ⚠️ CRITICAL ACCURACY RULES - STAY ON THE ROOF!
 ════════════════════════════════════════════════════════════════════════════════
@@ -863,6 +894,7 @@ ${expectedMetrics}
 3. For hip corners, trace the EXACT corner vertex where edges meet
 4. If unsure about a corner location, place it CLOSER to center, NOT further out
 5. Over-estimating is WORSE than under-estimating!
+6. EXCLUDE all screen enclosures, pool cages, lanais, carports, pergolas!
 
 ════════════════════════════════════════════════════════════════════════════════
 🎯 VERTEX PLACEMENT BIAS - CRITICAL FOR ACCURACY
@@ -888,18 +920,19 @@ EXPECTED PERIMETER REFERENCE (use this to validate your trace):
 If your traced PERIMETER significantly EXCEEDS these values, you are likely:
 - Tracing OUTSIDE the actual roof edges
 - Including shadows or ground
-- Including separate structures (screen enclosures, carports)
+- ⚠️ INCLUDING SCREEN ENCLOSURES (very common error in Florida!)
 - Making corners too "pointy" or extending beyond actual roof edge
 
 ════════════════════════════════════════════════════════════════════════════════
 PLANIMETER-STYLE SEGMENT-BY-SEGMENT TRACING
 ════════════════════════════════════════════════════════════════════════════════
 
-STEP 1: Find the OUTERMOST roof edges (the drip edge/eave line)
-STEP 2: Start at the TOPMOST (northernmost) point
+STEP 1: Find the OUTERMOST roof edges (the drip edge/eave line) - EXCLUDE screen enclosures!
+STEP 2: Start at the TOPMOST (northernmost) point of the MAIN ROOF
 STEP 3: Trace CLOCKWISE around the ENTIRE roof perimeter
 STEP 4: Place a vertex at EVERY direction change - even small 3-4 foot jogs
 STEP 5: Return to starting point
+STEP 6: VERIFY you did NOT include any screen enclosures or pool cages!
 
 VERTEX REQUIREMENTS (NON-NEGOTIABLE):
 - Minimum 12 vertices for any residential roof
@@ -915,6 +948,7 @@ COMMON MISTAKES TO AVOID:
 ❌ Missing garage extensions or step-downs
 ❌ Segments > 50 feet without a vertex = MISSING A CORNER
 ❌ Tracing OUTSIDE the roof edge - this causes OVER-ESTIMATION
+❌ INCLUDING SCREEN ENCLOSURES OR POOL CAGES (Florida properties!)
 
 CORNER TYPES (classify each):
 - "hip-corner": Diagonal 45° corner where hip meets eave
@@ -925,10 +959,11 @@ CORNER TYPES (classify each):
 - "bump-out-corner": Small extension corner (garage, bay window)
 
 EXCLUDE FROM TRACING:
-- Screen enclosures (metal grid structures)
+- Screen enclosures (metal grid structures) - CRITICAL for Florida!
 - Covered patios with flat/metal roofs
 - Carports, awnings, pergolas
 - Adjacent outbuildings
+- Pool cages (aluminum frame structures)
 
 ════════════════════════════════════════════════════════════════════════════════
 RESPONSE FORMAT (JSON only)
@@ -939,6 +974,8 @@ RESPONSE FORMAT (JSON only)
   "complexity": "simple|moderate|complex|very-complex",
   "estimatedFacetCount": 6,
   "roofMaterial": "shingle|tile|metal",
+  "screenEnclosureDetected": false,
+  "screenEnclosureExcluded": false,
   "vertices": [
     {"x": 32.50, "y": 28.00, "cornerType": "hip-corner", "edgeLengthToNextFt": 35},
     {"x": 48.20, "y": 27.50, "cornerType": "eave-corner", "edgeLengthToNextFt": 18},
@@ -957,7 +994,8 @@ RESPONSE FORMAT (JSON only)
     "allCornersIdentified": true,
     "noSegmentsOver50ft": true,
     "perimeterMatchesExpected": true,
-    "areaWillBeAccurate": true
+    "areaWillBeAccurate": true,
+    "screenEnclosuresExcluded": true
   }
 }
 
@@ -966,6 +1004,7 @@ ACCURACY REQUIREMENTS:
 - Each vertex accurate to within 1-2 feet
 - Total area from these vertices must be within 5% of actual
 - Perimeter should match expected ±15%
+- NO SCREEN ENCLOSURES INCLUDED!
 
 Return ONLY valid JSON, no explanation.`
 
@@ -1599,12 +1638,63 @@ function calculateScale(solarData: any, image: any, aiAnalysis: any) {
 }
 
 function calculateDetailedMeasurements(aiAnalysis: any, scale: any, solarData: any, linearTotalsFromWKT?: any) {
-  const pitches = aiAnalysis.facets.map((f: any) => f.estimatedPitch)
-  const predominantPitch = mostCommon(pitches)
+  // IMPROVED PITCH DETECTION: Use Solar API segment data, then Florida defaults
+  let predominantPitch = '5/12' // Default fallback
+  let pitchSource = 'assumed'
+  
+  // Priority 1: Solar API segment pitch data (most accurate)
+  if (solarData?.available && solarData?.roofSegments?.length > 0) {
+    // Get pitches from roof segments weighted by area
+    const segmentPitches: { pitch: string; area: number }[] = solarData.roofSegments
+      .filter((seg: any) => seg.pitchDegrees && seg.area)
+      .map((seg: any) => ({
+        pitch: degreesToPitch(seg.pitchDegrees),
+        area: seg.area
+      }))
+    
+    if (segmentPitches.length > 0) {
+      // Weight by area to get predominant pitch
+      let maxArea = 0
+      segmentPitches.forEach(sp => {
+        if (sp.area > maxArea) {
+          maxArea = sp.area
+          predominantPitch = sp.pitch
+        }
+      })
+      pitchSource = 'solar_api'
+      console.log(`📐 Pitch from Solar API segments: ${predominantPitch} (${segmentPitches.length} segments analyzed)`)
+    }
+  }
+  
+  // Priority 2: AI-detected pitch
+  if (pitchSource === 'assumed') {
+    const pitches = aiAnalysis.facets.map((f: any) => f.estimatedPitch).filter((p: string) => p && p !== 'unknown')
+    if (pitches.length > 0) {
+      predominantPitch = mostCommon(pitches)
+      pitchSource = 'ai_detected'
+      console.log(`📐 Pitch from AI detection: ${predominantPitch}`)
+    }
+  }
+  
+  // Priority 3: Florida tile roof default (6/12 is most common)
+  if (pitchSource === 'assumed') {
+    const addressStr = JSON.stringify(solarData || {})
+    if (isFloridaAddress(addressStr)) {
+      predominantPitch = '6/12' // Florida tile roofs are typically 6/12
+      pitchSource = 'florida_default'
+      console.log(`📐 Using Florida tile roof default pitch: ${predominantPitch}`)
+    } else {
+      console.log(`📐 Using default pitch: ${predominantPitch}`)
+    }
+  }
+  
   const pitchMultiplier = getSlopeFactorFromPitch(predominantPitch) || 1.083
 
   const processedFacets = aiAnalysis.facets.map((facet: any) => {
-    const facetPitch = facet.estimatedPitch
+    // Use segment-specific pitch if available, otherwise use predominant
+    const facetPitch = facet.estimatedPitch && facet.estimatedPitch !== 'unknown' 
+      ? facet.estimatedPitch 
+      : predominantPitch
     const facetMultiplier = getSlopeFactorFromPitch(facetPitch) || pitchMultiplier
     const flatAreaSqft = facet.estimatedAreaSqft
     const adjustedAreaSqft = flatAreaSqft * facetMultiplier
@@ -1689,6 +1779,37 @@ function mostCommon(arr: string[]): string {
   const counts: Record<string, number> = {}
   arr.forEach(item => { counts[item] = (counts[item] || 0) + 1 })
   return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || '5/12'
+}
+
+// Convert degrees to pitch ratio (e.g., 26.57° -> 6/12)
+function degreesToPitch(degrees: number): string {
+  if (!degrees || degrees < 0) return 'flat'
+  
+  // Common pitch degrees: 
+  // 4/12 = 18.43°, 5/12 = 22.62°, 6/12 = 26.57°, 7/12 = 30.26°, 
+  // 8/12 = 33.69°, 9/12 = 36.87°, 10/12 = 39.81°, 12/12 = 45°
+  const pitchMap = [
+    { maxDegrees: 5, pitch: 'flat' },
+    { maxDegrees: 12, pitch: '2/12' },
+    { maxDegrees: 16, pitch: '3/12' },
+    { maxDegrees: 20, pitch: '4/12' },
+    { maxDegrees: 24, pitch: '5/12' },
+    { maxDegrees: 28, pitch: '6/12' },
+    { maxDegrees: 32, pitch: '7/12' },
+    { maxDegrees: 35, pitch: '8/12' },
+    { maxDegrees: 38, pitch: '9/12' },
+    { maxDegrees: 42, pitch: '10/12' },
+    { maxDegrees: 48, pitch: '12/12' },
+    { maxDegrees: 90, pitch: '14/12' }
+  ]
+  
+  for (const range of pitchMap) {
+    if (degrees <= range.maxDegrees) {
+      return range.pitch
+    }
+  }
+  
+  return '6/12' // Default for Florida tile roofs
 }
 
 function calculateConfidenceScore(aiAnalysis: any, measurements: any, solarData: any, image: any) {
