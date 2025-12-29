@@ -1326,7 +1326,7 @@ Return ONLY valid JSON.`
   }
 }
 
-// Derive lines from vertices
+// Derive lines from vertices - IMPROVED with polygon clipping and farthest-pair ridge algorithm
 function deriveLinesToPerimeter(
   perimeterVertices: any[],
   junctions: any[],
@@ -1339,124 +1339,407 @@ function deriveLinesToPerimeter(
     return lines
   }
   
-  // 1. RIDGE LINES: Connect ridge endpoints/junctions
-  const sortedJunctions = [...(junctions || []), ...(ridgeEndpoints || [])]
+  // 1. RIDGE LINES: Use FARTHEST-PAIR algorithm (not sort-by-x which creates zig-zags)
+  const ridgeCandidates = [...(junctions || []), ...(ridgeEndpoints || [])]
     .filter((j: any) => j.type?.includes('ridge') || !j.type)
-    .sort((a: any, b: any) => a.x - b.x)
   
-  for (let i = 0; i < sortedJunctions.length - 1; i++) {
-    const dist = distance(sortedJunctions[i], sortedJunctions[i + 1])
-    if (dist > 3 && dist < 50) {
+  if (ridgeCandidates.length >= 2) {
+    // Find the farthest pair of points - this is the main ridge
+    let maxDist = 0
+    let ridgeStart: any = null
+    let ridgeEnd: any = null
+    
+    for (let i = 0; i < ridgeCandidates.length; i++) {
+      for (let j = i + 1; j < ridgeCandidates.length; j++) {
+        const dist = distance(ridgeCandidates[i], ridgeCandidates[j])
+        if (dist > maxDist) {
+          maxDist = dist
+          ridgeStart = ridgeCandidates[i]
+          ridgeEnd = ridgeCandidates[j]
+        }
+      }
+    }
+    
+    if (ridgeStart && ridgeEnd && maxDist > 5) {
+      // Clip ridge to polygon before adding
+      const clippedRidge = clipLineToPolygon(
+        { startX: ridgeStart.x, startY: ridgeStart.y, endX: ridgeEnd.x, endY: ridgeEnd.y },
+        perimeterVertices
+      )
+      if (clippedRidge) {
+        lines.push({
+          type: 'ridge',
+          startX: clippedRidge.startX,
+          startY: clippedRidge.startY,
+          endX: clippedRidge.endX,
+          endY: clippedRidge.endY,
+          source: 'vertex_derived_farthest_pair'
+        })
+        console.log(`📏 Ridge (farthest-pair): (${clippedRidge.startX.toFixed(1)}, ${clippedRidge.startY.toFixed(1)}) to (${clippedRidge.endX.toFixed(1)}, ${clippedRidge.endY.toFixed(1)}) = ${maxDist.toFixed(1)} units`)
+      }
+    }
+  } else if (ridgeCandidates.length === 1) {
+    // Single ridge point - estimate ridge from centroid to this point
+    const centroidX = perimeterVertices.reduce((s, v) => s + v.x, 0) / perimeterVertices.length
+    const centroidY = perimeterVertices.reduce((s, v) => s + v.y, 0) / perimeterVertices.length
+    
+    // Project ridge from centroid through the ridge point
+    const dx = ridgeCandidates[0].x - centroidX
+    const dy = ridgeCandidates[0].y - centroidY
+    const extendedStart = { x: centroidX - dx, y: centroidY - dy }
+    const extendedEnd = { x: centroidX + dx * 2, y: centroidY + dy * 2 }
+    
+    const clippedRidge = clipLineToPolygon(
+      { startX: extendedStart.x, startY: extendedStart.y, endX: extendedEnd.x, endY: extendedEnd.y },
+      perimeterVertices
+    )
+    if (clippedRidge) {
       lines.push({
         type: 'ridge',
-        startX: sortedJunctions[i].x,
-        startY: sortedJunctions[i].y,
-        endX: sortedJunctions[i + 1].x,
-        endY: sortedJunctions[i + 1].y,
-        source: 'vertex_derived'
+        startX: clippedRidge.startX,
+        startY: clippedRidge.startY,
+        endX: clippedRidge.endX,
+        endY: clippedRidge.endY,
+        source: 'vertex_derived_single_point'
       })
     }
   }
   
-  // 2. HIP LINES: Connect ridge endpoints/junctions to hip-corners on perimeter
+  // Get ridge endpoints for hip connections
+  const ridgeLines = lines.filter(l => l.type === 'ridge')
+  const ridgePoints: any[] = []
+  ridgeLines.forEach(ridge => {
+    ridgePoints.push({ x: ridge.startX, y: ridge.startY })
+    ridgePoints.push({ x: ridge.endX, y: ridge.endY })
+  })
+  
+  // 2. HIP LINES: Connect hip-corners to NEAREST RIDGE ENDPOINT (with constraints)
   const hipCorners = perimeterVertices.filter((v: any) => 
     v.cornerType === 'hip-corner' || v.type === 'hip-corner'
   )
   
-  const allRidgePoints = ridgeEndpoints.length > 0 ? ridgeEndpoints : 
-    junctions.filter((j: any) => j.type?.includes('ridge') || j.type?.includes('hip'))
+  // Track connections per ridge endpoint (max 2 per endpoint for simple roofs)
+  const ridgeEndpointConnections: Map<string, number> = new Map()
   
   hipCorners.forEach((corner: any) => {
-    const nearestRidge = findNearestPoint(corner, allRidgePoints)
-    if (nearestRidge) {
-      lines.push({
-        type: 'hip',
-        startX: nearestRidge.x,
-        startY: nearestRidge.y,
-        endX: corner.x,
-        endY: corner.y,
-        source: 'vertex_derived'
-      })
+    if (ridgePoints.length === 0) return
+    
+    // Find nearest ridge endpoint
+    const nearestRidge = findNearestPoint(corner, ridgePoints)
+    if (!nearestRidge) return
+    
+    const ridgeKey = `${nearestRidge.x.toFixed(1)},${nearestRidge.y.toFixed(1)}`
+    const currentConnections = ridgeEndpointConnections.get(ridgeKey) || 0
+    
+    // Allow max 2 hips per ridge endpoint for simple roofs
+    if (currentConnections >= 2) {
+      console.log(`📏 Skipping hip from corner - ridge endpoint already has ${currentConnections} connections`)
+      return
+    }
+    
+    // Clip hip line to polygon
+    const clippedHip = clipLineToPolygon(
+      { startX: nearestRidge.x, startY: nearestRidge.y, endX: corner.x, endY: corner.y },
+      perimeterVertices
+    )
+    
+    if (clippedHip) {
+      const hipLength = distance(
+        { x: clippedHip.startX, y: clippedHip.startY },
+        { x: clippedHip.endX, y: clippedHip.endY }
+      )
+      
+      // Only add if reasonable length (> 3 units, < 40 units)
+      if (hipLength > 3 && hipLength < 40) {
+        lines.push({
+          type: 'hip',
+          startX: clippedHip.startX,
+          startY: clippedHip.startY,
+          endX: clippedHip.endX,
+          endY: clippedHip.endY,
+          source: 'vertex_derived_constrained'
+        })
+        ridgeEndpointConnections.set(ridgeKey, currentConnections + 1)
+      }
     }
   })
   
-  // 3. VALLEY LINES: Connect valley entries to interior valley junctions
+  // 3. VALLEY LINES: From valley entries toward interior (with fallback for concave vertices)
   const valleyEntries = perimeterVertices.filter((v: any) => 
     v.cornerType === 'valley-entry' || v.type === 'valley-entry'
   )
-  const valleyJunctions = junctions.filter((j: any) => 
-    j.type?.includes('valley')
-  )
+  const valleyJunctions = junctions.filter((j: any) => j.type?.includes('valley'))
   
-  valleyEntries.forEach((entry: any) => {
-    const nearestValleyJunction = findNearestPoint(entry, valleyJunctions)
-    if (nearestValleyJunction) {
-      lines.push({
-        type: 'valley',
-        startX: nearestValleyJunction.x,
-        startY: nearestValleyJunction.y,
-        endX: entry.x,
-        endY: entry.y,
-        source: 'vertex_derived'
-      })
+  // Find concave vertices as valley fallback
+  const concaveVertices = findConcaveVertices(perimeterVertices)
+  const allValleyStarts = [...valleyEntries, ...concaveVertices.filter(cv => 
+    !valleyEntries.some(ve => distance(ve, cv) < 3)
+  )]
+  
+  allValleyStarts.forEach((entry: any) => {
+    // Try valley junctions first
+    let target: any = null
+    
+    if (valleyJunctions.length > 0) {
+      target = findNearestPoint(entry, valleyJunctions)
+    }
+    
+    // Fallback: project toward centroid and clip to polygon
+    if (!target) {
+      const centroidX = perimeterVertices.reduce((s, v) => s + v.x, 0) / perimeterVertices.length
+      const centroidY = perimeterVertices.reduce((s, v) => s + v.y, 0) / perimeterVertices.length
+      
+      // Project from entry toward centroid, but only 70% of the way
+      const dx = centroidX - entry.x
+      const dy = centroidY - entry.y
+      target = { x: entry.x + dx * 0.7, y: entry.y + dy * 0.7 }
+    }
+    
+    if (target) {
+      const clippedValley = clipLineToPolygon(
+        { startX: entry.x, startY: entry.y, endX: target.x, endY: target.y },
+        perimeterVertices
+      )
+      
+      if (clippedValley) {
+        const valleyLength = distance(
+          { x: clippedValley.startX, y: clippedValley.startY },
+          { x: clippedValley.endX, y: clippedValley.endY }
+        )
+        
+        if (valleyLength > 3) {
+          lines.push({
+            type: 'valley',
+            startX: clippedValley.startX,
+            startY: clippedValley.startY,
+            endX: clippedValley.endX,
+            endY: clippedValley.endY,
+            source: 'vertex_derived_valley'
+          })
+        }
+      }
     }
   })
   
-  // 4 & 5. EAVE and RAKE LINES: Classify perimeter edges
-  const ridgeLines = lines.filter(l => l.type === 'ridge')
-  const hipLines = lines.filter(l => l.type === 'hip')
-  const valleyLines = lines.filter(l => l.type === 'valley')
+  // 4 & 5. EAVE and RAKE LINES: Classify perimeter edges based on ridge intersection
+  const allRidgeLines = lines.filter(l => l.type === 'ridge')
+  const allHipLines = lines.filter(l => l.type === 'hip')
   
-  const pointNearPoint = (p1: {x: number, y: number}, p2: {x: number, y: number}, threshold = 5): boolean => {
-    return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2)) < threshold
-  }
-  
-  const lineIntersectsEdge = (line: DerivedLine, v1: any, v2: any): boolean => {
-    return pointNearPoint({x: line.startX, y: line.startY}, v1) ||
-           pointNearPoint({x: line.startX, y: line.startY}, v2) ||
-           pointNearPoint({x: line.endX, y: line.endY}, v1) ||
-           pointNearPoint({x: line.endX, y: line.endY}, v2)
+  const pointNearLineEndpoint = (p: {x: number, y: number}, line: DerivedLine, threshold = 5): boolean => {
+    const distToStart = distance(p, { x: line.startX, y: line.startY })
+    const distToEnd = distance(p, { x: line.endX, y: line.endY })
+    return distToStart < threshold || distToEnd < threshold
   }
   
   for (let i = 0; i < perimeterVertices.length; i++) {
     const v1 = perimeterVertices[i]
     const v2 = perimeterVertices[(i + 1) % perimeterVertices.length]
     
-    const ridgeIntersects = ridgeLines.some(ridge => lineIntersectsEdge(ridge, v1, v2))
-    const hipIntersects = hipLines.some(hip => lineIntersectsEdge(hip, v1, v2))
+    // Check if any ridge terminates at this edge's vertices
+    const ridgeTerminatesAtEdge = allRidgeLines.some(ridge => 
+      pointNearLineEndpoint(v1, ridge) || pointNearLineEndpoint(v2, ridge)
+    )
     
-    const isRakeEdge = ridgeIntersects && !hipIntersects
+    // Check if any hip terminates at this edge's vertices
+    const hipTerminatesAtEdge = allHipLines.some(hip => 
+      pointNearLineEndpoint(v1, hip) || pointNearLineEndpoint(v2, hip)
+    )
     
-    if (isRakeEdge) {
-      lines.push({
-        type: 'rake',
-        startX: v1.x,
-        startY: v1.y,
-        endX: v2.x,
-        endY: v2.y,
-        source: 'vertex_derived'
-      })
-    } else {
-      lines.push({
-        type: 'eave',
-        startX: v1.x,
-        startY: v1.y,
-        endX: v2.x,
-        endY: v2.y,
-        source: 'vertex_derived'
-      })
+    // RAKE: Ridge terminates here AND no hip terminates here (gable ends)
+    // EAVE: Everything else (hip corners, eave corners, etc.)
+    const isRakeEdge = ridgeTerminatesAtEdge && !hipTerminatesAtEdge
+    
+    lines.push({
+      type: isRakeEdge ? 'rake' : 'eave',
+      startX: v1.x,
+      startY: v1.y,
+      endX: v2.x,
+      endY: v2.y,
+      source: 'perimeter_edge'
+    })
+  }
+  
+  // Remove duplicate lines and very short segments
+  const dedupedLines = removeDuplicateLines(lines)
+  
+  const eaveFt = dedupedLines.filter(l => l.type === 'eave').length
+  const rakeFt = dedupedLines.filter(l => l.type === 'rake').length
+  const hipFt = dedupedLines.filter(l => l.type === 'hip').length
+  const valleyFt = dedupedLines.filter(l => l.type === 'valley').length
+  const ridgeFt = dedupedLines.filter(l => l.type === 'ridge').length
+  console.log(`📐 Derived ${dedupedLines.length} lines: ${ridgeFt} ridge, ${hipFt} hip, ${valleyFt} valley, ${eaveFt} eave, ${rakeFt} rake`)
+  
+  return dedupedLines
+}
+
+// Find concave (valley-like) vertices in polygon
+function findConcaveVertices(vertices: any[]): any[] {
+  const concave: any[] = []
+  const n = vertices.length
+  
+  for (let i = 0; i < n; i++) {
+    const prev = vertices[(i - 1 + n) % n]
+    const curr = vertices[i]
+    const next = vertices[(i + 1) % n]
+    
+    // Cross product to determine turn direction
+    const cross = (curr.x - prev.x) * (next.y - curr.y) - (curr.y - prev.y) * (next.x - curr.x)
+    
+    // Negative cross product indicates concave (interior angle > 180°)
+    if (cross < -0.5) {
+      concave.push(curr)
     }
   }
   
-  // Clip all lines to ensure they stay within perimeter
-  const clippedLines = lines.map(line => clipLineToPerimeter(line, perimeterVertices, bounds))
-    .filter(line => line !== null) as DerivedLine[]
+  return concave
+}
+
+// Clip line segment to polygon using Cohen-Sutherland variant
+function clipLineToPolygon(
+  line: { startX: number; startY: number; endX: number; endY: number },
+  polygon: any[]
+): { startX: number; startY: number; endX: number; endY: number } | null {
+  if (!polygon || polygon.length < 3) return line
   
-  const eaveFt = clippedLines.filter(l => l.type === 'eave').length
-  const rakeFt = clippedLines.filter(l => l.type === 'rake').length
-  console.log(`📐 Derived ${clippedLines.length} lines: ${eaveFt} eave, ${rakeFt} rake segments`)
+  const startInside = pointInPolygon({ x: line.startX, y: line.startY }, polygon)
+  const endInside = pointInPolygon({ x: line.endX, y: line.endY }, polygon)
   
-  return clippedLines
+  // Both inside - return as is
+  if (startInside && endInside) {
+    return line
+  }
+  
+  // Find intersections with polygon edges
+  const intersections: { x: number; y: number; t: number }[] = []
+  
+  for (let i = 0; i < polygon.length; i++) {
+    const p1 = polygon[i]
+    const p2 = polygon[(i + 1) % polygon.length]
+    
+    const intersection = lineSegmentIntersection(
+      line.startX, line.startY, line.endX, line.endY,
+      p1.x, p1.y, p2.x, p2.y
+    )
+    
+    if (intersection) {
+      intersections.push(intersection)
+    }
+  }
+  
+  // Sort intersections by t (position along the line)
+  intersections.sort((a, b) => a.t - b.t)
+  
+  // Case: Both outside but line crosses polygon
+  if (!startInside && !endInside) {
+    if (intersections.length >= 2) {
+      return {
+        startX: intersections[0].x,
+        startY: intersections[0].y,
+        endX: intersections[intersections.length - 1].x,
+        endY: intersections[intersections.length - 1].y
+      }
+    }
+    return null // Line doesn't intersect polygon
+  }
+  
+  // Case: Start inside, end outside
+  if (startInside && !endInside && intersections.length >= 1) {
+    return {
+      startX: line.startX,
+      startY: line.startY,
+      endX: intersections[0].x,
+      endY: intersections[0].y
+    }
+  }
+  
+  // Case: Start outside, end inside
+  if (!startInside && endInside && intersections.length >= 1) {
+    return {
+      startX: intersections[intersections.length - 1].x,
+      startY: intersections[intersections.length - 1].y,
+      endX: line.endX,
+      endY: line.endY
+    }
+  }
+  
+  return null
+}
+
+// Point in polygon test (ray casting)
+function pointInPolygon(point: { x: number; y: number }, polygon: any[]): boolean {
+  let inside = false
+  const n = polygon.length
+  
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = polygon[i].x, yi = polygon[i].y
+    const xj = polygon[j].x, yj = polygon[j].y
+    
+    if (((yi > point.y) !== (yj > point.y)) &&
+        (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi)) {
+      inside = !inside
+    }
+  }
+  
+  return inside
+}
+
+// Line segment intersection
+function lineSegmentIntersection(
+  x1: number, y1: number, x2: number, y2: number,
+  x3: number, y3: number, x4: number, y4: number
+): { x: number; y: number; t: number } | null {
+  const denom = (y4 - y3) * (x2 - x1) - (x4 - x3) * (y2 - y1)
+  
+  if (Math.abs(denom) < 0.0001) {
+    return null // Parallel lines
+  }
+  
+  const ua = ((x4 - x3) * (y1 - y3) - (y4 - y3) * (x1 - x3)) / denom
+  const ub = ((x2 - x1) * (y1 - y3) - (y2 - y1) * (x1 - x3)) / denom
+  
+  if (ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1) {
+    return {
+      x: x1 + ua * (x2 - x1),
+      y: y1 + ua * (y2 - y1),
+      t: ua
+    }
+  }
+  
+  return null
+}
+
+// Remove duplicate and very short lines
+function removeDuplicateLines(lines: DerivedLine[]): DerivedLine[] {
+  const result: DerivedLine[] = []
+  const MIN_LENGTH = 2
+  
+  for (const line of lines) {
+    const length = distance(
+      { x: line.startX, y: line.startY },
+      { x: line.endX, y: line.endY }
+    )
+    
+    if (length < MIN_LENGTH) continue
+    
+    // Check for duplicates (same endpoints within tolerance)
+    const isDuplicate = result.some(existing => {
+      const sameDirection = (
+        distance({ x: existing.startX, y: existing.startY }, { x: line.startX, y: line.startY }) < 2 &&
+        distance({ x: existing.endX, y: existing.endY }, { x: line.endX, y: line.endY }) < 2
+      )
+      const reverseDirection = (
+        distance({ x: existing.startX, y: existing.startY }, { x: line.endX, y: line.endY }) < 2 &&
+        distance({ x: existing.endX, y: existing.endY }, { x: line.startX, y: line.startY }) < 2
+      )
+      return sameDirection || reverseDirection
+    })
+    
+    if (!isDuplicate) {
+      result.push(line)
+    }
+  }
+  
+  return result
 }
 
 function findNearestPoint(target: any, points: any[]): any | null {
@@ -1480,41 +1763,20 @@ function distance(p1: any, p2: any): number {
   return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2))
 }
 
-function clipLineToPerimeter(line: DerivedLine, perimeterVertices: any[], bounds: any): DerivedLine | null {
-  const tolerance = 5
-  const minX = bounds.topLeftX - tolerance
-  const maxX = bounds.bottomRightX + tolerance
-  const minY = bounds.topLeftY - tolerance
-  const maxY = bounds.bottomRightY + tolerance
-  
-  const clampedLine = {
-    ...line,
-    startX: Math.max(minX, Math.min(maxX, line.startX)),
-    startY: Math.max(minY, Math.min(maxY, line.startY)),
-    endX: Math.max(minX, Math.min(maxX, line.endX)),
-    endY: Math.max(minY, Math.min(maxY, line.endY))
-  }
-  
-  const length = distance(
-    { x: clampedLine.startX, y: clampedLine.startY },
-    { x: clampedLine.endX, y: clampedLine.endY }
-  )
-  
-  if (length < 2) return null
-  
-  return clampedLine
-}
-
-// Convert derived lines to WKT format
+// Convert derived lines to WKT format with plan/surface length calculations
 function convertDerivedLinesToWKT(
   derivedLines: DerivedLine[],
   imageCenter: { lat: number; lng: number },
   imageSize: number,
-  zoom: number
+  zoom: number,
+  predominantPitch: string = '5/12'
 ) {
   const metersPerPixel = (156543.03392 * Math.cos(imageCenter.lat * Math.PI / 180)) / Math.pow(2, zoom)
   const metersPerDegLat = 111320
   const metersPerDegLng = 111320 * Math.cos(imageCenter.lat * Math.PI / 180)
+  
+  // Get slope factor for pitch-adjusted lengths
+  const slopeFactor = getSlopeFactorFromPitch(predominantPitch) || 1.083
   
   const linearFeatures: any[] = []
   let featureId = 1
@@ -1542,24 +1804,40 @@ function convertDerivedLinesToWKT(
     
     const dx = (endLng - startLng) * metersPerDegLng
     const dy = (endLat - startLat) * metersPerDegLat
-    const length_ft = Math.sqrt(dx * dx + dy * dy) * 3.28084
+    const plan_length_ft = Math.sqrt(dx * dx + dy * dy) * 3.28084
     
-    if (length_ft >= 3) {
+    // Apply pitch factor based on line type:
+    // - ridge, eave: use plan length (horizontal features)
+    // - hip, valley, rake: use surface length (sloped features)
+    const needsSlopeFactor = ['hip', 'valley', 'rake'].includes(line.type)
+    const surface_length_ft = needsSlopeFactor 
+      ? plan_length_ft * slopeFactor 
+      : plan_length_ft
+    
+    if (plan_length_ft >= 3) {
       linearFeatures.push({
         id: `VERTEX_${line.type}_${featureId++}`,
         type: line.type,
         wkt: `LINESTRING(${startLng.toFixed(8)} ${startLat.toFixed(8)}, ${endLng.toFixed(8)} ${endLat.toFixed(8)})`,
-        length_ft: Math.round(length_ft * 10) / 10,
+        length_ft: Math.round(surface_length_ft * 10) / 10, // Default to surface length
+        plan_length_ft: Math.round(plan_length_ft * 10) / 10,
+        surface_length_ft: Math.round(surface_length_ft * 10) / 10,
         source: line.source
       })
     }
   })
   
-  const typeTotals: Record<string, number> = {}
+  // Calculate totals for both plan and surface
+  const planTotals: Record<string, number> = {}
+  const surfaceTotals: Record<string, number> = {}
+  
   linearFeatures.forEach(f => {
-    typeTotals[f.type] = (typeTotals[f.type] || 0) + f.length_ft
+    planTotals[f.type] = (planTotals[f.type] || 0) + f.plan_length_ft
+    surfaceTotals[f.type] = (surfaceTotals[f.type] || 0) + f.surface_length_ft
   })
-  console.log('📏 Linear feature totals:', typeTotals)
+  
+  console.log('📏 Linear feature totals (plan):', planTotals)
+  console.log('📏 Linear feature totals (surface):', surfaceTotals)
   
   return linearFeatures
 }
