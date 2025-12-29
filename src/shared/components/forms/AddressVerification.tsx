@@ -164,10 +164,10 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
   };
 
   const verifyAddress = async () => {
-    if (!address.street || !address.city || !address.state) {
+    if (!address.street) {
       toast({
-        title: "Incomplete Address",
-        description: "Please fill in street, city, and state.",
+        title: "Missing Address",
+        description: "Please enter a street address.",
         variant: "destructive",
       });
       return;
@@ -176,7 +176,11 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
     setIsVerifying(true);
     
     try {
-      const fullAddress = `${address.street}, ${address.city}, ${address.state} ${address.zip}`;
+      // Build address string with available components (state/zip optional)
+      let fullAddress = address.street;
+      if (address.city) fullAddress += `, ${address.city}`;
+      if (address.state) fullAddress += `, ${address.state}`;
+      if (address.zip) fullAddress += ` ${address.zip}`;
       
       const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
         body: {
@@ -292,11 +296,14 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
         <div className="relative">
           <Input
             ref={streetInputRef}
-            placeholder="Street Address"
+            placeholder="Start typing full address for suggestions..."
             value={address.street}
             onChange={(e) => handleAddressChange("street", e.target.value)}
             className="w-full"
           />
+          <p className="text-xs text-muted-foreground mt-1">
+            Type your address above for autocomplete, or fill fields manually
+          </p>
           
           {showSuggestions && suggestions.length > 0 && (
             <div className="absolute z-50 w-full mt-1 bg-background border rounded-md shadow-lg max-h-60 overflow-auto">
