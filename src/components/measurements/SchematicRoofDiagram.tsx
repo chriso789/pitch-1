@@ -1,6 +1,7 @@
 import { useMemo, useEffect, useState } from 'react';
 import { wktLineToLatLngs, wktPolygonToLatLngs } from '@/lib/canvassiq/wkt';
 import { supabase } from '@/integrations/supabase/client';
+import { AlertTriangle } from 'lucide-react';
 
 // Roofr exact color palette
 const FEATURE_COLORS = {
@@ -25,6 +26,14 @@ const FACET_COLORS = [
   'rgba(249, 115, 22, 0.3)',   // Orange
 ];
 
+// Plausibility thresholds for linear features
+const LINE_PLAUSIBILITY = {
+  MAX_LINES_PER_TYPE: 8,       // Max ridges/hips/valleys
+  MAX_STARBURST_RATIO: 0.4,    // Max % of lines meeting at one point
+  MIN_LINE_LENGTH_FT: 3,       // Ignore very short lines
+  MAX_LINE_LENGTH_FT: 100,     // Flag unusually long lines
+};
+
 interface LinearFeature {
   type: string;
   wkt?: string;
@@ -43,6 +52,16 @@ interface FacetData {
   primary_direction: string;
 }
 
+interface GeometryQA {
+  hasFacets: boolean;
+  facetCount: number;
+  vertexCount: number;
+  linearFeatureCount: number;
+  plausibleLines: number;
+  implausibleLines: number;
+  perimeterStatus: 'ok' | 'warning' | 'missing';
+}
+
 interface SchematicRoofDiagramProps {
   measurement: any;
   tags: Record<string, any>;
@@ -54,6 +73,7 @@ interface SchematicRoofDiagramProps {
   showCompass?: boolean;
   showTotals?: boolean;
   showFacets?: boolean;
+  showQAPanel?: boolean;
   backgroundColor?: string;
 }
 
@@ -64,6 +84,49 @@ function calculateSegmentLength(p1: { lat: number; lng: number }, p2: { lat: num
   const dLng = (p2.lng - p1.lng) * Math.PI / 180;
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(p1.lat * Math.PI / 180) * Math.cos(p2.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Filter out implausible linear features
+function filterPlausibleLines(
+  features: Array<{ type: string; coords: { lat: number; lng: number }[]; length: number }>
+): { plausible: typeof features; implausibleCount: number } {
+  // Count lines by type
+  const typeCounts: Record<string, number> = {};
+  features.forEach(f => {
+    typeCounts[f.type] = (typeCounts[f.type] || 0) + 1;
+  });
+  
+  // Count lines meeting at same start point (starburst detection)
+  const startPoints: Record<string, number> = {};
+  features.forEach(f => {
+    if (f.coords.length >= 2) {
+      const key = `${f.coords[0].lat.toFixed(6)},${f.coords[0].lng.toFixed(6)}`;
+      startPoints[key] = (startPoints[key] || 0) + 1;
+    }
+  });
+  
+  const maxAtSinglePoint = Math.max(...Object.values(startPoints), 0);
+  const starburstRatio = features.length > 0 ? maxAtSinglePoint / features.length : 0;
+  
+  // If starburst detected, hide all interior lines
+  if (starburstRatio > LINE_PLAUSIBILITY.MAX_STARBURST_RATIO && maxAtSinglePoint > 4) {
+    console.warn(`🚨 Starburst detected: ${maxAtSinglePoint} lines at single point (${(starburstRatio * 100).toFixed(0)}%)`);
+    return { plausible: [], implausibleCount: features.length };
+  }
+  
+  // Filter individual lines
+  const plausible = features.filter(f => {
+    // Skip very short or very long lines
+    if (f.length < LINE_PLAUSIBILITY.MIN_LINE_LENGTH_FT) return false;
+    if (f.length > LINE_PLAUSIBILITY.MAX_LINE_LENGTH_FT) return false;
+    
+    // Skip if too many of this type
+    if (typeCounts[f.type] > LINE_PLAUSIBILITY.MAX_LINES_PER_TYPE) return false;
+    
+    return true;
+  });
+  
+  return { plausible, implausibleCount: features.length - plausible.length };
 }
 
 
@@ -78,9 +141,11 @@ export function SchematicRoofDiagram({
   showCompass = true,
   showTotals = true,
   showFacets = true,
+  showQAPanel = false,
   backgroundColor = '#FFFFFF',
 }: SchematicRoofDiagramProps) {
   const [facets, setFacets] = useState<FacetData[]>([]);
+  const [geometryQA, setGeometryQA] = useState<GeometryQA | null>(null);
   
   // Fetch facets from database if measurementId is provided
   useEffect(() => {
@@ -173,9 +238,28 @@ export function SchematicRoofDiagram({
       });
     }
     
+    // Apply plausibility filter to linear features
+    const { plausible: plausibleLinearFeatures, implausibleCount } = filterPlausibleLines(linearFeaturesData);
+    
     // Calculate bounds
     if (allLatLngs.length === 0) {
-      return { perimeterPath: '', perimeterSegments: [], linearFeatures: [], bounds: null, svgPadding: padding, facetPaths: [] };
+      return { 
+        perimeterPath: '', 
+        perimeterSegments: [], 
+        linearFeatures: [], 
+        bounds: null, 
+        svgPadding: padding, 
+        facetPaths: [],
+        qaData: {
+          hasFacets: false,
+          facetCount: 0,
+          vertexCount: 0,
+          linearFeatureCount: 0,
+          plausibleLines: 0,
+          implausibleLines: 0,
+          perimeterStatus: 'missing' as const,
+        }
+      };
     }
     
     const lats = allLatLngs.map(c => c.lat);
@@ -227,8 +311,8 @@ export function SchematicRoofDiagram({
       }
     }
     
-    // Build linear feature paths
-    const linFeatures = linearFeaturesData.map(f => {
+    // Build linear feature paths (only plausible ones)
+    const linFeatures = plausibleLinearFeatures.map(f => {
       const svgCoords = f.coords.map(toSvg);
       return {
         type: f.type,
@@ -260,6 +344,17 @@ export function SchematicRoofDiagram({
       };
     }).filter(Boolean);
     
+    // Build QA data
+    const qaData: GeometryQA = {
+      hasFacets: facetPathsData.length > 0,
+      facetCount: facetPathsData.length,
+      vertexCount: perimeterCoords.length,
+      linearFeatureCount: linearFeaturesData.length,
+      plausibleLines: plausibleLinearFeatures.length,
+      implausibleLines: implausibleCount,
+      perimeterStatus: perimeterCoords.length >= 3 ? 'ok' : 'warning',
+    };
+    
     return {
       perimeterPath: pathD,
       perimeterSegments: perimSegs,
@@ -267,8 +362,24 @@ export function SchematicRoofDiagram({
       bounds: { minLat, maxLat, minLng, maxLng },
       svgPadding: padding,
       facetPaths: facetPathsData,
+      qaData,
     };
   }, [measurement, width, height, facets]);
+
+  // Update geometry QA when data changes
+  useEffect(() => {
+    const qaData = (perimeterPath as any)?.qaData;
+    if (qaData) {
+      setGeometryQA(qaData);
+    }
+  }, [perimeterPath]);
+
+  // Destructure qaData from the memo result
+  const qaData = useMemo(() => {
+    // Access qaData from the memoized result
+    const result = { perimeterPath, perimeterSegments, linearFeatures, bounds, svgPadding, facetPaths };
+    return (result as any).qaData as GeometryQA | undefined;
+  }, [perimeterPath, perimeterSegments, linearFeatures, bounds, svgPadding, facetPaths]);
 
   // Extract totals from tags or measurement summary
   const totals = useMemo(() => ({
@@ -281,6 +392,9 @@ export function SchematicRoofDiagram({
     total_area: tags['roof.total_area'] || measurement?.total_area_adjusted_sqft || measurement?.summary?.total_area_sqft || 0,
     facet_count: measurement?.facet_count || facets.length || 0,
   }), [tags, measurement, facets]);
+  
+  // Check if we should show "perimeter only" warning
+  const showPerimeterOnlyWarning = facets.length === 0 && measurement?.facet_count > 0;
 
   // If no geometry, show placeholder with totals
   if (!bounds) {
@@ -487,6 +601,32 @@ export function SchematicRoofDiagram({
           </g>
         )}
       </svg>
+      
+      {/* Perimeter Only Warning */}
+      {showPerimeterOnlyWarning && (
+        <div className="absolute top-3 right-16 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 shadow-sm flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <div className="text-xs text-amber-800">
+            <div className="font-semibold">Perimeter Only</div>
+            <div className="text-amber-600">Facet geometry unavailable</div>
+          </div>
+        </div>
+      )}
+      
+      {/* QA Panel */}
+      {showQAPanel && geometryQA && (
+        <div className="absolute top-3 right-3 bg-slate-800/90 text-white rounded-lg px-3 py-2 shadow-lg text-[10px] font-mono">
+          <div className="font-semibold text-xs mb-1">Geometry QA</div>
+          <div className="grid gap-0.5">
+            <div>Vertices: {geometryQA.vertexCount}</div>
+            <div>Facets: {geometryQA.facetCount} {!geometryQA.hasFacets && <span className="text-amber-400">(missing)</span>}</div>
+            <div>Lines: {geometryQA.plausibleLines}/{geometryQA.linearFeatureCount} 
+              {geometryQA.implausibleLines > 0 && <span className="text-red-400"> ({geometryQA.implausibleLines} hidden)</span>}
+            </div>
+            <div>Perimeter: <span className={geometryQA.perimeterStatus === 'ok' ? 'text-green-400' : 'text-amber-400'}>{geometryQA.perimeterStatus}</span></div>
+          </div>
+        </div>
+      )}
       
       {/* Legend */}
       {showLegend && (
