@@ -970,7 +970,7 @@ RESPONSE FORMAT (JSON only)
 ════════════════════════════════════════════════════════════════════════════════
 
 {
-  "roofType": "hip|gable|cross-gable|hip-with-dormers|L-shaped|T-shaped|complex",
+  "roofType": "hip|gable|cross-gable|cross-hip|hip-with-dormers|dutch-gable|complex",
   "complexity": "simple|moderate|complex|very-complex",
   "estimatedFacetCount": 6,
   "roofMaterial": "shingle|tile|metal",
@@ -2097,6 +2097,33 @@ function calculateLinearTotalsFromWKT(linearFeatures: any[]): Record<string, num
   
   return totals
 }
+// Map AI roof type to valid database values
+function mapRoofTypeToValidValue(aiRoofType: string): string {
+  const validTypes = [
+    'gable', 'hip', 'flat', 'gambrel', 'mansard', 'complex',
+    'hip-with-dormers', 'cross-gable', 'dutch-gable', 'cross-hip',
+    'shed', 'butterfly', 'sawtooth', 'dome', 'pyramid'
+  ]
+  
+  // Direct match - already valid
+  if (validTypes.includes(aiRoofType?.toLowerCase())) {
+    return aiRoofType.toLowerCase()
+  }
+  
+  // Map AI-specific types to valid database values
+  const typeMapping: Record<string, string> = {
+    'l-shaped': 'complex',
+    't-shaped': 'complex',
+    'u-shaped': 'complex',
+    'cross hip': 'cross-hip',
+    'hip with dormers': 'hip-with-dormers',
+    'dutch gable': 'dutch-gable',
+    'cross gable': 'cross-gable',
+  }
+  
+  const normalized = aiRoofType?.toLowerCase()?.trim()
+  return typeMapping[normalized] || 'complex' // Default to 'complex' for unknown types
+}
 
 async function saveMeasurementToDatabase(supabase: any, params: any) {
   const {
@@ -2131,7 +2158,7 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
     scale_confidence: scale.confidence,
     measurement_confidence: confidence.score,
     requires_manual_review: confidence.requiresReview,
-    roof_type: aiAnalysis.roofType,
+    roof_type: mapRoofTypeToValidValue(aiAnalysis.roofType),
     complexity_rating: measurements.complexity,
     facet_count: aiAnalysis.derivedFacetCount || aiAnalysis.facets?.length || 1,
     total_eave_length: measurements.linearMeasurements?.eave || 0,
