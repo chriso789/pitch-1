@@ -88,8 +88,8 @@ export function ProductTemplateApplicator({ leadId, measurementData, onApply }: 
   const [isSaving, setIsSaving] = useState(false);
   const [savedTemplateId, setSavedTemplateId] = useState<string | null>(null);
 
-  // Fetch estimate templates
-  const { data: templates, isLoading: templatesLoading } = useQuery({
+  // Fetch estimate templates - RLS filters by tenant automatically
+  const { data: templates, isLoading: templatesLoading, error: templatesError } = useQuery({
     queryKey: ['estimate-templates-for-materials'],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -98,7 +98,11 @@ export function ProductTemplateApplicator({ leadId, measurementData, onApply }: 
         .eq('is_active', true)
         .order('name');
       
-      if (error) throw error;
+      if (error) {
+        console.error('Failed to fetch templates:', error);
+        throw error;
+      }
+      console.log(`📋 Loaded ${data?.length || 0} estimate templates`);
       return data || [];
     },
   });

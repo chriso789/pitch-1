@@ -6701,6 +6701,78 @@ export type Database = {
           },
         ]
       }
+      external_measurement_reports: {
+        Row: {
+          address: string | null
+          created_at: string | null
+          facet_count: number | null
+          facets: Json | null
+          id: string
+          lead_id: string | null
+          linears: Json | null
+          materials_summary: Json | null
+          predominant_pitch: string | null
+          provider: string
+          raw_data: Json | null
+          tenant_id: string
+          total_area_sqft: number | null
+          updated_at: string | null
+          uploaded_at: string | null
+          waste_factors: Json | null
+        }
+        Insert: {
+          address?: string | null
+          created_at?: string | null
+          facet_count?: number | null
+          facets?: Json | null
+          id?: string
+          lead_id?: string | null
+          linears?: Json | null
+          materials_summary?: Json | null
+          predominant_pitch?: string | null
+          provider?: string
+          raw_data?: Json | null
+          tenant_id: string
+          total_area_sqft?: number | null
+          updated_at?: string | null
+          uploaded_at?: string | null
+          waste_factors?: Json | null
+        }
+        Update: {
+          address?: string | null
+          created_at?: string | null
+          facet_count?: number | null
+          facets?: Json | null
+          id?: string
+          lead_id?: string | null
+          linears?: Json | null
+          materials_summary?: Json | null
+          predominant_pitch?: string | null
+          provider?: string
+          raw_data?: Json | null
+          tenant_id?: string
+          total_area_sqft?: number | null
+          updated_at?: string | null
+          uploaded_at?: string | null
+          waste_factors?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "external_measurement_reports_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "external_measurement_reports_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       feature_permissions: {
         Row: {
           created_at: string
