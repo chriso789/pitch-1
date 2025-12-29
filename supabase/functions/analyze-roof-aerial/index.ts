@@ -133,8 +133,24 @@ serve(async (req) => {
 
     // NEW VERTEX-BASED DETECTION APPROACH (Roofr-quality)
     // Pass 1: Isolate target building with EXPANDED bounds for larger roofs
-    const buildingIsolation = await isolateTargetBuilding(selectedImage.url, address, coordinates, solarData)
+    let buildingIsolation = await isolateTargetBuilding(selectedImage.url, address, coordinates, solarData)
     console.log(`⏱️ Pass 1 (building isolation) complete: ${Date.now() - startTime}ms`)
+    
+    // PHASE 6: Apply Florida bounds shrinkage (screen enclosure mitigation)
+    const isFlorida = isFloridaAddress(address)
+    if (isFlorida) {
+      const shrinkPct = 5 // 5% shrinkage for Florida properties
+      const oldBounds = { ...buildingIsolation.bounds }
+      buildingIsolation.bounds = {
+        topLeftX: Math.min(95, buildingIsolation.bounds.topLeftX + shrinkPct / 2),
+        topLeftY: Math.min(95, buildingIsolation.bounds.topLeftY + shrinkPct / 2),
+        bottomRightX: Math.max(5, buildingIsolation.bounds.bottomRightX - shrinkPct / 2),
+        bottomRightY: Math.max(5, buildingIsolation.bounds.bottomRightY - shrinkPct / 2)
+      }
+      console.log(`🌴 Florida property: Applied ${shrinkPct}% bounds shrinkage to exclude screen enclosures`)
+      console.log(`   Old bounds: (${oldBounds.topLeftX.toFixed(1)}%, ${oldBounds.topLeftY.toFixed(1)}%) to (${oldBounds.bottomRightX.toFixed(1)}%, ${oldBounds.bottomRightY.toFixed(1)}%)`)
+      console.log(`   New bounds: (${buildingIsolation.bounds.topLeftX.toFixed(1)}%, ${buildingIsolation.bounds.topLeftY.toFixed(1)}%) to (${buildingIsolation.bounds.bottomRightX.toFixed(1)}%, ${buildingIsolation.bounds.bottomRightY.toFixed(1)}%)`)
+    }
     
     // Pass 2: Detect perimeter vertices with FULL IMAGE TRACING
     let perimeterResult = await detectPerimeterVertices(selectedImage.url, buildingIsolation.bounds, solarData, coordinates, logicalImageSize)
@@ -848,6 +864,18 @@ ${expectedMetrics}
 4. If unsure about a corner location, place it CLOSER to center, NOT further out
 5. Over-estimating is WORSE than under-estimating!
 
+════════════════════════════════════════════════════════════════════════════════
+🎯 VERTEX PLACEMENT BIAS - CRITICAL FOR ACCURACY
+════════════════════════════════════════════════════════════════════════════════
+
+When placing ANY vertex, follow these mandatory rules:
+- Place vertices 1-2% CLOSER to the building center than you think
+- Trace the INNER edge of the drip line, NOT the outer shadow
+- It is BETTER to under-estimate area by 5% than over-estimate by 15%
+- Do NOT trace beyond the visible shingle/tile line
+- If you see a shadow, trace INSIDE of it, not on it
+- Prefer TIGHT, CONSERVATIVE tracing over generous tracing
+
 EXPECTED PERIMETER REFERENCE (use this to validate your trace):
 - 1500 sqft home: ~160 ft perimeter (4-6 vertices)
 - 2000 sqft home: ~180-220 ft perimeter (6-10 vertices)
@@ -1008,8 +1036,18 @@ Return ONLY valid JSON, no explanation.`
       }
     }
     
+    // PHASE 6: Apply vertex shrinkage to counter AI over-tracing tendency
+    // Use 2.5% shrinkage toward centroid for more conservative measurements
+    const shrunkVertices = applyVertexShrinkage(validVertices.length >= 4 ? validVertices : createFallbackPerimeter(bounds), 0.025)
+    
+    // PHASE 6: Validate vertices aren't too far from bounds
+    const distanceValidation = validateVertexDistances(shrunkVertices, bounds)
+    if (!distanceValidation.valid) {
+      console.warn(`⚠️ ${distanceValidation.outliers} vertices flagged as outliers`)
+    }
+    
     return { 
-      vertices: validVertices.length >= 4 ? validVertices : createFallbackPerimeter(bounds),
+      vertices: shrunkVertices,
       roofType: result.roofType || 'complex',
       complexity: result.complexity || 'moderate',
       vertexStats,
@@ -1018,11 +1056,12 @@ Return ONLY valid JSON, no explanation.`
       segmentValidation,
       perimeterValidation: {
         estimatedPerimeterFt: segmentValidation.estimatedPerimeterFt,
-        vertexCount: validVertices.length,
+        vertexCount: shrunkVertices.length,
         avgSegmentLength: segmentValidation.avgSegmentLengthFt,
         longestSegment: segmentValidation.longestSegmentFt,
         segmentLengths: segmentValidation.segmentLengths
-      }
+      },
+      vertexShrinkageApplied: true
     }
   } catch (err) {
     console.error('Perimeter detection error:', err)
@@ -1717,6 +1756,41 @@ function isFloridaAddress(address: string): boolean {
   return floridaIndicators.some(ind => address.includes(ind))
 }
 
+// NEW PHASE 6: Apply vertex shrinkage toward centroid to counter AI over-tracing
+function applyVertexShrinkage(vertices: any[], shrinkFactor: number = 0.025): any[] {
+  if (!vertices || vertices.length < 3) return vertices
+  
+  // Calculate centroid
+  const cx = vertices.reduce((sum, v) => sum + v.x, 0) / vertices.length
+  const cy = vertices.reduce((sum, v) => sum + v.y, 0) / vertices.length
+  
+  console.log(`📐 Applying ${(shrinkFactor * 100).toFixed(1)}% vertex shrinkage toward centroid (${cx.toFixed(1)}%, ${cy.toFixed(1)}%)`)
+  
+  // Shrink each vertex toward centroid
+  return vertices.map(v => ({
+    ...v,
+    x: v.x - (v.x - cx) * shrinkFactor,
+    y: v.y - (v.y - cy) * shrinkFactor
+  }))
+}
+
+// NEW PHASE 6: Validate vertices aren't too far from bounding box center
+function validateVertexDistances(vertices: any[], bounds: any): { valid: boolean; outliers: number } {
+  const centerX = (bounds.topLeftX + bounds.bottomRightX) / 2
+  const centerY = (bounds.topLeftY + bounds.bottomRightY) / 2
+  const maxDistance = 45 // % of image from center
+  
+  const outliers = vertices.filter(v => 
+    Math.abs(v.x - centerX) > maxDistance || Math.abs(v.y - centerY) > maxDistance
+  )
+  
+  if (outliers.length > 0) {
+    console.warn(`⚠️ VERTEX DISTANCE WARNING: ${outliers.length} vertices appear outside expected bounds (>${maxDistance}% from center)`)
+  }
+  
+  return { valid: outliers.length === 0, outliers: outliers.length }
+}
+
 // Calculate area from perimeter vertices with validation
 function calculateAreaFromPerimeterVertices(
   vertices: any[],
@@ -1799,10 +1873,21 @@ function calculateAreaFromPerimeterVertices(
     const isFlorida = address ? isFloridaAddress(address) : false
     const varianceThreshold = isFlorida ? ROOF_AREA_CAPS.FLORIDA_VARIANCE_THRESHOLD : ROOF_AREA_CAPS.SOLAR_VARIANCE_THRESHOLD
     
-    console.log(`📐 Solar validation: AI=${calculatedArea.toFixed(0)}, Solar=${solarFootprint.toFixed(0)}, variance=${(variance * 100).toFixed(1)}%, ratio=${overShoot.toFixed(2)}x`)
+    // PHASE 6: Check if this is historical Solar data - apply tighter override
+    const isHistorical = solarData.isHistorical === true
+    if (isHistorical) {
+      console.log(`📐 HISTORICAL Solar validation: AI=${calculatedArea.toFixed(0)}, Historical Solar=${solarFootprint.toFixed(0)}, variance=${(variance * 100).toFixed(1)}%, ratio=${overShoot.toFixed(2)}x`)
+    } else {
+      console.log(`📐 Solar validation: AI=${calculatedArea.toFixed(0)}, Solar=${solarFootprint.toFixed(0)}, variance=${(variance * 100).toFixed(1)}%, ratio=${overShoot.toFixed(2)}x`)
+    }
     
-    // NEW: Double-count detection - if AI is 140%+ of Solar, very likely tracing two buildings
-    if (overShoot > ROOF_AREA_CAPS.DOUBLE_COUNT_WARNING_THRESHOLD) {
+    // PHASE 6: Historical Solar override - tighter 15% threshold since we have verified ground truth
+    if (isHistorical && overShoot > 1.15) {
+      console.warn(`⚠️ HISTORICAL OVERRIDE: AI area is ${(overShoot * 100).toFixed(0)}% of historical Solar - using historical as ground truth`)
+      calculatedArea = solarFootprint
+    }
+    // NEW: Double-count detection - if AI is 125%+ of Solar, very likely tracing two buildings
+    else if (overShoot > ROOF_AREA_CAPS.DOUBLE_COUNT_WARNING_THRESHOLD) {
       console.warn(`⚠️ DOUBLE-COUNT WARNING: AI area is ${(overShoot * 100).toFixed(0)}% of Solar - using Solar as ground truth`)
       calculatedArea = solarFootprint
     } else if (variance > varianceThreshold) {
