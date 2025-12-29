@@ -193,6 +193,8 @@ function generateRectangularSkeleton(vertices: XY[]): SkeletonEdge[] {
 
 /**
  * Generate skeleton for L, T, U shapes
+ * FIXED: Proper valley detection at concave (reflex) vertices
+ * Valleys form where two roof planes meet going DOWNWARD (at inside corners)
  */
 function generateComplexSkeleton(vertices: XY[], reflexIndices: Set<number>): SkeletonEdge[] {
   const skeleton: SkeletonEdge[] = [];
@@ -201,55 +203,103 @@ function generateComplexSkeleton(vertices: XY[], reflexIndices: Set<number>): Sk
   // Find centroid as approximate interior point
   const centroid = calculateCentroid(vertices);
   
-  // For each reflex vertex, create a valley line toward centroid
+  // Get bounding box for ridge direction
+  const bounds = getBounds(vertices);
+  const isWiderThanTall = (bounds.maxX - bounds.minX) > (bounds.maxY - bounds.minY);
+  
+  // IMPROVED: Create valley lines from each reflex (concave) vertex
+  // These are where two roof planes meet going DOWNWARD
+  const valleyEndpoints: XY[] = [];
+  
   reflexIndices.forEach(idx => {
     const vertex = vertices[idx];
-    // Bisect angle to find valley direction
     const prev = vertices[(idx - 1 + n) % n];
     const next = vertices[(idx + 1) % n];
+    
+    // Calculate bisector direction (inward for reflex vertices)
     const bisector = angleBisector(prev, vertex, next);
+    const bisectorDir: XY = [bisector[0] - vertex[0], bisector[1] - vertex[1]];
+    const bisectorLen = Math.sqrt(bisectorDir[0] ** 2 + bisectorDir[1] ** 2);
     
-    // Valley extends from reflex vertex toward centroid
-    const valleyEnd = moveToward(vertex, centroid, 0.3); // 30% toward centroid
-    
-    skeleton.push({
-      start: vertex,
-      end: valleyEnd,
-      type: 'valley',
-      boundaryIndices: [idx]
-    });
-  });
-  
-  // Create ridge segments connecting interior points
-  if (skeleton.length >= 2) {
-    // Connect valley endpoints to form ridges
-    for (let i = 0; i < skeleton.length - 1; i++) {
+    if (bisectorLen > 0) {
+      // Normalize and extend inward
+      const normalizedDir: XY = [bisectorDir[0] / bisectorLen, bisectorDir[1] / bisectorLen];
+      
+      // Valley extends from reflex vertex toward interior
+      // Length should be proportional to distance to centroid
+      const distToCentroid = distance(vertex, centroid);
+      const valleyLength = distToCentroid * 0.6; // 60% toward centroid
+      
+      const valleyEnd: XY = [
+        vertex[0] + normalizedDir[0] * valleyLength * 0.5,
+        vertex[1] + normalizedDir[1] * valleyLength * 0.5
+      ];
+      
+      valleyEndpoints.push(valleyEnd);
+      
       skeleton.push({
-        start: skeleton[i].end,
-        end: skeleton[i + 1].end,
-        type: 'ridge',
-        boundaryIndices: []
+        start: vertex,
+        end: valleyEnd,
+        type: 'valley',
+        boundaryIndices: [idx]
       });
     }
+  });
+  
+  console.log(`  Complex skeleton: ${reflexIndices.size} valleys from reflex vertices`);
+  
+  // Create main ridge line(s) based on building shape
+  // For L/T/U shapes, ridge typically runs through the main mass
+  const ridgeMargin = 0.35; // 35% from edges
+  
+  let ridgeStart: XY, ridgeEnd: XY;
+  
+  if (isWiderThanTall) {
+    // Horizontal ridge
+    ridgeStart = [bounds.minX + (bounds.maxX - bounds.minX) * ridgeMargin, centroid[1]];
+    ridgeEnd = [bounds.maxX - (bounds.maxX - bounds.minX) * ridgeMargin, centroid[1]];
   } else {
-    // Simple case: single ridge through centroid
-    const edge1 = vertices[0];
-    const edge2 = vertices[Math.floor(n / 2)];
-    skeleton.push({
-      start: moveToward(edge1, centroid, 0.4),
-      end: moveToward(edge2, centroid, 0.4),
-      type: 'ridge',
-      boundaryIndices: []
-    });
+    // Vertical ridge
+    ridgeStart = [centroid[0], bounds.minY + (bounds.maxY - bounds.minY) * ridgeMargin];
+    ridgeEnd = [centroid[0], bounds.maxY - (bounds.maxY - bounds.minY) * ridgeMargin];
   }
+  
+  skeleton.push({
+    start: ridgeStart,
+    end: ridgeEnd,
+    type: 'ridge',
+    boundaryIndices: []
+  });
+  
+  // Connect valley endpoints to nearest ridge point if they're close
+  valleyEndpoints.forEach(valleyEnd => {
+    const ridgePoint = closestPointOnLine(valleyEnd, ridgeStart, ridgeEnd);
+    const distToRidge = distance(valleyEnd, ridgePoint);
+    
+    // If valley end is close to ridge, extend to meet it
+    if (distToRidge < distance(ridgeStart, ridgeEnd) * 0.3) {
+      // Find the valley edge and extend it
+      const valleyEdge = skeleton.find(e => 
+        e.type === 'valley' && 
+        (distance(e.end, valleyEnd) < 0.0001)
+      );
+      if (valleyEdge) {
+        valleyEdge.end = ridgePoint;
+      }
+    }
+  });
   
   // Create hips from convex corners to nearest ridge point
   for (let i = 0; i < n; i++) {
     if (!reflexIndices.has(i)) {
       const vertex = vertices[i];
-      const nearestRidge = skeleton.find(e => e.type === 'ridge');
-      if (nearestRidge) {
-        const hipEnd = closestPointOnLine(vertex, nearestRidge.start, nearestRidge.end);
+      const hipEnd = closestPointOnLine(vertex, ridgeStart, ridgeEnd);
+      
+      // Only add hip if it's a reasonable length
+      const hipLength = distance(vertex, hipEnd);
+      const ridgeLength = distance(ridgeStart, ridgeEnd);
+      
+      if (hipLength > ridgeLength * 0.1 && hipLength < ridgeLength * 2) {
         skeleton.push({
           start: vertex,
           end: hipEnd,
@@ -260,21 +310,35 @@ function generateComplexSkeleton(vertices: XY[], reflexIndices: Set<number>): Sk
     }
   }
   
+  console.log(`  Generated: ${skeleton.filter(e => e.type === 'ridge').length} ridges, ${skeleton.filter(e => e.type === 'hip').length} hips, ${skeleton.filter(e => e.type === 'valley').length} valleys`);
+  
   return skeleton;
 }
 
 /**
  * Generate skeleton using medial axis approach (for complex shapes)
+ * IMPROVED: Better valley detection and facet generation
  */
 function generateMedialAxisSkeleton(vertices: XY[], reflexIndices: Set<number>): SkeletonEdge[] {
   const skeleton: SkeletonEdge[] = [];
   const n = vertices.length;
   const centroid = calculateCentroid(vertices);
   
-  // Create a central ridge
+  // Create a central ridge based on building orientation
   const bounds = getBounds(vertices);
-  const ridgeStart: XY = [(bounds.minX + bounds.maxX) / 2, bounds.minY + (bounds.maxY - bounds.minY) * 0.3];
-  const ridgeEnd: XY = [(bounds.minX + bounds.maxX) / 2, bounds.minY + (bounds.maxY - bounds.minY) * 0.7];
+  const isWiderThanTall = (bounds.maxX - bounds.minX) > (bounds.maxY - bounds.minY);
+  
+  let ridgeStart: XY, ridgeEnd: XY;
+  
+  if (isWiderThanTall) {
+    // Horizontal ridge (building is wider than tall)
+    ridgeStart = [bounds.minX + (bounds.maxX - bounds.minX) * 0.25, centroid[1]];
+    ridgeEnd = [bounds.maxX - (bounds.maxX - bounds.minX) * 0.25, centroid[1]];
+  } else {
+    // Vertical ridge (building is taller than wide)
+    ridgeStart = [centroid[0], bounds.minY + (bounds.maxY - bounds.minY) * 0.25];
+    ridgeEnd = [centroid[0], bounds.maxY - (bounds.maxY - bounds.minY) * 0.25];
+  }
   
   skeleton.push({
     start: ridgeStart,
@@ -283,19 +347,27 @@ function generateMedialAxisSkeleton(vertices: XY[], reflexIndices: Set<number>):
     boundaryIndices: []
   });
   
-  // Connect corners to ridge
+  // Connect corners to ridge with proper valley/hip classification
   for (let i = 0; i < n; i++) {
     const vertex = vertices[i];
     const isReflex = reflexIndices.has(i);
     const nearestPoint = closestPointOnLine(vertex, ridgeStart, ridgeEnd);
     
-    skeleton.push({
-      start: vertex,
-      end: nearestPoint,
-      type: isReflex ? 'valley' : 'hip',
-      boundaryIndices: [i]
-    });
+    // Calculate line length - skip very short lines
+    const lineLength = distance(vertex, nearestPoint);
+    const ridgeLength = distance(ridgeStart, ridgeEnd);
+    
+    if (lineLength > ridgeLength * 0.05) { // Skip lines shorter than 5% of ridge
+      skeleton.push({
+        start: vertex,
+        end: nearestPoint,
+        type: isReflex ? 'valley' : 'hip',
+        boundaryIndices: [i]
+      });
+    }
   }
+  
+  console.log(`  Medial axis: ${skeleton.filter(e => e.type === 'ridge').length} ridges, ${skeleton.filter(e => e.type === 'hip').length} hips, ${skeleton.filter(e => e.type === 'valley').length} valleys`);
   
   return skeleton;
 }

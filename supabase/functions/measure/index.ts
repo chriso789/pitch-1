@@ -182,10 +182,11 @@ function calculateGeodesicLength(start: [number, number], end: [number, number],
 }
 
 // Convert skeleton edges and boundary edges to LinearFeature array
+// IMPROVED: Better facet counting based on skeleton topology
 function buildLinearFeaturesFromTopology(
   coords: [number, number][],
   midLat: number
-): { features: LinearFeature[]; totals: Record<string, number> } {
+): { features: LinearFeature[]; totals: Record<string, number>; derivedFacetCount: number } {
   try {
     // Compute straight skeleton
     const skeleton = computeStraightSkeleton(coords);
@@ -196,9 +197,18 @@ function buildLinearFeaturesFromTopology(
     const features: LinearFeature[] = [];
     let featureId = 1;
     
+    // Count skeleton features for facet derivation
+    const ridgeCount = skeleton.filter(e => e.type === 'ridge').length;
+    const hipCount = skeleton.filter(e => e.type === 'hip').length;
+    const valleyCount = skeleton.filter(e => e.type === 'valley').length;
+    
     // Add skeleton-derived features (ridge, hip, valley)
     for (const edge of skeleton) {
       const length_ft = calculateGeodesicLength(edge.start, edge.end, midLat);
+      
+      // Skip very short edges (noise)
+      if (length_ft < 3) continue;
+      
       features.push({
         id: `LF${featureId++}`,
         wkt: `LINESTRING(${edge.start[0]} ${edge.start[1]}, ${edge.end[0]} ${edge.end[1]})`,
@@ -211,6 +221,8 @@ function buildLinearFeaturesFromTopology(
     // Add boundary features (eave)
     for (const edge of boundaryClass.eaveEdges) {
       const length_ft = calculateGeodesicLength(edge[0], edge[1], midLat);
+      if (length_ft < 3) continue;
+      
       features.push({
         id: `LF${featureId++}`,
         wkt: `LINESTRING(${edge[0][0]} ${edge[0][1]}, ${edge[1][0]} ${edge[1][1]})`,
@@ -223,6 +235,8 @@ function buildLinearFeaturesFromTopology(
     // Add boundary features (rake)
     for (const edge of boundaryClass.rakeEdges) {
       const length_ft = calculateGeodesicLength(edge[0], edge[1], midLat);
+      if (length_ft < 3) continue;
+      
       features.push({
         id: `LF${featureId++}`,
         wkt: `LINESTRING(${edge[0][0]} ${edge[0][1]}, ${edge[1][0]} ${edge[1][1]})`,
@@ -243,12 +257,40 @@ function buildLinearFeaturesFromTopology(
       rake_ft: features.filter(f => f.type === 'rake').reduce((s, f) => s + f.length_ft, 0),
     };
     
+    // IMPROVED: Derive facet count from skeleton topology
+    // Facet count formula based on roof topology:
+    // - Simple hip: 4 facets (1 ridge, 4 hips, 0 valleys)
+    // - Cross-gable: 4-8 facets depending on valleys
+    // - L-shape with valleys: 6-10 facets
+    // General formula: facets = hipCount + valleyCount + 2 (for main roof planes)
+    let derivedFacetCount = 4; // Minimum for any pitched roof
+    
+    if (hipCount >= 4 && valleyCount === 0) {
+      // Standard hip roof: 4 facets
+      derivedFacetCount = 4;
+    } else if (hipCount >= 4 && valleyCount > 0) {
+      // Hip roof with valleys (cross-gable, L-shape)
+      // Each valley adds 2 more facets typically
+      derivedFacetCount = 4 + (valleyCount * 2);
+    } else if (ridgeCount >= 1 && hipCount === 0) {
+      // Gable roof: 2 facets
+      derivedFacetCount = 2;
+    } else if (ridgeCount >= 2) {
+      // Multiple ridges (complex cross-gable)
+      derivedFacetCount = ridgeCount * 2 + valleyCount * 2;
+    }
+    
+    // Clamp to reasonable range
+    derivedFacetCount = Math.max(2, Math.min(20, derivedFacetCount));
+    
     console.log('Topology extracted:', { 
-      featureCount: features.length, 
+      featureCount: features.length,
+      skeleton: `${ridgeCount} ridges, ${hipCount} hips, ${valleyCount} valleys`,
+      derivedFacetCount,
       totals: Object.entries(totals).map(([k, v]) => `${k}=${Math.round(v)}`).join(', ')
     });
     
-    return { features, totals };
+    return { features, totals, derivedFacetCount };
   } catch (error) {
     console.warn('Skeleton extraction failed, falling back to simple perimeter:', error);
     // Fallback to simple perimeter estimation
@@ -266,7 +308,8 @@ function buildLinearFeaturesFromTopology(
         valley_ft: 0,
         eave_ft: 0,
         rake_ft: 0
-      }
+      },
+      derivedFacetCount: 4
     };
   }
 }
