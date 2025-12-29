@@ -581,11 +581,27 @@ Expected roof width: ~${estWidthFt.toFixed(0)}ft which is approximately ${estWid
 For this size building, expect bounds of roughly ${Math.max(20, 50 - estWidthPct/2).toFixed(0)}% to ${Math.min(80, 50 + estWidthPct/2).toFixed(0)}%.`
   }
 
+  // Detect Florida addresses (high screen enclosure rate)
+  const isFlorida = isFloridaAddress(address)
+  const floridaWarning = isFlorida ? `
+⚠️ FLORIDA PROPERTY - CRITICAL WARNINGS:
+1. Many Florida homes have LARGE SCREEN ENCLOSURES over pools/patios - these appear as metal grid structures
+2. DO NOT include screen enclosures in the roof bounds - they are NOT part of the roof
+3. Adjacent lanai structures with FLAT or METAL roofs are NOT the main roof
+4. Only trace the MAIN SHINGLED/TILED residential roof structure
+5. If you see a large rectangular metal grid structure, that is a POOL ENCLOSURE - exclude it!` : ''
+
   const prompt = `You are a roof measurement expert. Analyze this satellite image.
 
 TASK: Find the MAIN RESIDENTIAL BUILDING at the EXACT CENTER of the image.
 The GPS coordinates point to the center of this image, so the target house is in the middle.
 ${solarSizeHint}
+${floridaWarning}
+
+CRITICAL - SINGLE BUILDING RULE:
+You must trace ONLY ONE building - the PRIMARY residential structure with a shingled/tiled roof.
+If you detect multiple separate roof structures, trace ONLY the CENTER one (the main house).
+NEVER combine two separate buildings into one trace - this causes 100% measurement error!
 
 Return a bounding box that FULLY ENCOMPASSES the SHINGLED/TILED ROOF - trace to the OUTERMOST EAVE EDGES.
 
@@ -595,12 +611,14 @@ CRITICAL: Do NOT make the box too tight! Include:
 - All bump-outs, dormers, and extensions
 - The COMPLETE L-shape or T-shape if applicable
 
-Do NOT include:
-- Detached garages or carports
+ABSOLUTELY DO NOT INCLUDE:
+- Detached garages or carports (SEPARATE buildings)
 - Sheds or outbuildings
 - Swimming pools or patios
-- Screen enclosures (metal grid structures) - common in Florida
+- Screen enclosures (metal grid structures) - VERY common in Florida
 - Covered patios with flat/metal roofs
+- Adjacent guest houses or casitas
+- Any structure that is PHYSICALLY SEPARATED from the main house
 
 {
   "targetBuildingBounds": {
@@ -615,7 +633,8 @@ Do NOT include:
   "otherBuildingsDetected": 1,
   "screenEnclosureDetected": false,
   "targetBuildingType": "residential",
-  "confidenceTargetIsCorrect": "high"
+  "confidenceTargetIsCorrect": "high",
+  "multipleStructuresWarning": false
 }
 
 SIZING RULES:
@@ -625,8 +644,9 @@ SIZING RULES:
 4. Better to be slightly too large than miss roof edges
 5. Minimum bounds width: 20% (for small homes)
 6. Maximum bounds width: 50% (for large/complex homes)
-7. Use DECIMAL precision (e.g., 32.5, not 33)
-8. Return ONLY valid JSON, no explanation`
+7. If you detect 2+ buildings, set multipleStructuresWarning: true
+8. Use DECIMAL precision (e.g., 32.5, not 33)
+9. Return ONLY valid JSON, no explanation`
 
   console.log('🏠 Pass 1: Isolating target building with expanded bounds...')
   
@@ -1591,12 +1611,15 @@ function calculateConfidenceScore(aiAnalysis: any, measurements: any, solarData:
 }
 
 // ROOF_AREA_CAPS for validation
+// MAX_RESIDENTIAL lowered from 8000 to 6000 to catch double-counting errors
 const ROOF_AREA_CAPS = {
   MIN_RESIDENTIAL: 800,
-  MAX_RESIDENTIAL: 8000,
+  MAX_RESIDENTIAL: 6000,  // Lowered from 8000 - catches double-tracing errors
   SOLAR_VARIANCE_THRESHOLD: 0.12,  // 12% variance before override
   FLORIDA_VARIANCE_THRESHOLD: 0.10, // Tighter for Florida (screen enclosures)
-  PLANIMETER_TARGET_ACCURACY: 0.05  // Target 5% accuracy
+  PLANIMETER_TARGET_ACCURACY: 0.05,  // Target 5% accuracy
+  AREA_PERIMETER_MAX_RATIO: 22,  // If area/perimeter > 22, likely multi-building trace
+  DOUBLE_COUNT_WARNING_THRESHOLD: 1.4  // Warn if AI area > 140% of Solar
 }
 
 // Check if Florida address
@@ -1660,21 +1683,43 @@ function calculateAreaFromPerimeterVertices(
   
   console.log(`📐 Calculated perimeter: ${perimeterFt.toFixed(1)} ft from ${feetVertices.length} vertices`)
   
-  // Area/Perimeter ratio validation
+  // Area/Perimeter ratio validation - catches multi-building traces
   const areaPerimeterRatio = calculatedArea / perimeterFt
   console.log(`📐 Area/Perimeter ratio: ${areaPerimeterRatio.toFixed(1)} (expect 10-20)`)
+  
+  // NEW: Check for multi-building trace using Area/Perimeter ratio
+  // A single rectangular building has ratio ~10-18, multiple buildings traced as one will have ratio > 22
+  if (areaPerimeterRatio > ROOF_AREA_CAPS.AREA_PERIMETER_MAX_RATIO) {
+    console.warn(`⚠️ MULTI-BUILDING WARNING: Area/Perimeter ratio ${areaPerimeterRatio.toFixed(1)} > ${ROOF_AREA_CAPS.AREA_PERIMETER_MAX_RATIO} - likely tracing multiple buildings!`)
+    
+    // If Solar API is available, strongly prefer it
+    if (solarData?.available && solarData?.buildingFootprintSqft) {
+      console.log(`📐 Using Solar API footprint due to multi-building detection`)
+      calculatedArea = solarData.buildingFootprintSqft
+    } else {
+      // Without Solar API, reduce area by estimated overlap
+      const reductionFactor = ROOF_AREA_CAPS.AREA_PERIMETER_MAX_RATIO / areaPerimeterRatio
+      calculatedArea = calculatedArea * reductionFactor
+      console.log(`📐 Reduced area by ${((1 - reductionFactor) * 100).toFixed(0)}% due to multi-building detection`)
+    }
+  }
   
   // Solar API validation
   if (solarData?.available && solarData?.buildingFootprintSqft) {
     const solarFootprint = solarData.buildingFootprintSqft
     const variance = Math.abs(calculatedArea - solarFootprint) / solarFootprint
+    const overShoot = calculatedArea / solarFootprint
     
     const isFlorida = address ? isFloridaAddress(address) : false
     const varianceThreshold = isFlorida ? ROOF_AREA_CAPS.FLORIDA_VARIANCE_THRESHOLD : ROOF_AREA_CAPS.SOLAR_VARIANCE_THRESHOLD
     
-    console.log(`📐 Solar validation: AI=${calculatedArea.toFixed(0)}, Solar=${solarFootprint.toFixed(0)}, variance=${(variance * 100).toFixed(1)}%`)
+    console.log(`📐 Solar validation: AI=${calculatedArea.toFixed(0)}, Solar=${solarFootprint.toFixed(0)}, variance=${(variance * 100).toFixed(1)}%, ratio=${overShoot.toFixed(2)}x`)
     
-    if (variance > varianceThreshold) {
+    // NEW: Double-count detection - if AI is 140%+ of Solar, very likely tracing two buildings
+    if (overShoot > ROOF_AREA_CAPS.DOUBLE_COUNT_WARNING_THRESHOLD) {
+      console.warn(`⚠️ DOUBLE-COUNT WARNING: AI area is ${(overShoot * 100).toFixed(0)}% of Solar - using Solar as ground truth`)
+      calculatedArea = solarFootprint
+    } else if (variance > varianceThreshold) {
       if (calculatedArea < solarFootprint * 0.85) {
         // AI under-detected - use weighted blend
         const blendedArea = (calculatedArea * 0.4) + (solarFootprint * 0.6)
@@ -1692,14 +1737,18 @@ function calculateAreaFromPerimeterVertices(
     }
   }
   
-  // Hard caps
+  // Hard caps - lowered to catch errors
   if (calculatedArea < ROOF_AREA_CAPS.MIN_RESIDENTIAL) {
+    console.log(`📐 Area below minimum ${ROOF_AREA_CAPS.MIN_RESIDENTIAL}, capping`)
     calculatedArea = ROOF_AREA_CAPS.MIN_RESIDENTIAL
   }
   if (calculatedArea > ROOF_AREA_CAPS.MAX_RESIDENTIAL) {
+    console.warn(`⚠️ Area ${calculatedArea.toFixed(0)} exceeds max ${ROOF_AREA_CAPS.MAX_RESIDENTIAL}`)
     if (solarData?.available && solarData?.buildingFootprintSqft) {
+      console.log(`📐 Using Solar footprint as fallback`)
       calculatedArea = solarData.buildingFootprintSqft
     } else {
+      console.log(`📐 Capping at MAX_RESIDENTIAL`)
       calculatedArea = ROOF_AREA_CAPS.MAX_RESIDENTIAL
     }
   }
