@@ -276,7 +276,7 @@ serve(async (req) => {
       IMAGE_ZOOM
     )
     
-    // Generate and save facet polygons
+    // Generate and save facet polygons - ALWAYS save at least 1 facet
     const facetPolygons = generateFacetPolygons(
       perimeterResult.vertices,
       interiorVertices.junctions,
@@ -288,8 +288,20 @@ serve(async (req) => {
       measurements.predominantPitch
     )
     
+    // Track facet generation status
+    const facetGenerationStatus = {
+      requested: derivedFacetCount,
+      generated: facetPolygons.length,
+      status: facetPolygons.length >= 1 ? 'ok' : 'failed',
+      hasFallback: facetPolygons.some((f: any) => f.isFallback)
+    }
+    console.log(`📐 Facet generation:`, facetGenerationStatus)
+    
+    // ALWAYS save facets if we have at least 1
     if (facetPolygons.length > 0) {
       await saveFacetsToDatabase(supabase, measurementRecord.id, facetPolygons, measurements)
+    } else {
+      console.error('⚠️ No facets generated')
     }
     
     const totalTime = Date.now() - startTime
@@ -1989,7 +2001,7 @@ async function saveEdgesToDatabase(
   }
 }
 
-// Generate facet polygons
+// Generate facet polygons - ALWAYS returns at least 1 fallback facet
 function generateFacetPolygons(
   perimeterVertices: any[],
   interiorJunctions: any[],
@@ -2000,7 +2012,9 @@ function generateFacetPolygons(
   facetCount: number,
   predominantPitch: string
 ): any[] {
-  if (!perimeterVertices || perimeterVertices.length < 3 || facetCount < 1) {
+  // CRITICAL: Always return at least one facet (the full perimeter) if we have vertices
+  if (!perimeterVertices || perimeterVertices.length < 3) {
+    console.warn('⚠️ Cannot generate facets: insufficient perimeter vertices')
     return []
   }
   
@@ -2027,13 +2041,14 @@ function generateFacetPolygons(
   const centroid = toLatLng({ x: centroidX, y: centroidY })
   
   const totalArea = calculatePolygonAreaFromPercentVertices(perimeterVertices, imageCenter, imageSize, zoom)
-  const areaPerFacet = totalArea / facetCount
+  const areaPerFacet = totalArea / Math.max(facetCount, 1)
   
   const ridgeLines = derivedLines.filter(l => l.type === 'ridge')
   const hipLines = derivedLines.filter(l => l.type === 'hip')
   
   const directions = ['north', 'south', 'east', 'west', 'northeast', 'southeast', 'southwest', 'northwest']
   
+  // Try to generate multiple facets based on geometry
   if (facetCount >= 4 && (hipLines.length >= 2 || ridgeLines.length >= 1)) {
     const verticesWithAngles = perimeterVertices.map(v => {
       const angle = Math.atan2(v.y - centroidY, v.x - centroidX) * 180 / Math.PI
@@ -2111,9 +2126,32 @@ function generateFacetPolygons(
     }
   }
   
-  // Fallback if needed
-  if (facetPolygons.length < facetCount) {
-    console.log(`📐 Fallback: Creating ${facetCount} equal-area facet regions`)
+  // CRITICAL FALLBACK: If no facets were generated, create ONE facet = entire perimeter
+  if (facetPolygons.length === 0) {
+    console.log(`📐 FALLBACK: Creating single facet from entire perimeter (${perimeterVertices.length} vertices)`)
+    
+    const perimeterPoints = perimeterVertices.map(toLatLng)
+    // Close the polygon
+    if (perimeterPoints.length > 0) {
+      perimeterPoints.push(perimeterPoints[0])
+    }
+    
+    facetPolygons.push({
+      facetNumber: 1,
+      points: perimeterPoints,
+      centroid: centroid,
+      primaryDirection: 'mixed',
+      azimuthDegrees: 0,
+      shapeType: 'complex',
+      areaEstimate: totalArea,
+      isFallback: true
+    })
+    
+    console.log(`📐 Fallback facet created with area: ${totalArea.toFixed(0)} sqft`)
+  }
+  // Fill remaining facets if needed (but only if we got some already)
+  else if (facetPolygons.length < facetCount && facetPolygons.length > 0) {
+    console.log(`📐 Filling: Creating ${facetCount - facetPolygons.length} additional facet regions`)
     const verticesPerFacet = Math.ceil(perimeterVertices.length / facetCount)
     
     for (let i = facetPolygons.length; i < facetCount; i++) {
@@ -2142,7 +2180,7 @@ function generateFacetPolygons(
     }
   }
   
-  console.log(`📐 Generated ${facetPolygons.length} facet polygons`)
+  console.log(`📐 Generated ${facetPolygons.length} facet polygons (requested: ${facetCount})`)
   return facetPolygons
 }
 
