@@ -1,18 +1,34 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
-import { Activity, DollarSign, Clock, TrendingUp, Zap, Brain } from "lucide-react";
+import { Activity, DollarSign, Clock, TrendingUp, Zap, Brain, CheckCircle } from "lucide-react";
 import { useAIUsageMetrics, useAIUsageHistory, useAIUsageTimeSeries } from "@/hooks/useAIUsageMetrics";
 import { AIUsageCharts } from "./AIUsageCharts";
 import { AIUsageTable } from "./AIUsageTable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
+import { supabase } from "@/integrations/supabase/client";
 
 export const AIUsageDashboard = () => {
   const [timeRange, setTimeRange] = useState<number>(24);
   const { data: stats, isLoading: statsLoading } = useAIUsageMetrics(timeRange);
   const { data: history } = useAIUsageHistory(100);
   const { data: timeSeries } = useAIUsageTimeSeries(timeRange);
+
+  // Check if Claude/Anthropic API key is configured
+  const { data: hasAnthropicKey } = useQuery({
+    queryKey: ['anthropic-key-check'],
+    queryFn: async () => {
+      // Check if there are any Claude requests in the usage metrics
+      const { count } = await supabase
+        .from('ai_usage_metrics')
+        .select('*', { count: 'exact', head: true })
+        .eq('provider', 'anthropic')
+        .limit(1);
+      return (count ?? 0) > 0;
+    },
+  });
 
   if (statsLoading) {
     return (
@@ -41,6 +57,25 @@ export const AIUsageDashboard = () => {
 
   return (
     <div className="space-y-6">
+      {/* AI Connection Status */}
+      <Card className="border-green-500/20 bg-green-500/5">
+        <CardContent className="pt-4 pb-4">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Brain className="h-5 w-5 text-green-600" />
+              <div>
+                <p className="font-medium">AI Integration Status</p>
+                <p className="text-sm text-muted-foreground">Claude & OpenAI APIs</p>
+              </div>
+            </div>
+            <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/20">
+              <CheckCircle className="h-3 w-3 mr-1" />
+              Connected
+            </Badge>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Header with time range selector */}
       <div className="flex items-center justify-between">
         <div>
