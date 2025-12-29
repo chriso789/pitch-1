@@ -1,10 +1,10 @@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { GitHubConnectionGuide } from "./GitHubConnectionGuide";
-import { ClaudeAITester } from "./ClaudeAITester";
-import { GitHubActionsGuide } from "./GitHubActionsGuide";
 import { AIUsageDashboard } from "./AIUsageDashboard";
 import { TelnyxIntegrationPanel } from "./TelnyxIntegrationPanel";
-import { Github, Sparkles, Workflow, BarChart3, Phone } from "lucide-react";
+import { SessionActivityLog } from "./SessionActivityLog";
+import { MeasurementCorrectionsLog } from "./MeasurementCorrectionsLog";
+import { Github, BarChart3, Phone, Shield, Ruler } from "lucide-react";
 
 export const IntegrationsSettings = () => {
   return (
@@ -28,15 +28,15 @@ export const IntegrationsSettings = () => {
           </TabsTrigger>
           <TabsTrigger value="github" className="flex items-center gap-2">
             <Github className="h-4 w-4" />
-            GitHub Connection
+            GitHub
           </TabsTrigger>
-          <TabsTrigger value="github-actions" className="flex items-center gap-2">
-            <Workflow className="h-4 w-4" />
-            GitHub Actions
+          <TabsTrigger value="session-activity" className="flex items-center gap-2">
+            <Shield className="h-4 w-4" />
+            Session Activity
           </TabsTrigger>
-          <TabsTrigger value="claude-ai" className="flex items-center gap-2">
-            <Sparkles className="h-4 w-4" />
-            Claude AI Testing
+          <TabsTrigger value="measurement-corrections" className="flex items-center gap-2">
+            <Ruler className="h-4 w-4" />
+            AI Corrections
           </TabsTrigger>
         </TabsList>
 
@@ -52,12 +52,12 @@ export const IntegrationsSettings = () => {
           <GitHubConnectionGuide />
         </TabsContent>
 
-        <TabsContent value="github-actions" className="space-y-6">
-          <GitHubActionsGuide />
+        <TabsContent value="session-activity" className="space-y-6">
+          <SessionActivityLog />
         </TabsContent>
 
-        <TabsContent value="claude-ai" className="space-y-6">
-          <ClaudeAITester />
+        <TabsContent value="measurement-corrections" className="space-y-6">
+          <MeasurementCorrectionsLog />
         </TabsContent>
       </Tabs>
     </div>
