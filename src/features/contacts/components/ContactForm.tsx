@@ -21,7 +21,7 @@ interface ContactFormData {
   email: string;
   phone: string;
   company_name?: string;
-  type: "homeowner" | "contractor" | "supplier" | "inspector" | "other";
+  type: "homeowner" | "renter" | "business";
   lead_source?: string;
   qualification_status?: string;
   notes?: string;
@@ -73,8 +73,15 @@ const ContactForm: React.FC<ContactFormProps> = ({
   const [newTag, setNewTag] = useState("");
   const [assignedTo, setAssignedTo] = useState<string>("");
   const [tenantUsers, setTenantUsers] = useState<Array<{ id: string; name: string; email: string }>>([]);
-  const [leadSources, setLeadSources] = useState<Array<{ id: string; name: string }>>([]);
-  const [leadSourcesLoading, setLeadSourcesLoading] = useState(false);
+  // Hardcoded lead sources
+  const leadSources = [
+    { id: "google", name: "Google" },
+    { id: "facebook", name: "Facebook" },
+    { id: "instagram", name: "Instagram" },
+    { id: "sign", name: "Sign" },
+    { id: "call_in", name: "Call In" },
+    { id: "referral", name: "Referral" },
+  ];
   const [draftLoaded, setDraftLoaded] = useState(false);
 
   // Load draft on mount
@@ -134,31 +141,6 @@ const ContactForm: React.FC<ContactFormProps> = ({
     fetchTenantUsers();
   }, [currentUser?.tenant_id]);
 
-  // Fetch active lead sources for dropdown
-  useEffect(() => {
-    const fetchLeadSources = async () => {
-      if (!currentUser?.tenant_id) return;
-      
-      setLeadSourcesLoading(true);
-      try {
-        const { data, error } = await supabase
-          .from('lead_sources')
-          .select('id, name')
-          .eq('tenant_id', currentUser.tenant_id)
-          .eq('is_active', true)
-          .order('name');
-        
-        if (error) throw error;
-        setLeadSources(data || []);
-      } catch (error) {
-        console.error('Error fetching lead sources:', error);
-      } finally {
-        setLeadSourcesLoading(false);
-      }
-    };
-    
-    fetchLeadSources();
-  }, [currentUser]);
 
   const handleInputChange = (field: keyof ContactFormData, value: string | string[]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -246,7 +228,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
         email: formData.email || null,
         phone: formData.phone || null,
         company_name: formData.company_name || null,
-        type: formData.type,
+        type: formData.type as any, // Allow custom types beyond DB enum
         notes: formData.notes || null,
         tags: formData.tags || [],
         
@@ -469,7 +451,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="homeowner">Homeowner</SelectItem>
-                  <SelectItem value="contractor">Contractor</SelectItem>
+                  <SelectItem value="renter">Renter</SelectItem>
                   <SelectItem value="business">Business</SelectItem>
                 </SelectContent>
               </Select>
@@ -482,19 +464,12 @@ const ContactForm: React.FC<ContactFormProps> = ({
             <Select 
               value={formData.lead_source} 
               onValueChange={(value) => handleInputChange("lead_source", value)}
-              disabled={leadSourcesLoading}
             >
               <SelectTrigger 
                 data-testid={TEST_IDS.contacts.form.leadSource}
                 className={!formData.lead_source ? "border-muted-foreground/50" : ""}
               >
-                <SelectValue placeholder={
-                  leadSourcesLoading 
-                    ? "Loading lead sources..." 
-                    : leadSources.length === 0
-                      ? "No lead sources configured"
-                      : "Select lead source *"
-                } />
+                <SelectValue placeholder="Select lead source *" />
               </SelectTrigger>
               <SelectContent>
                 {leadSources.map((source) => (
@@ -502,11 +477,6 @@ const ContactForm: React.FC<ContactFormProps> = ({
                     {source.name}
                   </SelectItem>
                 ))}
-                {leadSources.length === 0 && !leadSourcesLoading && (
-                  <div className="px-2 py-1.5 text-sm text-muted-foreground">
-                    No lead sources available. Add them in Settings → Lead Sources.
-                  </div>
-                )}
               </SelectContent>
             </Select>
           </div>

@@ -86,6 +86,8 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
   };
 
   const selectSuggestion = async (prediction: any) => {
+    // Clear suggestions immediately
+    setSuggestions([]);
     setShowSuggestions(false);
     setIsVerifying(true);
 
@@ -105,30 +107,42 @@ const AddressVerification: React.FC<AddressVerificationProps> = ({
       if (data?.result) {
         const place = data.result;
         const addressComponents = place.address_components || [];
+        
+        // Parse address components with better fallbacks
+        let streetNumber = "";
+        let route = "";
+        let city = "";
+        let state = "";
+        let zip = "";
+
+        addressComponents.forEach((component: any) => {
+          const types = component.types;
+          if (types.includes("street_number")) {
+            streetNumber = component.long_name;
+          } else if (types.includes("route")) {
+            route = component.long_name;
+          } else if (types.includes("locality") || types.includes("sublocality") || types.includes("administrative_area_level_3")) {
+            // Use first match for city (locality preferred)
+            if (!city) city = component.long_name;
+          } else if (types.includes("administrative_area_level_1")) {
+            state = component.short_name;
+          } else if (types.includes("postal_code")) {
+            zip = component.long_name;
+          }
+        });
+
         const newAddress: AddressData = {
-          street: "",
-          city: "",
-          state: "",
-          zip: "",
+          street: `${streetNumber} ${route}`.trim(),
+          city,
+          state,
+          zip,
           lat: place.geometry?.location?.lat,
           lng: place.geometry?.location?.lng,
           place_id: prediction.place_id,
           formatted_address: place.formatted_address,
         };
 
-        // Parse address components
-        addressComponents.forEach((component: any) => {
-          const types = component.types;
-          if (types.includes("street_number") || types.includes("route")) {
-            newAddress.street += (newAddress.street ? " " : "") + component.long_name;
-          } else if (types.includes("locality")) {
-            newAddress.city = component.long_name;
-          } else if (types.includes("administrative_area_level_1")) {
-            newAddress.state = component.short_name;
-          } else if (types.includes("postal_code")) {
-            newAddress.zip = component.long_name;
-          }
-        });
+        console.log('Parsed Address from Google:', newAddress);
 
         setAddress(newAddress);
         setVerificationStatus("verified");
