@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import React from "react";
 import { Button } from "@/components/ui/button";
 import { 
   DropdownMenu, 
@@ -7,171 +7,33 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
 import { MapPin, ChevronDown, Building2 } from "lucide-react";
-import { useUserProfile } from "@/contexts/UserProfileContext";
-
-interface Location {
-  id: string;
-  name: string;
-  address_city?: string;
-  address_state?: string;
-  is_active: boolean;
-}
+import { useLocation } from "@/contexts/LocationContext";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface LocationSwitcherProps {
   onLocationChange?: (locationId: string | null) => void;
 }
 
 export const LocationSwitcher = ({ onLocationChange }: LocationSwitcherProps) => {
-  const { profile } = useUserProfile();
-  const activeTenantId = profile?.active_tenant_id || profile?.tenant_id;
-  
-  const [locations, setLocations] = useState<Location[]>([]);
-  const [currentLocationId, setCurrentLocationId] = useState<string | null>(null);
-  const [currentLocation, setCurrentLocation] = useState<Location | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const fetchUserLocations = useCallback(async () => {
-    if (!activeTenantId) {
-      setLocations([]);
-      setLoading(false);
-      return;
-    }
-
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // Get user's profile to check role
-      const { data: profileData } = await supabase
-        .from('profiles')
-        .select('role')
-        .eq('id', user.id)
-        .single();
-
-      // Start with tenant filter - ALWAYS filter by active tenant
-      let locationsQuery = supabase
-        .from('locations')
-        .select('*')
-        .eq('tenant_id', activeTenantId);
-
-      // If user is not admin/manager, only show locations they're assigned to
-      if (profileData?.role !== 'corporate' && profileData?.role !== 'master' && profileData?.role !== 'office_admin') {
-        const { data: assignments } = await supabase
-          .from('user_location_assignments')
-          .select('location_id')
-          .eq('user_id', user.id)
-          .eq('is_active', true);
-
-        if (assignments && assignments.length > 0) {
-          const locationIds = assignments.map(a => a.location_id);
-          locationsQuery = locationsQuery.in('id', locationIds);
-        } else {
-          // User has no location assignments
-          setLocations([]);
-          setLoading(false);
-          return;
-        }
-      }
-
-      const { data: locationsData, error } = await locationsQuery
-        .eq('is_active', true)
-        .order('name');
-
-      if (error) throw error;
-      setLocations(locationsData || []);
-    } catch (error) {
-      console.error('Error fetching user locations:', error);
-      toast({
-        title: "Error",
-        description: "Failed to load locations",
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }, [activeTenantId]);
-
-  const loadCurrentLocationSetting = useCallback(async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      const { data: setting } = await supabase
-        .from('app_settings')
-        .select('setting_value')
-        .eq('user_id', user.id)
-        .eq('setting_key', 'current_location_id')
-        .maybeSingle();
-
-      if (setting?.setting_value && setting.setting_value !== 'null') {
-        const locationId = setting.setting_value as string;
-        setCurrentLocationId(locationId);
-      } else {
-        setCurrentLocationId(null);
-        setCurrentLocation(null);
-      }
-    } catch (error) {
-      console.error('Error loading current location setting:', error);
-    }
-  }, []);
-
-  // Fetch locations when tenant changes
-  useEffect(() => {
-    if (activeTenantId) {
-      setLoading(true);
-      fetchUserLocations();
-      loadCurrentLocationSetting();
-    }
-  }, [activeTenantId, fetchUserLocations, loadCurrentLocationSetting]);
-
-  // Reset location selection if current location doesn't exist in new tenant's locations
-  useEffect(() => {
-    if (currentLocationId && locations.length > 0) {
-      const locationExists = locations.find(l => l.id === currentLocationId);
-      if (!locationExists) {
-        // Location from previous tenant, reset to "All Locations"
-        handleLocationSelect(null);
-      } else {
-        setCurrentLocation(locationExists);
-      }
-    } else if (!currentLocationId) {
-      setCurrentLocation(null);
-    }
-  }, [locations, currentLocationId]);
+  const { 
+    currentLocationId, 
+    currentLocation, 
+    locations, 
+    loading, 
+    setCurrentLocationId 
+  } = useLocation();
+  const queryClient = useQueryClient();
 
   const handleLocationSelect = async (locationId: string | null) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // Update user's current location setting
-      const { error } = await supabase
-        .from('app_settings')
-        .upsert({
-          user_id: user.id,
-          setting_key: 'current_location_id',
-          setting_value: locationId || 'null',
-          tenant_id: activeTenantId
-        }, {
-          onConflict: 'user_id,tenant_id,setting_key'
-        });
-
-      if (error) throw error;
-
-      setCurrentLocationId(locationId);
+      await setCurrentLocationId(locationId);
+      
+      // Invalidate all queries to refresh data with new location filter
+      queryClient.invalidateQueries();
+      
       const location = locations.find(l => l.id === locationId);
-      setCurrentLocation(location || null);
-      
-      // Broadcast location change to other components
-      await supabase.channel('location-changes').send({
-        type: 'broadcast',
-        event: 'location_changed',
-        payload: { locationId }
-      });
-      
       onLocationChange?.(locationId);
 
       toast({
@@ -189,10 +51,6 @@ export const LocationSwitcher = ({ onLocationChange }: LocationSwitcherProps) =>
       });
     }
   };
-
-  if (loading || !activeTenantId) {
-    return <div className="h-8 w-32 bg-muted animate-pulse rounded"></div>;
-  }
 
   if (loading) {
     return <div className="h-8 w-32 bg-muted animate-pulse rounded"></div>;
