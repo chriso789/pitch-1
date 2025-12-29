@@ -26,30 +26,26 @@ export const LocationSwitcher = ({ onLocationChange }: LocationSwitcherProps) =>
   } = useLocation();
   const queryClient = useQueryClient();
 
-  const handleLocationSelect = async (locationId: string | null) => {
-    try {
-      await setCurrentLocationId(locationId);
-      
-      // Invalidate all queries to refresh data with new location filter
-      queryClient.invalidateQueries();
-      
-      const location = locations.find(l => l.id === locationId);
-      onLocationChange?.(locationId);
+  const handleLocationSelect = (locationId: string | null) => {
+    // Update context immediately (optimistic - no await needed)
+    setCurrentLocationId(locationId);
+    
+    // Invalidate only location-sensitive queries for faster refresh
+    queryClient.invalidateQueries({ queryKey: ['contacts'] });
+    queryClient.invalidateQueries({ queryKey: ['leads'] });
+    queryClient.invalidateQueries({ queryKey: ['jobs'] });
+    queryClient.invalidateQueries({ queryKey: ['pipeline'] });
+    queryClient.invalidateQueries({ queryKey: ['projects'] });
+    
+    const location = locations.find(l => l.id === locationId);
+    onLocationChange?.(locationId);
 
-      toast({
-        title: "Location Changed",
-        description: locationId 
-          ? `Switched to ${location?.name}` 
-          : "Viewing all locations",
-      });
-    } catch (error) {
-      console.error('Error updating location:', error);
-      toast({
-        title: "Error",
-        description: "Failed to change location",
-        variant: "destructive",
-      });
-    }
+    toast({
+      title: "Location Changed",
+      description: locationId 
+        ? `Switched to ${location?.name}` 
+        : "Viewing all locations",
+    });
   };
 
   if (loading) {

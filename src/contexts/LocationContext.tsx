@@ -112,13 +112,26 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
     }
   }, []);
 
-  // Set current location
+  // Set current location - OPTIMISTIC UPDATE for instant UI response
   const setCurrentLocationId = useCallback(async (locationId: string | null) => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+    // 1. Update local state IMMEDIATELY (optimistic)
+    setCurrentLocationIdState(locationId);
+    
+    // 2. Store in localStorage for cross-tab sync
+    if (locationId) {
+      localStorage.setItem(STORAGE_KEY, locationId);
+    } else {
+      localStorage.removeItem(STORAGE_KEY);
+    }
 
-      const { error } = await supabase
+    // 3. Dispatch event immediately for listeners
+    window.dispatchEvent(new CustomEvent('location-changed', { detail: { locationId } }));
+
+    // 4. Persist to database in BACKGROUND (don't block UI)
+    supabase.auth.getUser().then(({ data: { user } }) => {
+      if (!user) return;
+      
+      supabase
         .from('app_settings')
         .upsert({
           user_id: user.id,
@@ -127,25 +140,11 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
           tenant_id: activeTenantId
         }, {
           onConflict: 'user_id,tenant_id,setting_key'
+        })
+        .then(({ error }) => {
+          if (error) console.error('Error saving location setting:', error);
         });
-
-      if (error) throw error;
-
-      setCurrentLocationIdState(locationId);
-      
-      // Store in localStorage for cross-tab sync
-      if (locationId) {
-        localStorage.setItem(STORAGE_KEY, locationId);
-      } else {
-        localStorage.removeItem(STORAGE_KEY);
-      }
-
-      // Dispatch a custom event for same-tab components
-      window.dispatchEvent(new CustomEvent('location-changed', { detail: { locationId } }));
-    } catch (error) {
-      console.error('Error updating location:', error);
-      throw error;
-    }
+    });
   }, [activeTenantId]);
 
   // Update current location object when ID or locations list changes
