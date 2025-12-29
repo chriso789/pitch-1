@@ -71,14 +71,54 @@ serve(async (req) => {
     console.log('🏠 Analyzing roof:', address)
     console.log('📍 Coordinates:', coordinates.lat, coordinates.lng)
 
+    // Initialize Supabase client early for historical lookup
+    const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    
     // STREAMLINED: Fetch imagery and Solar API data in parallel
-    const [googleImage, solarData, mapboxImage] = await Promise.all([
+    const [googleImage, solarDataRaw, mapboxImage] = await Promise.all([
       fetchGoogleStaticMap(coordinates),
       fetchGoogleSolarData(coordinates),
       fetchMapboxSatellite(coordinates)
     ])
     
     console.log(`⏱️ Image fetch complete: ${Date.now() - startTime}ms`)
+    
+    // PHASE 1: Historical Solar API Fallback when current Solar API fails
+    let solarData = solarDataRaw
+    if (!solarData.available && customerId) {
+      console.log(`⚠️ Solar API unavailable, checking for historical data...`)
+      
+      try {
+        const { data: historicalMeasurement, error: histError } = await supabaseClient
+          .from('roof_measurements')
+          .select('solar_building_footprint_sqft, solar_api_response, created_at')
+          .eq('customer_id', customerId)
+          .not('solar_building_footprint_sqft', 'is', null)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single()
+        
+        if (histError) {
+          console.log(`📐 No historical Solar data found for customer: ${histError.message}`)
+        } else if (historicalMeasurement?.solar_building_footprint_sqft) {
+          const historicalDate = new Date(historicalMeasurement.created_at).toLocaleDateString()
+          console.log(`📐 ✅ Using HISTORICAL Solar data from ${historicalDate}: ${historicalMeasurement.solar_building_footprint_sqft.toFixed(0)} sqft`)
+          
+          solarData = {
+            available: true,
+            buildingFootprintSqft: historicalMeasurement.solar_building_footprint_sqft,
+            estimatedPerimeterFt: 4 * Math.sqrt(historicalMeasurement.solar_building_footprint_sqft),
+            roofSegmentCount: 0,
+            roofSegments: [],
+            boundingBox: null,
+            isHistorical: true,
+            historicalDate
+          }
+        }
+      } catch (histErr) {
+        console.error('Historical lookup error:', histErr)
+      }
+    }
 
     // Select best image (prefer Google Maps for better measurement accuracy)
     const selectedImage = googleImage.url ? googleImage : mapboxImage
@@ -236,7 +276,8 @@ serve(async (req) => {
 
     console.log(`📏 Generated ${linearFeatures.length} vertex-derived linear features`)
 
-    const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    // Re-use supabase client created earlier
+    const supabase = supabaseClient
     
     // Extract vertex stats from perimeter detection
     const vertexStats = perimeterResult.vertexStats || {
@@ -395,7 +436,22 @@ async function fetchGoogleSolarData(coords: any) {
   try {
     const url = `https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${coords.lat}&location.longitude=${coords.lng}&key=${GOOGLE_SOLAR_API_KEY}`
     const response = await fetch(url)
-    if (!response.ok) return { available: false, buildingFootprintSqft: null, roofSegmentCount: 0, linearFeatures: [] }
+    
+    // ENHANCED: Better error logging for 403/quota issues
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => 'No error body')
+      console.error(`❌ Google Solar API error: ${response.status} - ${errorText}`)
+      
+      // Log specific error types for debugging
+      if (response.status === 403) {
+        console.error('🔑 403 Forbidden - Check: API key validity, billing status, or quota exceeded')
+      } else if (response.status === 429) {
+        console.error('⏱️ 429 Rate Limited - Too many requests')
+      }
+      
+      return { available: false, buildingFootprintSqft: null, roofSegmentCount: 0, linearFeatures: [], error: `${response.status}` }
+    }
+    
     const data = await response.json()
     const buildingFootprintSqm = data.solarPotential?.buildingStats?.areaMeters2 || 0
     const buildingFootprintSqft = buildingFootprintSqm * 10.764
@@ -405,6 +461,8 @@ async function fetchGoogleSolarData(coords: any) {
     // Calculate expected perimeter from Solar API footprint (for validation)
     // Rough estimate: perimeter ≈ 4 * sqrt(area) for rectangular shapes
     const estimatedPerimeterFt = 4 * Math.sqrt(buildingFootprintSqft)
+    
+    console.log(`✅ Solar API: ${buildingFootprintSqft.toFixed(0)} sqft footprint, ${roofSegments.length} segments`)
     
     return {
       available: true,
@@ -419,7 +477,8 @@ async function fetchGoogleSolarData(coords: any) {
         boundingBox: s.boundingBox
       })),
       boundingBox,
-      rawData: data
+      rawData: data,
+      isHistorical: false
     }
   } catch (err) {
     console.error('Google Solar API error:', err)
@@ -780,6 +839,31 @@ Approximate building size: ${boundsWidth.toFixed(1)}% x ${boundsHeight.toFixed(1
 ${expectedMetrics}
 
 ════════════════════════════════════════════════════════════════════════════════
+⚠️ CRITICAL ACCURACY RULES - STAY ON THE ROOF!
+════════════════════════════════════════════════════════════════════════════════
+
+1. Trace ONLY where shingles/tiles meet the sky (the EAVE EDGE/drip line)
+2. Stay INSIDE the roof - do NOT trace shadows, ground, or landscaping
+3. For hip corners, trace the EXACT corner vertex where edges meet
+4. If unsure about a corner location, place it CLOSER to center, NOT further out
+5. Over-estimating is WORSE than under-estimating!
+
+EXPECTED PERIMETER REFERENCE (use this to validate your trace):
+- 1500 sqft home: ~160 ft perimeter (4-6 vertices)
+- 2000 sqft home: ~180-220 ft perimeter (6-10 vertices)
+- 2500 sqft home: ~200-250 ft perimeter (8-12 vertices)
+- 3000 sqft home: ~220-280 ft perimeter (10-14 vertices)
+- 3500 sqft home: ~240-300 ft perimeter (12-16 vertices)
+- 4000 sqft home: ~260-340 ft perimeter (14-18 vertices)
+- 4500 sqft home: ~280-380 ft perimeter (16-20 vertices)
+
+If your traced PERIMETER significantly EXCEEDS these values, you are likely:
+- Tracing OUTSIDE the actual roof edges
+- Including shadows or ground
+- Including separate structures (screen enclosures, carports)
+- Making corners too "pointy" or extending beyond actual roof edge
+
+════════════════════════════════════════════════════════════════════════════════
 PLANIMETER-STYLE SEGMENT-BY-SEGMENT TRACING
 ════════════════════════════════════════════════════════════════════════════════
 
@@ -799,9 +883,10 @@ VERTEX REQUIREMENTS (NON-NEGOTIABLE):
 COMMON MISTAKES TO AVOID:
 ❌ Cutting corners by simplifying to a rectangle (4-6 vertices)
 ❌ Missing small bump-outs for bay windows, chimneys, or dormers
-❌ Tracing the visible shingle line instead of the drip edge
+❌ Tracing BEYOND the visible shingle line (including ground/shadows)
 ❌ Missing garage extensions or step-downs
 ❌ Segments > 50 feet without a vertex = MISSING A CORNER
+❌ Tracing OUTSIDE the roof edge - this causes OVER-ESTIMATION
 
 CORNER TYPES (classify each):
 - "hip-corner": Diagonal 45° corner where hip meets eave
@@ -1611,15 +1696,16 @@ function calculateConfidenceScore(aiAnalysis: any, measurements: any, solarData:
 }
 
 // ROOF_AREA_CAPS for validation
-// MAX_RESIDENTIAL lowered from 8000 to 6000 to catch double-counting errors
+// MAX_RESIDENTIAL lowered from 6000 to 5000 to catch double-counting errors
 const ROOF_AREA_CAPS = {
   MIN_RESIDENTIAL: 800,
-  MAX_RESIDENTIAL: 6000,  // Lowered from 8000 - catches double-tracing errors
+  MAX_RESIDENTIAL: 5000,  // Lowered from 6000 - catches double-tracing errors for 4500sqft roofs
   SOLAR_VARIANCE_THRESHOLD: 0.12,  // 12% variance before override
   FLORIDA_VARIANCE_THRESHOLD: 0.10, // Tighter for Florida (screen enclosures)
   PLANIMETER_TARGET_ACCURACY: 0.05,  // Target 5% accuracy
-  AREA_PERIMETER_MAX_RATIO: 22,  // If area/perimeter > 22, likely multi-building trace
-  DOUBLE_COUNT_WARNING_THRESHOLD: 1.4  // Warn if AI area > 140% of Solar
+  AREA_PERIMETER_MAX_RATIO: 20,  // If area/perimeter > 20, likely multi-building trace (lowered from 22)
+  DOUBLE_COUNT_WARNING_THRESHOLD: 1.25,  // Warn if AI area > 125% of Solar (lowered from 1.4)
+  AI_SOLAR_MAX_VARIANCE: 0.20  // If AI > 20% over Solar, use Solar
 }
 
 // Check if Florida address
