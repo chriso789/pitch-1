@@ -10,7 +10,9 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Users, Plus, Edit2, Trash2, Settings, Eye, MapPin, Ban, CheckCircle, Building2, Phone, AlertCircle, Mail, RefreshCw } from "lucide-react";
+import { Users, Plus, Edit2, Trash2, Settings, Eye, MapPin, Ban, CheckCircle, Building2, Phone, AlertCircle, Mail, RefreshCw, Activity } from "lucide-react";
+import { UserActivityDashboard } from "./UserActivityDashboard";
+import { ProfileStatusBadge } from "./ProfileStatusBadge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -546,6 +548,12 @@ export const UserManagement = () => {
           <Users className="h-4 w-4" />
           User Management
         </TabsTrigger>
+        {['master', 'corporate', 'owner', 'office_admin'].includes(currentUser?.role) && (
+          <TabsTrigger value="activity" className="flex items-center gap-2">
+            <Activity className="h-4 w-4" />
+            User Activity
+          </TabsTrigger>
+        )}
         <TabsTrigger value="locations" className="flex items-center gap-2">
           <MapPin className="h-4 w-4" />
           Location Access
@@ -850,6 +858,15 @@ export const UserManagement = () => {
           </CardContent>
         </Card>
       </TabsContent>
+
+      {['master', 'corporate', 'owner', 'office_admin'].includes(currentUser?.role) && (
+        <TabsContent value="activity">
+          <UserActivityDashboard 
+            tenantFilter={['master', 'corporate'].includes(currentUser?.role) ? undefined : currentUser?.tenant_id}
+            showCompanyColumn={['master', 'corporate'].includes(currentUser?.role)}
+          />
+        </TabsContent>
+      )}
 
       <TabsContent value="locations">
         <UserLocationAssignments />
