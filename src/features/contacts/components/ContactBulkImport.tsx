@@ -26,6 +26,7 @@ interface ContactImportData {
   tags?: string;
   notes?: string;
   sales_rep_name?: string; // Name from CSV to match against profiles
+  qualification_status?: string; // Status/disposition from CSV
 }
 
 interface ProfileMatch {
@@ -293,6 +294,21 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'created by': 'sales_rep_name',
   'createdby': 'sales_rep_name',
   'created_by': 'sales_rep_name',
+  
+  // Status / Qualification Status variations
+  'status': 'qualification_status',
+  'qualification_status': 'qualification_status',
+  'qualification status': 'qualification_status',
+  'lead_status': 'qualification_status',
+  'lead status': 'qualification_status',
+  'disposition': 'qualification_status',
+  'contact_status': 'qualification_status',
+  'contact status': 'qualification_status',
+  'stage': 'qualification_status',
+  'pipeline_stage': 'qualification_status',
+  'pipeline stage': 'qualification_status',
+  'result': 'qualification_status',
+  'outcome': 'qualification_status',
 };
 
 /**
@@ -364,8 +380,8 @@ function fuzzyMatchColumn(columnName: string, existingMappings: Record<string, b
     return null;
   }
   
-  // Skip columns that are clearly metadata/type columns
-  if (normalized.includes('type') || normalized.includes('label') || normalized.includes('status')) {
+  // Skip columns that are clearly metadata/type columns (but NOT status - we want that!)
+  if (normalized.includes('type') || normalized.includes('label')) {
     return null;
   }
   
@@ -525,6 +541,8 @@ function normalizeRow(rawRow: Record<string, any>): ContactImportData {
       allPhones.push(valueStr);
     } else if (mappedField === 'sales_rep_name') {
       normalized.sales_rep_name = valueStr;
+    } else if (mappedField === 'qualification_status') {
+      normalized.qualification_status = valueStr;
     } else if (mappedField) {
       // Only set if we don't already have a value (first match wins)
       if (!normalized[mappedField]) {
@@ -557,6 +575,9 @@ function normalizeRow(rawRow: Record<string, any>): ContactImportData {
   // Build notes from secondary address data only
   const secondaryNotes = buildSecondaryAddressNotes(normalized);
   
+  // Normalize status value
+  const normalizedStatus = normalizeStatus(normalized.qualification_status);
+  
   return {
     first_name: String(normalized.first_name || '').trim(),
     last_name: String(normalized.last_name || '').trim(),
@@ -575,6 +596,7 @@ function normalizeRow(rawRow: Record<string, any>): ContactImportData {
     tags: normalized.tags || undefined,
     notes: secondaryNotes || undefined,
     sales_rep_name: normalized.sales_rep_name || undefined,
+    qualification_status: normalizedStatus || undefined,
   };
 }
 
@@ -619,11 +641,11 @@ function matchSalesRepToProfile(
 /**
  * Known metadata column patterns that are safe to ignore
  * These are columns from skip trace services that contain metadata, not contact data
+ * NOTE: 'status' is NOT included here - we want to map it to qualification_status!
  */
 const METADATA_COLUMN_PATTERNS = [
-  // Type/status columns
+  // Type columns (but NOT status - we want that for qualification_status!)
   /\btype$/i, /\btype\s*$/i, /:type$/i,
-  /\bstatus$/i, /:status$/i,
   /\blabel$/i, /:label$/i,
   /\bvalidity$/i, /:validity$/i,
   // Compliance/flag columns
@@ -785,14 +807,139 @@ function detectHeaderStatus(fields: string[]): {
 }
 
 /**
+ * Normalize status value to valid qualification_status enum
+ */
+function normalizeStatus(status: string | undefined): string | null {
+  if (!status) return null;
+  
+  const normalized = status.toLowerCase().trim();
+  
+  // Map common status values to our qualification_status enum
+  const statusMap: Record<string, string> = {
+    // Storm Damage / Interested
+    'storm damage': 'storm_damage',
+    'storm': 'storm_damage',
+    'interested': 'interested',
+    'hot': 'interested',
+    'hot lead': 'interested',
+    'warm': 'interested',
+    
+    // Not Interested
+    'not interested': 'not_interested',
+    'not_interested': 'not_interested',
+    'cold': 'not_interested',
+    'no': 'not_interested',
+    
+    // Not Home
+    'not home': 'not_home',
+    'not_home': 'not_home',
+    'no answer': 'not_home',
+    'no_answer': 'not_home',
+    
+    // Come Back
+    'come back': 'come_back',
+    'come_back': 'come_back',
+    'callback': 'come_back',
+    'follow up': 'come_back',
+    'follow_up': 'come_back',
+    
+    // Appointment Set
+    'appointment': 'appointment_set',
+    'appointment set': 'appointment_set',
+    'appointment_set': 'appointment_set',
+    'scheduled': 'appointment_set',
+    'booked': 'appointment_set',
+    
+    // Sold / Won
+    'sold': 'sold',
+    'won': 'sold',
+    'closed': 'sold',
+    'closed won': 'sold',
+    
+    // Lost
+    'lost': 'lost',
+    'closed lost': 'lost',
+    
+    // Do Not Knock
+    'do not knock': 'do_not_knock',
+    'do_not_knock': 'do_not_knock',
+    'dnk': 'do_not_knock',
+    'no soliciting': 'do_not_knock',
+    
+    // Unqualified
+    'unqualified': 'unqualified',
+    'disqualified': 'unqualified',
+    'bad lead': 'unqualified',
+  };
+  
+  // Direct match
+  if (statusMap[normalized]) {
+    return statusMap[normalized];
+  }
+  
+  // Partial match - check if any key is contained in the status
+  for (const [key, value] of Object.entries(statusMap)) {
+    if (normalized.includes(key) || key.includes(normalized)) {
+      return value;
+    }
+  }
+  
+  // Return as-is if it looks like a valid status format
+  if (normalized.includes('_') || /^[a-z_]+$/.test(normalized)) {
+    return normalized;
+  }
+  
+  return null;
+}
+
+/**
+ * Analyze why rows are being skipped
+ */
+interface SkipAnalysis {
+  missingName: number;
+  missingContact: number;
+  missingBoth: number;
+  importable: number;
+}
+
+function analyzeSkippedRows(rows: ContactImportData[]): SkipAnalysis {
+  let missingName = 0;
+  let missingContact = 0;
+  let missingBoth = 0;
+  let importable = 0;
+  
+  for (const row of rows) {
+    const hasName = (row.first_name && row.first_name !== 'Unknown' && row.first_name.trim() !== '') || 
+                    (row.last_name && row.last_name.trim() !== '');
+    const hasContactInfo = row.email || row.phone || row.address_street || row.address_city;
+    
+    if (hasName && hasContactInfo) {
+      importable++;
+    } else if (!hasName && !hasContactInfo) {
+      missingBoth++;
+    } else if (!hasName) {
+      missingName++;
+    } else {
+      missingContact++;
+    }
+  }
+  
+  return { missingName, missingContact, missingBoth, importable };
+}
+
+/**
  * Check if a row is importable (has meaningful data)
- * Must have at least a name AND at least one contact method/address
+ * RELAXED: Now allows address-only rows (will set name as "Homeowner")
+ * Must have at least SOME contact info (email, phone, or address)
  */
 function isRowImportable(row: ContactImportData): boolean {
   const hasName = (row.first_name && row.first_name !== 'Unknown' && row.first_name.trim() !== '') || 
                   (row.last_name && row.last_name.trim() !== '');
   const hasContactInfo = row.email || row.phone || row.address_street || row.address_city;
-  return Boolean(hasName && hasContactInfo);
+  
+  // RELAXED: If we have contact info (especially address), we can import even without a name
+  // The import will auto-set "Homeowner" as the first name
+  return Boolean(hasContactInfo);
 }
 
 /**
@@ -823,6 +970,7 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
   const [duplicateColumns, setDuplicateColumns] = useState<string[]>([]);
   const [headerStatus, setHeaderStatus] = useState<{ status: 'ok' | 'missing' | 'suspicious'; message: string }>({ status: 'ok', message: '' });
   const [validRowStats, setValidRowStats] = useState<{ validCount: number; totalCount: number; percentage: number }>({ validCount: 0, totalCount: 0, percentage: 0 });
+  const [skipAnalysis, setSkipAnalysis] = useState<SkipAnalysis>({ missingName: 0, missingContact: 0, missingBoth: 0, importable: 0 });
   const [profilesForPreview, setProfilesForPreview] = useState<ProfileMatch[]>([]);
   const [repMatchStats, setRepMatchStats] = useState<{ matched: number; unmatched: string[] }>({ matched: 0, unmatched: [] });
 
@@ -889,6 +1037,10 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
         // Check how many rows have valid data
         const validStats = countValidRows(normalizedData);
         setValidRowStats(validStats);
+        
+        // Analyze WHY rows are being skipped
+        const skipStats = analyzeSkippedRows(normalizedData);
+        setSkipAnalysis(skipStats);
         
         // Calculate rep match stats for preview using loadedProfiles (local variable, not state)
         const unmatchedReps = new Set<string>();
@@ -967,8 +1119,12 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
               unmatchedReps.add(row.sales_rep_name);
             }
             
+            // Auto-set "Homeowner" if no name provided (address-only contacts)
+            const hasName = (row.first_name && row.first_name.trim() !== '') || 
+                            (row.last_name && row.last_name.trim() !== '');
+            
             return {
-              first_name: row.first_name || 'Unknown',
+              first_name: hasName ? (row.first_name || 'Unknown') : 'Homeowner',
               last_name: row.last_name || '',
               email: row.email || null,
               phone: row.phone || null,
@@ -989,6 +1145,7 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
               type: 'homeowner' as const,
               is_deleted: false,
               assigned_to: assignedTo,
+              qualification_status: row.qualification_status || null,
             };
           });
 
@@ -1067,6 +1224,7 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
     setDuplicateColumns([]);
     setHeaderStatus({ status: 'ok', message: '' });
     setValidRowStats({ validCount: 0, totalCount: 0, percentage: 0 });
+    setSkipAnalysis({ missingName: 0, missingContact: 0, missingBoth: 0, importable: 0 });
     setProfilesForPreview([]);
     setRepMatchStats({ matched: 0, unmatched: [] });
   };
@@ -1298,6 +1456,22 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
                 )}
                 ):
               </p>
+              
+              {/* Skip Analysis - show WHY rows are skipped */}
+              {validRowStats.totalCount > totalRows && (skipAnalysis.missingName > 0 || skipAnalysis.missingContact > 0 || skipAnalysis.missingBoth > 0) && (
+                <div className="text-xs text-muted-foreground bg-muted/50 p-2 rounded">
+                  <span className="font-medium">Skipped rows breakdown:</span>
+                  <ul className="mt-1 space-y-0.5">
+                    {skipAnalysis.missingBoth > 0 && (
+                      <li>• {skipAnalysis.missingBoth} rows have no data (empty)</li>
+                    )}
+                    {skipAnalysis.missingContact > 0 && (
+                      <li>• {skipAnalysis.missingContact} rows have name but no contact info (email/phone/address)</li>
+                    )}
+                  </ul>
+                </div>
+              )}
+              
               <div className="border rounded-lg overflow-hidden overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted">
@@ -1306,6 +1480,7 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
                       <th className="px-3 py-2 text-left whitespace-nowrap">Last Name</th>
                       <th className="px-3 py-2 text-left whitespace-nowrap">Phone</th>
                       <th className="px-3 py-2 text-left whitespace-nowrap">City</th>
+                      <th className="px-3 py-2 text-left whitespace-nowrap">Status</th>
                       <th className="px-3 py-2 text-left whitespace-nowrap">Assigned Rep</th>
                     </tr>
                   </thead>
@@ -1314,10 +1489,17 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
                       const repStatus = getRepMatchStatus(row.sales_rep_name);
                       return (
                         <tr key={i} className="border-t">
-                          <td className="px-3 py-2">{row.first_name || '-'}</td>
+                          <td className="px-3 py-2">{row.first_name || <span className="text-muted-foreground italic">Homeowner</span>}</td>
                           <td className="px-3 py-2">{row.last_name || '-'}</td>
                           <td className="px-3 py-2">{row.phone || '-'}</td>
                           <td className="px-3 py-2">{row.address_city || '-'}</td>
+                          <td className="px-3 py-2">
+                            {row.qualification_status ? (
+                              <Badge variant="outline" className="text-xs">
+                                {row.qualification_status.replace(/_/g, ' ')}
+                              </Badge>
+                            ) : '-'}
+                          </td>
                           <td className="px-3 py-2">
                             {row.sales_rep_name ? (
                               <span className="flex items-center gap-1">
