@@ -137,6 +137,23 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
 
   const handleDownload = async (doc: Document) => {
     try {
+      // Check if file_path is a URL (external link) vs storage path
+      const isExternalUrl = doc.file_path.startsWith('http://') || 
+                           doc.file_path.startsWith('https://') || 
+                           doc.file_path.startsWith('data:');
+      
+      if (isExternalUrl) {
+        // For external URLs or data URLs, open in new tab
+        const a = document.createElement('a');
+        a.href = doc.file_path;
+        a.download = doc.filename;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        a.click();
+        return;
+      }
+      
+      // Normal storage download
       const { data, error } = await supabase.storage
         .from('documents')
         .download(doc.file_path);
@@ -192,7 +209,8 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
     return category?.icon || File;
   };
 
-  const formatFileSize = (bytes: number) => {
+  const formatFileSize = (bytes: number | null | undefined) => {
+    if (bytes === null || bytes === undefined || isNaN(bytes)) return 'Unknown size';
     if (bytes < 1024) return bytes + ' B';
     if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';

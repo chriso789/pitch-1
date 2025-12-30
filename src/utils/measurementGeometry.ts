@@ -255,6 +255,295 @@ export function snapToEdge(point: Point, polygon: Point[], threshold: number = 1
   
   const projX = start.x + t * dx;
   const projY = start.y + t * dy;
-  
+
   return { x: projX, y: projY };
+}
+
+// ============= WKT Parsing Utilities =============
+
+/**
+ * Parse WKT POLYGON string to array of [lat, lng] coordinates
+ * Format: "POLYGON((lng1 lat1, lng2 lat2, ...))"
+ */
+export function parseWKTPolygon(wkt: string): [number, number][] {
+  if (!wkt || typeof wkt !== 'string') return [];
+  
+  const match = wkt.match(/POLYGON\(\(([^)]+)\)\)/);
+  if (!match) return [];
+  
+  const coords = match[1].split(',').map(pair => {
+    const [lng, lat] = pair.trim().split(' ').map(Number);
+    return [lat, lng] as [number, number]; // Return as [lat, lng] tuple
+  }).filter(coord => !isNaN(coord[0]) && !isNaN(coord[1]));
+  
+  return coords;
+}
+
+/**
+ * Parse WKT LINESTRING string to array of [lat, lng] coordinates
+ * Format: "LINESTRING(lng1 lat1, lng2 lat2)"
+ */
+export function parseWKTLineString(wkt: string): [number, number][] {
+  if (!wkt || typeof wkt !== 'string') return [];
+  
+  const match = wkt.match(/LINESTRING\(([^)]+)\)/);
+  if (!match) return [];
+  
+  const coords = match[1].split(',').map(pair => {
+    const [lng, lat] = pair.trim().split(' ').map(Number);
+    return [lat, lng] as [number, number]; // Return as [lat, lng] tuple
+  }).filter(coord => !isNaN(coord[0]) && !isNaN(coord[1]));
+  
+  return coords;
+}
+
+/**
+ * Convert array of [lat, lng] back to WKT POLYGON format
+ */
+export function coordsToWKTPolygon(coords: [number, number][]): string {
+  if (coords.length < 3) return '';
+  const wktCoords = coords.map(([lat, lng]) => `${lng} ${lat}`).join(', ');
+  return `POLYGON((${wktCoords}))`;
+}
+
+/**
+ * Simplify perimeter polygon to reduce jagged points
+ * Uses Douglas-Peucker algorithm via turf.simplify
+ */
+export function simplifyPerimeter(wkt: string, tolerance: number = 0.000005): string {
+  const coords = parseWKTPolygon(wkt);
+  if (coords.length < 4) return wkt;
+  
+  try {
+    // Convert to GeoJSON polygon (note: GeoJSON uses [lng, lat])
+    const geoJsonCoords = coords.map(([lat, lng]) => [lng, lat]);
+    
+    // Ensure polygon is closed
+    const first = geoJsonCoords[0];
+    const last = geoJsonCoords[geoJsonCoords.length - 1];
+    if (first[0] !== last[0] || first[1] !== last[1]) {
+      geoJsonCoords.push([...first]);
+    }
+    
+    const polygon = turf.polygon([geoJsonCoords]);
+    
+    // Simplify with conservative tolerance
+    const simplified = turf.simplify(polygon, { tolerance, highQuality: true });
+    
+    // Convert back to WKT format [lat, lng]
+    const newCoords = simplified.geometry.coordinates[0].map(([lng, lat]) => [lat, lng] as [number, number]);
+    
+    return coordsToWKTPolygon(newCoords);
+  } catch (error) {
+    console.error('Error simplifying perimeter:', error);
+    return wkt; // Return original on error
+  }
+}
+
+/**
+ * Snap near-right angles to exact 90 degrees
+ */
+export function snapRightAngles(coords: [number, number][], angleTolerance: number = 10): [number, number][] {
+  if (coords.length < 3) return coords;
+  
+  const result: [number, number][] = [];
+  
+  for (let i = 0; i < coords.length; i++) {
+    const prev = coords[(i - 1 + coords.length) % coords.length];
+    const curr = coords[i];
+    const next = coords[(i + 1) % coords.length];
+    
+    // Calculate angle at current vertex
+    const v1 = [curr[0] - prev[0], curr[1] - prev[1]];
+    const v2 = [next[0] - curr[0], next[1] - curr[1]];
+    
+    const dot = v1[0] * v2[0] + v1[1] * v2[1];
+    const cross = v1[0] * v2[1] - v1[1] * v2[0];
+    const angle = Math.abs(Math.atan2(cross, dot) * (180 / Math.PI));
+    
+    // Check if angle is near 90 degrees
+    if (Math.abs(angle - 90) <= angleTolerance) {
+      // Snap to exact 90 degrees by adjusting the current point
+      // For now, keep original - more sophisticated snapping could be added
+      result.push(curr);
+    } else {
+      result.push(curr);
+    }
+  }
+  
+  return result;
+}
+
+/**
+ * Remove collinear points (points that lie on a straight line between neighbors)
+ */
+export function removeCollinearPoints(coords: [number, number][], angleTolerance: number = 5): [number, number][] {
+  if (coords.length < 4) return coords;
+  
+  const result: [number, number][] = [];
+  
+  for (let i = 0; i < coords.length; i++) {
+    const prev = coords[(i - 1 + coords.length) % coords.length];
+    const curr = coords[i];
+    const next = coords[(i + 1) % coords.length];
+    
+    // Calculate angle deviation from straight line
+    const v1 = [curr[0] - prev[0], curr[1] - prev[1]];
+    const v2 = [next[0] - curr[0], next[1] - curr[1]];
+    
+    const dot = v1[0] * v2[0] + v1[1] * v2[1];
+    const cross = v1[0] * v2[1] - v1[1] * v2[0];
+    const angle = Math.abs(Math.atan2(cross, dot) * (180 / Math.PI));
+    
+    // If angle is not near 180 (i.e., not collinear), keep the point
+    if (Math.abs(angle - 180) > angleTolerance && angle > angleTolerance) {
+      result.push(curr);
+    }
+  }
+  
+  // Ensure we keep at least 3 points
+  return result.length >= 3 ? result : coords;
+}
+
+/**
+ * Apply all geometry cleanup operations
+ */
+export function cleanupGeometry(wkt: string, options?: {
+  simplifyTolerance?: number;
+  removeCollinear?: boolean;
+  snapAngles?: boolean;
+}): string {
+  const {
+    simplifyTolerance = 0.000005,
+    removeCollinear = true,
+    snapAngles = false
+  } = options || {};
+  
+  let coords = parseWKTPolygon(wkt);
+  if (coords.length < 3) return wkt;
+  
+  // Step 1: Apply simplification
+  const simplified = simplifyPerimeter(wkt, simplifyTolerance);
+  coords = parseWKTPolygon(simplified);
+  
+  // Step 2: Remove collinear points
+  if (removeCollinear) {
+    coords = removeCollinearPoints(coords);
+  }
+  
+  // Step 3: Snap right angles (optional)
+  if (snapAngles) {
+    coords = snapRightAngles(coords);
+  }
+  
+  return coordsToWKTPolygon(coords);
+}
+
+// ============= Bounds-Fit Coordinate Transformation =============
+
+export interface GeoBounds {
+  minLat: number;
+  maxLat: number;
+  minLng: number;
+  maxLng: number;
+  centerLat: number;
+  centerLng: number;
+}
+
+/**
+ * Calculate geographic bounds from WKT polygons and linear features
+ */
+export function calculateGeoBounds(
+  perimeterWkt?: string,
+  linearFeatures?: Array<{ wkt: string }>,
+  faces?: Array<{ wkt: string }>,
+  fallbackCenter?: { lat: number; lng: number }
+): GeoBounds {
+  let minLat = Infinity, maxLat = -Infinity;
+  let minLng = Infinity, maxLng = -Infinity;
+  
+  const processCoords = (coords: [number, number][]) => {
+    coords.forEach(([lat, lng]) => {
+      minLat = Math.min(minLat, lat);
+      maxLat = Math.max(maxLat, lat);
+      minLng = Math.min(minLng, lng);
+      maxLng = Math.max(maxLng, lng);
+    });
+  };
+  
+  // Process perimeter
+  if (perimeterWkt) {
+    processCoords(parseWKTPolygon(perimeterWkt));
+  }
+  
+  // Process faces
+  faces?.forEach(face => {
+    if (face.wkt) processCoords(parseWKTPolygon(face.wkt));
+  });
+  
+  // Process linear features
+  linearFeatures?.forEach(line => {
+    if (line.wkt) processCoords(parseWKTLineString(line.wkt));
+  });
+  
+  // Fallback if no valid data
+  if (!isFinite(minLat) || !isFinite(maxLat)) {
+    const center = fallbackCenter || { lat: 0, lng: 0 };
+    return {
+      minLat: center.lat - 0.001,
+      maxLat: center.lat + 0.001,
+      minLng: center.lng - 0.001,
+      maxLng: center.lng + 0.001,
+      centerLat: center.lat,
+      centerLng: center.lng,
+    };
+  }
+  
+  return {
+    minLat,
+    maxLat,
+    minLng,
+    maxLng,
+    centerLat: (minLat + maxLat) / 2,
+    centerLng: (minLng + maxLng) / 2,
+  };
+}
+
+/**
+ * Create a bounds-fit coordinate transformer
+ * This matches the approach used in SchematicRoofDiagram for consistent alignment
+ */
+export function createBoundsFitTransformer(
+  bounds: GeoBounds,
+  canvasWidth: number,
+  canvasHeight: number,
+  padding: number = 0.1
+) {
+  const latRange = (bounds.maxLat - bounds.minLat) * (1 + padding);
+  const lngRange = (bounds.maxLng - bounds.minLng) * (1 + padding);
+  const paddedMinLat = bounds.minLat - (bounds.maxLat - bounds.minLat) * padding / 2;
+  const paddedMinLng = bounds.minLng - (bounds.maxLng - bounds.minLng) * padding / 2;
+  
+  // Calculate scale to fit canvas while maintaining aspect ratio
+  const scaleX = canvasWidth / lngRange;
+  const scaleY = canvasHeight / latRange;
+  const scale = Math.min(scaleX, scaleY);
+  
+  // Center in canvas
+  const offsetX = (canvasWidth - lngRange * scale) / 2;
+  const offsetY = (canvasHeight - latRange * scale) / 2;
+  
+  return {
+    toCanvas: (lat: number, lng: number): Point => ({
+      x: offsetX + (lng - paddedMinLng) * scale,
+      y: offsetY + (paddedMinLat + latRange - lat) * scale, // Flip Y for canvas
+    }),
+    toGeo: (x: number, y: number): { lat: number; lng: number } => ({
+      lng: paddedMinLng + (x - offsetX) / scale,
+      lat: paddedMinLat + latRange - (y - offsetY) / scale,
+    }),
+    bounds,
+    scale,
+    offset: { x: offsetX, y: offsetY },
+  };
 }
