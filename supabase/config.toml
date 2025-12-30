@@ -428,3 +428,6 @@ verify_jwt = true
 
 [functions.telnyx-sms-status-webhook]
 verify_jwt = false
+
+[functions.resend-user-invitation]
+verify_jwt = false

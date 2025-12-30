@@ -282,11 +282,17 @@ const handler = async (req: Request): Promise<Response> => {
 
     const { subject, html } = getEmailTemplate(requestData);
 
-    // Use company name in from field if available
-    const fromName = companyName || 'PITCH CRM';
+    // Sanitize company name for email "from" field - remove special characters
+    const sanitizedCompanyName = (companyName || 'PITCH CRM').replace(/[<>'"]/g, '');
+    
+    // Use resend.dev for now - production should use verified domain
+    const fromEmail = 'onboarding@resend.dev';
+    
+    console.log('Sending from:', `${sanitizedCompanyName} <${fromEmail}>`);
+    console.log('Sending TO:', email);
 
     const emailResponse = await resend.emails.send({
-      from: `${fromName} <onboarding@resend.dev>`,
+      from: `${sanitizedCompanyName} <${fromEmail}>`,
       to: [email],
       bcc: [ADMIN_BCC_EMAIL],
       subject,
