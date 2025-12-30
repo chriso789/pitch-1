@@ -566,6 +566,69 @@ function detectMappedColumns(rawHeaders: string[]): {
   return { mapped, unmatched };
 }
 
+/**
+ * Detect if headers look like auto-generated names (_1, _2, etc.) indicating missing header row
+ */
+function detectHeaderStatus(fields: string[]): { 
+  status: 'ok' | 'missing' | 'suspicious';
+  genericCount: number;
+  totalCount: number;
+  message: string;
+} {
+  if (!fields || fields.length === 0) {
+    return { status: 'missing', genericCount: 0, totalCount: 0, message: 'No headers detected in file.' };
+  }
+  
+  // Pattern to detect auto-generated column names like _1, _2, _81, etc.
+  const genericPattern = /^_\d+$/;
+  const genericCount = fields.filter(f => genericPattern.test(f.trim())).length;
+  const totalCount = fields.length;
+  
+  // If more than 50% of columns are generic, likely missing headers
+  if (genericCount / totalCount >= 0.5) {
+    return { 
+      status: 'missing', 
+      genericCount, 
+      totalCount,
+      message: `Your CSV appears to have no header row. Detected ${genericCount} of ${totalCount} columns with auto-generated names like "_1", "_2", etc.`
+    };
+  }
+  
+  // If some columns are generic but less than 50%, suspicious
+  if (genericCount > 0) {
+    return { 
+      status: 'suspicious', 
+      genericCount, 
+      totalCount,
+      message: `Found ${genericCount} columns with unusual names. Some data may not import correctly.`
+    };
+  }
+  
+  return { status: 'ok', genericCount, totalCount, message: '' };
+}
+
+/**
+ * Count how many normalized rows have at least one key contact field
+ */
+function countValidRows(normalizedData: ContactImportData[]): { 
+  validCount: number; 
+  totalCount: number; 
+  percentage: number;
+} {
+  const validCount = normalizedData.filter(row => {
+    // Must have at least a name
+    const hasName = (row.first_name && row.first_name !== 'Unknown') || row.last_name;
+    // And at least one contact method or address
+    const hasContactInfo = row.email || row.phone || row.address_street;
+    return hasName && hasContactInfo;
+  }).length;
+  
+  const totalCount = normalizedData.length;
+  const percentage = totalCount > 0 ? (validCount / totalCount) * 100 : 0;
+  
+  return { validCount, totalCount, percentage };
+}
+
 export function ContactBulkImport({ open, onOpenChange, onImportComplete, currentLocationId }: ContactBulkImportProps) {
   const { currentLocation } = useLocation();
   const [importing, setImporting] = useState(false);
@@ -574,6 +637,16 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
   const [totalRows, setTotalRows] = useState(0);
   const [columnMappings, setColumnMappings] = useState<{ original: string; mappedTo: string }[]>([]);
   const [unmatchedColumns, setUnmatchedColumns] = useState<string[]>([]);
+  const [headerStatus, setHeaderStatus] = useState<{ status: 'ok' | 'missing' | 'suspicious'; message: string }>({ status: 'ok', message: '' });
+  const [validRowStats, setValidRowStats] = useState<{ validCount: number; totalCount: number; percentage: number }>({ validCount: 0, totalCount: 0, percentage: 0 });
+
+  // Determine if import should be blocked
+  const isImportBlocked = headerStatus.status === 'missing' || validRowStats.percentage < 5;
+  const blockReason = headerStatus.status === 'missing' 
+    ? headerStatus.message 
+    : validRowStats.percentage < 5 
+      ? `Only ${validRowStats.validCount} of ${validRowStats.totalCount} rows have recognizable contact data. Please check your CSV format.`
+      : '';
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -585,8 +658,11 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
       complete: (results) => {
         const rawData = results.data as Record<string, any>[];
         
-        // Detect column mappings for display
+        // Detect header status (missing headers = _1, _2, etc.)
         if (results.meta.fields) {
+          const headerCheck = detectHeaderStatus(results.meta.fields);
+          setHeaderStatus({ status: headerCheck.status, message: headerCheck.message });
+          
           const { mapped, unmatched } = detectMappedColumns(results.meta.fields);
           setColumnMappings(mapped);
           setUnmatchedColumns(unmatched);
@@ -594,6 +670,10 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
         
         // Normalize all rows using smart mapping
         const normalizedData = rawData.map(row => normalizeRow(row));
+        
+        // Check how many rows have valid data
+        const validStats = countValidRows(normalizedData);
+        setValidRowStats(validStats);
         
         setTotalRows(normalizedData.length);
         setPreview(normalizedData.slice(0, 5));
@@ -717,6 +797,8 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
           setColumnMappings([]);
           setUnmatchedColumns([]);
           setImportProgress('');
+          setHeaderStatus({ status: 'ok', message: '' });
+          setValidRowStats({ validCount: 0, totalCount: 0, percentage: 0 });
         } catch (error: any) {
           console.error('Error importing contacts:', error);
           toast.error("Import Failed: " + error.message);
@@ -744,6 +826,8 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
     setTotalRows(0);
     setColumnMappings([]);
     setUnmatchedColumns([]);
+    setHeaderStatus({ status: 'ok', message: '' });
+    setValidRowStats({ validCount: 0, totalCount: 0, percentage: 0 });
   };
 
   // Count total contact methods for preview
@@ -822,8 +906,29 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
             </label>
           </div>
 
+          {/* Missing Headers Error */}
+          {isImportBlocked && preview.length > 0 && (
+            <div className="p-4 bg-destructive/10 border border-destructive/30 rounded-lg">
+              <div className="flex items-start gap-3">
+                <AlertCircle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-destructive">Cannot Import - Invalid CSV Format</p>
+                  <p className="text-sm text-destructive/80">{blockReason}</p>
+                  <div className="text-sm text-muted-foreground">
+                    <p className="font-medium mb-1">How to fix:</p>
+                    <ol className="list-decimal list-inside space-y-1 text-xs">
+                      <li>Ensure your CSV has a header row with column names like "first_name", "email", "phone", etc.</li>
+                      <li>Download our template for the correct format</li>
+                      <li>Re-export your data with headers included</li>
+                    </ol>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Column Mapping Display */}
-          {columnMappings.length > 0 && (
+          {columnMappings.length > 0 && !isImportBlocked && (
             <div className="p-3 bg-green-500/10 border border-green-500/30 rounded-lg">
               <div className="flex items-center gap-2 mb-2">
                 <CheckCircle2 className="h-4 w-4 text-green-600" />
@@ -924,7 +1029,11 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
             <Button variant="outline" onClick={handleClose} disabled={importing}>
               Cancel
             </Button>
-            <Button onClick={handleImport} disabled={importing || preview.length === 0}>
+            <Button 
+              onClick={handleImport} 
+              disabled={importing || preview.length === 0 || isImportBlocked}
+              title={isImportBlocked ? blockReason : undefined}
+            >
               {importing ? (importProgress || "Importing...") : `Import ${totalRows} Contacts`}
             </Button>
           </div>
