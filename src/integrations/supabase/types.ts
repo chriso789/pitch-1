@@ -14161,6 +14161,7 @@ export type Database = {
           chimney_count: number | null
           created_at: string | null
           detection_confidence: number | null
+          dsm_confidence: number | null
           eave_length: number | null
           facet_number: number
           has_chimney: boolean | null
@@ -14174,6 +14175,8 @@ export type Database = {
           polygon_points: Json
           primary_direction: string | null
           rake_length: number | null
+          requires_review: boolean | null
+          review_reason: string | null
           ridge_length: number | null
           shape_type: string | null
           skylight_count: number | null
@@ -14191,6 +14194,7 @@ export type Database = {
           chimney_count?: number | null
           created_at?: string | null
           detection_confidence?: number | null
+          dsm_confidence?: number | null
           eave_length?: number | null
           facet_number: number
           has_chimney?: boolean | null
@@ -14204,6 +14208,8 @@ export type Database = {
           polygon_points: Json
           primary_direction?: string | null
           rake_length?: number | null
+          requires_review?: boolean | null
+          review_reason?: string | null
           ridge_length?: number | null
           shape_type?: string | null
           skylight_count?: number | null
@@ -14221,6 +14227,7 @@ export type Database = {
           chimney_count?: number | null
           created_at?: string | null
           detection_confidence?: number | null
+          dsm_confidence?: number | null
           eave_length?: number | null
           facet_number?: number
           has_chimney?: boolean | null
@@ -14234,6 +14241,8 @@ export type Database = {
           polygon_points?: Json
           primary_direction?: string | null
           rake_length?: number | null
+          requires_review?: boolean | null
+          review_reason?: string | null
           ridge_length?: number | null
           shape_type?: string | null
           skylight_count?: number | null
@@ -14414,6 +14423,7 @@ export type Database = {
           customer_id: string | null
           detection_confidence: number | null
           detection_timestamp: string | null
+          dsm_available: boolean | null
           edge_count: number | null
           edge_segments: Json | null
           facet_count: number | null
@@ -14432,6 +14442,7 @@ export type Database = {
           interior_vertex_count: number | null
           is_archived: boolean | null
           linear_features_wkt: Json | null
+          manual_review_recommended: boolean | null
           mapbox_image_url: string | null
           material_calculations: Json | null
           measured_by: string | null
@@ -14439,6 +14450,7 @@ export type Database = {
           meters_per_pixel: number | null
           notes: string | null
           organization_id: string | null
+          overlay_schema: Json | null
           perimeter_vertex_count: number | null
           perimeter_wkt: string | null
           pitch_degrees: number | null
@@ -14450,6 +14462,7 @@ export type Database = {
           property_state: string | null
           property_zip: string | null
           quality_assessment: Json | null
+          quality_checks: Json | null
           report_generated_at: string | null
           report_pdf_url: string | null
           requires_manual_review: boolean | null
@@ -14501,6 +14514,7 @@ export type Database = {
           customer_id?: string | null
           detection_confidence?: number | null
           detection_timestamp?: string | null
+          dsm_available?: boolean | null
           edge_count?: number | null
           edge_segments?: Json | null
           facet_count?: number | null
@@ -14519,6 +14533,7 @@ export type Database = {
           interior_vertex_count?: number | null
           is_archived?: boolean | null
           linear_features_wkt?: Json | null
+          manual_review_recommended?: boolean | null
           mapbox_image_url?: string | null
           material_calculations?: Json | null
           measured_by?: string | null
@@ -14526,6 +14541,7 @@ export type Database = {
           meters_per_pixel?: number | null
           notes?: string | null
           organization_id?: string | null
+          overlay_schema?: Json | null
           perimeter_vertex_count?: number | null
           perimeter_wkt?: string | null
           pitch_degrees?: number | null
@@ -14537,6 +14553,7 @@ export type Database = {
           property_state?: string | null
           property_zip?: string | null
           quality_assessment?: Json | null
+          quality_checks?: Json | null
           report_generated_at?: string | null
           report_pdf_url?: string | null
           requires_manual_review?: boolean | null
@@ -14588,6 +14605,7 @@ export type Database = {
           customer_id?: string | null
           detection_confidence?: number | null
           detection_timestamp?: string | null
+          dsm_available?: boolean | null
           edge_count?: number | null
           edge_segments?: Json | null
           facet_count?: number | null
@@ -14606,6 +14624,7 @@ export type Database = {
           interior_vertex_count?: number | null
           is_archived?: boolean | null
           linear_features_wkt?: Json | null
+          manual_review_recommended?: boolean | null
           mapbox_image_url?: string | null
           material_calculations?: Json | null
           measured_by?: string | null
@@ -14613,6 +14632,7 @@ export type Database = {
           meters_per_pixel?: number | null
           notes?: string | null
           organization_id?: string | null
+          overlay_schema?: Json | null
           perimeter_vertex_count?: number | null
           perimeter_wkt?: string | null
           pitch_degrees?: number | null
@@ -14624,6 +14644,7 @@ export type Database = {
           property_state?: string | null
           property_zip?: string | null
           quality_assessment?: Json | null
+          quality_checks?: Json | null
           report_generated_at?: string | null
           report_pdf_url?: string | null
           requires_manual_review?: boolean | null

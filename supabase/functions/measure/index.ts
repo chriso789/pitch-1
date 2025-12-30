@@ -2,11 +2,16 @@
 // Production-ready measurement orchestrator with multi-provider support
 // Handles: Regrid (sync), OSM (sync), EagleView/Nearmap/HOVER (async ready)
 // Generates vendor-agnostic Smart Tags for estimate templates
+// NEW: Full AI Measurement Agent pipeline with DSM refinement and QA validation
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 import { computeStraightSkeleton } from "./straight-skeleton.ts";
 import { classifyBoundaryEdges } from "./gable-detector.ts";
+import { analyzeDSM, fetchDSMFromGoogleSolar } from "./dsm-analyzer.ts";
+import { splitFootprintIntoFacets } from "./facet-splitter.ts";
+import { validateMeasurements } from "./qa-validator.ts";
+import { transformToOutputSchema, type MeasurementOutputSchema } from "./output-schema.ts";
 
 // Environment
 const GOOGLE_PLACES_API_KEY = Deno.env.get("GOOGLE_PLACES_API_KEY") || "";
@@ -1451,6 +1456,227 @@ serve(async (req) => {
           ok: true, 
           data: { measurement: row, tags } 
         }, corsHeaders);
+      }
+
+      // Route: action=generate-overlay (NEW: Full AI Measurement Agent pipeline)
+      if (action === 'generate-overlay') {
+        const { propertyId, lat, lng, footprintCoords } = body;
+
+        if (!propertyId) {
+          return json({ ok: false, error: 'propertyId required' }, corsHeaders, 400);
+        }
+        if (!lat || !lng) {
+          return json({ ok: false, error: 'lat and lng required' }, corsHeaders, 400);
+        }
+
+        console.log('Generate overlay request:', { propertyId, lat, lng, hasFootprint: !!footprintCoords });
+
+        const { data: { user } } = await supabase.auth.getUser();
+        const userId = user?.id;
+
+        try {
+          // Step 1: Get footprint (from provided coords or fetch from providers)
+          let coords: [number, number][] = footprintCoords || [];
+          let source = 'provided';
+          let googleSolarSegments: any[] = [];
+
+          if (coords.length === 0) {
+            // Try Google Solar first for footprint + segments
+            if (GOOGLE_PLACES_API_KEY) {
+              const solarUrl = `https://solar.googleapis.com/v1/buildingInsights:findClosest?location.latitude=${lat}&location.longitude=${lng}&key=${GOOGLE_PLACES_API_KEY}`;
+              const resp = await fetch(solarUrl);
+              if (resp.ok) {
+                const json = await resp.json();
+                if (json.boundingBox) {
+                  coords = boundingBoxToPolygon(json.boundingBox);
+                  source = 'google_solar';
+                  googleSolarSegments = json.solarPotential?.roofSegmentStats || [];
+                  console.log('Got footprint from Google Solar with', googleSolarSegments.length, 'segments');
+                }
+              }
+            }
+            
+            // Fallback to OSM if no Google data
+            if (coords.length === 0) {
+              const osmResult = await osmOverpassFootprint(lat, lng);
+              if (osmResult) {
+                coords = wktToCoords(osmResult.faceWKT);
+                source = 'osm';
+              }
+            }
+          }
+
+          if (coords.length < 4) {
+            return json({ 
+              ok: false, 
+              error: 'Could not determine building footprint',
+              manualReviewRecommended: true 
+            }, corsHeaders, 404);
+          }
+
+          // Step 2: Compute straight skeleton for initial geometry
+          const skeleton = computeStraightSkeleton(coords);
+          const boundaryClass = classifyBoundaryEdges(coords, skeleton);
+          console.log('Skeleton computed:', skeleton.length, 'edges');
+
+          // Step 3: Fetch DSM and refine geometry (optional, requires API key)
+          let dsmGrid = null;
+          let dsmAvailable = false;
+          if (GOOGLE_PLACES_API_KEY) {
+            try {
+              dsmGrid = await fetchDSMFromGoogleSolar(lat, lng, GOOGLE_PLACES_API_KEY);
+              dsmAvailable = dsmGrid !== null;
+              console.log('DSM available:', dsmAvailable);
+            } catch (dsmError) {
+              console.warn('DSM fetch failed:', dsmError);
+            }
+          }
+
+          // Step 4: Refine edges with DSM (if available)
+          const dsmAnalysis = analyzeDSM(dsmGrid, skeleton, coords);
+          console.log('DSM analysis complete, facet pitches:', dsmAnalysis.facetPitches.size);
+
+          // Step 5: Split footprint into facets
+          const midLat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+          const splitResult = splitFootprintIntoFacets(
+            coords, 
+            skeleton, 
+            googleSolarSegments.length > 0 ? googleSolarSegments : undefined
+          );
+          console.log('Facets split:', splitResult.facets.length, 'quality:', splitResult.splitQuality);
+
+          // Step 6: Build edge arrays for validation
+          const edges = {
+            ridges: dsmAnalysis.refinedEdges.filter(e => e.type === 'ridge').map(e => ({ start: e.start, end: e.end })),
+            hips: dsmAnalysis.refinedEdges.filter(e => e.type === 'hip').map(e => ({ start: e.start, end: e.end })),
+            valleys: dsmAnalysis.refinedEdges.filter(e => e.type === 'valley').map(e => ({ start: e.start, end: e.end })),
+            eaves: boundaryClass.eaveEdges.map(e => ({ start: e[0], end: e[1] })),
+            rakes: boundaryClass.rakeEdges.map(e => ({ start: e[0], end: e[1] })),
+          };
+
+          // Step 7: Run QA validation
+          const googleSolarTotalArea = googleSolarSegments.reduce((s, seg) => s + (seg.stats?.areaMeters2 || 0) * 10.7639, 0);
+          const totalRoofArea = splitResult.facets.reduce((s, f) => s + f.area, 0);
+          
+          const validationResult = validateMeasurements({
+            footprintCoords: coords,
+            facets: splitResult.facets.map(f => ({
+              polygon: f.polygon,
+              area: f.area,
+            })),
+            edges,
+            totals: {
+              roofArea: totalRoofArea,
+              eaveLength: edges.eaves.reduce((s, e) => s + calculateGeodesicLength(e.start, e.end, midLat), 0),
+              rakeLength: edges.rakes.reduce((s, e) => s + calculateGeodesicLength(e.start, e.end, midLat), 0),
+            },
+            googleSolarTotalArea: googleSolarTotalArea > 0 ? googleSolarTotalArea : undefined,
+          });
+          console.log('QA validation:', validationResult.overallScore, 'manual review:', validationResult.manualReviewRecommended);
+
+          // Step 8: Transform to output schema
+          const internalMeasurement = {
+            faces: splitResult.facets.map((f, i) => ({
+              id: String.fromCharCode(65 + i),
+              wkt: toPolygonWKT(f.polygon),
+              plan_area_sqft: f.planArea,
+              pitch: degreesToRoofPitch(f.pitch),
+              area_sqft: f.area,
+              azimuth_degrees: f.azimuth,
+            })),
+            linear_features: [
+              ...edges.ridges.map((e, i) => ({ id: `R${i}`, wkt: `LINESTRING(${e.start[0]} ${e.start[1]}, ${e.end[0]} ${e.end[1]})`, length_ft: calculateGeodesicLength(e.start, e.end, midLat), type: 'ridge' as const })),
+              ...edges.hips.map((e, i) => ({ id: `H${i}`, wkt: `LINESTRING(${e.start[0]} ${e.start[1]}, ${e.end[0]} ${e.end[1]})`, length_ft: calculateGeodesicLength(e.start, e.end, midLat), type: 'hip' as const })),
+              ...edges.valleys.map((e, i) => ({ id: `V${i}`, wkt: `LINESTRING(${e.start[0]} ${e.start[1]}, ${e.end[0]} ${e.end[1]})`, length_ft: calculateGeodesicLength(e.start, e.end, midLat), type: 'valley' as const })),
+              ...edges.eaves.map((e, i) => ({ id: `E${i}`, wkt: `LINESTRING(${e.start[0]} ${e.start[1]}, ${e.end[0]} ${e.end[1]})`, length_ft: calculateGeodesicLength(e.start, e.end, midLat), type: 'eave' as const })),
+              ...edges.rakes.map((e, i) => ({ id: `K${i}`, wkt: `LINESTRING(${e.start[0]} ${e.start[1]}, ${e.end[0]} ${e.end[1]})`, length_ft: calculateGeodesicLength(e.start, e.end, midLat), type: 'rake' as const })),
+            ],
+            summary: {
+              total_area_sqft: totalRoofArea,
+              total_squares: totalRoofArea / 100,
+              waste_pct: 12,
+              pitch_method: googleSolarSegments.length > 0 ? 'vendor' : dsmAvailable ? 'dsm' : 'assumed',
+            },
+          };
+
+          const outputSchema = transformToOutputSchema(
+            internalMeasurement,
+            validationResult,
+            coords
+          );
+
+          // Step 9: Persist to database
+          const measureResult: MeasureResult = {
+            property_id: propertyId,
+            source,
+            faces: internalMeasurement.faces,
+            linear_features: internalMeasurement.linear_features,
+            summary: {
+              ...internalMeasurement.summary,
+              perimeter_ft: outputSchema.totals['lf.eave'] + outputSchema.totals['lf.rake'],
+              ridge_ft: outputSchema.totals['lf.ridge'],
+              hip_ft: outputSchema.totals['lf.hip'],
+              valley_ft: outputSchema.totals['lf.valley'],
+              eave_ft: outputSchema.totals['lf.eave'],
+              rake_ft: outputSchema.totals['lf.rake'],
+            },
+            geom_wkt: toPolygonWKT(coords),
+          };
+
+          const row = await persistMeasurement(supabase, measureResult, userId);
+          const tags = buildSmartTags({ ...measureResult, id: row.id });
+          await persistTags(supabase, row.id, propertyId, tags, userId);
+
+          // Persist facets with review flags
+          const facetRecords = splitResult.facets.slice(0, 20).map((facet, i) => ({
+            measurement_id: row.id,
+            facet_number: i + 1,
+            area_sqft: facet.area,
+            plan_area_sqft: facet.planArea,
+            pitch: degreesToRoofPitch(facet.pitch),
+            pitch_degrees: facet.pitch,
+            pitch_factor: pitchFactor(degreesToRoofPitch(facet.pitch)),
+            direction: getDirection(facet.azimuth),
+            azimuth_degrees: facet.azimuth,
+            is_flat: facet.pitch < 2,
+            geometry_wkt: toPolygonWKT(facet.polygon),
+            requires_review: facet.requiresReview || false,
+            review_reason: facet.reviewReason || null,
+            dsm_confidence: dsmAvailable ? 0.85 : null,
+          }));
+
+          if (facetRecords.length > 0) {
+            await supabase.from('roof_measurement_facets').insert(facetRecords);
+          }
+
+          // Update measurement with QA results
+          await supabase.from('roof_measurements').update({
+            manual_review_recommended: validationResult.manualReviewRecommended,
+            quality_checks: validationResult,
+            dsm_available: dsmAvailable,
+            overlay_schema: outputSchema,
+          }).eq('id', row.id);
+
+          console.log('Generate overlay complete:', { 
+            id: row.id, 
+            facets: splitResult.facets.length,
+            manualReview: validationResult.manualReviewRecommended,
+            qaScore: validationResult.overallScore
+          });
+
+          return json({ 
+            ok: true, 
+            data: outputSchema 
+          }, corsHeaders);
+
+        } catch (err) {
+          console.error('Generate overlay error:', err);
+          return json({ 
+            ok: false, 
+            error: err instanceof Error ? err.message : String(err),
+            manualReviewRecommended: true
+          }, corsHeaders, 500);
+        }
       }
 
       // Route: action=manual-verify
