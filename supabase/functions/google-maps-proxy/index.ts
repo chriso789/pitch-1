@@ -195,7 +195,27 @@ serve(async (req) => {
         break;
       case 'geocode':
         url = `https://maps.googleapis.com/maps/api/geocode/json?key=${apiKey}&${searchParams}`;
-        break;
+        
+        // Fetch and check for REQUEST_DENIED
+        const geocodeResponse = await fetch(url);
+        const geocodeData = await geocodeResponse.json();
+        
+        if (geocodeData.status === 'REQUEST_DENIED') {
+          console.error('[Google Maps Proxy] Geocoding API REQUEST_DENIED:', geocodeData.error_message);
+          return new Response(JSON.stringify({
+            status: 'REQUEST_DENIED',
+            error: 'Geocoding API not enabled',
+            message: 'The Geocoding API is not enabled for this Google Cloud project. Please enable it at: https://console.cloud.google.com/apis/library/geocoding-backend.googleapis.com',
+            details: geocodeData.error_message || 'This API project is not authorized to use this API.'
+          }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
+        
+        return new Response(JSON.stringify(geocodeData), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
       case 'directions':
         url = `https://maps.googleapis.com/maps/api/directions/json?key=${apiKey}&${searchParams}`;
         break;

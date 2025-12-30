@@ -15,6 +15,9 @@ import { LocationProvider } from "@/contexts/LocationContext";
 import { useGlobalActivityTracking } from "@/hooks/useGlobalActivityTracking";
 import { SessionExpiryHandler } from "@/components/auth/SessionExpiryHandler";
 import { GlobalLoadingHandler } from "@/components/layout/GlobalLoadingHandler";
+import GlobalErrorBoundary from "@/components/error/GlobalErrorBoundary";
+import { initializeMonitoring } from "@/lib/MonitoringSelfHealing";
+import { installFetchInterceptor } from "@/lib/apiInterceptor";
 import LandingPage from "./pages/LandingPage";
 import Pricing from "./pages/Pricing";
 import Features from "./pages/Features";
@@ -112,6 +115,12 @@ const AppContent = () => {
 
   // Enable global activity tracking (keystrokes, page views, clicks)
   useGlobalActivityTracking();
+
+  // Initialize monitoring on app start
+  useEffect(() => {
+    initializeMonitoring();
+    installFetchInterceptor();
+  }, []);
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
@@ -248,23 +257,25 @@ const AppContent = () => {
 
 const App = () => {
   return (
-    <QueryClientProvider client={queryClient}>
-      <AuthProvider>
-        <UserProfileProvider>
-          <LocationProvider>
-            <ErrorTrackingProvider>
-              <TooltipProvider>
-                <ImageCacheProvider>
-                  <BrowserRouter>
-                    <AppContent />
-                  </BrowserRouter>
-                </ImageCacheProvider>
-              </TooltipProvider>
-            </ErrorTrackingProvider>
-          </LocationProvider>
-        </UserProfileProvider>
-      </AuthProvider>
-    </QueryClientProvider>
+    <GlobalErrorBoundary>
+      <QueryClientProvider client={queryClient}>
+        <AuthProvider>
+          <UserProfileProvider>
+            <LocationProvider>
+              <ErrorTrackingProvider>
+                <TooltipProvider>
+                  <ImageCacheProvider>
+                    <BrowserRouter>
+                      <AppContent />
+                    </BrowserRouter>
+                  </ImageCacheProvider>
+                </TooltipProvider>
+              </ErrorTrackingProvider>
+            </LocationProvider>
+          </UserProfileProvider>
+        </AuthProvider>
+      </QueryClientProvider>
+    </GlobalErrorBoundary>
   );
 };
 
