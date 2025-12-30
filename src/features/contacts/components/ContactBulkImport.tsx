@@ -66,6 +66,14 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'customer name': 'full_name',
   'client name': 'full_name',
   
+  // Skiptrace name formats (nested dot notation)
+  'skiptrace:name.first': 'first_name',
+  'skiptrace:name.last': 'last_name',
+  'skiptrace:name.middle': 'middle_name',
+  'skiptrace:property.owner.name.first': 'first_name',
+  'skiptrace:property.owner.name.last': 'last_name',
+  'skiptrace:property.owner.name.middle': 'middle_name',
+  
   // Primary Email variations
   'email': 'email',
   'email_address': 'email',
@@ -212,6 +220,21 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'zip 1': 'address_zip',
   'property.zip': 'address_zip',
   
+  // Skiptrace address formats
+  'skiptrace:mailingaddress.street': 'address_street',
+  'skiptrace:mailingaddress.city': 'address_city',
+  'skiptrace:mailingaddress.state': 'address_state',
+  'skiptrace:mailingaddress.zip': 'address_zip',
+  'skiptrace:property.address.street': 'address_street',
+  'skiptrace:property.address.city': 'address_city',
+  'skiptrace:property.address.state': 'address_state',
+  'skiptrace:property.address.zip': 'address_zip',
+  'skiptrace:property.address.county': 'county',
+  'skiptrace:property.owner.mailingaddress.street': 'secondary_address',
+  'skiptrace:property.owner.mailingaddress.city': 'secondary_city',
+  'skiptrace:property.owner.mailingaddress.state': 'secondary_state',
+  'skiptrace:property.owner.mailingaddress.zip': 'secondary_zip',
+  
   // Secondary Address variations (stored in notes - NOT email!)
   'address_2': 'secondary_address',
   'address 2': 'secondary_address',
@@ -271,6 +294,62 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'createdby': 'sales_rep_name',
   'created_by': 'sales_rep_name',
 };
+
+/**
+ * Smart pattern matching for Skiptrace nested column names
+ * Handles formats like "Skiptrace:name.first", "Skiptrace:property.owner.mailingAddress.city"
+ */
+function matchSkiptraceColumn(columnName: string): string | null {
+  const lower = columnName.toLowerCase().trim();
+  
+  // Check if it's a Skiptrace column
+  if (!lower.startsWith('skiptrace:')) return null;
+  
+  // Extract the path after "skiptrace:"
+  const path = lower.replace('skiptrace:', '');
+  
+  // Name patterns - prioritize property.owner for homeowner data
+  if (path.includes('name.first') || path.endsWith('.first')) return 'first_name';
+  if (path.includes('name.last') || path.endsWith('.last')) return 'last_name';
+  if (path.includes('name.middle') || path.endsWith('.middle')) return 'middle_name';
+  
+  // Property address patterns (preferred for primary address)
+  if (path.includes('property.address') && !path.includes('owner')) {
+    if (path.includes('street') || path.endsWith('.address')) return 'address_street';
+    if (path.includes('city')) return 'address_city';
+    if (path.includes('state')) return 'address_state';
+    if (path.includes('zip') || path.includes('postal')) return 'address_zip';
+    if (path.includes('county')) return 'county';
+  }
+  
+  // Mailing address patterns (for owner's address)
+  if (path.includes('mailingaddress') || path.includes('mailing')) {
+    if (path.includes('street') || path.endsWith('address')) return 'address_street';
+    if (path.includes('city')) return 'address_city';
+    if (path.includes('state')) return 'address_state';
+    if (path.includes('zip') || path.includes('postal')) return 'address_zip';
+  }
+  
+  // Owner mailing address as secondary (fallback)
+  if (path.includes('owner') && path.includes('mailing')) {
+    if (path.includes('street')) return 'secondary_address';
+    if (path.includes('city')) return 'secondary_city';
+    if (path.includes('state')) return 'secondary_state';
+    if (path.includes('zip')) return 'secondary_zip';
+  }
+  
+  // Phone patterns
+  if (path.includes('phone') || path.includes('mobile') || path.includes('cell')) {
+    return 'phone';
+  }
+  
+  // Email patterns
+  if (path.includes('email')) {
+    return 'email';
+  }
+  
+  return null;
+}
 
 /**
  * Fuzzy match column name if no direct mapping found
@@ -416,7 +495,12 @@ function normalizeRow(rawRow: Record<string, any>): ContactImportData {
     // Try direct mapping first
     let mappedField = COLUMN_MAPPINGS[normalizedKey];
     
-    // If no direct mapping, try fuzzy matching
+    // If no direct mapping, try Skiptrace pattern matching
+    if (!mappedField) {
+      mappedField = matchSkiptraceColumn(rawKey) || undefined;
+    }
+    
+    // If still no mapping, try fuzzy matching
     if (!mappedField) {
       mappedField = fuzzyMatchColumn(normalizedKey, mappedFields) || undefined;
     }
@@ -621,7 +705,12 @@ function detectMappedColumns(rawHeaders: string[]): ColumnAnalysis {
     const normalizedKey = header.toLowerCase().trim();
     let mappedField = COLUMN_MAPPINGS[normalizedKey];
     
-    // Try fuzzy matching if no direct mapping
+    // Try Skiptrace pattern matching if no direct mapping
+    if (!mappedField) {
+      mappedField = matchSkiptraceColumn(header) || undefined;
+    }
+    
+    // Try fuzzy matching if still no mapping
     if (!mappedField) {
       mappedField = fuzzyMatchColumn(normalizedKey, mappedFields) || undefined;
     }
