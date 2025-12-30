@@ -1,5 +1,19 @@
 import { useMemo } from 'react';
 import { wktPolygonToLatLngs, wktLineToLatLngs } from '@/lib/canvassiq/wkt';
+import { AlertTriangle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+
+interface QualityChecks {
+  areaMatch: boolean;
+  areaErrorPercent?: number;
+  perimeterMatch: boolean;
+  perimeterErrorPercent?: number;
+  segmentConnectivity: boolean;
+  facetsClosed?: boolean;
+  issues: string[];
+  warnings: string[];
+}
 
 interface RoofDiagramRendererProps {
   measurement: any;
@@ -13,6 +27,10 @@ interface RoofDiagramRendererProps {
   showPitchLabels?: boolean;
   showFacetOverlay?: boolean;
   satelliteImageUrl?: string;
+  // New QA props
+  qualityChecks?: QualityChecks;
+  manualReviewRecommended?: boolean;
+  onEditRequested?: () => void;
 }
 
 // Color palette for facets matching Roofr style
@@ -107,6 +125,9 @@ export function RoofDiagramRenderer({
   showPitchLabels = false,
   showFacetOverlay = true,
   satelliteImageUrl,
+  qualityChecks,
+  manualReviewRecommended,
+  onEditRequested,
 }: RoofDiagramRendererProps) {
   
   // Calculate unified bounds from all geometry
@@ -178,6 +199,7 @@ export function RoofDiagramRenderer({
           pitch: face.pitch || '6/12',
           color: FACET_COLORS[index % FACET_COLORS.length],
           polygon: coordsToSVG(coords, bounds, width, height),
+          requiresReview: face.requires_review || false,
         };
       });
     }
@@ -191,6 +213,7 @@ export function RoofDiagramRenderer({
         pitch: measurement?.summary?.pitch || measurement?.predominant_pitch || '6/12',
         color: FACET_COLORS[0],
         polygon: perimeterPath,
+        requiresReview: false,
       }];
     }
     
@@ -237,147 +260,199 @@ export function RoofDiagramRenderer({
   // Check if we have any real geometry
   const hasGeometry = perimeterPath || facets.length > 0 || linearFeatures.length > 0;
 
+  // Check for facets needing review
+  const facetsNeedingReview = facets.filter(f => f.requiresReview);
+  const hasReviewIssues = manualReviewRecommended || facetsNeedingReview.length > 0;
+
   return (
-    <div className="relative" style={{ width, height }}>
-      {/* Background */}
-      {showSatellite && satelliteImageUrl ? (
-        <img 
-          src={satelliteImageUrl} 
-          alt="Satellite view"
-          className="absolute inset-0 w-full h-full object-cover rounded"
-        />
-      ) : (
-        <div className="absolute inset-0 bg-muted/20 rounded" />
+    <div className="relative" style={{ width, height: hasReviewIssues ? height + 60 : height }}>
+      {/* Manual Review Banner */}
+      {manualReviewRecommended && (
+        <Alert variant="destructive" className="mb-2 py-2">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertDescription className="flex items-center justify-between">
+            <span className="text-sm">
+              Manual review recommended
+              {qualityChecks?.issues?.length ? `: ${qualityChecks.issues[0]}` : ''}
+            </span>
+            {onEditRequested && (
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={onEditRequested}
+                className="ml-2 h-6 text-xs"
+              >
+                Edit in Planimeter
+              </Button>
+            )}
+          </AlertDescription>
+        </Alert>
       )}
 
-      {/* No geometry message */}
-      {!hasGeometry && !showSatellite && (
-        <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
-          <p className="text-sm">No roof geometry available</p>
-        </div>
-      )}
+      <div className="relative" style={{ width, height }}>
+        {/* Background */}
+        {showSatellite && satelliteImageUrl ? (
+          <img 
+            src={satelliteImageUrl} 
+            alt="Satellite view"
+            className="absolute inset-0 w-full h-full object-cover rounded"
+          />
+        ) : (
+          <div className="absolute inset-0 bg-muted/20 rounded" />
+        )}
 
-      {/* SVG Overlay */}
-      <svg 
-        width={width} 
-        height={height} 
-        className="absolute inset-0"
-        style={{ background: showSatellite ? 'transparent' : undefined }}
-      >
-        {/* Facet polygons */}
-        {showFacetOverlay && facets.map((facet, i) => (
-          <g key={facet.id}>
-            <path
-              d={facet.polygon}
-              fill={showSatellite ? `${facet.color}40` : `${facet.color}30`}
-              stroke={facet.color}
-              strokeWidth={2}
-            />
-            {/* Area label */}
-            {showAreaLabels && facet.area > 0 && (
-              <text
-                x={width / 2}
-                y={height / 2 + i * 20}
-                textAnchor="middle"
-                fill={showSatellite ? 'white' : 'currentColor'}
-                fontSize={12}
-                fontWeight="bold"
-                style={{ textShadow: showSatellite ? '0 1px 2px rgba(0,0,0,0.8)' : undefined }}
-              >
-                {Math.round(facet.area)} sqft
-              </text>
-            )}
-            {/* Pitch label */}
-            {showPitchLabels && (
-              <text
-                x={width / 2}
-                y={height / 2 + i * 20}
-                textAnchor="middle"
-                fill={showSatellite ? 'white' : 'currentColor'}
-                fontSize={14}
-                fontWeight="bold"
-                style={{ textShadow: showSatellite ? '0 1px 2px rgba(0,0,0,0.8)' : undefined }}
-              >
-                {facet.pitch.replace('/12', '')}
-              </text>
-            )}
+        {/* No geometry message */}
+        {!hasGeometry && !showSatellite && (
+          <div className="absolute inset-0 flex items-center justify-center text-muted-foreground">
+            <p className="text-sm">No roof geometry available</p>
+          </div>
+        )}
+
+        {/* SVG Overlay */}
+        <svg 
+          width={width} 
+          height={height} 
+          className="absolute inset-0"
+          style={{ background: showSatellite ? 'transparent' : undefined }}
+        >
+          {/* Facet polygons */}
+          {showFacetOverlay && facets.map((facet, i) => (
+            <g key={facet.id}>
+              <path
+                d={facet.polygon}
+                fill={showSatellite ? `${facet.color}40` : `${facet.color}30`}
+                stroke={facet.requiresReview ? '#f59e0b' : facet.color}
+                strokeWidth={facet.requiresReview ? 3 : 2}
+                strokeDasharray={facet.requiresReview ? '8,4' : undefined}
+              />
+              {/* Review warning icon for facets needing review */}
+              {facet.requiresReview && (
+                <g transform={`translate(${width / 2 + (i - facets.length / 2) * 40}, ${height / 2})`}>
+                  <circle cx={0} cy={0} r={12} fill="#f59e0b" />
+                  <text x={0} y={4} textAnchor="middle" fill="white" fontSize={14} fontWeight="bold">!</text>
+                </g>
+              )}
+              {/* Area label */}
+              {showAreaLabels && facet.area > 0 && (
+                <text
+                  x={width / 2}
+                  y={height / 2 + i * 20}
+                  textAnchor="middle"
+                  fill={showSatellite ? 'white' : 'currentColor'}
+                  fontSize={12}
+                  fontWeight="bold"
+                  style={{ textShadow: showSatellite ? '0 1px 2px rgba(0,0,0,0.8)' : undefined }}
+                >
+                  {Math.round(facet.area)} sqft
+                </text>
+              )}
+              {/* Pitch label */}
+              {showPitchLabels && (
+                <text
+                  x={width / 2}
+                  y={height / 2 + i * 20}
+                  textAnchor="middle"
+                  fill={showSatellite ? 'white' : 'currentColor'}
+                  fontSize={14}
+                  fontWeight="bold"
+                  style={{ textShadow: showSatellite ? '0 1px 2px rgba(0,0,0,0.8)' : undefined }}
+                >
+                  {facet.pitch.replace('/12', '')}
+                </text>
+              )}
+            </g>
+          ))}
+
+          {/* Linear features */}
+          {linearFeatures.map((feature, i) => (
+            <g key={`${feature.type}-${i}`}>
+              <path
+                d={feature.path}
+                fill="none"
+                stroke={feature.color}
+                strokeWidth={3}
+                strokeDasharray={feature.dashed ? '8,4' : undefined}
+                strokeLinecap="round"
+              />
+              {/* Length label */}
+              {showLengthLabels && feature.length && feature.length > 0 && (
+                <text
+                  x={50 + i * 30}
+                  y={height - 20}
+                  fill={feature.color}
+                  fontSize={10}
+                  fontWeight="bold"
+                >
+                  {Math.round(feature.length)}'
+                </text>
+              )}
+            </g>
+          ))}
+
+          {/* Compass rose */}
+          <g transform={`translate(${width - 40}, 40)`}>
+            <circle cx={0} cy={0} r={20} fill="white" fillOpacity={0.9} stroke="currentColor" strokeWidth={1} />
+            <path d="M 0 -15 L 3 0 L 0 -5 L -3 0 Z" fill="red" />
+            <path d="M 0 15 L 3 0 L 0 5 L -3 0 Z" fill="currentColor" />
+            <text x={0} y={-6} textAnchor="middle" fontSize={8} fontWeight="bold" fill="red">N</text>
           </g>
-        ))}
 
-        {/* Linear features */}
-        {linearFeatures.map((feature, i) => (
-          <g key={`${feature.type}-${i}`}>
-            <path
-              d={feature.path}
-              fill="none"
-              stroke={feature.color}
-              strokeWidth={3}
-              strokeDasharray={feature.dashed ? '8,4' : undefined}
-              strokeLinecap="round"
-            />
-            {/* Length label */}
-            {showLengthLabels && feature.length && feature.length > 0 && (
+          {/* Facet numbers */}
+          {showLabels && showFacetOverlay && facets.map((facet, i) => (
+            <g key={`label-${facet.id}`}>
+              <circle
+                cx={width / 2 + (i - facets.length / 2) * 25}
+                cy={30}
+                r={10}
+                fill={facet.requiresReview ? '#f59e0b' : facet.color}
+              />
               <text
-                x={50 + i * 30}
-                y={height - 20}
-                fill={feature.color}
+                x={width / 2 + (i - facets.length / 2) * 25}
+                y={34}
+                textAnchor="middle"
+                fill="white"
                 fontSize={10}
                 fontWeight="bold"
               >
-                {Math.round(feature.length)}'
+                {facet.number}
               </text>
+            </g>
+          ))}
+        </svg>
+
+        {/* Legend for clean diagram */}
+        {!showSatellite && showLabels && (
+          <div className="absolute bottom-2 left-2 flex gap-2 text-xs">
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-0.5" style={{ background: FEATURE_COLORS.ridge }} />
+              Ridge
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-0.5" style={{ background: FEATURE_COLORS.hip }} />
+              Hip
+            </span>
+            <span className="flex items-center gap-1">
+              <span className="w-3 h-0.5" style={{ background: FEATURE_COLORS.valley }} />
+              Valley
+            </span>
+            {facetsNeedingReview.length > 0 && (
+              <span className="flex items-center gap-1 text-amber-500">
+                <span className="w-3 h-0.5 border-t-2 border-dashed border-amber-500" />
+                Needs Review
+              </span>
             )}
-          </g>
-        ))}
+          </div>
+        )}
 
-        {/* Compass rose */}
-        <g transform={`translate(${width - 40}, 40)`}>
-          <circle cx={0} cy={0} r={20} fill="white" fillOpacity={0.9} stroke="currentColor" strokeWidth={1} />
-          <path d="M 0 -15 L 3 0 L 0 -5 L -3 0 Z" fill="red" />
-          <path d="M 0 15 L 3 0 L 0 5 L -3 0 Z" fill="currentColor" />
-          <text x={0} y={-6} textAnchor="middle" fontSize={8} fontWeight="bold" fill="red">N</text>
-        </g>
-
-        {/* Facet numbers */}
-        {showLabels && showFacetOverlay && facets.map((facet, i) => (
-          <g key={`label-${facet.id}`}>
-            <circle
-              cx={width / 2 + (i - facets.length / 2) * 25}
-              cy={30}
-              r={10}
-              fill={facet.color}
-            />
-            <text
-              x={width / 2 + (i - facets.length / 2) * 25}
-              y={34}
-              textAnchor="middle"
-              fill="white"
-              fontSize={10}
-              fontWeight="bold"
-            >
-              {facet.number}
-            </text>
-          </g>
-        ))}
-      </svg>
-
-      {/* Legend for clean diagram */}
-      {!showSatellite && showLabels && (
-        <div className="absolute bottom-2 left-2 flex gap-2 text-xs">
-          <span className="flex items-center gap-1">
-            <span className="w-3 h-0.5" style={{ background: FEATURE_COLORS.ridge }} />
-            Ridge
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-3 h-0.5" style={{ background: FEATURE_COLORS.hip }} />
-            Hip
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="w-3 h-0.5" style={{ background: FEATURE_COLORS.valley }} />
-            Valley
-          </span>
-        </div>
-      )}
+        {/* QA Score indicator */}
+        {qualityChecks && (
+          <div className="absolute top-2 left-2 bg-background/80 rounded px-2 py-1 text-xs">
+            <span className={qualityChecks.areaMatch && qualityChecks.perimeterMatch ? 'text-green-500' : 'text-amber-500'}>
+              QA: {qualityChecks.areaMatch && qualityChecks.perimeterMatch ? '✓ Pass' : '⚠ Review'}
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
