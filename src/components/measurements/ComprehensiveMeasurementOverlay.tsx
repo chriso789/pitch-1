@@ -2,7 +2,7 @@ import { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { Canvas as FabricCanvas, Line, Polygon, Circle, Text as FabricText, FabricObject, FabricImage, Point as FabricPoint } from "fabric";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Move, Mountain, Triangle, ArrowDownUp, Square, Trash2, RotateCcw, Eye, EyeOff, MapPin, StickyNote, AlertTriangle, Split, Merge, ChevronDown, ChevronUp, Grid3x3, Layers } from "lucide-react";
+import { Move, Mountain, Triangle, ArrowDownUp, Square, Trash2, RotateCcw, Eye, EyeOff, MapPin, StickyNote, AlertTriangle, Split, Merge, ChevronDown, ChevronUp, Grid3x3, Layers, Sparkles } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,7 +20,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { useImageCache } from "@/contexts/ImageCacheContext";
-import { snapToEdge } from "@/utils/measurementGeometry";
+import { snapToEdge, calculateGeoBounds, createBoundsFitTransformer, parseWKTPolygon as parseWKTPolygonUtil, parseWKTLineString as parseWKTLineStringUtil, cleanupGeometry } from "@/utils/measurementGeometry";
 import { EnhancedFacetPropertiesPanel } from "./EnhancedFacetPropertiesPanel";
 import { LinePropertiesPanel } from "./LinePropertiesPanel";
 import { useTabletControls } from "@/hooks/useTabletControls";
@@ -2931,6 +2931,34 @@ export function ComprehensiveMeasurementOverlay({
     toast.success("Reset to original measurements");
   };
 
+  const handleCleanGeometry = () => {
+    if (!measurement?.perimeter_wkt) {
+      toast.error("No perimeter data to clean");
+      return;
+    }
+    
+    try {
+      // Clean up the perimeter WKT
+      const cleanedWkt = cleanupGeometry(measurement.perimeter_wkt, {
+        simplifyTolerance: 0.000005,
+        removeCollinear: true,
+        snapAngles: false
+      });
+      
+      const updatedMeasurement = {
+        ...measurement,
+        perimeter_wkt: cleanedWkt,
+      };
+      
+      setHasChanges(true);
+      onMeasurementUpdate(updatedMeasurement, tags);
+      toast.success("Geometry cleaned and simplified");
+    } catch (error) {
+      console.error('Error cleaning geometry:', error);
+      toast.error("Failed to clean geometry");
+    }
+  };
+
   const toggleLayer = (layerKey: string) => {
     setLayers(prev => ({ ...prev, [layerKey]: !prev[layerKey] }));
   };
@@ -3116,6 +3144,15 @@ export function ComprehensiveMeasurementOverlay({
         <div className="flex gap-2">
           <Button 
             size="sm" 
+            variant="outline"
+            onClick={handleCleanGeometry}
+            disabled={!measurement?.perimeter_wkt}
+            title="Simplify perimeter and remove jagged points"
+          >
+            <Sparkles className="h-4 w-4 mr-1" /> Clean
+          </Button>
+          <Button 
+            size="sm" 
             variant={showGrid ? 'default' : 'outline'}
             onClick={() => setShowGrid(!showGrid)}
           >
@@ -3209,11 +3246,28 @@ export function ComprehensiveMeasurementOverlay({
           </svg>
         )}
         
+        {/* Enhanced Debug HUD - Shows alignment data */}
+        {showDebugOverlay && (
+          <div className="absolute top-2 left-14 bg-black/80 text-white text-[10px] p-2 rounded font-mono max-w-xs z-50">
+            <div className="font-bold text-yellow-400 mb-1">Alignment Debug</div>
+            <div>Center: {(measurement?.gps_coordinates?.lat || centerLat).toFixed(6)}, {(measurement?.gps_coordinates?.lng || centerLng).toFixed(6)}</div>
+            <div>Source: {measurement?.gps_coordinates ? 'gps_coordinates' : (verifiedAddressLat ? 'verified_address' : 'fallback')}</div>
+            <div>Analysis Zoom: {measurement?.analysis_zoom || 'N/A'}</div>
+            <div>Analysis Size: {measurement?.analysis_image_size?.width || 640}x{measurement?.analysis_image_size?.height || 640}</div>
+            <div>Canvas: {canvasWidth}x{canvasHeight}</div>
+            <div>Offset: X={offsetX}, Y={offsetY}</div>
+            <div className="mt-1 pt-1 border-t border-white/30">
+              <div>Perimeter WKT: {measurement?.perimeter_wkt ? 'Yes' : 'No'}</div>
+              <div>Linear Features: {(tags?.ridge_lines?.length || 0) + (tags?.hip_lines?.length || 0) + (tags?.valley_lines?.length || 0)}</div>
+            </div>
+          </div>
+        )}
+        
         {/* Debug overlay fallback when no bounding box stored */}
-        {showDebugOverlay && !measurement?.bounding_box && (
-          <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-50">
+        {showDebugOverlay && !measurement?.bounding_box && !measurement?.gps_coordinates && (
+          <div className="absolute inset-0 pointer-events-none flex items-center justify-center z-40">
             <div className="bg-yellow-500/10 border-2 border-dashed border-yellow-500 rounded-lg p-4 text-yellow-600 text-xs">
-              Debug Mode: No bounding box data stored.
+              Debug Mode: No GPS coordinates or bounding box data stored.
               <br />Re-run measurement to capture detection boundaries.
             </div>
           </div>
