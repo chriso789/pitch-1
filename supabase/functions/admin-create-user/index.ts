@@ -22,6 +22,7 @@ interface CreateUserRequest {
     commission_structure: 'profit_split' | 'sales_percentage';
     commission_rate: number;
   };
+  locationIds?: string[];
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -70,7 +71,8 @@ const handler = async (req: Request): Promise<Response> => {
       title,
       payType,
       hourlyRate,
-      payStructure
+      payStructure,
+      locationIds
     }: CreateUserRequest = await req.json();
 
     const targetTenantId = assignedTenantId || profile.tenant_id;
@@ -278,6 +280,27 @@ const handler = async (req: Request): Promise<Response> => {
 
     if (accessError) {
       console.error('Error creating user company access:', accessError);
+    }
+
+    // Create user_location_assignments entries
+    if (locationIds && locationIds.length > 0) {
+      const locationAssignments = locationIds.map(locationId => ({
+        tenant_id: targetTenantId,
+        user_id: newUser.user.id,
+        location_id: locationId,
+        assigned_by: user.id,
+        is_active: true
+      }));
+
+      const { error: locationError } = await supabaseAdmin
+        .from('user_location_assignments')
+        .insert(locationAssignments);
+
+      if (locationError) {
+        console.error('Error creating location assignments:', locationError);
+      } else {
+        console.log(`Created ${locationIds.length} location assignment(s) for user`);
+      }
     }
 
     // Fetch company branding details for the email
