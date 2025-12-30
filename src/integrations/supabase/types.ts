@@ -5868,6 +5868,7 @@ export type Database = {
       }
       enhanced_estimates: {
         Row: {
+          accepted_tier: string | null
           actual_profit_amount: number
           actual_profit_percent: number
           approval_required: boolean
@@ -5921,6 +5922,8 @@ export type Database = {
           selling_price: number
           sent_to_customer_at: string | null
           share_token: string | null
+          signature_envelope_id: string | null
+          signed_at: string | null
           status: Database["public"]["Enums"]["estimate_status"]
           subtotal: number
           target_profit_amount: number
@@ -5935,6 +5938,7 @@ export type Database = {
           waste_factor_percent: number
         }
         Insert: {
+          accepted_tier?: string | null
           actual_profit_amount?: number
           actual_profit_percent?: number
           approval_required?: boolean
@@ -5988,6 +5992,8 @@ export type Database = {
           selling_price?: number
           sent_to_customer_at?: string | null
           share_token?: string | null
+          signature_envelope_id?: string | null
+          signed_at?: string | null
           status?: Database["public"]["Enums"]["estimate_status"]
           subtotal?: number
           target_profit_amount?: number
@@ -6002,6 +6008,7 @@ export type Database = {
           waste_factor_percent?: number
         }
         Update: {
+          accepted_tier?: string | null
           actual_profit_amount?: number
           actual_profit_percent?: number
           approval_required?: boolean
@@ -6055,6 +6062,8 @@ export type Database = {
           selling_price?: number
           sent_to_customer_at?: string | null
           share_token?: string | null
+          signature_envelope_id?: string | null
+          signed_at?: string | null
           status?: Database["public"]["Enums"]["estimate_status"]
           subtotal?: number
           target_profit_amount?: number
@@ -6081,6 +6090,13 @@ export type Database = {
             columns: ["measurement_report_id"]
             isOneToOne: false
             referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "enhanced_estimates_signature_envelope_id_fkey"
+            columns: ["signature_envelope_id"]
+            isOneToOne: false
+            referencedRelation: "signature_envelopes"
             referencedColumns: ["id"]
           },
           {

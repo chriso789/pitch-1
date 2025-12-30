@@ -85,6 +85,7 @@ import MeasurementCorrectionPage from "./pages/MeasurementCorrectionPage";
 import MeasurementAnalyticsPage from "./pages/MeasurementAnalyticsPage";
 import SmartTemplateEditorPage from "./pages/SmartTemplateEditorPage";
 import ProposalEditorPage from "./pages/ProposalEditorPage";
+import PublicProposalView from "./pages/PublicProposalView";
 import CompanyAdminPage from "./pages/admin/CompanyAdminPage";
 import TestRoofMeasurement from "./pages/TestRoofMeasurement";
 import OnboardingWalkthrough from "./pages/onboarding/OnboardingWalkthrough";
@@ -180,6 +181,7 @@ const AppContent = () => {
         <Route path="/crew" element={<CrewPortalPage />} />
         <Route path="/homeowner" element={<HomeownerProtectedRoute><HomeownerPortalPage /></HomeownerProtectedRoute>} />
         <Route path="/view-quote/:token" element={<ViewQuote />} />
+        <Route path="/proposal/:token" element={<PublicProposalView />} />
         
         {/* Protected application routes */}
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
