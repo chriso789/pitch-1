@@ -137,8 +137,9 @@ serve(async (req: Request) => {
     // Build tracking URL
     const viewQuoteUrl = `${supabaseUrl.replace('.supabase.co', '.lovable.app')}/view-quote/${trackingToken}`;
 
-    // Email sender config
-    const fromEmail = emailDomain?.from_email || "quotes@resend.dev";
+    // Email sender config - use verified domain
+    const defaultFromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
+    const fromEmail = emailDomain?.from_email || `quotes@${defaultFromDomain}`;
     const fromName = emailDomain?.from_name || profile.tenants?.name || "PITCH CRM";
     const replyTo = emailDomain?.reply_to_email || profile.email;
     const companyName = profile.tenants?.name || "Our Company";

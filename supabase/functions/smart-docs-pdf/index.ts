@@ -31,7 +31,8 @@ const handler = async (req: Request): Promise<Response> => {
     const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
     const bucketName = Deno.env.get("SMART_DOCS_BUCKET") || "smart-docs";
     const resendKey = Deno.env.get("RESEND_API_KEY");
-    const fromEmail = Deno.env.get("FROM_EMAIL") || "PITCH CRM <no-reply@example.com>";
+    const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
+    const fromEmail = Deno.env.get("FROM_EMAIL") || `PITCH CRM <noreply@${fromDomain}>`;
 
     const supabase = createClient(supabaseUrl, serviceKey);
     
