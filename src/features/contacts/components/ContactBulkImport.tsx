@@ -533,16 +533,90 @@ function matchSalesRepToProfile(
 }
 
 /**
+ * Known metadata column patterns that are safe to ignore
+ * These are columns from skip trace services that contain metadata, not contact data
+ */
+const METADATA_COLUMN_PATTERNS = [
+  // Type/status columns
+  /\btype$/i, /\btype\s*$/i, /:type$/i,
+  /\bstatus$/i, /:status$/i,
+  /\blabel$/i, /:label$/i,
+  /\bvalidity$/i, /:validity$/i,
+  // Compliance/flag columns
+  /\bdeceased$/i, /\blitigator$/i, /\bdnc$/i, /\btcpa$/i,
+  /\bdo.?not.?call$/i, /\bmatched$/i,
+  // Meta/timestamp columns  
+  /\bmeta$/i, /:meta$/i,
+  /\bdate$/i, /\btime$/i, /\btimestamp$/i,
+  // Auto-generated empty columns
+  /^column\s*\d+$/i, /^_\d+$/, /^field\s*\d+$/i,
+  // Input data prefix (duplicates of skiptrace data)
+  /^input\s*data:/i,
+  // Notes/results columns from services
+  /\bnotes?$/i, /\bresult$/i, /\bscore$/i,
+  // Coordinate data we don't use
+  /\blatitude$/i, /\blongitude$/i, /\blat$/i, /\blng$/i,
+];
+
+/**
+ * Check if a column name matches known metadata patterns
+ */
+function isMetadataColumn(columnName: string): boolean {
+  const normalized = columnName.toLowerCase().trim();
+  return METADATA_COLUMN_PATTERNS.some(pattern => pattern.test(normalized));
+}
+
+/**
+ * Check if a column is a duplicate of mapped data (e.g., "Input Data:name" when "Skiptrace:name" is mapped)
+ */
+function isDuplicateColumn(columnName: string, mappedColumns: { original: string; mappedTo: string }[]): boolean {
+  const normalized = columnName.toLowerCase().trim();
+  
+  // Check if this is an "Input Data:" column that duplicates a mapped column
+  if (normalized.startsWith('input data:')) {
+    const fieldPart = normalized.replace('input data:', '').trim();
+    
+    // Check if a similar field was already mapped (from Skiptrace or direct)
+    return mappedColumns.some(m => {
+      const mappedNormalized = m.original.toLowerCase().trim();
+      // Check if skiptrace version is mapped
+      if (mappedNormalized.includes(fieldPart)) return true;
+      // Check for common field equivalents
+      if (fieldPart.includes('name') && m.mappedTo.includes('name')) return true;
+      if (fieldPart.includes('email') && m.mappedTo.includes('email')) return true;
+      if (fieldPart.includes('phone') && m.mappedTo.includes('phone')) return true;
+      if (fieldPart.includes('address') && m.mappedTo.includes('address')) return true;
+      if (fieldPart.includes('city') && m.mappedTo.includes('city')) return true;
+      if (fieldPart.includes('state') && m.mappedTo.includes('state')) return true;
+      if (fieldPart.includes('zip') && m.mappedTo.includes('zip')) return true;
+      return false;
+    });
+  }
+  
+  return false;
+}
+
+/**
+ * Categorize unmatched columns into metadata (safe to ignore) and truly unmatched
+ */
+interface ColumnAnalysis {
+  mapped: { original: string; mappedTo: string }[];
+  metadata: string[];      // Safe to ignore - metadata columns
+  duplicates: string[];    // Safe to ignore - duplicates of mapped data
+  unmatched: string[];     // Potentially important unmapped columns
+}
+
+/**
  * Detect which columns were mapped from the CSV and which were unmatched
  */
-function detectMappedColumns(rawHeaders: string[]): { 
-  mapped: { original: string; mappedTo: string }[]; 
-  unmatched: string[];
-} {
+function detectMappedColumns(rawHeaders: string[]): ColumnAnalysis {
   const mapped: { original: string; mappedTo: string }[] = [];
+  const metadata: string[] = [];
+  const duplicates: string[] = [];
   const unmatched: string[] = [];
   const mappedFields: Record<string, boolean> = {};
   
+  // First pass: identify mapped columns
   for (const header of rawHeaders) {
     const normalizedKey = header.toLowerCase().trim();
     let mappedField = COLUMN_MAPPINGS[normalizedKey];
@@ -558,12 +632,26 @@ function detectMappedColumns(rawHeaders: string[]): {
         mappedTo: mappedField === 'full_name' ? 'first_name + last_name (split)' : mappedField
       });
       mappedFields[mappedField] = true;
-    } else {
-      unmatched.push(header);
     }
   }
   
-  return { mapped, unmatched };
+  // Second pass: categorize unmapped columns
+  for (const header of rawHeaders) {
+    const normalizedKey = header.toLowerCase().trim();
+    const isMapped = mapped.some(m => m.original === header);
+    
+    if (!isMapped) {
+      if (isMetadataColumn(header)) {
+        metadata.push(header);
+      } else if (isDuplicateColumn(header, mapped)) {
+        duplicates.push(header);
+      } else {
+        unmatched.push(header);
+      }
+    }
+  }
+  
+  return { mapped, metadata, duplicates, unmatched };
 }
 
 /**
@@ -637,6 +725,8 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
   const [totalRows, setTotalRows] = useState(0);
   const [columnMappings, setColumnMappings] = useState<{ original: string; mappedTo: string }[]>([]);
   const [unmatchedColumns, setUnmatchedColumns] = useState<string[]>([]);
+  const [metadataColumns, setMetadataColumns] = useState<string[]>([]);
+  const [duplicateColumns, setDuplicateColumns] = useState<string[]>([]);
   const [headerStatus, setHeaderStatus] = useState<{ status: 'ok' | 'missing' | 'suspicious'; message: string }>({ status: 'ok', message: '' });
   const [validRowStats, setValidRowStats] = useState<{ validCount: number; totalCount: number; percentage: number }>({ validCount: 0, totalCount: 0, percentage: 0 });
 
@@ -663,8 +753,10 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
           const headerCheck = detectHeaderStatus(results.meta.fields);
           setHeaderStatus({ status: headerCheck.status, message: headerCheck.message });
           
-          const { mapped, unmatched } = detectMappedColumns(results.meta.fields);
+          const { mapped, metadata, duplicates, unmatched } = detectMappedColumns(results.meta.fields);
           setColumnMappings(mapped);
+          setMetadataColumns(metadata);
+          setDuplicateColumns(duplicates);
           setUnmatchedColumns(unmatched);
         }
         
@@ -796,6 +888,8 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
           setTotalRows(0);
           setColumnMappings([]);
           setUnmatchedColumns([]);
+          setMetadataColumns([]);
+          setDuplicateColumns([]);
           setImportProgress('');
           setHeaderStatus({ status: 'ok', message: '' });
           setValidRowStats({ validCount: 0, totalCount: 0, percentage: 0 });
@@ -826,6 +920,8 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
     setTotalRows(0);
     setColumnMappings([]);
     setUnmatchedColumns([]);
+    setMetadataColumns([]);
+    setDuplicateColumns([]);
     setHeaderStatus({ status: 'ok', message: '' });
     setValidRowStats({ validCount: 0, totalCount: 0, percentage: 0 });
   };
@@ -948,12 +1044,58 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
             </div>
           )}
 
-          {/* Unmatched Columns Warning */}
+          {/* Auto-Ignored Columns Summary (metadata + duplicates) */}
+          {(metadataColumns.length > 0 || duplicateColumns.length > 0) && (
+            <div className="p-3 bg-muted/50 border border-border rounded-lg">
+              <div className="flex items-center gap-2 mb-2">
+                <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+                <span className="text-sm font-medium text-muted-foreground">
+                  ✓ {metadataColumns.length + duplicateColumns.length} columns auto-skipped
+                  <span className="font-normal ml-1">(metadata & duplicates)</span>
+                </span>
+              </div>
+              <details className="text-xs">
+                <summary className="cursor-pointer text-muted-foreground hover:text-foreground">
+                  View skipped columns
+                </summary>
+                <div className="mt-2 space-y-2">
+                  {duplicateColumns.length > 0 && (
+                    <div>
+                      <span className="text-muted-foreground">Duplicates of mapped data:</span>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {duplicateColumns.map((col, i) => (
+                          <span key={i} className="px-1.5 py-0.5 bg-background rounded border text-muted-foreground">
+                            {col}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {metadataColumns.length > 0 && (
+                    <div>
+                      <span className="text-muted-foreground">Metadata columns:</span>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {metadataColumns.map((col, i) => (
+                          <span key={i} className="px-1.5 py-0.5 bg-background rounded border text-muted-foreground">
+                            {col}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </details>
+            </div>
+          )}
+
+          {/* Truly Unmatched Columns Warning - only show if there are unmapped columns that aren't metadata/duplicates */}
           {unmatchedColumns.length > 0 && (
             <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
               <div className="flex items-center gap-2 mb-2">
                 <AlertCircle className="h-4 w-4 text-amber-600" />
-                <span className="text-sm font-medium text-amber-700">Unmatched Columns (skipped):</span>
+                <span className="text-sm font-medium text-amber-700">
+                  {unmatchedColumns.length} columns not mapped (will be skipped):
+                </span>
               </div>
               <div className="flex flex-wrap gap-2">
                 {unmatchedColumns.map((col, i) => (
