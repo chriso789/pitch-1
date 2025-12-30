@@ -12,7 +12,7 @@ const corsHeaders = {
 };
 
 interface GenerateRequest {
-  action: 'generate' | 'preview' | 'finalize' | 'send' | 'track' | 'get-pricing';
+  action: 'generate' | 'preview' | 'finalize' | 'send' | 'track' | 'get-pricing' | 'accept';
   estimateId?: string;
   measurementId?: string;
   pipelineEntryId?: string;
@@ -32,6 +32,11 @@ interface GenerateRequest {
   recipientEmail?: string;
   recipientName?: string;
   customMessage?: string;
+  
+  // For accept action
+  customerEmail?: string;
+  customerName?: string;
+  customerPhone?: string;
 }
 
 Deno.serve(async (req) => {
@@ -509,6 +514,164 @@ Deno.serve(async (req) => {
         return new Response(JSON.stringify({
           ok: true,
           data: { shareUrl, sentTo: recipientEmail }
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        });
+      }
+
+      case 'accept': {
+        // Customer accepts proposal - create signature envelope
+        const { estimateId, selectedTier, customerEmail, customerName, customerPhone } = body;
+        
+        if (!estimateId) {
+          throw new Error('estimateId is required for accept action');
+        }
+        
+        if (!selectedTier) {
+          throw new Error('selectedTier is required for accept action');
+        }
+        
+        if (!customerEmail || !customerName) {
+          throw new Error('customerEmail and customerName are required for accept action');
+        }
+        
+        console.log(`[generate-proposal] Accepting proposal ${estimateId} with tier: ${selectedTier}`);
+        
+        // Get estimate
+        const { data: estimate, error: estimateError } = await supabase
+          .from('enhanced_estimates')
+          .select('*')
+          .eq('id', estimateId)
+          .single();
+        
+        if (estimateError || !estimate) {
+          throw new Error('Estimate not found');
+        }
+        
+        // Check if already accepted
+        if (estimate.status === 'signed') {
+          throw new Error('This proposal has already been signed');
+        }
+        
+        // Get the price for selected tier
+        const tierPrice = selectedTier === 'good' ? estimate.good_tier_total :
+                         selectedTier === 'better' ? estimate.better_tier_total :
+                         estimate.best_tier_total;
+        
+        // Update estimate with accepted tier and status
+        await supabase
+          .from('enhanced_estimates')
+          .update({
+            status: 'accepted',
+            selected_tier: selectedTier,
+            accepted_tier: selectedTier,
+            selling_price: tierPrice
+          })
+          .eq('id', estimateId);
+        
+        // Create signature envelope
+        const { data: envelope, error: envelopeError } = await supabase
+          .from('signature_envelopes')
+          .insert({
+            tenant_id: tenantId,
+            title: `Proposal ${estimate.estimate_number} - ${selectedTier.charAt(0).toUpperCase() + selectedTier.slice(1)} Package`,
+            document_type: 'proposal',
+            status: 'pending',
+            metadata: {
+              estimate_id: estimateId,
+              estimate_number: estimate.estimate_number,
+              selected_tier: selectedTier,
+              total_price: tierPrice,
+              customer_name: customerName,
+              customer_email: customerEmail
+            }
+          })
+          .select()
+          .single();
+        
+        if (envelopeError) {
+          console.error('[generate-proposal] Error creating envelope:', envelopeError);
+          throw new Error('Failed to create signature envelope');
+        }
+        
+        // Generate unique access token for signature
+        const accessToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '').substring(0, 16);
+        
+        // Create signature recipient
+        const { data: recipient, error: recipientError } = await supabase
+          .from('signature_recipients')
+          .insert({
+            tenant_id: tenantId,
+            envelope_id: envelope.id,
+            recipient_name: customerName,
+            recipient_email: customerEmail,
+            recipient_phone: customerPhone || null,
+            role: 'signer',
+            routing_order: 1,
+            status: 'pending',
+            access_token: accessToken
+          })
+          .select()
+          .single();
+        
+        if (recipientError) {
+          console.error('[generate-proposal] Error creating recipient:', recipientError);
+          throw new Error('Failed to create signature recipient');
+        }
+        
+        // Link envelope to estimate
+        await supabase
+          .from('enhanced_estimates')
+          .update({
+            signature_envelope_id: envelope.id
+          })
+          .eq('id', estimateId);
+        
+        // Log tracking event
+        await supabase.from('proposal_tracking').insert({
+          tenant_id: tenantId,
+          estimate_id: estimateId,
+          event_type: 'accepted',
+          viewer_email: customerEmail,
+          selected_tier: selectedTier,
+          metadata: {
+            customer_name: customerName,
+            envelope_id: envelope.id,
+            tier_price: tierPrice
+          }
+        });
+        
+        // Trigger proposal-webhook for rep notification
+        try {
+          await supabase.functions.invoke('proposal-webhook', {
+            body: {
+              estimateId,
+              tenantId,
+              event: 'accepted',
+              selectedTier,
+              customerEmail,
+              customerName
+            }
+          });
+        } catch (webhookError) {
+          console.warn('[generate-proposal] Webhook call failed (non-blocking):', webhookError);
+        }
+        
+        // Generate signature URL
+        const signatureUrl = `/sign/${accessToken}`;
+        
+        console.log(`[generate-proposal] Created envelope ${envelope.id} for estimate ${estimateId}`);
+        
+        return new Response(JSON.stringify({
+          ok: true,
+          data: {
+            signatureUrl,
+            envelopeId: envelope.id,
+            recipientId: recipient.id,
+            accessToken,
+            selectedTier,
+            tierPrice
+          }
         }), {
           headers: { ...corsHeaders, 'Content-Type': 'application/json' }
         });

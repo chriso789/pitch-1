@@ -128,6 +128,56 @@ const handler = async (req: Request): Promise<Response> => {
           total_signatures: allRecipients?.length || 0
         }
       });
+
+      // Check if this envelope is linked to an enhanced_estimate (proposal)
+      const { data: linkedEstimate } = await supabaseClient
+        .from('enhanced_estimates')
+        .select('id, tenant_id, estimate_number')
+        .eq('signature_envelope_id', recipient.envelope_id)
+        .single();
+
+      if (linkedEstimate) {
+        console.log('[capture-digital-signature] Updating linked estimate:', linkedEstimate.id);
+        
+        // Update estimate status to signed
+        await supabaseClient
+          .from('enhanced_estimates')
+          .update({
+            status: 'signed',
+            signed_at: new Date().toISOString()
+          })
+          .eq('id', linkedEstimate.id);
+
+        // Log tracking event
+        await supabaseClient
+          .from('proposal_tracking')
+          .insert({
+            tenant_id: linkedEstimate.tenant_id,
+            estimate_id: linkedEstimate.id,
+            event_type: 'signed',
+            viewer_email: recipient.recipient_email,
+            metadata: {
+              envelope_id: recipient.envelope_id,
+              signed_by: recipient.recipient_name,
+              signature_id: digitalSignature.id
+            }
+          });
+
+        // Trigger proposal-webhook for rep notification
+        try {
+          await supabaseClient.functions.invoke('proposal-webhook', {
+            body: {
+              estimateId: linkedEstimate.id,
+              tenantId: linkedEstimate.tenant_id,
+              event: 'signed',
+              customerEmail: recipient.recipient_email,
+              customerName: recipient.recipient_name
+            }
+          });
+        } catch (webhookError) {
+          console.warn('[capture-digital-signature] Webhook call failed (non-blocking):', webhookError);
+        }
+      }
     }
 
     // Log signature event

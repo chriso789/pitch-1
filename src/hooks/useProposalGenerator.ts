@@ -205,3 +205,47 @@ export function useProposalDetails(estimateId: string | undefined) {
     enabled: !!estimateId,
   });
 }
+
+export function useAcceptProposal() {
+  return useMutation({
+    mutationFn: async ({
+      estimateId,
+      tenantId,
+      selectedTier,
+      customerEmail,
+      customerName,
+      customerPhone,
+    }: {
+      estimateId: string;
+      tenantId: string;
+      selectedTier: 'good' | 'better' | 'best';
+      customerEmail: string;
+      customerName: string;
+      customerPhone?: string;
+    }) => {
+      const { data, error } = await supabase.functions.invoke('generate-proposal', {
+        body: {
+          action: 'accept',
+          estimateId,
+          tenantId,
+          selectedTier,
+          customerEmail,
+          customerName,
+          customerPhone,
+        },
+      });
+
+      if (error) throw error;
+      if (!data.ok) throw new Error(data.error || 'Failed to accept proposal');
+      
+      return data.data as { 
+        signatureUrl: string; 
+        envelopeId: string;
+        recipientId: string;
+        accessToken: string;
+        selectedTier: string;
+        tierPrice: number;
+      };
+    },
+  });
+}
