@@ -9,7 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Plus, Edit2, Trash2, Settings, Eye, MapPin, Ban, CheckCircle, Building2, Phone } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Users, Plus, Edit2, Trash2, Settings, Eye, MapPin, Ban, CheckCircle, Building2, Phone, AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -38,6 +39,13 @@ interface User {
   pay_type?: string;
 }
 
+interface Location {
+  id: string;
+  name: string;
+  address_city?: string;
+  address_state?: string;
+}
+
 export const UserManagement = () => {
   const [isAddUserOpen, setIsAddUserOpen] = useState(false);
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
@@ -46,6 +54,9 @@ export const UserManagement = () => {
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [openInEditMode, setOpenInEditMode] = useState(false);
+  const [locationsForTenant, setLocationsForTenant] = useState<Location[]>([]);
+  const [selectedLocationIds, setSelectedLocationIds] = useState<string[]>([]);
+  const [loadingLocations, setLoadingLocations] = useState(false);
   const [newUser, setNewUser] = useState({
     email: "",
     first_name: "",
@@ -122,8 +133,65 @@ export const UserManagement = () => {
     }
   }, [isAddUserOpen, currentUser]);
 
+  // Fetch locations when tenant changes
+  useEffect(() => {
+    const fetchLocations = async () => {
+      const tenantId = newUser.selected_tenant_id;
+      if (!tenantId) {
+        setLocationsForTenant([]);
+        setSelectedLocationIds([]);
+        return;
+      }
+
+      setLoadingLocations(true);
+      try {
+        const { data, error } = await supabase
+          .from('locations')
+          .select('id, name, address_city, address_state')
+          .eq('tenant_id', tenantId)
+          .eq('is_active', true)
+          .order('name');
+
+        if (error) throw error;
+
+        const locations = data || [];
+        setLocationsForTenant(locations);
+        
+        // Auto-select if only one location
+        if (locations.length === 1) {
+          setSelectedLocationIds([locations[0].id]);
+        } else {
+          setSelectedLocationIds([]);
+        }
+      } catch (err) {
+        console.error('Error fetching locations:', err);
+        setLocationsForTenant([]);
+      } finally {
+        setLoadingLocations(false);
+      }
+    };
+
+    fetchLocations();
+  }, [newUser.selected_tenant_id]);
+
   const loadUsers = () => {
     queryClient.invalidateQueries({ queryKey: ['user-management-data'] });
+  };
+
+  const toggleLocationSelection = (locationId: string) => {
+    setSelectedLocationIds(prev => 
+      prev.includes(locationId)
+        ? prev.filter(id => id !== locationId)
+        : [...prev, locationId]
+    );
+  };
+
+  const toggleAllLocations = () => {
+    if (selectedLocationIds.length === locationsForTenant.length) {
+      setSelectedLocationIds([]);
+    } else {
+      setSelectedLocationIds(locationsForTenant.map(l => l.id));
+    }
   };
 
   const createUser = async () => {
@@ -152,6 +220,16 @@ export const UserManagement = () => {
         return;
       }
 
+      // Validate location selection if company has locations
+      if (locationsForTenant.length > 0 && selectedLocationIds.length === 0) {
+        toast({
+          title: "Location Required",
+          description: "Please select at least one location for this user",
+          variant: "destructive",
+        });
+        return;
+      }
+
       // Call the admin edge function - no password required now
       const { data, error } = await supabase.functions.invoke('admin-create-user', {
         body: {
@@ -171,7 +249,8 @@ export const UserManagement = () => {
                 commission_structure: payStructure.commission_structure,
                 commission_rate: payStructure.commission_rate
               } 
-            : undefined
+            : undefined,
+          locationIds: selectedLocationIds.length > 0 ? selectedLocationIds : undefined
         }
       });
 
@@ -196,6 +275,9 @@ export const UserManagement = () => {
         title: "",
         pay_type: "commission"
       });
+
+      setSelectedLocationIds([]);
+      setLocationsForTenant([]);
       
       setPayStructure({
         pay_type: 'commission',
@@ -583,6 +665,71 @@ export const UserManagement = () => {
                         <p className="text-xs text-muted-foreground">
                           New user will be added to your company
                         </p>
+                      </div>
+                    )}
+
+                    {/* Location Assignment */}
+                    {newUser.selected_tenant_id && (
+                      <div className="space-y-2">
+                        <Label className="flex items-center gap-2">
+                          <MapPin className="h-4 w-4" />
+                          Assign to Locations *
+                        </Label>
+                        {loadingLocations ? (
+                          <div className="p-3 border rounded-md">
+                            <Skeleton className="h-5 w-40" />
+                          </div>
+                        ) : locationsForTenant.length === 0 ? (
+                          <div className="p-3 border rounded-md bg-muted/50 text-sm text-muted-foreground">
+                            No locations configured for this company
+                          </div>
+                        ) : (
+                          <div className="border rounded-md divide-y">
+                            {/* Select All option */}
+                            <div 
+                              className="flex items-center gap-3 p-3 hover:bg-muted/50 cursor-pointer"
+                              onClick={toggleAllLocations}
+                            >
+                              <Checkbox 
+                                checked={selectedLocationIds.length === locationsForTenant.length}
+                                onCheckedChange={toggleAllLocations}
+                              />
+                              <span className="font-medium text-sm">Select All Locations</span>
+                            </div>
+                            {/* Individual locations */}
+                            {locationsForTenant.map((location) => (
+                              <div 
+                                key={location.id}
+                                className="flex items-center gap-3 p-3 hover:bg-muted/50 cursor-pointer"
+                                onClick={() => toggleLocationSelection(location.id)}
+                              >
+                                <Checkbox 
+                                  checked={selectedLocationIds.includes(location.id)}
+                                  onCheckedChange={() => toggleLocationSelection(location.id)}
+                                />
+                                <div>
+                                  <div className="font-medium text-sm">{location.name}</div>
+                                  {(location.address_city || location.address_state) && (
+                                    <div className="text-xs text-muted-foreground">
+                                      {[location.address_city, location.address_state].filter(Boolean).join(', ')}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        {locationsForTenant.length > 0 && selectedLocationIds.length === 0 && (
+                          <p className="text-xs text-destructive flex items-center gap-1">
+                            <AlertCircle className="h-3 w-3" />
+                            At least one location must be selected
+                          </p>
+                        )}
+                        {locationsForTenant.length > 0 && selectedLocationIds.length > 0 && (
+                          <p className="text-xs text-muted-foreground">
+                            User will have access to {selectedLocationIds.length} location{selectedLocationIds.length !== 1 ? 's' : ''}
+                          </p>
+                        )}
                       </div>
                     )}
 
