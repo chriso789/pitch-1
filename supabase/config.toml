@@ -431,3 +431,6 @@ verify_jwt = false
 
 [functions.resend-user-invitation]
 verify_jwt = false
+
+[functions.generate-proposal]
+verify_jwt = true
