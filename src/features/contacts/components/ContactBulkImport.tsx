@@ -3,7 +3,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
-import { Upload, FileText, AlertCircle, CheckCircle2, MapPin } from "lucide-react";
+import { Upload, FileText, AlertCircle, CheckCircle2, MapPin, UserCheck, UserX } from "lucide-react";
 import Papa from "papaparse";
 import { supabase } from "@/integrations/supabase/client";
 import { useLocation } from "@/contexts/LocationContext";
@@ -823,6 +823,8 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
   const [duplicateColumns, setDuplicateColumns] = useState<string[]>([]);
   const [headerStatus, setHeaderStatus] = useState<{ status: 'ok' | 'missing' | 'suspicious'; message: string }>({ status: 'ok', message: '' });
   const [validRowStats, setValidRowStats] = useState<{ validCount: number; totalCount: number; percentage: number }>({ validCount: 0, totalCount: 0, percentage: 0 });
+  const [profilesForPreview, setProfilesForPreview] = useState<ProfileMatch[]>([]);
+  const [repMatchStats, setRepMatchStats] = useState<{ matched: number; unmatched: string[] }>({ matched: 0, unmatched: [] });
 
   // Determine if import should be blocked
   const isImportBlocked = headerStatus.status === 'missing' || validRowStats.percentage < 5;
@@ -832,9 +834,31 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
       ? `Only ${validRowStats.validCount} of ${validRowStats.totalCount} rows have recognizable contact data. Please check your CSV format.`
       : '';
 
-  const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+
+    // Fetch profiles for rep matching preview
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('tenant_id')
+          .eq('id', user.id)
+          .single();
+
+        if (profile?.tenant_id) {
+          const { data: allProfiles } = await supabase
+            .from('profiles')
+            .select('id, first_name, last_name, email')
+            .eq('tenant_id', profile.tenant_id);
+          setProfilesForPreview(allProfiles || []);
+        }
+      }
+    } catch (err) {
+      console.error('Failed to load profiles for preview:', err);
+    }
 
     Papa.parse(file, {
       header: true,
@@ -863,6 +887,21 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
         // Check how many rows have valid data
         const validStats = countValidRows(normalizedData);
         setValidRowStats(validStats);
+        
+        // Calculate rep match stats for preview
+        const unmatchedReps = new Set<string>();
+        let matchedCount = 0;
+        for (const row of importableRows) {
+          if (row.sales_rep_name) {
+            const matched = matchSalesRepToProfile(row.sales_rep_name, profilesForPreview);
+            if (matched) {
+              matchedCount++;
+            } else {
+              unmatchedReps.add(row.sales_rep_name);
+            }
+          }
+        }
+        setRepMatchStats({ matched: matchedCount, unmatched: [...unmatchedReps] });
         
         // Show importable row count for import, but track total for context
         setTotalRows(importableRows.length);
@@ -1007,7 +1046,7 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
   };
 
   const downloadTemplate = () => {
-    const csv = "first_name,last_name,email,phone,secondary_email,secondary_phone,company_name,address_street,address_city,address_state,address_zip,lead_source,tags\nJohn,Doe,john@example.com,555-123-4567,john.backup@example.com,555-999-8888,Acme Corp,123 Main St,Miami,FL,33101,website,\"roofing,residential\"\nJane,Smith,jane@example.com,555-987-6543,,,,456 Oak Ave,Tampa,FL,33602,referral,commercial";
+    const csv = "first_name,last_name,email,phone,secondary_email,secondary_phone,company_name,address_street,address_city,address_state,address_zip,lead_source,tags,sales_rep\nJohn,Doe,john@example.com,555-123-4567,john.backup@example.com,555-999-8888,Acme Corp,123 Main St,Miami,FL,33101,website,\"roofing,residential\",John Smith\nJane,Smith,jane@example.com,555-987-6543,,,,456 Oak Ave,Tampa,FL,33602,referral,commercial,Jane Doe";
     const blob = new Blob([csv], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -1026,6 +1065,15 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
     setDuplicateColumns([]);
     setHeaderStatus({ status: 'ok', message: '' });
     setValidRowStats({ validCount: 0, totalCount: 0, percentage: 0 });
+    setProfilesForPreview([]);
+    setRepMatchStats({ matched: 0, unmatched: [] });
+  };
+
+  // Get rep match status for preview row
+  const getRepMatchStatus = (repName: string | undefined): 'matched' | 'unmatched' | 'none' => {
+    if (!repName) return 'none';
+    const matched = matchSalesRepToProfile(repName, profilesForPreview);
+    return matched ? 'matched' : 'unmatched';
   };
 
   // Count total contact methods for preview
@@ -1212,6 +1260,31 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
             </div>
           )}
 
+          {/* Rep Assignment Summary */}
+          {preview.length > 0 && (repMatchStats.matched > 0 || repMatchStats.unmatched.length > 0) && (
+            <div className={`p-3 rounded-lg border ${repMatchStats.unmatched.length > 0 ? 'bg-amber-500/10 border-amber-500/30' : 'bg-green-500/10 border-green-500/30'}`}>
+              <div className="flex items-center gap-2 mb-2">
+                {repMatchStats.unmatched.length > 0 ? (
+                  <UserX className="h-4 w-4 text-amber-600" />
+                ) : (
+                  <UserCheck className="h-4 w-4 text-green-600" />
+                )}
+                <span className={`text-sm font-medium ${repMatchStats.unmatched.length > 0 ? 'text-amber-700' : 'text-green-700'}`}>
+                  Rep Assignment: {repMatchStats.matched} contacts will be assigned
+                  {repMatchStats.unmatched.length > 0 && `, ${repMatchStats.unmatched.length} reps not found`}
+                </span>
+              </div>
+              {repMatchStats.unmatched.length > 0 && (
+                <div className="text-xs text-muted-foreground">
+                  <span className="font-medium">Unmatched reps:</span>{' '}
+                  {repMatchStats.unmatched.slice(0, 5).join(', ')}
+                  {repMatchStats.unmatched.length > 5 && ` and ${repMatchStats.unmatched.length - 5} more`}
+                  <span className="block mt-1 text-amber-600">These contacts will be imported without rep assignment.</span>
+                </div>
+              )}
+            </div>
+          )}
+
           {preview.length > 0 && (
             <div className="space-y-2">
               <p className="text-sm font-medium">
@@ -1230,24 +1303,38 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
                       <th className="px-3 py-2 text-left whitespace-nowrap">First Name</th>
                       <th className="px-3 py-2 text-left whitespace-nowrap">Last Name</th>
                       <th className="px-3 py-2 text-left whitespace-nowrap">Phone</th>
-                      <th className="px-3 py-2 text-left whitespace-nowrap">Email</th>
-                      <th className="px-3 py-2 text-left whitespace-nowrap">Street</th>
                       <th className="px-3 py-2 text-left whitespace-nowrap">City</th>
-                      <th className="px-3 py-2 text-left whitespace-nowrap">State</th>
+                      <th className="px-3 py-2 text-left whitespace-nowrap">Assigned Rep</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {preview.map((row, i) => (
-                      <tr key={i} className="border-t">
-                        <td className="px-3 py-2">{row.first_name || '-'}</td>
-                        <td className="px-3 py-2">{row.last_name || '-'}</td>
-                        <td className="px-3 py-2">{row.phone || '-'}</td>
-                        <td className="px-3 py-2 max-w-[150px] truncate" title={row.email}>{row.email || '-'}</td>
-                        <td className="px-3 py-2 max-w-[150px] truncate" title={row.address_street}>{row.address_street || '-'}</td>
-                        <td className="px-3 py-2">{row.address_city || '-'}</td>
-                        <td className="px-3 py-2">{row.address_state || '-'}</td>
-                      </tr>
-                    ))}
+                    {preview.map((row, i) => {
+                      const repStatus = getRepMatchStatus(row.sales_rep_name);
+                      return (
+                        <tr key={i} className="border-t">
+                          <td className="px-3 py-2">{row.first_name || '-'}</td>
+                          <td className="px-3 py-2">{row.last_name || '-'}</td>
+                          <td className="px-3 py-2">{row.phone || '-'}</td>
+                          <td className="px-3 py-2">{row.address_city || '-'}</td>
+                          <td className="px-3 py-2">
+                            {row.sales_rep_name ? (
+                              <span className="flex items-center gap-1">
+                                {repStatus === 'matched' ? (
+                                  <UserCheck className="h-3.5 w-3.5 text-green-600" />
+                                ) : (
+                                  <UserX className="h-3.5 w-3.5 text-amber-500" />
+                                )}
+                                <span className={repStatus === 'matched' ? 'text-foreground' : 'text-muted-foreground'}>
+                                  {row.sales_rep_name}
+                                </span>
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground">-</span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                 </table>
               </div>
