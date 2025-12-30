@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Users, Plus, Edit2, Trash2, Settings, Eye, MapPin, Ban, CheckCircle, Building2, Phone, AlertCircle } from "lucide-react";
+import { Users, Plus, Edit2, Trash2, Settings, Eye, MapPin, Ban, CheckCircle, Building2, Phone, AlertCircle, Mail, RefreshCw } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -19,6 +19,7 @@ import FeaturePermissions from './FeaturePermissions';
 import { EnhancedUserProfile } from './EnhancedUserProfile';
 import { UserLocationAssignments } from './UserLocationAssignments';
 import { RepPayStructureConfig } from './RepPayStructureConfig';
+import { EmailHealthCheck } from './EmailHealthCheck';
 import { ActionsSelector } from "@/components/ui/actions-selector";
 import { auditService } from "@/services/auditService";
 import { useAvailableCompanies } from "@/hooks/useAvailableCompanies";
@@ -51,6 +52,7 @@ export const UserManagement = () => {
   const [selectedUserId, setSelectedUserId] = useState<string | null>(null);
   const [isCreating, setIsCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [resendingInvite, setResendingInvite] = useState<string | null>(null);
   const [userToDelete, setUserToDelete] = useState<User | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [openInEditMode, setOpenInEditMode] = useState(false);
@@ -372,6 +374,38 @@ export const UserManagement = () => {
     setShowDeleteDialog(true);
   };
 
+  const resendInvite = async (user: User) => {
+    setResendingInvite(user.id);
+    try {
+      const { data, error } = await supabase.functions.invoke('resend-user-invitation', {
+        body: { userId: user.id }
+      });
+
+      if (error) {
+        throw new Error(error.message || 'Failed to resend invitation');
+      }
+
+      if (data?.error) {
+        throw new Error(data.error);
+      }
+
+      toast({
+        title: "Invitation Sent",
+        description: `Invitation email resent to ${user.email}`,
+      });
+    } catch (error) {
+      console.error('Error resending invite:', error);
+      const errorMessage = error instanceof Error ? error.message : 'Failed to resend invitation';
+      toast({
+        title: "Error",
+        description: errorMessage,
+        variant: "destructive",
+      });
+    } finally {
+      setResendingInvite(null);
+    }
+  };
+
   const getActionsForUser = (user: User) => {
     const actions = [];
 
@@ -420,6 +454,14 @@ export const UserManagement = () => {
       icon: user.is_active ? Ban : CheckCircle,
       onClick: () => toggleUserStatus(user.id, user.is_active),
       separator: true
+    });
+
+    // Add resend invite action (for all users, as they may need password reset)
+    actions.push({
+      label: resendingInvite === user.id ? 'Sending...' : 'Resend Invite',
+      icon: Mail,
+      onClick: () => resendInvite(user),
+      disabled: resendingInvite === user.id
     });
 
     const canDelete = currentUser.role === 'master' || currentLevel < targetLevel;
@@ -511,6 +553,10 @@ export const UserManagement = () => {
         <TabsTrigger value="permissions" className="flex items-center gap-2">
           <Settings className="h-4 w-4" />
           Feature Permissions
+        </TabsTrigger>
+        <TabsTrigger value="email" className="flex items-center gap-2">
+          <Mail className="h-4 w-4" />
+          Email Health
         </TabsTrigger>
       </TabsList>
 
@@ -811,6 +857,10 @@ export const UserManagement = () => {
 
       <TabsContent value="permissions">
         <FeaturePermissions />
+      </TabsContent>
+
+      <TabsContent value="email">
+        <EmailHealthCheck />
       </TabsContent>
     </Tabs>
 
