@@ -313,6 +313,14 @@ function matchSkiptraceColumn(columnName: string): string | null {
   if (path.includes('name.last') || path.endsWith('.last')) return 'last_name';
   if (path.includes('name.middle') || path.endsWith('.middle')) return 'middle_name';
   
+  // IMPORTANT: Check owner mailing FIRST (before generic mailing) - these go to secondary_*
+  if (path.includes('owner') && (path.includes('mailing') || path.includes('mailingaddress'))) {
+    if (path.includes('street') || path.endsWith('.address')) return 'secondary_address';
+    if (path.includes('city')) return 'secondary_city';
+    if (path.includes('state')) return 'secondary_state';
+    if (path.includes('zip') || path.includes('postal')) return 'secondary_zip';
+  }
+  
   // Property address patterns (preferred for primary address)
   if (path.includes('property.address') && !path.includes('owner')) {
     if (path.includes('street') || path.endsWith('.address')) return 'address_street';
@@ -322,20 +330,12 @@ function matchSkiptraceColumn(columnName: string): string | null {
     if (path.includes('county')) return 'county';
   }
   
-  // Mailing address patterns (for owner's address)
+  // Generic mailing address patterns (use for primary address if no property.address)
   if (path.includes('mailingaddress') || path.includes('mailing')) {
-    if (path.includes('street') || path.endsWith('address')) return 'address_street';
+    if (path.includes('street') || path.endsWith('.address')) return 'address_street';
     if (path.includes('city')) return 'address_city';
     if (path.includes('state')) return 'address_state';
     if (path.includes('zip') || path.includes('postal')) return 'address_zip';
-  }
-  
-  // Owner mailing address as secondary (fallback)
-  if (path.includes('owner') && path.includes('mailing')) {
-    if (path.includes('street')) return 'secondary_address';
-    if (path.includes('city')) return 'secondary_city';
-    if (path.includes('state')) return 'secondary_state';
-    if (path.includes('zip')) return 'secondary_zip';
   }
   
   // Phone patterns
@@ -785,6 +785,17 @@ function detectHeaderStatus(fields: string[]): {
 }
 
 /**
+ * Check if a row is importable (has meaningful data)
+ * Must have at least a name AND at least one contact method/address
+ */
+function isRowImportable(row: ContactImportData): boolean {
+  const hasName = (row.first_name && row.first_name !== 'Unknown' && row.first_name.trim() !== '') || 
+                  (row.last_name && row.last_name.trim() !== '');
+  const hasContactInfo = row.email || row.phone || row.address_street || row.address_city;
+  return Boolean(hasName && hasContactInfo);
+}
+
+/**
  * Count how many normalized rows have at least one key contact field
  */
 function countValidRows(normalizedData: ContactImportData[]): { 
@@ -792,13 +803,7 @@ function countValidRows(normalizedData: ContactImportData[]): {
   totalCount: number; 
   percentage: number;
 } {
-  const validCount = normalizedData.filter(row => {
-    // Must have at least a name
-    const hasName = (row.first_name && row.first_name !== 'Unknown') || row.last_name;
-    // And at least one contact method or address
-    const hasContactInfo = row.email || row.phone || row.address_street;
-    return hasName && hasContactInfo;
-  }).length;
+  const validCount = normalizedData.filter(isRowImportable).length;
   
   const totalCount = normalizedData.length;
   const percentage = totalCount > 0 ? (validCount / totalCount) * 100 : 0;
@@ -852,12 +857,17 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
         // Normalize all rows using smart mapping
         const normalizedData = rawData.map(row => normalizeRow(row));
         
+        // Filter for importable rows (have name + contact info)
+        const importableRows = normalizedData.filter(isRowImportable);
+        
         // Check how many rows have valid data
         const validStats = countValidRows(normalizedData);
         setValidRowStats(validStats);
         
-        setTotalRows(normalizedData.length);
-        setPreview(normalizedData.slice(0, 5));
+        // Show importable row count for import, but track total for context
+        setTotalRows(importableRows.length);
+        // Show first 5 importable rows in preview (not first 5 raw rows)
+        setPreview(importableRows.slice(0, 5));
       },
       error: (error) => {
         toast.error("Parse Error: " + error.message);
@@ -901,10 +911,13 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
           const rawData = results.data as Record<string, any>[];
           const normalizedData = rawData.map(row => normalizeRow(row));
           
+          // Filter for importable rows only (have name + contact info)
+          const importableRows = normalizedData.filter(isRowImportable);
+          
           // Track unmatched sales reps
           const unmatchedReps = new Set<string>();
           
-          const contacts = normalizedData.map(row => {
+          const contacts = importableRows.map(row => {
             // Match sales rep name to profile ID
             const assignedTo = matchSalesRepToProfile(row.sales_rep_name, profilesForMatching);
             
@@ -1201,55 +1214,40 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
 
           {preview.length > 0 && (
             <div className="space-y-2">
-              <p className="text-sm font-medium">Preview ({totalRows} total rows, showing first 5):</p>
+              <p className="text-sm font-medium">
+                Preview ({totalRows} importable rows
+                {validRowStats.totalCount > totalRows && (
+                  <span className="text-muted-foreground font-normal">
+                    , {validRowStats.totalCount - totalRows} skipped
+                  </span>
+                )}
+                ):
+              </p>
               <div className="border rounded-lg overflow-hidden overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-muted">
                     <tr>
                       <th className="px-3 py-2 text-left whitespace-nowrap">First Name</th>
                       <th className="px-3 py-2 text-left whitespace-nowrap">Last Name</th>
-                      <th className="px-3 py-2 text-left whitespace-nowrap">Email</th>
                       <th className="px-3 py-2 text-left whitespace-nowrap">Phone</th>
+                      <th className="px-3 py-2 text-left whitespace-nowrap">Email</th>
+                      <th className="px-3 py-2 text-left whitespace-nowrap">Street</th>
                       <th className="px-3 py-2 text-left whitespace-nowrap">City</th>
-                      <th className="px-3 py-2 text-left whitespace-nowrap">Sales Rep</th>
-                      <th className="px-3 py-2 text-left whitespace-nowrap">Contact Info</th>
+                      <th className="px-3 py-2 text-left whitespace-nowrap">State</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {preview.map((row, i) => {
-                      const { emailCount, phoneCount } = countContactMethods(row);
-                      return (
-                        <tr key={i} className="border-t">
-                          <td className="px-3 py-2">{row.first_name || '-'}</td>
-                          <td className="px-3 py-2">{row.last_name || '-'}</td>
-                          <td className="px-3 py-2 max-w-[150px] truncate" title={row.email}>{row.email || '-'}</td>
-                          <td className="px-3 py-2">{row.phone || '-'}</td>
-                          <td className="px-3 py-2">{row.address_city || '-'}</td>
-                          <td className="px-3 py-2">
-                            {row.sales_rep_name ? (
-                              <span className="text-xs px-1.5 py-0.5 bg-purple-100 text-purple-700 rounded">
-                                {row.sales_rep_name}
-                              </span>
-                            ) : '-'}
-                          </td>
-                          <td className="px-3 py-2">
-                            <div className="flex gap-2">
-                              {emailCount > 1 && (
-                                <span className="text-xs px-1.5 py-0.5 bg-blue-100 text-blue-700 rounded">
-                                  {emailCount} emails
-                                </span>
-                              )}
-                              {phoneCount > 1 && (
-                                <span className="text-xs px-1.5 py-0.5 bg-green-100 text-green-700 rounded">
-                                  {phoneCount} phones
-                                </span>
-                              )}
-                              {emailCount <= 1 && phoneCount <= 1 && '-'}
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })}
+                    {preview.map((row, i) => (
+                      <tr key={i} className="border-t">
+                        <td className="px-3 py-2">{row.first_name || '-'}</td>
+                        <td className="px-3 py-2">{row.last_name || '-'}</td>
+                        <td className="px-3 py-2">{row.phone || '-'}</td>
+                        <td className="px-3 py-2 max-w-[150px] truncate" title={row.email}>{row.email || '-'}</td>
+                        <td className="px-3 py-2 max-w-[150px] truncate" title={row.address_street}>{row.address_street || '-'}</td>
+                        <td className="px-3 py-2">{row.address_city || '-'}</td>
+                        <td className="px-3 py-2">{row.address_state || '-'}</td>
+                      </tr>
+                    ))}
                   </tbody>
                 </table>
               </div>
