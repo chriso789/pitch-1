@@ -80,6 +80,44 @@ const LeadDetails = () => {
   // SMS sending hook
   const { sendSMS } = useSendSMS();
 
+  // Handle sending email via edge function
+  const handleSendEmail = async (emailData: {
+    to: string[];
+    cc?: string[];
+    bcc?: string[];
+    subject: string;
+    body: string;
+  }) => {
+    try {
+      const { error } = await supabase.functions.invoke('send-email', {
+        body: {
+          to: emailData.to,
+          cc: emailData.cc,
+          bcc: emailData.bcc,
+          subject: emailData.subject,
+          body: emailData.body,
+          contactId: lead?.contact?.id
+        }
+      });
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Email Sent",
+        description: "Your email was sent successfully"
+      });
+      
+      setShowEmailComposer(false);
+    } catch (error) {
+      console.error('Error sending email:', error);
+      toast({
+        title: "Error",
+        description: "Failed to send email. Please try again.",
+        variant: "destructive"
+      });
+    }
+  };
+
   // Define callback at component top level (not inside render function)
   const handleReadinessChange = React.useCallback((isReady: boolean, data: any) => {
     setMeasurementReadiness({ isReady, data });
@@ -778,6 +816,7 @@ const LeadDetails = () => {
             email: lead.contact.email || '',
             type: 'contact'
           }}
+          onSendEmail={handleSendEmail}
         />
       )}
 
