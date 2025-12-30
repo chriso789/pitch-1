@@ -285,8 +285,9 @@ const handler = async (req: Request): Promise<Response> => {
     // Sanitize company name for email "from" field - remove special characters
     const sanitizedCompanyName = (companyName || 'PITCH CRM').replace(/[<>'"]/g, '');
     
-    // Use resend.dev for now - production should use verified domain
-    const fromEmail = 'onboarding@resend.dev';
+    // Use verified domain from environment
+    const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
+    const fromEmail = `onboarding@${fromDomain}`;
     
     console.log('Sending from:', `${sanitizedCompanyName} <${fromEmail}>`);
     console.log('Sending TO:', email);
