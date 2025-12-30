@@ -39,18 +39,30 @@ export const useBrowserBackButton = ({
 
   // Custom back function that respects history
   const goBack = useCallback(() => {
-    // Check if we have location state indicating where we came from
+    // Check if we have explicit state about where we came from
     if (location.state?.from) {
       navigate(location.state.from);
+      return;
+    }
+    
+    // Check if there's meaningful history (more than just the current page)
+    // window.history.length > 2 because: 1 = blank, 2 = current page
+    const hasHistory = window.history.length > 2;
+    
+    // Also check if referrer is from our own app
+    let referrerIsOurApp = false;
+    try {
+      referrerIsOurApp = document.referrer && 
+        new URL(document.referrer).origin === window.location.origin;
+    } catch {
+      // Invalid URL, ignore
+    }
+    
+    if (hasHistory && referrerIsOurApp) {
+      navigate(-1);
     } else {
-      // Use navigate(-1) which is more reliable than window.history.back()
-      // It will navigate to the previous entry in the history stack
-      try {
-        navigate(-1);
-      } catch {
-        // Fallback if navigate(-1) fails
-        navigate(fallbackPath);
-      }
+      // No reliable history - use fallback path
+      navigate(fallbackPath);
     }
   }, [navigate, fallbackPath, location.state]);
 

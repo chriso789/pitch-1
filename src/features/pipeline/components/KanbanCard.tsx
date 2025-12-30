@@ -192,7 +192,7 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
 
   const handleLeadDetailsClick = (e: React.MouseEvent) => {
     e.stopPropagation();
-    navigate(`/lead/${entry.id}`);
+    navigate(`/lead/${entry.id}`, { state: { from: '/pipeline' } });
   };
 
   const handleCardClick = (e: React.MouseEvent) => {
