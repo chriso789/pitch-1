@@ -61,9 +61,19 @@ const handler = async (req: Request): Promise<Response> => {
     const companyName = profile?.company_name || "Your Company";
     const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
 
-    // Use verified domain as From, rep email as Reply-To for deliverability
-    const fromAddress = `${repName} <noreply@${fromDomain}>`;
+    // Handle empty name to avoid malformed "from" field
+    const fromAddress = repName 
+      ? `${repName} <noreply@${fromDomain}>`
+      : `noreply@${fromDomain}`;
     const replyTo = repEmail;
+
+    console.log("Attempting to send email:", {
+      from: fromAddress,
+      to,
+      subject,
+      replyTo,
+      fromDomain
+    });
 
     // Send email via Resend
     const emailResponse = await resend.emails.send({
@@ -86,7 +96,23 @@ const handler = async (req: Request): Promise<Response> => {
       `,
     });
 
-    console.log("Email sent successfully:", emailResponse);
+    // Check for Resend errors BEFORE returning success
+    if (emailResponse.error) {
+      console.error("Resend API error:", emailResponse.error);
+      return new Response(
+        JSON.stringify({
+          error: "Email failed to send",
+          details: emailResponse.error.message,
+          code: emailResponse.error.name,
+        }),
+        {
+          status: 500,
+          headers: { "Content-Type": "application/json", ...corsHeaders },
+        }
+      );
+    }
+
+    console.log("Email sent successfully:", emailResponse.data);
 
     // Log to communication history
     if (contactId && profile?.tenant_id) {
