@@ -84,6 +84,7 @@ import ViewQuote from "./pages/ViewQuote";
 import MeasurementCorrectionPage from "./pages/MeasurementCorrectionPage";
 import MeasurementAnalyticsPage from "./pages/MeasurementAnalyticsPage";
 import SmartTemplateEditorPage from "./pages/SmartTemplateEditorPage";
+import ProposalEditorPage from "./pages/ProposalEditorPage";
 import CompanyAdminPage from "./pages/admin/CompanyAdminPage";
 import TestRoofMeasurement from "./pages/TestRoofMeasurement";
 import OnboardingWalkthrough from "./pages/onboarding/OnboardingWalkthrough";
@@ -241,6 +242,7 @@ const AppContent = () => {
         <Route path="/test-roof-measurement" element={<ProtectedRoute><TestRoofMeasurement /></ProtectedRoute>} />
         <Route path="/templates/smart-editor" element={<ProtectedRoute><SmartTemplateEditorPage /></ProtectedRoute>} />
         <Route path="/templates/smart-editor/:templateId" element={<ProtectedRoute><SmartTemplateEditorPage /></ProtectedRoute>} />
+        <Route path="/proposals/create/:projectId" element={<ProtectedRoute><ProposalEditorPage /></ProtectedRoute>} />
         
         {/* Protected admin routes */}
         <Route path="/admin/companies" element={<ProtectedRoute><CompanyAdminPage /></ProtectedRoute>} />
