@@ -838,7 +838,8 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Fetch profiles for rep matching preview
+    // Fetch profiles for rep matching preview - store in local variable to avoid race condition
+    let loadedProfiles: ProfileMatch[] = [];
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (user) {
@@ -853,7 +854,8 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
             .from('profiles')
             .select('id, first_name, last_name, email')
             .eq('tenant_id', profile.tenant_id);
-          setProfilesForPreview(allProfiles || []);
+          loadedProfiles = allProfiles || [];
+          setProfilesForPreview(loadedProfiles);
         }
       }
     } catch (err) {
@@ -888,12 +890,12 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
         const validStats = countValidRows(normalizedData);
         setValidRowStats(validStats);
         
-        // Calculate rep match stats for preview
+        // Calculate rep match stats for preview using loadedProfiles (local variable, not state)
         const unmatchedReps = new Set<string>();
         let matchedCount = 0;
         for (const row of importableRows) {
           if (row.sales_rep_name) {
-            const matched = matchSalesRepToProfile(row.sales_rep_name, profilesForPreview);
+            const matched = matchSalesRepToProfile(row.sales_rep_name, loadedProfiles);
             if (matched) {
               matchedCount++;
             } else {
