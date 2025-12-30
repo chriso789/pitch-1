@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '@/integrations/supabase/client';
+import { useAcceptProposal } from '@/hooks/useProposalGenerator';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -55,38 +54,37 @@ export function ProposalAcceptFlow({
     agreedToTerms: false
   });
 
-  // Accept proposal mutation
-  const acceptProposal = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase.functions.invoke('generate-proposal', {
-        body: {
-          action: 'accept',
-          estimateId: proposal.id,
-          tenantId: proposal.tenant_id,
-          selectedTier,
-          customerEmail: formData.email,
-          customerName: formData.fullName,
-          customerPhone: formData.phone
-        }
-      });
+  // Use the accept proposal hook
+  const acceptProposal = useAcceptProposal();
 
-      if (error) throw error;
-      return data;
-    },
-    onSuccess: (data) => {
-      if (data?.signatureUrl) {
-        // Redirect to signature page
-        window.location.href = data.signatureUrl;
-      } else {
-        toast.success('Proposal accepted! You will receive signing instructions via email.');
-        setStep('signing');
+  const handleAccept = () => {
+    acceptProposal.mutate(
+      {
+        estimateId: proposal.id,
+        tenantId: proposal.tenant_id,
+        selectedTier,
+        customerEmail: formData.email,
+        customerName: formData.fullName,
+        customerPhone: formData.phone
+      },
+      {
+        onSuccess: (data) => {
+          if (data?.signatureUrl) {
+            toast.success('Proposal accepted! Redirecting to sign...');
+            // Redirect to signature page
+            navigate(data.signatureUrl);
+          } else {
+            toast.success('Proposal accepted! You will receive signing instructions via email.');
+            setStep('signing');
+          }
+        },
+        onError: (error: any) => {
+          console.error('Accept error:', error);
+          toast.error(error.message || 'Failed to accept proposal. Please try again.');
+        }
       }
-    },
-    onError: (error: any) => {
-      console.error('Accept error:', error);
-      toast.error('Failed to accept proposal. Please try again.');
-    }
-  });
+    );
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -115,7 +113,12 @@ export function ProposalAcceptFlow({
       return;
     }
 
-    acceptProposal.mutate();
+    if (!formData.fullName) {
+      toast.error('Please enter your full name');
+      return;
+    }
+
+    handleAccept();
   };
 
   return (
