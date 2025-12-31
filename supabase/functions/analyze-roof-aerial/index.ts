@@ -903,31 +903,26 @@ ${screenEnclosureWarning}
 6. EXCLUDE all screen enclosures, pool cages, lanais, carports, pergolas!
 
 ════════════════════════════════════════════════════════════════════════════════
-🎯 VERTEX PLACEMENT BIAS - CRITICAL FOR ACCURACY
+🎯 VERTEX PLACEMENT - ACCURATE TRACING (NOT BIASED)
 ════════════════════════════════════════════════════════════════════════════════
 
-When placing ANY vertex, follow these mandatory rules:
-- Place vertices 1-2% CLOSER to the building center than you think
-- Trace the INNER edge of the drip line, NOT the outer shadow
-- It is BETTER to under-estimate area by 5% than over-estimate by 15%
-- Do NOT trace beyond the visible shingle/tile line
-- If you see a shadow, trace INSIDE of it, not on it
-- Prefer TIGHT, CONSERVATIVE tracing over generous tracing
+TRACE THE ACTUAL DRIP EDGE PRECISELY - DO NOT BIAS INWARD OR OUTWARD:
+- Trace the EXACT drip edge/eave line where shingles/tiles meet the sky
+- Do NOT add artificial shrinkage or padding
+- Do NOT trace shadows - trace the ROOF EDGE ITSELF
+- If shadow obscures the edge, use ridge alignment + neighboring edges to estimate
+- Accuracy is the goal - not under-estimating or over-estimating
 
-EXPECTED PERIMETER REFERENCE (use this to validate your trace):
-- 1500 sqft home: ~160 ft perimeter (4-6 vertices)
-- 2000 sqft home: ~180-220 ft perimeter (6-10 vertices)
-- 2500 sqft home: ~200-250 ft perimeter (8-12 vertices)
-- 3000 sqft home: ~220-280 ft perimeter (10-14 vertices)
-- 3500 sqft home: ~240-300 ft perimeter (12-16 vertices)
-- 4000 sqft home: ~260-340 ft perimeter (14-18 vertices)
-- 4500 sqft home: ~280-380 ft perimeter (16-20 vertices)
+VERTEX COUNT REFERENCE (for validation):
+- 1500 sqft home: 4-8 vertices
+- 2000 sqft home: 6-12 vertices  
+- 2500 sqft home: 8-14 vertices
+- 3000 sqft home: 10-16 vertices
+- 3500+ sqft home: 12-20+ vertices
 
-If your traced PERIMETER significantly EXCEEDS these values, you are likely:
-- Tracing OUTSIDE the actual roof edges
-- Including shadows or ground
-- ⚠️ INCLUDING SCREEN ENCLOSURES (very common error in Florida!)
-- Making corners too "pointy" or extending beyond actual roof edge
+If your trace seems too SMALL compared to the satellite reference, you may be:
+- Missing bump-outs, garage extensions, or L-shaped sections
+- Tracing too far INSIDE the actual roof edge
 
 ════════════════════════════════════════════════════════════════════════════════
 PLANIMETER-STYLE SEGMENT-BY-SEGMENT TRACING
@@ -1081,18 +1076,41 @@ Return ONLY valid JSON, no explanation.`
       }
     }
     
-    // PHASE 6: Apply vertex shrinkage to counter AI over-tracing tendency
-    // Use 2.5% shrinkage toward centroid for more conservative measurements
-    const shrunkVertices = applyVertexShrinkage(validVertices.length >= 4 ? validVertices : createFallbackPerimeter(bounds), 0.025)
+    // PHASE 6: ADAPTIVE shrinkage - ONLY apply if we detect over-tracing
+    // Compare detected area to Solar API footprint - only shrink if we're significantly OVER
+    let finalVertices = validVertices.length >= 4 ? validVertices : createFallbackPerimeter(bounds)
+    let shrinkageApplied = false
+    
+    if (solarData?.available && solarData?.buildingFootprintSqft) {
+      // Calculate rough area from vertices (using simplified polygon area calculation)
+      const detectedArea = calculatePolygonAreaFromPixelVertices(validVertices, bounds)
+      const solarFootprint = solarData.buildingFootprintSqft
+      const overageRatio = detectedArea / solarFootprint
+      
+      // Only shrink if we're MORE than 10% OVER the Solar footprint
+      if (overageRatio > 1.10) {
+        const shrinkFactor = Math.min(0.03, (overageRatio - 1.0) * 0.15) // Max 3% shrink
+        console.log(`📐 Over-trace detected: ${detectedArea.toFixed(0)} sqft vs Solar ${solarFootprint.toFixed(0)} sqft (${((overageRatio - 1) * 100).toFixed(1)}% over) - applying ${(shrinkFactor * 100).toFixed(1)}% shrinkage`)
+        finalVertices = applyVertexShrinkage(validVertices, shrinkFactor)
+        shrinkageApplied = true
+      } else if (overageRatio < 0.90) {
+        // We're UNDER - log warning but do NOT shrink
+        console.warn(`⚠️ Under-trace detected: ${detectedArea.toFixed(0)} sqft vs Solar ${solarFootprint.toFixed(0)} sqft (${((1 - overageRatio) * 100).toFixed(1)}% under) - NO shrinkage applied`)
+      } else {
+        console.log(`✅ Trace within tolerance: ${detectedArea.toFixed(0)} sqft vs Solar ${solarFootprint.toFixed(0)} sqft (${((overageRatio - 1) * 100).toFixed(1)}% variance)`)
+      }
+    } else {
+      console.log(`📐 No Solar reference available - skipping shrinkage validation`)
+    }
     
     // PHASE 6: Validate vertices aren't too far from bounds
-    const distanceValidation = validateVertexDistances(shrunkVertices, bounds)
+    const distanceValidation = validateVertexDistances(finalVertices, bounds)
     if (!distanceValidation.valid) {
       console.warn(`⚠️ ${distanceValidation.outliers} vertices flagged as outliers`)
     }
     
     return { 
-      vertices: shrunkVertices,
+      vertices: finalVertices,
       roofType: result.roofType || 'complex',
       complexity: result.complexity || 'moderate',
       vertexStats,
@@ -1101,12 +1119,12 @@ Return ONLY valid JSON, no explanation.`
       segmentValidation,
       perimeterValidation: {
         estimatedPerimeterFt: segmentValidation.estimatedPerimeterFt,
-        vertexCount: shrunkVertices.length,
+        vertexCount: finalVertices.length,
         avgSegmentLength: segmentValidation.avgSegmentLengthFt,
         longestSegment: segmentValidation.longestSegmentFt,
         segmentLengths: segmentValidation.segmentLengths
       },
-      vertexShrinkageApplied: true
+      vertexShrinkageApplied: shrinkageApplied
     }
   } catch (err) {
     console.error('Perimeter detection error:', err)
@@ -2243,6 +2261,27 @@ function isFloridaAddress(address: string): boolean {
   ]
   return floridaIndicators.some(ind => address.includes(ind))
 }
+
+// Calculate rough polygon area from pixel-percent vertices (for shrinkage decision)
+function calculatePolygonAreaFromPixelVertices(vertices: any[], bounds: any): number {
+  if (!vertices || vertices.length < 3) return 0
+  
+  // Use shoelace formula on pixel coordinates
+  // Assume ~50ft per % of image at zoom 20 (rough approximation)
+  const FT_PER_PERCENT = 3.28 // Rough conversion at zoom 20
+  
+  let area = 0
+  const n = vertices.length
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n
+    area += vertices[i].x * vertices[j].y
+    area -= vertices[j].x * vertices[i].y
+  }
+  area = Math.abs(area) / 2
+  
+  return area * FT_PER_PERCENT * FT_PER_PERCENT
+}
+
 
 // NEW PHASE 6: Apply vertex shrinkage toward centroid to counter AI over-tracing
 function applyVertexShrinkage(vertices: any[], shrinkFactor: number = 0.025): any[] {
