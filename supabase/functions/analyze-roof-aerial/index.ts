@@ -2982,7 +2982,8 @@ async function saveFacetsToDatabase(
     primary_direction: facet.primaryDirection,
     azimuth_degrees: facet.azimuthDegrees,
     detection_confidence: 70
-  }))
+  };
+  });
   
   const { error } = await supabase.from('roof_measurement_facets').insert(facetRecords)
   
