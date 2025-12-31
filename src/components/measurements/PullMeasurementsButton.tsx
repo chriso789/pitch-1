@@ -515,6 +515,32 @@ export function PullMeasurementsButton({
     handlePull(selectedLat, selectedLng);
   };
 
+  // Re-analyze using stored verified coordinates (skips structure selector)
+  const handleReanalyze = useCallback(async () => {
+    const freshCoords = await loadCoordinates();
+    
+    if (!freshCoords?.isValid) {
+      toast({
+        title: "Verified Coordinates Required",
+        description: "No verified coordinates found. Use 'AI Measurements' to select a structure first.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    toast({
+      title: "🔄 Re-analyzing Property",
+      description: `Using stored coordinates (${freshCoords.source})`,
+    });
+
+    // Directly trigger analysis with stored coordinates
+    handlePull(freshCoords.lat, freshCoords.lng);
+  }, [loadCoordinates, toast]);
+
+  // Check if we have verified coordinates for re-analyze button
+  const hasVerifiedCoords = verifiedCoords?.isValid && 
+    (coordSource === 'contact_verified_address' || coordSource === 'user_pin_selection');
+
   return (
     <>
       <div className="flex items-center gap-2 flex-wrap">
@@ -547,6 +573,20 @@ export function PullMeasurementsButton({
             </>
           )}
         </Button>
+
+        {/* Re-analyze button - only shows when verified coordinates exist */}
+        {hasVerifiedCoords && !loading && !success && (
+          <Button
+            onClick={handleReanalyze}
+            disabled={loading || loadingCoords}
+            variant="ghost"
+            size="sm"
+            title="Re-run analysis using stored verified coordinates"
+          >
+            <Loader2 className={`h-4 w-4 mr-1 ${loading ? 'animate-spin' : 'hidden'}`} />
+            <span className="text-xs">🔄 Re-analyze</span>
+          </Button>
+        )}
 
         {/* Draw Manually button */}
         <Button
