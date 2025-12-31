@@ -112,11 +112,12 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    console.log("Email sent successfully:", emailResponse.data);
+    const resendMessageId = emailResponse.data?.id;
+    console.log("Email sent successfully. Resend ID:", resendMessageId);
 
-    // Log to communication history
+    // Log to communication history with resend_message_id for tracking
     if (contactId && profile?.tenant_id) {
-      await supabase.from("communication_history").insert({
+      const { error: logError } = await supabase.from("communication_history").insert({
         tenant_id: profile.tenant_id,
         contact_id: contactId,
         communication_type: "email",
@@ -124,20 +125,28 @@ const handler = async (req: Request): Promise<Response> => {
         subject,
         content: body,
         rep_id: user.id,
+        resend_message_id: resendMessageId,
+        email_status: "sent",
         metadata: {
           to,
           cc,
           bcc,
-          email_id: emailResponse.data?.id,
+          email_id: resendMessageId,
         },
       });
+
+      if (logError) {
+        console.error("Failed to log email to communication_history:", logError);
+      } else {
+        console.log("Email logged with resend_message_id:", resendMessageId);
+      }
     }
 
     return new Response(
       JSON.stringify({
         success: true,
         message: "Email sent successfully",
-        emailId: emailResponse.data?.id,
+        emailId: resendMessageId,
       }),
       {
         status: 200,
