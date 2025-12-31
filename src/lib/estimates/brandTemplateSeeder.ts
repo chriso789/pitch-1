@@ -236,40 +236,139 @@ export const BRAND_TEMPLATES: BrandTemplate[] = [
   },
 ];
 
+// Helper function to add items to an existing template
+async function addTemplateItems(templateId: string, tenantId: string, templateDef: BrandTemplate) {
+  // Create Materials group
+  const { data: materialsGroup, error: matGroupError } = await supabase
+    .from('estimate_template_groups')
+    .insert({
+      template_id: templateId,
+      tenant_id: tenantId,
+      name: 'Materials',
+      group_type: 'material',
+      sort_order: 1,
+    })
+    .select('id')
+    .single();
+
+  if (matGroupError) {
+    console.error(`Error creating materials group:`, matGroupError);
+    return;
+  }
+
+  // Create Labor group
+  const { data: laborGroup, error: labGroupError } = await supabase
+    .from('estimate_template_groups')
+    .insert({
+      template_id: templateId,
+      tenant_id: tenantId,
+      name: 'Labor',
+      group_type: 'labor',
+      sort_order: 2,
+    })
+    .select('id')
+    .single();
+
+  if (labGroupError) {
+    console.error(`Error creating labor group:`, labGroupError);
+    return;
+  }
+
+  // Insert material items
+  const materialItems = templateDef.materials.map((item, idx) => ({
+    template_id: templateId,
+    group_id: materialsGroup.id,
+    item_name: item.item_name,
+    description: item.description,
+    unit: item.unit,
+    unit_cost: item.unit_cost,
+    qty_formula: item.qty_formula,
+    sku_pattern: item.sku_pattern,
+    manufacturer: item.manufacturer,
+    measurement_type: item.measurement_type,
+    sort_order: idx + 1,
+    item_type: 'material',
+  }));
+
+  const { error: matItemsError } = await supabase
+    .from('template_items')
+    .insert(materialItems);
+
+  if (matItemsError) {
+    console.error(`Error creating material items:`, matItemsError);
+  }
+
+  // Insert labor items
+  const laborItems = templateDef.labor.map((item, idx) => ({
+    template_id: templateId,
+    group_id: laborGroup.id,
+    item_name: item.item_name,
+    description: item.description,
+    unit: item.unit,
+    unit_cost: item.unit_cost,
+    qty_formula: item.qty_formula,
+    sku_pattern: item.sku_pattern,
+    sort_order: idx + 1,
+    item_type: 'labor',
+  }));
+
+  const { error: labItemsError } = await supabase
+    .from('template_items')
+    .insert(laborItems);
+
+  if (labItemsError) {
+    console.error(`Error creating labor items:`, labItemsError);
+  }
+}
+
 // Seed brand templates for a tenant
 export async function seedBrandTemplates(tenantId: string): Promise<{ success: boolean; templatesCreated: number; error?: string }> {
   try {
     let templatesCreated = 0;
 
     for (const templateDef of BRAND_TEMPLATES) {
-      // Check if template already exists for this tenant
+      // Check if template already exists for this tenant in estimate_calculation_templates
       const { data: existing } = await supabase
-        .from('templates')
+        .from('estimate_calculation_templates')
         .select('id')
         .eq('tenant_id', tenantId)
         .eq('name', templateDef.name)
         .maybeSingle();
 
       if (existing) {
-        console.log(`Template "${templateDef.name}" already exists, skipping`);
+        // Check if it has items - if not, add them
+        const { data: existingItems } = await supabase
+          .from('template_items')
+          .select('id')
+          .eq('template_id', existing.id)
+          .limit(1);
+
+        if (existingItems && existingItems.length > 0) {
+          console.log(`Template "${templateDef.name}" already has items, skipping`);
+          continue;
+        }
+
+        // Template exists but has no items - add them
+        console.log(`Template "${templateDef.name}" exists but has no items, adding items...`);
+        await addTemplateItems(existing.id, tenantId, templateDef);
+        templatesCreated++;
         continue;
       }
 
-      // Create the template
+      // Create the template in estimate_calculation_templates
+      const roofTypeMap: Record<string, 'shingle' | 'metal' | 'tile'> = {
+        'shingle': 'shingle',
+        'metal': 'metal',
+        'stone_coated': 'tile',
+      };
       const { data: template, error: templateError } = await supabase
-        .from('templates')
+        .from('estimate_calculation_templates')
         .insert({
           tenant_id: tenantId,
           name: templateDef.name,
-          brand: templateDef.brand,
-          product_line: templateDef.productLine,
-          roof_type: templateDef.roofType,
-          template_description: templateDef.description,
-          is_system_default: true,
-          status: 'active',
-          labor: {},
-          overhead: {},
-          profit_margin_percent: 30,
+          roof_type: roofTypeMap[templateDef.roofType] || 'shingle',
+          is_active: true,
+          target_profit_percentage: 30,
         })
         .select('id')
         .single();
@@ -279,87 +378,8 @@ export async function seedBrandTemplates(tenantId: string): Promise<{ success: b
         continue;
       }
 
-      // Create Materials group
-      const { data: materialsGroup, error: matGroupError } = await supabase
-        .from('estimate_template_groups')
-        .insert({
-          template_id: template.id,
-          tenant_id: tenantId,
-          name: 'Materials',
-          group_type: 'material',
-          sort_order: 1,
-        })
-        .select('id')
-        .single();
-
-      if (matGroupError) {
-        console.error(`Error creating materials group:`, matGroupError);
-        continue;
-      }
-
-      // Create Labor group
-      const { data: laborGroup, error: labGroupError } = await supabase
-        .from('estimate_template_groups')
-        .insert({
-          template_id: template.id,
-          tenant_id: tenantId,
-          name: 'Labor',
-          group_type: 'labor',
-          sort_order: 2,
-        })
-        .select('id')
-        .single();
-
-      if (labGroupError) {
-        console.error(`Error creating labor group:`, labGroupError);
-        continue;
-      }
-
-      // Insert material items
-      const materialItems = templateDef.materials.map((item, idx) => ({
-        template_id: template.id,
-        group_id: materialsGroup.id,
-        item_name: item.item_name,
-        description: item.description,
-        unit: item.unit,
-        unit_cost: item.unit_cost,
-        qty_formula: item.qty_formula,
-        sku_pattern: item.sku_pattern,
-        manufacturer: item.manufacturer,
-        measurement_type: item.measurement_type,
-        sort_order: idx + 1,
-        item_type: 'material',
-      }));
-
-      const { error: matItemsError } = await supabase
-        .from('template_items')
-        .insert(materialItems);
-
-      if (matItemsError) {
-        console.error(`Error creating material items:`, matItemsError);
-      }
-
-      // Insert labor items
-      const laborItems = templateDef.labor.map((item, idx) => ({
-        template_id: template.id,
-        group_id: laborGroup.id,
-        item_name: item.item_name,
-        description: item.description,
-        unit: item.unit,
-        unit_cost: item.unit_cost,
-        qty_formula: item.qty_formula,
-        sku_pattern: item.sku_pattern,
-        sort_order: idx + 1,
-        item_type: 'labor',
-      }));
-
-      const { error: labItemsError } = await supabase
-        .from('template_items')
-        .insert(laborItems);
-
-      if (labItemsError) {
-        console.error(`Error creating labor items:`, labItemsError);
-      }
+      // Add template items
+      await addTemplateItems(template.id, tenantId, templateDef);
 
       templatesCreated++;
       console.log(`Created template: ${templateDef.name}`);
