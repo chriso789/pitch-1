@@ -2877,7 +2877,7 @@ function generateFacetPolygons(
       centroid: centroid,
       primaryDirection: 'mixed',
       azimuthDegrees: 0,
-      shapeType: 'complex',
+      shapeType: 'irregular',
       areaEstimate: totalArea,
       isFallback: true
     })
@@ -2908,7 +2908,7 @@ function generateFacetPolygons(
           centroid: { lng: facetCentroidLng, lat: facetCentroidLat },
           primaryDirection: directions[i % directions.length],
           azimuthDegrees: (i * 360 / facetCount),
-          shapeType: 'complex',
+          shapeType: 'irregular',
           areaEstimate: areaPerFacet
         })
       }
@@ -2964,12 +2964,17 @@ async function saveFacetsToDatabase(
 ): Promise<void> {
   const pitchMultiplier = getSlopeFactorFromPitch(measurements.predominantPitch) || 1.083
   
-  const facetRecords = facetPolygons.map(facet => ({
-    measurement_id: measurementId,
-    facet_number: facet.facetNumber,
-    polygon_points: facet.points,
-    centroid: facet.centroid,
-    shape_type: facet.shapeType,
+  // Map any unsupported shape types to 'irregular' to satisfy DB constraint
+  const validShapeTypes = ['rectangle', 'triangle', 'irregular', 'trapezoid', 'parallelogram'];
+  
+  const facetRecords = facetPolygons.map(facet => {
+    const shapeType = validShapeTypes.includes(facet.shapeType) ? facet.shapeType : 'irregular';
+    return {
+      measurement_id: measurementId,
+      facet_number: facet.facetNumber,
+      polygon_points: facet.points,
+      centroid: facet.centroid,
+      shape_type: shapeType,
     area_flat_sqft: facet.areaEstimate,
     pitch: measurements.predominantPitch,
     pitch_multiplier: pitchMultiplier,

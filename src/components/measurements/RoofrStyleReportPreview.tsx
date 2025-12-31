@@ -9,6 +9,8 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { ReportPage } from './ReportPage';
 import { SchematicRoofDiagram } from './SchematicRoofDiagram';
+import { AllReportPages } from './AllReportPages';
+import { useMultiPagePDFGeneration } from '@/hooks/useMultiPagePDFGeneration';
 
 interface RoofrStyleReportPreviewProps {
   open: boolean;
@@ -45,11 +47,12 @@ export function RoofrStyleReportPreview({
   onReportGenerated,
 }: RoofrStyleReportPreviewProps) {
   const { toast } = useToast();
+  const { downloadPDF, isGenerating: isPDFGenerating, progress } = useMultiPagePDFGeneration();
   const [currentPage, setCurrentPage] = useState(1);
-  const [isGenerating, setIsGenerating] = useState(false);
   const [reportUrl, setReportUrl] = useState<string | null>(null);
   const [showScrollHint, setShowScrollHint] = useState(true);
   const [roofMeasurementData, setRoofMeasurementData] = useState<any>(null);
+  const [showHiddenPages, setShowHiddenPages] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   
   const totalPages = 7;
@@ -262,46 +265,25 @@ export function RoofrStyleReportPreview({
     };
   });
 
-  const handleGeneratePDF = async () => {
-    setIsGenerating(true);
-    try {
-      const { data, error } = await supabase.functions.invoke('generate-roofr-style-report', {
-        body: {
-          measurementId,
-          measurement,
-          tags,
-          address,
-          companyInfo: companyInfo || { name: 'PITCH CRM' },
-        }
-      });
-
-      if (error) throw error;
-
-      if (data?.pdfUrl) {
-        setReportUrl(data.pdfUrl);
-        onReportGenerated?.(data.pdfUrl);
-        toast({
-          title: "Report Generated",
-          description: "Professional measurement report is ready for download.",
-        });
-      }
-    } catch (err: any) {
-      console.error('Failed to generate report:', err);
-      toast({
-        title: "Generation Failed",
-        description: err.message || "Could not generate report",
-        variant: "destructive",
-      });
-    } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleDownload = () => {
-    if (reportUrl) {
-      window.open(reportUrl, '_blank');
-    } else {
-      handleGeneratePDF();
+  const handleDownload = async () => {
+    // Show hidden pages for capture
+    setShowHiddenPages(true);
+    
+    // Wait for render
+    await new Promise(resolve => setTimeout(resolve, 500));
+    
+    const result = await downloadPDF('all-report-pages-container', totalPages, {
+      filename: `roof-report-${address.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`,
+      propertyAddress: address,
+      measurementId,
+      pipelineEntryId,
+    });
+    
+    setShowHiddenPages(false);
+    
+    if (result.success && result.storageUrl) {
+      setReportUrl(result.storageUrl);
+      onReportGenerated?.(result.storageUrl);
     }
   };
 
@@ -318,7 +300,20 @@ export function RoofrStyleReportPreview({
   };
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <>
+      {/* Hidden container for PDF generation */}
+      {showHiddenPages && (
+        <AllReportPages
+          measurement={measurement}
+          enrichedMeasurement={enrichedMeasurement}
+          tags={tags}
+          address={address}
+          satelliteImageUrl={satelliteImageUrl}
+          companyInfo={companyInfo}
+        />
+      )}
+      
+      <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden flex flex-col">
         <DialogHeader className="p-4 border-b flex-row items-center justify-between">
           <div className="flex items-center gap-3">
@@ -337,9 +332,12 @@ export function RoofrStyleReportPreview({
               <Share2 className="h-4 w-4 mr-1" />
               Share
             </Button>
-            <Button size="sm" onClick={handleDownload} disabled={isGenerating}>
-              {isGenerating ? (
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+            <Button size="sm" onClick={handleDownload} disabled={isPDFGenerating}>
+              {isPDFGenerating ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                  {Math.round(progress)}%
+                </>
               ) : (
                 <Download className="h-4 w-4 mr-1" />
               )}
@@ -804,5 +802,6 @@ export function RoofrStyleReportPreview({
         </div>
       </DialogContent>
     </Dialog>
+    </>
   );
 }
