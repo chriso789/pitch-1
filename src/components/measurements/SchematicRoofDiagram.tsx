@@ -1,7 +1,8 @@
 import { useMemo, useEffect, useState } from 'react';
 import { wktLineToLatLngs, wktPolygonToLatLngs } from '@/lib/canvassiq/wkt';
 import { supabase } from '@/integrations/supabase/client';
-import { AlertTriangle } from 'lucide-react';
+import { AlertTriangle, Eye, EyeOff, MapPin, Layers } from 'lucide-react';
+import { calculateImageBounds, gpsToPixel, type ImageBounds, type GPSCoord } from '@/utils/gpsCalculations';
 
 // Roofr exact color palette - MATCHED to Roofr conventions
 const FEATURE_COLORS = {
@@ -75,6 +76,13 @@ interface SchematicRoofDiagramProps {
   showFacets?: boolean;
   showQAPanel?: boolean;
   backgroundColor?: string;
+  // NEW: Satellite overlay props
+  satelliteImageUrl?: string;
+  showSatelliteOverlay?: boolean;
+  satelliteOpacity?: number;
+  // NEW: Debug mode props
+  showDebugMarkers?: boolean;
+  showDebugPanel?: boolean;
 }
 
 // Calculate distance between two points in feet (haversine)
@@ -86,19 +94,23 @@ function calculateSegmentLength(p1: { lat: number; lng: number }, p2: { lat: num
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Filter out implausible linear features
+// Filter out implausible linear features - BUT NOT EAVES/RAKES (they need to be reliable)
 function filterPlausibleLines(
   features: Array<{ type: string; coords: { lat: number; lng: number }[]; length: number }>
 ): { plausible: typeof features; implausibleCount: number } {
-  // Count lines by type
+  // Separate eaves/rakes from interior lines - eaves/rakes bypass filtering
+  const eavesRakes = features.filter(f => f.type === 'eave' || f.type === 'rake');
+  const interiorLines = features.filter(f => f.type !== 'eave' && f.type !== 'rake');
+  
+  // Count interior lines by type
   const typeCounts: Record<string, number> = {};
-  features.forEach(f => {
+  interiorLines.forEach(f => {
     typeCounts[f.type] = (typeCounts[f.type] || 0) + 1;
   });
   
-  // Count lines meeting at same start point (starburst detection)
+  // Count lines meeting at same start point (starburst detection) - interior only
   const startPoints: Record<string, number> = {};
-  features.forEach(f => {
+  interiorLines.forEach(f => {
     if (f.coords.length >= 2) {
       const key = `${f.coords[0].lat.toFixed(6)},${f.coords[0].lng.toFixed(6)}`;
       startPoints[key] = (startPoints[key] || 0) + 1;
@@ -106,27 +118,31 @@ function filterPlausibleLines(
   });
   
   const maxAtSinglePoint = Math.max(...Object.values(startPoints), 0);
-  const starburstRatio = features.length > 0 ? maxAtSinglePoint / features.length : 0;
+  const starburstRatio = interiorLines.length > 0 ? maxAtSinglePoint / interiorLines.length : 0;
   
-  // If starburst detected, hide all interior lines
+  let plausibleInterior = interiorLines;
+  
+  // If starburst detected, hide interior lines (but keep eaves/rakes!)
   if (starburstRatio > LINE_PLAUSIBILITY.MAX_STARBURST_RATIO && maxAtSinglePoint > 4) {
-    console.warn(`🚨 Starburst detected: ${maxAtSinglePoint} lines at single point (${(starburstRatio * 100).toFixed(0)}%)`);
-    return { plausible: [], implausibleCount: features.length };
+    console.warn(`🚨 Starburst detected: ${maxAtSinglePoint} interior lines at single point - hiding interior, keeping eaves/rakes`);
+    plausibleInterior = [];
+  } else {
+    // Filter individual interior lines only
+    plausibleInterior = interiorLines.filter(f => {
+      if (f.length < LINE_PLAUSIBILITY.MIN_LINE_LENGTH_FT) return false;
+      if (f.length > LINE_PLAUSIBILITY.MAX_LINE_LENGTH_FT) return false;
+      if (typeCounts[f.type] > LINE_PLAUSIBILITY.MAX_LINES_PER_TYPE) return false;
+      return true;
+    });
   }
   
-  // Filter individual lines
-  const plausible = features.filter(f => {
-    // Skip very short or very long lines
-    if (f.length < LINE_PLAUSIBILITY.MIN_LINE_LENGTH_FT) return false;
-    if (f.length > LINE_PLAUSIBILITY.MAX_LINE_LENGTH_FT) return false;
-    
-    // Skip if too many of this type
-    if (typeCounts[f.type] > LINE_PLAUSIBILITY.MAX_LINES_PER_TYPE) return false;
-    
-    return true;
-  });
+  // Always include eaves/rakes with basic length filter
+  const plausibleEavesRakes = eavesRakes.filter(f => f.length >= 1); // Very loose filter
   
-  return { plausible, implausibleCount: features.length - plausible.length };
+  return { 
+    plausible: [...plausibleEavesRakes, ...plausibleInterior], 
+    implausibleCount: features.length - plausibleEavesRakes.length - plausibleInterior.length 
+  };
 }
 
 
@@ -143,9 +159,19 @@ export function SchematicRoofDiagram({
   showFacets = true,
   showQAPanel = false,
   backgroundColor = '#FFFFFF',
+  // Satellite overlay
+  satelliteImageUrl,
+  showSatelliteOverlay = false,
+  satelliteOpacity = 0.55,
+  // Debug mode
+  showDebugMarkers = false,
+  showDebugPanel = false,
 }: SchematicRoofDiagramProps) {
   const [facets, setFacets] = useState<FacetData[]>([]);
   const [geometryQA, setGeometryQA] = useState<GeometryQA | null>(null);
+  const [localShowOverlay, setLocalShowOverlay] = useState(showSatelliteOverlay);
+  const [localShowMarkers, setLocalShowMarkers] = useState(showDebugMarkers);
+  const [localShowDebugPanel, setLocalShowDebugPanel] = useState(showDebugPanel);
   
   // Fetch facets from database if measurementId is provided
   useEffect(() => {
@@ -185,30 +211,60 @@ export function SchematicRoofDiagram({
     fetchFacets();
   }, [measurementId]);
   
+  // Calculate image bounds for satellite overlay mode
+  const imageBounds = useMemo<ImageBounds | null>(() => {
+    if (!measurement) return null;
+    
+    // Get center coordinates from measurement
+    const gpsCoords = measurement.gps_coordinates || {};
+    const centerLat = gpsCoords.lat || measurement.lat || measurement.center_lat;
+    const centerLng = gpsCoords.lng || measurement.lng || measurement.center_lng;
+    
+    if (!centerLat || !centerLng) return null;
+    
+    const zoom = measurement.analysis_zoom || 20;
+    const imageSize = measurement.analysis_image_size || { width: 640, height: 640 };
+    const imgWidth = typeof imageSize === 'object' ? imageSize.width : 640;
+    const imgHeight = typeof imageSize === 'object' ? imageSize.height : 640;
+    
+    return calculateImageBounds(centerLat, centerLng, zoom, imgWidth, imgHeight);
+  }, [measurement]);
+  
   // Parse and transform coordinates to SVG space
-  const { perimeterPath, perimeterSegments, linearFeatures, bounds, svgPadding, facetPaths, eaveSegments, rakeSegments } = useMemo(() => {
+  const { 
+    perimeterPath, 
+    perimeterCoords,
+    perimeterSegments, 
+    linearFeatures, 
+    bounds, 
+    svgPadding, 
+    facetPaths, 
+    eaveSegments, 
+    rakeSegments,
+    debugInfo 
+  } = useMemo(() => {
     const padding = 60;
     const segments: Array<{ type: string; points: { x: number; y: number }[]; length: number; color: string }> = [];
     let allLatLngs: { lat: number; lng: number }[] = [];
     
     // Extract perimeter from WKT or faces
-    let perimeterCoords: { lat: number; lng: number }[] = [];
+    let perimCoords: { lat: number; lng: number }[] = [];
     
     // Priority 1: perimeter_wkt from measurement
     if (measurement?.perimeter_wkt) {
-      perimeterCoords = wktPolygonToLatLngs(measurement.perimeter_wkt);
+      perimCoords = wktPolygonToLatLngs(measurement.perimeter_wkt);
     }
     // Priority 2: First face WKT
     else if (measurement?.faces?.[0]?.wkt) {
-      perimeterCoords = wktPolygonToLatLngs(measurement.faces[0].wkt);
+      perimCoords = wktPolygonToLatLngs(measurement.faces[0].wkt);
     }
     // Priority 3: building_outline_wkt
     else if (measurement?.building_outline_wkt) {
-      perimeterCoords = wktPolygonToLatLngs(measurement.building_outline_wkt);
+      perimCoords = wktPolygonToLatLngs(measurement.building_outline_wkt);
     }
     
-    if (perimeterCoords.length > 0) {
-      allLatLngs = [...perimeterCoords];
+    if (perimCoords.length > 0) {
+      allLatLngs = [...perimCoords];
     }
     
     // Add facet coordinates to bounds calculation
@@ -218,7 +274,7 @@ export function SchematicRoofDiagram({
       }
     });
     
-    // Extract linear features with WKT - use original coordinates (no snapping)
+    // Extract ALL linear features with WKT - raw, unfiltered for eaves/rakes
     const linearFeaturesData: Array<{ type: string; coords: { lat: number; lng: number }[]; length: number }> = [];
     const features = measurement?.linear_features || measurement?.linear_features_wkt || [];
     
@@ -227,9 +283,17 @@ export function SchematicRoofDiagram({
         if (f.wkt) {
           const coords = wktLineToLatLngs(f.wkt);
           if (coords.length >= 2) {
-            allLatLngs.push(...coords);
+            // Only add to allLatLngs if within reasonable distance of perimeter (avoid outliers)
+            const featureType = f.type?.toLowerCase() || 'ridge';
+            
+            // For bounds, prefer perimeter-based. Only add interior lines if close to perimeter
+            if (featureType === 'eave' || featureType === 'rake') {
+              allLatLngs.push(...coords); // Always include perimeter-adjacent features
+            }
+            // For interior lines, we'll add them but they won't skew bounds much
+            
             linearFeaturesData.push({
-              type: f.type?.toLowerCase() || 'ridge',
+              type: featureType,
               coords,
               length: f.length_ft || f.length || calculateSegmentLength(coords[0], coords[coords.length - 1]),
             });
@@ -243,17 +307,18 @@ export function SchematicRoofDiagram({
       acc[f.type] = (acc[f.type] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
-    console.log('📊 Linear features by type:', featureCounts);
+    console.log('📊 Linear features by type (raw):', featureCounts);
     
-    // Apply plausibility filter to linear features
+    // Apply plausibility filter (eaves/rakes bypass the strict filtering)
     const { plausible: plausibleLinearFeatures, implausibleCount } = filterPlausibleLines(linearFeaturesData);
     
     console.log(`📐 Plausible features: ${plausibleLinearFeatures.length}, Filtered: ${implausibleCount}`);
     
-    // Calculate bounds
+    // Calculate bounds from perimeter primarily (more stable)
     if (allLatLngs.length === 0) {
       return { 
         perimeterPath: '', 
+        perimeterCoords: [],
         perimeterSegments: [], 
         linearFeatures: [], 
         bounds: null, 
@@ -261,6 +326,7 @@ export function SchematicRoofDiagram({
         facetPaths: [],
         eaveSegments: [],
         rakeSegments: [],
+        debugInfo: null,
         qaData: {
           hasFacets: false,
           facetCount: 0,
@@ -273,24 +339,40 @@ export function SchematicRoofDiagram({
       };
     }
     
-    const lats = allLatLngs.map(c => c.lat);
-    const lngs = allLatLngs.map(c => c.lng);
-    const minLat = Math.min(...lats);
-    const maxLat = Math.max(...lats);
-    const minLng = Math.min(...lngs);
-    const maxLng = Math.max(...lngs);
+    // Calculate bounds from perimeter only for stability
+    const perimLats = perimCoords.map(c => c.lat);
+    const perimLngs = perimCoords.map(c => c.lng);
+    const minLat = perimLats.length > 0 ? Math.min(...perimLats) : Math.min(...allLatLngs.map(c => c.lat));
+    const maxLat = perimLats.length > 0 ? Math.max(...perimLats) : Math.max(...allLatLngs.map(c => c.lat));
+    const minLng = perimLngs.length > 0 ? Math.min(...perimLngs) : Math.min(...allLatLngs.map(c => c.lng));
+    const maxLng = perimLngs.length > 0 ? Math.max(...perimLngs) : Math.max(...allLatLngs.map(c => c.lng));
     
-    // Debug: Coordinate bounds verification
-    console.log('🗺️ Coordinate bounds verification:', {
-      bounds: { minLat, maxLat, minLng, maxLng },
-      perimeterPoints: perimeterCoords.length,
-      linearFeaturesCount: linearFeaturesData.length,
-      facetsCount: facets.length,
-      sampleEave: linearFeaturesData.find(f => f.type === 'eave'),
-      sampleHip: linearFeaturesData.find(f => f.type === 'hip'),
-    });
+    // Calculate eave-specific bounds for debug
+    const eavesRaw = linearFeaturesData.filter(f => f.type === 'eave');
+    const eaveCoords = eavesRaw.flatMap(e => e.coords);
+    const eaveBounds = eaveCoords.length > 0 ? {
+      minLat: Math.min(...eaveCoords.map(c => c.lat)),
+      maxLat: Math.max(...eaveCoords.map(c => c.lat)),
+      minLng: Math.min(...eaveCoords.map(c => c.lng)),
+      maxLng: Math.max(...eaveCoords.map(c => c.lng)),
+    } : null;
     
-    // Coordinate transformation function
+    // Debug info for coordinate alignment
+    const dbgInfo = {
+      perimeterBounds: { minLat, maxLat, minLng, maxLng },
+      eaveBounds,
+      perimeterPoints: perimCoords.length,
+      eaveCount: eavesRaw.length,
+      rakeCount: linearFeaturesData.filter(f => f.type === 'rake').length,
+      hipCount: linearFeaturesData.filter(f => f.type === 'hip').length,
+      valleyCount: linearFeaturesData.filter(f => f.type === 'valley').length,
+      ridgeCount: linearFeaturesData.filter(f => f.type === 'ridge').length,
+      transformMode: 'bounds-fit',
+    };
+    
+    console.log('🗺️ Coordinate bounds verification:', dbgInfo);
+    
+    // Coordinate transformation function (bounds-fit mode)
     const toSvg = (coord: { lat: number; lng: number }) => {
       const scaleX = (width - padding * 2) / (maxLng - minLng || 0.0001);
       const scaleY = (height - padding * 2) / (maxLat - minLat || 0.0001);
@@ -310,15 +392,15 @@ export function SchematicRoofDiagram({
     let pathD = '';
     const perimSegs: typeof segments = [];
     
-    // Build perimeter outline (just for reference, not for eave/rake classification)
-    if (perimeterCoords.length >= 3) {
-      const svgCoords = perimeterCoords.map(toSvg);
+    // Build perimeter outline
+    if (perimCoords.length >= 3) {
+      const svgCoords = perimCoords.map(toSvg);
       pathD = `M ${svgCoords.map(c => `${c.x},${c.y}`).join(' L ')} Z`;
       
       // Create perimeter segments for reference
-      for (let i = 0; i < perimeterCoords.length - 1; i++) {
-        const p1 = perimeterCoords[i];
-        const p2 = perimeterCoords[i + 1];
+      for (let i = 0; i < perimCoords.length - 1; i++) {
+        const p1 = perimCoords[i];
+        const p2 = perimCoords[i + 1];
         const length = calculateSegmentLength(p1, p2);
         const svgP1 = svgCoords[i];
         const svgP2 = svgCoords[i + 1];
@@ -332,11 +414,11 @@ export function SchematicRoofDiagram({
       }
     }
     
-    // Extract eaves and rakes directly from linear_features_wkt (these are the accurate straight lines)
-    const classifiedEaves: Array<{ start: { x: number; y: number }; end: { x: number; y: number }; length: number }> = [];
-    const classifiedRakes: Array<{ start: { x: number; y: number }; end: { x: number; y: number }; length: number }> = [];
+    // Extract eaves and rakes directly from WKT (these are accurate straight lines)
+    const classifiedEaves: Array<{ start: { x: number; y: number }; end: { x: number; y: number }; length: number; gpsStart: GPSCoord; gpsEnd: GPSCoord }> = [];
+    const classifiedRakes: Array<{ start: { x: number; y: number }; end: { x: number; y: number }; length: number; gpsStart: GPSCoord; gpsEnd: GPSCoord }> = [];
     
-    // Build linear feature paths from measurement data - use ALL features including eaves/rakes
+    // Build linear feature paths from measurement data
     const linFeatures = plausibleLinearFeatures.map(f => {
       const svgCoords = f.coords.map(toSvg);
       
@@ -346,12 +428,16 @@ export function SchematicRoofDiagram({
           start: svgCoords[0],
           end: svgCoords[svgCoords.length - 1],
           length: f.length,
+          gpsStart: f.coords[0],
+          gpsEnd: f.coords[f.coords.length - 1],
         });
       } else if (f.type === 'rake' && svgCoords.length >= 2) {
         classifiedRakes.push({
           start: svgCoords[0],
           end: svgCoords[svgCoords.length - 1],
           length: f.length,
+          gpsStart: f.coords[0],
+          gpsEnd: f.coords[f.coords.length - 1],
         });
       }
       
@@ -364,10 +450,6 @@ export function SchematicRoofDiagram({
     });
     
     console.log(`🏠 Linear features: ${classifiedEaves.length} eaves, ${classifiedRakes.length} rakes from measurement data`);
-    
-    // Debug: log hip features specifically  
-    const hipFeatures = linFeatures.filter(f => f.type === 'hip');
-    console.log(`🟣 Hip features to render: ${hipFeatures.length}`, hipFeatures.map(h => ({ points: h.points.length, length: h.length })));
     
     // Build facet paths
     const facetPathsData = facets.map((facet, index) => {
@@ -395,15 +477,23 @@ export function SchematicRoofDiagram({
     const qaData: GeometryQA = {
       hasFacets: facetPathsData.length > 0,
       facetCount: facetPathsData.length,
-      vertexCount: perimeterCoords.length,
+      vertexCount: perimCoords.length,
       linearFeatureCount: linearFeaturesData.length,
       plausibleLines: plausibleLinearFeatures.length,
       implausibleLines: implausibleCount,
-      perimeterStatus: perimeterCoords.length >= 3 ? 'ok' : 'warning',
+      perimeterStatus: perimCoords.length >= 3 ? 'ok' : 'warning',
     };
+    
+    // Convert perimeter coords to SVG for debug markers
+    const perimeterWithSvg = perimCoords.map((coord, i) => ({
+      ...coord,
+      svg: toSvg(coord),
+      index: i + 1,
+    }));
     
     return {
       perimeterPath: pathD,
+      perimeterCoords: perimeterWithSvg,
       perimeterSegments: perimSegs,
       linearFeatures: linFeatures,
       bounds: { minLat, maxLat, minLng, maxLng },
@@ -411,6 +501,7 @@ export function SchematicRoofDiagram({
       facetPaths: facetPathsData,
       eaveSegments: classifiedEaves,
       rakeSegments: classifiedRakes,
+      debugInfo: dbgInfo,
       qaData,
     };
   }, [measurement, width, height, facets]);
@@ -425,7 +516,6 @@ export function SchematicRoofDiagram({
 
   // Destructure qaData from the memo result
   const qaData = useMemo(() => {
-    // Access qaData from the memoized result
     const result = { perimeterPath, perimeterSegments, linearFeatures, bounds, svgPadding, facetPaths };
     return (result as any).qaData as GeometryQA | undefined;
   }, [perimeterPath, perimeterSegments, linearFeatures, bounds, svgPadding, facetPaths]);
@@ -485,16 +575,28 @@ export function SchematicRoofDiagram({
 
   return (
     <div className="relative rounded-lg overflow-hidden border" style={{ width, height, backgroundColor }}>
+      {/* Satellite image background (when overlay is enabled) */}
+      {localShowOverlay && satelliteImageUrl && (
+        <img 
+          src={satelliteImageUrl}
+          alt="Satellite view"
+          className="absolute inset-0 w-full h-full object-cover"
+          style={{ opacity: satelliteOpacity }}
+        />
+      )}
+      
       <svg width={width} height={height} className="absolute inset-0">
-        {/* White background */}
-        <rect x={0} y={0} width={width} height={height} fill={backgroundColor} />
+        {/* White/transparent background */}
+        {!localShowOverlay && (
+          <rect x={0} y={0} width={width} height={height} fill={backgroundColor} />
+        )}
         
         {/* Facet polygons (rendered first so they're behind lines) */}
         {showFacets && facetPaths.map((facet: any, i: number) => (
           <g key={`facet-${facet.facetNumber}`}>
             <path
               d={facet.path}
-              fill={facet.color}
+              fill={localShowOverlay ? 'rgba(59, 130, 246, 0.2)' : facet.color}
               stroke={FACET_COLORS[i % FACET_COLORS.length].replace('0.3', '0.8')}
               strokeWidth={1.5}
             />
@@ -537,10 +639,10 @@ export function SchematicRoofDiagram({
           <path
             d={perimeterPath}
             fill="none"
-            stroke={FEATURE_COLORS.perimeter}
-            strokeWidth={1}
+            stroke={localShowOverlay ? '#FFFFFF' : FEATURE_COLORS.perimeter}
+            strokeWidth={localShowOverlay ? 2 : 1}
             strokeLinejoin="miter"
-            opacity={0.3}
+            opacity={localShowOverlay ? 0.8 : 0.3}
           />
         )}
         
@@ -634,6 +736,38 @@ export function SchematicRoofDiagram({
             );
           })}
         
+        {/* Debug: Numbered perimeter vertex markers */}
+        {localShowMarkers && perimeterCoords && perimeterCoords.map((coord: any, i: number) => (
+          <g key={`marker-${i}`}>
+            <circle
+              cx={coord.svg.x}
+              cy={coord.svg.y}
+              r={i === 0 ? 12 : 8}
+              fill={i === 0 ? '#DC2626' : '#FFFFFF'}
+              stroke={i === 0 ? '#FFFFFF' : '#374151'}
+              strokeWidth={2}
+            />
+            <text
+              x={coord.svg.x}
+              y={coord.svg.y + 4}
+              textAnchor="middle"
+              fontSize={i === 0 ? 10 : 8}
+              fontWeight="bold"
+              fill={i === 0 ? '#FFFFFF' : '#374151'}
+            >
+              {coord.index}
+            </text>
+          </g>
+        ))}
+        
+        {/* Debug: Eave endpoint markers */}
+        {localShowMarkers && eaveSegments.map((seg: any, i: number) => (
+          <g key={`eave-marker-${i}`}>
+            <circle cx={seg.start.x} cy={seg.start.y} r={3} fill="#006400" />
+            <circle cx={seg.end.x} cy={seg.end.y} r={3} fill="#006400" />
+          </g>
+        ))}
+        
         {/* Perimeter segment labels */}
         {showLengthLabels && perimeterSegments.map((seg, i) => {
           const p1 = seg.points[0];
@@ -684,6 +818,88 @@ export function SchematicRoofDiagram({
           </g>
         )}
       </svg>
+      
+      {/* Debug Controls (top-left) */}
+      {(satelliteImageUrl || showDebugMarkers || showDebugPanel) && (
+        <div className="absolute top-3 left-24 flex gap-1">
+          {satelliteImageUrl && (
+            <button
+              onClick={() => setLocalShowOverlay(!localShowOverlay)}
+              className={`p-1.5 rounded-md text-xs flex items-center gap-1 ${
+                localShowOverlay 
+                  ? 'bg-primary text-primary-foreground' 
+                  : 'bg-white/90 text-muted-foreground hover:bg-white'
+              }`}
+              title="Toggle satellite overlay"
+            >
+              <Layers className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <button
+            onClick={() => setLocalShowMarkers(!localShowMarkers)}
+            className={`p-1.5 rounded-md text-xs flex items-center gap-1 ${
+              localShowMarkers 
+                ? 'bg-primary text-primary-foreground' 
+                : 'bg-white/90 text-muted-foreground hover:bg-white'
+            }`}
+            title="Toggle debug markers"
+          >
+            <MapPin className="h-3.5 w-3.5" />
+          </button>
+          <button
+            onClick={() => setLocalShowDebugPanel(!localShowDebugPanel)}
+            className={`p-1.5 rounded-md text-xs flex items-center gap-1 ${
+              localShowDebugPanel 
+                ? 'bg-primary text-primary-foreground' 
+                : 'bg-white/90 text-muted-foreground hover:bg-white'
+            }`}
+            title="Toggle debug panel"
+          >
+            <Eye className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+      
+      {/* Debug Panel (bottom-right) */}
+      {localShowDebugPanel && debugInfo && (
+        <div className="absolute bottom-3 right-3 bg-slate-900/95 text-white rounded-lg px-3 py-2 shadow-lg text-[9px] font-mono max-w-[200px]">
+          <div className="font-semibold text-xs mb-1.5 text-amber-400">🔍 Debug Info</div>
+          <div className="space-y-1">
+            <div className="text-slate-300">Transform: <span className="text-white">{debugInfo.transformMode}</span></div>
+            <div className="text-slate-300">Perimeter pts: <span className="text-white">{debugInfo.perimeterPoints}</span></div>
+            <div className="border-t border-slate-700 pt-1 mt-1">
+              <div className="text-amber-400 mb-0.5">Feature Counts:</div>
+              <div className="grid grid-cols-2 gap-x-2">
+                <span style={{ color: FEATURE_COLORS.eave }}>Eaves: {debugInfo.eaveCount}</span>
+                <span style={{ color: FEATURE_COLORS.rake }}>Rakes: {debugInfo.rakeCount}</span>
+                <span style={{ color: FEATURE_COLORS.hip }}>Hips: {debugInfo.hipCount}</span>
+                <span style={{ color: FEATURE_COLORS.valley }}>Valleys: {debugInfo.valleyCount}</span>
+                <span style={{ color: FEATURE_COLORS.ridge }}>Ridges: {debugInfo.ridgeCount}</span>
+              </div>
+            </div>
+            {debugInfo.eaveBounds && (
+              <div className="border-t border-slate-700 pt-1 mt-1">
+                <div className="text-amber-400 mb-0.5">Eave Bounds:</div>
+                <div className="text-[8px]">
+                  Lat: {debugInfo.eaveBounds.minLat.toFixed(6)} → {debugInfo.eaveBounds.maxLat.toFixed(6)}
+                </div>
+                <div className="text-[8px]">
+                  Lng: {debugInfo.eaveBounds.minLng.toFixed(6)} → {debugInfo.eaveBounds.maxLng.toFixed(6)}
+                </div>
+              </div>
+            )}
+            <div className="border-t border-slate-700 pt-1 mt-1">
+              <div className="text-amber-400 mb-0.5">Perimeter Bounds:</div>
+              <div className="text-[8px]">
+                Lat: {debugInfo.perimeterBounds.minLat.toFixed(6)} → {debugInfo.perimeterBounds.maxLat.toFixed(6)}
+              </div>
+              <div className="text-[8px]">
+                Lng: {debugInfo.perimeterBounds.minLng.toFixed(6)} → {debugInfo.perimeterBounds.maxLng.toFixed(6)}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       
       {/* Perimeter Only Warning */}
       {showPerimeterOnlyWarning && (
