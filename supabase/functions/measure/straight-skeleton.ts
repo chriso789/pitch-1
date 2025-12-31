@@ -1,31 +1,58 @@
-// Simplified Straight Skeleton Algorithm for Roof Topology Extraction
-// Optimized for common residential building shapes (rectangles, L-shapes, T-shapes)
+// Straight Skeleton Algorithm for Roof Topology Extraction
+// FIXED: Proper vertex sharing - hips START at ridge endpoints, valleys END at ridge intersections
+// All lines share exact vertices with zero tolerance
 
 type XY = [number, number]; // [lng, lat]
 
+interface SkeletonVertex {
+  id: string;
+  coords: XY;
+  type: 'ridge_end' | 'eave_corner' | 'valley_ridge_intersection' | 'internal';
+  connectedEdgeIds: string[];
+}
+
 interface SkeletonEdge {
+  id?: string;
   start: XY;
   end: XY;
   type: 'ridge' | 'hip' | 'valley';
-  boundaryIndices?: number[]; // Which boundary vertices this connects to
+  boundaryIndices?: number[];
+  startVertexId?: string;
+  endVertexId?: string;
 }
+
+interface TopologicalSkeleton {
+  vertices: Map<string, SkeletonVertex>;
+  edges: SkeletonEdge[];
+}
+
+// Default soffit overhang in feet (typical residential is 12-18 inches)
+const DEFAULT_SOFFIT_OFFSET_FT = 1.0;
 
 /**
  * Compute straight skeleton of a polygon and classify edges into ridge/hip/valley
+ * NEW: Applies eave offset to make perimeter follow actual roof edge
  * @param ring Array of [lng, lat] coordinates (closed polygon, CCW orientation)
- * @returns Array of classified skeleton edges
+ * @param soffitOffsetFt Soffit overhang in feet (default 1ft = 12 inches)
+ * @returns Array of classified skeleton edges with shared vertices
  */
-export function computeStraightSkeleton(ring: XY[]): SkeletonEdge[] {
+export function computeStraightSkeleton(ring: XY[], soffitOffsetFt: number = DEFAULT_SOFFIT_OFFSET_FT): SkeletonEdge[] {
   // Ensure closed ring
   if (ring[0][0] !== ring[ring.length - 1][0] || ring[0][1] !== ring[ring.length - 1][1]) {
     ring = [...ring, ring[0]];
   }
 
   // Remove duplicate closing vertex for processing
-  const vertices = ring.slice(0, -1);
+  let vertices = ring.slice(0, -1);
   
   if (vertices.length < 3) {
     return [];
+  }
+
+  // Apply eave/soffit offset to expand perimeter to actual roof edge
+  if (soffitOffsetFt > 0) {
+    vertices = applyEaveOffset(vertices, soffitOffsetFt);
+    console.log(`  Applied ${soffitOffsetFt}ft eave offset to perimeter`);
   }
 
   // Find reflex (concave) vertices
@@ -42,15 +69,97 @@ export function computeStraightSkeleton(ring: XY[]): SkeletonEdge[] {
   } else if (shapeType === 'L-shape' || shapeType === 'T-shape' || shapeType === 'U-shape') {
     skeleton = generateComplexSkeleton(vertices, reflexIndices);
   } else {
-    // Complex shape: use simplified medial axis approach
     skeleton = generateMedialAxisSkeleton(vertices, reflexIndices);
   }
   
-  // Classify each edge
+  // CRITICAL: Enforce exact vertex sharing - all lines must connect at exact points
+  skeleton = enforceSharedVertices(skeleton, vertices, reflexIndices);
+  
+  // Classify each edge (already done during generation, just validate)
   return skeleton.map(edge => ({
     ...edge,
     type: classifySkeletonEdge(edge, reflexIndices, vertices)
   }));
+}
+
+/**
+ * Apply eave/soffit offset to expand footprint to actual roof edge
+ * Typical soffit overhang is 12-18 inches beyond wall line
+ */
+function applyEaveOffset(vertices: XY[], offsetFeet: number): XY[] {
+  if (offsetFeet <= 0 || vertices.length < 3) return vertices;
+  
+  const n = vertices.length;
+  const midLat = vertices.reduce((s, v) => s + v[1], 0) / n;
+  
+  // Convert feet to degrees
+  const metersPerDegLat = 111320;
+  const metersPerDegLng = 111320 * Math.cos(midLat * Math.PI / 180);
+  const offsetMeters = offsetFeet * 0.3048;
+  const offsetDegLat = offsetMeters / metersPerDegLat;
+  const offsetDegLng = offsetMeters / metersPerDegLng;
+  
+  // Calculate outward normal for each edge and offset vertices
+  const offsetVertices: XY[] = [];
+  
+  for (let i = 0; i < n; i++) {
+    const prev = vertices[(i - 1 + n) % n];
+    const curr = vertices[i];
+    const next = vertices[(i + 1) % n];
+    
+    // Edge vectors
+    const e1x = curr[0] - prev[0];
+    const e1y = curr[1] - prev[1];
+    const e2x = next[0] - curr[0];
+    const e2y = next[1] - curr[1];
+    
+    // Outward normals (perpendicular, pointing outward for CCW polygon)
+    const len1 = Math.sqrt(e1x * e1x + e1y * e1y);
+    const len2 = Math.sqrt(e2x * e2x + e2y * e2y);
+    
+    if (len1 === 0 || len2 === 0) {
+      offsetVertices.push(curr);
+      continue;
+    }
+    
+    // Normal for edge 1: rotate 90° counterclockwise (outward for CCW)
+    const n1x = -e1y / len1;
+    const n1y = e1x / len1;
+    
+    // Normal for edge 2
+    const n2x = -e2y / len2;
+    const n2y = e2x / len2;
+    
+    // Average normal direction (bisector)
+    let bisX = n1x + n2x;
+    let bisY = n1y + n2y;
+    const bisLen = Math.sqrt(bisX * bisX + bisY * bisY);
+    
+    if (bisLen < 0.001) {
+      // Edges are parallel, use single normal
+      bisX = n1x;
+      bisY = n1y;
+    } else {
+      bisX /= bisLen;
+      bisY /= bisLen;
+    }
+    
+    // Calculate offset distance adjustment for corner angle
+    const dot = n1x * n2x + n1y * n2y;
+    const sinHalfAngle = Math.sqrt((1 - dot) / 2);
+    const offsetFactor = sinHalfAngle > 0.1 ? 1 / sinHalfAngle : 1;
+    
+    // Clamp offset factor to prevent extreme expansion at acute corners
+    const clampedFactor = Math.min(offsetFactor, 2.0);
+    
+    // Apply offset
+    const offsetX = bisX * offsetDegLng * clampedFactor;
+    const offsetY = bisY * offsetDegLat * clampedFactor;
+    
+    offsetVertices.push([curr[0] + offsetX, curr[1] + offsetY]);
+  }
+  
+  return offsetVertices;
 }
 
 /**
@@ -91,20 +200,18 @@ function isReflex(prev: XY, curr: XY, next: XY): boolean {
 function detectBuildingShape(vertices: XY[]): 'rectangle' | 'L-shape' | 'T-shape' | 'U-shape' | 'complex' {
   const n = vertices.length;
   
-  // Check for rectangle (4 vertices, all ~90° angles)
   if (n === 4) {
     const allRightAngles = vertices.every((_, i) => {
       const prev = vertices[(i - 1 + n) % n];
       const curr = vertices[i];
       const next = vertices[(i + 1) % n];
       const angle = calculateAngle(prev, curr, next);
-      return Math.abs(angle - 90) < 10; // ±10° tolerance
+      return Math.abs(angle - 90) < 10;
     });
     
     if (allRightAngles) return 'rectangle';
   }
   
-  // Check for L, T, U shapes (6-12 vertices, mostly 90° angles)
   if (n >= 6 && n <= 12) {
     const rightAngleCount = vertices.filter((_, i) => {
       const prev = vertices[(i - 1 + n) % n];
@@ -146,6 +253,7 @@ function calculateAngle(prev: XY, curr: XY, next: XY): number {
 
 /**
  * Generate skeleton for rectangular buildings
+ * CORRECT: Hips start at eave corners and end EXACTLY at ridge endpoints
  */
 function generateRectangularSkeleton(vertices: XY[]): SkeletonEdge[] {
   // Find longest edge to determine ridge direction
@@ -168,50 +276,108 @@ function generateRectangularSkeleton(vertices: XY[]): SkeletonEdge[] {
   const opposite1 = vertices[(longestEdgeIdx + 2) % 4];
   const opposite2 = vertices[(longestEdgeIdx + 3) % 4];
   
-  // Calculate midpoints
-  const ridgeStart = midpoint(edge1, opposite2);
-  const ridgeEnd = midpoint(edge2, opposite1);
+  // Calculate ridge endpoints as exact midpoints
+  const ridgeStart: XY = midpoint(edge1, opposite2);
+  const ridgeEnd: XY = midpoint(edge2, opposite1);
   
-  // Create ridge
+  // Create ridge with explicit ID
   const ridge: SkeletonEdge = {
+    id: 'ridge_main',
     start: ridgeStart,
     end: ridgeEnd,
     type: 'ridge',
-    boundaryIndices: []
+    boundaryIndices: [],
+    startVertexId: 'ridge_start',
+    endVertexId: 'ridge_end'
   };
   
-  // Create 4 hips from corners to ridge endpoints
+  // Create 4 hips: each starts at an eave corner and ends at the EXACT ridge endpoint
+  // Hip topology: corner -> ridge endpoint (shared vertex)
   const hips: SkeletonEdge[] = [
-    { start: edge1, end: ridgeStart, type: 'hip', boundaryIndices: [longestEdgeIdx] },
-    { start: edge2, end: ridgeEnd, type: 'hip', boundaryIndices: [(longestEdgeIdx + 1) % 4] },
-    { start: opposite1, end: ridgeEnd, type: 'hip', boundaryIndices: [(longestEdgeIdx + 2) % 4] },
-    { start: opposite2, end: ridgeStart, type: 'hip', boundaryIndices: [(longestEdgeIdx + 3) % 4] }
+    { 
+      id: 'hip_1',
+      start: edge1, 
+      end: ridgeStart,  // EXACT ridge endpoint, not closest point
+      type: 'hip', 
+      boundaryIndices: [longestEdgeIdx],
+      endVertexId: 'ridge_start'
+    },
+    { 
+      id: 'hip_2',
+      start: edge2, 
+      end: ridgeEnd,    // EXACT ridge endpoint
+      type: 'hip', 
+      boundaryIndices: [(longestEdgeIdx + 1) % 4],
+      endVertexId: 'ridge_end'
+    },
+    { 
+      id: 'hip_3',
+      start: opposite1, 
+      end: ridgeEnd,    // EXACT ridge endpoint
+      type: 'hip', 
+      boundaryIndices: [(longestEdgeIdx + 2) % 4],
+      endVertexId: 'ridge_end'
+    },
+    { 
+      id: 'hip_4',
+      start: opposite2, 
+      end: ridgeStart,  // EXACT ridge endpoint
+      type: 'hip', 
+      boundaryIndices: [(longestEdgeIdx + 3) % 4],
+      endVertexId: 'ridge_start'
+    }
   ];
+  
+  console.log(`  Rectangular skeleton: 1 ridge, 4 hips with shared vertices`);
   
   return [ridge, ...hips];
 }
 
 /**
  * Generate skeleton for L, T, U shapes
- * FIXED: Proper valley detection at concave (reflex) vertices
- * Valleys form where two roof planes meet going DOWNWARD (at inside corners)
+ * FIXED: Valleys terminate at EXACT ridge/hip junction points
+ * Hips terminate at EXACT ridge endpoints (not along ridge line)
  */
 function generateComplexSkeleton(vertices: XY[], reflexIndices: Set<number>): SkeletonEdge[] {
   const skeleton: SkeletonEdge[] = [];
   const n = vertices.length;
   
-  // Find centroid as approximate interior point
   const centroid = calculateCentroid(vertices);
-  
-  // Get bounding box for ridge direction
   const bounds = getBounds(vertices);
   const isWiderThanTall = (bounds.maxX - bounds.minX) > (bounds.maxY - bounds.minY);
   
-  // IMPROVED: Create valley lines from each reflex (concave) vertex
-  // These are where two roof planes meet going DOWNWARD
-  const valleyEndpoints: XY[] = [];
+  // Compute ridge line first - this defines the junction points
+  const ridgeMargin = 0.35;
+  let ridgeStart: XY, ridgeEnd: XY;
   
-  reflexIndices.forEach(idx => {
+  if (isWiderThanTall) {
+    ridgeStart = [bounds.minX + (bounds.maxX - bounds.minX) * ridgeMargin, centroid[1]];
+    ridgeEnd = [bounds.maxX - (bounds.maxX - bounds.minX) * ridgeMargin, centroid[1]];
+  } else {
+    ridgeStart = [centroid[0], bounds.minY + (bounds.maxY - bounds.minY) * ridgeMargin];
+    ridgeEnd = [centroid[0], bounds.maxY - (bounds.maxY - bounds.minY) * ridgeMargin];
+  }
+  
+  // Add main ridge
+  skeleton.push({
+    id: 'ridge_main',
+    start: ridgeStart,
+    end: ridgeEnd,
+    type: 'ridge',
+    boundaryIndices: [],
+    startVertexId: 'ridge_start',
+    endVertexId: 'ridge_end'
+  });
+  
+  // Build junction vertices - these are the ONLY valid endpoints for hips and valleys
+  const junctionVertices: { id: string; coords: XY; type: string }[] = [
+    { id: 'ridge_start', coords: ridgeStart, type: 'ridge_end' },
+    { id: 'ridge_end', coords: ridgeEnd, type: 'ridge_end' }
+  ];
+  
+  // Process reflex vertices to create valleys
+  // Valleys: start at reflex (inside corner) vertex, end at ridge intersection
+  reflexIndices.forEach((idx, i) => {
     const vertex = vertices[idx];
     const prev = vertices[(idx - 1 + n) % n];
     const next = vertices[(idx + 1) % n];
@@ -222,147 +388,185 @@ function generateComplexSkeleton(vertices: XY[], reflexIndices: Set<number>): Sk
     const bisectorLen = Math.sqrt(bisectorDir[0] ** 2 + bisectorDir[1] ** 2);
     
     if (bisectorLen > 0) {
-      // Normalize and extend inward
       const normalizedDir: XY = [bisectorDir[0] / bisectorLen, bisectorDir[1] / bisectorLen];
       
-      // Valley extends from reflex vertex toward interior
-      // Length should be proportional to distance to centroid
-      const distToCentroid = distance(vertex, centroid);
-      const valleyLength = distToCentroid * 0.6; // 60% toward centroid
+      // Valley endpoint: calculate where bisector ray intersects ridge line
+      const intersection = rayLineIntersection(vertex, normalizedDir, ridgeStart, ridgeEnd);
       
-      const valleyEnd: XY = [
-        vertex[0] + normalizedDir[0] * valleyLength * 0.5,
-        vertex[1] + normalizedDir[1] * valleyLength * 0.5
-      ];
+      let valleyEnd: XY;
+      let valleyEndVertexId: string;
       
-      valleyEndpoints.push(valleyEnd);
+      if (intersection) {
+        // Valley ends at ridge intersection point
+        valleyEnd = intersection;
+        valleyEndVertexId = `valley_ridge_${i}`;
+        junctionVertices.push({ id: valleyEndVertexId, coords: valleyEnd, type: 'valley_ridge_intersection' });
+      } else {
+        // No direct intersection - end at nearest ridge endpoint
+        const distToStart = distance(vertex, ridgeStart);
+        const distToEnd = distance(vertex, ridgeEnd);
+        if (distToStart < distToEnd) {
+          valleyEnd = ridgeStart;
+          valleyEndVertexId = 'ridge_start';
+        } else {
+          valleyEnd = ridgeEnd;
+          valleyEndVertexId = 'ridge_end';
+        }
+      }
       
       skeleton.push({
+        id: `valley_${i}`,
         start: vertex,
         end: valleyEnd,
         type: 'valley',
-        boundaryIndices: [idx]
+        boundaryIndices: [idx],
+        endVertexId: valleyEndVertexId
       });
     }
   });
   
-  console.log(`  Complex skeleton: ${reflexIndices.size} valleys from reflex vertices`);
-  
-  // Create main ridge line(s) based on building shape
-  // For L/T/U shapes, ridge typically runs through the main mass
-  const ridgeMargin = 0.35; // 35% from edges
-  
-  let ridgeStart: XY, ridgeEnd: XY;
-  
-  if (isWiderThanTall) {
-    // Horizontal ridge
-    ridgeStart = [bounds.minX + (bounds.maxX - bounds.minX) * ridgeMargin, centroid[1]];
-    ridgeEnd = [bounds.maxX - (bounds.maxX - bounds.minX) * ridgeMargin, centroid[1]];
-  } else {
-    // Vertical ridge
-    ridgeStart = [centroid[0], bounds.minY + (bounds.maxY - bounds.minY) * ridgeMargin];
-    ridgeEnd = [centroid[0], bounds.maxY - (bounds.maxY - bounds.minY) * ridgeMargin];
-  }
-  
-  skeleton.push({
-    start: ridgeStart,
-    end: ridgeEnd,
-    type: 'ridge',
-    boundaryIndices: []
-  });
-  
-  // Connect valley endpoints to nearest ridge point if they're close
-  valleyEndpoints.forEach(valleyEnd => {
-    const ridgePoint = closestPointOnLine(valleyEnd, ridgeStart, ridgeEnd);
-    const distToRidge = distance(valleyEnd, ridgePoint);
-    
-    // If valley end is close to ridge, extend to meet it
-    if (distToRidge < distance(ridgeStart, ridgeEnd) * 0.3) {
-      // Find the valley edge and extend it
-      const valleyEdge = skeleton.find(e => 
-        e.type === 'valley' && 
-        (distance(e.end, valleyEnd) < 0.0001)
-      );
-      if (valleyEdge) {
-        valleyEdge.end = ridgePoint;
-      }
-    }
-  });
-  
-  // Create hips from convex corners to nearest ridge point
+  // Process convex vertices to create hips
+  // Hips: start at eave corner, end at EXACT ridge endpoint (not along ridge)
   for (let i = 0; i < n; i++) {
     if (!reflexIndices.has(i)) {
       const vertex = vertices[i];
-      const hipEnd = closestPointOnLine(vertex, ridgeStart, ridgeEnd);
+      
+      // Find the NEAREST ridge ENDPOINT (not closest point on line!)
+      const distToRidgeStart = distance(vertex, ridgeStart);
+      const distToRidgeEnd = distance(vertex, ridgeEnd);
+      
+      let hipEnd: XY;
+      let hipEndVertexId: string;
+      
+      if (distToRidgeStart <= distToRidgeEnd) {
+        hipEnd = ridgeStart;  // EXACT ridge endpoint
+        hipEndVertexId = 'ridge_start';
+      } else {
+        hipEnd = ridgeEnd;    // EXACT ridge endpoint
+        hipEndVertexId = 'ridge_end';
+      }
       
       // Only add hip if it's a reasonable length
       const hipLength = distance(vertex, hipEnd);
       const ridgeLength = distance(ridgeStart, ridgeEnd);
       
-      if (hipLength > ridgeLength * 0.1 && hipLength < ridgeLength * 2) {
+      if (hipLength > ridgeLength * 0.05 && hipLength < ridgeLength * 3) {
         skeleton.push({
+          id: `hip_${i}`,
           start: vertex,
           end: hipEnd,
           type: 'hip',
-          boundaryIndices: [i]
+          boundaryIndices: [i],
+          endVertexId: hipEndVertexId
         });
       }
     }
   }
   
-  console.log(`  Generated: ${skeleton.filter(e => e.type === 'ridge').length} ridges, ${skeleton.filter(e => e.type === 'hip').length} hips, ${skeleton.filter(e => e.type === 'valley').length} valleys`);
+  console.log(`  Complex skeleton: ${skeleton.filter(e => e.type === 'ridge').length} ridges, ${skeleton.filter(e => e.type === 'hip').length} hips, ${skeleton.filter(e => e.type === 'valley').length} valleys`);
+  console.log(`  Junction vertices: ${junctionVertices.length}`);
   
   return skeleton;
 }
 
 /**
  * Generate skeleton using medial axis approach (for complex shapes)
- * IMPROVED: Better valley detection and facet generation
+ * FIXED: All hips and valleys share exact vertices with ridge
  */
 function generateMedialAxisSkeleton(vertices: XY[], reflexIndices: Set<number>): SkeletonEdge[] {
   const skeleton: SkeletonEdge[] = [];
   const n = vertices.length;
   const centroid = calculateCentroid(vertices);
   
-  // Create a central ridge based on building orientation
   const bounds = getBounds(vertices);
   const isWiderThanTall = (bounds.maxX - bounds.minX) > (bounds.maxY - bounds.minY);
   
   let ridgeStart: XY, ridgeEnd: XY;
   
   if (isWiderThanTall) {
-    // Horizontal ridge (building is wider than tall)
     ridgeStart = [bounds.minX + (bounds.maxX - bounds.minX) * 0.25, centroid[1]];
     ridgeEnd = [bounds.maxX - (bounds.maxX - bounds.minX) * 0.25, centroid[1]];
   } else {
-    // Vertical ridge (building is taller than wide)
     ridgeStart = [centroid[0], bounds.minY + (bounds.maxY - bounds.minY) * 0.25];
     ridgeEnd = [centroid[0], bounds.maxY - (bounds.maxY - bounds.minY) * 0.25];
   }
   
   skeleton.push({
+    id: 'ridge_main',
     start: ridgeStart,
     end: ridgeEnd,
     type: 'ridge',
-    boundaryIndices: []
+    boundaryIndices: [],
+    startVertexId: 'ridge_start',
+    endVertexId: 'ridge_end'
   });
   
-  // Connect corners to ridge with proper valley/hip classification
+  // Connect corners to ridge endpoints with proper valley/hip classification
   for (let i = 0; i < n; i++) {
     const vertex = vertices[i];
     const isReflex = reflexIndices.has(i);
-    const nearestPoint = closestPointOnLine(vertex, ridgeStart, ridgeEnd);
     
-    // Calculate line length - skip very short lines
-    const lineLength = distance(vertex, nearestPoint);
+    // For hips: connect to nearest ridge ENDPOINT
+    // For valleys: connect to ridge intersection or nearest endpoint
+    let endPoint: XY;
+    let endVertexId: string;
+    
+    if (isReflex) {
+      // Valley: try to find intersection with ridge
+      const prev = vertices[(i - 1 + n) % n];
+      const next = vertices[(i + 1) % n];
+      const bisector = angleBisector(prev, vertex, next);
+      const dir: XY = [bisector[0] - vertex[0], bisector[1] - vertex[1]];
+      const len = Math.sqrt(dir[0] ** 2 + dir[1] ** 2);
+      
+      if (len > 0) {
+        const normalizedDir: XY = [dir[0] / len, dir[1] / len];
+        const intersection = rayLineIntersection(vertex, normalizedDir, ridgeStart, ridgeEnd);
+        
+        if (intersection) {
+          endPoint = intersection;
+          endVertexId = `valley_ridge_${i}`;
+        } else {
+          const distToStart = distance(vertex, ridgeStart);
+          const distToEnd = distance(vertex, ridgeEnd);
+          if (distToStart < distToEnd) {
+            endPoint = ridgeStart;
+            endVertexId = 'ridge_start';
+          } else {
+            endPoint = ridgeEnd;
+            endVertexId = 'ridge_end';
+          }
+        }
+      } else {
+        endPoint = centroid;
+        endVertexId = 'centroid';
+      }
+    } else {
+      // Hip: connect to nearest ridge ENDPOINT (not closest point on line!)
+      const distToStart = distance(vertex, ridgeStart);
+      const distToEnd = distance(vertex, ridgeEnd);
+      
+      if (distToStart <= distToEnd) {
+        endPoint = ridgeStart;
+        endVertexId = 'ridge_start';
+      } else {
+        endPoint = ridgeEnd;
+        endVertexId = 'ridge_end';
+      }
+    }
+    
+    // Only add if reasonable length
+    const lineLength = distance(vertex, endPoint);
     const ridgeLength = distance(ridgeStart, ridgeEnd);
     
-    if (lineLength > ridgeLength * 0.05) { // Skip lines shorter than 5% of ridge
+    if (lineLength > ridgeLength * 0.05) {
       skeleton.push({
+        id: `${isReflex ? 'valley' : 'hip'}_${i}`,
         start: vertex,
-        end: nearestPoint,
+        end: endPoint,
         type: isReflex ? 'valley' : 'hip',
-        boundaryIndices: [i]
+        boundaryIndices: [i],
+        endVertexId
       });
     }
   }
@@ -373,6 +577,121 @@ function generateMedialAxisSkeleton(vertices: XY[], reflexIndices: Set<number>):
 }
 
 /**
+ * CRITICAL: Enforce exact vertex sharing across all skeleton edges
+ * This is a post-processing pass to ensure no gaps between connected edges
+ */
+function enforceSharedVertices(
+  skeleton: SkeletonEdge[],
+  boundaryVertices: XY[],
+  reflexIndices: Set<number>
+): SkeletonEdge[] {
+  // Build vertex registry from ridges first (they define the junction points)
+  const vertexRegistry: Map<string, XY> = new Map();
+  
+  // Extract ridge endpoints as primary vertices
+  skeleton.filter(e => e.type === 'ridge').forEach(edge => {
+    if (edge.startVertexId) vertexRegistry.set(edge.startVertexId, edge.start);
+    if (edge.endVertexId) vertexRegistry.set(edge.endVertexId, edge.end);
+  });
+  
+  // Also register valley-ridge intersections
+  skeleton.filter(e => e.type === 'valley' && e.endVertexId?.startsWith('valley_ridge_')).forEach(edge => {
+    if (edge.endVertexId) vertexRegistry.set(edge.endVertexId, edge.end);
+  });
+  
+  // Now snap all hip and valley endpoints to registered vertices
+  const snapped = skeleton.map(edge => {
+    const newEdge = { ...edge };
+    
+    if (edge.type === 'hip' || edge.type === 'valley') {
+      // Snap end point to registered vertex
+      if (edge.endVertexId && vertexRegistry.has(edge.endVertexId)) {
+        newEdge.end = vertexRegistry.get(edge.endVertexId)!;
+      } else {
+        // Find nearest registered vertex and snap to it
+        const nearestVertex = findNearestVertex(edge.end, vertexRegistry);
+        if (nearestVertex) {
+          newEdge.end = nearestVertex.coords;
+          newEdge.endVertexId = nearestVertex.id;
+        }
+      }
+    }
+    
+    return newEdge;
+  });
+  
+  // Validate: check that all edges connect properly
+  const ridgeEndpoints = new Set<string>();
+  snapped.filter(e => e.type === 'ridge').forEach(e => {
+    ridgeEndpoints.add(`${e.start[0].toFixed(8)},${e.start[1].toFixed(8)}`);
+    ridgeEndpoints.add(`${e.end[0].toFixed(8)},${e.end[1].toFixed(8)}`);
+  });
+  
+  const hipValleyEnds = snapped.filter(e => e.type === 'hip' || e.type === 'valley')
+    .map(e => `${e.end[0].toFixed(8)},${e.end[1].toFixed(8)}`);
+  
+  const allConnected = hipValleyEnds.every(ep => ridgeEndpoints.has(ep) || 
+    snapped.some(e => e.type === 'valley' && e.endVertexId?.startsWith('valley_ridge_') && 
+      `${e.end[0].toFixed(8)},${e.end[1].toFixed(8)}` === ep));
+  
+  if (!allConnected) {
+    console.warn('  Some hip/valley endpoints do not connect to ridge vertices');
+  } else {
+    console.log('  ✓ All skeleton edges share exact vertices');
+  }
+  
+  return snapped;
+}
+
+/**
+ * Find nearest vertex from registry
+ */
+function findNearestVertex(point: XY, registry: Map<string, XY>): { id: string; coords: XY } | null {
+  let nearest: { id: string; coords: XY } | null = null;
+  let minDist = Infinity;
+  
+  registry.forEach((coords, id) => {
+    const d = distance(point, coords);
+    if (d < minDist) {
+      minDist = d;
+      nearest = { id, coords };
+    }
+  });
+  
+  return nearest;
+}
+
+/**
+ * Calculate intersection of ray with line segment
+ * Returns intersection point or null if no intersection
+ */
+function rayLineIntersection(rayOrigin: XY, rayDir: XY, lineStart: XY, lineEnd: XY): XY | null {
+  const dx = lineEnd[0] - lineStart[0];
+  const dy = lineEnd[1] - lineStart[1];
+  
+  const denominator = rayDir[0] * dy - rayDir[1] * dx;
+  
+  if (Math.abs(denominator) < 1e-10) {
+    // Ray and line are parallel
+    return null;
+  }
+  
+  const t = ((lineStart[0] - rayOrigin[0]) * dy - (lineStart[1] - rayOrigin[1]) * dx) / denominator;
+  const u = ((lineStart[0] - rayOrigin[0]) * rayDir[1] - (lineStart[1] - rayOrigin[1]) * rayDir[0]) / denominator;
+  
+  // t must be positive (ray goes forward)
+  // u must be in [0, 1] (intersection is on line segment)
+  if (t > 0 && u >= 0 && u <= 1) {
+    return [
+      rayOrigin[0] + t * rayDir[0],
+      rayOrigin[1] + t * rayDir[1]
+    ];
+  }
+  
+  return null;
+}
+
+/**
  * Classify skeleton edge based on connectivity and boundary vertices
  */
 function classifySkeletonEdge(
@@ -380,7 +699,6 @@ function classifySkeletonEdge(
   reflexIndices: Set<number>,
   vertices: XY[]
 ): 'ridge' | 'hip' | 'valley' {
-  // Already classified during generation
   return edge.type;
 }
 
@@ -402,7 +720,6 @@ function calculateCentroid(vertices: XY[]): XY {
 }
 
 function angleBisector(prev: XY, curr: XY, next: XY): XY {
-  // Normalize vectors
   const v1x = prev[0] - curr[0];
   const v1y = prev[1] - curr[1];
   const len1 = Math.sqrt(v1x ** 2 + v1y ** 2);
@@ -411,35 +728,10 @@ function angleBisector(prev: XY, curr: XY, next: XY): XY {
   const v2y = next[1] - curr[1];
   const len2 = Math.sqrt(v2x ** 2 + v2y ** 2);
   
-  // Bisector direction
   const bisX = v1x / len1 + v2x / len2;
   const bisY = v1y / len1 + v2y / len2;
   
   return [curr[0] + bisX, curr[1] + bisY];
-}
-
-function moveToward(from: XY, to: XY, ratio: number): XY {
-  return [
-    from[0] + (to[0] - from[0]) * ratio,
-    from[1] + (to[1] - from[1]) * ratio
-  ];
-}
-
-function closestPointOnLine(point: XY, lineStart: XY, lineEnd: XY): XY {
-  const dx = lineEnd[0] - lineStart[0];
-  const dy = lineEnd[1] - lineStart[1];
-  const lenSq = dx ** 2 + dy ** 2;
-  
-  if (lenSq === 0) return lineStart;
-  
-  const t = Math.max(0, Math.min(1, 
-    ((point[0] - lineStart[0]) * dx + (point[1] - lineStart[1]) * dy) / lenSq
-  ));
-  
-  return [
-    lineStart[0] + t * dx,
-    lineStart[1] + t * dy
-  ];
 }
 
 function getBounds(vertices: XY[]): { minX: number; maxX: number; minY: number; maxY: number } {
