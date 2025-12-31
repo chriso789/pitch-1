@@ -3,6 +3,7 @@ import { wktLineToLatLngs, wktPolygonToLatLngs } from '@/lib/canvassiq/wkt';
 import { supabase } from '@/integrations/supabase/client';
 import { AlertTriangle, Eye, EyeOff, MapPin, Layers } from 'lucide-react';
 import { calculateImageBounds, gpsToPixel, type ImageBounds, type GPSCoord } from '@/utils/gpsCalculations';
+import { parseSolarSegments, type SolarSegment, type SegmentPolygon, type DetectedEdge } from '@/lib/measurements/segmentGeometryParser';
 
 // Roofr exact color palette - MATCHED to Roofr conventions
 const FEATURE_COLORS = {
@@ -92,6 +93,13 @@ function calculateSegmentLength(p1: { lat: number; lng: number }, p2: { lat: num
   const dLng = (p2.lng - p1.lng) * Math.PI / 180;
   const a = Math.sin(dLat / 2) ** 2 + Math.cos(p1.lat * Math.PI / 180) * Math.cos(p2.lat * Math.PI / 180) * Math.sin(dLng / 2) ** 2;
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Convert azimuth angle to compass direction
+function getDirectionFromAzimuth(azimuth: number): string {
+  const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+  const index = Math.round(azimuth / 45) % 8;
+  return directions[index];
 }
 
 // Filter out implausible linear features - BUT NOT EAVES/RAKES (they need to be reliable)
@@ -231,6 +239,7 @@ export function SchematicRoofDiagram({
   }, [measurement]);
   
   // Parse and transform coordinates to SVG space
+  // PRIORITY: Use Solar API segment bounding boxes if available for accurate geometry
   const { 
     perimeterPath, 
     perimeterCoords,
@@ -241,13 +250,37 @@ export function SchematicRoofDiagram({
     facetPaths, 
     eaveSegments, 
     rakeSegments,
-    debugInfo 
+    debugInfo,
+    solarSegmentPolygons
   } = useMemo(() => {
     const padding = 60;
     const segments: Array<{ type: string; points: { x: number; y: number }[]; length: number; color: string }> = [];
     let allLatLngs: { lat: number; lng: number }[] = [];
     
-    // Extract perimeter from WKT or faces
+    // CHECK: Do we have Solar API segments with bounding boxes?
+    const solarSegments: SolarSegment[] = measurement?.solar_api_response?.roofSegments || [];
+    const hasSolarSegments = solarSegments.length > 0 && solarSegments.some(s => s.boundingBox?.sw && s.boundingBox?.ne);
+    
+    console.log(`📐 Geometry source: ${hasSolarSegments ? 'Solar API segments' : 'WKT/AI-detected'} (${solarSegments.length} segments)`);
+    
+    // PRIORITY PATH: Use Solar API segment geometry
+    let solarParsedSegments: SegmentPolygon[] = [];
+    let solarDetectedEdges: DetectedEdge[] = [];
+    
+    if (hasSolarSegments) {
+      const parsed = parseSolarSegments(solarSegments);
+      solarParsedSegments = parsed.segments;
+      solarDetectedEdges = parsed.edges;
+      
+      // Use segment polygons for bounds calculation
+      solarParsedSegments.forEach(seg => {
+        allLatLngs.push(...seg.polygon);
+      });
+      
+      console.log(`📐 Parsed ${solarParsedSegments.length} segment polygons, ${solarDetectedEdges.length} edges from Solar API`);
+    }
+    
+    // FALLBACK: Extract perimeter from WKT or faces
     let perimCoords: { lat: number; lng: number }[] = [];
     
     // Priority 1: perimeter_wkt from measurement
@@ -263,7 +296,7 @@ export function SchematicRoofDiagram({
       perimCoords = wktPolygonToLatLngs(measurement.building_outline_wkt);
     }
     
-    if (perimCoords.length > 0) {
+    if (perimCoords.length > 0 && !hasSolarSegments) {
       allLatLngs = [...perimCoords];
     }
     
@@ -276,30 +309,41 @@ export function SchematicRoofDiagram({
     
     // Extract ALL linear features with WKT - raw, unfiltered for eaves/rakes
     const linearFeaturesData: Array<{ type: string; coords: { lat: number; lng: number }[]; length: number }> = [];
-    const features = measurement?.linear_features || measurement?.linear_features_wkt || [];
     
-    if (Array.isArray(features)) {
-      features.forEach((f: LinearFeature) => {
-        if (f.wkt) {
-          const coords = wktLineToLatLngs(f.wkt);
-          if (coords.length >= 2) {
-            // Only add to allLatLngs if within reasonable distance of perimeter (avoid outliers)
-            const featureType = f.type?.toLowerCase() || 'ridge';
-            
-            // For bounds, prefer perimeter-based. Only add interior lines if close to perimeter
-            if (featureType === 'eave' || featureType === 'rake') {
-              allLatLngs.push(...coords); // Always include perimeter-adjacent features
-            }
-            // For interior lines, we'll add them but they won't skew bounds much
-            
-            linearFeaturesData.push({
-              type: featureType,
-              coords,
-              length: f.length_ft || f.length || calculateSegmentLength(coords[0], coords[coords.length - 1]),
-            });
-          }
-        }
+    // Use Solar API detected edges if available, otherwise use WKT features
+    if (hasSolarSegments && solarDetectedEdges.length > 0) {
+      solarDetectedEdges.forEach(edge => {
+        linearFeaturesData.push({
+          type: edge.type,
+          coords: [edge.start, edge.end],
+          length: edge.lengthFt
+        });
       });
+      console.log(`📐 Using ${solarDetectedEdges.length} edges from Solar API segment analysis`);
+    } else {
+      // Fallback to WKT features
+      const features = measurement?.linear_features || measurement?.linear_features_wkt || [];
+      
+      if (Array.isArray(features)) {
+        features.forEach((f: LinearFeature) => {
+          if (f.wkt) {
+            const coords = wktLineToLatLngs(f.wkt);
+            if (coords.length >= 2) {
+              const featureType = f.type?.toLowerCase() || 'ridge';
+              
+              if (featureType === 'eave' || featureType === 'rake') {
+                allLatLngs.push(...coords);
+              }
+              
+              linearFeaturesData.push({
+                type: featureType,
+                coords,
+                length: f.length_ft || f.length || calculateSegmentLength(coords[0], coords[coords.length - 1]),
+              });
+            }
+          }
+        });
+      }
     }
     
     // Debug logging for linear features
@@ -327,6 +371,7 @@ export function SchematicRoofDiagram({
         eaveSegments: [],
         rakeSegments: [],
         debugInfo: null,
+        solarSegmentPolygons: [],
         qaData: {
           hasFacets: false,
           facetCount: 0,
@@ -451,27 +496,52 @@ export function SchematicRoofDiagram({
     
     console.log(`🏠 Linear features: ${classifiedEaves.length} eaves, ${classifiedRakes.length} rakes from measurement data`);
     
-    // Build facet paths
-    const facetPathsData = facets.map((facet, index) => {
-      if (!facet.polygon_points || facet.polygon_points.length < 3) return null;
-      
-      const svgCoords = facet.polygon_points.map(toSvg);
-      const pathD = `M ${svgCoords.map(c => `${c.x},${c.y}`).join(' L ')} Z`;
-      const centroidSvg = facet.centroid ? toSvg(facet.centroid) : {
-        x: svgCoords.reduce((sum, c) => sum + c.x, 0) / svgCoords.length,
-        y: svgCoords.reduce((sum, c) => sum + c.y, 0) / svgCoords.length,
-      };
-      
-      return {
-        facetNumber: facet.facet_number,
-        path: pathD,
-        centroid: centroidSvg,
-        color: FACET_COLORS[index % FACET_COLORS.length],
-        area: facet.area_adjusted_sqft || facet.area_flat_sqft,
-        pitch: facet.pitch,
-        direction: facet.primary_direction,
-      };
-    }).filter(Boolean);
+    // Build facet paths - PREFER Solar API segments if available
+    let facetPathsData: any[] = [];
+    
+    if (solarParsedSegments.length > 0) {
+      // Use Solar API segment polygons for facets
+      facetPathsData = solarParsedSegments.map((seg, index) => {
+        const svgCoords = seg.polygon.map(toSvg);
+        const pathD = `M ${svgCoords.map(c => `${c.x},${c.y}`).join(' L ')} Z`;
+        const centroidSvg = toSvg(seg.centroid);
+        
+        return {
+          facetNumber: seg.segmentIndex + 1,
+          path: pathD,
+          centroid: centroidSvg,
+          color: FACET_COLORS[index % FACET_COLORS.length],
+          area: seg.areaSqft,
+          pitch: `${Math.round(seg.pitchDegrees)}°`,
+          direction: getDirectionFromAzimuth(seg.azimuthDegrees),
+          isSolarSegment: true,
+        };
+      });
+      console.log(`📐 Built ${facetPathsData.length} facet paths from Solar API segments`);
+    } else {
+      // Fallback to database facets
+      facetPathsData = facets.map((facet, index) => {
+        if (!facet.polygon_points || facet.polygon_points.length < 3) return null;
+        
+        const svgCoords = facet.polygon_points.map(toSvg);
+        const pathD = `M ${svgCoords.map(c => `${c.x},${c.y}`).join(' L ')} Z`;
+        const centroidSvg = facet.centroid ? toSvg(facet.centroid) : {
+          x: svgCoords.reduce((sum, c) => sum + c.x, 0) / svgCoords.length,
+          y: svgCoords.reduce((sum, c) => sum + c.y, 0) / svgCoords.length,
+        };
+        
+        return {
+          facetNumber: facet.facet_number,
+          path: pathD,
+          centroid: centroidSvg,
+          color: FACET_COLORS[index % FACET_COLORS.length],
+          area: facet.area_adjusted_sqft || facet.area_flat_sqft,
+          pitch: facet.pitch,
+          direction: facet.primary_direction,
+          isSolarSegment: false,
+        };
+      }).filter(Boolean);
+    }
     
     // Build QA data
     const qaData: GeometryQA = {
@@ -481,7 +551,7 @@ export function SchematicRoofDiagram({
       linearFeatureCount: linearFeaturesData.length,
       plausibleLines: plausibleLinearFeatures.length,
       implausibleLines: implausibleCount,
-      perimeterStatus: perimCoords.length >= 3 ? 'ok' : 'warning',
+      perimeterStatus: perimCoords.length >= 3 || solarParsedSegments.length > 0 ? 'ok' : 'warning',
     };
     
     // Convert perimeter coords to SVG for debug markers
@@ -489,6 +559,16 @@ export function SchematicRoofDiagram({
       ...coord,
       svg: toSvg(coord),
       index: i + 1,
+    }));
+    
+    // Build segment polygon paths for debug visualization
+    const solarSegmentPolys = solarParsedSegments.map((seg, i) => ({
+      id: seg.id,
+      path: `M ${seg.polygon.map(p => { const s = toSvg(p); return `${s.x},${s.y}`; }).join(' L ')} Z`,
+      centroid: toSvg(seg.centroid),
+      pitch: seg.pitchDegrees,
+      azimuth: seg.azimuthDegrees,
+      area: seg.areaSqft,
     }));
     
     return {
@@ -501,7 +581,8 @@ export function SchematicRoofDiagram({
       facetPaths: facetPathsData,
       eaveSegments: classifiedEaves,
       rakeSegments: classifiedRakes,
-      debugInfo: dbgInfo,
+      debugInfo: { ...dbgInfo, solarSegmentCount: solarParsedSegments.length, usingSolarGeometry: solarParsedSegments.length > 0 },
+      solarSegmentPolygons: solarSegmentPolys,
       qaData,
     };
   }, [measurement, width, height, facets]);
@@ -862,11 +943,16 @@ export function SchematicRoofDiagram({
       
       {/* Debug Panel (bottom-right) */}
       {localShowDebugPanel && debugInfo && (
-        <div className="absolute bottom-3 right-3 bg-slate-900/95 text-white rounded-lg px-3 py-2 shadow-lg text-[9px] font-mono max-w-[200px]">
+        <div className="absolute bottom-3 right-3 bg-slate-900/95 text-white rounded-lg px-3 py-2 shadow-lg text-[9px] font-mono max-w-[220px]">
           <div className="font-semibold text-xs mb-1.5 text-amber-400">🔍 Debug Info</div>
           <div className="space-y-1">
             <div className="text-slate-300">Transform: <span className="text-white">{debugInfo.transformMode}</span></div>
             <div className="text-slate-300">Perimeter pts: <span className="text-white">{debugInfo.perimeterPoints}</span></div>
+            {debugInfo.usingSolarGeometry && (
+              <div className="text-green-400 font-semibold">
+                ✓ Using Solar API Geometry ({debugInfo.solarSegmentCount} segments)
+              </div>
+            )}
             <div className="border-t border-slate-700 pt-1 mt-1">
               <div className="text-amber-400 mb-0.5">Feature Counts:</div>
               <div className="grid grid-cols-2 gap-x-2">
@@ -891,10 +977,10 @@ export function SchematicRoofDiagram({
             <div className="border-t border-slate-700 pt-1 mt-1">
               <div className="text-amber-400 mb-0.5">Perimeter Bounds:</div>
               <div className="text-[8px]">
-                Lat: {debugInfo.perimeterBounds.minLat.toFixed(6)} → {debugInfo.perimeterBounds.maxLat.toFixed(6)}
+                Lat: {debugInfo.perimeterBounds?.minLat?.toFixed(6) || 'N/A'} → {debugInfo.perimeterBounds?.maxLat?.toFixed(6) || 'N/A'}
               </div>
               <div className="text-[8px]">
-                Lng: {debugInfo.perimeterBounds.minLng.toFixed(6)} → {debugInfo.perimeterBounds.maxLng.toFixed(6)}
+                Lng: {debugInfo.perimeterBounds?.minLng?.toFixed(6) || 'N/A'} → {debugInfo.perimeterBounds?.maxLng?.toFixed(6) || 'N/A'}
               </div>
             </div>
           </div>
