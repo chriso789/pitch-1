@@ -5909,6 +5909,7 @@ export type Database = {
           notes: string | null
           overhead_amount: number
           overhead_percent: number
+          pdf_url: string | null
           permit_costs: number
           pipeline_entry_id: string | null
           price_per_sq_ft: number
@@ -5927,6 +5928,7 @@ export type Database = {
           selling_price: number
           sent_to_customer_at: string | null
           share_token: string | null
+          short_description: string | null
           signature_envelope_id: string | null
           signed_at: string | null
           status: Database["public"]["Enums"]["estimate_status"]
@@ -5984,6 +5986,7 @@ export type Database = {
           notes?: string | null
           overhead_amount?: number
           overhead_percent?: number
+          pdf_url?: string | null
           permit_costs?: number
           pipeline_entry_id?: string | null
           price_per_sq_ft?: number
@@ -6002,6 +6005,7 @@ export type Database = {
           selling_price?: number
           sent_to_customer_at?: string | null
           share_token?: string | null
+          short_description?: string | null
           signature_envelope_id?: string | null
           signed_at?: string | null
           status?: Database["public"]["Enums"]["estimate_status"]
@@ -6059,6 +6063,7 @@ export type Database = {
           notes?: string | null
           overhead_amount?: number
           overhead_percent?: number
+          pdf_url?: string | null
           permit_costs?: number
           pipeline_entry_id?: string | null
           price_per_sq_ft?: number
@@ -6077,6 +6082,7 @@ export type Database = {
           selling_price?: number
           sent_to_customer_at?: string | null
           share_token?: string | null
+          short_description?: string | null
           signature_envelope_id?: string | null
           signed_at?: string | null
           status?: Database["public"]["Enums"]["estimate_status"]
