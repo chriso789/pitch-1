@@ -62,7 +62,7 @@ serve(async (req) => {
       return `${wholeFeet}ft ${inches}in`
     }
 
-    // Generate 7-page HTML report matching Roofr format
+    // Generate HTML report
     const html = generateRoofrStyleHTML({
       address,
       companyInfo: companyInfo || { name: 'PITCH CRM' },
@@ -77,53 +77,83 @@ serve(async (req) => {
       formatFeetInches,
     })
 
-    // Upload to Supabase Storage
-    const fileName = `roofr-report-${Date.now()}.html`
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('measurement-reports')
-      .upload(fileName, new Blob([html], { type: 'text/html' }), {
-        contentType: 'text/html',
-        cacheControl: '3600',
-        upsert: true
-      })
+    // Generate PDF using smart-docs-pdf edge function
+    console.log('📄 Converting HTML to PDF via smart-docs-pdf...')
+    
+    const pdfResponse = await fetch(`${SUPABASE_URL}/functions/v1/smart-docs-pdf`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+      },
+      body: JSON.stringify({
+        html,
+        upload: 'signed',
+        filename: `roof-measurement-report-${Date.now()}.pdf`,
+      }),
+    })
 
-    if (uploadError) {
-      console.error('Upload error:', uploadError)
-      // Try creating bucket if it doesn't exist
-      await supabase.storage.createBucket('measurement-reports', { public: true })
-      const retryUpload = await supabase.storage
+    const pdfResult = await pdfResponse.json()
+    
+    if (!pdfResult.ok) {
+      console.error('PDF generation failed:', pdfResult.error)
+      // Fallback to HTML if PDF fails
+      const fileName = `roofr-report-${Date.now()}.html`
+      const { error: uploadError } = await supabase.storage
         .from('measurement-reports')
         .upload(fileName, new Blob([html], { type: 'text/html' }), {
           contentType: 'text/html',
           cacheControl: '3600',
           upsert: true
         })
-      if (retryUpload.error) throw retryUpload.error
+
+      if (uploadError) {
+        await supabase.storage.createBucket('measurement-reports', { public: true })
+        await supabase.storage
+          .from('measurement-reports')
+          .upload(fileName, new Blob([html], { type: 'text/html' }), {
+            contentType: 'text/html',
+            cacheControl: '3600',
+            upsert: true
+          })
+      }
+
+      const { data: urlData } = supabase.storage
+        .from('measurement-reports')
+        .getPublicUrl(fileName)
+
+      return new Response(JSON.stringify({
+        success: true,
+        pdfUrl: urlData.publicUrl,
+        fileName,
+        format: 'html',
+        warning: 'PDF generation failed, returning HTML instead'
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      })
     }
 
-    const { data: urlData } = supabase.storage
-      .from('measurement-reports')
-      .getPublicUrl(fileName)
+    console.log('✅ PDF generated successfully:', pdfResult.pdf_url)
 
     // Save to documents table if pipelineEntryId provided
     if (pipelineEntryId) {
       await supabase.from('documents').insert({
         pipeline_entry_id: pipelineEntryId,
         name: `Roof Measurement Report - ${address}`,
-        file_url: urlData.publicUrl,
-        file_type: 'html',
+        file_url: pdfResult.pdf_url,
+        file_type: 'pdf',
         document_type: 'measurement_report',
         created_at: new Date().toISOString(),
       })
-      console.log('📎 Report saved to documents')
+      console.log('📎 PDF report saved to documents')
     }
-
-    console.log('✅ Roofr-style report generated:', urlData.publicUrl)
 
     return new Response(JSON.stringify({
       success: true,
-      pdfUrl: urlData.publicUrl,
-      fileName,
+      pdfUrl: pdfResult.pdf_url,
+      storagePath: pdfResult.storage_path,
+      format: 'pdf',
+      sizeKb: pdfResult.size_kb,
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })

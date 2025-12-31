@@ -186,7 +186,7 @@ export function SchematicRoofDiagram({
   }, [measurementId]);
   
   // Parse and transform coordinates to SVG space
-  const { perimeterPath, perimeterSegments, linearFeatures, bounds, svgPadding, facetPaths } = useMemo(() => {
+  const { perimeterPath, perimeterSegments, linearFeatures, bounds, svgPadding, facetPaths, eaveSegments, rakeSegments } = useMemo(() => {
     const padding = 60;
     const segments: Array<{ type: string; points: { x: number; y: number }[]; length: number; color: string }> = [];
     let allLatLngs: { lat: number; lng: number }[] = [];
@@ -238,8 +238,17 @@ export function SchematicRoofDiagram({
       });
     }
     
+    // Debug logging for linear features
+    const featureCounts = linearFeaturesData.reduce((acc, f) => {
+      acc[f.type] = (acc[f.type] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    console.log('📊 Linear features by type:', featureCounts);
+    
     // Apply plausibility filter to linear features
     const { plausible: plausibleLinearFeatures, implausibleCount } = filterPlausibleLines(linearFeaturesData);
+    
+    console.log(`📐 Plausible features: ${plausibleLinearFeatures.length}, Filtered: ${implausibleCount}`);
     
     // Calculate bounds
     if (allLatLngs.length === 0) {
@@ -250,6 +259,8 @@ export function SchematicRoofDiagram({
         bounds: null, 
         svgPadding: padding, 
         facetPaths: [],
+        eaveSegments: [],
+        rakeSegments: [],
         qaData: {
           hasFacets: false,
           facetCount: 0,
@@ -289,11 +300,34 @@ export function SchematicRoofDiagram({
     let pathD = '';
     const perimSegs: typeof segments = [];
     
+    // Find ridge direction for eave/rake classification
+    const ridgeFeatures = plausibleLinearFeatures.filter(f => f.type === 'ridge');
+    let ridgeDirection: { dx: number; dy: number } | null = null;
+    
+    if (ridgeFeatures.length > 0) {
+      // Use the longest ridge to determine primary direction
+      const longestRidge = ridgeFeatures.reduce((a, b) => a.length > b.length ? a : b);
+      if (longestRidge.coords.length >= 2) {
+        const start = longestRidge.coords[0];
+        const end = longestRidge.coords[longestRidge.coords.length - 1];
+        const dx = end.lng - start.lng;
+        const dy = end.lat - start.lat;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len > 0) {
+          ridgeDirection = { dx: dx / len, dy: dy / len };
+        }
+      }
+    }
+    
+    // Classify perimeter edges as eave or rake
+    const classifiedEaves: Array<{ start: { x: number; y: number }; end: { x: number; y: number }; length: number }> = [];
+    const classifiedRakes: Array<{ start: { x: number; y: number }; end: { x: number; y: number }; length: number }> = [];
+    
     if (perimeterCoords.length >= 3) {
       const svgCoords = perimeterCoords.map(toSvg);
       pathD = `M ${svgCoords.map(c => `${c.x},${c.y}`).join(' L ')} Z`;
       
-      // Create individual edge segments with lengths
+      // Create individual edge segments with classification
       for (let i = 0; i < perimeterCoords.length - 1; i++) {
         const p1 = perimeterCoords[i];
         const p2 = perimeterCoords[i + 1];
@@ -301,26 +335,64 @@ export function SchematicRoofDiagram({
         const svgP1 = svgCoords[i];
         const svgP2 = svgCoords[i + 1];
         
-        // Classify as eave or rake (simplified - edges are labeled as perimeter segments)
+        // Classify edge as eave or rake based on ridge direction
+        let edgeType: 'eave' | 'rake' = 'eave';
+        
+        if (ridgeDirection) {
+          const edgeDx = p2.lng - p1.lng;
+          const edgeDy = p2.lat - p1.lat;
+          const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
+          
+          if (edgeLen > 0) {
+            const normalizedEdge = { dx: edgeDx / edgeLen, dy: edgeDy / edgeLen };
+            // Dot product with ridge direction
+            const dotProduct = Math.abs(normalizedEdge.dx * ridgeDirection.dx + normalizedEdge.dy * ridgeDirection.dy);
+            
+            // If edge is parallel to ridge (dot product close to 1), it's a rake
+            // If edge is perpendicular to ridge (dot product close to 0), it's an eave
+            edgeType = dotProduct > 0.7 ? 'rake' : 'eave';
+          }
+        }
+        
+        const segment = {
+          start: svgP1,
+          end: svgP2,
+          length
+        };
+        
+        if (edgeType === 'eave') {
+          classifiedEaves.push(segment);
+        } else {
+          classifiedRakes.push(segment);
+        }
+        
         perimSegs.push({
-          type: 'perimeter',
+          type: edgeType,
           points: [svgP1, svgP2],
           length,
-          color: FEATURE_COLORS.perimeter,
+          color: edgeType === 'eave' ? FEATURE_COLORS.eave : FEATURE_COLORS.rake,
         });
       }
     }
     
-    // Build linear feature paths (only plausible ones)
-    const linFeatures = plausibleLinearFeatures.map(f => {
-      const svgCoords = f.coords.map(toSvg);
-      return {
-        type: f.type,
-        points: svgCoords,
-        length: f.length || (f.coords.length >= 2 ? calculateSegmentLength(f.coords[0], f.coords[f.coords.length - 1]) : 0),
-        color: FEATURE_COLORS[f.type as keyof typeof FEATURE_COLORS] || FEATURE_COLORS.ridge,
-      };
-    });
+    console.log(`🏠 Classified edges: ${classifiedEaves.length} eaves, ${classifiedRakes.length} rakes`);
+    
+    // Build linear feature paths (only plausible ones) - filter out eaves/rakes since we draw them from perimeter
+    const linFeatures = plausibleLinearFeatures
+      .filter(f => f.type !== 'eave' && f.type !== 'rake') // Draw eaves/rakes from perimeter instead
+      .map(f => {
+        const svgCoords = f.coords.map(toSvg);
+        return {
+          type: f.type,
+          points: svgCoords,
+          length: f.length || (f.coords.length >= 2 ? calculateSegmentLength(f.coords[0], f.coords[f.coords.length - 1]) : 0),
+          color: FEATURE_COLORS[f.type as keyof typeof FEATURE_COLORS] || FEATURE_COLORS.ridge,
+        };
+      });
+    
+    // Debug: log hip features specifically  
+    const hipFeatures = linFeatures.filter(f => f.type === 'hip');
+    console.log(`🟣 Hip features to render: ${hipFeatures.length}`, hipFeatures.map(h => ({ points: h.points.length, length: h.length })));
     
     // Build facet paths
     const facetPathsData = facets.map((facet, index) => {
@@ -362,6 +434,8 @@ export function SchematicRoofDiagram({
       bounds: { minLat, maxLat, minLng, maxLng },
       svgPadding: padding,
       facetPaths: facetPathsData,
+      eaveSegments: classifiedEaves,
+      rakeSegments: classifiedRakes,
       qaData,
     };
   }, [measurement, width, height, facets]);
@@ -483,27 +557,54 @@ export function SchematicRoofDiagram({
           </g>
         ))}
         
-        {/* Perimeter outline (thin guide line - behind eaves/rakes) */}
+        {/* Perimeter outline (thin guide line - behind everything) */}
         {perimeterPath && (
           <path
             d={perimeterPath}
             fill="none"
             stroke={FEATURE_COLORS.perimeter}
-            strokeWidth={1.5}
-            strokeLinejoin="round"
-            opacity={0.5}
+            strokeWidth={1}
+            strokeLinejoin="miter"
+            opacity={0.3}
           />
         )}
         
-        {/* Linear features - eaves/rakes rendered prominently */}
+        {/* Eave segments - thick dark green straight lines */}
+        {eaveSegments.map((seg, i) => (
+          <line
+            key={`eave-${i}`}
+            x1={seg.start.x}
+            y1={seg.start.y}
+            x2={seg.end.x}
+            y2={seg.end.y}
+            stroke={FEATURE_COLORS.eave}
+            strokeWidth={5}
+            strokeLinecap="square"
+          />
+        ))}
+        
+        {/* Rake segments - thick cyan straight lines */}
+        {rakeSegments.map((seg, i) => (
+          <line
+            key={`rake-${i}`}
+            x1={seg.start.x}
+            y1={seg.start.y}
+            x2={seg.end.x}
+            y2={seg.end.y}
+            stroke={FEATURE_COLORS.rake}
+            strokeWidth={5}
+            strokeLinecap="square"
+          />
+        ))}
+        
+        {/* Linear features - ridges, hips, valleys */}
         {linearFeatures.map((feature, i) => {
           if (feature.points.length < 2) return null;
           const pathD = `M ${feature.points.map(p => `${p.x},${p.y}`).join(' L ')}`;
           const isDashed = feature.type === 'step';
           
-          // Eaves and rakes get THICKER strokes to stand out over perimeter
-          const isEaveOrRake = feature.type === 'eave' || feature.type === 'rake';
-          const strokeWidth = isEaveOrRake ? 5 : 4;
+          // Set stroke width based on feature type
+          const strokeWidth = feature.type === 'hip' ? 4 : feature.type === 'valley' ? 4 : 4;
           
           return (
             <g key={`${feature.type}-${i}`}>
