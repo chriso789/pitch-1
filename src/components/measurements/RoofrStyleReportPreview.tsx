@@ -448,6 +448,7 @@ export function RoofrStyleReportPreview({
                       showLegend={true}
                       showCompass={true}
                       showTotals={true}
+                      satelliteImageUrl={satelliteImageUrl}
                     />
                   </div>
                 </ReportPage>
