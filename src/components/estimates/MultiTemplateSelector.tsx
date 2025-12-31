@@ -1,14 +1,16 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, Package, Hammer, DollarSign, Save, FileText, Sparkles, Ruler } from 'lucide-react';
+import { Loader2, Save, FileText, Sparkles, Ruler, RotateCcw } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { seedBrandTemplates } from '@/lib/estimates/brandTemplateSeeder';
 import { useMeasurementContext, evaluateFormula } from '@/hooks/useMeasurementContext';
+import { SectionedLineItemsTable } from './SectionedLineItemsTable';
+import { EstimateBreakdownCard } from './EstimateBreakdownCard';
+import { useEstimatePricing, type LineItem } from '@/hooks/useEstimatePricing';
 
 const supabaseClient = supabase as any;
 
@@ -28,8 +30,7 @@ interface TemplateLineItem {
   unit_cost: number;
   qty_formula: string;
   item_type: string;
-  calculatedQty?: number;
-  lineTotal?: number;
+  sort_order: number;
 }
 
 interface TemplateCalculation {
@@ -54,15 +55,29 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 }) => {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
-  const [calculation, setCalculation] = useState<TemplateCalculation | null>(null);
-  const [lineItems, setLineItems] = useState<TemplateLineItem[]>([]);
   const [loading, setLoading] = useState(true);
-  const [calculating, setCalculating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
   const [seeding, setSeeding] = useState(false);
+  const [fetchingItems, setFetchingItems] = useState(false);
   const { toast } = useToast();
-  const { context: measurementContext, summary: measurementSummary, loading: measurementsLoading } = useMeasurementContext(pipelineEntryId);
+  const { context: measurementContext, summary: measurementSummary } = useMeasurementContext(pipelineEntryId);
+
+  // Use the pricing hook
+  const {
+    lineItems,
+    materialItems,
+    laborItems,
+    breakdown,
+    config,
+    isFixedPrice,
+    fixedPrice,
+    setLineItems,
+    updateLineItem,
+    setConfig,
+    setFixedPrice,
+    resetToOriginal,
+  } = useEstimatePricing([]);
 
   useEffect(() => {
     fetchTemplates();
@@ -72,46 +87,77 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
   useEffect(() => {
     if (selectedTemplateId) {
-      calculateTemplate();
       fetchLineItems(selectedTemplateId);
     } else {
-      setCalculation(null);
       setLineItems([]);
-      if (onCalculationsUpdate) {
-        onCalculationsUpdate([]);
-      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTemplateId]);
+  }, [selectedTemplateId, measurementContext]);
+
+  // Update parent with calculations when breakdown changes
+  useEffect(() => {
+    if (selectedTemplateId && lineItems.length > 0) {
+      const template = templates.find(t => t.id === selectedTemplateId);
+      if (template && onCalculationsUpdate) {
+        const calc: TemplateCalculation = {
+          template_id: selectedTemplateId,
+          template_name: template.name,
+          materials: breakdown.materialsTotal,
+          labor: breakdown.laborTotal,
+          overhead: breakdown.overheadAmount,
+          cost_pre_profit: breakdown.totalCost,
+          sale_price: breakdown.sellingPrice,
+          profit: breakdown.profitAmount,
+        };
+        onCalculationsUpdate([calc]);
+      }
+    } else if (onCalculationsUpdate) {
+      onCalculationsUpdate([]);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [breakdown, selectedTemplateId, lineItems.length]);
 
   const fetchLineItems = async (templateId: string) => {
+    setFetchingItems(true);
     try {
-      // Use the NEW estimate_calc_template_items table (correct FK to estimate_calculation_templates)
       const { data, error } = await supabaseClient
         .from('estimate_calc_template_items')
-        .select('id, item_name, description, unit, unit_cost, qty_formula, item_type')
+        .select('id, item_name, description, unit, unit_cost, qty_formula, item_type, sort_order')
         .eq('calc_template_id', templateId)
         .eq('active', true)
+        .order('item_type', { ascending: false }) // material first, then labor
         .order('sort_order');
 
       if (error) throw error;
       
-      // Calculate quantities using measurement context
-      const itemsWithCalculations = (data || []).map((item: TemplateLineItem) => {
+      // Calculate quantities using measurement context and convert to LineItem format
+      const items: LineItem[] = (data || []).map((item: TemplateLineItem) => {
         const calculatedQty = measurementContext 
           ? evaluateFormula(item.qty_formula, measurementContext) 
           : 0;
+        const lineTotal = calculatedQty * item.unit_cost;
+        
         return {
-          ...item,
-          calculatedQty,
-          lineTotal: calculatedQty * item.unit_cost,
+          id: item.id,
+          item_name: item.item_name,
+          item_type: item.item_type as 'material' | 'labor',
+          qty: calculatedQty,
+          qty_original: calculatedQty,
+          unit: item.unit,
+          unit_cost: item.unit_cost,
+          unit_cost_original: item.unit_cost,
+          line_total: lineTotal,
+          is_override: false,
+          sort_order: item.sort_order,
         };
       });
       
-      setLineItems(itemsWithCalculations);
+      setLineItems(items);
     } catch (error) {
       console.error('Error fetching template items:', error);
       setLineItems([]);
+    } finally {
+      setFetchingItems(false);
     }
   };
 
@@ -138,7 +184,6 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           description: `Created ${result.templatesCreated} templates with ${result.itemsCreated} line items`
         });
         await fetchTemplates();
-        // Re-fetch items if a template is selected
         if (selectedTemplateId) {
           await fetchLineItems(selectedTemplateId);
         }
@@ -161,7 +206,10 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
   const fetchTemplates = async (): Promise<void> => {
     try {
-      const result = await supabaseClient.from('estimate_calculation_templates').select('*').eq('is_active', true);
+      const result = await supabaseClient
+        .from('estimate_calculation_templates')
+        .select('*')
+        .eq('is_active', true);
 
       if (result.error) throw result.error;
       
@@ -189,7 +237,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
   const loadSelectedTemplate = async (): Promise<void> => {
     try {
-      const result = await supabaseClient.from('pipeline_entries').select('metadata').eq('id', pipelineEntryId).single();
+      const result = await supabaseClient
+        .from('pipeline_entries')
+        .select('metadata')
+        .eq('id', pipelineEntryId)
+        .single();
 
       if (result.error) throw result.error;
 
@@ -201,63 +253,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     }
   };
 
-  const calculateTemplate = async (): Promise<void> => {
-    if (!selectedTemplateId) return;
-    
-    setCalculating(true);
-
-    try {
-      const template = templates.find(t => t.id === selectedTemplateId);
-      if (!template) {
-        setCalculating(false);
-        return;
-      }
-
-      const response = await supabaseClient.rpc('api_estimate_compute_pricing', {
-        p_estimate_id: pipelineEntryId,
-        p_mode: 'margin',
-        p_pct: 0.30,
-        p_currency: template.currency || 'USD'
-      });
-
-      if (response.error) {
-        console.error('Error calculating template:', response.error);
-        setCalculating(false);
-        return;
-      }
-
-      const data = response.data as any;
-      if (data && Array.isArray(data) && data.length > 0) {
-        const calc = data[0];
-        const result: TemplateCalculation = {
-          template_id: selectedTemplateId,
-          template_name: template.name,
-          materials: Number(calc.materials) || 0,
-          labor: Number(calc.labor) || 0,
-          overhead: Number(calc.overhead) || 0,
-          cost_pre_profit: Number(calc.cost_pre_profit) || 0,
-          sale_price: Number(calc.sale_price) || 0,
-          profit: Number(calc.profit) || 0
-        };
-        setCalculation(result);
-        if (onCalculationsUpdate) {
-          onCalculationsUpdate([result]);
-        }
-      }
-    } catch (error) {
-      console.error('Error calculating template:', error);
-      toast({
-        title: 'Calculation Error',
-        description: 'Failed to calculate estimate',
-        variant: 'destructive'
-      });
-    } finally {
-      setCalculating(false);
-    }
-  };
-
   const handleTemplateSelect = (templateId: string) => {
     setSelectedTemplateId(templateId);
+    resetToOriginal();
   };
 
   const handleSaveSelection = async () => {
@@ -265,7 +263,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     
     setSaving(true);
     try {
-      const result1 = await supabaseClient.from('pipeline_entries').select('metadata').eq('id', pipelineEntryId).single();
+      const result1 = await supabaseClient
+        .from('pipeline_entries')
+        .select('metadata')
+        .eq('id', pipelineEntryId)
+        .single();
 
       if (result1.error) throw result1.error;
 
@@ -276,7 +278,10 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         selected_template_ids: [selectedTemplateId]
       };
 
-      const result2 = await supabaseClient.from('pipeline_entries').update({ metadata: updatedMetadata }).eq('id', pipelineEntryId);
+      const result2 = await supabaseClient
+        .from('pipeline_entries')
+        .update({ metadata: updatedMetadata })
+        .eq('id', pipelineEntryId);
 
       if (result2.error) throw result2.error;
 
@@ -297,11 +302,10 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   };
 
   const handleCreateEstimate = async () => {
-    if (!selectedTemplateId || !calculation) return;
+    if (!selectedTemplateId || lineItems.length === 0) return;
     
     setCreating(true);
     try {
-      // Get user and tenant info
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error('Not authenticated');
 
@@ -314,7 +318,6 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       const tenantId = profile?.active_tenant_id || profile?.tenant_id;
       if (!tenantId) throw new Error('No tenant found');
 
-      // Get pipeline entry details
       const { data: pipelineEntry } = await supabaseClient
         .from('pipeline_entries')
         .select('contact_id, metadata, contacts(first_name, last_name, address, city, state, zip_code)')
@@ -324,13 +327,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       const contact = pipelineEntry?.contacts;
       const metadata = (pipelineEntry?.metadata as any) || {};
 
-      // Try to pull roof area from comprehensive measurements in metadata
       const roofAreaSqFt =
         metadata?.comprehensive_measurements?.roof_area_sq_ft ??
         metadata?.comprehensive_measurements?.total_area_sqft ??
         0;
 
-      // Generate estimate number
       const { count } = await supabaseClient
         .from('enhanced_estimates')
         .select('id', { count: 'exact', head: true })
@@ -348,7 +349,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         contact?.zip_code
       ].filter(Boolean);
 
-      const customerAddress = customerAddressParts.join(' \u2022 ');
+      const customerAddress = customerAddressParts.join(' • ');
 
       const propertyDetails = {
         address_line1: contact?.address || '',
@@ -358,7 +359,32 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         contact_id: pipelineEntry?.contact_id || null
       };
 
-      // Create the estimate aligned with enhanced_estimates schema
+      // Build line items JSON for storage
+      const lineItemsJson = {
+        materials: materialItems.map(item => ({
+          id: item.id,
+          item_name: item.item_name,
+          qty: item.qty,
+          qty_original: item.qty_original,
+          unit: item.unit,
+          unit_cost: item.unit_cost,
+          unit_cost_original: item.unit_cost_original,
+          line_total: item.line_total,
+          is_override: item.is_override,
+        })),
+        labor: laborItems.map(item => ({
+          id: item.id,
+          item_name: item.item_name,
+          qty: item.qty,
+          qty_original: item.qty_original,
+          unit: item.unit,
+          unit_cost: item.unit_cost,
+          unit_cost_original: item.unit_cost_original,
+          line_total: item.line_total,
+          is_override: item.is_override,
+        })),
+      };
+
       const { data: newEstimate, error: createError } = await supabaseClient
         .from('enhanced_estimates')
         .insert({
@@ -371,21 +397,26 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           customer_address: customerAddress,
           property_details: propertyDetails,
           roof_area_sq_ft: roofAreaSqFt,
-          material_cost: calculation.materials,
-          material_total: calculation.materials,
-          labor_cost: calculation.labor,
-          labor_total: calculation.labor,
-          overhead_amount: calculation.overhead,
-          subtotal: calculation.cost_pre_profit,
-          selling_price: calculation.sale_price,
-          actual_profit_amount: calculation.profit,
-          actual_profit_percent:
-            calculation.sale_price > 0
-              ? (calculation.profit / calculation.sale_price) * 100
-              : 0,
+          material_cost: breakdown.materialsTotal,
+          material_total: breakdown.materialsTotal,
+          labor_cost: breakdown.laborTotal,
+          labor_total: breakdown.laborTotal,
+          materials_total: breakdown.materialsTotal,
+          overhead_amount: breakdown.overheadAmount,
+          overhead_percent: config.overheadPercent,
+          subtotal: breakdown.totalCost,
+          selling_price: breakdown.sellingPrice,
+          fixed_selling_price: isFixedPrice ? fixedPrice : null,
+          is_fixed_price: isFixedPrice,
+          rep_commission_percent: config.repCommissionPercent,
+          rep_commission_amount: breakdown.repCommissionAmount,
+          actual_profit_amount: breakdown.profitAmount,
+          actual_profit_percent: breakdown.actualProfitMargin,
+          line_items: lineItemsJson,
           calculation_metadata: {
             source: 'multi_template_selector',
-            selected_template_id: selectedTemplateId
+            selected_template_id: selectedTemplateId,
+            pricing_config: config,
           },
           created_by: user.id
         })
@@ -394,7 +425,6 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
       if (createError) throw createError;
 
-      // Update pipeline entry with estimate reference
       await supabaseClient
         .from('pipeline_entries')
         .update({
@@ -425,14 +455,21 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     }
   };
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD',
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 0
-    }).format(amount);
+  const handleResetItem = (id: string) => {
+    const item = lineItems.find(i => i.id === id);
+    if (item) {
+      updateLineItem(id, {
+        qty: item.qty_original,
+        unit_cost: item.unit_cost_original,
+        is_override: false,
+      });
+    }
   };
+
+  const selectedTemplate = useMemo(() => 
+    templates.find(t => t.id === selectedTemplateId),
+    [templates, selectedTemplateId]
+  );
 
   if (loading) {
     return (
@@ -481,58 +518,6 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         </CardContent>
       </Card>
 
-      {/* Calculation Results */}
-      {calculating && (
-        <div className="flex items-center justify-center py-8">
-          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mr-2" />
-          <span className="text-sm text-muted-foreground">Calculating estimate...</span>
-        </div>
-      )}
-
-      {!calculating && calculation && (
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-lg">{calculation.template_name}</CardTitle>
-              <Badge variant="outline" className="text-lg font-semibold">
-                {formatCurrency(calculation.sale_price)}
-              </Badge>
-            </div>
-          </CardHeader>
-          <CardContent>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="flex items-center space-x-2">
-                <Package className="h-4 w-4 text-muted-foreground" />
-                <div>
-                  <p className="text-xs text-muted-foreground">Materials</p>
-                  <p className="text-sm font-semibold">{formatCurrency(calculation.materials)}</p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Hammer className="h-4 w-4 text-muted-foreground" />
-                <div>
-                  <p className="text-xs text-muted-foreground">Labor</p>
-                  <p className="text-sm font-semibold">{formatCurrency(calculation.labor)}</p>
-                </div>
-              </div>
-              <div className="flex items-center space-x-2">
-                <DollarSign className="h-4 w-4 text-muted-foreground" />
-                <div>
-                  <p className="text-xs text-muted-foreground">Profit</p>
-                  <p className="text-sm font-semibold text-green-600">{formatCurrency(calculation.profit)}</p>
-                </div>
-              </div>
-            </div>
-            <div className="mt-3 pt-3 border-t border-border">
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">Total Cost</span>
-                <span className="font-medium">{formatCurrency(calculation.cost_pre_profit)}</span>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
-
       {/* Measurement Summary */}
       {measurementSummary && measurementSummary.totalSquares > 0 && (
         <Card>
@@ -557,59 +542,44 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         </Card>
       )}
 
-      {/* Line Items Table */}
-      {lineItems.length > 0 && (
+      {/* Loading Items */}
+      {fetchingItems && (
+        <div className="flex items-center justify-center py-8">
+          <Loader2 className="h-6 w-6 animate-spin text-muted-foreground mr-2" />
+          <span className="text-sm text-muted-foreground">Loading template items...</span>
+        </div>
+      )}
+
+      {/* Sectioned Line Items Table */}
+      {!fetchingItems && lineItems.length > 0 && (
         <Card>
-          <CardHeader className="pb-2">
-            <CardTitle className="text-base">Template Line Items</CardTitle>
+          <CardHeader className="pb-2 flex flex-row items-center justify-between">
+            <CardTitle className="text-base">
+              {selectedTemplate?.name || 'Template'} Line Items
+            </CardTitle>
+            {lineItems.some(item => item.is_override) && (
+              <Button variant="ghost" size="sm" onClick={resetToOriginal}>
+                <RotateCcw className="h-4 w-4 mr-1" />
+                Reset All
+              </Button>
+            )}
           </CardHeader>
           <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Item</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead className="text-right">Qty</TableHead>
-                  <TableHead>Unit</TableHead>
-                  <TableHead className="text-right">Unit Cost</TableHead>
-                  <TableHead className="text-right">Total</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {lineItems.map((item) => (
-                  <TableRow key={item.id}>
-                    <TableCell>
-                      <div>
-                        <p className="font-medium text-sm">{item.item_name}</p>
-                        {item.description && (
-                          <p className="text-xs text-muted-foreground">{item.description}</p>
-                        )}
-                      </div>
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={item.item_type === 'labor' ? 'secondary' : 'outline'} className="text-xs">
-                        {item.item_type === 'labor' ? 'Labor' : 'Material'}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {item.calculatedQty?.toFixed(0) || '-'}
-                    </TableCell>
-                    <TableCell className="text-sm">{item.unit}</TableCell>
-                    <TableCell className="text-right">
-                      {formatCurrency(item.unit_cost)}
-                    </TableCell>
-                    <TableCell className="text-right font-medium">
-                      {item.lineTotal ? formatCurrency(item.lineTotal) : '-'}
-                    </TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <SectionedLineItemsTable
+              materialItems={materialItems}
+              laborItems={laborItems}
+              materialsTotal={breakdown.materialsTotal}
+              laborTotal={breakdown.laborTotal}
+              onUpdateItem={updateLineItem}
+              onResetItem={handleResetItem}
+              editable={true}
+            />
           </CardContent>
         </Card>
       )}
 
-      {selectedTemplateId && lineItems.length === 0 && !calculating && (
+      {/* No Items State */}
+      {selectedTemplateId && !fetchingItems && lineItems.length === 0 && (
         <Card>
           <CardContent className="py-6 text-center">
             <p className="text-sm text-muted-foreground mb-3">
@@ -625,6 +595,18 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             </Button>
           </CardContent>
         </Card>
+      )}
+
+      {/* Estimate Breakdown Card */}
+      {lineItems.length > 0 && (
+        <EstimateBreakdownCard
+          breakdown={breakdown}
+          config={config}
+          isFixedPrice={isFixedPrice}
+          fixedPrice={fixedPrice}
+          onConfigChange={setConfig}
+          onFixedPriceChange={setFixedPrice}
+        />
       )}
 
       {/* Action Buttons */}
@@ -644,7 +626,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         </Button>
         <Button
           onClick={handleCreateEstimate}
-          disabled={!selectedTemplateId || !calculation || creating}
+          disabled={!selectedTemplateId || lineItems.length === 0 || creating}
           className="flex-1"
         >
           {creating ? (
