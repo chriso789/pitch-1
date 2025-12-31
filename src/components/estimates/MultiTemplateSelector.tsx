@@ -571,7 +571,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       )}
 
       {/* Action Buttons */}
-      <div className="flex gap-3">
+      <div className="flex gap-3 pb-8">
         <Button
           variant="outline"
           onClick={handleSaveSelection}
