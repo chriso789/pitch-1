@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+import React, { useEffect, useState, useMemo, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
@@ -10,7 +10,10 @@ import { seedBrandTemplates } from '@/lib/estimates/brandTemplateSeeder';
 import { useMeasurementContext, evaluateFormula } from '@/hooks/useMeasurementContext';
 import { SectionedLineItemsTable } from './SectionedLineItemsTable';
 import { EstimateBreakdownCard } from './EstimateBreakdownCard';
+import { EstimatePDFTemplate } from './EstimatePDFTemplate';
 import { useEstimatePricing, type LineItem } from '@/hooks/useEstimatePricing';
+import { usePDFGeneration } from '@/hooks/usePDFGeneration';
+import { useQueryClient } from '@tanstack/react-query';
 
 const supabaseClient = supabase as any;
 
@@ -47,11 +50,13 @@ interface TemplateCalculation {
 interface MultiTemplateSelectorProps {
   pipelineEntryId: string;
   onCalculationsUpdate?: (calculations: TemplateCalculation[]) => void;
+  onEstimateCreated?: (estimateId: string) => void;
 }
 
 export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   pipelineEntryId,
-  onCalculationsUpdate
+  onCalculationsUpdate,
+  onEstimateCreated
 }) => {
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
@@ -60,8 +65,13 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [creating, setCreating] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const [fetchingItems, setFetchingItems] = useState(false);
+  const [showPDFTemplate, setShowPDFTemplate] = useState(false);
+  const [pdfData, setPdfData] = useState<any>(null);
   const { toast } = useToast();
   const { context: measurementContext, summary: measurementSummary } = useMeasurementContext(pipelineEntryId);
+  const { generatePDF } = usePDFGeneration();
+  const queryClient = useQueryClient();
+  const pdfContainerRef = useRef<HTMLDivElement>(null);
 
   // Use the pricing hook
   const {
@@ -359,6 +369,13 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         contact_id: pipelineEntry?.contact_id || null
       };
 
+      // Generate 2-word short description
+      const templateName = selectedTemplate?.name || 'Custom';
+      const brandWord = templateName.split(' ')[0]; // "GAF", "Owens", etc.
+      const priceWord = breakdown.sellingPrice > 20000 ? 'Premium' : 
+                        breakdown.sellingPrice > 10000 ? 'Standard' : 'Basic';
+      const shortDescription = `${brandWord} ${priceWord}`;
+
       // Build line items JSON for storage
       const lineItemsJson = {
         materials: materialItems.map(item => ({
@@ -384,6 +401,68 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           is_override: item.is_override,
         })),
       };
+
+      // Prepare PDF data and show template for capture
+      setPdfData({
+        estimateNumber,
+        customerName,
+        customerAddress,
+        materialItems,
+        laborItems,
+        breakdown,
+        config
+      });
+      setShowPDFTemplate(true);
+
+      // Wait for render
+      await new Promise(resolve => setTimeout(resolve, 300));
+
+      // Generate PDF
+      toast({ title: 'Generating PDF...', description: 'Please wait while we create your estimate document.' });
+      
+      const pdfBlob = await generatePDF('estimate-pdf-template', {
+        filename: `${estimateNumber}.pdf`,
+        orientation: 'portrait',
+        format: 'letter',
+        quality: 2
+      });
+
+      // Hide PDF template
+      setShowPDFTemplate(false);
+      setPdfData(null);
+
+      let pdfUrl: string | null = null;
+
+      // Upload PDF to storage if blob was generated
+      if (pdfBlob) {
+        const pdfPath = `${tenantId}/${pipelineEntryId}/estimates/${estimateNumber}.pdf`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('documents')
+          .upload(pdfPath, pdfBlob, {
+            contentType: 'application/pdf',
+            upsert: true
+          });
+
+        if (!uploadError) {
+          pdfUrl = pdfPath;
+
+          // Create document record
+          await supabaseClient
+            .from('documents')
+            .insert({
+              tenant_id: tenantId,
+              pipeline_entry_id: pipelineEntryId,
+              document_type: 'estimate',
+              filename: `${estimateNumber}.pdf`,
+              file_path: pdfPath,
+              file_size: pdfBlob.size,
+              mime_type: 'application/pdf',
+              description: shortDescription,
+              uploaded_by: user.id
+            });
+        }
+      }
 
       const { data: newEstimate, error: createError } = await supabaseClient
         .from('enhanced_estimates')
@@ -413,6 +492,8 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           actual_profit_amount: breakdown.profitAmount,
           actual_profit_percent: breakdown.actualProfitMargin,
           line_items: lineItemsJson,
+          pdf_url: pdfUrl,
+          short_description: shortDescription,
           calculation_metadata: {
             source: 'multi_template_selector',
             selected_template_id: selectedTemplateId,
@@ -438,13 +519,27 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         })
         .eq('id', pipelineEntryId);
 
+      // Invalidate saved estimates query to refresh the list
+      queryClient.invalidateQueries({ queryKey: ['saved-estimates', pipelineEntryId] });
+
       toast({
         title: 'Estimate Created',
-        description: `Estimate ${estimateNumber} has been created successfully`
+        description: `Estimate ${estimateNumber} has been saved${pdfUrl ? ' with PDF' : ''}`
       });
+
+      // Call the callback if provided
+      if (onEstimateCreated) {
+        onEstimateCreated(newEstimate.id);
+      }
+
+      // Reset the form
+      setSelectedTemplateId('');
+      resetToOriginal();
 
     } catch (error) {
       console.error('Error creating estimate:', error);
+      setShowPDFTemplate(false);
+      setPdfData(null);
       toast({
         title: 'Error',
         description: 'Failed to create estimate',
@@ -637,6 +732,25 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           Create Estimate
         </Button>
       </div>
+
+      {/* Hidden PDF Template for capture */}
+      {showPDFTemplate && pdfData && (
+        <div 
+          ref={pdfContainerRef}
+          className="fixed left-[-9999px] top-0"
+          aria-hidden="true"
+        >
+          <EstimatePDFTemplate
+            estimateNumber={pdfData.estimateNumber}
+            customerName={pdfData.customerName}
+            customerAddress={pdfData.customerAddress}
+            materialItems={pdfData.materialItems}
+            laborItems={pdfData.laborItems}
+            breakdown={pdfData.breakdown}
+            config={pdfData.config}
+          />
+        </div>
+      )}
     </div>
   );
 };

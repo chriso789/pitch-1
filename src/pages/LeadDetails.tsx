@@ -39,6 +39,7 @@ import { useLeadDetails, LeadDetailsData, ApprovalRequirements } from '@/hooks/u
 import { LeadDetailsSkeleton } from '@/components/lead-details/LeadDetailsSkeleton';
 import { AddressReverificationButton } from '@/components/measurements/AddressReverificationButton';
 import { ProductTemplateApplicator } from '@/components/estimates/ProductTemplateApplicator';
+import { SavedEstimatesList } from '@/components/estimates/SavedEstimatesList';
 
 const LeadDetails = () => {
   const { id } = useParams<{ id: string }>();
@@ -214,6 +215,9 @@ const LeadDetails = () => {
       case 'estimate':
         return (
           <div className="space-y-6">
+            {/* Saved Estimates List */}
+            <SavedEstimatesList pipelineEntryId={id!} />
+
             {/* Measurement Tools Section */}
             <Card>
               <CardHeader>
