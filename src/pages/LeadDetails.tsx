@@ -226,46 +226,16 @@ const LeadDetails = () => {
                 </p>
               </CardHeader>
               <CardContent>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  {/* Draw Roof Card - Mapbox */}
-                  <Card className="border-2 hover:border-primary transition-colors">
-                    <CardContent className="pt-6 text-center">
-                      <div className="p-4 bg-primary/10 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                        <Pencil className="h-8 w-8 text-primary" />
-                      </div>
-                      <h3 className="font-semibold text-lg mb-2">Draw Roof</h3>
-                      <p className="text-sm text-muted-foreground mb-4">
-                        Manually draw roof polygons on Mapbox satellite imagery
-                      </p>
-                      <Button onClick={() => navigate(`/professional-measurement/${id}`)}>
-                        Open Drawing Tool
-                      </Button>
-                    </CardContent>
-                  </Card>
-
-                  {/* AI Measure Card - Google APIs */}
-                  <Card className="border-2 hover:border-primary transition-colors">
-                    <CardContent className="pt-6 text-center">
-                      <div className="p-4 bg-accent/20 rounded-full w-16 h-16 mx-auto mb-4 flex items-center justify-center">
-                        <Crosshair className="h-8 w-8 text-accent-foreground" />
-                      </div>
-                      <h3 className="font-semibold text-lg mb-2">AI Measure</h3>
-                      <p className="text-sm text-muted-foreground mb-4">
-                        Automated analysis using Google Solar & Maps APIs
-                      </p>
-                      <PullMeasurementsButton 
-                        propertyId={id!}
-                        lat={lead?.contact?.verified_address?.lat || lead?.contact?.latitude || 0}
-                        lng={lead?.contact?.verified_address?.lng || lead?.contact?.longitude || 0}
-                        address={lead?.verified_address?.formatted_address || ''}
-                        onSuccess={() => {
-                          refetchMeasurements();
-                          refetchRequirements();
-                        }}
-                      />
-                    </CardContent>
-                  </Card>
-                </div>
+                <PullMeasurementsButton 
+                  propertyId={id!}
+                  lat={lead?.contact?.verified_address?.lat || lead?.contact?.latitude || 0}
+                  lng={lead?.contact?.verified_address?.lng || lead?.contact?.longitude || 0}
+                  address={lead?.verified_address?.formatted_address || ''}
+                  onSuccess={() => {
+                    refetchMeasurements();
+                    refetchRequirements();
+                  }}
+                />
               </CardContent>
             </Card>
 
