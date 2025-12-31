@@ -336,6 +336,27 @@ export function MeasurementVerificationDialog({
   const [dbMeasurement, setDbMeasurement] = useState<any>(null);
   const [isLoadingDbMeasurement, setIsLoadingDbMeasurement] = useState(false);
   
+  // Tenant ID for approval workflow
+  const [tenantId, setTenantId] = useState<string | null>(null);
+  
+  // Fetch tenant ID on mount
+  useEffect(() => {
+    const fetchTenantId = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('tenant_id')
+          .eq('id', user.id)
+          .single();
+        if (profile?.tenant_id) {
+          setTenantId(profile.tenant_id);
+        }
+      }
+    };
+    if (open) fetchTenantId();
+  }, [open]);
+  
   // Smart roof type detection
   const [detectedRoofType, setDetectedRoofType] = useState<ReturnType<typeof detectRoofType> | null>(null);
   
@@ -2318,7 +2339,7 @@ export function MeasurementVerificationDialog({
         }}
       />
 
-      {/* EagleView-Style Report Preview */}
+      {/* EagleView-Style Report Preview with Approval */}
       <EagleViewStyleReport
         open={showReportPreview}
         onOpenChange={setShowReportPreview}
@@ -2328,6 +2349,14 @@ export function MeasurementVerificationDialog({
         address={measurement?.address || 'Unknown Address'}
         pipelineEntryId={pipelineEntryId}
         satelliteImageUrl={satelliteImageUrl}
+        tenantId={tenantId || undefined}
+        onApproved={() => {
+          setShowReportPreview(false);
+          toast({
+            title: "Measurements Approved",
+            description: "Smart tags saved and report available in Documents.",
+          });
+        }}
       />
     </Dialog>
   );

@@ -29,6 +29,7 @@ import { PhoneNumberSelector } from '@/components/communication/PhoneNumberSelec
 import { useLatestMeasurement } from '@/hooks/useMeasurement';
 import { LinearFeaturesPanel } from '@/components/measurements/LinearFeaturesPanel';
 import { PullMeasurementsButton } from '@/components/measurements/PullMeasurementsButton';
+import { ApprovedMeasurementsList } from '@/components/measurements/ApprovedMeasurementsList';
 import { CallStatusMonitor } from '@/components/communication/CallStatusMonitor';
 import { CallDispositionDialog } from '@/components/communication/CallDispositionDialog';
 import { SMSComposerDialog } from '@/components/communication/SMSComposerDialog';
@@ -240,6 +241,11 @@ const LeadDetails = () => {
                     refetchRequirements();
                   }}
                 />
+                
+                {/* Show approved measurements if any */}
+                <div className="mt-4">
+                  <ApprovedMeasurementsList pipelineEntryId={id!} />
+                </div>
               </CardContent>
             </Card>
 
