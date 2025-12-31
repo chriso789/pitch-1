@@ -4,8 +4,10 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Package, Hammer, DollarSign, Save, FileText } from 'lucide-react';
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Loader2, Package, Hammer, DollarSign, Save, FileText, Sparkles } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { seedBrandTemplates } from '@/lib/estimates/brandTemplateSeeder';
 
 const supabaseClient = supabase as any;
 
@@ -15,6 +17,16 @@ interface Template {
   labor: Record<string, any>;
   overhead: Record<string, any>;
   currency: string;
+}
+
+interface TemplateLineItem {
+  id: string;
+  item_name: string;
+  description: string;
+  unit: string;
+  unit_cost: number;
+  qty_formula: string;
+  item_type: string;
 }
 
 interface TemplateCalculation {
@@ -40,10 +52,12 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [templates, setTemplates] = useState<Template[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [calculation, setCalculation] = useState<TemplateCalculation | null>(null);
+  const [lineItems, setLineItems] = useState<TemplateLineItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [calculating, setCalculating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [seeding, setSeeding] = useState(false);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -55,14 +69,70 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   useEffect(() => {
     if (selectedTemplateId) {
       calculateTemplate();
+      fetchLineItems(selectedTemplateId);
     } else {
       setCalculation(null);
+      setLineItems([]);
       if (onCalculationsUpdate) {
         onCalculationsUpdate([]);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTemplateId]);
+
+  const fetchLineItems = async (templateId: string) => {
+    try {
+      const { data, error } = await supabaseClient
+        .from('template_items')
+        .select('id, item_name, description, unit, unit_cost, qty_formula, item_type')
+        .eq('template_id', templateId)
+        .order('sort_order');
+
+      if (error) throw error;
+      setLineItems(data || []);
+    } catch (error) {
+      console.error('Error fetching template items:', error);
+      setLineItems([]);
+    }
+  };
+
+  const handleSeedTemplates = async () => {
+    setSeeding(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data: profile } = await supabaseClient
+        .from('profiles')
+        .select('tenant_id, active_tenant_id')
+        .eq('id', user.id)
+        .single();
+
+      const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+      if (!tenantId) throw new Error('No tenant found');
+
+      const result = await seedBrandTemplates(tenantId);
+
+      if (result.success) {
+        toast({
+          title: 'Templates Seeded',
+          description: `Created ${result.templatesCreated} brand templates with line items`
+        });
+        await fetchTemplates();
+      } else {
+        throw new Error(result.error || 'Seeding failed');
+      }
+    } catch (error) {
+      console.error('Error seeding templates:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to seed templates',
+        variant: 'destructive'
+      });
+    } finally {
+      setSeeding(false);
+    }
+  };
 
   const fetchTemplates = async (): Promise<void> => {
     try {
@@ -369,9 +439,19 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           </Select>
 
           {templates.length === 0 && (
-            <p className="text-sm text-muted-foreground text-center py-4">
-              No estimate templates available. Create one in settings.
-            </p>
+            <div className="text-center py-4 space-y-3">
+              <p className="text-sm text-muted-foreground">
+                No estimate templates available.
+              </p>
+              <Button onClick={handleSeedTemplates} disabled={seeding} variant="outline">
+                {seeding ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <Sparkles className="mr-2 h-4 w-4" />
+                )}
+                Seed Brand Templates
+              </Button>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -424,6 +504,68 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
                 <span className="font-medium">{formatCurrency(calculation.cost_pre_profit)}</span>
               </div>
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Line Items Table */}
+      {lineItems.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Template Line Items</CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Item</TableHead>
+                  <TableHead>Type</TableHead>
+                  <TableHead>Unit</TableHead>
+                  <TableHead className="text-right">Unit Cost</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {lineItems.map((item) => (
+                  <TableRow key={item.id}>
+                    <TableCell>
+                      <div>
+                        <p className="font-medium text-sm">{item.item_name}</p>
+                        {item.description && (
+                          <p className="text-xs text-muted-foreground">{item.description}</p>
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant={item.item_type === 'labor' ? 'secondary' : 'outline'} className="text-xs">
+                        {item.item_type === 'labor' ? 'Labor' : 'Material'}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-sm">{item.unit}</TableCell>
+                    <TableCell className="text-right font-medium">
+                      {formatCurrency(item.unit_cost)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+
+      {selectedTemplateId && lineItems.length === 0 && !calculating && (
+        <Card>
+          <CardContent className="py-6 text-center">
+            <p className="text-sm text-muted-foreground mb-3">
+              This template has no line items configured.
+            </p>
+            <Button onClick={handleSeedTemplates} disabled={seeding} variant="outline" size="sm">
+              {seeding ? (
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              ) : (
+                <Sparkles className="mr-2 h-4 w-4" />
+              )}
+              Seed Brand Templates
+            </Button>
           </CardContent>
         </Card>
       )}
