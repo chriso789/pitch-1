@@ -5,9 +5,10 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Loader2, Package, Hammer, DollarSign, Save, FileText, Sparkles } from 'lucide-react';
+import { Loader2, Package, Hammer, DollarSign, Save, FileText, Sparkles, Ruler } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { seedBrandTemplates } from '@/lib/estimates/brandTemplateSeeder';
+import { useMeasurementContext, evaluateFormula } from '@/hooks/useMeasurementContext';
 
 const supabaseClient = supabase as any;
 
@@ -27,6 +28,8 @@ interface TemplateLineItem {
   unit_cost: number;
   qty_formula: string;
   item_type: string;
+  calculatedQty?: number;
+  lineTotal?: number;
 }
 
 interface TemplateCalculation {
@@ -59,6 +62,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [creating, setCreating] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const { toast } = useToast();
+  const { context: measurementContext, summary: measurementSummary, loading: measurementsLoading } = useMeasurementContext(pipelineEntryId);
 
   useEffect(() => {
     fetchTemplates();
@@ -89,7 +93,20 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         .order('sort_order');
 
       if (error) throw error;
-      setLineItems(data || []);
+      
+      // Calculate quantities using measurement context
+      const itemsWithCalculations = (data || []).map((item: TemplateLineItem) => {
+        const calculatedQty = measurementContext 
+          ? evaluateFormula(item.qty_formula, measurementContext) 
+          : 0;
+        return {
+          ...item,
+          calculatedQty,
+          lineTotal: calculatedQty * item.unit_cost,
+        };
+      });
+      
+      setLineItems(itemsWithCalculations);
     } catch (error) {
       console.error('Error fetching template items:', error);
       setLineItems([]);
@@ -508,6 +525,30 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         </Card>
       )}
 
+      {/* Measurement Summary */}
+      {measurementSummary && measurementSummary.totalSquares > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base flex items-center gap-2">
+              <Ruler className="h-4 w-4" />
+              Applied Measurements
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
+              <div><span className="text-muted-foreground">Squares:</span> <span className="font-medium">{measurementSummary.totalSquares.toFixed(2)}</span></div>
+              <div><span className="text-muted-foreground">Area:</span> <span className="font-medium">{measurementSummary.totalSqFt.toFixed(0)} sqft</span></div>
+              <div><span className="text-muted-foreground">Eave:</span> <span className="font-medium">{measurementSummary.eaveLength.toFixed(0)} lf</span></div>
+              <div><span className="text-muted-foreground">Ridge:</span> <span className="font-medium">{measurementSummary.ridgeLength.toFixed(0)} lf</span></div>
+              <div><span className="text-muted-foreground">Hip:</span> <span className="font-medium">{measurementSummary.hipLength.toFixed(0)} lf</span></div>
+              <div><span className="text-muted-foreground">Valley:</span> <span className="font-medium">{measurementSummary.valleyLength.toFixed(0)} lf</span></div>
+              <div><span className="text-muted-foreground">Rake:</span> <span className="font-medium">{measurementSummary.rakeLength.toFixed(0)} lf</span></div>
+              <div><span className="text-muted-foreground">Waste:</span> <span className="font-medium">{measurementSummary.wastePercent}%</span></div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Line Items Table */}
       {lineItems.length > 0 && (
         <Card>
@@ -520,8 +561,10 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
                 <TableRow>
                   <TableHead>Item</TableHead>
                   <TableHead>Type</TableHead>
+                  <TableHead className="text-right">Qty</TableHead>
                   <TableHead>Unit</TableHead>
                   <TableHead className="text-right">Unit Cost</TableHead>
+                  <TableHead className="text-right">Total</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -540,9 +583,15 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
                         {item.item_type === 'labor' ? 'Labor' : 'Material'}
                       </Badge>
                     </TableCell>
-                    <TableCell className="text-sm">{item.unit}</TableCell>
                     <TableCell className="text-right font-medium">
+                      {item.calculatedQty?.toFixed(0) || '-'}
+                    </TableCell>
+                    <TableCell className="text-sm">{item.unit}</TableCell>
+                    <TableCell className="text-right">
                       {formatCurrency(item.unit_cost)}
+                    </TableCell>
+                    <TableCell className="text-right font-medium">
+                      {item.lineTotal ? formatCurrency(item.lineTotal) : '-'}
                     </TableCell>
                   </TableRow>
                 ))}
