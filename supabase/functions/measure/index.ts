@@ -171,6 +171,107 @@ function wktToCoords(wkt: string): [number, number][] {
     });
 }
 
+// ============= FOOTPRINT QA GATE =============
+// Validates footprint geometry before processing to prevent bad measurements
+
+interface FootprintQAResult {
+  isValid: boolean;
+  warnings: string[];
+  errors: string[];
+  planAreaSqft: number;
+  circularity: number;
+  vertexCount: number;
+}
+
+function validateFootprintGeometry(coords: [number, number][], lat: number, lng: number): FootprintQAResult {
+  const warnings: string[] = [];
+  const errors: string[] = [];
+  
+  // Calculate plan area
+  const planAreaSqft = polygonAreaSqftFromLngLat(coords);
+  const vertexCount = coords.length;
+  
+  // Calculate circularity (1.0 = perfect circle, lower = more angular)
+  // Circularity = 4 * PI * Area / Perimeter^2
+  let perimeter = 0;
+  const midLat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
+  const { metersPerDegLat, metersPerDegLng } = degToMeters(midLat);
+  
+  for (let i = 0; i < coords.length - 1; i++) {
+    const dx = (coords[i + 1][0] - coords[i][0]) * metersPerDegLng;
+    const dy = (coords[i + 1][1] - coords[i][1]) * metersPerDegLat;
+    perimeter += Math.sqrt(dx * dx + dy * dy);
+  }
+  
+  const areaM2 = planAreaSqft / 10.7639;
+  const circularity = perimeter > 0 ? (4 * Math.PI * areaM2) / (perimeter * perimeter) : 0;
+  
+  // QA Check 1: Area bounds
+  if (planAreaSqft < 200) {
+    errors.push(`Footprint too small: ${Math.round(planAreaSqft)} sqft (min: 200)`);
+  }
+  if (planAreaSqft > 50000) {
+    errors.push(`Footprint too large: ${Math.round(planAreaSqft)} sqft (max: 50,000). May not be a single building.`);
+  }
+  if (planAreaSqft > 10000) {
+    warnings.push(`Large footprint: ${Math.round(planAreaSqft)} sqft. Verify this is the correct building.`);
+  }
+  
+  // QA Check 2: Circularity (detect non-building shapes)
+  if (circularity > 0.85) {
+    errors.push(`Footprint is too circular (${(circularity * 100).toFixed(0)}%). This may not be a building.`);
+  }
+  if (circularity > 0.7) {
+    warnings.push(`Footprint appears rounded. Verify this is the correct building outline.`);
+  }
+  
+  // QA Check 3: Vertex count (detect oversimplified or overly complex)
+  if (vertexCount < 4) {
+    errors.push(`Too few vertices: ${vertexCount} (min: 4)`);
+  }
+  if (vertexCount > 50) {
+    warnings.push(`High vertex count: ${vertexCount}. This may indicate a non-standard footprint.`);
+  }
+  
+  // QA Check 4: Contains the target point
+  const targetPoint: [number, number] = [lng, lat];
+  if (!pointInPolygon(targetPoint, coords)) {
+    warnings.push('Target coordinates are outside the footprint boundary.');
+  }
+  
+  // QA Check 5: Self-intersection check (simplified - just count very close vertices)
+  const closeVertexPairs = checkForCloseVertices(coords);
+  if (closeVertexPairs > 0) {
+    warnings.push(`Footprint may have overlapping edges (${closeVertexPairs} close vertex pairs).`);
+  }
+  
+  return {
+    isValid: errors.length === 0,
+    warnings,
+    errors,
+    planAreaSqft,
+    circularity,
+    vertexCount,
+  };
+}
+
+function checkForCloseVertices(coords: [number, number][]): number {
+  const threshold = 0.00001; // ~1 meter
+  let closeCount = 0;
+  
+  for (let i = 0; i < coords.length - 2; i++) {
+    for (let j = i + 2; j < coords.length - 1; j++) {
+      const dx = Math.abs(coords[i][0] - coords[j][0]);
+      const dy = Math.abs(coords[i][1] - coords[j][1]);
+      if (dx < threshold && dy < threshold) {
+        closeCount++;
+      }
+    }
+  }
+  
+  return closeCount;
+}
+
 function unionFacesWKT(faces: RoofFace[]): string | undefined {
   if (!faces.length) return undefined;
   const polys = faces.map(f => f.wkt.replace(/^POLYGON/,'')).join(',');
@@ -1512,6 +1613,29 @@ serve(async (req) => {
               error: 'Could not determine building footprint',
               manualReviewRecommended: true 
             }, corsHeaders, 404);
+          }
+
+          // Step 1.5: FOOTPRINT QA GATE - Validate geometry before processing
+          const footprintQA = validateFootprintGeometry(coords, lat, lng);
+          console.log('Footprint QA:', {
+            valid: footprintQA.isValid,
+            planAreaSqft: Math.round(footprintQA.planAreaSqft),
+            circularity: footprintQA.circularity.toFixed(2),
+            vertices: footprintQA.vertexCount,
+            warnings: footprintQA.warnings.length,
+            errors: footprintQA.errors.length
+          });
+
+          // If footprint QA fails, return error with details
+          if (!footprintQA.isValid) {
+            return json({ 
+              ok: false, 
+              error: 'Footprint geometry failed QA validation',
+              details: footprintQA.errors.join('; '),
+              warnings: footprintQA.warnings,
+              footprintQA,
+              manualReviewRecommended: true 
+            }, corsHeaders, 400);
           }
 
           // Step 2: Compute straight skeleton for initial geometry
