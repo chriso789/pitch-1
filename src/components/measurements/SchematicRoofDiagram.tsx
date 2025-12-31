@@ -300,34 +300,12 @@ export function SchematicRoofDiagram({
     let pathD = '';
     const perimSegs: typeof segments = [];
     
-    // Find ridge direction for eave/rake classification
-    const ridgeFeatures = plausibleLinearFeatures.filter(f => f.type === 'ridge');
-    let ridgeDirection: { dx: number; dy: number } | null = null;
-    
-    if (ridgeFeatures.length > 0) {
-      // Use the longest ridge to determine primary direction
-      const longestRidge = ridgeFeatures.reduce((a, b) => a.length > b.length ? a : b);
-      if (longestRidge.coords.length >= 2) {
-        const start = longestRidge.coords[0];
-        const end = longestRidge.coords[longestRidge.coords.length - 1];
-        const dx = end.lng - start.lng;
-        const dy = end.lat - start.lat;
-        const len = Math.sqrt(dx * dx + dy * dy);
-        if (len > 0) {
-          ridgeDirection = { dx: dx / len, dy: dy / len };
-        }
-      }
-    }
-    
-    // Classify perimeter edges as eave or rake
-    const classifiedEaves: Array<{ start: { x: number; y: number }; end: { x: number; y: number }; length: number }> = [];
-    const classifiedRakes: Array<{ start: { x: number; y: number }; end: { x: number; y: number }; length: number }> = [];
-    
+    // Build perimeter outline (just for reference, not for eave/rake classification)
     if (perimeterCoords.length >= 3) {
       const svgCoords = perimeterCoords.map(toSvg);
       pathD = `M ${svgCoords.map(c => `${c.x},${c.y}`).join(' L ')} Z`;
       
-      // Create individual edge segments with classification
+      // Create perimeter segments for reference
       for (let i = 0; i < perimeterCoords.length - 1; i++) {
         const p1 = perimeterCoords[i];
         const p2 = perimeterCoords[i + 1];
@@ -335,60 +313,47 @@ export function SchematicRoofDiagram({
         const svgP1 = svgCoords[i];
         const svgP2 = svgCoords[i + 1];
         
-        // Classify edge as eave or rake based on ridge direction
-        let edgeType: 'eave' | 'rake' = 'eave';
-        
-        if (ridgeDirection) {
-          const edgeDx = p2.lng - p1.lng;
-          const edgeDy = p2.lat - p1.lat;
-          const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
-          
-          if (edgeLen > 0) {
-            const normalizedEdge = { dx: edgeDx / edgeLen, dy: edgeDy / edgeLen };
-            // Dot product with ridge direction
-            const dotProduct = Math.abs(normalizedEdge.dx * ridgeDirection.dx + normalizedEdge.dy * ridgeDirection.dy);
-            
-            // If edge is parallel to ridge (dot product close to 1), it's a rake
-            // If edge is perpendicular to ridge (dot product close to 0), it's an eave
-            edgeType = dotProduct > 0.7 ? 'rake' : 'eave';
-          }
-        }
-        
-        const segment = {
-          start: svgP1,
-          end: svgP2,
-          length
-        };
-        
-        if (edgeType === 'eave') {
-          classifiedEaves.push(segment);
-        } else {
-          classifiedRakes.push(segment);
-        }
-        
         perimSegs.push({
-          type: edgeType,
+          type: 'perimeter',
           points: [svgP1, svgP2],
           length,
-          color: edgeType === 'eave' ? FEATURE_COLORS.eave : FEATURE_COLORS.rake,
+          color: FEATURE_COLORS.perimeter,
         });
       }
     }
     
-    console.log(`🏠 Classified edges: ${classifiedEaves.length} eaves, ${classifiedRakes.length} rakes`);
+    // Extract eaves and rakes directly from linear_features_wkt (these are the accurate straight lines)
+    const classifiedEaves: Array<{ start: { x: number; y: number }; end: { x: number; y: number }; length: number }> = [];
+    const classifiedRakes: Array<{ start: { x: number; y: number }; end: { x: number; y: number }; length: number }> = [];
     
-    // Build linear feature paths (only plausible ones) - filter out eaves/rakes since we draw them from perimeter
-    const linFeatures = plausibleLinearFeatures
-      .filter(f => f.type !== 'eave' && f.type !== 'rake') // Draw eaves/rakes from perimeter instead
-      .map(f => {
-        const svgCoords = f.coords.map(toSvg);
-        return {
-          type: f.type,
-          points: svgCoords,
-          length: f.length || (f.coords.length >= 2 ? calculateSegmentLength(f.coords[0], f.coords[f.coords.length - 1]) : 0),
-          color: FEATURE_COLORS[f.type as keyof typeof FEATURE_COLORS] || FEATURE_COLORS.ridge,
-        };
-      });
+    // Build linear feature paths from measurement data - use ALL features including eaves/rakes
+    const linFeatures = plausibleLinearFeatures.map(f => {
+      const svgCoords = f.coords.map(toSvg);
+      
+      // If it's an eave or rake, also add to classified segments for thick line rendering
+      if (f.type === 'eave' && svgCoords.length >= 2) {
+        classifiedEaves.push({
+          start: svgCoords[0],
+          end: svgCoords[svgCoords.length - 1],
+          length: f.length,
+        });
+      } else if (f.type === 'rake' && svgCoords.length >= 2) {
+        classifiedRakes.push({
+          start: svgCoords[0],
+          end: svgCoords[svgCoords.length - 1],
+          length: f.length,
+        });
+      }
+      
+      return {
+        type: f.type,
+        points: svgCoords,
+        length: f.length || (f.coords.length >= 2 ? calculateSegmentLength(f.coords[0], f.coords[f.coords.length - 1]) : 0),
+        color: FEATURE_COLORS[f.type as keyof typeof FEATURE_COLORS] || FEATURE_COLORS.ridge,
+      };
+    });
+    
+    console.log(`🏠 Linear features: ${classifiedEaves.length} eaves, ${classifiedRakes.length} rakes from measurement data`);
     
     // Debug: log hip features specifically  
     const hipFeatures = linFeatures.filter(f => f.type === 'hip');
@@ -597,65 +562,67 @@ export function SchematicRoofDiagram({
           />
         ))}
         
-        {/* Linear features - ridges, hips, valleys */}
-        {linearFeatures.map((feature, i) => {
-          if (feature.points.length < 2) return null;
-          const pathD = `M ${feature.points.map(p => `${p.x},${p.y}`).join(' L ')}`;
-          const isDashed = feature.type === 'step';
-          
-          // Set stroke width based on feature type
-          const strokeWidth = feature.type === 'hip' ? 4 : feature.type === 'valley' ? 4 : 4;
-          
-          return (
-            <g key={`${feature.type}-${i}`}>
-              <path
-                d={pathD}
-                fill="none"
-                stroke={feature.color}
-                strokeWidth={strokeWidth}
-                strokeLinecap="round"
-                strokeDasharray={isDashed ? '10,5' : undefined}
-              />
-              
-              {/* Length label at midpoint */}
-              {showLengthLabels && feature.length > 0 && feature.points.length >= 2 && (
-                (() => {
-                  const midIdx = Math.floor(feature.points.length / 2);
-                  const p1 = feature.points[midIdx - 1] || feature.points[0];
-                  const p2 = feature.points[midIdx] || feature.points[1];
-                  const midX = (p1.x + p2.x) / 2;
-                  const midY = (p1.y + p2.y) / 2;
-                  const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180 / Math.PI;
-                  // Keep text upright
-                  const displayAngle = angle > 90 || angle < -90 ? angle + 180 : angle;
-                  
-                  return (
-                    <g transform={`translate(${midX}, ${midY}) rotate(${displayAngle})`}>
-                      <rect
-                        x={-16}
-                        y={-10}
-                        width={32}
-                        height={16}
-                        fill="white"
-                        rx={3}
-                      />
-                      <text
-                        x={0}
-                        y={4}
-                        textAnchor="middle"
-                        fontSize={11}
-                        fontWeight="bold"
-                        fill={feature.color}
-                      >
-                        {Math.round(feature.length)}'
-                      </text>
-                    </g>
-                  );
-                })()
-              )}
-            </g>
-          );
-        })}
+        {/* Linear features - ridges, hips, valleys (skip eaves/rakes as they're rendered with thick lines above) */}
+        {linearFeatures
+          .filter(f => f.type !== 'eave' && f.type !== 'rake')
+          .map((feature, i) => {
+            if (feature.points.length < 2) return null;
+            const pathD = `M ${feature.points.map(p => `${p.x},${p.y}`).join(' L ')}`;
+            const isDashed = feature.type === 'step';
+            
+            // Set stroke width based on feature type
+            const strokeWidth = feature.type === 'hip' ? 4 : feature.type === 'valley' ? 4 : 4;
+            
+            return (
+              <g key={`${feature.type}-${i}`}>
+                <path
+                  d={pathD}
+                  fill="none"
+                  stroke={feature.color}
+                  strokeWidth={strokeWidth}
+                  strokeLinecap="round"
+                  strokeDasharray={isDashed ? '10,5' : undefined}
+                />
+                
+                {/* Length label at midpoint */}
+                {showLengthLabels && feature.length > 0 && feature.points.length >= 2 && (
+                  (() => {
+                    const midIdx = Math.floor(feature.points.length / 2);
+                    const p1 = feature.points[midIdx - 1] || feature.points[0];
+                    const p2 = feature.points[midIdx] || feature.points[1];
+                    const midX = (p1.x + p2.x) / 2;
+                    const midY = (p1.y + p2.y) / 2;
+                    const angle = Math.atan2(p2.y - p1.y, p2.x - p1.x) * 180 / Math.PI;
+                    // Keep text upright
+                    const displayAngle = angle > 90 || angle < -90 ? angle + 180 : angle;
+                    
+                    return (
+                      <g transform={`translate(${midX}, ${midY}) rotate(${displayAngle})`}>
+                        <rect
+                          x={-16}
+                          y={-10}
+                          width={32}
+                          height={16}
+                          fill="white"
+                          rx={3}
+                        />
+                        <text
+                          x={0}
+                          y={4}
+                          textAnchor="middle"
+                          fontSize={11}
+                          fontWeight="bold"
+                          fill={feature.color}
+                        >
+                          {Math.round(feature.length)}'
+                        </text>
+                      </g>
+                    );
+                  })()
+                )}
+              </g>
+            );
+          })}
         
         {/* Perimeter segment labels */}
         {showLengthLabels && perimeterSegments.map((seg, i) => {
