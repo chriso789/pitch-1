@@ -1,9 +1,9 @@
 // Gable Detection and Eave/Rake Classification
-// FIXED: Classification based on INTERSECTING FEATURES (not vertex types)
-// - RAKE: Perimeter edge where a RIDGE terminates/intersects (gable ends)
-// - EAVE: Perimeter edge where only VALLEYS or HIPS intersect (no ridges)
-// - HIP ROOFS: ALL perimeter edges are eaves (ridges don't reach perimeter)
-// - GABLE ROOFS: Eaves + rakes at gable peaks where ridge terminates
+// IMPROVED: Classification based on RIDGE DIRECTION
+// - EAVE: Perimeter edges roughly PARALLEL to the ridge (water flows off these)
+// - RAKE: Perimeter edges roughly PERPENDICULAR to the ridge (gable ends)
+// - HIP ROOFS: All perimeter edges are eaves (ridges don't reach perimeter)
+// - GABLE ROOFS: Eaves parallel to ridge + rakes perpendicular at gable peaks
 
 type XY = [number, number]; // [lng, lat]
 
@@ -20,9 +20,15 @@ export interface BoundaryClassification {
 }
 
 /**
- * Classify boundary edges into eaves and rakes based on INTERSECTING FEATURES
- * - RAKE: Perimeter edge where a RIDGE terminates (gable ends)
- * - EAVE: Perimeter edge where only valleys/hips intersect (no ridges)
+ * PRIMARY: Classify boundary edges using RIDGE DIRECTION as reference
+ * - EAVE: Edge is roughly PARALLEL to ridge direction (dot product > 0.5)
+ * - RAKE: Edge is roughly PERPENDICULAR to ridge direction (dot product < 0.5)
+ * 
+ * This is the geometrically correct approach because:
+ * - Water flows DOWN from the ridge
+ * - Eaves catch water at the low edge (run parallel to ridge)
+ * - Rakes are the angled sides at gable ends (run perpendicular to ridge)
+ * 
  * @param ring Closed polygon (CCW orientation)
  * @param skeleton Straight skeleton edges (ridges, hips, valleys)
  * @returns Classification of boundary edges
@@ -41,46 +47,76 @@ export function classifyBoundaryEdges(
   
   const ridges = skeleton.filter(e => e.type === 'ridge');
   const hips = skeleton.filter(e => e.type === 'hip');
-  const valleys = skeleton.filter(e => e.type === 'valley');
   
-  console.log(`Classifying ${n} boundary edges against ${ridges.length} ridges, ${hips.length} hips, ${valleys.length} valleys`);
+  console.log(`Classifying ${n} boundary edges using ridge direction method`);
+  console.log(`  Found ${ridges.length} ridges, ${hips.length} hips`);
   
-  // If no ridges, all edges are eaves
+  // If no ridges exist, this is likely a pure hip roof - all edges are eaves
   if (ridges.length === 0) {
+    console.log('  No ridges found - all edges classified as eaves (hip roof)');
     return {
       eaveEdges: getAllBoundaryEdges(vertices),
       rakeEdges: []
     };
   }
   
+  // Get the PRIMARY ridge direction from the longest ridge
+  const mainRidge = ridges.reduce((longest, r) => {
+    const len = distance(r.start, r.end);
+    return len > distance(longest.start, longest.end) ? r : longest;
+  }, ridges[0]);
+  
+  // Calculate normalized ridge direction vector
+  const ridgeVec: XY = [
+    mainRidge.end[0] - mainRidge.start[0],
+    mainRidge.end[1] - mainRidge.start[1]
+  ];
+  const ridgeLen = Math.sqrt(ridgeVec[0] ** 2 + ridgeVec[1] ** 2);
+  const ridgeDir: XY = ridgeLen > 0 
+    ? [ridgeVec[0] / ridgeLen, ridgeVec[1] / ridgeLen]
+    : [1, 0]; // Default to horizontal if degenerate
+  
+  console.log(`  Main ridge direction: [${ridgeDir[0].toFixed(4)}, ${ridgeDir[1].toFixed(4)}]`);
+  
   const eaveEdges: Array<[XY, XY]> = [];
   const rakeEdges: Array<[XY, XY]> = [];
   
-  // For each perimeter edge, check what features intersect it
+  // For each perimeter edge, check alignment with ridge direction
   for (let i = 0; i < n; i++) {
     const v1 = vertices[i];
     const v2 = vertices[(i + 1) % n];
     
-    // Check if any RIDGE terminates at either endpoint of this edge
-    const ridgeIntersects = ridges.some(ridge => 
-      pointNearEdgeEndpoint(ridge.start, v1, v2) || 
-      pointNearEdgeEndpoint(ridge.end, v1, v2)
+    // Calculate edge direction vector (normalized)
+    const edgeVec: XY = [v2[0] - v1[0], v2[1] - v1[1]];
+    const edgeLen = Math.sqrt(edgeVec[0] ** 2 + edgeVec[1] ** 2);
+    
+    if (edgeLen < 0.000001) {
+      // Degenerate edge, skip
+      continue;
+    }
+    
+    const edgeDir: XY = [edgeVec[0] / edgeLen, edgeVec[1] / edgeLen];
+    
+    // Dot product of edge direction with ridge direction
+    // |dot| = 1 means parallel, |dot| = 0 means perpendicular
+    const dot = Math.abs(edgeDir[0] * ridgeDir[0] + edgeDir[1] * ridgeDir[1]);
+    
+    // Check if any hip terminates at either endpoint of this edge
+    // If a hip ends here, it's definitely an eave corner (hip roof behavior)
+    const hipTerminatesHere = hips.some(hip => 
+      pointNearVertex(hip.end, v1) || pointNearVertex(hip.end, v2) ||
+      pointNearVertex(hip.start, v1) || pointNearVertex(hip.start, v2)
     );
     
-    // Check if any HIP terminates at either endpoint
-    const hipIntersects = hips.some(hip => 
-      pointNearEdgeEndpoint(hip.start, v1, v2) || 
-      pointNearEdgeEndpoint(hip.end, v1, v2)
-    );
-    
-    // RAKE: Ridge terminates here AND no hip terminates here
-    // (If hip also terminates, it's a hip corner = eave)
-    if (ridgeIntersects && !hipIntersects) {
-      rakeEdges.push([v1, v2]);
-      console.log(`  Edge ${i}: RAKE (ridge terminates)`);
-    } else {
+    // Classification logic:
+    // - EAVE: edge is parallel to ridge (dot > 0.5) OR hip terminates here
+    // - RAKE: edge is perpendicular to ridge (dot < 0.5) AND no hip terminates
+    if (dot > 0.5 || hipTerminatesHere) {
       eaveEdges.push([v1, v2]);
-      console.log(`  Edge ${i}: EAVE (ridge=${ridgeIntersects}, hip=${hipIntersects})`);
+      console.log(`  Edge ${i}: EAVE (dot=${dot.toFixed(3)}, hipTerminates=${hipTerminatesHere})`);
+    } else {
+      rakeEdges.push([v1, v2]);
+      console.log(`  Edge ${i}: RAKE (dot=${dot.toFixed(3)}, perpendicular to ridge)`);
     }
   }
   
@@ -90,13 +126,10 @@ export function classifyBoundaryEdges(
 }
 
 /**
- * Check if a point is near either endpoint of an edge
+ * Check if a point is near a vertex (within threshold)
  */
-function pointNearEdgeEndpoint(point: XY, v1: XY, v2: XY, threshold = 0.00005): boolean {
-  // threshold is ~5 meters in lat/lng degrees
-  const distToV1 = distance(point, v1);
-  const distToV2 = distance(point, v2);
-  return distToV1 < threshold || distToV2 < threshold;
+function pointNearVertex(point: XY, vertex: XY, threshold = 0.00005): boolean {
+  return distance(point, vertex) < threshold;
 }
 
 /**
