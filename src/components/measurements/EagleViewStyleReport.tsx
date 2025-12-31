@@ -3,10 +3,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Download, Printer, ChevronLeft, ChevronRight, Loader2, FileText, ExternalLink, MapPin } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
+import { CheckCircle2, Printer, Loader2, FileText, MapPin, ExternalLink, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { ReportPage } from './ReportPage';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface EagleViewStyleReportProps {
   open: boolean;
@@ -25,6 +27,8 @@ interface EagleViewStyleReportProps {
     license?: string;
   };
   onReportGenerated?: (reportUrl: string) => void;
+  onApproved?: () => void;
+  tenantId?: string;
 }
 
 // EagleView waste percentages
@@ -60,11 +64,15 @@ export function EagleViewStyleReport({
   satelliteImageUrl,
   companyInfo,
   onReportGenerated,
+  onApproved,
+  tenantId,
 }: EagleViewStyleReportProps) {
   const { toast } = useToast();
+  const queryClient = useQueryClient();
   const [currentPage, setCurrentPage] = useState(1);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [reportUrl, setReportUrl] = useState<string | null>(null);
+  const [isApproving, setIsApproving] = useState(false);
+  const [approvalNotes, setApprovalNotes] = useState('');
+  const [showApprovalConfirm, setShowApprovalConfirm] = useState(false);
 
   const totalPages = 8;
 
@@ -142,10 +150,24 @@ export function EagleViewStyleReport({
     return String.fromCharCode(65 + first) + String.fromCharCode(65 + second);
   };
 
-  const handleGeneratePDF = async () => {
-    setIsGenerating(true);
+  const handleApproveMeasurements = async () => {
+    if (!pipelineEntryId || !tenantId) {
+      toast({
+        title: "Missing Information",
+        description: "Pipeline entry or tenant ID is missing.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsApproving(true);
     try {
-      const { data, error } = await supabase.functions.invoke('generate-eagleview-report', {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      // 1. Generate PDF report first
+      const { data: reportData, error: reportError } = await supabase.functions.invoke('generate-eagleview-report', {
         body: {
           measurementId,
           measurement,
@@ -155,33 +177,92 @@ export function EagleViewStyleReport({
         }
       });
 
-      if (error) throw error;
+      let reportDocumentId: string | null = null;
+      let pdfUrl: string | null = null;
 
-      if (data?.pdfUrl) {
-        setReportUrl(data.pdfUrl);
-        onReportGenerated?.(data.pdfUrl);
-        toast({
-          title: "Report Generated",
-          description: "EagleView-style measurement report is ready.",
-        });
+      if (!reportError && reportData?.pdfUrl) {
+        pdfUrl = reportData.pdfUrl;
+        onReportGenerated?.(pdfUrl);
+
+        // 2. Create document record for the PDF
+        const { data: docData, error: docError } = await supabase
+          .from('documents')
+          .insert({
+            tenant_id: tenantId,
+            pipeline_entry_id: pipelineEntryId,
+            filename: `Measurement_Report_${address.replace(/[^a-zA-Z0-9]/g, '_')}.pdf`,
+            file_path: pdfUrl,
+            mime_type: 'application/pdf',
+            document_type: 'measurement_report',
+            description: `Approved measurement report for ${address}`,
+            uploaded_by: user.id,
+          })
+          .select('id')
+          .single();
+
+        if (!docError && docData) {
+          reportDocumentId = docData.id;
+        }
       }
-    } catch (err: any) {
-      console.error('Failed to generate report:', err);
+
+      // 3. Save approval record with smart tags
+      const { error: approvalError } = await supabase
+        .from('measurement_approvals')
+        .upsert({
+          tenant_id: tenantId,
+          pipeline_entry_id: pipelineEntryId,
+          measurement_id: measurementId || null,
+          approved_by: user.id,
+          approved_at: new Date().toISOString(),
+          saved_tags: tags,
+          approval_notes: approvalNotes || null,
+          report_generated: !!pdfUrl,
+          report_document_id: reportDocumentId,
+        }, {
+          onConflict: 'pipeline_entry_id,measurement_id',
+        });
+
+      if (approvalError) throw approvalError;
+
+      // 4. Update pipeline entry notes to record approval
+      const { data: currentEntry } = await supabase
+        .from('pipeline_entries')
+        .select('notes')
+        .eq('id', pipelineEntryId)
+        .single();
+
+      const approvalNote = `\n\n---\nMeasurements approved on ${new Date().toLocaleDateString()} at ${new Date().toLocaleTimeString()}\n${approvalNotes ? `Notes: ${approvalNotes}` : ''}`;
+      
+      await supabase
+        .from('pipeline_entries')
+        .update({
+          notes: (currentEntry?.notes || '') + approvalNote
+        })
+        .eq('id', pipelineEntryId);
+
+      // Invalidate queries
+      queryClient.invalidateQueries({ queryKey: ['measurement-approvals'] });
+      queryClient.invalidateQueries({ queryKey: ['documents'] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-entry'] });
+
       toast({
-        title: "Generation Failed",
-        description: err.message || "Could not generate report. Downloading preview instead.",
+        title: "Measurements Approved",
+        description: "Smart tags saved and report added to Documents.",
+      });
+
+      setShowApprovalConfirm(false);
+      onApproved?.();
+      onOpenChange(false);
+
+    } catch (err: any) {
+      console.error('Failed to approve measurements:', err);
+      toast({
+        title: "Approval Failed",
+        description: err.message || "Could not approve measurements.",
         variant: "destructive",
       });
     } finally {
-      setIsGenerating(false);
-    }
-  };
-
-  const handleDownload = () => {
-    if (reportUrl) {
-      window.open(reportUrl, '_blank');
-    } else {
-      handleGeneratePDF();
+      setIsApproving(false);
     }
   };
 
@@ -218,16 +299,68 @@ export function EagleViewStyleReport({
               <Printer className="h-4 w-4 mr-1" />
               Print
             </Button>
-            <Button size="sm" onClick={handleDownload} disabled={isGenerating}>
-              {isGenerating ? (
+            <Button 
+              size="sm" 
+              onClick={() => setShowApprovalConfirm(true)} 
+              disabled={isApproving}
+              className="bg-green-600 hover:bg-green-700"
+            >
+              {isApproving ? (
                 <Loader2 className="h-4 w-4 mr-1 animate-spin" />
               ) : (
-                <Download className="h-4 w-4 mr-1" />
+                <CheckCircle2 className="h-4 w-4 mr-1" />
               )}
-              Download PDF
+              Approve Measurements
             </Button>
           </div>
         </DialogHeader>
+
+        {/* Approval Confirmation Dialog */}
+        {showApprovalConfirm && (
+          <div className="absolute inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-6">
+            <div className="bg-card border rounded-lg shadow-lg p-6 max-w-md w-full">
+              <h3 className="text-lg font-semibold mb-2">Approve Measurements?</h3>
+              <p className="text-sm text-muted-foreground mb-4">
+                This will save the smart tags for future estimates and generate a PDF report in the Documents tab.
+              </p>
+              <div className="mb-4">
+                <label className="text-sm font-medium mb-1 block">Approval Notes (optional)</label>
+                <Textarea
+                  value={approvalNotes}
+                  onChange={(e) => setApprovalNotes(e.target.value)}
+                  placeholder="Any notes about these measurements..."
+                  rows={3}
+                />
+              </div>
+              <div className="flex gap-2 justify-end">
+                <Button 
+                  variant="outline" 
+                  onClick={() => setShowApprovalConfirm(false)}
+                  disabled={isApproving}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  onClick={handleApproveMeasurements}
+                  disabled={isApproving}
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  {isApproving ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                      Approving...
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle2 className="h-4 w-4 mr-1" />
+                      Approve & Save
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="flex flex-1 min-h-0">
           {/* Page Navigation Sidebar */}
