@@ -335,8 +335,8 @@ function generateRectangularSkeleton(vertices: XY[]): SkeletonEdge[] {
 
 /**
  * Generate skeleton for L, T, U shapes
- * FIXED: Valleys terminate at EXACT ridge/hip junction points
- * Hips terminate at EXACT ridge endpoints (not along ridge line)
+ * FIXED: Creates SECONDARY RIDGES for building wings that connect to main ridge
+ * Valleys terminate at ridge junction points, hips terminate at ridge endpoints
  */
 function generateComplexSkeleton(vertices: XY[], reflexIndices: Set<number>): SkeletonEdge[] {
   const skeleton: SkeletonEdge[] = [];
@@ -344,39 +344,92 @@ function generateComplexSkeleton(vertices: XY[], reflexIndices: Set<number>): Sk
   
   const centroid = calculateCentroid(vertices);
   const bounds = getBounds(vertices);
-  const isWiderThanTall = (bounds.maxX - bounds.minX) > (bounds.maxY - bounds.minY);
+  const buildingWidth = bounds.maxX - bounds.minX;
+  const buildingHeight = bounds.maxY - bounds.minY;
+  const isWiderThanTall = buildingWidth > buildingHeight;
   
-  // Compute ridge line first - this defines the junction points
-  const ridgeMargin = 0.35;
-  let ridgeStart: XY, ridgeEnd: XY;
+  // Detect building wings by grouping reflex vertices
+  const wings = detectBuildingWings(vertices, reflexIndices, bounds, isWiderThanTall);
+  
+  // Compute main ridge line first
+  const ridgeMargin = 0.30;
+  let mainRidgeStart: XY, mainRidgeEnd: XY;
   
   if (isWiderThanTall) {
-    ridgeStart = [bounds.minX + (bounds.maxX - bounds.minX) * ridgeMargin, centroid[1]];
-    ridgeEnd = [bounds.maxX - (bounds.maxX - bounds.minX) * ridgeMargin, centroid[1]];
+    mainRidgeStart = [bounds.minX + buildingWidth * ridgeMargin, centroid[1]];
+    mainRidgeEnd = [bounds.maxX - buildingWidth * ridgeMargin, centroid[1]];
   } else {
-    ridgeStart = [centroid[0], bounds.minY + (bounds.maxY - bounds.minY) * ridgeMargin];
-    ridgeEnd = [centroid[0], bounds.maxY - (bounds.maxY - bounds.minY) * ridgeMargin];
+    mainRidgeStart = [centroid[0], bounds.minY + buildingHeight * ridgeMargin];
+    mainRidgeEnd = [centroid[0], bounds.maxY - buildingHeight * ridgeMargin];
   }
   
   // Add main ridge
   skeleton.push({
     id: 'ridge_main',
-    start: ridgeStart,
-    end: ridgeEnd,
+    start: mainRidgeStart,
+    end: mainRidgeEnd,
     type: 'ridge',
     boundaryIndices: [],
     startVertexId: 'ridge_start',
     endVertexId: 'ridge_end'
   });
   
-  // Build junction vertices - these are the ONLY valid endpoints for hips and valleys
+  // Build junction vertices registry
   const junctionVertices: { id: string; coords: XY; type: string }[] = [
-    { id: 'ridge_start', coords: ridgeStart, type: 'ridge_end' },
-    { id: 'ridge_end', coords: ridgeEnd, type: 'ridge_end' }
+    { id: 'ridge_start', coords: mainRidgeStart, type: 'ridge_end' },
+    { id: 'ridge_end', coords: mainRidgeEnd, type: 'ridge_end' }
   ];
   
+  // Add secondary ridges for detected wings
+  wings.forEach((wing, wingIdx) => {
+    // Calculate where secondary ridge meets main ridge
+    const wingCentroid = calculateCentroid(wing.vertices);
+    
+    // Project wing centroid onto main ridge to find junction point
+    const junctionPoint = projectPointOntoLine(wingCentroid, mainRidgeStart, mainRidgeEnd);
+    
+    // Secondary ridge runs perpendicular to main ridge into the wing
+    let secondaryRidgeEnd: XY;
+    if (isWiderThanTall) {
+      // Main ridge is horizontal, secondary ridge is vertical
+      // Extend into the wing (above or below main ridge)
+      const wingDirection = wing.isAbove ? 1 : -1;
+      const wingExtent = wing.isAbove 
+        ? Math.abs(wing.maxY - centroid[1]) * 0.7
+        : Math.abs(centroid[1] - wing.minY) * 0.7;
+      secondaryRidgeEnd = [junctionPoint[0], junctionPoint[1] + wingDirection * wingExtent];
+    } else {
+      // Main ridge is vertical, secondary ridge is horizontal
+      const wingDirection = wing.isRight ? 1 : -1;
+      const wingExtent = wing.isRight
+        ? Math.abs(wing.maxX - centroid[0]) * 0.7
+        : Math.abs(centroid[0] - wing.minX) * 0.7;
+      secondaryRidgeEnd = [junctionPoint[0] + wingDirection * wingExtent, junctionPoint[1]];
+    }
+    
+    const junctionId = `ridge_junction_${wingIdx}`;
+    const secondaryEndId = `ridge_secondary_end_${wingIdx}`;
+    
+    junctionVertices.push({ id: junctionId, coords: junctionPoint, type: 'ridge_junction' });
+    junctionVertices.push({ id: secondaryEndId, coords: secondaryRidgeEnd, type: 'ridge_end' });
+    
+    skeleton.push({
+      id: `ridge_secondary_${wingIdx}`,
+      start: junctionPoint,  // Connects exactly to main ridge
+      end: secondaryRidgeEnd,
+      type: 'ridge',
+      boundaryIndices: [],
+      startVertexId: junctionId,
+      endVertexId: secondaryEndId
+    });
+  });
+  
+  // Collect all ridge endpoints for hip/valley termination
+  const allRidgeEndpoints: { id: string; coords: XY }[] = junctionVertices.filter(
+    v => v.type === 'ridge_end' || v.type === 'ridge_junction'
+  );
+  
   // Process reflex vertices to create valleys
-  // Valleys: start at reflex (inside corner) vertex, end at ridge intersection
   reflexIndices.forEach((idx, i) => {
     const vertex = vertices[idx];
     const prev = vertices[(idx - 1 + n) % n];
@@ -390,28 +443,38 @@ function generateComplexSkeleton(vertices: XY[], reflexIndices: Set<number>): Sk
     if (bisectorLen > 0) {
       const normalizedDir: XY = [bisectorDir[0] / bisectorLen, bisectorDir[1] / bisectorLen];
       
-      // Valley endpoint: calculate where bisector ray intersects ridge line
-      const intersection = rayLineIntersection(vertex, normalizedDir, ridgeStart, ridgeEnd);
+      // Find intersection with any ridge line (main or secondary)
+      let valleyEnd: XY | null = null;
+      let valleyEndVertexId = '';
       
-      let valleyEnd: XY;
-      let valleyEndVertexId: string;
-      
-      if (intersection) {
-        // Valley ends at ridge intersection point
-        valleyEnd = intersection;
-        valleyEndVertexId = `valley_ridge_${i}`;
+      // Try main ridge first
+      const mainIntersection = rayLineIntersection(vertex, normalizedDir, mainRidgeStart, mainRidgeEnd);
+      if (mainIntersection) {
+        valleyEnd = mainIntersection;
+        valleyEndVertexId = `valley_main_ridge_${i}`;
         junctionVertices.push({ id: valleyEndVertexId, coords: valleyEnd, type: 'valley_ridge_intersection' });
-      } else {
-        // No direct intersection - end at nearest ridge endpoint
-        const distToStart = distance(vertex, ridgeStart);
-        const distToEnd = distance(vertex, ridgeEnd);
-        if (distToStart < distToEnd) {
-          valleyEnd = ridgeStart;
-          valleyEndVertexId = 'ridge_start';
-        } else {
-          valleyEnd = ridgeEnd;
-          valleyEndVertexId = 'ridge_end';
+      }
+      
+      // Also try secondary ridges
+      if (!valleyEnd) {
+        for (const edge of skeleton) {
+          if (edge.type === 'ridge' && edge.id !== 'ridge_main') {
+            const intersection = rayLineIntersection(vertex, normalizedDir, edge.start, edge.end);
+            if (intersection) {
+              valleyEnd = intersection;
+              valleyEndVertexId = `valley_sec_ridge_${i}`;
+              junctionVertices.push({ id: valleyEndVertexId, coords: valleyEnd, type: 'valley_ridge_intersection' });
+              break;
+            }
+          }
         }
+      }
+      
+      // Fallback: use nearest ridge endpoint
+      if (!valleyEnd) {
+        const nearest = findNearestFromList(vertex, allRidgeEndpoints);
+        valleyEnd = nearest.coords;
+        valleyEndVertexId = nearest.id;
       }
       
       skeleton.push({
@@ -426,47 +489,124 @@ function generateComplexSkeleton(vertices: XY[], reflexIndices: Set<number>): Sk
   });
   
   // Process convex vertices to create hips
-  // Hips: start at eave corner, end at EXACT ridge endpoint (not along ridge)
+  // Hips connect eave corners to NEAREST ridge endpoint
   for (let i = 0; i < n; i++) {
     if (!reflexIndices.has(i)) {
       const vertex = vertices[i];
       
-      // Find the NEAREST ridge ENDPOINT (not closest point on line!)
-      const distToRidgeStart = distance(vertex, ridgeStart);
-      const distToRidgeEnd = distance(vertex, ridgeEnd);
+      // Find nearest ridge endpoint (could be main or secondary)
+      const nearest = findNearestFromList(vertex, allRidgeEndpoints);
       
-      let hipEnd: XY;
-      let hipEndVertexId: string;
+      const hipLength = distance(vertex, nearest.coords);
+      const mainRidgeLength = distance(mainRidgeStart, mainRidgeEnd);
       
-      if (distToRidgeStart <= distToRidgeEnd) {
-        hipEnd = ridgeStart;  // EXACT ridge endpoint
-        hipEndVertexId = 'ridge_start';
-      } else {
-        hipEnd = ridgeEnd;    // EXACT ridge endpoint
-        hipEndVertexId = 'ridge_end';
-      }
-      
-      // Only add hip if it's a reasonable length
-      const hipLength = distance(vertex, hipEnd);
-      const ridgeLength = distance(ridgeStart, ridgeEnd);
-      
-      if (hipLength > ridgeLength * 0.05 && hipLength < ridgeLength * 3) {
+      // Only add hip if reasonable length
+      if (hipLength > mainRidgeLength * 0.03 && hipLength < mainRidgeLength * 4) {
         skeleton.push({
           id: `hip_${i}`,
           start: vertex,
-          end: hipEnd,
+          end: nearest.coords,
           type: 'hip',
           boundaryIndices: [i],
-          endVertexId: hipEndVertexId
+          endVertexId: nearest.id
         });
       }
     }
   }
   
-  console.log(`  Complex skeleton: ${skeleton.filter(e => e.type === 'ridge').length} ridges, ${skeleton.filter(e => e.type === 'hip').length} hips, ${skeleton.filter(e => e.type === 'valley').length} valleys`);
+  console.log(`  Complex skeleton: ${skeleton.filter(e => e.type === 'ridge').length} ridges (incl ${wings.length} secondary), ${skeleton.filter(e => e.type === 'hip').length} hips, ${skeleton.filter(e => e.type === 'valley').length} valleys`);
   console.log(`  Junction vertices: ${junctionVertices.length}`);
   
   return skeleton;
+}
+
+/**
+ * Detect building wings (extensions) from reflex vertices
+ * Returns wing metadata for secondary ridge generation
+ */
+function detectBuildingWings(
+  vertices: XY[], 
+  reflexIndices: Set<number>,
+  bounds: { minX: number; maxX: number; minY: number; maxY: number },
+  isWiderThanTall: boolean
+): Array<{ vertices: XY[]; isAbove: boolean; isRight: boolean; minX: number; maxX: number; minY: number; maxY: number }> {
+  const wings: Array<{ vertices: XY[]; isAbove: boolean; isRight: boolean; minX: number; maxX: number; minY: number; maxY: number }> = [];
+  
+  // Simple wing detection: group consecutive non-reflex vertices that extend beyond the core
+  const centroidY = (bounds.minY + bounds.maxY) / 2;
+  const centroidX = (bounds.minX + bounds.maxX) / 2;
+  
+  // For T-shape: typically has 2 reflex vertices indicating the wing junction
+  // For L-shape: typically has 1 reflex vertex
+  
+  const reflexArray = Array.from(reflexIndices).sort((a, b) => a - b);
+  
+  if (reflexArray.length >= 2) {
+    // Group reflex vertices that are close together
+    for (let i = 0; i < reflexArray.length; i += 2) {
+      const reflex1Idx = reflexArray[i];
+      const reflex2Idx = reflexArray[(i + 1) % reflexArray.length];
+      
+      // Vertices between these reflex points form a wing
+      const wingVerts: XY[] = [];
+      let idx = (reflex1Idx + 1) % vertices.length;
+      while (idx !== reflex2Idx) {
+        wingVerts.push(vertices[idx]);
+        idx = (idx + 1) % vertices.length;
+      }
+      
+      if (wingVerts.length >= 2) {
+        const wingBounds = getBounds(wingVerts);
+        const wingCentroidY = (wingBounds.minY + wingBounds.maxY) / 2;
+        const wingCentroidX = (wingBounds.minX + wingBounds.maxX) / 2;
+        
+        wings.push({
+          vertices: wingVerts,
+          isAbove: wingCentroidY > centroidY,
+          isRight: wingCentroidX > centroidX,
+          ...wingBounds
+        });
+      }
+    }
+  }
+  
+  return wings;
+}
+
+/**
+ * Project a point onto a line segment
+ */
+function projectPointOntoLine(point: XY, lineStart: XY, lineEnd: XY): XY {
+  const dx = lineEnd[0] - lineStart[0];
+  const dy = lineEnd[1] - lineStart[1];
+  const lenSq = dx * dx + dy * dy;
+  
+  if (lenSq === 0) return lineStart;
+  
+  // Calculate projection parameter t
+  const t = Math.max(0, Math.min(1, 
+    ((point[0] - lineStart[0]) * dx + (point[1] - lineStart[1]) * dy) / lenSq
+  ));
+  
+  return [lineStart[0] + t * dx, lineStart[1] + t * dy];
+}
+
+/**
+ * Find nearest point from a list
+ */
+function findNearestFromList(point: XY, list: Array<{ id: string; coords: XY }>): { id: string; coords: XY } {
+  let nearest = list[0];
+  let minDist = distance(point, nearest.coords);
+  
+  for (let i = 1; i < list.length; i++) {
+    const d = distance(point, list[i].coords);
+    if (d < minDist) {
+      minDist = d;
+      nearest = list[i];
+    }
+  }
+  
+  return nearest;
 }
 
 /**
