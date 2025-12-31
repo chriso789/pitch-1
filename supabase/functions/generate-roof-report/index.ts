@@ -74,40 +74,52 @@ serve(async (req) => {
     }
 
     const html = generateReportHTML(measurement, companyInfo)
+    const fileName = `roof-report-${measurementId}.pdf`
 
-    const fileName = `roof-report-${measurementId}.html`
-    
-    // Fixed: Use correct storage bucket name roof-reports
-    const { data: uploadData, error: uploadError } = await supabase.storage
-      .from('roof-reports')
-      .upload(fileName, new Blob([html], { type: 'text/html' }), {
-        contentType: 'text/html',
-        cacheControl: '3600',
-        upsert: true
+    console.log('📤 Calling smart-docs-pdf to generate actual PDF...')
+
+    // Call smart-docs-pdf edge function to convert HTML to actual PDF
+    const pdfResponse = await fetch(`${SUPABASE_URL}/functions/v1/smart-docs-pdf`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        html: html,
+        filename: fileName,
+        upload: 'public'  // Get a public URL for the PDF
       })
+    })
 
-    if (uploadError) {
-      console.error('Upload error:', uploadError)
-      throw uploadError
+    if (!pdfResponse.ok) {
+      const errorText = await pdfResponse.text()
+      console.error('smart-docs-pdf error response:', errorText)
+      throw new Error(`PDF generation failed: ${pdfResponse.status}`)
     }
 
-    const { data: urlData } = supabase.storage
-      .from('roof-reports')
-      .getPublicUrl(fileName)
+    const pdfResult = await pdfResponse.json()
+    console.log('📄 PDF generated:', pdfResult)
 
+    if (!pdfResult.success || !pdfResult.pdf_url) {
+      throw new Error(pdfResult.error || 'PDF generation returned no URL')
+    }
+
+    // Update the measurement record with the PDF URL
     await supabase
       .from('roof_measurements')
       .update({
-        report_pdf_url: urlData.publicUrl,
+        report_pdf_url: pdfResult.pdf_url,
         report_generated_at: new Date().toISOString()
       })
       .eq('id', measurementId)
 
-    console.log('✅ Report generated')
+    console.log('✅ PDF Report generated successfully')
 
     return new Response(JSON.stringify({
       success: true,
-      pdfUrl: urlData.publicUrl,
+      pdfUrl: pdfResult.pdf_url,
+      storagePath: pdfResult.storage_path,
       fileName
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
