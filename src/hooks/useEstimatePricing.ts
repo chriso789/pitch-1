@@ -78,32 +78,43 @@ export function useEstimatePricing(initialItems: LineItem[] = []): UseEstimatePr
   );
 
   // Calculate pricing breakdown
+  // Overhead and Profit are both percentages of SELLING PRICE
+  // Formula: Selling Price = Direct Cost / (1 - OH% - Profit%)
   const breakdown = useMemo((): PricingBreakdown => {
     const materialsTotal = materialItems.reduce((sum, item) => sum + item.line_total, 0);
     const laborTotal = laborItems.reduce((sum, item) => sum + item.line_total, 0);
     const directCost = materialsTotal + laborTotal;
     
-    const overheadAmount = directCost * (config.overheadPercent / 100);
-    const totalCost = directCost + overheadAmount;
-
     let sellingPrice: number;
+    let overheadAmount: number;
     let profitAmount: number;
     let actualProfitMargin: number;
 
     if (isFixedPrice) {
-      // Fixed price mode: work backwards to calculate profit
+      // Fixed price mode: work backwards
       sellingPrice = fixedPrice!;
-      profitAmount = sellingPrice - totalCost;
+      overheadAmount = sellingPrice * (config.overheadPercent / 100);
+      profitAmount = sellingPrice - directCost - overheadAmount;
       actualProfitMargin = sellingPrice > 0 ? (profitAmount / sellingPrice) * 100 : 0;
     } else {
-      // Standard mode: calculate selling price from margin
-      // Formula: Price = Cost / (1 - Margin%)
-      const marginDecimal = config.profitMarginPercent / 100;
-      sellingPrice = marginDecimal < 1 ? totalCost / (1 - marginDecimal) : totalCost * 2;
-      profitAmount = sellingPrice - totalCost;
+      // Standard mode: solve for selling price algebraically
+      const overheadDecimal = config.overheadPercent / 100;
+      const profitDecimal = config.profitMarginPercent / 100;
+      const divisor = 1 - overheadDecimal - profitDecimal;
+      
+      // Prevent division by zero or negative (if OH + Profit >= 100%)
+      if (divisor <= 0) {
+        sellingPrice = directCost * 3; // Fallback
+      } else {
+        sellingPrice = directCost / divisor;
+      }
+      
+      overheadAmount = sellingPrice * overheadDecimal;
+      profitAmount = sellingPrice * profitDecimal;
       actualProfitMargin = config.profitMarginPercent;
     }
 
+    const totalCost = directCost + overheadAmount; // For display: cost before profit
     const repCommissionAmount = sellingPrice * (config.repCommissionPercent / 100);
 
     return {
