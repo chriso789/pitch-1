@@ -28,10 +28,10 @@ const FACET_COLORS = [
 
 // Plausibility thresholds for linear features
 const LINE_PLAUSIBILITY = {
-  MAX_LINES_PER_TYPE: 8,       // Max ridges/hips/valleys
-  MAX_STARBURST_RATIO: 0.4,    // Max % of lines meeting at one point
-  MIN_LINE_LENGTH_FT: 3,       // Ignore very short lines
-  MAX_LINE_LENGTH_FT: 100,     // Flag unusually long lines
+  MAX_LINES_PER_TYPE: 20,      // Max ridges/hips/valleys (increased for complex buildings)
+  MAX_STARBURST_RATIO: 0.5,    // Max % of lines meeting at one point (relaxed)
+  MIN_LINE_LENGTH_FT: 2,       // Ignore very short lines
+  MAX_LINE_LENGTH_FT: 200,     // Flag unusually long lines (increased for large roofs)
 };
 
 interface LinearFeature {
