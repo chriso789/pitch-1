@@ -74,8 +74,9 @@ export default function ProfessionalMeasurement() {
   const customerName = contact 
     ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unknown'
     : 'Loading...';
-  const lat = contact?.verified_address?.lat || contact?.latitude || 0;
-  const lng = contact?.verified_address?.lng || contact?.longitude || 0;
+  const lat = contact?.verified_address?.lat ?? contact?.latitude ?? null;
+  const lng = contact?.verified_address?.lng ?? contact?.longitude ?? null;
+  const hasValidCoordinates = lat !== null && lng !== null && !isNaN(lat) && !isNaN(lng) && (lat !== 0 || lng !== 0);
   
   // Build real satellite URL
   const realSatelliteUrl = mapboxToken && lat && lng
@@ -186,7 +187,7 @@ export default function ProfessionalMeasurement() {
               <Button
                 variant="ghost"
                 size="icon"
-                onClick={() => navigate(-1)}
+                onClick={() => navigate(`/lead/${id}`)}
               >
                 <Home className="h-4 w-4" />
               </Button>
@@ -239,15 +240,22 @@ export default function ProfessionalMeasurement() {
               {/* Tab 1: Draw Measurements */}
               <TabsContent value="draw" className="h-full m-0 p-0">
                 <div className="h-full flex flex-col min-h-[600px]">
-                  {mapboxToken && lat && lng ? (
+                  {mapboxToken && hasValidCoordinates ? (
                     <InteractiveMapCanvas
                       mapboxToken={mapboxToken}
-                      centerLat={lat}
-                      centerLng={lng}
+                      centerLat={lat!}
+                      centerLng={lng!}
                       initialZoom={20}
                       address={propertyAddress}
                       onMeasurementsChange={handleMeasurementsComplete}
                     />
+                  ) : !hasValidCoordinates ? (
+                    <div className="flex flex-col items-center justify-center h-full bg-muted gap-4">
+                      <p className="text-muted-foreground">Property coordinates are missing.</p>
+                      <Button onClick={() => navigate(`/lead/${id}`)}>
+                        Go to Lead to Verify Address
+                      </Button>
+                    </div>
                   ) : (
                     <div className="flex items-center justify-center h-full bg-muted">
                       <Loader2 className="h-8 w-8 animate-spin text-primary" />

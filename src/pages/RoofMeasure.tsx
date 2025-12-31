@@ -72,7 +72,11 @@ const RoofMeasurePage: React.FC = () => {
   };
 
   const handleCancel = () => {
-    navigate(-1);
+    if (id) {
+      navigate(`/lead/${id}`);
+    } else {
+      navigate(-1);
+    }
   };
 
   if (isLoading) {
@@ -85,16 +89,26 @@ const RoofMeasurePage: React.FC = () => {
     );
   }
 
-  if (!lat || !lng) {
+  // Check for valid coordinates (not just falsy check since 0 is valid)
+  const hasValidCoordinates = lat !== null && lat !== undefined && !isNaN(lat) && 
+                              lng !== null && lng !== undefined && !isNaN(lng) &&
+                              (lat !== 0 || lng !== 0);
+
+  if (!hasValidCoordinates) {
     return (
       <GlobalLayout>
         <div className="p-6">
-          <Button variant="ghost" onClick={() => navigate(-1)} className="mb-4">
+          <Button variant="ghost" onClick={() => id ? navigate(`/lead/${id}`) : navigate(-1)} className="mb-4">
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
+            Back to Lead
           </Button>
           <div className="text-center py-12">
-            <p className="text-muted-foreground">Missing property coordinates. Please verify the address first.</p>
+            <p className="text-muted-foreground mb-4">Missing property coordinates. Please verify the address first.</p>
+            {id && (
+              <Button onClick={() => navigate(`/lead/${id}`)}>
+                Go to Lead to Verify Address
+              </Button>
+            )}
           </div>
         </div>
       </GlobalLayout>
@@ -105,9 +119,9 @@ const RoofMeasurePage: React.FC = () => {
     <GlobalLayout>
       <div className="p-4 h-[calc(100vh-4rem)]">
         <div className="mb-4 flex items-center gap-4">
-          <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
+          <Button variant="ghost" size="sm" onClick={() => id ? navigate(`/lead/${id}`) : navigate(-1)}>
             <ArrowLeft className="h-4 w-4 mr-2" />
-            Back
+            Back to Lead
           </Button>
           <h1 className="text-lg font-semibold">Roof Measurement Tool</h1>
         </div>
