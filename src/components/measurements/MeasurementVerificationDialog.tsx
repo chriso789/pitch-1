@@ -10,7 +10,7 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Split, Info, MapPin, ZoomIn, Maximize2, Minimize2, ImageIcon, History, FileText, Trash2 } from 'lucide-react';
+import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Split, Info, MapPin, ZoomIn, Maximize2, Minimize2, ImageIcon, History, FileText, Trash2, AlertTriangle } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PolygonEditor } from './PolygonEditor';
@@ -18,6 +18,7 @@ import { ComprehensiveMeasurementOverlay } from './ComprehensiveMeasurementOverl
 import { ManualMeasurementEditor } from './ManualMeasurementEditor';
 import { FacetSplitterOverlay } from './FacetSplitterOverlay';
 import { SchematicRoofDiagram } from './SchematicRoofDiagram';
+import { MeasurementTracePanel } from './MeasurementTracePanel';
 import { MeasurementSystemLimitations } from '@/components/documentation/MeasurementSystemLimitations';
 import { ImageryAgeWarning } from './ImageryAgeWarning';
 import { HistoricalImageryComparison } from './HistoricalImageryComparison';
@@ -1300,6 +1301,19 @@ export function MeasurementVerificationDialog({
   const [linearOpen, setLinearOpen] = useState(false);
   const [penetrationsOpen, setPenetrationsOpen] = useState(false);
   const [materialsOpen, setMaterialsOpen] = useState(false);
+  const [showTracePanel, setShowTracePanel] = useState(false);
+
+  // Perimeter-only mode detection
+  const isPerimeterOnly = useMemo(() => {
+    const manualReview = measurement?.manual_review_recommended === true ||
+                         measurement?.overlay_schema?.manualReviewRecommended === true ||
+                         dbMeasurement?.manual_review_recommended === true;
+    const lowQuality = (measurement?.split_quality !== undefined && measurement.split_quality < 0.6) ||
+                       (dbMeasurement?.split_quality !== undefined && dbMeasurement.split_quality < 0.6);
+    const noFacets = (measurement?.facet_count === 0 && !measurement?.faces?.length) ||
+                     (dbMeasurement?.facet_count === 0 && !dbMeasurement?.faces?.length);
+    return manualReview || lowQuality || noFacets;
+  }, [measurement, dbMeasurement]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange} modal={false}>
@@ -1353,6 +1367,28 @@ export function MeasurementVerificationDialog({
 
         <ScrollArea className="flex-1 h-[calc(85vh-120px)]">
           <div className="grid grid-cols-1 lg:grid-cols-[1fr,340px] gap-4 p-4">
+            {/* Perimeter-Only Mode Banner */}
+            {isPerimeterOnly && (
+              <div className="lg:col-span-2 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-4 flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-500 flex-shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <h4 className="font-semibold text-amber-800 dark:text-amber-200">Perimeter Only Mode</h4>
+                  <p className="text-sm text-amber-700 dark:text-amber-300 mt-1">
+                    Facet geometry could not be computed automatically. Area and linear measurements shown are preliminary and require manual verification.
+                  </p>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="mt-2 border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/50"
+                    onClick={() => setShowManualEditor(true)}
+                  >
+                    <Edit3 className="h-4 w-4 mr-2" />
+                    Fix Outline & Lines
+                  </Button>
+                </div>
+              </div>
+            )}
+            
             {/* Imagery Age Warning - Show at top if imagery is old */}
             {(() => {
               const imageryDate = measurement?.metadata?.imageryDate || 
@@ -2070,6 +2106,21 @@ export function MeasurementVerificationDialog({
                     tags={tags}
                     imageryDate={measurement?.metadata?.imageryDate || measurement?.solar_api_response?.imageryDate || dbMeasurement?.solar_api_response?.imageryDate}
                     onDrawManually={() => setShowManualEditor(true)}
+                  />
+                </CollapsibleContent>
+              </Collapsible>
+
+              {/* Collapsible: Measurement Trace */}
+              <Collapsible open={showTracePanel} onOpenChange={setShowTracePanel}>
+                <CollapsibleTrigger className="flex items-center justify-between w-full p-2 rounded-md hover:bg-muted/50 text-sm font-medium">
+                  <span>🔍 Measurement Trace</span>
+                  {showTracePanel ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+                </CollapsibleTrigger>
+                <CollapsibleContent className="pt-1">
+                  <MeasurementTracePanel
+                    measurement={dbMeasurement || measurement}
+                    tags={tags}
+                    onFixOutline={() => setShowManualEditor(true)}
                   />
                 </CollapsibleContent>
               </Collapsible>
