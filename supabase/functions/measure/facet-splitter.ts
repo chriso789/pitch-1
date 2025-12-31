@@ -295,4 +295,4 @@ function degreesToPitchRatio(degrees: number): string {
   return `${rise}/12`;
 }
 
-export { splitFootprintIntoFacets, RoofFacet, SplitResult };
+// Types are exported inline above

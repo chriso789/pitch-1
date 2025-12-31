@@ -303,4 +303,4 @@ function round(n: number, decimals = 1): number {
   return Math.round(n * factor) / factor;
 }
 
-export { transformToOutputSchema, MeasurementOutputSchema };
+// Types are exported inline above
