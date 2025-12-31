@@ -44,7 +44,7 @@ const LeadDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'overview');
+  const [activeTab, setActiveTab] = useState(searchParams.get('tab') || 'estimate');
   const [estimateCalculations, setEstimateCalculations] = useState<any>(null);
   const [measurementReadiness, setMeasurementReadiness] = useState({ isReady: false, data: null });
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
@@ -371,17 +371,22 @@ const LeadDetails = () => {
         );
       default:
         return (
-          <EnhancedEstimateBuilder
-            pipelineEntryId={id}
-            contactId={lead?.contact?.id}
-            onEstimateCreated={(estimate) => {
-              refetchRequirements();
-              toast({
-                title: 'Estimate Created',
-                description: 'Excel-style estimate created successfully',
-              });
-            }}
-          />
+          <Card>
+            <CardHeader>
+              <CardTitle>Lead Overview</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="text-center py-8">
+                <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                <p className="text-muted-foreground mb-4">
+                  Select "Estimate" above to take measurements and create proposals.
+                </p>
+                <Button onClick={() => setActiveTab('estimate')} variant="default">
+                  Get Started with Measurements
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         );
     }
   };
