@@ -67,73 +67,112 @@ serve(async (req: Request) => {
       });
     }
 
-    // Find the tenant_id from onboarding_email_log
+    // Update communication_history based on resend_message_id
+    const { data: commHistory, error: commError } = await supabase
+      .from("communication_history")
+      .select("id, opened_count, clicked_count")
+      .eq("resend_message_id", emailId)
+      .maybeSingle();
+
+    if (commHistory && !commError) {
+      const updateData: Record<string, unknown> = {
+        email_status: mappedEventType,
+      };
+
+      if (mappedEventType === "delivered") {
+        updateData.delivered_at = payload.created_at;
+      } else if (mappedEventType === "opened") {
+        updateData.opened_at = updateData.opened_at || payload.created_at;
+        updateData.opened_count = (commHistory.opened_count || 0) + 1;
+      } else if (mappedEventType === "clicked") {
+        updateData.clicked_at = updateData.clicked_at || payload.created_at;
+        updateData.clicked_count = (commHistory.clicked_count || 0) + 1;
+      } else if (mappedEventType === "bounced") {
+        updateData.bounced_at = payload.created_at;
+        updateData.bounce_reason = payload.data?.bounce?.message || "Email bounced";
+      }
+
+      const { error: updateError } = await supabase
+        .from("communication_history")
+        .update(updateData)
+        .eq("id", commHistory.id);
+
+      if (updateError) {
+        console.error("Failed to update communication_history:", updateError);
+      } else {
+        console.log(`Updated communication_history ${commHistory.id} with ${mappedEventType}`);
+      }
+    }
+
+    // Also update onboarding_email_log if applicable (existing functionality)
     const { data: emailLog } = await supabase
       .from("onboarding_email_log")
       .select("tenant_id, id")
       .eq("resend_message_id", emailId)
       .single();
 
-    // Insert engagement event
-    const { error: insertError } = await supabase
-      .from("email_engagement_events")
-      .insert({
-        tenant_id: emailLog?.tenant_id || null,
-        resend_message_id: emailId,
-        email_type: "onboarding",
-        event_type: mappedEventType,
-        email_address: emailAddress,
-        link_url: payload.data?.click?.link || null,
-        user_agent: payload.data?.click?.userAgent || payload.data?.open?.userAgent || null,
-        ip_address: payload.data?.click?.ipAddress || payload.data?.open?.ipAddress || null,
-        timestamp: payload.created_at,
-        raw_payload: payload as unknown as Record<string, unknown>,
-      });
+    // Insert engagement event for onboarding emails
+    if (emailLog) {
+      const { error: insertError } = await supabase
+        .from("email_engagement_events")
+        .insert({
+          tenant_id: emailLog?.tenant_id || null,
+          resend_message_id: emailId,
+          email_type: "onboarding",
+          event_type: mappedEventType,
+          email_address: emailAddress,
+          link_url: payload.data?.click?.link || null,
+          user_agent: payload.data?.click?.userAgent || payload.data?.open?.userAgent || null,
+          ip_address: payload.data?.click?.ipAddress || payload.data?.open?.ipAddress || null,
+          timestamp: payload.created_at,
+          raw_payload: payload as unknown as Record<string, unknown>,
+        });
 
-    if (insertError) {
-      console.error("Failed to insert engagement event:", insertError);
-    }
-
-    // Update aggregate counts in onboarding_email_log
-    if (emailLog?.id) {
-      const updateData: Record<string, unknown> = {};
-      
-      if (mappedEventType === "opened") {
-        updateData.opens_count = (emailLog as any).opens_count + 1 || 1;
-        updateData.last_opened_at = new Date().toISOString();
-      } else if (mappedEventType === "clicked") {
-        updateData.clicks_count = (emailLog as any).clicks_count + 1 || 1;
-        updateData.last_clicked_at = new Date().toISOString();
-      } else if (mappedEventType === "delivered") {
-        updateData.delivered_at = new Date().toISOString();
-        updateData.status = "delivered";
-      } else if (mappedEventType === "bounced") {
-        updateData.bounced_at = new Date().toISOString();
-        updateData.status = "bounced";
+      if (insertError) {
+        console.error("Failed to insert engagement event:", insertError);
       }
 
-      if (Object.keys(updateData).length > 0) {
-        // Use raw SQL increment for counts
-        if (mappedEventType === "opened" || mappedEventType === "clicked") {
-          const countField = mappedEventType === "opened" ? "opens_count" : "clicks_count";
-          const timestampField = mappedEventType === "opened" ? "last_opened_at" : "last_clicked_at";
-          
-          await supabase.rpc("increment_email_count", {
-            p_log_id: emailLog.id,
-            p_count_field: countField,
-            p_timestamp_field: timestampField,
-          }).catch(() => {
-            // Fallback to direct update if RPC doesn't exist
-            supabase
+      // Update aggregate counts in onboarding_email_log
+      if (emailLog?.id) {
+        const updateData: Record<string, unknown> = {};
+        
+        if (mappedEventType === "opened") {
+          updateData.opens_count = (emailLog as any).opens_count + 1 || 1;
+          updateData.last_opened_at = new Date().toISOString();
+        } else if (mappedEventType === "clicked") {
+          updateData.clicks_count = (emailLog as any).clicks_count + 1 || 1;
+          updateData.last_clicked_at = new Date().toISOString();
+        } else if (mappedEventType === "delivered") {
+          updateData.delivered_at = new Date().toISOString();
+          updateData.status = "delivered";
+        } else if (mappedEventType === "bounced") {
+          updateData.bounced_at = new Date().toISOString();
+          updateData.status = "bounced";
+        }
+
+        if (Object.keys(updateData).length > 0) {
+          // Use raw SQL increment for counts
+          if (mappedEventType === "opened" || mappedEventType === "clicked") {
+            const countField = mappedEventType === "opened" ? "opens_count" : "clicks_count";
+            const timestampField = mappedEventType === "opened" ? "last_opened_at" : "last_clicked_at";
+            
+            await supabase.rpc("increment_email_count", {
+              p_log_id: emailLog.id,
+              p_count_field: countField,
+              p_timestamp_field: timestampField,
+            }).catch(() => {
+              // Fallback to direct update if RPC doesn't exist
+              supabase
+                .from("onboarding_email_log")
+                .update({ [timestampField]: new Date().toISOString() })
+                .eq("id", emailLog.id);
+            });
+          } else {
+            await supabase
               .from("onboarding_email_log")
-              .update({ [timestampField]: new Date().toISOString() })
+              .update(updateData)
               .eq("id", emailLog.id);
-          });
-        } else {
-          await supabase
-            .from("onboarding_email_log")
-            .update(updateData)
-            .eq("id", emailLog.id);
+          }
         }
       }
     }

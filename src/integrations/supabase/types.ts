@@ -2979,19 +2979,28 @@ export type Database = {
       communication_history: {
         Row: {
           ai_insights: Json | null
+          bounce_reason: string | null
+          bounced_at: string | null
           carrier_error_code: string | null
+          clicked_at: string | null
+          clicked_count: number | null
           communication_type: string
           contact_id: string | null
           content: string | null
           created_at: string
+          delivered_at: string | null
           delivery_status: string | null
           delivery_status_updated_at: string | null
           direction: string
+          email_status: string | null
           id: string
           metadata: Json | null
+          opened_at: string | null
+          opened_count: number | null
           pipeline_entry_id: string | null
           project_id: string | null
           rep_id: string | null
+          resend_message_id: string | null
           sentiment_score: number | null
           subject: string | null
           tenant_id: string
@@ -3000,19 +3009,28 @@ export type Database = {
         }
         Insert: {
           ai_insights?: Json | null
+          bounce_reason?: string | null
+          bounced_at?: string | null
           carrier_error_code?: string | null
+          clicked_at?: string | null
+          clicked_count?: number | null
           communication_type: string
           contact_id?: string | null
           content?: string | null
           created_at?: string
+          delivered_at?: string | null
           delivery_status?: string | null
           delivery_status_updated_at?: string | null
           direction: string
+          email_status?: string | null
           id?: string
           metadata?: Json | null
+          opened_at?: string | null
+          opened_count?: number | null
           pipeline_entry_id?: string | null
           project_id?: string | null
           rep_id?: string | null
+          resend_message_id?: string | null
           sentiment_score?: number | null
           subject?: string | null
           tenant_id: string
@@ -3021,19 +3039,28 @@ export type Database = {
         }
         Update: {
           ai_insights?: Json | null
+          bounce_reason?: string | null
+          bounced_at?: string | null
           carrier_error_code?: string | null
+          clicked_at?: string | null
+          clicked_count?: number | null
           communication_type?: string
           contact_id?: string | null
           content?: string | null
           created_at?: string
+          delivered_at?: string | null
           delivery_status?: string | null
           delivery_status_updated_at?: string | null
           direction?: string
+          email_status?: string | null
           id?: string
           metadata?: Json | null
+          opened_at?: string | null
+          opened_count?: number | null
           pipeline_entry_id?: string | null
           project_id?: string | null
           rep_id?: string | null
+          resend_message_id?: string | null
           sentiment_score?: number | null
           subject?: string | null
           tenant_id?: string
@@ -9165,6 +9192,84 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "user_activity_summary"
             referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      measurement_approvals: {
+        Row: {
+          approval_notes: string | null
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string | null
+          id: string
+          measurement_id: string | null
+          pipeline_entry_id: string | null
+          report_document_id: string | null
+          report_generated: boolean | null
+          saved_tags: Json
+          tenant_id: string | null
+        }
+        Insert: {
+          approval_notes?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
+          id?: string
+          measurement_id?: string | null
+          pipeline_entry_id?: string | null
+          report_document_id?: string | null
+          report_generated?: boolean | null
+          saved_tags?: Json
+          tenant_id?: string | null
+        }
+        Update: {
+          approval_notes?: string | null
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
+          id?: string
+          measurement_id?: string | null
+          pipeline_entry_id?: string | null
+          report_document_id?: string | null
+          report_generated?: boolean | null
+          saved_tags?: Json
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "measurement_approvals_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_approvals_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "measurement_approvals_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_approvals_report_document_id_fkey"
+            columns: ["report_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_approvals_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
           },
         ]
       }

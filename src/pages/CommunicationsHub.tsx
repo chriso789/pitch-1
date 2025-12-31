@@ -1,12 +1,12 @@
 /**
  * Unified Communications Hub
- * Central dashboard for all communications - SMS, Calls, Voicemail, Recordings
+ * Central dashboard for all communications - SMS, Calls, Voicemail, Recordings, Email Activity
  */
 
 import { useState } from 'react';
 import { 
   Phone, MessageSquare, Voicemail, Mic, PhoneCall,
-  Inbox, Settings, RefreshCw
+  Inbox, Settings, RefreshCw, Mail
 } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
@@ -17,6 +17,7 @@ import { SMSConversationThread } from '@/components/communications/SMSConversati
 import { RecordingLibrary } from '@/components/communications/RecordingLibrary';
 import { GlobalSoftphone } from '@/components/communications/GlobalSoftphone';
 import { SoftphonePanel } from '@/components/telephony/SoftphonePanel';
+import { EmailActivityDashboard } from '@/components/communications/EmailActivityDashboard';
 import { useCommunications, SMSThread, UnifiedInboxItem } from '@/hooks/useCommunications';
 import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 
@@ -127,6 +128,10 @@ const CommunicationsHub = () => {
                 <Mic className="h-4 w-4" />
                 Recordings
               </TabsTrigger>
+              <TabsTrigger value="email-activity" className="gap-2">
+                <Mail className="h-4 w-4" />
+                Email Activity
+              </TabsTrigger>
             </TabsList>
           </div>
 
@@ -206,6 +211,11 @@ const CommunicationsHub = () => {
           {/* Recordings Tab */}
           <TabsContent value="recordings" className="flex-1 m-0 overflow-hidden p-4">
             <RecordingLibrary />
+          </TabsContent>
+
+          {/* Email Activity Tab */}
+          <TabsContent value="email-activity" className="flex-1 m-0 overflow-hidden">
+            <EmailActivityDashboard />
           </TabsContent>
         </Tabs>
       </div>
