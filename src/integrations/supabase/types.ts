@@ -5888,9 +5888,11 @@ export type Database = {
           estimate_number: string
           expires_at: string | null
           financing_options: Json | null
+          fixed_selling_price: number | null
           good_tier_total: number | null
           id: string
           internal_notes: string | null
+          is_fixed_price: boolean | null
           labor_cost: number
           labor_hours: number
           labor_markup_percent: number
@@ -5902,6 +5904,7 @@ export type Database = {
           material_cost: number
           material_markup_percent: number
           material_total: number
+          materials_total: number | null
           measurement_report_id: string | null
           notes: string | null
           overhead_amount: number
@@ -5911,6 +5914,8 @@ export type Database = {
           price_per_sq_ft: number
           project_id: string | null
           property_details: Json
+          rep_commission_amount: number | null
+          rep_commission_percent: number | null
           roof_area_sq_ft: number
           roof_pitch: string
           sales_rep_commission_amount: number
@@ -5958,9 +5963,11 @@ export type Database = {
           estimate_number: string
           expires_at?: string | null
           financing_options?: Json | null
+          fixed_selling_price?: number | null
           good_tier_total?: number | null
           id?: string
           internal_notes?: string | null
+          is_fixed_price?: boolean | null
           labor_cost?: number
           labor_hours?: number
           labor_markup_percent?: number
@@ -5972,6 +5979,7 @@ export type Database = {
           material_cost?: number
           material_markup_percent?: number
           material_total?: number
+          materials_total?: number | null
           measurement_report_id?: string | null
           notes?: string | null
           overhead_amount?: number
@@ -5981,6 +5989,8 @@ export type Database = {
           price_per_sq_ft?: number
           project_id?: string | null
           property_details?: Json
+          rep_commission_amount?: number | null
+          rep_commission_percent?: number | null
           roof_area_sq_ft: number
           roof_pitch?: string
           sales_rep_commission_amount?: number
@@ -6028,9 +6038,11 @@ export type Database = {
           estimate_number?: string
           expires_at?: string | null
           financing_options?: Json | null
+          fixed_selling_price?: number | null
           good_tier_total?: number | null
           id?: string
           internal_notes?: string | null
+          is_fixed_price?: boolean | null
           labor_cost?: number
           labor_hours?: number
           labor_markup_percent?: number
@@ -6042,6 +6054,7 @@ export type Database = {
           material_cost?: number
           material_markup_percent?: number
           material_total?: number
+          materials_total?: number | null
           measurement_report_id?: string | null
           notes?: string | null
           overhead_amount?: number
@@ -6051,6 +6064,8 @@ export type Database = {
           price_per_sq_ft?: number
           project_id?: string | null
           property_details?: Json
+          rep_commission_amount?: number | null
+          rep_commission_percent?: number | null
           roof_area_sq_ft?: number
           roof_pitch?: string
           sales_rep_commission_amount?: number
