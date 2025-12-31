@@ -483,22 +483,27 @@ export function SchematicRoofDiagram({
           </g>
         ))}
         
-        {/* Perimeter outline (thick dark line) */}
+        {/* Perimeter outline (thin guide line - behind eaves/rakes) */}
         {perimeterPath && (
           <path
             d={perimeterPath}
             fill="none"
             stroke={FEATURE_COLORS.perimeter}
-            strokeWidth={3}
+            strokeWidth={1.5}
             strokeLinejoin="round"
+            opacity={0.5}
           />
         )}
         
-        {/* Linear features */}
+        {/* Linear features - eaves/rakes rendered prominently */}
         {linearFeatures.map((feature, i) => {
           if (feature.points.length < 2) return null;
           const pathD = `M ${feature.points.map(p => `${p.x},${p.y}`).join(' L ')}`;
           const isDashed = feature.type === 'step';
+          
+          // Eaves and rakes get THICKER strokes to stand out over perimeter
+          const isEaveOrRake = feature.type === 'eave' || feature.type === 'rake';
+          const strokeWidth = isEaveOrRake ? 5 : 4;
           
           return (
             <g key={`${feature.type}-${i}`}>
@@ -506,7 +511,7 @@ export function SchematicRoofDiagram({
                 d={pathD}
                 fill="none"
                 stroke={feature.color}
-                strokeWidth={4}
+                strokeWidth={strokeWidth}
                 strokeLinecap="round"
                 strokeDasharray={isDashed ? '10,5' : undefined}
               />

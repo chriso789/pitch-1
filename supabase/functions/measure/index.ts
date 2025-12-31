@@ -287,6 +287,18 @@ function calculateGeodesicLength(start: [number, number], end: [number, number],
   return length_m * 3.28084;
 }
 
+// Calculate bounding box from coordinates
+function getBoundsFromCoords(coords: [number, number][]): { minX: number; maxX: number; minY: number; maxY: number } {
+  const xs = coords.map(c => c[0]);
+  const ys = coords.map(c => c[1]);
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys)
+  };
+}
+
 // Convert skeleton edges and boundary edges to LinearFeature array
 // IMPROVED: Better facet counting based on skeleton topology
 function buildLinearFeaturesFromTopology(
@@ -395,6 +407,20 @@ function buildLinearFeaturesFromTopology(
       derivedFacetCount,
       totals: Object.entries(totals).map(([k, v]) => `${k}=${Math.round(v)}`).join(', ')
     });
+    
+    // RIDGE LENGTH VALIDATION: Compare ridge to footprint's longest dimension
+    const bounds = getBoundsFromCoords(coords);
+    const longestDimFt = Math.max(
+      calculateGeodesicLength([bounds.minX, bounds.minY], [bounds.maxX, bounds.minY], midLat),
+      calculateGeodesicLength([bounds.minX, bounds.minY], [bounds.minX, bounds.maxY], midLat)
+    );
+    const ridgeRatio = longestDimFt > 0 ? totals.ridge_ft / longestDimFt : 0;
+    
+    if (ridgeRatio < 0.3 || ridgeRatio > 1.5) {
+      console.warn(`⚠️ Ridge length suspicious: ${totals.ridge_ft.toFixed(1)}ft vs longest dimension ${longestDimFt.toFixed(1)}ft (ratio: ${ridgeRatio.toFixed(2)})`);
+    } else {
+      console.log(`✓ Ridge length plausible: ${totals.ridge_ft.toFixed(1)}ft / ${longestDimFt.toFixed(1)}ft = ${ridgeRatio.toFixed(2)}`);
+    }
     
     return { features, totals, derivedFacetCount };
   } catch (error) {
