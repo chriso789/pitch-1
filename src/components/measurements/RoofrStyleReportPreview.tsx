@@ -166,12 +166,12 @@ export function RoofrStyleReportPreview({
   // Debug: Log what data we're receiving
   console.log('📊 RoofrStyleReportPreview data:', { measurement: enrichedMeasurement, tags, satelliteImageUrl });
   
-  // Calculate linear totals from WKT features if available
-  const calculateLinearFromWKT = () => {
-    const wktFeatures = measurement?.linear_features_wkt || [];
+  // Calculate linear totals from WKT features - prioritize enrichedMeasurement (DB truth)
+  const wktLinearTotals = useMemo(() => {
+    const wktFeatures = enrichedMeasurement?.linear_features_wkt || measurement?.linear_features_wkt || [];
     const totals: Record<string, number> = { eave: 0, rake: 0, hip: 0, valley: 0, ridge: 0 };
     
-    if (wktFeatures.length > 0) {
+    if (Array.isArray(wktFeatures) && wktFeatures.length > 0) {
       wktFeatures.forEach((feature: any) => {
         const type = feature.type?.toLowerCase();
         if (type && totals.hasOwnProperty(type)) {
@@ -180,10 +180,15 @@ export function RoofrStyleReportPreview({
       });
     }
     
+    console.log('📐 WKT Linear Features:', { 
+      source: enrichedMeasurement?.linear_features_wkt ? 'enrichedMeasurement' : 'measurement',
+      featureCount: wktFeatures.length,
+      totals 
+    });
+    
     return totals;
-  };
+  }, [enrichedMeasurement, measurement]);
   
-  const wktLinearTotals = calculateLinearFromWKT();
   const hasWKTData = Object.values(wktLinearTotals).some(v => v > 0);
   
   // Extract measurement data - prioritize enrichedMeasurement (DB truth) over legacy fallbacks

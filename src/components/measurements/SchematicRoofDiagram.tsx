@@ -280,6 +280,16 @@ export function SchematicRoofDiagram({
     const minLng = Math.min(...lngs);
     const maxLng = Math.max(...lngs);
     
+    // Debug: Coordinate bounds verification
+    console.log('🗺️ Coordinate bounds verification:', {
+      bounds: { minLat, maxLat, minLng, maxLng },
+      perimeterPoints: perimeterCoords.length,
+      linearFeaturesCount: linearFeaturesData.length,
+      facetsCount: facets.length,
+      sampleEave: linearFeaturesData.find(f => f.type === 'eave'),
+      sampleHip: linearFeaturesData.find(f => f.type === 'hip'),
+    });
+    
     // Coordinate transformation function
     const toSvg = (coord: { lat: number; lng: number }) => {
       const scaleX = (width - padding * 2) / (maxLng - minLng || 0.0001);
