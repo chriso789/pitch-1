@@ -3,14 +3,14 @@ import { wktLineToLatLngs, wktPolygonToLatLngs } from '@/lib/canvassiq/wkt';
 import { supabase } from '@/integrations/supabase/client';
 import { AlertTriangle } from 'lucide-react';
 
-// Roofr exact color palette
+// Roofr exact color palette - MATCHED to Roofr conventions
 const FEATURE_COLORS = {
-  eave: '#00B894',    // Teal green
-  ridge: '#D63384',   // Magenta/pink
-  hip: '#FD7E14',     // Orange
-  valley: '#0D6EFD',  // Blue
-  rake: '#9B59B6',    // Purple
-  step: '#6C757D',    // Gray (dotted)
+  eave: '#006400',    // Dark green - Eaves
+  ridge: '#90EE90',   // Light green - Ridges  
+  hip: '#9B59B6',     // Purple - Hips
+  valley: '#DC3545',  // Red - Valleys
+  rake: '#17A2B8',    // Cyan/Teal - Rakes
+  step: '#6C757D',    // Gray (dotted) - Steps
   perimeter: '#343A40', // Dark outline
 };
 

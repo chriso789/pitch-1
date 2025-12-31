@@ -183,6 +183,10 @@ function splitRectangularRoof(
 
 /**
  * Split a complex roof (L, T, U shapes)
+ * 
+ * IMPORTANT: We no longer create placeholder facets with the entire footprint.
+ * Instead, we return NO facets and flag for manual review.
+ * This prevents misleading geometry from being displayed.
  */
 function splitComplexRoof(
   footprint: XY[],
@@ -191,47 +195,27 @@ function splitComplexRoof(
   const vertices = footprint.slice(0, -1);
   const n = vertices.length;
   
-  // For complex shapes, create facets based on number of convex/reflex vertices
+  // Count reflex vertices to understand complexity
   const reflexIndices = findReflexVertices(vertices);
   const numReflex = reflexIndices.size;
   
-  // Estimate number of facets
-  // L-shape: 6 vertices, 1 reflex = 6 facets
-  // T-shape: 8 vertices, 2 reflex = 8 facets
-  // U-shape: 8 vertices, 2 reflex = 8 facets
-  const estimatedFacets = Math.max(4, n - numReflex);
+  // Calculate total footprint area for reference
+  const totalPlanArea = calculatePolygonAreaSqFt(vertices);
   
-  console.log(`Complex roof: ${n} vertices, ${numReflex} reflex, estimating ${estimatedFacets} facets`);
+  // Estimate number of facets (for metadata only, not creating placeholder facets)
+  const estimatedFacetCount = Math.max(4, n - numReflex);
   
-  // Create approximate facets
-  const facets: RoofFacet[] = [];
-  const totalArea = calculatePolygonAreaSqFt(vertices);
-  const areaPerFacet = totalArea / estimatedFacets;
+  console.log(`Complex roof: ${n} vertices, ${numReflex} reflex. Estimated ${estimatedFacetCount} facets. Returning empty facets for manual review.`);
+  console.log(`Total plan area: ${Math.round(totalPlanArea)} sqft`);
   
-  // Default pitch for estimation
-  const defaultPitch = 18.5; // ~4/12
-  const pitchFactor = 1 / Math.cos(defaultPitch * Math.PI / 180);
-  
-  for (let i = 0; i < Math.min(estimatedFacets, 20); i++) {
-    const azimuth = (i * 360 / estimatedFacets) % 360;
-    
-    facets.push({
-      id: String.fromCharCode(65 + i),
-      polygon: footprint, // Can't determine exact facet polygons without more analysis
-      area: areaPerFacet * pitchFactor,
-      planArea: areaPerFacet,
-      pitch: defaultPitch,
-      pitchRatio: '4/12',
-      azimuth,
-      requiresReview: true,
-      reviewReason: 'Complex shape - facet boundaries estimated'
-    });
-  }
+  // DO NOT create placeholder facets - this was causing the ~4800 sqft issue
+  // where all facets used the entire footprint polygon as their geometry.
+  // Instead, return empty facets array and flag for manual review.
   
   return {
-    facets,
+    facets: [], // No placeholder facets - user must verify/draw
     manualReviewRecommended: true,
-    splitQuality: 0.5
+    splitQuality: 0.3, // Low quality indicates we couldn't split properly
   };
 }
 
