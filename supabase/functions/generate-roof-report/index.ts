@@ -1,5 +1,6 @@
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+import { jsPDF } from 'https://esm.sh/jspdf@2.5.1'
 
 const SUPABASE_URL = Deno.env.get('SUPABASE_URL')!
 const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
@@ -44,7 +45,7 @@ serve(async (req) => {
 
     const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
 
-    // Fixed: Use correct table name roof_measurement_facets
+    // Fetch measurement data
     const { data: measurement, error: measurementError } = await supabase
       .from('roof_measurements')
       .select(`*, roof_measurement_facets (*)`)
@@ -73,53 +74,50 @@ serve(async (req) => {
       })
     }
 
-    const html = generateReportHTML(measurement, companyInfo)
+    console.log('📊 Building PDF directly with jsPDF...')
+
+    // Generate PDF using jsPDF directly (no Puppeteer needed)
+    const pdfBytes = generatePDFDirectly(measurement, companyInfo)
+    
     const fileName = `roof-report-${measurementId}.pdf`
 
-    console.log('📤 Calling smart-docs-pdf to generate actual PDF...')
+    console.log('📤 Uploading PDF to storage...')
 
-    // Call smart-docs-pdf edge function to convert HTML to actual PDF
-    const pdfResponse = await fetch(`${SUPABASE_URL}/functions/v1/smart-docs-pdf`, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({
-        html: html,
-        filename: fileName,
-        upload: 'public'  // Get a public URL for the PDF
+    // Upload actual PDF to storage
+    const { data: uploadData, error: uploadError } = await supabase.storage
+      .from('measurement-reports')
+      .upload(fileName, pdfBytes, {
+        contentType: 'application/pdf',
+        upsert: true
       })
-    })
 
-    if (!pdfResponse.ok) {
-      const errorText = await pdfResponse.text()
-      console.error('smart-docs-pdf error response:', errorText)
-      throw new Error(`PDF generation failed: ${pdfResponse.status}`)
+    if (uploadError) {
+      console.error('Upload error:', uploadError)
+      throw new Error(`Failed to upload PDF: ${uploadError.message}`)
     }
 
-    const pdfResult = await pdfResponse.json()
-    console.log('📄 PDF generated:', pdfResult)
+    // Get public URL
+    const { data: urlData } = supabase.storage
+      .from('measurement-reports')
+      .getPublicUrl(fileName)
 
-    if (!pdfResult.success || !pdfResult.pdf_url) {
-      throw new Error(pdfResult.error || 'PDF generation returned no URL')
-    }
+    const pdfUrl = urlData.publicUrl
 
     // Update the measurement record with the PDF URL
     await supabase
       .from('roof_measurements')
       .update({
-        report_pdf_url: pdfResult.pdf_url,
+        report_pdf_url: pdfUrl,
         report_generated_at: new Date().toISOString()
       })
       .eq('id', measurementId)
 
-    console.log('✅ PDF Report generated successfully')
+    console.log('✅ PDF Report generated successfully:', pdfUrl)
 
     return new Response(JSON.stringify({
       success: true,
-      pdfUrl: pdfResult.pdf_url,
-      storagePath: pdfResult.storage_path,
+      pdfUrl: pdfUrl,
+      storagePath: uploadData.path,
       fileName
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
@@ -137,282 +135,377 @@ serve(async (req) => {
   }
 })
 
-function generateReportHTML(measurement: any, companyInfo: any) {
-  // Fixed: Use correct property name roof_measurement_facets
+function generatePDFDirectly(measurement: any, companyInfo: any): Uint8Array {
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'letter'
+  })
+
   const facets = measurement.roof_measurement_facets || []
   const materials = measurement.material_calculations || {}
+  const companyName = companyInfo?.name || 'PITCH CRM'
+  const propertyAddress = measurement.property_address || 'Property Address'
+
+  // Colors
+  const primaryGreen = [30, 86, 49] as [number, number, number]
+  const primaryBlue = [33, 150, 243] as [number, number, number]
+  const darkGray = [51, 51, 51] as [number, number, number]
+  const lightGray = [102, 102, 102] as [number, number, number]
+
+  // Page dimensions
+  const pageWidth = 215.9
+  const pageHeight = 279.4
+  const margin = 20
+  const contentWidth = pageWidth - (margin * 2)
+
+  // ============ PAGE 1: SUMMARY ============
+  let yPos = margin
+
+  // Header
+  doc.setFontSize(20)
+  doc.setTextColor(...primaryGreen)
+  doc.text(companyName, margin, yPos)
+
+  doc.setFontSize(28)
+  doc.setTextColor(...primaryBlue)
+  doc.text('Roof Measurement Report', pageWidth - margin, yPos, { align: 'right' })
   
-  return `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="UTF-8">
-  <title>Roof Measurement Report</title>
-  <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
-    body { font-family: Arial, sans-serif; color: #333; line-height: 1.6; }
-    .page { width: 8.5in; min-height: 11in; padding: 0.75in; background: white; page-break-after: always; }
-    .header { display: flex; justify-content: space-between; align-items: start; margin-bottom: 30px; padding-bottom: 20px; border-bottom: 3px solid #1e5631; }
-    .company-name { font-size: 24px; font-weight: bold; color: #1e5631; }
-    .report-title h1 { font-size: 36px; color: #2196F3; }
-    .property-info { background: #f5f5f5; padding: 20px; border-radius: 8px; margin-bottom: 30px; }
-    .property-address { font-size: 20px; font-weight: bold; color: #333; }
-    .summary-stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin-bottom: 30px; }
-    .stat-box { background: white; border: 2px solid #e0e0e0; border-radius: 8px; padding: 15px; text-align: center; }
-    .stat-value { font-size: 28px; font-weight: bold; color: #1e5631; }
-    .stat-label { font-size: 12px; color: #666; text-transform: uppercase; }
-    .section-title { font-size: 24px; color: #2196F3; margin: 30px 0 15px 0; padding-bottom: 10px; border-bottom: 2px solid #2196F3; }
-    .measurements-table { width: 100%; border-collapse: collapse; margin: 20px 0; }
-    .measurements-table th { background: #1e5631; color: white; padding: 12px; text-align: left; }
-    .measurements-table td { padding: 10px 12px; border-bottom: 1px solid #e0e0e0; }
-    .measurements-table tr:nth-child(even) { background: #f9f9f9; }
-    .facet-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px; margin: 20px 0; }
-    .facet-card { border-left: 4px solid #2196F3; background: #f5f5f5; padding: 15px; border-radius: 4px; }
-    .materials-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 20px; margin: 20px 0; }
-    .material-item { background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 15px; }
-    .material-quantity { font-size: 24px; font-weight: bold; color: #1e5631; }
-    .footer { margin-top: 40px; padding-top: 20px; border-top: 2px solid #e0e0e0; text-align: center; color: #666; font-size: 11px; }
-    @media print { .page { margin: 0; border: none; page-break-after: always; } }
-  </style>
-</head>
-<body>
+  yPos += 8
+  doc.setFontSize(11)
+  doc.setTextColor(...lightGray)
+  doc.text('AI-Powered Measurement', pageWidth - margin, yPos, { align: 'right' })
 
-  <div class="page">
-    <div class="header">
-      <div>
-        <div class="company-name">${companyInfo?.name || 'PITCH CRM'}</div>
-        <div style="font-size: 12px; color: #666; margin-top: 5px;">
-          ${companyInfo?.phone || ''}<br>${companyInfo?.email || ''}
-        </div>
-      </div>
-      <div class="report-title" style="text-align: right;">
-        <h1>Roof Report</h1>
-        <div style="font-size: 14px; color: #666;">AI-Powered Measurement</div>
-      </div>
-    </div>
+  // Divider line
+  yPos += 8
+  doc.setDrawColor(...primaryGreen)
+  doc.setLineWidth(0.8)
+  doc.line(margin, yPos, pageWidth - margin, yPos)
 
-    <div class="property-info">
-      <div class="property-address">${measurement.property_address || 'Property Address'}</div>
-      <div style="display: flex; justify-content: space-between; margin-top: 10px;">
-        <div><strong>Date:</strong> ${new Date().toLocaleDateString()}</div>
-        <div><strong>Confidence:</strong> ${measurement.measurement_confidence || 0}%</div>
-      </div>
-    </div>
+  // Property Info Box
+  yPos += 12
+  doc.setFillColor(245, 245, 245)
+  doc.roundedRect(margin, yPos, contentWidth, 25, 3, 3, 'F')
+  
+  yPos += 8
+  doc.setFontSize(16)
+  doc.setTextColor(...darkGray)
+  doc.text(propertyAddress, margin + 8, yPos)
 
-    <div class="summary-stats">
-      <div class="stat-box">
-        <div class="stat-value">${measurement.total_area_adjusted_sqft?.toFixed(0) || '0'}</div>
-        <div class="stat-label">Total Area (sqft)</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-value">${measurement.facet_count || '0'}</div>
-        <div class="stat-label">Roof Facets</div>
-      </div>
-      <div class="stat-box">
-        <div class="stat-value">${measurement.predominant_pitch || 'N/A'}</div>
-        <div class="stat-label">Pitch</div>
-      </div>
-    </div>
+  yPos += 10
+  doc.setFontSize(11)
+  doc.setTextColor(...lightGray)
+  doc.text(`Date: ${new Date().toLocaleDateString()}`, margin + 8, yPos)
+  doc.text(`Confidence: ${measurement.measurement_confidence || 0}%`, margin + 100, yPos)
 
-    <div class="section-title">Measurements Summary</div>
-    <table class="measurements-table">
-      <thead>
-        <tr>
-          <th>Measurement</th>
-          <th>Value</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>Total Roof Area</td>
-          <td><strong>${measurement.total_area_adjusted_sqft?.toFixed(2) || '0'} sqft</strong></td>
-        </tr>
-        <tr>
-          <td>Total Squares</td>
-          <td><strong>${measurement.total_squares?.toFixed(1) || '0'}</strong></td>
-        </tr>
-        <tr>
-          <td>Facet Count</td>
-          <td>${measurement.facet_count || 0}</td>
-        </tr>
-        <tr>
-          <td>Predominant Pitch</td>
-          <td>${measurement.predominant_pitch || 'N/A'}</td>
-        </tr>
-        <tr>
-          <td>Complexity</td>
-          <td style="text-transform: capitalize;">${measurement.complexity_rating || 'N/A'}</td>
-        </tr>
-      </tbody>
-    </table>
+  // Summary Stats - 3 boxes
+  yPos += 20
+  const boxWidth = (contentWidth - 10) / 3
+  const boxHeight = 35
+  
+  // Box 1: Total Area
+  doc.setFillColor(255, 255, 255)
+  doc.setDrawColor(224, 224, 224)
+  doc.roundedRect(margin, yPos, boxWidth, boxHeight, 3, 3, 'FD')
+  doc.setFontSize(22)
+  doc.setTextColor(...primaryGreen)
+  doc.text(`${(measurement.total_area_adjusted_sqft || 0).toFixed(0)}`, margin + boxWidth/2, yPos + 16, { align: 'center' })
+  doc.setFontSize(9)
+  doc.setTextColor(...lightGray)
+  doc.text('TOTAL AREA (SQFT)', margin + boxWidth/2, yPos + 26, { align: 'center' })
 
-    <div class="footer">
-      <p>© ${new Date().getFullYear()} ${companyInfo?.name || 'PITCH CRM'} | AI-Powered Measurement Technology</p>
-    </div>
-  </div>
+  // Box 2: Facet Count
+  doc.roundedRect(margin + boxWidth + 5, yPos, boxWidth, boxHeight, 3, 3, 'FD')
+  doc.setFontSize(22)
+  doc.setTextColor(...primaryGreen)
+  doc.text(`${measurement.facet_count || 0}`, margin + boxWidth + 5 + boxWidth/2, yPos + 16, { align: 'center' })
+  doc.setFontSize(9)
+  doc.setTextColor(...lightGray)
+  doc.text('ROOF FACETS', margin + boxWidth + 5 + boxWidth/2, yPos + 26, { align: 'center' })
 
-  <div class="page">
-    <div class="header">
-      <div class="company-name">${companyInfo?.name || 'PITCH CRM'}</div>
-    </div>
+  // Box 3: Pitch
+  doc.roundedRect(margin + (boxWidth + 5) * 2, yPos, boxWidth, boxHeight, 3, 3, 'FD')
+  doc.setFontSize(22)
+  doc.setTextColor(...primaryGreen)
+  doc.text(measurement.predominant_pitch || 'N/A', margin + (boxWidth + 5) * 2 + boxWidth/2, yPos + 16, { align: 'center' })
+  doc.setFontSize(9)
+  doc.setTextColor(...lightGray)
+  doc.text('PITCH', margin + (boxWidth + 5) * 2 + boxWidth/2, yPos + 26, { align: 'center' })
 
-    <div class="section-title">Linear Measurements</div>
-    <div class="property-address" style="font-size: 16px; margin-bottom: 20px;">
-      ${measurement.property_address || 'Property Address'}
-    </div>
+  // Measurements Summary Section
+  yPos += boxHeight + 15
+  doc.setFontSize(18)
+  doc.setTextColor(...primaryBlue)
+  doc.text('Measurements Summary', margin, yPos)
+  yPos += 3
+  doc.setDrawColor(...primaryBlue)
+  doc.setLineWidth(0.5)
+  doc.line(margin, yPos, margin + 80, yPos)
 
-    <div class="summary-stats">
-      <div class="stat-box" style="background: #e8f5e9;">
-        <div class="stat-value" style="color: #2e7d32;">${measurement.total_eave_length?.toFixed(0) || '0'} ft</div>
-        <div class="stat-label">Eaves</div>
-      </div>
-      <div class="stat-box" style="background: #fff3e0;">
-        <div class="stat-value" style="color: #ef6c00;">${measurement.total_rake_length?.toFixed(0) || '0'} ft</div>
-        <div class="stat-label">Rakes</div>
-      </div>
-      <div class="stat-box" style="background: #fce4ec;">
-        <div class="stat-value" style="color: #c2185b;">${measurement.total_valley_length?.toFixed(0) || '0'} ft</div>
-        <div class="stat-label">Valleys</div>
-      </div>
-      <div class="stat-box" style="background: #e3f2fd;">
-        <div class="stat-value" style="color: #1976d2;">${measurement.total_hip_length?.toFixed(0) || '0'} ft</div>
-        <div class="stat-label">Hips</div>
-      </div>
-      <div class="stat-box" style="background: #f3e5f5;">
-        <div class="stat-value" style="color: #7b1fa2;">${measurement.total_ridge_length?.toFixed(0) || '0'} ft</div>
-        <div class="stat-label">Ridges</div>
-      </div>
-    </div>
+  // Table
+  yPos += 10
+  const tableData = [
+    ['Total Roof Area', `${(measurement.total_area_adjusted_sqft || 0).toFixed(2)} sqft`],
+    ['Total Squares', `${(measurement.total_squares || 0).toFixed(1)}`],
+    ['Facet Count', `${measurement.facet_count || 0}`],
+    ['Predominant Pitch', measurement.predominant_pitch || 'N/A'],
+    ['Complexity', measurement.complexity_rating || 'N/A'],
+  ]
 
-    <table class="measurements-table" style="margin-top: 30px;">
-      <thead>
-        <tr>
-          <th>Edge Type</th>
-          <th>Length (ft)</th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr>
-          <td>Eaves</td>
-          <td><strong>${measurement.total_eave_length?.toFixed(1) || '0.0'} ft</strong></td>
-        </tr>
-        <tr>
-          <td>Valleys</td>
-          <td><strong>${measurement.total_valley_length?.toFixed(1) || '0.0'} ft</strong></td>
-        </tr>
-        <tr>
-          <td>Hips</td>
-          <td><strong>${measurement.total_hip_length?.toFixed(1) || '0.0'} ft</strong></td>
-        </tr>
-        <tr>
-          <td>Ridges</td>
-          <td><strong>${measurement.total_ridge_length?.toFixed(1) || '0.0'} ft</strong></td>
-        </tr>
-        <tr>
-          <td>Rakes</td>
-          <td><strong>${measurement.total_rake_length?.toFixed(1) || '0.0'} ft</strong></td>
-        </tr>
-        <tr style="background: #e3f2fd; font-weight: bold;">
-          <td>Hips + Ridges</td>
-          <td><strong>${((measurement.total_hip_length || 0) + (measurement.total_ridge_length || 0)).toFixed(1)} ft</strong></td>
-        </tr>
-        <tr style="background: #e8f5e9; font-weight: bold;">
-          <td>Eaves + Rakes</td>
-          <td><strong>${((measurement.total_eave_length || 0) + (measurement.total_rake_length || 0)).toFixed(1)} ft</strong></td>
-        </tr>
-      </tbody>
-    </table>
+  doc.setFontSize(11)
+  tableData.forEach((row, i) => {
+    if (i % 2 === 1) {
+      doc.setFillColor(249, 249, 249)
+      doc.rect(margin, yPos - 4, contentWidth, 10, 'F')
+    }
+    doc.setTextColor(...darkGray)
+    doc.text(row[0], margin + 5, yPos)
+    doc.setTextColor(...primaryGreen)
+    doc.text(row[1], pageWidth - margin - 5, yPos, { align: 'right' })
+    yPos += 10
+  })
 
-    <div class="footer">
-      <p>Measurements are rounded for display. Totals use exact measurements.</p>
-    </div>
-  </div>
+  // Footer
+  yPos = pageHeight - 20
+  doc.setDrawColor(224, 224, 224)
+  doc.setLineWidth(0.3)
+  doc.line(margin, yPos, pageWidth - margin, yPos)
+  yPos += 8
+  doc.setFontSize(9)
+  doc.setTextColor(...lightGray)
+  doc.text(`© ${new Date().getFullYear()} ${companyName} | AI-Powered Measurement Technology`, pageWidth / 2, yPos, { align: 'center' })
 
-  <div class="page">
-    <div class="header">
-      <div class="company-name">${companyInfo?.name || 'PITCH CRM'}</div>
-    </div>
+  // ============ PAGE 2: LINEAR MEASUREMENTS ============
+  doc.addPage()
+  yPos = margin
 
-    <div class="section-title">Individual Roof Facets</div>
-    <div class="property-address" style="font-size: 16px; margin-bottom: 20px;">
-      ${measurement.property_address || 'Property Address'}
-    </div>
+  // Header
+  doc.setFontSize(20)
+  doc.setTextColor(...primaryGreen)
+  doc.text(companyName, margin, yPos)
 
-    <div class="facet-grid">
-      ${facets.map((facet: any, index: number) => `
-        <div class="facet-card" style="border-left-color: hsl(${index * 40}, 70%, 50%);">
-          <div style="font-weight: bold; margin-bottom: 8px;">Facet ${facet.facet_number || index + 1}</div>
-          <div style="font-size: 12px; color: #666;">
-            <strong>Area:</strong> ${facet.area_adjusted_sqft?.toFixed(0) || '0'} sqft<br>
-            <strong>Pitch:</strong> ${facet.pitch || 'N/A'}<br>
-            <strong>Shape:</strong> ${facet.shape_type || 'N/A'}
-          </div>
-        </div>
-      `).join('')}
-    </div>
+  yPos += 15
+  doc.setFontSize(18)
+  doc.setTextColor(...primaryBlue)
+  doc.text('Linear Measurements', margin, yPos)
+  yPos += 3
+  doc.setDrawColor(...primaryBlue)
+  doc.line(margin, yPos, margin + 70, yPos)
 
-    <div class="section-title" style="margin-top: 40px;">Material Requirements</div>
+  yPos += 10
+  doc.setFontSize(12)
+  doc.setTextColor(...darkGray)
+  doc.text(propertyAddress, margin, yPos)
 
-    <div class="materials-grid">
-      ${materials.shingleBundles ? `
-        <div class="material-item">
-          <div style="font-size: 12px; color: #666;">Shingle Bundles</div>
-          <div class="material-quantity">${materials.shingleBundles}</div>
-          <div style="font-size: 11px; color: #999;">3 bundles per square</div>
-        </div>
-      ` : ''}
+  // Linear measurement boxes
+  yPos += 15
+  const lmBoxWidth = (contentWidth - 15) / 4
+  const lmBoxHeight = 40
 
-      ${materials.underlaymentRolls ? `
-        <div class="material-item">
-          <div style="font-size: 12px; color: #666;">Underlayment Rolls</div>
-          <div class="material-quantity">${materials.underlaymentRolls}</div>
-          <div style="font-size: 11px; color: #999;">400 sqft per roll</div>
-        </div>
-      ` : ''}
+  const linearData = [
+    { label: 'EAVES', value: measurement.total_eave_length || 0, color: [46, 125, 50] as [number, number, number] },
+    { label: 'RAKES', value: measurement.total_rake_length || 0, color: [239, 108, 0] as [number, number, number] },
+    { label: 'VALLEYS', value: measurement.total_valley_length || 0, color: [194, 24, 91] as [number, number, number] },
+    { label: 'HIPS', value: measurement.total_hip_length || 0, color: [25, 118, 210] as [number, number, number] },
+  ]
 
-      ${materials.iceWaterShieldRolls ? `
-        <div class="material-item">
-          <div style="font-size: 12px; color: #666;">Ice & Water Shield</div>
-          <div class="material-quantity">${materials.iceWaterShieldRolls} rolls</div>
-          <div style="font-size: 11px; color: #999;">${materials.iceWaterShieldFeet?.toFixed(0) || 0} linear feet</div>
-        </div>
-      ` : ''}
+  linearData.forEach((item, i) => {
+    const x = margin + i * (lmBoxWidth + 5)
+    doc.setFillColor(255, 255, 255)
+    doc.setDrawColor(224, 224, 224)
+    doc.roundedRect(x, yPos, lmBoxWidth, lmBoxHeight, 3, 3, 'FD')
+    
+    doc.setFontSize(18)
+    doc.setTextColor(...item.color)
+    doc.text(`${item.value.toFixed(0)} ft`, x + lmBoxWidth/2, yPos + 18, { align: 'center' })
+    
+    doc.setFontSize(8)
+    doc.setTextColor(...lightGray)
+    doc.text(item.label, x + lmBoxWidth/2, yPos + 30, { align: 'center' })
+  })
 
-      ${materials.dripEdgeSheets ? `
-        <div class="material-item">
-          <div style="font-size: 12px; color: #666;">Drip Edge</div>
-          <div class="material-quantity">${materials.dripEdgeSheets} sheets</div>
-          <div style="font-size: 11px; color: #999;">${materials.dripEdgeFeet?.toFixed(0) || 0} ft total</div>
-        </div>
-      ` : ''}
+  // Ridge box (full width below)
+  yPos += lmBoxHeight + 10
+  doc.setFillColor(255, 255, 255)
+  doc.setDrawColor(224, 224, 224)
+  doc.roundedRect(margin, yPos, contentWidth, lmBoxHeight, 3, 3, 'FD')
+  doc.setFontSize(18)
+  doc.setTextColor(123, 31, 162)
+  doc.text(`${(measurement.total_ridge_length || 0).toFixed(0)} ft`, pageWidth/2, yPos + 18, { align: 'center' })
+  doc.setFontSize(8)
+  doc.setTextColor(...lightGray)
+  doc.text('RIDGES', pageWidth/2, yPos + 30, { align: 'center' })
 
-      ${materials.starterStripBundles ? `
-        <div class="material-item">
-          <div style="font-size: 12px; color: #666;">Starter Strip</div>
-          <div class="material-quantity">${materials.starterStripBundles} bundles</div>
-          <div style="font-size: 11px; color: #999;">${materials.starterStripFeet?.toFixed(0) || 0} ft coverage</div>
-        </div>
-      ` : ''}
+  // Linear table
+  yPos += lmBoxHeight + 20
+  const linearTableData = [
+    ['Eaves', `${(measurement.total_eave_length || 0).toFixed(1)} ft`],
+    ['Valleys', `${(measurement.total_valley_length || 0).toFixed(1)} ft`],
+    ['Hips', `${(measurement.total_hip_length || 0).toFixed(1)} ft`],
+    ['Ridges', `${(measurement.total_ridge_length || 0).toFixed(1)} ft`],
+    ['Rakes', `${(measurement.total_rake_length || 0).toFixed(1)} ft`],
+    ['Hips + Ridges', `${((measurement.total_hip_length || 0) + (measurement.total_ridge_length || 0)).toFixed(1)} ft`],
+    ['Eaves + Rakes', `${((measurement.total_eave_length || 0) + (measurement.total_rake_length || 0)).toFixed(1)} ft`],
+  ]
 
-      ${materials.hipRidgeBundles ? `
-        <div class="material-item">
-          <div style="font-size: 12px; color: #666;">Hip & Ridge Cap</div>
-          <div class="material-quantity">${materials.hipRidgeBundles} bundles</div>
-          <div style="font-size: 11px; color: #999;">${materials.hipRidgeFeet?.toFixed(0) || 0} ft total</div>
-        </div>
-      ` : ''}
-    </div>
+  // Table header
+  doc.setFillColor(...primaryGreen)
+  doc.rect(margin, yPos, contentWidth, 10, 'F')
+  doc.setFontSize(10)
+  doc.setTextColor(255, 255, 255)
+  doc.text('Edge Type', margin + 5, yPos + 7)
+  doc.text('Length (ft)', pageWidth - margin - 5, yPos + 7, { align: 'right' })
+  yPos += 10
 
-    <div style="margin-top: 30px; padding: 15px; background: #ffebee; border-left: 4px solid #f44336; border-radius: 4px;">
-      <p style="font-size: 11px; color: #c62828;">
-        <strong>Disclaimer:</strong> These calculations are estimates. Always verify before ordering materials.
-      </p>
-    </div>
+  doc.setFontSize(10)
+  linearTableData.forEach((row, i) => {
+    if (i % 2 === 0) {
+      doc.setFillColor(249, 249, 249)
+      doc.rect(margin, yPos, contentWidth, 9, 'F')
+    }
+    if (i >= 5) {
+      doc.setFillColor(227, 242, 253)
+      doc.rect(margin, yPos, contentWidth, 9, 'F')
+    }
+    doc.setTextColor(...darkGray)
+    doc.text(row[0], margin + 5, yPos + 6)
+    doc.setTextColor(...primaryGreen)
+    doc.text(row[1], pageWidth - margin - 5, yPos + 6, { align: 'right' })
+    yPos += 9
+  })
 
-    <div class="footer">
-      <p>© ${new Date().getFullYear()} ${companyInfo?.name || 'PITCH CRM'} | All rights reserved</p>
-    </div>
-  </div>
+  // Footer
+  yPos = pageHeight - 20
+  doc.setDrawColor(224, 224, 224)
+  doc.line(margin, yPos, pageWidth - margin, yPos)
+  yPos += 8
+  doc.setFontSize(9)
+  doc.setTextColor(...lightGray)
+  doc.text('Measurements are rounded for display. Totals use exact measurements.', pageWidth / 2, yPos, { align: 'center' })
 
-</body>
-</html>`
+  // ============ PAGE 3: FACETS & MATERIALS ============
+  if (facets.length > 0 || Object.keys(materials).length > 0) {
+    doc.addPage()
+    yPos = margin
+
+    // Header
+    doc.setFontSize(20)
+    doc.setTextColor(...primaryGreen)
+    doc.text(companyName, margin, yPos)
+
+    yPos += 15
+    doc.setFontSize(18)
+    doc.setTextColor(...primaryBlue)
+    doc.text('Individual Roof Facets', margin, yPos)
+    yPos += 3
+    doc.setDrawColor(...primaryBlue)
+    doc.line(margin, yPos, margin + 70, yPos)
+
+    yPos += 10
+    doc.setFontSize(12)
+    doc.setTextColor(...darkGray)
+    doc.text(propertyAddress, margin, yPos)
+
+    // Facet cards
+    yPos += 15
+    const facetColWidth = (contentWidth - 10) / 3
+    const facetRowHeight = 45
+
+    facets.forEach((facet: any, i: number) => {
+      const col = i % 3
+      const row = Math.floor(i / 3)
+      const x = margin + col * (facetColWidth + 5)
+      const y = yPos + row * (facetRowHeight + 5)
+
+      // Check if we need a new page
+      if (y + facetRowHeight > pageHeight - 40) {
+        doc.addPage()
+        yPos = margin + 20
+      }
+
+      const hue = (i * 40) % 360
+      doc.setFillColor(245, 245, 245)
+      doc.setDrawColor(hue, 70, 50)
+      doc.roundedRect(x, y, facetColWidth, facetRowHeight, 2, 2, 'FD')
+      
+      // Left border color
+      doc.setFillColor(33, 150, 243)
+      doc.rect(x, y, 3, facetRowHeight, 'F')
+
+      doc.setFontSize(11)
+      doc.setTextColor(...darkGray)
+      doc.text(`Facet ${facet.facet_number || i + 1}`, x + 8, y + 10)
+      
+      doc.setFontSize(9)
+      doc.setTextColor(...lightGray)
+      doc.text(`Area: ${(facet.area_adjusted_sqft || 0).toFixed(0)} sqft`, x + 8, y + 22)
+      doc.text(`Pitch: ${facet.pitch || 'N/A'}`, x + 8, y + 32)
+      doc.text(`Shape: ${facet.shape_type || 'N/A'}`, x + 8, y + 42)
+    })
+
+    // Materials section
+    yPos += Math.ceil(facets.length / 3) * (facetRowHeight + 5) + 20
+    
+    if (Object.keys(materials).length > 0 && yPos < pageHeight - 80) {
+      doc.setFontSize(18)
+      doc.setTextColor(...primaryBlue)
+      doc.text('Material Requirements', margin, yPos)
+      yPos += 3
+      doc.setDrawColor(...primaryBlue)
+      doc.line(margin, yPos, margin + 70, yPos)
+
+      yPos += 15
+      const matColWidth = (contentWidth - 5) / 2
+      const matRowHeight = 35
+
+      const materialItems = [
+        { label: 'Shingle Bundles', value: materials.shingleBundles, note: '3 bundles per square' },
+        { label: 'Underlayment Rolls', value: materials.underlaymentRolls, note: '400 sqft per roll' },
+        { label: 'Ice & Water Shield', value: `${materials.iceWaterShieldRolls || 0} rolls`, note: `${(materials.iceWaterShieldFeet || 0).toFixed(0)} linear feet` },
+        { label: 'Drip Edge', value: `${materials.dripEdgeSheets || 0} sheets`, note: `${(materials.dripEdgeFeet || 0).toFixed(0)} ft total` },
+        { label: 'Starter Strip', value: `${materials.starterStripBundles || 0} bundles`, note: `${(materials.starterStripFeet || 0).toFixed(0)} ft coverage` },
+        { label: 'Hip & Ridge Cap', value: `${materials.hipRidgeBundles || 0} bundles`, note: `${(materials.hipRidgeFeet || 0).toFixed(0)} ft total` },
+      ].filter(m => m.value)
+
+      materialItems.forEach((mat, i) => {
+        const col = i % 2
+        const row = Math.floor(i / 2)
+        const x = margin + col * (matColWidth + 5)
+        const y = yPos + row * (matRowHeight + 5)
+
+        doc.setFillColor(255, 255, 255)
+        doc.setDrawColor(224, 224, 224)
+        doc.roundedRect(x, y, matColWidth, matRowHeight, 3, 3, 'FD')
+
+        doc.setFontSize(9)
+        doc.setTextColor(...lightGray)
+        doc.text(mat.label, x + 8, y + 10)
+
+        doc.setFontSize(16)
+        doc.setTextColor(...primaryGreen)
+        doc.text(String(mat.value), x + 8, y + 24)
+
+        doc.setFontSize(8)
+        doc.setTextColor(153, 153, 153)
+        doc.text(mat.note, x + 8, y + 32)
+      })
+    }
+
+    // Disclaimer
+    yPos = pageHeight - 35
+    doc.setFillColor(255, 235, 238)
+    doc.roundedRect(margin, yPos, contentWidth, 15, 2, 2, 'F')
+    doc.setFontSize(9)
+    doc.setTextColor(198, 40, 40)
+    doc.text('Disclaimer: These calculations are estimates. Always verify before ordering materials.', margin + 5, yPos + 10)
+
+    // Footer
+    yPos = pageHeight - 15
+    doc.setFontSize(9)
+    doc.setTextColor(...lightGray)
+    doc.text(`© ${new Date().getFullYear()} ${companyName} | All rights reserved`, pageWidth / 2, yPos, { align: 'center' })
+  }
+
+  // Return as Uint8Array
+  return doc.output('arraybuffer') as unknown as Uint8Array
 }
