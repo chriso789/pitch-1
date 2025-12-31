@@ -20,6 +20,9 @@ import {
   type WorksheetJSON,
 } from '../_shared/roofWorksheetEngine.ts'
 
+// Import straight skeleton algorithm for mathematically-correct roof topology
+import { computeStraightSkeleton } from '../_shared/straight-skeleton.ts'
+
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!
 const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY')!
 const GOOGLE_SOLAR_API_KEY = Deno.env.get('GOOGLE_SOLAR_API_KEY')!
@@ -195,12 +198,15 @@ serve(async (req) => {
     const interiorVertices = await detectInteriorJunctions(selectedImage.url, perimeterResult.vertices, buildingIsolation.bounds)
     console.log(`⏱️ Pass 3 (interior junctions) complete: ${Date.now() - startTime}ms`)
     
-    // Derive lines from vertices (instead of arbitrary AI-detected lines)
+    // Derive lines from vertices using STRAIGHT SKELETON for mathematically correct topology
     const derivedLines = deriveLinesToPerimeter(
       perimeterResult.vertices, 
       interiorVertices.junctions,
       interiorVertices.ridgeEndpoints,
-      buildingIsolation.bounds
+      buildingIsolation.bounds,
+      coordinates,       // Pass coordinates for skeleton geo-conversion
+      logicalImageSize,  // Image size for coordinate conversion
+      IMAGE_ZOOM         // Zoom level for coordinate conversion
     )
     console.log(`⏱️ Line derivation complete: ${derivedLines.length} lines from vertices`)
     
@@ -1326,12 +1332,15 @@ Return ONLY valid JSON.`
   }
 }
 
-// Derive lines from vertices - IMPROVED with polygon clipping and farthest-pair ridge algorithm
+// Derive lines from vertices - PRIMARY: Use straight skeleton algorithm for mathematically correct topology
 function deriveLinesToPerimeter(
   perimeterVertices: any[],
   junctions: any[],
   ridgeEndpoints: any[],
-  bounds: any
+  bounds: any,
+  coordinates?: { lat: number; lng: number },
+  imageSize: number = 640,
+  zoom: number = 20
 ): DerivedLine[] {
   const lines: DerivedLine[] = []
   
@@ -1339,187 +1348,201 @@ function deriveLinesToPerimeter(
     return lines
   }
   
-  // 1. RIDGE LINES: Use FARTHEST-PAIR algorithm (not sort-by-x which creates zig-zags)
-  const ridgeCandidates = [...(junctions || []), ...(ridgeEndpoints || [])]
-    .filter((j: any) => j.type?.includes('ridge') || !j.type)
+  // PRIMARY: Try straight skeleton algorithm first for mathematically correct ridge/hip/valley topology
+  // This ensures ridges are in the middle of the roof and hips connect corners to ridge endpoints
+  let usedSkeleton = false
   
-  if (ridgeCandidates.length >= 2) {
-    // Find the farthest pair of points - this is the main ridge
-    let maxDist = 0
-    let ridgeStart: any = null
-    let ridgeEnd: any = null
-    
-    for (let i = 0; i < ridgeCandidates.length; i++) {
-      for (let j = i + 1; j < ridgeCandidates.length; j++) {
-        const dist = distance(ridgeCandidates[i], ridgeCandidates[j])
-        if (dist > maxDist) {
-          maxDist = dist
-          ridgeStart = ridgeCandidates[i]
-          ridgeEnd = ridgeCandidates[j]
+  if (coordinates) {
+    try {
+      console.log(`🔧 Computing straight skeleton from ${perimeterVertices.length} perimeter vertices...`)
+      
+      // Convert perimeter vertices (pixel %) to lat/lng for skeleton algorithm
+      const geoRing = perimeterVerticesToGeo(perimeterVertices, coordinates, imageSize, zoom)
+      
+      if (geoRing.length >= 3) {
+        // Compute straight skeleton - this gives us mathematically correct ridges/hips/valleys
+        const skeletonEdges = computeStraightSkeleton(geoRing, 0) // No additional soffit offset here
+        
+        console.log(`📏 Straight skeleton: ${skeletonEdges.length} edges generated`)
+        
+        // Convert skeleton edges back to pixel coordinates
+        skeletonEdges.forEach((edge, i) => {
+          const startPx = geoToPixel(edge.start[1], edge.start[0], coordinates, imageSize, zoom)
+          const endPx = geoToPixel(edge.end[1], edge.end[0], coordinates, imageSize, zoom)
+          
+          // Validate coordinates are within reasonable bounds
+          if (isValidPixelCoord(startPx) && isValidPixelCoord(endPx)) {
+            lines.push({
+              type: edge.type,
+              startX: startPx.x,
+              startY: startPx.y,
+              endX: endPx.x,
+              endY: endPx.y,
+              source: 'straight_skeleton'
+            })
+          }
+        })
+        
+        const ridgeCount = lines.filter(l => l.type === 'ridge').length
+        const hipCount = lines.filter(l => l.type === 'hip').length
+        const valleyCount = lines.filter(l => l.type === 'valley').length
+        
+        console.log(`📏 Skeleton result: ${ridgeCount} ridges, ${hipCount} hips, ${valleyCount} valleys`)
+        
+        if (ridgeCount > 0) {
+          usedSkeleton = true
+          console.log(`✅ Using straight skeleton for ridge/hip/valley topology`)
         }
       }
-    }
-    
-    if (ridgeStart && ridgeEnd && maxDist > 5) {
-      // Clip ridge to polygon before adding
-      const clippedRidge = clipLineToPolygon(
-        { startX: ridgeStart.x, startY: ridgeStart.y, endX: ridgeEnd.x, endY: ridgeEnd.y },
-        perimeterVertices
-      )
-      if (clippedRidge) {
-        lines.push({
-          type: 'ridge',
-          startX: clippedRidge.startX,
-          startY: clippedRidge.startY,
-          endX: clippedRidge.endX,
-          endY: clippedRidge.endY,
-          source: 'vertex_derived_farthest_pair'
-        })
-        console.log(`📏 Ridge (farthest-pair): (${clippedRidge.startX.toFixed(1)}, ${clippedRidge.startY.toFixed(1)}) to (${clippedRidge.endX.toFixed(1)}, ${clippedRidge.endY.toFixed(1)}) = ${maxDist.toFixed(1)} units`)
-      }
-    }
-  } else if (ridgeCandidates.length === 1) {
-    // Single ridge point - estimate ridge from centroid to this point
-    const centroidX = perimeterVertices.reduce((s, v) => s + v.x, 0) / perimeterVertices.length
-    const centroidY = perimeterVertices.reduce((s, v) => s + v.y, 0) / perimeterVertices.length
-    
-    // Project ridge from centroid through the ridge point
-    const dx = ridgeCandidates[0].x - centroidX
-    const dy = ridgeCandidates[0].y - centroidY
-    const extendedStart = { x: centroidX - dx, y: centroidY - dy }
-    const extendedEnd = { x: centroidX + dx * 2, y: centroidY + dy * 2 }
-    
-    const clippedRidge = clipLineToPolygon(
-      { startX: extendedStart.x, startY: extendedStart.y, endX: extendedEnd.x, endY: extendedEnd.y },
-      perimeterVertices
-    )
-    if (clippedRidge) {
-      lines.push({
-        type: 'ridge',
-        startX: clippedRidge.startX,
-        startY: clippedRidge.startY,
-        endX: clippedRidge.endX,
-        endY: clippedRidge.endY,
-        source: 'vertex_derived_single_point'
-      })
+    } catch (skeletonErr) {
+      console.warn(`⚠️ Straight skeleton failed, falling back to AI-detected junctions:`, skeletonErr)
     }
   }
   
-  // Get ridge endpoints for hip connections
-  const ridgeLines = lines.filter(l => l.type === 'ridge')
-  const ridgePoints: any[] = []
-  ridgeLines.forEach(ridge => {
-    ridgePoints.push({ x: ridge.startX, y: ridge.startY })
-    ridgePoints.push({ x: ridge.endX, y: ridge.endY })
-  })
-  
-  // 2. HIP LINES: Connect hip-corners to NEAREST RIDGE ENDPOINT (with constraints)
-  const hipCorners = perimeterVertices.filter((v: any) => 
-    v.cornerType === 'hip-corner' || v.type === 'hip-corner'
-  )
-  
-  // Track connections per ridge endpoint (max 2 per endpoint for simple roofs)
-  const ridgeEndpointConnections: Map<string, number> = new Map()
-  
-  hipCorners.forEach((corner: any) => {
-    if (ridgePoints.length === 0) return
+  // FALLBACK: If skeleton failed or produced no ridges, use AI-detected junctions
+  if (!usedSkeleton) {
+    console.log(`🔄 Using AI-detected junctions for ridge/hip/valley lines`)
     
-    // Find nearest ridge endpoint
-    const nearestRidge = findNearestPoint(corner, ridgePoints)
-    if (!nearestRidge) return
+    // 1. RIDGE LINES: Use FARTHEST-PAIR algorithm
+    const ridgeCandidates = [...(junctions || []), ...(ridgeEndpoints || [])]
+      .filter((j: any) => j.type?.includes('ridge') || !j.type)
     
-    const ridgeKey = `${nearestRidge.x.toFixed(1)},${nearestRidge.y.toFixed(1)}`
-    const currentConnections = ridgeEndpointConnections.get(ridgeKey) || 0
-    
-    // Allow max 2 hips per ridge endpoint for simple roofs
-    if (currentConnections >= 2) {
-      console.log(`📏 Skipping hip from corner - ridge endpoint already has ${currentConnections} connections`)
-      return
-    }
-    
-    // Clip hip line to polygon
-    const clippedHip = clipLineToPolygon(
-      { startX: nearestRidge.x, startY: nearestRidge.y, endX: corner.x, endY: corner.y },
-      perimeterVertices
-    )
-    
-    if (clippedHip) {
-      const hipLength = distance(
-        { x: clippedHip.startX, y: clippedHip.startY },
-        { x: clippedHip.endX, y: clippedHip.endY }
-      )
+    if (ridgeCandidates.length >= 2) {
+      let maxDist = 0
+      let ridgeStart: any = null
+      let ridgeEnd: any = null
       
-      // Only add if reasonable length (> 3 units, < 40 units)
-      if (hipLength > 3 && hipLength < 40) {
-        lines.push({
-          type: 'hip',
-          startX: clippedHip.startX,
-          startY: clippedHip.startY,
-          endX: clippedHip.endX,
-          endY: clippedHip.endY,
-          source: 'vertex_derived_constrained'
-        })
-        ridgeEndpointConnections.set(ridgeKey, currentConnections + 1)
+      for (let i = 0; i < ridgeCandidates.length; i++) {
+        for (let j = i + 1; j < ridgeCandidates.length; j++) {
+          const dist = distance(ridgeCandidates[i], ridgeCandidates[j])
+          if (dist > maxDist) {
+            maxDist = dist
+            ridgeStart = ridgeCandidates[i]
+            ridgeEnd = ridgeCandidates[j]
+          }
+        }
       }
-    }
-  })
-  
-  // 3. VALLEY LINES: From valley entries toward interior (with fallback for concave vertices)
-  const valleyEntries = perimeterVertices.filter((v: any) => 
-    v.cornerType === 'valley-entry' || v.type === 'valley-entry'
-  )
-  const valleyJunctions = junctions.filter((j: any) => j.type?.includes('valley'))
-  
-  // Find concave vertices as valley fallback
-  const concaveVertices = findConcaveVertices(perimeterVertices)
-  const allValleyStarts = [...valleyEntries, ...concaveVertices.filter(cv => 
-    !valleyEntries.some(ve => distance(ve, cv) < 3)
-  )]
-  
-  allValleyStarts.forEach((entry: any) => {
-    // Try valley junctions first
-    let target: any = null
-    
-    if (valleyJunctions.length > 0) {
-      target = findNearestPoint(entry, valleyJunctions)
-    }
-    
-    // Fallback: project toward centroid and clip to polygon
-    if (!target) {
-      const centroidX = perimeterVertices.reduce((s, v) => s + v.x, 0) / perimeterVertices.length
-      const centroidY = perimeterVertices.reduce((s, v) => s + v.y, 0) / perimeterVertices.length
       
-      // Project from entry toward centroid, but only 70% of the way
-      const dx = centroidX - entry.x
-      const dy = centroidY - entry.y
-      target = { x: entry.x + dx * 0.7, y: entry.y + dy * 0.7 }
-    }
-    
-    if (target) {
-      const clippedValley = clipLineToPolygon(
-        { startX: entry.x, startY: entry.y, endX: target.x, endY: target.y },
-        perimeterVertices
-      )
-      
-      if (clippedValley) {
-        const valleyLength = distance(
-          { x: clippedValley.startX, y: clippedValley.startY },
-          { x: clippedValley.endX, y: clippedValley.endY }
+      if (ridgeStart && ridgeEnd && maxDist > 5) {
+        const clippedRidge = clipLineToPolygon(
+          { startX: ridgeStart.x, startY: ridgeStart.y, endX: ridgeEnd.x, endY: ridgeEnd.y },
+          perimeterVertices
         )
-        
-        if (valleyLength > 3) {
+        if (clippedRidge) {
           lines.push({
-            type: 'valley',
-            startX: clippedValley.startX,
-            startY: clippedValley.startY,
-            endX: clippedValley.endX,
-            endY: clippedValley.endY,
-            source: 'vertex_derived_valley'
+            type: 'ridge',
+            startX: clippedRidge.startX,
+            startY: clippedRidge.startY,
+            endX: clippedRidge.endX,
+            endY: clippedRidge.endY,
+            source: 'vertex_derived_farthest_pair'
           })
         }
       }
     }
-  })
+    
+    // Get ridge endpoints for hip connections
+    const ridgeLines = lines.filter(l => l.type === 'ridge')
+    const ridgePoints: any[] = []
+    ridgeLines.forEach(ridge => {
+      ridgePoints.push({ x: ridge.startX, y: ridge.startY })
+      ridgePoints.push({ x: ridge.endX, y: ridge.endY })
+    })
+    
+    // 2. HIP LINES: Connect hip-corners to NEAREST RIDGE ENDPOINT
+    const hipCorners = perimeterVertices.filter((v: any) => 
+      v.cornerType === 'hip-corner' || v.type === 'hip-corner'
+    )
+    
+    const ridgeEndpointConnections: Map<string, number> = new Map()
+    
+    hipCorners.forEach((corner: any) => {
+      if (ridgePoints.length === 0) return
+      
+      const nearestRidge = findNearestPoint(corner, ridgePoints)
+      if (!nearestRidge) return
+      
+      const ridgeKey = `${nearestRidge.x.toFixed(1)},${nearestRidge.y.toFixed(1)}`
+      const currentConnections = ridgeEndpointConnections.get(ridgeKey) || 0
+      
+      if (currentConnections >= 2) return
+      
+      const clippedHip = clipLineToPolygon(
+        { startX: nearestRidge.x, startY: nearestRidge.y, endX: corner.x, endY: corner.y },
+        perimeterVertices
+      )
+      
+      if (clippedHip) {
+        const hipLength = distance(
+          { x: clippedHip.startX, y: clippedHip.startY },
+          { x: clippedHip.endX, y: clippedHip.endY }
+        )
+        
+        if (hipLength > 3 && hipLength < 40) {
+          lines.push({
+            type: 'hip',
+            startX: clippedHip.startX,
+            startY: clippedHip.startY,
+            endX: clippedHip.endX,
+            endY: clippedHip.endY,
+            source: 'vertex_derived_constrained'
+          })
+          ridgeEndpointConnections.set(ridgeKey, currentConnections + 1)
+        }
+      }
+    })
+    
+    // 3. VALLEY LINES
+    const valleyEntries = perimeterVertices.filter((v: any) => 
+      v.cornerType === 'valley-entry' || v.type === 'valley-entry'
+    )
+    const valleyJunctions = junctions.filter((j: any) => j.type?.includes('valley'))
+    const concaveVertices = findConcaveVertices(perimeterVertices)
+    const allValleyStarts = [...valleyEntries, ...concaveVertices.filter(cv => 
+      !valleyEntries.some(ve => distance(ve, cv) < 3)
+    )]
+    
+    allValleyStarts.forEach((entry: any) => {
+      let target: any = null
+      
+      if (valleyJunctions.length > 0) {
+        target = findNearestPoint(entry, valleyJunctions)
+      }
+      
+      if (!target) {
+        const centroidX = perimeterVertices.reduce((s, v) => s + v.x, 0) / perimeterVertices.length
+        const centroidY = perimeterVertices.reduce((s, v) => s + v.y, 0) / perimeterVertices.length
+        const dx = centroidX - entry.x
+        const dy = centroidY - entry.y
+        target = { x: entry.x + dx * 0.7, y: entry.y + dy * 0.7 }
+      }
+      
+      if (target) {
+        const clippedValley = clipLineToPolygon(
+          { startX: entry.x, startY: entry.y, endX: target.x, endY: target.y },
+          perimeterVertices
+        )
+        
+        if (clippedValley) {
+          const valleyLength = distance(
+            { x: clippedValley.startX, y: clippedValley.startY },
+            { x: clippedValley.endX, y: clippedValley.endY }
+          )
+          
+          if (valleyLength > 3) {
+            lines.push({
+              type: 'valley',
+              startX: clippedValley.startX,
+              startY: clippedValley.startY,
+              endX: clippedValley.endX,
+              endY: clippedValley.endY,
+              source: 'vertex_derived_valley'
+            })
+          }
+        }
+      }
+    })
+  }
   
   // 4 & 5. EAVE and RAKE LINES: Classify perimeter edges based on ridge intersection
   const allRidgeLines = lines.filter(l => l.type === 'ridge')
@@ -1535,18 +1558,14 @@ function deriveLinesToPerimeter(
     const v1 = perimeterVertices[i]
     const v2 = perimeterVertices[(i + 1) % perimeterVertices.length]
     
-    // Check if any ridge terminates at this edge's vertices
     const ridgeTerminatesAtEdge = allRidgeLines.some(ridge => 
       pointNearLineEndpoint(v1, ridge) || pointNearLineEndpoint(v2, ridge)
     )
     
-    // Check if any hip terminates at this edge's vertices
     const hipTerminatesAtEdge = allHipLines.some(hip => 
       pointNearLineEndpoint(v1, hip) || pointNearLineEndpoint(v2, hip)
     )
     
-    // RAKE: Ridge terminates here AND no hip terminates here (gable ends)
-    // EAVE: Everything else (hip corners, eave corners, etc.)
     const isRakeEdge = ridgeTerminatesAtEdge && !hipTerminatesAtEdge
     
     lines.push({
@@ -1559,7 +1578,6 @@ function deriveLinesToPerimeter(
     })
   }
   
-  // Remove duplicate lines and very short segments
   const dedupedLines = removeDuplicateLines(lines)
   
   const eaveFt = dedupedLines.filter(l => l.type === 'eave').length
@@ -1570,6 +1588,77 @@ function deriveLinesToPerimeter(
   console.log(`📐 Derived ${dedupedLines.length} lines: ${ridgeFt} ridge, ${hipFt} hip, ${valleyFt} valley, ${eaveFt} eave, ${rakeFt} rake`)
   
   return dedupedLines
+}
+
+// Convert perimeter vertices (pixel %) to geographic coordinates for skeleton algorithm
+function perimeterVerticesToGeo(
+  vertices: any[],
+  center: { lat: number; lng: number },
+  imageSize: number,
+  zoom: number
+): [number, number][] {
+  return vertices.map(v => {
+    const geo = pixelToGeoInternal(v.x, v.y, center, imageSize, zoom)
+    return [geo.lng, geo.lat] as [number, number]
+  })
+}
+
+// Convert pixel coordinates (%) to geographic coordinates
+function pixelToGeoInternal(
+  xPct: number,
+  yPct: number,
+  center: { lat: number; lng: number },
+  imageSize: number,
+  zoom: number
+): { lat: number; lng: number } {
+  const metersPerPixel = (156543.03392 * Math.cos(center.lat * Math.PI / 180)) / Math.pow(2, zoom)
+  const metersPerDegLat = 111320
+  const metersPerDegLng = 111320 * Math.cos(center.lat * Math.PI / 180)
+  
+  // Convert percentage to pixel offset from center
+  const pxOffsetX = ((xPct / 100) - 0.5) * imageSize
+  const pxOffsetY = ((yPct / 100) - 0.5) * imageSize
+  
+  // Convert to meters then degrees
+  const metersX = pxOffsetX * metersPerPixel
+  const metersY = -pxOffsetY * metersPerPixel // Negative because Y increases downward
+  
+  return {
+    lng: center.lng + metersX / metersPerDegLng,
+    lat: center.lat + metersY / metersPerDegLat
+  }
+}
+
+// Convert geographic coordinates to pixel coordinates (%)
+function geoToPixel(
+  lat: number,
+  lng: number,
+  center: { lat: number; lng: number },
+  imageSize: number,
+  zoom: number
+): { x: number; y: number } {
+  const metersPerPixel = (156543.03392 * Math.cos(center.lat * Math.PI / 180)) / Math.pow(2, zoom)
+  const metersPerDegLat = 111320
+  const metersPerDegLng = 111320 * Math.cos(center.lat * Math.PI / 180)
+  
+  // Convert to meters offset from center
+  const metersX = (lng - center.lng) * metersPerDegLng
+  const metersY = (lat - center.lat) * metersPerDegLat
+  
+  // Convert to pixel offset
+  const pxOffsetX = metersX / metersPerPixel
+  const pxOffsetY = -metersY / metersPerPixel // Negative because Y increases downward
+  
+  // Convert to percentage
+  return {
+    x: ((pxOffsetX / imageSize) + 0.5) * 100,
+    y: ((pxOffsetY / imageSize) + 0.5) * 100
+  }
+}
+
+// Validate pixel coordinates are within reasonable bounds
+function isValidPixelCoord(coord: { x: number; y: number }): boolean {
+  return coord.x >= -10 && coord.x <= 110 && coord.y >= -10 && coord.y <= 110
 }
 
 // Find concave (valley-like) vertices in polygon
