@@ -6386,6 +6386,125 @@ export type Database = {
           },
         ]
       }
+      estimate_calc_template_groups: {
+        Row: {
+          calc_template_id: string
+          created_at: string
+          group_type: string
+          id: string
+          name: string
+          sort_order: number
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          calc_template_id: string
+          created_at?: string
+          group_type: string
+          id?: string
+          name: string
+          sort_order?: number
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          calc_template_id?: string
+          created_at?: string
+          group_type?: string
+          id?: string
+          name?: string
+          sort_order?: number
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_calc_template_groups_calc_template_id_fkey"
+            columns: ["calc_template_id"]
+            isOneToOne: false
+            referencedRelation: "estimate_calculation_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      estimate_calc_template_items: {
+        Row: {
+          active: boolean
+          calc_template_id: string
+          coverage_per_unit: number | null
+          created_at: string
+          description: string | null
+          group_id: string | null
+          id: string
+          item_name: string
+          item_type: string
+          manufacturer: string | null
+          measurement_type: string | null
+          qty_formula: string
+          sku_pattern: string | null
+          sort_order: number
+          tenant_id: string
+          unit: string
+          unit_cost: number
+          updated_at: string
+        }
+        Insert: {
+          active?: boolean
+          calc_template_id: string
+          coverage_per_unit?: number | null
+          created_at?: string
+          description?: string | null
+          group_id?: string | null
+          id?: string
+          item_name: string
+          item_type: string
+          manufacturer?: string | null
+          measurement_type?: string | null
+          qty_formula?: string
+          sku_pattern?: string | null
+          sort_order?: number
+          tenant_id: string
+          unit?: string
+          unit_cost?: number
+          updated_at?: string
+        }
+        Update: {
+          active?: boolean
+          calc_template_id?: string
+          coverage_per_unit?: number | null
+          created_at?: string
+          description?: string | null
+          group_id?: string | null
+          id?: string
+          item_name?: string
+          item_type?: string
+          manufacturer?: string | null
+          measurement_type?: string | null
+          qty_formula?: string
+          sku_pattern?: string | null
+          sort_order?: number
+          tenant_id?: string
+          unit?: string
+          unit_cost?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "estimate_calc_template_items_calc_template_id_fkey"
+            columns: ["calc_template_id"]
+            isOneToOne: false
+            referencedRelation: "estimate_calculation_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "estimate_calc_template_items_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "estimate_calc_template_groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       estimate_calculation_templates: {
         Row: {
           base_labor_hours_per_sq: number

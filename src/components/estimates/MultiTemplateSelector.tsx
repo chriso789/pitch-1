@@ -86,10 +86,12 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
   const fetchLineItems = async (templateId: string) => {
     try {
+      // Use the NEW estimate_calc_template_items table (correct FK to estimate_calculation_templates)
       const { data, error } = await supabaseClient
-        .from('template_items')
+        .from('estimate_calc_template_items')
         .select('id, item_name, description, unit, unit_cost, qty_formula, item_type')
-        .eq('template_id', templateId)
+        .eq('calc_template_id', templateId)
+        .eq('active', true)
         .order('sort_order');
 
       if (error) throw error;
@@ -130,12 +132,18 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
       const result = await seedBrandTemplates(tenantId);
 
-      if (result.success) {
+      if (result.success && result.itemsCreated > 0) {
         toast({
-          title: 'Templates Seeded',
-          description: `Created ${result.templatesCreated} brand templates with line items`
+          title: 'Templates Seeded Successfully',
+          description: `Created ${result.templatesCreated} templates with ${result.itemsCreated} line items`
         });
         await fetchTemplates();
+        // Re-fetch items if a template is selected
+        if (selectedTemplateId) {
+          await fetchLineItems(selectedTemplateId);
+        }
+      } else if (result.itemsCreated === 0) {
+        throw new Error(result.error || 'No items were created - check database permissions');
       } else {
         throw new Error(result.error || 'Seeding failed');
       }
@@ -143,7 +151,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       console.error('Error seeding templates:', error);
       toast({
         title: 'Error',
-        description: 'Failed to seed templates',
+        description: error instanceof Error ? error.message : 'Failed to seed templates',
         variant: 'destructive'
       });
     } finally {

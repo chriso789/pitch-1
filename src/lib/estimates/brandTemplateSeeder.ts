@@ -1,6 +1,7 @@
 /**
  * Brand-Specific Template Seeder
  * Seeds 8 brand templates for a tenant with full material/labor components
+ * Uses the NEW estimate_calc_template_groups and estimate_calc_template_items tables
  */
 
 import { supabase } from '@/integrations/supabase/client';
@@ -236,13 +237,36 @@ export const BRAND_TEMPLATES: BrandTemplate[] = [
   },
 ];
 
-// Helper function to add items to an existing template
-async function addTemplateItems(templateId: string, tenantId: string, templateDef: BrandTemplate) {
+/**
+ * Add items to an estimate_calculation_template using the NEW tables
+ * (estimate_calc_template_groups and estimate_calc_template_items)
+ */
+async function addTemplateItemsNew(
+  calcTemplateId: string, 
+  tenantId: string, 
+  templateDef: BrandTemplate
+): Promise<{ groupsCreated: number; itemsCreated: number; errors: string[] }> {
+  const errors: string[] = [];
+  let groupsCreated = 0;
+  let itemsCreated = 0;
+
+  // First, delete any existing groups and items for this template (clean slate)
+  await supabase
+    .from('estimate_calc_template_items')
+    .delete()
+    .eq('calc_template_id', calcTemplateId);
+  
+  await supabase
+    .from('estimate_calc_template_groups')
+    .delete()
+    .eq('calc_template_id', calcTemplateId);
+
   // Create Materials group
-  const { data: materialsGroup, error: matGroupError } = await supabase
-    .from('estimate_template_groups')
+  let materialsGroupId: string | null = null;
+  const { data: matGroup, error: matGroupError } = await supabase
+    .from('estimate_calc_template_groups')
     .insert({
-      template_id: templateId,
+      calc_template_id: calcTemplateId,
       tenant_id: tenantId,
       name: 'Materials',
       group_type: 'material',
@@ -252,15 +276,18 @@ async function addTemplateItems(templateId: string, tenantId: string, templateDe
     .single();
 
   if (matGroupError) {
-    console.error(`Error creating materials group:`, matGroupError);
-    return;
+    errors.push(`Materials group: ${matGroupError.message}`);
+  } else {
+    materialsGroupId = matGroup.id;
+    groupsCreated++;
   }
 
   // Create Labor group
-  const { data: laborGroup, error: labGroupError } = await supabase
-    .from('estimate_template_groups')
+  let laborGroupId: string | null = null;
+  const { data: labGroup, error: labGroupError } = await supabase
+    .from('estimate_calc_template_groups')
     .insert({
-      template_id: templateId,
+      calc_template_id: calcTemplateId,
       tenant_id: tenantId,
       name: 'Labor',
       group_type: 'labor',
@@ -270,14 +297,17 @@ async function addTemplateItems(templateId: string, tenantId: string, templateDe
     .single();
 
   if (labGroupError) {
-    console.error(`Error creating labor group:`, labGroupError);
-    return;
+    errors.push(`Labor group: ${labGroupError.message}`);
+  } else {
+    laborGroupId = labGroup.id;
+    groupsCreated++;
   }
 
-  // Insert material items
+  // Insert material items (proceed even if group creation failed)
   const materialItems = templateDef.materials.map((item, idx) => ({
-    template_id: templateId,
-    group_id: materialsGroup.id,
+    calc_template_id: calcTemplateId,
+    tenant_id: tenantId,
+    group_id: materialsGroupId,
     item_name: item.item_name,
     description: item.description,
     unit: item.unit,
@@ -287,47 +317,74 @@ async function addTemplateItems(templateId: string, tenantId: string, templateDe
     manufacturer: item.manufacturer,
     measurement_type: item.measurement_type,
     sort_order: idx + 1,
-    item_type: 'material',
+    item_type: 'material' as const,
+    active: true,
   }));
 
-  const { error: matItemsError } = await supabase
-    .from('template_items')
-    .insert(materialItems);
+  if (materialItems.length > 0) {
+    const { data: insertedMaterials, error: matItemsError } = await supabase
+      .from('estimate_calc_template_items')
+      .insert(materialItems)
+      .select('id');
 
-  if (matItemsError) {
-    console.error(`Error creating material items:`, matItemsError);
+    if (matItemsError) {
+      errors.push(`Material items: ${matItemsError.message}`);
+    } else {
+      itemsCreated += insertedMaterials?.length || 0;
+    }
   }
 
   // Insert labor items
   const laborItems = templateDef.labor.map((item, idx) => ({
-    template_id: templateId,
-    group_id: laborGroup.id,
+    calc_template_id: calcTemplateId,
+    tenant_id: tenantId,
+    group_id: laborGroupId,
     item_name: item.item_name,
     description: item.description,
     unit: item.unit,
     unit_cost: item.unit_cost,
     qty_formula: item.qty_formula,
     sku_pattern: item.sku_pattern,
+    manufacturer: item.manufacturer || null,
+    measurement_type: item.measurement_type || null,
     sort_order: idx + 1,
-    item_type: 'labor',
+    item_type: 'labor' as const,
+    active: true,
   }));
 
-  const { error: labItemsError } = await supabase
-    .from('template_items')
-    .insert(laborItems);
+  if (laborItems.length > 0) {
+    const { data: insertedLabor, error: labItemsError } = await supabase
+      .from('estimate_calc_template_items')
+      .insert(laborItems)
+      .select('id');
 
-  if (labItemsError) {
-    console.error(`Error creating labor items:`, labItemsError);
+    if (labItemsError) {
+      errors.push(`Labor items: ${labItemsError.message}`);
+    } else {
+      itemsCreated += insertedLabor?.length || 0;
+    }
   }
+
+  return { groupsCreated, itemsCreated, errors };
 }
 
-// Seed brand templates for a tenant
-export async function seedBrandTemplates(tenantId: string): Promise<{ success: boolean; templatesCreated: number; error?: string }> {
+/**
+ * Seed brand templates for a tenant
+ * Uses the NEW estimate_calc_template_items table (correct FK)
+ */
+export async function seedBrandTemplates(tenantId: string): Promise<{ 
+  success: boolean; 
+  templatesCreated: number; 
+  itemsCreated: number;
+  error?: string 
+}> {
   try {
     let templatesCreated = 0;
+    let totalItemsCreated = 0;
+    const allErrors: string[] = [];
 
     for (const templateDef of BRAND_TEMPLATES) {
-      // Check if template already exists for this tenant in estimate_calculation_templates
+      // Check if template already exists for this tenant
       const { data: existing } = await supabase
         .from('estimate_calculation_templates')
         .select('id')
@@ -335,60 +392,75 @@ export async function seedBrandTemplates(tenantId: string): Promise<{ success: b
         .eq('name', templateDef.name)
         .maybeSingle();
 
-      if (existing) {
-        // Check if it has items - if not, add them
-        const { data: existingItems } = await supabase
-          .from('template_items')
-          .select('id')
-          .eq('template_id', existing.id)
-          .limit(1);
+      let calcTemplateId: string;
 
-        if (existingItems && existingItems.length > 0) {
-          console.log(`Template "${templateDef.name}" already has items, skipping`);
+      if (existing) {
+        // Template exists - we'll re-populate its items
+        calcTemplateId = existing.id;
+        console.log(`Template "${templateDef.name}" exists, refreshing items...`);
+      } else {
+        // Create the template
+        const roofTypeMap: Record<string, 'shingle' | 'metal' | 'tile'> = {
+          'shingle': 'shingle',
+          'metal': 'metal',
+          'stone_coated': 'tile',
+        };
+        
+        const { data: template, error: templateError } = await supabase
+          .from('estimate_calculation_templates')
+          .insert({
+            tenant_id: tenantId,
+            name: templateDef.name,
+            roof_type: roofTypeMap[templateDef.roofType] || 'shingle',
+            is_active: true,
+            target_profit_percentage: 30,
+          })
+          .select('id')
+          .single();
+
+        if (templateError) {
+          allErrors.push(`Template "${templateDef.name}": ${templateError.message}`);
           continue;
         }
-
-        // Template exists but has no items - add them
-        console.log(`Template "${templateDef.name}" exists but has no items, adding items...`);
-        await addTemplateItems(existing.id, tenantId, templateDef);
+        
+        calcTemplateId = template.id;
         templatesCreated++;
-        continue;
+        console.log(`Created template: ${templateDef.name}`);
       }
 
-      // Create the template in estimate_calculation_templates
-      const roofTypeMap: Record<string, 'shingle' | 'metal' | 'tile'> = {
-        'shingle': 'shingle',
-        'metal': 'metal',
-        'stone_coated': 'tile',
-      };
-      const { data: template, error: templateError } = await supabase
-        .from('estimate_calculation_templates')
-        .insert({
-          tenant_id: tenantId,
-          name: templateDef.name,
-          roof_type: roofTypeMap[templateDef.roofType] || 'shingle',
-          is_active: true,
-          target_profit_percentage: 30,
-        })
-        .select('id')
-        .single();
-
-      if (templateError) {
-        console.error(`Error creating template "${templateDef.name}":`, templateError);
-        continue;
+      // Add items using the NEW tables
+      const result = await addTemplateItemsNew(calcTemplateId, tenantId, templateDef);
+      totalItemsCreated += result.itemsCreated;
+      
+      if (result.errors.length > 0) {
+        allErrors.push(...result.errors.map(e => `${templateDef.name}: ${e}`));
       }
-
-      // Add template items
-      await addTemplateItems(template.id, tenantId, templateDef);
-
-      templatesCreated++;
-      console.log(`Created template: ${templateDef.name}`);
+      
+      console.log(`  → ${result.itemsCreated} items, ${result.groupsCreated} groups`);
     }
 
-    return { success: true, templatesCreated };
+    if (totalItemsCreated === 0 && allErrors.length > 0) {
+      return { 
+        success: false, 
+        templatesCreated, 
+        itemsCreated: totalItemsCreated,
+        error: allErrors.join('; ') 
+      };
+    }
+
+    return { 
+      success: true, 
+      templatesCreated, 
+      itemsCreated: totalItemsCreated 
+    };
   } catch (error) {
     console.error('Error seeding brand templates:', error);
-    return { success: false, templatesCreated: 0, error: String(error) };
+    return { 
+      success: false, 
+      templatesCreated: 0, 
+      itemsCreated: 0,
+      error: String(error) 
+    };
   }
 }
 
