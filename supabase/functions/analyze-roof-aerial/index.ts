@@ -1499,6 +1499,9 @@ function deriveLinesToPerimeter(
       console.warn(`⚠️ Straight skeleton also failed:`, skeletonErr)
     }
   }
+  
+  // FINAL FALLBACK: Use AI-detected junctions if no lines were generated
+  if (lines.length === 0) {
     console.log(`🔄 Using AI-detected junctions for ridge/hip/valley lines`)
     
     // 1. RIDGE LINES: Use FARTHEST-PAIR algorithm
@@ -1640,7 +1643,7 @@ function deriveLinesToPerimeter(
         }
       }
     })
-  }
+  } // End of if (lines.length === 0) fallback block
   
   // 4 & 5. EAVE and RAKE LINES: Classify perimeter edges based on ridge intersection
   const allRidgeLines = lines.filter(l => l.type === 'ridge')
