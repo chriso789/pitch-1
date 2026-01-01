@@ -437,3 +437,6 @@ verify_jwt = false
 
 [functions.proposal-webhook]
 verify_jwt = false
+
+[functions.analyze-image-quality]
+verify_jwt = true
