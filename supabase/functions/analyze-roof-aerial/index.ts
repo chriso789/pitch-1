@@ -23,6 +23,9 @@ import {
 // Import straight skeleton algorithm for mathematically-correct roof topology
 import { computeStraightSkeleton } from '../_shared/straight-skeleton.ts'
 
+// Import new roof geometry reconstructor for cleaner, connected roof diagrams
+import { reconstructRoofGeometry, roofToLinearFeaturesWKT } from '../_shared/roof-geometry-reconstructor.ts'
+
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!
 const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY')!
 const GOOGLE_SOLAR_API_KEY = Deno.env.get('GOOGLE_SOLAR_API_KEY')!
@@ -1367,7 +1370,7 @@ Return ONLY valid JSON.`
   }
 }
 
-// Derive lines from vertices - PRIMARY: Use straight skeleton algorithm for mathematically correct topology
+// Derive lines from vertices - PRIMARY: Use new roof geometry reconstructor for clean topology
 function deriveLinesToPerimeter(
   perimeterVertices: any[],
   junctions: any[],
@@ -1383,29 +1386,101 @@ function deriveLinesToPerimeter(
     return lines
   }
   
-  // PRIMARY: Try straight skeleton algorithm first for mathematically correct ridge/hip/valley topology
-  // This ensures ridges are in the middle of the roof and hips connect corners to ridge endpoints
-  let usedSkeleton = false
+  // PRIMARY: Use new roof geometry reconstructor for clean, connected topology
+  let usedReconstructor = false
   
   if (coordinates) {
     try {
-      console.log(`🔧 Computing straight skeleton from ${perimeterVertices.length} perimeter vertices...`)
+      console.log(`🔧 Using roof geometry reconstructor for ${perimeterVertices.length} vertices...`)
       
-      // Convert perimeter vertices (pixel %) to lat/lng for skeleton algorithm
+      // Convert perimeter vertices (pixel %) to lat/lng
       const geoRing = perimeterVerticesToGeo(perimeterVertices, coordinates, imageSize, zoom)
       
       if (geoRing.length >= 3) {
-        // Compute straight skeleton - this gives us mathematically correct ridges/hips/valleys
-        const skeletonEdges = computeStraightSkeleton(geoRing, 0) // No additional soffit offset here
+        // Use reconstructor for clean, connected roof geometry
+        const roofGeometry = reconstructRoofGeometry(geoRing, [], '6/12')
         
-        console.log(`📏 Straight skeleton: ${skeletonEdges.length} edges generated`)
+        const totalLines = roofGeometry.ridges.length + roofGeometry.hips.length + roofGeometry.valleys.length
+        console.log(`📏 Reconstructor: ${roofGeometry.ridges.length} ridges, ${roofGeometry.hips.length} hips, ${roofGeometry.valleys.length} valleys (quality: ${roofGeometry.diagramQuality})`)
         
-        // Convert skeleton edges back to pixel coordinates
+        // Convert geometry back to pixel coordinates
+        roofGeometry.ridges.forEach((ridge, i) => {
+          const startPx = geoToPixel(ridge.start[1], ridge.start[0], coordinates, imageSize, zoom)
+          const endPx = geoToPixel(ridge.end[1], ridge.end[0], coordinates, imageSize, zoom)
+          
+          if (isValidPixelCoord(startPx) && isValidPixelCoord(endPx)) {
+            lines.push({
+              type: 'ridge',
+              startX: startPx.x,
+              startY: startPx.y,
+              endX: endPx.x,
+              endY: endPx.y,
+              source: 'geometry_reconstructor'
+            })
+          }
+        })
+        
+        roofGeometry.hips.forEach((hip, i) => {
+          const startPx = geoToPixel(hip.start[1], hip.start[0], coordinates, imageSize, zoom)
+          const endPx = geoToPixel(hip.end[1], hip.end[0], coordinates, imageSize, zoom)
+          
+          if (isValidPixelCoord(startPx) && isValidPixelCoord(endPx)) {
+            lines.push({
+              type: 'hip',
+              startX: startPx.x,
+              startY: startPx.y,
+              endX: endPx.x,
+              endY: endPx.y,
+              source: 'geometry_reconstructor'
+            })
+          }
+        })
+        
+        roofGeometry.valleys.forEach((valley, i) => {
+          const startPx = geoToPixel(valley.start[1], valley.start[0], coordinates, imageSize, zoom)
+          const endPx = geoToPixel(valley.end[1], valley.end[0], coordinates, imageSize, zoom)
+          
+          if (isValidPixelCoord(startPx) && isValidPixelCoord(endPx)) {
+            lines.push({
+              type: 'valley',
+              startX: startPx.x,
+              startY: startPx.y,
+              endX: endPx.x,
+              endY: endPx.y,
+              source: 'geometry_reconstructor'
+            })
+          }
+        })
+        
+        // Log warnings if any
+        if (roofGeometry.warnings.length > 0) {
+          console.log(`⚠️ Reconstructor warnings: ${roofGeometry.warnings.join(', ')}`)
+        }
+        
+        if (lines.length > 0) {
+          usedReconstructor = true
+          console.log(`✅ Using reconstructor for clean ridge/hip/valley topology`)
+        }
+      }
+    } catch (reconstructorErr) {
+      console.warn(`⚠️ Roof geometry reconstructor failed, falling back to straight skeleton:`, reconstructorErr)
+    }
+  }
+  
+  // FALLBACK: Use straight skeleton if reconstructor failed
+  if (!usedReconstructor && coordinates) {
+    try {
+      console.log(`🔄 Falling back to straight skeleton...`)
+      
+      const geoRing = perimeterVerticesToGeo(perimeterVertices, coordinates, imageSize, zoom)
+      
+      if (geoRing.length >= 3) {
+        const skeletonEdges = computeStraightSkeleton(geoRing, 0)
+        
         skeletonEdges.forEach((edge, i) => {
           const startPx = geoToPixel(edge.start[1], edge.start[0], coordinates, imageSize, zoom)
           const endPx = geoToPixel(edge.end[1], edge.end[0], coordinates, imageSize, zoom)
           
-          // Validate coordinates are within reasonable bounds
           if (isValidPixelCoord(startPx) && isValidPixelCoord(endPx)) {
             lines.push({
               type: edge.type,
@@ -1413,29 +1488,17 @@ function deriveLinesToPerimeter(
               startY: startPx.y,
               endX: endPx.x,
               endY: endPx.y,
-              source: 'straight_skeleton'
+              source: 'straight_skeleton_fallback'
             })
           }
         })
         
-        const ridgeCount = lines.filter(l => l.type === 'ridge').length
-        const hipCount = lines.filter(l => l.type === 'hip').length
-        const valleyCount = lines.filter(l => l.type === 'valley').length
-        
-        console.log(`📏 Skeleton result: ${ridgeCount} ridges, ${hipCount} hips, ${valleyCount} valleys`)
-        
-        if (ridgeCount > 0) {
-          usedSkeleton = true
-          console.log(`✅ Using straight skeleton for ridge/hip/valley topology`)
-        }
+        console.log(`📏 Skeleton fallback: ${lines.filter(l => l.type === 'ridge').length} ridges, ${lines.filter(l => l.type === 'hip').length} hips`)
       }
     } catch (skeletonErr) {
-      console.warn(`⚠️ Straight skeleton failed, falling back to AI-detected junctions:`, skeletonErr)
+      console.warn(`⚠️ Straight skeleton also failed:`, skeletonErr)
     }
   }
-  
-  // FALLBACK: If skeleton failed or produced no ridges, use AI-detected junctions
-  if (!usedSkeleton) {
     console.log(`🔄 Using AI-detected junctions for ridge/hip/valley lines`)
     
     // 1. RIDGE LINES: Use FARTHEST-PAIR algorithm
