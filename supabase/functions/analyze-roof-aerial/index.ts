@@ -309,6 +309,21 @@ serve(async (req) => {
       totalCount: perimeterResult.vertices.length
     }
     
+    // PHASE 4: Assess image quality and shadow risk
+    const shadowRiskAssessment = assessShadowRisk(solarData, perimeterResult, footprintCheck)
+    console.log(`🌓 Shadow risk assessment:`, shadowRiskAssessment)
+    
+    // Build metadata with quality metrics
+    const measurementMetadata = {
+      shadow_risk: shadowRiskAssessment.risk,
+      image_quality_score: shadowRiskAssessment.qualityScore,
+      shrinkage_applied: false,
+      shrinkage_reason: null,
+      footprint_validation: footprintCheck,
+      detection_method: 'vertex-based',
+      vertex_stats: vertexStats,
+    }
+    
     const measurementRecord = await saveMeasurementToDatabase(supabase, {
       address, coordinates, customerId, userId, googleImage, mapboxImage,
       selectedImage, solarData, aiAnalysis, scale, measurements, confidence,
@@ -316,7 +331,9 @@ serve(async (req) => {
       visionEdges: { ridges: [], hips: [], valleys: [] },
       imageSize: logicalImageSize,
       vertexStats,
-      footprintValidation: footprintCheck
+      footprintValidation: footprintCheck,
+      metadata: measurementMetadata,
+      shadowRisk: shadowRiskAssessment
     })
     
     // Save vertices and edges to dedicated tables
@@ -2536,8 +2553,11 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
     address, coordinates, customerId, userId, googleImage, mapboxImage,
     selectedImage, solarData, aiAnalysis, scale, measurements, confidence,
     linearFeatures, imageSource, imageYear, perimeterWkt, visionEdges, imageSize,
-    vertexStats, footprintValidation
+    vertexStats, footprintValidation, metadata, shadowRisk
   } = params
+
+  // Determine if manual review needed based on shadow risk
+  const requiresManualReview = confidence.requiresReview || shadowRisk?.recommendManualReview || false
 
   const { data, error } = await supabase.from('roof_measurements').insert({
     customer_id: customerId || null,
@@ -2563,7 +2583,7 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
     scale_method: scale.method,
     scale_confidence: scale.confidence,
     measurement_confidence: confidence.score,
-    requires_manual_review: confidence.requiresReview,
+    requires_manual_review: requiresManualReview,
     roof_type: mapRoofTypeToValidValue(aiAnalysis.roofType),
     complexity_rating: measurements.complexity,
     facet_count: aiAnalysis.derivedFacetCount || aiAnalysis.facets?.length || 1,
@@ -2586,7 +2606,8 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
     interior_vertex_count: 0,
     hip_corner_count: vertexStats?.hipCornerCount || 0,
     valley_entry_count: vertexStats?.valleyEntryCount || 0,
-    gable_peak_count: vertexStats?.gablePeakCount || 0
+    gable_peak_count: vertexStats?.gablePeakCount || 0,
+    metadata: metadata || {}
   }).select().single()
 
   if (error) {
@@ -3030,5 +3051,93 @@ async function saveFacetsToDatabase(
     console.error('⚠️ Failed to save facets:', error.message)
   } else {
     console.log(`💾 Saved ${facetRecords.length} facet records`)
+  }
+}
+
+// ============= PHASE 4: Shadow Risk Assessment =============
+
+interface ShadowRiskResult {
+  risk: 'low' | 'medium' | 'high';
+  qualityScore: number; // 0-100
+  factors: string[];
+  recommendManualReview: boolean;
+}
+
+/**
+ * Assess shadow risk based on available data signals
+ * Since we can't do image brightness analysis in Deno easily without image libs,
+ * we use proxy signals from the detection results
+ */
+function assessShadowRisk(
+  solarData: any,
+  perimeterResult: any,
+  footprintCheck: any
+): ShadowRiskResult {
+  const factors: string[] = []
+  let riskScore = 0 // Higher = more risk
+  
+  // Signal 1: Large variance between detected area and Solar API footprint
+  if (footprintCheck?.percentDifference) {
+    const variance = Math.abs(footprintCheck.percentDifference)
+    if (variance > 20) {
+      riskScore += 30
+      factors.push(`High variance vs Solar API: ${variance.toFixed(0)}%`)
+    } else if (variance > 10) {
+      riskScore += 15
+      factors.push(`Moderate variance vs Solar API: ${variance.toFixed(0)}%`)
+    }
+  } else if (!solarData?.available) {
+    // No Solar API reference available - less confident
+    riskScore += 10
+    factors.push('No Solar API reference for validation')
+  }
+  
+  // Signal 2: Low vertex count relative to perimeter (under-detected edges)
+  const vertexCount = perimeterResult?.vertices?.length || 0
+  if (vertexCount < 6) {
+    riskScore += 25
+    factors.push(`Low vertex count: ${vertexCount} (may indicate shadow interference)`)
+  } else if (vertexCount < 10) {
+    riskScore += 10
+    factors.push(`Few vertices detected: ${vertexCount}`)
+  }
+  
+  // Signal 3: Simple roof type detected on what should be complex (possible shadow masking)
+  const roofType = perimeterResult?.roofType?.toLowerCase() || ''
+  const solarSegmentCount = solarData?.roofSegmentCount || 0
+  if (solarSegmentCount >= 4 && (roofType === 'simple' || roofType === 'gable')) {
+    riskScore += 15
+    factors.push(`Simple detection despite ${solarSegmentCount} Solar segments`)
+  }
+  
+  // Signal 4: Footprint is significantly SMALLER than Solar (shadow causing under-trace)
+  if (footprintCheck?.percentDifference && footprintCheck.percentDifference < -15) {
+    riskScore += 25
+    factors.push(`Under-trace: ${Math.abs(footprintCheck.percentDifference).toFixed(0)}% smaller than Solar`)
+  }
+  
+  // Signal 5: Very few interior junctions detected
+  const junctionCount = perimeterResult?.interiorJunctions?.length || 0
+  if (junctionCount === 0 && solarSegmentCount >= 3) {
+    riskScore += 15
+    factors.push('No interior junctions on multi-segment roof')
+  }
+  
+  // Calculate quality score (inverse of risk)
+  const qualityScore = Math.max(0, Math.min(100, 100 - riskScore))
+  
+  // Determine risk level
+  let risk: 'low' | 'medium' | 'high' = 'low'
+  if (riskScore >= 50) {
+    risk = 'high'
+  } else if (riskScore >= 25) {
+    risk = 'medium'
+  }
+  
+  return {
+    risk,
+    qualityScore,
+    factors,
+    recommendManualReview: risk === 'high' || qualityScore < 60
   }
 }
