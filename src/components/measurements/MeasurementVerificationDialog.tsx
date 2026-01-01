@@ -32,6 +32,7 @@ import { detectRoofType } from '@/utils/measurementGeometry';
 import { saveMeasurementWithOfflineSupport } from '@/services/offlineMeasurementSync';
 import { useOfflineSync } from '@/hooks/useOfflineSync';
 import { EagleViewStyleReport } from './EagleViewStyleReport';
+import { MeasurementDebugPanel } from './MeasurementDebugPanel';
 
 // Industry-standard roof pitch multipliers: slope_factor = sqrt(1 + (X/12)^2)
 const PITCH_MULTIPLIERS: Record<string, number> = {
@@ -830,13 +831,56 @@ export function MeasurementVerificationDialog({
   const handleAccept = async () => {
     setIsAccepting(true);
     
-    const planArea = adjustedArea || tags['roof.plan_area'] || 0;
-    const roofArea = planArea * pitchFactor;
-    const totalWithWaste = roofArea * (1 + wastePercent / 100);
+    // PHASE 3 FIX: Clear field semantics to prevent double-application of pitch/waste
+    // - plan_area_sqft: flat footprint from perimeter polygon (no pitch, no waste)
+    // - roof_area_sqft: plan_area * pitch_factor (pitched but no waste)
+    // - total_with_waste_sqft: roof_area * (1 + waste_pct/100) (final number for ordering)
+    
+    // Determine source: Check if we already have a plan area (pre-pitch) vs roof area (post-pitch)
+    const hasRawPlanArea = measurement?.summary?.plan_area_sqft > 0 || tags['roof.plan_area'] > 0;
+    const isPitchAlreadyApplied = measurement?.summary?.pitch_applied === true;
+    const isWasteAlreadyApplied = measurement?.summary?.waste_applied === true;
+    
+    // Get the base area - prefer plan area if available
+    let planArea: number;
+    if (adjustedArea && adjustedArea > 0) {
+      // User manually adjusted - this is treated as the new plan area
+      planArea = adjustedArea;
+    } else if (hasRawPlanArea) {
+      planArea = measurement?.summary?.plan_area_sqft || tags['roof.plan_area'] || 0;
+    } else {
+      // Fallback: Use total_area and assume it might already have pitch applied
+      const fallbackArea = measurement?.summary?.total_area_sqft || tags['roof.total_area'] || 0;
+      if (isPitchAlreadyApplied && pitchFactor > 1) {
+        // Reverse the pitch to get plan area
+        planArea = fallbackArea / pitchFactor;
+      } else {
+        planArea = fallbackArea;
+      }
+    }
+    
+    // Apply pitch only if not already applied
+    const roofArea = isPitchAlreadyApplied ? planArea : planArea * pitchFactor;
+    
+    // Apply waste only if not already applied  
+    const totalWithWaste = isWasteAlreadyApplied ? roofArea : roofArea * (1 + wastePercent / 100);
     const squares = totalWithWaste / 100;
+    
     const perimeter = buildingPolygon.length > 0 
       ? calculatePerimeterFt(adjustedPolygon || buildingPolygon)
-      : (tags['roof.perimeter'] || 0);
+      : (tags['roof.perimeter'] || measurement?.summary?.perimeter_ft || 0);
+
+    console.log('📏 handleAccept calculation breakdown:', {
+      source: adjustedArea ? 'adjusted' : hasRawPlanArea ? 'plan_area' : 'fallback',
+      planArea,
+      pitchFactor,
+      isPitchAlreadyApplied,
+      roofArea,
+      wastePercent,
+      isWasteAlreadyApplied,
+      totalWithWaste,
+      squares,
+    });
 
     const updatedMeasurement = {
       ...measurement,
@@ -862,12 +906,25 @@ export function MeasurementVerificationDialog({
         other: otherPenetrations,
       },
       numberOfStories: numberOfStories,
+      summary: {
+        ...measurement?.summary,
+        plan_area_sqft: planArea,
+        roof_area_sqft: roofArea,
+        total_area_sqft: totalWithWaste,
+        pitch_applied: true,
+        waste_applied: true,
+      },
       tags: {
         ...tags,
-        'roof.total_area': roofArea,
-        'roof.squares': squares,
+        // FIXED: Store distinct values for each stage
+        'roof.plan_area': planArea,           // Flat footprint (no pitch/waste)
+        'roof.total_area': roofArea,          // With pitch, no waste
+        'roof.total_area_with_waste': totalWithWaste, // Final ordering area
+        'roof.squares': squares,              // Squares with waste
+        'roof.pitch': selectedPitch,
         'roof.pitch_factor': pitchFactor,
         'roof.waste_pct': wastePercent,
+        'roof.perimeter': perimeter,
       }
     };
 
@@ -2145,6 +2202,16 @@ export function MeasurementVerificationDialog({
                   />
                 </CollapsibleContent>
               </Collapsible>
+
+              {/* Measurement Debug Panel (Phase 5) */}
+              <MeasurementDebugPanel
+                measurement={measurement}
+                dbMeasurement={dbMeasurement}
+                tags={tags}
+                centerLat={adjustedCenterLat}
+                centerLng={adjustedCenterLng}
+                satelliteZoom={satelliteZoom}
+              />
 
               {/* View Historical Imagery Button */}
               <Button
