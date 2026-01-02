@@ -1,10 +1,10 @@
 import { useMemo, useEffect, useState } from 'react';
 import { wktLineToLatLngs, wktPolygonToLatLngs } from '@/lib/canvassiq/wkt';
 import { supabase } from '@/integrations/supabase/client';
-import { AlertTriangle, Eye, EyeOff, MapPin, Layers } from 'lucide-react';
+import { AlertTriangle, Eye, EyeOff, MapPin, Layers, Info } from 'lucide-react';
 import { calculateImageBounds, gpsToPixel, type ImageBounds, type GPSCoord } from '@/utils/gpsCalculations';
 import { type SolarSegment } from '@/lib/measurements/segmentGeometryParser';
-
+import { reconstructRoofFromPerimeter, type ReconstructedRoof } from '@/lib/measurements/roofGeometryReconstructor';
 // Roofr exact color palette - MATCHED to Roofr conventions
 const FEATURE_COLORS = {
   eave: '#006400',    // Dark green - Eaves
@@ -180,6 +180,8 @@ export function SchematicRoofDiagram({
   const [localShowOverlay, setLocalShowOverlay] = useState(showSatelliteOverlay);
   const [localShowMarkers, setLocalShowMarkers] = useState(showDebugMarkers);
   const [localShowDebugPanel, setLocalShowDebugPanel] = useState(showDebugPanel);
+  const [diagramSource, setDiagramSource] = useState<'database' | 'reconstructed' | 'perimeter'>('perimeter');
+  const [reconstructedGeometry, setReconstructedGeometry] = useState<ReconstructedRoof | null>(null);
   
   // Fetch facets from database if measurementId is provided
   useEffect(() => {
@@ -293,12 +295,13 @@ export function SchematicRoofDiagram({
     
     // Extract ALL linear features from WKT - ALWAYS use this, never Solar API edges
     // Solar API bounding box edges produce chaotic garbage geometry
-    const linearFeaturesData: Array<{ type: string; coords: { lat: number; lng: number }[]; length: number }> = [];
+    let linearFeaturesData: Array<{ type: string; coords: { lat: number; lng: number }[]; length: number }> = [];
+    let geometrySource: 'database' | 'reconstructed' | 'perimeter' = 'perimeter';
     
     // ALWAYS use WKT linear features - they have accurate geometry from straight skeleton
     const features = measurement?.linear_features || measurement?.linear_features_wkt || [];
     
-    if (Array.isArray(features)) {
+    if (Array.isArray(features) && features.length > 0) {
       features.forEach((f: LinearFeature) => {
         if (f.wkt) {
           const coords = wktLineToLatLngs(f.wkt);
@@ -318,9 +321,54 @@ export function SchematicRoofDiagram({
           }
         }
       });
+      
+      if (linearFeaturesData.length > 0) {
+        geometrySource = 'database';
+      }
     }
     
-    console.log(`📐 Loaded ${linearFeaturesData.length} linear features from WKT`);
+    // FALLBACK: If no WKT features, use client-side reconstruction
+    if (linearFeaturesData.length === 0 && perimCoords.length >= 4) {
+      console.log('🔄 No WKT features found, using client-side reconstruction');
+      
+      try {
+        const gpsCoords = perimCoords.map(c => ({ lat: c.lat, lng: c.lng }));
+        const pitch = measurement?.predominant_pitch || '6/12';
+        const reconstructed = reconstructRoofFromPerimeter(gpsCoords, pitch);
+        
+        // Convert reconstructed geometry to linearFeaturesData format
+        reconstructed.ridges.forEach(ridge => {
+          linearFeaturesData.push({
+            type: 'ridge',
+            coords: [{ lat: ridge.start.lat, lng: ridge.start.lng }, { lat: ridge.end.lat, lng: ridge.end.lng }],
+            length: ridge.lengthFt
+          });
+        });
+        
+        reconstructed.hips.forEach(hip => {
+          linearFeaturesData.push({
+            type: 'hip',
+            coords: [{ lat: hip.start.lat, lng: hip.start.lng }, { lat: hip.end.lat, lng: hip.end.lng }],
+            length: hip.lengthFt
+          });
+        });
+        
+        reconstructed.valleys.forEach(valley => {
+          linearFeaturesData.push({
+            type: 'valley',
+            coords: [{ lat: valley.start.lat, lng: valley.start.lng }, { lat: valley.end.lat, lng: valley.end.lng }],
+            length: valley.lengthFt
+          });
+        });
+        
+        geometrySource = 'reconstructed';
+        console.log(`✅ Reconstructed: ${reconstructed.ridges.length} ridges, ${reconstructed.hips.length} hips, ${reconstructed.valleys.length} valleys (quality: ${reconstructed.diagramQuality})`);
+      } catch (err) {
+        console.warn('Reconstruction failed:', err);
+      }
+    }
+    
+    console.log(`📐 Loaded ${linearFeaturesData.length} linear features (source: ${geometrySource})`);
     
     // Debug logging for linear features
     const featureCounts = linearFeaturesData.reduce((acc, f) => {
