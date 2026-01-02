@@ -3,8 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Eye, Edit, Download, Printer, MapPin } from 'lucide-react';
+import { Eye, Edit, Save, Share2, MapPin, Loader2 } from 'lucide-react';
 import { ComprehensiveMeasurementOverlay } from './ComprehensiveMeasurementOverlay';
+import { MeasurementShareDialog } from './MeasurementShareDialog';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
 import jsPDF from 'jspdf';
 import html2canvas from 'html2canvas';
 
@@ -53,6 +56,10 @@ interface ComprehensiveMeasurementReportProps {
   tags?: Record<string, any>;
   address?: string;
   onMeasurementUpdate?: (measurement: any, tags: any) => void;
+  pipelineEntryId?: string;
+  tenantId?: string;
+  customerEmail?: string;
+  customerPhone?: string;
 }
 
 const ComprehensiveMeasurementReport: React.FC<ComprehensiveMeasurementReportProps> = ({
@@ -60,16 +67,24 @@ const ComprehensiveMeasurementReport: React.FC<ComprehensiveMeasurementReportPro
   tags,
   address,
   onMeasurementUpdate,
+  pipelineEntryId,
+  tenantId,
+  customerEmail,
+  customerPhone,
 }) => {
+  const { toast } = useToast();
   const [mode, setMode] = useState<'view' | 'edit'>('view');
-  const [isExporting, setIsExporting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [showShareDialog, setShowShareDialog] = useState(false);
+  const [savedReportUrl, setSavedReportUrl] = useState<string | null>(null);
 
-  const handleExportPDF = async () => {
-    setIsExporting(true);
+  const handleSaveReport = async () => {
+    setIsSaving(true);
     try {
       const element = document.getElementById('measurement-report-content');
-      if (!element) return;
+      if (!element) throw new Error('Report content not found');
 
+      // Generate PDF
       const canvas = await html2canvas(element, {
         scale: 2,
         useCORS: true,
@@ -85,18 +100,75 @@ const ComprehensiveMeasurementReport: React.FC<ComprehensiveMeasurementReportPro
 
       const imgWidth = 210;
       const imgHeight = (canvas.height * imgWidth) / canvas.width;
-
       pdf.addImage(imgData, 'PNG', 0, 0, imgWidth, imgHeight);
-      pdf.save(`measurement-report-${measurement.id}.pdf`);
-    } catch (error) {
-      console.error('PDF export error:', error);
-    } finally {
-      setIsExporting(false);
-    }
-  };
+      
+      const pdfBlob = pdf.output('blob');
+      const fileName = `measurement-report-${measurement.id}.pdf`;
+      
+      if (!pipelineEntryId || !tenantId) {
+        // Fallback to download if no pipeline entry
+        pdf.save(fileName);
+        toast({
+          title: 'Report Downloaded',
+          description: 'PDF saved to your downloads folder',
+        });
+        return;
+      }
 
-  const handlePrint = () => {
-    window.print();
+      // Upload to storage
+      const storagePath = `${pipelineEntryId}/measurements/${fileName}`;
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(storagePath, pdfBlob, {
+          contentType: 'application/pdf',
+          upsert: true,
+        });
+
+      if (uploadError) throw uploadError;
+
+      // Get user ID
+      const { data: { user } } = await supabase.auth.getUser();
+      
+      // Create document record
+      const { error: docError } = await (supabase as any)
+        .from('documents')
+        .insert({
+          tenant_id: tenantId,
+          pipeline_entry_id: pipelineEntryId,
+          document_type: 'measurement_report',
+          filename: fileName,
+          file_path: storagePath,
+          file_size: pdfBlob.size,
+          mime_type: 'application/pdf',
+          description: `Measurement Report - ${address || 'Property'}`,
+          uploaded_by: user?.id,
+        });
+
+      if (docError) {
+        console.error('Document record error:', docError);
+      }
+
+      // Get public URL for sharing
+      const { data: urlData } = supabase.storage
+        .from('documents')
+        .getPublicUrl(storagePath);
+      
+      setSavedReportUrl(urlData?.publicUrl || null);
+
+      toast({
+        title: 'Report Saved',
+        description: 'Measurement report saved to Documents',
+      });
+    } catch (error: any) {
+      console.error('PDF save error:', error);
+      toast({
+        title: 'Save Failed',
+        description: error.message || 'Could not save report',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const handleMeasurementChange = (updatedMeasurement: any, updatedTags: any) => {
@@ -107,6 +179,9 @@ const ComprehensiveMeasurementReport: React.FC<ComprehensiveMeasurementReportPro
 
   const summary = measurement.summary;
   const confidence = measurement.confidence || 0.85;
+
+  // Generate a shareable URL (use saved URL or current page)
+  const shareUrl = savedReportUrl || (typeof window !== 'undefined' ? window.location.href : '');
 
   return (
     <div className="space-y-6" id="measurement-report-content">
@@ -146,21 +221,39 @@ const ComprehensiveMeasurementReport: React.FC<ComprehensiveMeasurementReportPro
         </Tabs>
 
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={handlePrint}>
-            <Printer className="h-4 w-4 mr-2" />
-            Print
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleSaveReport}
+            disabled={isSaving}
+          >
+            {isSaving ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Save className="h-4 w-4 mr-2" />
+            )}
+            {isSaving ? 'Saving...' : 'Save Report'}
           </Button>
           <Button 
             variant="outline" 
             size="sm" 
-            onClick={handleExportPDF}
-            disabled={isExporting}
+            onClick={() => setShowShareDialog(true)}
           >
-            <Download className="h-4 w-4 mr-2" />
-            {isExporting ? 'Exporting...' : 'Export PDF'}
+            <Share2 className="h-4 w-4 mr-2" />
+            Share
           </Button>
         </div>
       </div>
+
+      {/* Share Dialog */}
+      <MeasurementShareDialog
+        open={showShareDialog}
+        onClose={() => setShowShareDialog(false)}
+        reportUrl={shareUrl}
+        propertyAddress={address}
+        customerEmail={customerEmail}
+        customerPhone={customerPhone}
+      />
 
       {/* Visualization */}
       <Card>

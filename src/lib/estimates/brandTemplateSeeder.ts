@@ -11,7 +11,7 @@ export interface BrandTemplate {
   description: string;
   brand: string;
   productLine: string;
-  roofType: 'shingle' | 'metal' | 'stone_coated';
+  roofType: 'shingle' | 'metal' | 'stone_coated' | 'tile';
   materials: TemplateItem[];
   labor: TemplateItem[];
 }
@@ -42,8 +42,7 @@ export const BRAND_TEMPLATES: BrandTemplate[] = [
       { item_name: 'GAF Cobra Ridge Vent', description: '4ft ridge vent sections', unit: 'piece', unit_cost: 18.00, qty_formula: '{{ ceil(lf.ridge / 4) }}', sku_pattern: 'GAF-COBRA', manufacturer: 'GAF', measurement_type: 'linear_ridge' },
       { item_name: 'GAF FeltBuster Underlayment', description: 'Synthetic underlayment 10sq roll', unit: 'roll', unit_cost: 85.00, qty_formula: '{{ ceil(waste.10pct.squares / 10) }}', sku_pattern: 'GAF-FB10', manufacturer: 'GAF', measurement_type: 'roof_squares' },
       { item_name: 'GAF StormGuard Ice & Water', description: 'Ice and water shield 200sqft roll', unit: 'roll', unit_cost: 125.00, qty_formula: '{{ ceil((lf.eave * 6 + lf.valley * 6) / 200) }}', sku_pattern: 'GAF-STORM', manufacturer: 'GAF', measurement_type: 'linear_valley' },
-      { item_name: 'Drip Edge - Eave', description: '10ft galvanized drip edge', unit: 'piece', unit_cost: 8.50, qty_formula: '{{ ceil(lf.eave / 10) }}', sku_pattern: 'DRP-EAVE', manufacturer: 'Generic', measurement_type: 'linear_eave' },
-      { item_name: 'Drip Edge - Rake', description: '10ft galvanized drip edge', unit: 'piece', unit_cost: 9.00, qty_formula: '{{ ceil(lf.rake / 10) }}', sku_pattern: 'DRP-RAKE', manufacturer: 'Generic', measurement_type: 'linear_rake' },
+      { item_name: 'Drip Edge', description: '10ft galvanized drip edge (eave + rake)', unit: 'piece', unit_cost: 8.75, qty_formula: '{{ ceil((lf.eave + lf.rake) / 10) }}', sku_pattern: 'DRP-EDGE', manufacturer: 'Generic', measurement_type: 'linear_perimeter' },
       { item_name: 'Valley Metal W-Style', description: '10ft w-style valley metal', unit: 'piece', unit_cost: 22.00, qty_formula: '{{ ceil(lf.valley / 10) }}', sku_pattern: 'VLY-W', manufacturer: 'Generic', measurement_type: 'linear_valley' },
       { item_name: 'Step Flashing 4x4', description: '4x4 step flashing pieces', unit: 'piece', unit_cost: 1.25, qty_formula: '{{ ceil(lf.step / 2) }}', sku_pattern: 'STEP-4X4', manufacturer: 'Generic', measurement_type: 'linear_step' },
       { item_name: 'Pipe Boot 1-3"', description: 'Small pipe boot flashing', unit: 'each', unit_cost: 12.00, qty_formula: '{{ pen.pipe_vent }}', sku_pattern: 'BOOT-SM', manufacturer: 'Generic', measurement_type: 'penetrations' },
@@ -73,8 +72,7 @@ export const BRAND_TEMPLATES: BrandTemplate[] = [
       { item_name: 'OC DecoRidge Ridge Cap', description: 'Hip and ridge cap', unit: 'bundle', unit_cost: 55.00, qty_formula: '{{ ceil((lf.ridge + lf.hip) / 33) }}', sku_pattern: 'OC-DECO-*', manufacturer: 'Owens Corning', measurement_type: 'linear_ridge' },
       { item_name: 'OC Deck Defense Underlayment', description: 'Synthetic underlayment 10sq roll', unit: 'roll', unit_cost: 95.00, qty_formula: '{{ ceil(waste.10pct.squares / 10) }}', sku_pattern: 'OC-DECK', manufacturer: 'Owens Corning', measurement_type: 'roof_squares' },
       { item_name: 'OC WeatherLock Ice & Water', description: 'Ice and water shield 200sqft roll', unit: 'roll', unit_cost: 130.00, qty_formula: '{{ ceil((lf.eave * 6 + lf.valley * 6) / 200) }}', sku_pattern: 'OC-WLOCK', manufacturer: 'Owens Corning', measurement_type: 'linear_valley' },
-      { item_name: 'Drip Edge - Eave', description: '10ft galvanized drip edge', unit: 'piece', unit_cost: 8.50, qty_formula: '{{ ceil(lf.eave / 10) }}', sku_pattern: 'DRP-EAVE', manufacturer: 'Generic', measurement_type: 'linear_eave' },
-      { item_name: 'Drip Edge - Rake', description: '10ft galvanized drip edge', unit: 'piece', unit_cost: 9.00, qty_formula: '{{ ceil(lf.rake / 10) }}', sku_pattern: 'DRP-RAKE', manufacturer: 'Generic', measurement_type: 'linear_rake' },
+      { item_name: 'Drip Edge', description: '10ft galvanized drip edge (eave + rake)', unit: 'piece', unit_cost: 8.75, qty_formula: '{{ ceil((lf.eave + lf.rake) / 10) }}', sku_pattern: 'DRP-EDGE', manufacturer: 'Generic', measurement_type: 'linear_perimeter' },
       { item_name: 'Valley Metal W-Style', description: '10ft w-style valley metal', unit: 'piece', unit_cost: 22.00, qty_formula: '{{ ceil(lf.valley / 10) }}', sku_pattern: 'VLY-W', manufacturer: 'Generic', measurement_type: 'linear_valley' },
       { item_name: 'Pipe Boot 1-3"', description: 'Small pipe boot flashing', unit: 'each', unit_cost: 12.00, qty_formula: '{{ pen.pipe_vent }}', sku_pattern: 'BOOT-SM', manufacturer: 'Generic', measurement_type: 'penetrations' },
       { item_name: 'Coil Nails 1-1/4"', description: 'Roofing coil nails box', unit: 'box', unit_cost: 48.00, qty_formula: '{{ ceil(roof.squares / 4) }}', sku_pattern: 'NAIL-COIL', manufacturer: 'Generic', measurement_type: 'roof_squares' },
@@ -98,8 +96,7 @@ export const BRAND_TEMPLATES: BrandTemplate[] = [
       { item_name: 'OC Starter Shingle Roll', description: 'Starter strip roll', unit: 'roll', unit_cost: 36.00, qty_formula: '{{ ceil((lf.eave + lf.rake) / 65) }}', sku_pattern: 'OC-STRT', manufacturer: 'Owens Corning', measurement_type: 'linear_eave' },
       { item_name: 'OC DecoRidge Ridge Cap', description: 'Hip and ridge cap', unit: 'bundle', unit_cost: 55.00, qty_formula: '{{ ceil((lf.ridge + lf.hip) / 33) }}', sku_pattern: 'OC-DECO-*', manufacturer: 'Owens Corning', measurement_type: 'linear_ridge' },
       { item_name: 'OC ProArmor Underlayment', description: 'Synthetic underlayment 10sq roll', unit: 'roll', unit_cost: 75.00, qty_formula: '{{ ceil(waste.10pct.squares / 10) }}', sku_pattern: 'OC-PROARM', manufacturer: 'Owens Corning', measurement_type: 'roof_squares' },
-      { item_name: 'Drip Edge - Eave', description: '10ft galvanized drip edge', unit: 'piece', unit_cost: 8.50, qty_formula: '{{ ceil(lf.eave / 10) }}', sku_pattern: 'DRP-EAVE', manufacturer: 'Generic', measurement_type: 'linear_eave' },
-      { item_name: 'Drip Edge - Rake', description: '10ft galvanized drip edge', unit: 'piece', unit_cost: 9.00, qty_formula: '{{ ceil(lf.rake / 10) }}', sku_pattern: 'DRP-RAKE', manufacturer: 'Generic', measurement_type: 'linear_rake' },
+      { item_name: 'Drip Edge', description: '10ft galvanized drip edge (eave + rake)', unit: 'piece', unit_cost: 8.75, qty_formula: '{{ ceil((lf.eave + lf.rake) / 10) }}', sku_pattern: 'DRP-EDGE', manufacturer: 'Generic', measurement_type: 'linear_perimeter' },
       { item_name: 'Pipe Boot 1-3"', description: 'Small pipe boot flashing', unit: 'each', unit_cost: 12.00, qty_formula: '{{ pen.pipe_vent }}', sku_pattern: 'BOOT-SM', manufacturer: 'Generic', measurement_type: 'penetrations' },
       { item_name: 'Coil Nails 1-1/4"', description: 'Roofing coil nails box', unit: 'box', unit_cost: 48.00, qty_formula: '{{ ceil(roof.squares / 4) }}', sku_pattern: 'NAIL-COIL', manufacturer: 'Generic', measurement_type: 'roof_squares' },
     ],
@@ -122,8 +119,7 @@ export const BRAND_TEMPLATES: BrandTemplate[] = [
       { item_name: 'CT Shadow Ridge Cap', description: 'Hip and ridge cap', unit: 'bundle', unit_cost: 50.00, qty_formula: '{{ ceil((lf.ridge + lf.hip) / 33) }}', sku_pattern: 'CT-SHAD-*', manufacturer: 'CertainTeed', measurement_type: 'linear_ridge' },
       { item_name: 'CT DiamondDeck Underlayment', description: 'Synthetic underlayment 10sq roll', unit: 'roll', unit_cost: 90.00, qty_formula: '{{ ceil(waste.10pct.squares / 10) }}', sku_pattern: 'CT-DIAM', manufacturer: 'CertainTeed', measurement_type: 'roof_squares' },
       { item_name: 'CT WinterGuard Ice & Water', description: 'Ice and water shield 200sqft roll', unit: 'roll', unit_cost: 120.00, qty_formula: '{{ ceil((lf.eave * 6 + lf.valley * 6) / 200) }}', sku_pattern: 'CT-WGRD', manufacturer: 'CertainTeed', measurement_type: 'linear_valley' },
-      { item_name: 'Drip Edge - Eave', description: '10ft galvanized drip edge', unit: 'piece', unit_cost: 8.50, qty_formula: '{{ ceil(lf.eave / 10) }}', sku_pattern: 'DRP-EAVE', manufacturer: 'Generic', measurement_type: 'linear_eave' },
-      { item_name: 'Drip Edge - Rake', description: '10ft galvanized drip edge', unit: 'piece', unit_cost: 9.00, qty_formula: '{{ ceil(lf.rake / 10) }}', sku_pattern: 'DRP-RAKE', manufacturer: 'Generic', measurement_type: 'linear_rake' },
+      { item_name: 'Drip Edge', description: '10ft galvanized drip edge (eave + rake)', unit: 'piece', unit_cost: 8.75, qty_formula: '{{ ceil((lf.eave + lf.rake) / 10) }}', sku_pattern: 'DRP-EDGE', manufacturer: 'Generic', measurement_type: 'linear_perimeter' },
       { item_name: 'Valley Metal W-Style', description: '10ft w-style valley metal', unit: 'piece', unit_cost: 22.00, qty_formula: '{{ ceil(lf.valley / 10) }}', sku_pattern: 'VLY-W', manufacturer: 'Generic', measurement_type: 'linear_valley' },
       { item_name: 'Pipe Boot 1-3"', description: 'Small pipe boot flashing', unit: 'each', unit_cost: 12.00, qty_formula: '{{ pen.pipe_vent }}', sku_pattern: 'BOOT-SM', manufacturer: 'Generic', measurement_type: 'penetrations' },
       { item_name: 'Coil Nails 1-1/4"', description: 'Roofing coil nails box', unit: 'box', unit_cost: 48.00, qty_formula: '{{ ceil(roof.squares / 4) }}', sku_pattern: 'NAIL-COIL', manufacturer: 'Generic', measurement_type: 'roof_squares' },
@@ -233,6 +229,150 @@ export const BRAND_TEMPLATES: BrandTemplate[] = [
       { item_name: 'Deck Prep', description: 'Prepare deck', unit: 'sq', unit_cost: 18.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-PREP', manufacturer: '' },
       { item_name: 'Stone Coated Install', description: 'Install stone coated panels', unit: 'sq', unit_cost: 155.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-SC', manufacturer: '' },
       { item_name: 'Trim Install', description: 'Install all trim', unit: 'lf', unit_cost: 4.50, qty_formula: '{{ lf.eave + lf.rake + lf.ridge + lf.hip }}', sku_pattern: 'LABOR-TRIM', manufacturer: '' },
+    ],
+  },
+  // 9. Boral Flat Tile
+  {
+    name: 'Boral Flat Tile',
+    description: 'Boral flat profile concrete tile system.',
+    brand: 'Boral',
+    productLine: 'Flat Tile',
+    roofType: 'tile',
+    materials: [
+      { item_name: 'Boral Flat Tile', description: 'Flat profile concrete tiles', unit: 'piece', unit_cost: 2.85, qty_formula: '{{ ceil(waste.15pct.sqft * 0.9) }}', sku_pattern: 'BORAL-FLAT-*', manufacturer: 'Boral', measurement_type: 'roof_area' },
+      { item_name: 'Boral Ridge Tile', description: 'Ridge cap tiles', unit: 'piece', unit_cost: 8.50, qty_formula: '{{ ceil((lf.ridge + lf.hip) / 1.5) }}', sku_pattern: 'BORAL-RDG', manufacturer: 'Boral', measurement_type: 'linear_ridge' },
+      { item_name: '30# Felt Underlayment', description: 'Hot mopped underlayment', unit: 'roll', unit_cost: 45.00, qty_formula: '{{ ceil(roof.squares / 4) }}', sku_pattern: 'FELT-30', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+      { item_name: 'Tile Battens 1x2', description: '1x2 treated battens', unit: 'lf', unit_cost: 0.45, qty_formula: '{{ ceil(roof.total_sqft / 12) }}', sku_pattern: 'BATTEN-1X2', manufacturer: 'Generic', measurement_type: 'roof_area' },
+      { item_name: 'Drip Edge', description: '10ft galvanized drip edge (eave + rake)', unit: 'piece', unit_cost: 9.00, qty_formula: '{{ ceil((lf.eave + lf.rake) / 10) }}', sku_pattern: 'DRP-EDGE', manufacturer: 'Generic', measurement_type: 'linear_perimeter' },
+      { item_name: 'Tile Adhesive', description: 'Polyurethane tile adhesive', unit: 'tube', unit_cost: 12.00, qty_formula: '{{ ceil(roof.squares / 3) }}', sku_pattern: 'TILE-ADH', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+      { item_name: 'Tile Nails', description: 'Stainless steel tile nails', unit: 'box', unit_cost: 55.00, qty_formula: '{{ ceil(roof.squares / 5) }}', sku_pattern: 'NAIL-TILE-SS', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+    ],
+    labor: [
+      { item_name: 'Tile Tear Off', description: 'Remove existing tile', unit: 'sq', unit_cost: 75.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-TEAR-TILE', manufacturer: '' },
+      { item_name: 'Batten Install', description: 'Install tile battens', unit: 'sq', unit_cost: 25.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-BATTEN', manufacturer: '' },
+      { item_name: 'Tile Install', description: 'Install flat tile', unit: 'sq', unit_cost: 165.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-TILE', manufacturer: '' },
+      { item_name: 'Hip/Ridge Install', description: 'Install hip and ridge', unit: 'lf', unit_cost: 8.00, qty_formula: '{{ lf.ridge + lf.hip }}', sku_pattern: 'LABOR-RIDGE-TILE', manufacturer: '' },
+      { item_name: 'Cleanup/Haul', description: 'Debris removal', unit: 'job', unit_cost: 450.00, qty_formula: '1', sku_pattern: 'LABOR-CLEAN', manufacturer: '' },
+    ],
+  },
+  // 10. Eagle Flat Tile
+  {
+    name: 'Eagle Flat Tile',
+    description: 'Eagle flat profile concrete tile system.',
+    brand: 'Eagle',
+    productLine: 'Flat Tile',
+    roofType: 'tile',
+    materials: [
+      { item_name: 'Eagle Flat Tile', description: 'Flat profile concrete tiles', unit: 'piece', unit_cost: 2.95, qty_formula: '{{ ceil(waste.15pct.sqft * 0.9) }}', sku_pattern: 'EAGLE-FLAT-*', manufacturer: 'Eagle', measurement_type: 'roof_area' },
+      { item_name: 'Eagle Ridge Tile', description: 'Ridge cap tiles', unit: 'piece', unit_cost: 8.75, qty_formula: '{{ ceil((lf.ridge + lf.hip) / 1.5) }}', sku_pattern: 'EAGLE-RDG', manufacturer: 'Eagle', measurement_type: 'linear_ridge' },
+      { item_name: '30# Felt Underlayment', description: 'Hot mopped underlayment', unit: 'roll', unit_cost: 45.00, qty_formula: '{{ ceil(roof.squares / 4) }}', sku_pattern: 'FELT-30', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+      { item_name: 'Tile Battens 1x2', description: '1x2 treated battens', unit: 'lf', unit_cost: 0.45, qty_formula: '{{ ceil(roof.total_sqft / 12) }}', sku_pattern: 'BATTEN-1X2', manufacturer: 'Generic', measurement_type: 'roof_area' },
+      { item_name: 'Drip Edge', description: '10ft galvanized drip edge (eave + rake)', unit: 'piece', unit_cost: 9.00, qty_formula: '{{ ceil((lf.eave + lf.rake) / 10) }}', sku_pattern: 'DRP-EDGE', manufacturer: 'Generic', measurement_type: 'linear_perimeter' },
+      { item_name: 'Tile Adhesive', description: 'Polyurethane tile adhesive', unit: 'tube', unit_cost: 12.00, qty_formula: '{{ ceil(roof.squares / 3) }}', sku_pattern: 'TILE-ADH', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+      { item_name: 'Tile Nails', description: 'Stainless steel tile nails', unit: 'box', unit_cost: 55.00, qty_formula: '{{ ceil(roof.squares / 5) }}', sku_pattern: 'NAIL-TILE-SS', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+    ],
+    labor: [
+      { item_name: 'Tile Tear Off', description: 'Remove existing tile', unit: 'sq', unit_cost: 75.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-TEAR-TILE', manufacturer: '' },
+      { item_name: 'Batten Install', description: 'Install tile battens', unit: 'sq', unit_cost: 25.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-BATTEN', manufacturer: '' },
+      { item_name: 'Tile Install', description: 'Install flat tile', unit: 'sq', unit_cost: 170.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-TILE', manufacturer: '' },
+      { item_name: 'Hip/Ridge Install', description: 'Install hip and ridge', unit: 'lf', unit_cost: 8.00, qty_formula: '{{ lf.ridge + lf.hip }}', sku_pattern: 'LABOR-RIDGE-TILE', manufacturer: '' },
+      { item_name: 'Cleanup/Haul', description: 'Debris removal', unit: 'job', unit_cost: 450.00, qty_formula: '1', sku_pattern: 'LABOR-CLEAN', manufacturer: '' },
+    ],
+  },
+  // 11. Boral W Tile
+  {
+    name: 'Boral W Tile',
+    description: 'Boral W-profile concrete tile system.',
+    brand: 'Boral',
+    productLine: 'W Tile',
+    roofType: 'tile',
+    materials: [
+      { item_name: 'Boral W Tile', description: 'W-profile concrete tiles', unit: 'piece', unit_cost: 3.15, qty_formula: '{{ ceil(waste.15pct.sqft * 0.85) }}', sku_pattern: 'BORAL-W-*', manufacturer: 'Boral', measurement_type: 'roof_area' },
+      { item_name: 'Boral W Ridge Tile', description: 'W-profile ridge cap tiles', unit: 'piece', unit_cost: 9.50, qty_formula: '{{ ceil((lf.ridge + lf.hip) / 1.5) }}', sku_pattern: 'BORAL-W-RDG', manufacturer: 'Boral', measurement_type: 'linear_ridge' },
+      { item_name: '30# Felt Underlayment', description: 'Hot mopped underlayment', unit: 'roll', unit_cost: 45.00, qty_formula: '{{ ceil(roof.squares / 4) }}', sku_pattern: 'FELT-30', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+      { item_name: 'Tile Battens 1x2', description: '1x2 treated battens', unit: 'lf', unit_cost: 0.45, qty_formula: '{{ ceil(roof.total_sqft / 12) }}', sku_pattern: 'BATTEN-1X2', manufacturer: 'Generic', measurement_type: 'roof_area' },
+      { item_name: 'Drip Edge', description: '10ft galvanized drip edge (eave + rake)', unit: 'piece', unit_cost: 9.00, qty_formula: '{{ ceil((lf.eave + lf.rake) / 10) }}', sku_pattern: 'DRP-EDGE', manufacturer: 'Generic', measurement_type: 'linear_perimeter' },
+      { item_name: 'Tile Adhesive', description: 'Polyurethane tile adhesive', unit: 'tube', unit_cost: 12.00, qty_formula: '{{ ceil(roof.squares / 3) }}', sku_pattern: 'TILE-ADH', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+      { item_name: 'Tile Nails', description: 'Stainless steel tile nails', unit: 'box', unit_cost: 55.00, qty_formula: '{{ ceil(roof.squares / 5) }}', sku_pattern: 'NAIL-TILE-SS', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+    ],
+    labor: [
+      { item_name: 'Tile Tear Off', description: 'Remove existing tile', unit: 'sq', unit_cost: 75.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-TEAR-TILE', manufacturer: '' },
+      { item_name: 'Batten Install', description: 'Install tile battens', unit: 'sq', unit_cost: 25.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-BATTEN', manufacturer: '' },
+      { item_name: 'Tile Install', description: 'Install W tile', unit: 'sq', unit_cost: 175.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-TILE', manufacturer: '' },
+      { item_name: 'Hip/Ridge Install', description: 'Install hip and ridge', unit: 'lf', unit_cost: 9.00, qty_formula: '{{ lf.ridge + lf.hip }}', sku_pattern: 'LABOR-RIDGE-TILE', manufacturer: '' },
+      { item_name: 'Cleanup/Haul', description: 'Debris removal', unit: 'job', unit_cost: 475.00, qty_formula: '1', sku_pattern: 'LABOR-CLEAN', manufacturer: '' },
+    ],
+  },
+  // 12. Eagle W Tile
+  {
+    name: 'Eagle W Tile',
+    description: 'Eagle W-profile concrete tile system.',
+    brand: 'Eagle',
+    productLine: 'W Tile',
+    roofType: 'tile',
+    materials: [
+      { item_name: 'Eagle W Tile', description: 'W-profile concrete tiles', unit: 'piece', unit_cost: 3.25, qty_formula: '{{ ceil(waste.15pct.sqft * 0.85) }}', sku_pattern: 'EAGLE-W-*', manufacturer: 'Eagle', measurement_type: 'roof_area' },
+      { item_name: 'Eagle W Ridge Tile', description: 'W-profile ridge cap tiles', unit: 'piece', unit_cost: 9.75, qty_formula: '{{ ceil((lf.ridge + lf.hip) / 1.5) }}', sku_pattern: 'EAGLE-W-RDG', manufacturer: 'Eagle', measurement_type: 'linear_ridge' },
+      { item_name: '30# Felt Underlayment', description: 'Hot mopped underlayment', unit: 'roll', unit_cost: 45.00, qty_formula: '{{ ceil(roof.squares / 4) }}', sku_pattern: 'FELT-30', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+      { item_name: 'Tile Battens 1x2', description: '1x2 treated battens', unit: 'lf', unit_cost: 0.45, qty_formula: '{{ ceil(roof.total_sqft / 12) }}', sku_pattern: 'BATTEN-1X2', manufacturer: 'Generic', measurement_type: 'roof_area' },
+      { item_name: 'Drip Edge', description: '10ft galvanized drip edge (eave + rake)', unit: 'piece', unit_cost: 9.00, qty_formula: '{{ ceil((lf.eave + lf.rake) / 10) }}', sku_pattern: 'DRP-EDGE', manufacturer: 'Generic', measurement_type: 'linear_perimeter' },
+      { item_name: 'Tile Adhesive', description: 'Polyurethane tile adhesive', unit: 'tube', unit_cost: 12.00, qty_formula: '{{ ceil(roof.squares / 3) }}', sku_pattern: 'TILE-ADH', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+      { item_name: 'Tile Nails', description: 'Stainless steel tile nails', unit: 'box', unit_cost: 55.00, qty_formula: '{{ ceil(roof.squares / 5) }}', sku_pattern: 'NAIL-TILE-SS', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+    ],
+    labor: [
+      { item_name: 'Tile Tear Off', description: 'Remove existing tile', unit: 'sq', unit_cost: 75.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-TEAR-TILE', manufacturer: '' },
+      { item_name: 'Batten Install', description: 'Install tile battens', unit: 'sq', unit_cost: 25.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-BATTEN', manufacturer: '' },
+      { item_name: 'Tile Install', description: 'Install W tile', unit: 'sq', unit_cost: 180.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-TILE', manufacturer: '' },
+      { item_name: 'Hip/Ridge Install', description: 'Install hip and ridge', unit: 'lf', unit_cost: 9.00, qty_formula: '{{ lf.ridge + lf.hip }}', sku_pattern: 'LABOR-RIDGE-TILE', manufacturer: '' },
+      { item_name: 'Cleanup/Haul', description: 'Debris removal', unit: 'job', unit_cost: 475.00, qty_formula: '1', sku_pattern: 'LABOR-CLEAN', manufacturer: '' },
+    ],
+  },
+  // 13. Boral S Tile (Mission Style)
+  {
+    name: 'Boral S Tile',
+    description: 'Boral S-profile (barrel/mission) concrete tile system.',
+    brand: 'Boral',
+    productLine: 'S Tile',
+    roofType: 'tile',
+    materials: [
+      { item_name: 'Boral S Tile', description: 'S-profile barrel concrete tiles', unit: 'piece', unit_cost: 3.45, qty_formula: '{{ ceil(waste.15pct.sqft * 0.8) }}', sku_pattern: 'BORAL-S-*', manufacturer: 'Boral', measurement_type: 'roof_area' },
+      { item_name: 'Boral S Ridge Tile', description: 'S-profile ridge cap tiles', unit: 'piece', unit_cost: 10.50, qty_formula: '{{ ceil((lf.ridge + lf.hip) / 1.5) }}', sku_pattern: 'BORAL-S-RDG', manufacturer: 'Boral', measurement_type: 'linear_ridge' },
+      { item_name: '30# Felt Underlayment', description: 'Hot mopped underlayment', unit: 'roll', unit_cost: 45.00, qty_formula: '{{ ceil(roof.squares / 4) }}', sku_pattern: 'FELT-30', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+      { item_name: 'Tile Battens 1x2', description: '1x2 treated battens', unit: 'lf', unit_cost: 0.45, qty_formula: '{{ ceil(roof.total_sqft / 12) }}', sku_pattern: 'BATTEN-1X2', manufacturer: 'Generic', measurement_type: 'roof_area' },
+      { item_name: 'Drip Edge', description: '10ft galvanized drip edge (eave + rake)', unit: 'piece', unit_cost: 9.00, qty_formula: '{{ ceil((lf.eave + lf.rake) / 10) }}', sku_pattern: 'DRP-EDGE', manufacturer: 'Generic', measurement_type: 'linear_perimeter' },
+      { item_name: 'Tile Mortar', description: 'Mortar for S-tile setting', unit: 'bag', unit_cost: 18.00, qty_formula: '{{ ceil(roof.squares / 3) }}', sku_pattern: 'MORTAR-TILE', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+      { item_name: 'Tile Nails', description: 'Stainless steel tile nails', unit: 'box', unit_cost: 55.00, qty_formula: '{{ ceil(roof.squares / 5) }}', sku_pattern: 'NAIL-TILE-SS', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+    ],
+    labor: [
+      { item_name: 'Tile Tear Off', description: 'Remove existing tile', unit: 'sq', unit_cost: 85.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-TEAR-TILE', manufacturer: '' },
+      { item_name: 'Batten Install', description: 'Install tile battens', unit: 'sq', unit_cost: 28.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-BATTEN', manufacturer: '' },
+      { item_name: 'Tile Install', description: 'Install S tile', unit: 'sq', unit_cost: 195.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-TILE', manufacturer: '' },
+      { item_name: 'Hip/Ridge Install', description: 'Install hip and ridge with mortar', unit: 'lf', unit_cost: 12.00, qty_formula: '{{ lf.ridge + lf.hip }}', sku_pattern: 'LABOR-RIDGE-TILE', manufacturer: '' },
+      { item_name: 'Cleanup/Haul', description: 'Debris removal', unit: 'job', unit_cost: 500.00, qty_formula: '1', sku_pattern: 'LABOR-CLEAN', manufacturer: '' },
+    ],
+  },
+  // 14. Eagle S Tile
+  {
+    name: 'Eagle S Tile',
+    description: 'Eagle S-profile (barrel/mission) concrete tile system.',
+    brand: 'Eagle',
+    productLine: 'S Tile',
+    roofType: 'tile',
+    materials: [
+      { item_name: 'Eagle S Tile', description: 'S-profile barrel concrete tiles', unit: 'piece', unit_cost: 3.55, qty_formula: '{{ ceil(waste.15pct.sqft * 0.8) }}', sku_pattern: 'EAGLE-S-*', manufacturer: 'Eagle', measurement_type: 'roof_area' },
+      { item_name: 'Eagle S Ridge Tile', description: 'S-profile ridge cap tiles', unit: 'piece', unit_cost: 10.75, qty_formula: '{{ ceil((lf.ridge + lf.hip) / 1.5) }}', sku_pattern: 'EAGLE-S-RDG', manufacturer: 'Eagle', measurement_type: 'linear_ridge' },
+      { item_name: '30# Felt Underlayment', description: 'Hot mopped underlayment', unit: 'roll', unit_cost: 45.00, qty_formula: '{{ ceil(roof.squares / 4) }}', sku_pattern: 'FELT-30', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+      { item_name: 'Tile Battens 1x2', description: '1x2 treated battens', unit: 'lf', unit_cost: 0.45, qty_formula: '{{ ceil(roof.total_sqft / 12) }}', sku_pattern: 'BATTEN-1X2', manufacturer: 'Generic', measurement_type: 'roof_area' },
+      { item_name: 'Drip Edge', description: '10ft galvanized drip edge (eave + rake)', unit: 'piece', unit_cost: 9.00, qty_formula: '{{ ceil((lf.eave + lf.rake) / 10) }}', sku_pattern: 'DRP-EDGE', manufacturer: 'Generic', measurement_type: 'linear_perimeter' },
+      { item_name: 'Tile Mortar', description: 'Mortar for S-tile setting', unit: 'bag', unit_cost: 18.00, qty_formula: '{{ ceil(roof.squares / 3) }}', sku_pattern: 'MORTAR-TILE', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+      { item_name: 'Tile Nails', description: 'Stainless steel tile nails', unit: 'box', unit_cost: 55.00, qty_formula: '{{ ceil(roof.squares / 5) }}', sku_pattern: 'NAIL-TILE-SS', manufacturer: 'Generic', measurement_type: 'roof_squares' },
+    ],
+    labor: [
+      { item_name: 'Tile Tear Off', description: 'Remove existing tile', unit: 'sq', unit_cost: 85.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-TEAR-TILE', manufacturer: '' },
+      { item_name: 'Batten Install', description: 'Install tile battens', unit: 'sq', unit_cost: 28.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-BATTEN', manufacturer: '' },
+      { item_name: 'Tile Install', description: 'Install S tile', unit: 'sq', unit_cost: 200.00, qty_formula: '{{ roof.squares }}', sku_pattern: 'LABOR-TILE', manufacturer: '' },
+      { item_name: 'Hip/Ridge Install', description: 'Install hip and ridge with mortar', unit: 'lf', unit_cost: 12.00, qty_formula: '{{ lf.ridge + lf.hip }}', sku_pattern: 'LABOR-RIDGE-TILE', manufacturer: '' },
+      { item_name: 'Cleanup/Haul', description: 'Debris removal', unit: 'job', unit_cost: 500.00, qty_formula: '1', sku_pattern: 'LABOR-CLEAN', manufacturer: '' },
     ],
   },
 ];
@@ -404,6 +544,7 @@ export async function seedBrandTemplates(tenantId: string): Promise<{
           'shingle': 'shingle',
           'metal': 'metal',
           'stone_coated': 'tile',
+          'tile': 'tile',
         };
         
         const { data: template, error: templateError } = await supabase
