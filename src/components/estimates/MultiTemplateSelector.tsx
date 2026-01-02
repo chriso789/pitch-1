@@ -414,18 +414,27 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       });
       setShowPDFTemplate(true);
 
-      // Wait for render
-      await new Promise(resolve => setTimeout(resolve, 300));
+      // Wait for render (increased delay for reliable capture)
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       // Generate PDF
       toast({ title: 'Generating PDF...', description: 'Please wait while we create your estimate document.' });
       
-      const pdfBlob = await generatePDF('estimate-pdf-template', {
-        filename: `${estimateNumber}.pdf`,
-        orientation: 'portrait',
-        format: 'letter',
-        quality: 2
-      });
+      let pdfBlob: Blob | null = null;
+      try {
+        pdfBlob = await generatePDF('estimate-pdf-template', {
+          filename: `${estimateNumber}.pdf`,
+          orientation: 'portrait',
+          format: 'letter',
+          quality: 2
+        });
+        
+        if (!pdfBlob) {
+          console.error('PDF generation returned null blob');
+        }
+      } catch (pdfError) {
+        console.error('PDF generation failed:', pdfError);
+      }
 
       // Hide PDF template
       setShowPDFTemplate(false);
@@ -444,11 +453,18 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             upsert: true
           });
 
-        if (!uploadError) {
+        if (uploadError) {
+          console.error('PDF upload failed:', uploadError);
+          toast({ 
+            title: 'PDF Upload Failed', 
+            description: 'Estimate saved but PDF could not be uploaded.',
+            variant: 'destructive' 
+          });
+        } else {
           pdfUrl = pdfPath;
 
           // Create document record
-          await supabaseClient
+          const { error: docError } = await supabaseClient
             .from('documents')
             .insert({
               tenant_id: tenantId,
@@ -461,7 +477,13 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
               description: shortDescription,
               uploaded_by: user.id
             });
+            
+          if (docError) {
+            console.error('Document record creation failed:', docError);
+          }
         }
+      } else {
+        console.warn('Estimate saved without PDF - generation failed');
       }
 
       const { data: newEstimate, error: createError } = await supabaseClient
@@ -733,11 +755,12 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         </Button>
       </div>
 
-      {/* Hidden PDF Template for capture */}
+      {/* Hidden PDF Template for capture - positioned in DOM but invisible for html2canvas */}
       {showPDFTemplate && pdfData && (
         <div 
           ref={pdfContainerRef}
-          className="fixed left-[-9999px] top-0"
+          className="fixed top-0 left-0 opacity-0 pointer-events-none z-[-1]"
+          style={{ visibility: 'visible' }}
           aria-hidden="true"
         >
           <EstimatePDFTemplate
