@@ -14,6 +14,7 @@ import { EstimatePDFTemplate } from './EstimatePDFTemplate';
 import { useEstimatePricing, type LineItem } from '@/hooks/useEstimatePricing';
 import { usePDFGeneration } from '@/hooks/usePDFGeneration';
 import { useQueryClient } from '@tanstack/react-query';
+import { saveEstimatePdf } from '@/lib/estimates/estimatePdfSaver';
 
 const supabaseClient = supabase as any;
 
@@ -444,43 +445,24 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
       // Upload PDF to storage if blob was generated
       if (pdfBlob) {
-        const pdfPath = `${tenantId}/${pipelineEntryId}/estimates/${estimateNumber}.pdf`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from('documents')
-          .upload(pdfPath, pdfBlob, {
-            contentType: 'application/pdf',
-            upsert: true
-          });
+        const result = await saveEstimatePdf({
+          pdfBlob,
+          pipelineEntryId,
+          tenantId,
+          estimateNumber,
+          description: shortDescription,
+          userId: user.id
+        });
 
-        if (uploadError) {
-          console.error('PDF upload failed:', uploadError);
+        if (result.success && result.filePath) {
+          pdfUrl = result.filePath;
+        } else {
+          console.error('PDF save failed:', result.error);
           toast({ 
             title: 'PDF Upload Failed', 
             description: 'Estimate saved but PDF could not be uploaded.',
             variant: 'destructive' 
           });
-        } else {
-          pdfUrl = pdfPath;
-
-          // Create document record
-          const { error: docError } = await supabaseClient
-            .from('documents')
-            .insert({
-              tenant_id: tenantId,
-              pipeline_entry_id: pipelineEntryId,
-              document_type: 'estimate',
-              filename: `${estimateNumber}.pdf`,
-              file_path: pdfPath,
-              file_size: pdfBlob.size,
-              mime_type: 'application/pdf',
-              description: shortDescription,
-              uploaded_by: user.id
-            });
-            
-          if (docError) {
-            console.error('Document record creation failed:', docError);
-          }
         }
       } else {
         console.warn('Estimate saved without PDF - generation failed');
