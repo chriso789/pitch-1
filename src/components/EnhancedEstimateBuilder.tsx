@@ -25,6 +25,7 @@ import {
 } from '@/components/ui/alert-dialog';
 import { ProfitBreakdownDisplay } from './ProfitBreakdownDisplay';
 import { AddEstimateLineDialog } from './estimates/AddEstimateLineDialog';
+import { AddFromLibraryDialog } from './estimates/AddFromLibraryDialog';
 import { PullMeasurementsButton } from './measurements/PullMeasurementsButton';
 import { useLatestMeasurement } from '@/hooks/useMeasurement';
 import { useLivePricing } from '@/hooks/useLivePricing';
@@ -57,16 +58,14 @@ const LineItemRow: React.FC<{
             Updated: {formatLastUpdated(item.last_price_updated)}
           </span>
         )}
-        {lineItemsCount > 1 && (
-          <Button
-            onClick={() => removeLineItem(index)}
-            size="sm"
-            variant="ghost"
-            className="text-red-500 hover:text-red-700"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        )}
+        <Button
+          onClick={() => removeLineItem(index)}
+          size="sm"
+          variant="ghost"
+          className="text-red-500 hover:text-red-700"
+        >
+          <Trash2 className="h-4 w-4" />
+        </Button>
       </div>
     </div>
     
@@ -338,6 +337,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const [sortBy, setSortBy] = useState<string>('date_desc');
 
   const [showAddLineDialog, setShowAddLineDialog] = useState(false);
+  const [showAddFromLibraryDialog, setShowAddFromLibraryDialog] = useState(false);
   const [pullingSolarMeasurements, setPullingSolarMeasurements] = useState(false);
   const [solarMeasurementData, setSolarMeasurementData] = useState<any>(null);
   const [coordinates, setCoordinates] = useState<{lat: number, lng: number} | null>(null);
@@ -1780,9 +1780,13 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                       )}
                       Refresh Pricing
                     </Button>
-                    <Button onClick={() => addLineItem()} size="sm" variant="outline">
+                    <Button onClick={() => setShowAddFromLibraryDialog(true)} size="sm" variant="outline">
                       <Plus className="h-4 w-4 mr-2" />
-                      Add Item
+                      Add from Library
+                    </Button>
+                    <Button onClick={() => addLineItem()} size="sm" variant="ghost">
+                      <Plus className="h-4 w-4 mr-2" />
+                      Custom Item
                     </Button>
                   </div>
                 </div>
@@ -2253,6 +2257,19 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
           rake_lf: measurementData?.rake_length || 0,
           eave_lf: measurementData?.eave_length || 0
         }}
+      />
+
+      <AddFromLibraryDialog
+        open={showAddFromLibraryDialog}
+        onClose={() => setShowAddFromLibraryDialog(false)}
+        tenantId=""
+        onAddItems={(items) => {
+          items.forEach(item => {
+            setLineItems(prev => [...prev, item]);
+          });
+          if (editingEstimateId) setHasUnsavedChanges(true);
+        }}
+        measurementTags={measurementData?.tags || {}}
       />
 
       <AlertDialog open={showNewEstimateConfirm} onOpenChange={setShowNewEstimateConfirm}>
