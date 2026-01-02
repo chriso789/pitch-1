@@ -299,6 +299,7 @@ export const MessageTemplates = () => {
                           <SelectItem value="follow_up">Follow Up</SelectItem>
                           <SelectItem value="reminder">Reminder</SelectItem>
                           <SelectItem value="promotion">Promotion</SelectItem>
+                          <SelectItem value="proposal_followup">Proposal Follow-up</SelectItem>
                         </SelectContent>
                       </Select>
                     </div>
@@ -327,7 +328,7 @@ export const MessageTemplates = () => {
                       required
                     />
                     <p className="text-xs text-muted-foreground">
-                      Available variables: {`{{first_name}}`}, {`{{last_name}}`}, {`{{company_name}}`}, {`{{lead_score}}`}, {`{{qualification_status}}`}
+                      Available variables: {`{{first_name}}`}, {`{{last_name}}`}, {`{{customer_name}}`}, {`{{property_address}}`}, {`{{estimate_total}}`}, {`{{estimate_number}}`}, {`{{selected_tier}}`}, {`{{company_name}}`}, {`{{rep_name}}`}, {`{{rep_phone}}`}, {`{{proposal_link}}`}
                     </p>
                   </div>
 

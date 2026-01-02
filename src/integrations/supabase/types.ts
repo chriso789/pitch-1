@@ -2993,7 +2993,10 @@ export type Database = {
           delivery_status_updated_at: string | null
           direction: string
           email_status: string | null
+          from_address: string | null
           id: string
+          in_reply_to: string | null
+          message_id: string | null
           metadata: Json | null
           opened_at: string | null
           opened_count: number | null
@@ -3004,6 +3007,8 @@ export type Database = {
           sentiment_score: number | null
           subject: string | null
           tenant_id: string
+          thread_id: string | null
+          to_address: string | null
           transcription: string | null
           updated_at: string
         }
@@ -3023,7 +3028,10 @@ export type Database = {
           delivery_status_updated_at?: string | null
           direction: string
           email_status?: string | null
+          from_address?: string | null
           id?: string
+          in_reply_to?: string | null
+          message_id?: string | null
           metadata?: Json | null
           opened_at?: string | null
           opened_count?: number | null
@@ -3034,6 +3042,8 @@ export type Database = {
           sentiment_score?: number | null
           subject?: string | null
           tenant_id: string
+          thread_id?: string | null
+          to_address?: string | null
           transcription?: string | null
           updated_at?: string
         }
@@ -3053,7 +3063,10 @@ export type Database = {
           delivery_status_updated_at?: string | null
           direction?: string
           email_status?: string | null
+          from_address?: string | null
           id?: string
+          in_reply_to?: string | null
+          message_id?: string | null
           metadata?: Json | null
           opened_at?: string | null
           opened_count?: number | null
@@ -3064,6 +3077,8 @@ export type Database = {
           sentiment_score?: number | null
           subject?: string | null
           tenant_id?: string
+          thread_id?: string | null
+          to_address?: string | null
           transcription?: string | null
           updated_at?: string
         }
