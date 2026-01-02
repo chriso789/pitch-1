@@ -14968,6 +14968,7 @@ export type Database = {
           material_calculations: Json | null
           measured_by: string | null
           measurement_confidence: number | null
+          metadata: Json | null
           meters_per_pixel: number | null
           notes: string | null
           organization_id: string | null
@@ -15059,6 +15060,7 @@ export type Database = {
           material_calculations?: Json | null
           measured_by?: string | null
           measurement_confidence?: number | null
+          metadata?: Json | null
           meters_per_pixel?: number | null
           notes?: string | null
           organization_id?: string | null
@@ -15150,6 +15152,7 @@ export type Database = {
           material_calculations?: Json | null
           measured_by?: string | null
           measurement_confidence?: number | null
+          metadata?: Json | null
           meters_per_pixel?: number | null
           notes?: string | null
           organization_id?: string | null
