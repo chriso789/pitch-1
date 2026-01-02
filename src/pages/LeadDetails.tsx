@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -12,7 +12,7 @@ import {
   FileText, CheckCircle, AlertCircle, ExternalLink,
   DollarSign, Hammer, Package, Settings, ChevronLeft,
   ChevronRight, X, Camera, Image as ImageIcon, Edit2, Plus, MessageSquare,
-  Pencil, Crosshair, Ruler
+  Pencil, Crosshair, Ruler, Calculator
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -41,6 +41,8 @@ import { LeadDetailsSkeleton } from '@/components/lead-details/LeadDetailsSkelet
 import { AddressReverificationButton } from '@/components/measurements/AddressReverificationButton';
 import { ProductTemplateApplicator } from '@/components/estimates/ProductTemplateApplicator';
 import { SavedEstimatesList } from '@/components/estimates/SavedEstimatesList';
+import { LeadPhotoUploader } from '@/components/photos/LeadPhotoUploader';
+import { LeadActivityTimeline } from '@/components/lead-details/LeadActivityTimeline';
 
 const LeadDetails = () => {
   const { id } = useParams<{ id: string }>();
@@ -51,6 +53,7 @@ const LeadDetails = () => {
   const [measurementReadiness, setMeasurementReadiness] = useState({ isReady: false, data: null });
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [showFullScreenPhoto, setShowFullScreenPhoto] = useState(false);
+  const estimateSectionRef = useRef<HTMLDivElement>(null);
   
   // Use optimized hook with parallel queries and caching
   const { 
@@ -612,7 +615,7 @@ const LeadDetails = () => {
         </CardContent>
       </Card>
 
-      {/* Communication & Photos - Compact Tab */}
+      {/* Communication, Photos & Activity - Compact Tabs */}
       <Card className="border-muted">
         <Tabs defaultValue="comms" className="w-full">
           <CardHeader className="pb-2 pt-3">
@@ -629,6 +632,10 @@ const LeadDetails = () => {
                     {photos.length}
                   </Badge>
                 )}
+              </TabsTrigger>
+              <TabsTrigger value="activity" className="text-xs h-7 px-3">
+                <FileText className="h-3 w-3 mr-1" />
+                Activity
               </TabsTrigger>
             </TabsList>
           </CardHeader>
@@ -678,8 +685,15 @@ const LeadDetails = () => {
               />
             </TabsContent>
 
-            <TabsContent value="photos" className="mt-0">
-              {photos.length > 0 ? (
+            <TabsContent value="photos" className="mt-0 space-y-4">
+              {/* Photo Uploader */}
+              <LeadPhotoUploader 
+                pipelineEntryId={id!} 
+                onUploadComplete={refetchPhotos}
+              />
+              
+              {/* Existing Photos */}
+              {photos.length > 0 && (
                 <div className="space-y-3">
                   <div 
                     className="relative aspect-video bg-muted rounded-lg flex items-center justify-center cursor-pointer overflow-hidden group max-h-32"
@@ -717,12 +731,14 @@ const LeadDetails = () => {
                     </Button>
                   </div>
                 </div>
-              ) : (
-                <div className="py-4 text-center">
-                  <Camera className="h-8 w-8 text-muted-foreground mx-auto mb-2" />
-                  <p className="text-xs text-muted-foreground">No photos yet</p>
-                </div>
               )}
+            </TabsContent>
+
+            <TabsContent value="activity" className="mt-0">
+              <LeadActivityTimeline 
+                pipelineEntryId={id!}
+                contactId={lead.contact?.id}
+              />
             </TabsContent>
           </CardContent>
         </Tabs>
@@ -750,7 +766,23 @@ const LeadDetails = () => {
       />
 
       {/* Dynamic Content Sections */}
-      <div className="space-y-6">{renderActiveSection()}</div>
+      <div ref={estimateSectionRef} className="space-y-6">{renderActiveSection()}</div>
+
+      {/* Quick Create Estimate FAB */}
+      {activeTab !== 'estimate' && (
+        <Button
+          className="fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full shadow-lg hover:shadow-xl transition-all hover:scale-105"
+          size="icon"
+          onClick={() => {
+            setActiveTab('estimate');
+            setTimeout(() => {
+              estimateSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 100);
+          }}
+        >
+          <Calculator className="h-6 w-6" />
+        </Button>
+      )}
 
       {/* Call Status Monitor */}
       {activeCall && (
