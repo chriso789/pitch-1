@@ -1,9 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Check, Star, Shield, Sparkles, ArrowUp, Zap } from 'lucide-react';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
+import { Check, Star, Shield, Sparkles, ArrowUp, Zap, Calculator, ChevronDown, ChevronUp } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useFinancingCalculations } from '@/hooks/useFinancingCalculations';
 
 interface TierData {
   tier: 'good' | 'better' | 'best';
@@ -96,6 +98,69 @@ const tierConfig: Record<'good' | 'better' | 'best', {
   }
 };
 
+// Financing display component
+function FinancingDisplay({ totalPrice }: { totalPrice: number }) {
+  const [showOptions, setShowOptions] = useState(false);
+  const { options, lowestMonthlyPayment, apr } = useFinancingCalculations({
+    principal: totalPrice,
+    defaultApr: 8.99,
+    terms: [36, 60, 84, 120]
+  });
+
+  const formatCurrencyCompact = (amount: number) =>
+    new Intl.NumberFormat('en-US', { 
+      style: 'currency', 
+      currency: 'USD',
+      maximumFractionDigits: 0 
+    }).format(amount);
+
+  if (!lowestMonthlyPayment || totalPrice <= 0) return null;
+
+  return (
+    <Collapsible open={showOptions} onOpenChange={setShowOptions}>
+      <div className="text-center p-3 bg-muted rounded-lg">
+        <div className="flex items-center justify-center gap-1.5 text-xs text-muted-foreground">
+          <Calculator className="h-3.5 w-3.5" />
+          <span>Or as low as</span>
+        </div>
+        <div className="text-xl font-semibold text-primary">
+          {formatCurrencyCompact(lowestMonthlyPayment.monthlyPayment)}/mo
+        </div>
+        <div className="text-xs text-muted-foreground mb-1">
+          {lowestMonthlyPayment.termMonths} months @ {apr}% APR
+        </div>
+        
+        <CollapsibleTrigger asChild>
+          <Button variant="ghost" size="sm" className="text-xs gap-1 h-6 px-2">
+            View options
+            {showOptions ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+          </Button>
+        </CollapsibleTrigger>
+      </div>
+
+      <CollapsibleContent className="mt-2">
+        <div className="space-y-1.5 p-2 bg-muted/50 rounded-lg text-sm">
+          {options.map((option) => (
+            <div 
+              key={option.termMonths} 
+              className={cn(
+                "flex justify-between items-center py-1 px-2 rounded",
+                option.termMonths === lowestMonthlyPayment.termMonths && "bg-primary/10"
+              )}
+            >
+              <span className="text-muted-foreground">{option.termMonths} mo</span>
+              <span className="font-medium">{formatCurrencyCompact(option.monthlyPayment)}/mo</span>
+            </div>
+          ))}
+          <p className="text-[10px] text-muted-foreground pt-1 border-t">
+            *Subject to credit approval
+          </p>
+        </div>
+      </CollapsibleContent>
+    </Collapsible>
+  );
+}
+
 export function ProposalTierSelector({ 
   tiers, 
   selectedTier, 
@@ -185,12 +250,10 @@ export function ProposalTierSelector({
               {/* Price */}
               <div className="text-center">
                 <p className="text-3xl font-bold">{formatCurrency(tier.totalPrice)}</p>
-                {lowestMonthly && (
-                  <p className="text-sm text-muted-foreground">
-                    or from {formatCurrency(lowestMonthly)}/mo
-                  </p>
-                )}
               </div>
+
+              {/* Financing Calculator */}
+              <FinancingDisplay totalPrice={tier.totalPrice} />
 
               {/* Value Callout */}
               {valueCallout && showComparison && (

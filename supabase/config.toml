@@ -443,3 +443,9 @@ verify_jwt = true
 
 [functions.resend-inbound-webhook]
 verify_jwt = false
+
+[functions.proposal-event-notifications]
+verify_jwt = false
+
+[functions.proposal-follow-up-scheduler]
+verify_jwt = false

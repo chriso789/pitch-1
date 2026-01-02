@@ -86,6 +86,7 @@ import MeasurementAnalyticsPage from "./pages/MeasurementAnalyticsPage";
 import SmartTemplateEditorPage from "./pages/SmartTemplateEditorPage";
 import ProposalEditorPage from "./pages/ProposalEditorPage";
 import PublicProposalView from "./pages/PublicProposalView";
+import ProposalAnalyticsPage from "./pages/ProposalAnalyticsPage";
 import CompanyAdminPage from "./pages/admin/CompanyAdminPage";
 import TestRoofMeasurement from "./pages/TestRoofMeasurement";
 import OnboardingWalkthrough from "./pages/onboarding/OnboardingWalkthrough";
@@ -245,6 +246,7 @@ const AppContent = () => {
         <Route path="/templates/smart-editor" element={<ProtectedRoute><SmartTemplateEditorPage /></ProtectedRoute>} />
         <Route path="/templates/smart-editor/:templateId" element={<ProtectedRoute><SmartTemplateEditorPage /></ProtectedRoute>} />
         <Route path="/proposals/create/:projectId" element={<ProtectedRoute><ProposalEditorPage /></ProtectedRoute>} />
+        <Route path="/proposal-analytics" element={<ProtectedRoute><ProposalAnalyticsPage /></ProtectedRoute>} />
         
         {/* Protected admin routes */}
         <Route path="/admin/companies" element={<ProtectedRoute><CompanyAdminPage /></ProtectedRoute>} />

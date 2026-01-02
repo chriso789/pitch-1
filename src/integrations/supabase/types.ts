@@ -5930,7 +5930,9 @@ export type Database = {
           estimate_number: string
           expires_at: string | null
           financing_options: Json | null
+          first_viewed_at: string | null
           fixed_selling_price: number | null
+          follow_up_enabled: boolean | null
           good_tier_total: number | null
           id: string
           internal_notes: string | null
@@ -5980,6 +5982,7 @@ export type Database = {
           template_id: string | null
           tenant_id: string
           tier_line_items: Json | null
+          tier_selected_at: string | null
           tracking_enabled: boolean | null
           updated_at: string
           view_count: number | null
@@ -6007,7 +6010,9 @@ export type Database = {
           estimate_number: string
           expires_at?: string | null
           financing_options?: Json | null
+          first_viewed_at?: string | null
           fixed_selling_price?: number | null
+          follow_up_enabled?: boolean | null
           good_tier_total?: number | null
           id?: string
           internal_notes?: string | null
@@ -6057,6 +6062,7 @@ export type Database = {
           template_id?: string | null
           tenant_id: string
           tier_line_items?: Json | null
+          tier_selected_at?: string | null
           tracking_enabled?: boolean | null
           updated_at?: string
           view_count?: number | null
@@ -6084,7 +6090,9 @@ export type Database = {
           estimate_number?: string
           expires_at?: string | null
           financing_options?: Json | null
+          first_viewed_at?: string | null
           fixed_selling_price?: number | null
+          follow_up_enabled?: boolean | null
           good_tier_total?: number | null
           id?: string
           internal_notes?: string | null
@@ -6134,6 +6142,7 @@ export type Database = {
           template_id?: string | null
           tenant_id?: string
           tier_line_items?: Json | null
+          tier_selected_at?: string | null
           tracking_enabled?: boolean | null
           updated_at?: string
           view_count?: number | null
@@ -13017,6 +13026,106 @@ export type Database = {
           },
           {
             foreignKeyName: "proposal_financing_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      proposal_follow_ups: {
+        Row: {
+          created_at: string | null
+          email_template: string | null
+          estimate_id: string
+          id: string
+          scheduled_for: string
+          sent_at: string | null
+          sequence_step: number
+          status: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          email_template?: string | null
+          estimate_id: string
+          id?: string
+          scheduled_for: string
+          sent_at?: string | null
+          sequence_step: number
+          status?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          email_template?: string | null
+          estimate_id?: string
+          id?: string
+          scheduled_for?: string
+          sent_at?: string | null
+          sequence_step?: number
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proposal_follow_ups_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      proposal_notification_preferences: {
+        Row: {
+          created_at: string | null
+          email_on_signature: boolean | null
+          email_on_tier_select: boolean | null
+          email_on_view: boolean | null
+          id: string
+          phone_number: string | null
+          sms_on_signature: boolean | null
+          sms_on_tier_select: boolean | null
+          sms_on_view: boolean | null
+          tenant_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          email_on_signature?: boolean | null
+          email_on_tier_select?: boolean | null
+          email_on_view?: boolean | null
+          id?: string
+          phone_number?: string | null
+          sms_on_signature?: boolean | null
+          sms_on_tier_select?: boolean | null
+          sms_on_view?: boolean | null
+          tenant_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string | null
+          email_on_signature?: boolean | null
+          email_on_tier_select?: boolean | null
+          email_on_view?: boolean | null
+          id?: string
+          phone_number?: string | null
+          sms_on_signature?: boolean | null
+          sms_on_tier_select?: boolean | null
+          sms_on_view?: boolean | null
+          tenant_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "proposal_notification_preferences_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -21143,6 +21252,32 @@ export type Database = {
       get_next_lead_number: {
         Args: { contact_id_param: string }
         Returns: number
+      }
+      get_proposal_analytics: {
+        Args: { p_days?: number; p_tenant_id: string }
+        Returns: {
+          avg_time_to_sign_hours: number
+          best_tier_count: number
+          better_tier_count: number
+          conversion_rate: number
+          good_tier_count: number
+          total_sent: number
+          total_signed: number
+          total_viewed: number
+          view_rate: number
+        }[]
+      }
+      get_proposal_rep_performance: {
+        Args: { p_days?: number; p_tenant_id: string }
+        Returns: {
+          conversion_rate: number
+          full_name: string
+          proposals_sent: number
+          proposals_signed: number
+          proposals_viewed: number
+          total_revenue: number
+          user_id: string
+        }[]
       }
       get_tenant_sms_number: { Args: { p_tenant_id: string }; Returns: string }
       get_tenant_voice_number: {
