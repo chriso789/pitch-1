@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { cn } from '@/lib/utils';
 import { 
   Calculator, 
@@ -7,10 +7,15 @@ import {
   Settings, 
   TrendingUp, 
   DollarSign,
-  FileText
+  FileText,
+  Minus,
+  Plus
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { Slider } from '@/components/ui/slider';
+import { Button } from '@/components/ui/button';
+import { toast } from 'sonner';
 
 interface HyperlinkBarData {
   materials: number;
@@ -60,6 +65,10 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
   calculations,
   className
 }) => {
+  const queryClient = useQueryClient();
+  const [priceAdjustment, setPriceAdjustment] = useState(0); // -20 to +20 percent
+  const [isAdjusting, setIsAdjusting] = useState(false);
+
   // Fetch hyperlink bar data using useQuery for automatic refetch
   const { data: hyperlinkData } = useQuery({
     queryKey: ['hyperlink-data', pipelineEntryId],
@@ -88,6 +97,38 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
   });
 
   const salesRepOverheadRate = salesRepData || 0;
+
+  // Mutation to update estimate selling price
+  const updatePriceMutation = useMutation({
+    mutationFn: async (newPrice: number) => {
+      if (!hyperlinkData?.selected_estimate_id) {
+        throw new Error('No estimate selected');
+      }
+      const { error } = await supabase
+        .from('enhanced_estimates')
+        .update({ selling_price: newPrice })
+        .eq('id', hyperlinkData.selected_estimate_id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
+      toast.success('Price updated');
+      setIsAdjusting(false);
+      setPriceAdjustment(0);
+    },
+    onError: (error: Error) => {
+      toast.error(`Failed to update price: ${error.message}`);
+    },
+  });
+
+  const basePrice = hyperlinkData?.sale_price || 0;
+  const adjustedPrice = basePrice * (1 + priceAdjustment / 100);
+
+  const handleApplyPriceAdjustment = () => {
+    if (adjustedPrice > 0) {
+      updatePriceMutation.mutate(Math.round(adjustedPrice * 100) / 100);
+    }
+  };
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -267,59 +308,121 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
   }
 
   return (
-    <nav 
-      className={cn(
-        "flex justify-space-evenly bg-card border border-border rounded-lg p-2",
-        className
-      )}
-      role="navigation"
-      aria-label="Estimate sections"
-    >
-      {links.map((link) => {
-        const IconComponent = link.icon;
-        const isActive = activeSection === link.id;
-        const isPending = link.hint !== null;
-        
-        return (
-          <a
-            key={link.id}
-            href={`#${link.id}`}
-            onClick={(e) => {
-              e.preventDefault();
-              onSectionChange(link.id);
-            }}
-            className={cn(
-              "flex-1 flex flex-col items-center p-3 rounded-md text-center transition-all duration-200",
-              "hover:bg-accent hover:text-accent-foreground",
-              "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
-              isActive && "bg-primary text-primary-foreground",
-              isPending && !isActive && "text-muted-foreground"
-            )}
-            aria-current={isActive ? "page" : undefined}
-            title={link.description}
-          >
-            <div className="flex items-center space-x-1 mb-1">
-              <IconComponent className="h-4 w-4" />
-              <span className="text-sm font-medium truncate">{link.label}</span>
-            </div>
-            
-            <div className="flex items-center space-x-1">
+    <div className={cn("space-y-2", className)}>
+      {/* Quick Price Adjustment Slider - Only shown when estimate is selected */}
+      {hasSelectedEstimate && (
+        <div className="bg-card border border-border rounded-lg p-3">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-muted-foreground">Quick Price Adjust</span>
+            <div className="flex items-center gap-2">
               <span className={cn(
-                "text-sm font-semibold",
-                isActive ? "text-primary-foreground" : "text-foreground"
+                "font-mono text-sm font-semibold",
+                priceAdjustment > 0 ? "text-green-600" : priceAdjustment < 0 ? "text-red-600" : "text-muted-foreground"
               )}>
-                {link.value}
+                {priceAdjustment > 0 ? '+' : ''}{priceAdjustment}%
               </span>
-              {link.hint && (
-                <span className="text-xs text-muted-foreground/70 truncate max-w-[60px]">
-                  {link.hint}
-                </span>
-              )}
+              <span className="font-mono text-lg font-bold text-primary">
+                {formatCurrency(adjustedPrice)}
+              </span>
             </div>
-          </a>
-        );
-      })}
-    </nav>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              onClick={() => setPriceAdjustment(Math.max(-20, priceAdjustment - 5))}
+              disabled={priceAdjustment <= -20}
+            >
+              <Minus className="h-4 w-4" />
+            </Button>
+            <Slider
+              value={[priceAdjustment]}
+              onValueChange={([value]) => setPriceAdjustment(value)}
+              min={-20}
+              max={20}
+              step={1}
+              className="flex-1"
+            />
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-8 w-8 shrink-0"
+              onClick={() => setPriceAdjustment(Math.min(20, priceAdjustment + 5))}
+              disabled={priceAdjustment >= 20}
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+            {priceAdjustment !== 0 && (
+              <Button
+                size="sm"
+                onClick={handleApplyPriceAdjustment}
+                disabled={updatePriceMutation.isPending}
+              >
+                {updatePriceMutation.isPending ? 'Saving...' : 'Apply'}
+              </Button>
+            )}
+          </div>
+          <div className="flex justify-between text-xs text-muted-foreground mt-1">
+            <span>-20%</span>
+            <span>0%</span>
+            <span>+20%</span>
+          </div>
+        </div>
+      )}
+
+      {/* Main Navigation Bar */}
+      <nav 
+        className="flex justify-space-evenly bg-card border border-border rounded-lg p-2"
+        role="navigation"
+        aria-label="Estimate sections"
+      >
+        {links.map((link) => {
+          const IconComponent = link.icon;
+          const isActive = activeSection === link.id;
+          const isPending = link.hint !== null;
+          
+          return (
+            <a
+              key={link.id}
+              href={`#${link.id}`}
+              onClick={(e) => {
+                e.preventDefault();
+                onSectionChange(link.id);
+              }}
+              className={cn(
+                "flex-1 flex flex-col items-center p-3 rounded-md text-center transition-all duration-200",
+                "hover:bg-accent hover:text-accent-foreground",
+                "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                isActive && "bg-primary text-primary-foreground",
+                isPending && !isActive && "text-muted-foreground"
+              )}
+              aria-current={isActive ? "page" : undefined}
+              title={link.description}
+            >
+              <div className="flex items-center space-x-1 mb-1">
+                <IconComponent className="h-4 w-4" />
+                <span className="text-sm font-medium truncate">{link.label}</span>
+              </div>
+              
+              <div className="flex items-center space-x-1">
+                <span className={cn(
+                  "text-sm font-semibold",
+                  isActive ? "text-primary-foreground" : "text-foreground"
+                )}>
+                  {link.value}
+                </span>
+                {link.hint && (
+                  <span className="text-xs text-muted-foreground/70 truncate max-w-[60px]">
+                    {link.hint}
+                  </span>
+                )}
+              </div>
+            </a>
+          );
+        })}
+      </nav>
+    </div>
   );
 };
 

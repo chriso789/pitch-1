@@ -242,23 +242,6 @@ export function EstimateBreakdownCard({
           </div>
         )}
 
-        {/* Overhead Slider */}
-        <div className="space-y-3 pt-2">
-          <div className="flex items-center justify-between">
-            <Label>Overhead</Label>
-            <span className="font-mono text-sm">
-              {formatPercent(config.overheadPercent)}
-            </span>
-          </div>
-          <Slider
-            value={[config.overheadPercent]}
-            onValueChange={([value]) => onConfigChange({ overheadPercent: value })}
-            min={5}
-            max={25}
-            step={1}
-            className="w-full"
-          />
-        </div>
       </CardContent>
     </Card>
   );
