@@ -44,7 +44,7 @@ export const useSendSMS = () => {
       
       toast({
         title: "SMS Sent",
-        description: "Your message has been delivered successfully."
+        description: "Message sent. Delivery status will update shortly."
       });
       
       return data;

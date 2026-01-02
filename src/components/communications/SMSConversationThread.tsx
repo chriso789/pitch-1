@@ -13,6 +13,7 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { cn } from '@/lib/utils';
 import { SMSThread, SMSMessage, useCommunications } from '@/hooks/useCommunications';
+import { supabase } from '@/integrations/supabase/client';
 
 interface SMSConversationThreadProps {
   thread?: SMSThread;
@@ -127,6 +128,36 @@ export const SMSConversationThread = ({
       setMessages([]);
     }
   }, [thread?.id, fetchThreadMessages, markThreadAsRead]);
+
+  // Real-time subscription for delivery status updates
+  useEffect(() => {
+    if (!thread?.id) return;
+
+    const channel = supabase
+      .channel(`sms-status-${thread.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'communication_history',
+          filter: `sms_thread_id=eq.${thread.id}`
+        },
+        (payload) => {
+          // Update the message in state with new delivery status
+          setMessages(prev => prev.map(msg => 
+            msg.id === payload.new.id 
+              ? { ...msg, delivery_status: (payload.new as any).delivery_status, error_message: (payload.new as any).error_message }
+              : msg
+          ));
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [thread?.id]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
