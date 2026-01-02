@@ -31,7 +31,20 @@ export function usePDFGeneration() {
     try {
       const element = document.getElementById(elementId);
       if (!element) {
-        throw new Error('Report element not found');
+        throw new Error(`Report element not found: ${elementId}`);
+      }
+
+      // Validate element has dimensions (can be captured)
+      const rect = element.getBoundingClientRect();
+      console.log('PDF capture element:', elementId, { 
+        width: rect.width, 
+        height: rect.height,
+        top: rect.top,
+        left: rect.left
+      });
+      
+      if (rect.width === 0 || rect.height === 0) {
+        throw new Error('Element has no dimensions - may be hidden or not rendered');
       }
 
       setProgress(30);
@@ -43,6 +56,12 @@ export function usePDFGeneration() {
         useCORS: true,
         logging: false,
         backgroundColor: '#ffffff',
+        x: 0,
+        y: 0,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: element.scrollWidth,
+        windowHeight: element.scrollHeight,
       });
 
       setProgress(60);
