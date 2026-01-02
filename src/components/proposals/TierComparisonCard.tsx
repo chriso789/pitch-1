@@ -1,9 +1,12 @@
-import { Check, Star, Shield, Award, Sparkles } from 'lucide-react';
+import { useState } from 'react';
+import { Check, Star, Shield, Award, Sparkles, ChevronDown, ChevronUp, Calculator } from 'lucide-react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 import { cn } from '@/lib/utils';
 import type { TierPricing } from '@/hooks/useProposalGenerator';
+import { useFinancingCalculations } from '@/hooks/useFinancingCalculations';
 
 interface TierComparisonCardProps {
   tier: TierPricing;
@@ -11,6 +14,8 @@ interface TierComparisonCardProps {
   isPopular?: boolean;
   onSelect: () => void;
   disabled?: boolean;
+  showFinancing?: boolean;
+  defaultApr?: number;
 }
 
 const tierConfig = {
@@ -68,12 +73,29 @@ export const TierComparisonCard = ({
   isPopular,
   onSelect,
   disabled,
+  showFinancing = true,
+  defaultApr = 8.99,
 }: TierComparisonCardProps) => {
   const config = tierConfig[tier.tierName];
   const Icon = config.icon;
+  const [showPaymentOptions, setShowPaymentOptions] = useState(false);
+
+  // Financing calculations
+  const { options, lowestMonthlyPayment, apr } = useFinancingCalculations({
+    principal: tier.total,
+    defaultApr,
+    terms: [36, 60, 84, 120]
+  });
 
   const formatCurrency = (amount: number) =>
     new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+
+  const formatCurrencyCompact = (amount: number) =>
+    new Intl.NumberFormat('en-US', { 
+      style: 'currency', 
+      currency: 'USD',
+      maximumFractionDigits: 0 
+    }).format(amount);
 
   return (
     <Card
@@ -114,8 +136,64 @@ export const TierComparisonCard = ({
           </div>
         </div>
 
-        {/* Financing Option */}
-        {tier.financing.length > 0 && (
+        {/* Financing Calculator Section */}
+        {showFinancing && lowestMonthlyPayment && (
+          <Collapsible open={showPaymentOptions} onOpenChange={setShowPaymentOptions}>
+            <div className="text-center p-3 bg-muted rounded-lg">
+              <div className="flex items-center justify-center gap-2 text-sm text-muted-foreground">
+                <Calculator className="h-4 w-4" />
+                <span>Or as low as</span>
+              </div>
+              <div className="text-2xl font-semibold text-primary">
+                {formatCurrencyCompact(lowestMonthlyPayment.monthlyPayment)}/mo
+              </div>
+              <div className="text-xs text-muted-foreground mb-2">
+                {lowestMonthlyPayment.termMonths} months @ {apr}% APR
+              </div>
+              
+              <CollapsibleTrigger asChild>
+                <Button variant="ghost" size="sm" className="text-xs gap-1 h-7">
+                  View all payment options
+                  {showPaymentOptions ? (
+                    <ChevronUp className="h-3 w-3" />
+                  ) : (
+                    <ChevronDown className="h-3 w-3" />
+                  )}
+                </Button>
+              </CollapsibleTrigger>
+            </div>
+
+            <CollapsibleContent className="mt-3">
+              <div className="space-y-2 p-3 bg-muted/50 rounded-lg">
+                <div className="text-xs font-medium text-muted-foreground mb-2">
+                  Monthly Payment Options ({apr}% APR)
+                </div>
+                {options.map((option) => (
+                  <div 
+                    key={option.termMonths} 
+                    className={cn(
+                      "flex justify-between items-center text-sm py-1.5 px-2 rounded",
+                      option.termMonths === lowestMonthlyPayment.termMonths && "bg-primary/10"
+                    )}
+                  >
+                    <span className="text-muted-foreground">
+                      {option.termMonths} months
+                    </span>
+                    <span className="font-medium">
+                      {formatCurrencyCompact(option.monthlyPayment)}/mo
+                    </span>
+                  </div>
+                ))}
+                <div className="text-xs text-muted-foreground mt-2 pt-2 border-t">
+                  *Subject to credit approval. Rates may vary.
+                </div>
+              </div>
+            </CollapsibleContent>
+          </Collapsible>
+        )}
+
+        {/* Legacy financing display if provided in tier data */}
+        {!showFinancing && tier.financing.length > 0 && (
           <div className="text-center p-3 bg-muted rounded-lg">
             <div className="text-sm text-muted-foreground">Or as low as</div>
             <div className="text-xl font-semibold">

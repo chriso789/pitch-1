@@ -76,11 +76,12 @@ export default function PublicProposalView() {
     enabled: !!token,
   });
 
-  // Track view mutation
+  // Track view mutation and send notifications
   const trackEvent = useMutation({
     mutationFn: async (params: { eventType: string; tier?: string }) => {
       if (!proposal) return;
       
+      // Track the event
       const { error } = await supabase.functions.invoke('generate-proposal', {
         body: {
           action: 'track',
@@ -92,6 +93,27 @@ export default function PublicProposalView() {
         }
       });
       if (error) console.error('Track event error:', error);
+
+      // Send SMS notification to rep for key events
+      if (['viewed', 'tier_selected', 'signed'].includes(params.eventType)) {
+        try {
+          await supabase.functions.invoke('proposal-event-notifications', {
+            body: {
+              estimateId: proposal.id,
+              eventType: params.eventType,
+              customerName: proposal.customer_name,
+              propertyAddress: proposal.customer_address,
+              selectedTier: params.tier,
+              tierAmount: params.tier ? 
+                (params.tier === 'good' ? proposal.good_tier_total :
+                 params.tier === 'better' ? proposal.better_tier_total :
+                 proposal.best_tier_total) : undefined
+            }
+          });
+        } catch (notifyError) {
+          console.error('Notification error:', notifyError);
+        }
+      }
     }
   });
 
@@ -281,6 +303,7 @@ export default function PublicProposalView() {
           selectedTier={selectedTier}
           onSelect={handleTierSelect}
           disabled={isExpired}
+          showComparison={true}
         />
 
         {/* Accept CTA */}
