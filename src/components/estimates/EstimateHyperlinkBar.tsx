@@ -65,7 +65,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     queryKey: ['hyperlink-data', pipelineEntryId],
     queryFn: async () => {
       const { data, error } = await supabase
-        .rpc('api_estimate_hyperlink_bar', { p_estimate_id: pipelineEntryId });
+        .rpc('api_estimate_hyperlink_bar', { p_pipeline_entry_id: pipelineEntryId });
       if (error) throw error;
       return data as unknown as HyperlinkBarData;
     },
