@@ -20575,7 +20575,7 @@ export type Database = {
         }[]
       }
       api_estimate_hyperlink_bar: {
-        Args: { p_estimate_id: string }
+        Args: { p_pipeline_entry_id: string }
         Returns: Json
       }
       api_estimate_items_get: {
