@@ -11,6 +11,7 @@ import {
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Switch } from '@/components/ui/switch';
 import { 
   Package, 
   Hammer, 
@@ -18,7 +19,8 @@ import {
   Check, 
   X, 
   RotateCcw,
-  Trash2 
+  Trash2,
+  Receipt
 } from 'lucide-react';
 import type { LineItem } from '@/hooks/useEstimatePricing';
 
@@ -31,6 +33,9 @@ interface SectionedLineItemsTableProps {
   onDeleteItem?: (id: string) => void;
   onResetItem?: (id: string) => void;
   editable?: boolean;
+  taxEnabled?: boolean;
+  taxRate?: number;
+  onTaxEnabledChange?: (enabled: boolean) => void;
   className?: string;
 }
 
@@ -56,6 +61,9 @@ export function SectionedLineItemsTable({
   onDeleteItem,
   onResetItem,
   editable = true,
+  taxEnabled = false,
+  taxRate = 7,
+  onTaxEnabledChange,
   className = '',
 }: SectionedLineItemsTableProps) {
   const [editingCell, setEditingCell] = useState<EditableCell | null>(null);
@@ -259,17 +267,55 @@ export function SectionedLineItemsTable({
             </TableRow>
           )}
 
-          {/* Grand Total */}
+          {/* Direct Cost Total */}
           {(materialItems.length > 0 || laborItems.length > 0) && (
-            <TableRow className="bg-primary/5 hover:bg-primary/5 border-t-2">
-              <TableCell colSpan={editable ? 3 : 3} className="text-right font-semibold text-lg">
-                Direct Cost Total
-              </TableCell>
-              <TableCell className="text-right font-mono font-bold text-lg">
-                {formatCurrency(materialsTotal + laborTotal)}
-              </TableCell>
-              {editable && <TableCell />}
-            </TableRow>
+            <>
+              <TableRow className="bg-primary/5 hover:bg-primary/5 border-t-2">
+                <TableCell colSpan={editable ? 3 : 3} className="text-right font-semibold text-lg">
+                  Direct Cost Total
+                </TableCell>
+                <TableCell className="text-right font-mono font-bold text-lg">
+                  {formatCurrency(materialsTotal + laborTotal)}
+                </TableCell>
+                {editable && <TableCell />}
+              </TableRow>
+
+              {/* Tax Toggle Row */}
+              {editable && onTaxEnabledChange && (
+                <TableRow className="hover:bg-muted/30">
+                  <TableCell colSpan={editable ? 3 : 3} className="text-right">
+                    <div className="flex items-center justify-end gap-3">
+                      <span className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <Receipt className="h-4 w-4" />
+                        Sales Tax ({taxRate}%)
+                      </span>
+                      <Switch
+                        checked={taxEnabled}
+                        onCheckedChange={onTaxEnabledChange}
+                        aria-label="Toggle sales tax"
+                      />
+                    </div>
+                  </TableCell>
+                  <TableCell className="text-right font-mono">
+                    {taxEnabled ? formatCurrency((materialsTotal + laborTotal) * (taxRate / 100)) : '—'}
+                  </TableCell>
+                  {editable && <TableCell />}
+                </TableRow>
+              )}
+
+              {/* Grand Total with Tax */}
+              {taxEnabled && (
+                <TableRow className="bg-primary/10 hover:bg-primary/10 border-t">
+                  <TableCell colSpan={editable ? 3 : 3} className="text-right font-bold text-lg">
+                    Total with Tax
+                  </TableCell>
+                  <TableCell className="text-right font-mono font-bold text-lg text-primary">
+                    {formatCurrency((materialsTotal + laborTotal) * (1 + taxRate / 100))}
+                  </TableCell>
+                  {editable && <TableCell />}
+                </TableRow>
+              )}
+            </>
           )}
         </TableBody>
       </Table>
