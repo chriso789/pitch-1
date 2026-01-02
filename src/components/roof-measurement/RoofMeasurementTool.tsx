@@ -119,8 +119,37 @@ export function RoofMeasurementTool({
         }
       })
 
-      if (functionError) throw functionError
-      if (!data.success) throw new Error(data.error || 'Analysis failed')
+      // Improved error handling with actionable messages
+      if (functionError) {
+        console.error('Edge function error:', functionError)
+        
+        // Parse error details for better user feedback
+        let errorMessage = 'Failed to analyze roof. '
+        
+        if (functionError.message?.includes('401') || functionError.message?.includes('Unauthorized')) {
+          errorMessage += 'Please log in again to continue.'
+        } else if (functionError.message?.includes('500')) {
+          errorMessage += 'Server error - our team has been notified. Please try again in a few minutes.'
+        } else if (functionError.message?.includes('timeout') || functionError.message?.includes('504')) {
+          errorMessage += 'Request timed out. The property may be too complex - please try again.'
+        } else if (functionError.message?.includes('non-2xx')) {
+          errorMessage += 'Service temporarily unavailable. Please try again.'
+        } else {
+          errorMessage += functionError.message || 'Unknown error occurred.'
+        }
+        
+        throw new Error(errorMessage)
+      }
+      
+      if (!data) {
+        throw new Error('No response from measurement service. Please try again.')
+      }
+      
+      if (!data.success) {
+        // Extract detailed error from response
+        const errorDetail = data.error || data.message || 'Analysis failed'
+        throw new Error(`Measurement failed: ${errorDetail}`)
+      }
 
       // Include measurementId in the state so generatePDF can access it
       setMeasurementData({ ...data.data, measurementId: data.measurementId })
@@ -131,7 +160,18 @@ export function RoofMeasurementTool({
 
     } catch (err: any) {
       console.error('Analysis error:', err)
-      setError(err.message || 'Failed to analyze roof. Please try again.')
+      
+      // Format user-friendly error message
+      let displayError = err.message || 'Failed to analyze roof. Please try again.'
+      
+      // Clean up technical jargon
+      displayError = displayError
+        .replace(/FunctionsHttpError:/gi, '')
+        .replace(/FunctionsFetchError:/gi, '')
+        .replace(/Edge Function/gi, 'Service')
+        .trim()
+      
+      setError(displayError)
     } finally {
       setLoading(false)
     }
