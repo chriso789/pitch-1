@@ -9,7 +9,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Slider } from '@/components/ui/slider';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Calculator, Plus, Trash2, FileText, DollarSign, Target, TrendingUp, MapPin, Satellite, Loader2, AlertTriangle, RefreshCw, Clock, Edit } from 'lucide-react';
+import { Calculator, Plus, Trash2, FileText, DollarSign, Target, TrendingUp, MapPin, Satellite, Loader2, AlertTriangle, RefreshCw, Clock, Edit, RotateCcw } from 'lucide-react';
 import { Separator } from '@/components/ui/separator';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -30,7 +30,7 @@ import { PullMeasurementsButton } from './measurements/PullMeasurementsButton';
 import { useLatestMeasurement } from '@/hooks/useMeasurement';
 import { useLivePricing } from '@/hooks/useLivePricing';
 import { useUserProfile } from '@/contexts/UserProfileContext';
-
+import { seedBrandTemplates, BRAND_TEMPLATES } from '@/lib/estimates/brandTemplateSeeder';
 // LineItemRow component for rendering individual line items
 const LineItemRow: React.FC<{
   item: LineItem;
@@ -341,6 +341,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const [pullingSolarMeasurements, setPullingSolarMeasurements] = useState(false);
   const [solarMeasurementData, setSolarMeasurementData] = useState<any>(null);
   const [coordinates, setCoordinates] = useState<{lat: number, lng: number} | null>(null);
+  const [syncingTemplates, setSyncingTemplates] = useState(false);
 
   // Clear stale measurement data
   const handleClearMeasurements = async () => {
@@ -465,7 +466,6 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   };
 
   useEffect(() => {
-    loadTemplates();
     loadSalesReps();
     if (pipelineEntryId) {
       loadSavedEstimates();
@@ -847,86 +847,203 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 
   const loadTemplates = async () => {
     try {
+      // Load from estimate_calculation_templates (brand templates)
       const { data, error } = await supabase
-        .from('estimate_templates')
-        .select('id, name, roof_type, template_data, is_active')
+        .from('estimate_calculation_templates')
+        .select('id, name, roof_type, is_active, target_profit_percentage')
         .eq('is_active', true)
         .order('name');
 
       if (error) throw error;
       setTemplates(data || []);
+      
+      // Return count for auto-sync check
+      return data?.length || 0;
     } catch (error: any) {
       console.error('Error loading templates:', error);
+      return 0;
     }
   };
+  
+  // Sync templates from code to database
+  const handleSyncTemplates = async () => {
+    try {
+      setSyncingTemplates(true);
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({ title: "Error", description: "Not authenticated", variant: "destructive" });
+        return;
+      }
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', user.id)
+        .single();
+        
+      if (!profile?.tenant_id) {
+        toast({ title: "Error", description: "No tenant found", variant: "destructive" });
+        return;
+      }
+      
+      const result = await seedBrandTemplates(profile.tenant_id);
+      
+      if (result.success) {
+        toast({
+          title: "Templates Synced",
+          description: `Created ${result.templatesCreated} templates with ${result.itemsCreated} items`,
+        });
+        // Reload templates
+        await loadTemplates();
+      } else {
+        toast({
+          title: "Sync Failed",
+          description: result.error || "Unknown error",
+          variant: "destructive"
+        });
+      }
+    } catch (error: any) {
+      console.error('Error syncing templates:', error);
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } finally {
+      setSyncingTemplates(false);
+    }
+  };
+  
+  // Auto-sync templates on mount if needed
+  useEffect(() => {
+    const checkAndSyncTemplates = async () => {
+      const templateCount = await loadTemplates();
+      
+      // If we have fewer templates than defined in code, auto-sync
+      if (templateCount < BRAND_TEMPLATES.length) {
+        console.log(`Auto-syncing templates: ${templateCount} in DB, ${BRAND_TEMPLATES.length} defined`);
+        await handleSyncTemplates();
+      }
+    };
+    
+    checkAndSyncTemplates();
+  }, []);
 
   // Auto-populate line items when template is selected
-  const handleTemplateSelect = (selectedTemplateId: string) => {
+  const handleTemplateSelect = async (selectedTemplateId: string) => {
     setTemplateId(selectedTemplateId);
     
     if (!selectedTemplateId) return;
     
     const template = templates.find((t: any) => t.id === selectedTemplateId);
-    if (!template?.template_data) return;
+    if (!template) return;
     
-    const templateData = template.template_data as any;
-    const roofArea = propertyDetails.roof_area_sq_ft || 0;
-    
-    // Helper to evaluate formula with roof_area
-    const evaluateFormula = (formula: string, roofAreaSqFt: number): number => {
-      try {
-        // Replace roof_area with actual value and evaluate
-        const expression = formula.replace(/roof_area/g, roofAreaSqFt.toString());
-        // Safe eval for simple math expressions
-        return Function(`"use strict"; return (${expression})`)();
-      } catch {
-        return 0;
-      }
-    };
-    
-    const newLineItems: LineItem[] = [];
-    
-    // Add materials
-    if (templateData.materials && Array.isArray(templateData.materials)) {
-      templateData.materials.forEach((material: any) => {
-        newLineItems.push({
-          item_category: 'material',
-          item_name: material.item || material.name || 'Material',
-          description: `${material.item || material.name} (${template.name})`,
-          quantity: evaluateFormula(material.formula || '0', roofArea),
-          unit_cost: material.unit_cost || 0,
-          unit_type: material.unit || 'each',
-          markup_percent: 25,
-          sku: '',
-          last_price_updated: new Date().toISOString()
-        });
-      });
-    }
-    
-    // Add labor
-    if (templateData.labor && Array.isArray(templateData.labor)) {
-      templateData.labor.forEach((labor: any) => {
-        newLineItems.push({
-          item_category: 'labor',
-          item_name: labor.task || labor.name || 'Labor',
-          description: `${labor.task || labor.name} (${template.name})`,
-          quantity: evaluateFormula(labor.formula || '0', roofArea),
-          unit_cost: labor.rate || 0,
-          unit_type: labor.unit || 'hour',
-          markup_percent: 0,
-          sku: '',
-          last_price_updated: new Date().toISOString()
-        });
-      });
-    }
-    
-    if (newLineItems.length > 0) {
-      setLineItems(newLineItems);
-      if (editingEstimateId) setHasUnsavedChanges(true);
+    try {
+      // Fetch template items from estimate_calc_template_items
+      const { data: templateItems, error } = await supabase
+        .from('estimate_calc_template_items')
+        .select('*')
+        .eq('calc_template_id', selectedTemplateId)
+        .order('display_order');
+        
+      if (error) throw error;
       
+      if (!templateItems || templateItems.length === 0) {
+        toast({
+          title: "No Items Found",
+          description: "This template has no line items. Try syncing templates.",
+          variant: "destructive"
+        });
+        return;
+      }
+      
+      // Build smart tags from measurement data
+      const tags: Record<string, number> = {};
+      if (measurementData?.tags) {
+        Object.entries(measurementData.tags).forEach(([key, val]) => {
+          tags[key] = Number(val) || 0;
+        });
+      }
+      
+      // Add fallback values from propertyDetails
+      const roofArea = propertyDetails.roof_area_sq_ft || 0;
+      const squares = roofArea / 100;
+      
+      tags['roof.total_sqft'] = tags['roof.total_sqft'] || roofArea;
+      tags['roof.squares'] = tags['roof.squares'] || squares;
+      tags['waste.10pct.squares'] = tags['waste.10pct.squares'] || (squares * 1.1);
+      tags['waste.10pct.sqft'] = tags['waste.10pct.sqft'] || (roofArea * 1.1);
+      tags['waste.15pct.sqft'] = tags['waste.15pct.sqft'] || (roofArea * 1.15);
+      tags['lf.eave'] = tags['lf.eave'] || 0;
+      tags['lf.rake'] = tags['lf.rake'] || 0;
+      tags['lf.ridge'] = tags['lf.ridge'] || 0;
+      tags['lf.hip'] = tags['lf.hip'] || 0;
+      tags['lf.valley'] = tags['lf.valley'] || 0;
+      tags['lf.step'] = tags['lf.step'] || 0;
+      tags['pen.pipe_vent'] = tags['pen.pipe_vent'] || 2;
+      
+      // Helper to evaluate smart tag formula
+      const evaluateFormula = (formula: string): number => {
+        if (!formula) return 1;
+        
+        try {
+          // Handle simple numeric values
+          const numericValue = parseFloat(formula);
+          if (!isNaN(numericValue)) return numericValue;
+          
+          // Replace {{ expr }} with evaluated expression
+          let expression = formula.replace(/\{\{\s*(.+?)\s*\}\}/g, (_, expr) => {
+            // Replace tag references with values
+            let evalExpr = expr;
+            Object.entries(tags).forEach(([key, val]) => {
+              const regex = new RegExp(key.replace(/\./g, '\\.'), 'g');
+              evalExpr = evalExpr.replace(regex, String(val));
+            });
+            return evalExpr;
+          });
+          
+          // If no {{ }}, try direct tag replacement
+          if (expression === formula) {
+            Object.entries(tags).forEach(([key, val]) => {
+              const regex = new RegExp(key.replace(/\./g, '\\.'), 'g');
+              expression = expression.replace(regex, String(val));
+            });
+          }
+          
+          // Safe eval with Math functions
+          const safeEval = new Function('ceil', 'floor', 'round', 'max', 'min', 
+            `return ${expression}`);
+          return safeEval(Math.ceil, Math.floor, Math.round, Math.max, Math.min) || 0;
+        } catch (e) {
+          console.warn('Formula eval error:', formula, e);
+          return 0;
+        }
+      };
+      
+      const newLineItems: LineItem[] = templateItems.map((item: any) => ({
+        item_category: item.item_category || 'material',
+        item_name: item.item_name || 'Item',
+        description: item.description || '',
+        quantity: evaluateFormula(item.qty_formula),
+        unit_cost: item.unit_cost || 0,
+        unit_type: item.unit || 'each',
+        markup_percent: item.item_category === 'labor' ? 0 : 25,
+        sku: item.sku_pattern || '',
+        last_price_updated: new Date().toISOString()
+      }));
+      
+      if (newLineItems.length > 0) {
+        setLineItems(newLineItems);
+        if (editingEstimateId) setHasUnsavedChanges(true);
+        
+        toast({
+          title: "Template Applied",
+          description: `${newLineItems.length} items loaded from "${template.name}"`,
+        });
+      }
+    } catch (error: any) {
+      console.error('Error loading template items:', error);
       toast({
-        title: "Template Applied",
-        description: `${newLineItems.length} items loaded from "${template.name}"`,
+        title: "Error Loading Template",
+        description: error.message,
+        variant: "destructive"
       });
     }
   };
@@ -1921,7 +2038,23 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
           <Card>
             <CardContent className="pt-4 pb-3">
               <div className="space-y-2">
-                <Label htmlFor="template" className="text-sm">Template</Label>
+                <div className="flex items-center justify-between">
+                  <Label htmlFor="template" className="text-sm">Template</Label>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleSyncTemplates}
+                    disabled={syncingTemplates}
+                    className="h-6 px-2 text-xs"
+                  >
+                    {syncingTemplates ? (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    ) : (
+                      <RotateCcw className="h-3 w-3" />
+                    )}
+                    <span className="ml-1">{syncingTemplates ? 'Syncing...' : 'Sync'}</span>
+                  </Button>
+                </div>
                 <Select value={templateId} onValueChange={handleTemplateSelect}>
                   <SelectTrigger className="h-9">
                     <SelectValue placeholder="Select template to auto-populate items" />
@@ -1935,7 +2068,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                   </SelectContent>
                 </Select>
                 {templates.length === 0 && (
-                  <p className="text-xs text-muted-foreground">No templates available</p>
+                  <p className="text-xs text-muted-foreground">No templates available - click Sync</p>
                 )}
               </div>
             </CardContent>
