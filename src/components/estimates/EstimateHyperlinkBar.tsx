@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { cn } from '@/lib/utils';
 import { 
   Calculator, 
@@ -10,29 +10,24 @@ import {
   FileText
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useQuery } from '@tanstack/react-query';
 
 interface HyperlinkBarData {
-  estimate_id: string;
-  currency: string;
-  ready: boolean;
-  template_bound: boolean;
-  measurements_present: boolean;
-  squares: number;
   materials: number;
   labor: number;
   overhead: number;
   cost_pre_profit: number;
-  mode: string;
-  margin_pct: number;
-  sale_price: number;
   profit: number;
-  sections: Array<{
-    key: string;
-    label: string;
-    amount: number;
-    pending: boolean;
-    extra?: any;
-  }>;
+  sale_price: number;
+  margin_pct: number;
+  mode: string;
+  sections: {
+    contract: { status: string };
+    estimate: { status: string };
+    materials: { status: string };
+    labor: { status: string };
+  };
+  selected_estimate_id: string | null;
 }
 
 interface EstimateCalculations {
@@ -65,62 +60,34 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
   calculations,
   className
 }) => {
-  const [hyperlinkData, setHyperlinkData] = useState<HyperlinkBarData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [salesRepOverheadRate, setSalesRepOverheadRate] = useState<number>(0);
-
-  // Fetch hyperlink bar data using the new RPC function
-  useEffect(() => {
-    const fetchHyperlinkData = async () => {
-      if (!pipelineEntryId) {
-        setLoading(false);
-        return;
-      }
-      
-      try {
-        const { data, error } = await supabase
-          .rpc('api_estimate_hyperlink_bar', { p_estimate_id: pipelineEntryId });
-
-        if (error) throw error;
-
-        if (data) {
-          setHyperlinkData(data as unknown as HyperlinkBarData);
-        }
-      } catch (error) {
-        console.error('Error fetching hyperlink data:', error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchHyperlinkData();
-  }, [pipelineEntryId]);
+  // Fetch hyperlink bar data using useQuery for automatic refetch
+  const { data: hyperlinkData } = useQuery({
+    queryKey: ['hyperlink-data', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .rpc('api_estimate_hyperlink_bar', { p_estimate_id: pipelineEntryId });
+      if (error) throw error;
+      return data as unknown as HyperlinkBarData;
+    },
+    enabled: !!pipelineEntryId,
+  });
 
   // Fetch sales rep's overhead rate
-  useEffect(() => {
-    const fetchSalesRepOverhead = async () => {
-      if (!pipelineEntryId) return;
-      
-      try {
-        // Get pipeline entry with assigned sales rep
-        const { data: pipelineEntry, error: pipelineError } = await supabase
-          .from('pipeline_entries')
-          .select('assigned_to, profiles!pipeline_entries_assigned_to_fkey(personal_overhead_rate)')
-          .eq('id', pipelineEntryId)
-          .single();
+  const { data: salesRepData } = useQuery({
+    queryKey: ['sales-rep-overhead', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pipeline_entries')
+        .select('assigned_to, profiles!pipeline_entries_assigned_to_fkey(personal_overhead_rate)')
+        .eq('id', pipelineEntryId!)
+        .single();
+      if (error) throw error;
+      return data?.profiles?.personal_overhead_rate || 0;
+    },
+    enabled: !!pipelineEntryId,
+  });
 
-        if (pipelineError) throw pipelineError;
-
-        if (pipelineEntry?.profiles?.personal_overhead_rate) {
-          setSalesRepOverheadRate(pipelineEntry.profiles.personal_overhead_rate);
-        }
-      } catch (error) {
-        console.error('Error fetching sales rep overhead:', error);
-      }
-    };
-
-    fetchSalesRepOverhead();
-  }, [pipelineEntryId]);
+  const salesRepOverheadRate = salesRepData || 0;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -136,8 +103,9 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     return `${squares.toFixed(1)} sq`;
   };
 
-  // Use RPC data if available, otherwise fallback to passed calculations
-  const isReady = hyperlinkData?.ready || !!(calculations?.materials_cost && calculations?.labor_cost);
+  // Check if an estimate is selected
+  const hasSelectedEstimate = !!hyperlinkData?.selected_estimate_id;
+  const isReady = hasSelectedEstimate || !!(calculations?.materials_cost && calculations?.labor_cost);
 
   const getIconForSection = (key: string) => {
     switch (key) {
@@ -154,12 +122,12 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
 
   // Calculate overhead based on sales rep's personal overhead rate
   const calculateRepOverhead = () => {
-    if (!salesRepOverheadRate) return 0;
+    if (!salesRepOverheadRate) return hyperlinkData?.overhead || 0;
     const salePrice = hyperlinkData?.sale_price || calculations?.selling_price || 0;
     return salePrice * (salesRepOverheadRate / 100);
   };
 
-  // Use sections from RPC if available, otherwise build fallback - measurements tab removed
+  // Build links from the new RPC response structure
   const links = hyperlinkData ? [
     {
       id: 'documents',
@@ -173,30 +141,50 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       id: 'estimate',
       label: 'Estimate',
       icon: Calculator,
-      value: formatSquares(hyperlinkData.squares),
-      hint: !hyperlinkData.template_bound ? 'Select template' : null,
+      value: hasSelectedEstimate ? formatCurrency(hyperlinkData.sale_price) : '—',
+      hint: !hasSelectedEstimate ? 'Select estimate' : null,
       description: 'Estimate templates and calculations'
     },
-    ...hyperlinkData.sections
-      .filter(section => section.key !== 'measurements')
-      .map(section => ({
-      id: section.key,
-      label: section.key === 'materials' || section.key === 'labor'
-        ? `${section.label}: ${formatCurrency(section.amount)}`
-        : section.label,
-      icon: getIconForSection(section.key),
-      value: section.key === 'profit'
-        ? `${Math.round(hyperlinkData.margin_pct || 30)}%`
-        : section.key === 'overhead'
-        ? formatCurrency(calculateRepOverhead())
-        : formatCurrency(section.amount),
-      hint: section.pending 
-        ? 'Pending' 
-        : section.key === 'overhead' && salesRepOverheadRate 
-        ? `Rep: ${salesRepOverheadRate}%` 
-        : null,
-      description: getDescriptionForSection(section.key)
-    }))
+    {
+      id: 'materials',
+      label: `Materials: ${formatCurrency(hyperlinkData.materials)}`,
+      icon: Package,
+      value: formatCurrency(hyperlinkData.materials),
+      hint: hyperlinkData.sections?.materials?.status === 'pending' ? 'Pending' : null,
+      description: 'Material costs and specifications'
+    },
+    {
+      id: 'labor',
+      label: `Labor: ${formatCurrency(hyperlinkData.labor)}`,
+      icon: Hammer,
+      value: formatCurrency(hyperlinkData.labor),
+      hint: hyperlinkData.sections?.labor?.status === 'pending' ? 'Pending' : null,
+      description: 'Labor costs per square'
+    },
+    {
+      id: 'overhead',
+      label: 'Overhead',
+      icon: Settings,
+      value: formatCurrency(calculateRepOverhead()),
+      hint: salesRepOverheadRate ? `Rep: ${salesRepOverheadRate}%` : null,
+      description: 'Overhead and administrative costs'
+    },
+    {
+      id: 'profit',
+      label: 'Profit',
+      icon: TrendingUp,
+      value: `${Math.round(hyperlinkData.margin_pct || 30)}%`,
+      hint: null,
+      description: 'Target gross margin percentage'
+    },
+    {
+      id: 'total',
+      label: 'Total',
+      icon: DollarSign,
+      value: formatCurrency(hyperlinkData.sale_price),
+      hint: null,
+      description: 'Final selling price with guaranteed margin'
+    }
   ] : [
     {
       id: 'documents',
