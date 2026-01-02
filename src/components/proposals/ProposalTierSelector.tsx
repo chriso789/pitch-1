@@ -2,7 +2,7 @@ import React from 'react';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Check, Star, Shield, Sparkles } from 'lucide-react';
+import { Check, Star, Shield, Sparkles, ArrowUp, Zap } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface TierData {
@@ -24,6 +24,7 @@ interface ProposalTierSelectorProps {
   selectedTier: 'good' | 'better' | 'best' | null;
   onSelect: (tier: 'good' | 'better' | 'best') => void;
   disabled?: boolean;
+  showComparison?: boolean;
 }
 
 const tierConfig: Record<'good' | 'better' | 'best', {
@@ -34,6 +35,7 @@ const tierConfig: Record<'good' | 'better' | 'best', {
   bgColor: string;
   badge?: string;
   features: string[];
+  exclusiveFeatures?: string[]; // Features only in this tier and above
 }> = {
   good: {
     label: 'Good',
@@ -61,6 +63,12 @@ const tierConfig: Record<'good' | 'better' | 'best', {
       'Enhanced ice & water shield',
       'Extended warranty coverage',
       'Ridge vent ventilation'
+    ],
+    exclusiveFeatures: [
+      'Synthetic underlayment',
+      'Enhanced ice & water shield',
+      'Extended warranty coverage',
+      'Ridge vent ventilation'
     ]
   },
   best: {
@@ -77,6 +85,13 @@ const tierConfig: Record<'good' | 'better' | 'best', {
       'Lifetime warranty',
       'Enhanced ventilation system',
       'Copper flashing upgrade'
+    ],
+    exclusiveFeatures: [
+      'Designer luxury shingles',
+      'Premium synthetic underlayment',
+      'Full perimeter ice & water shield',
+      'Lifetime warranty',
+      'Copper flashing upgrade'
     ]
   }
 };
@@ -85,7 +100,8 @@ export function ProposalTierSelector({
   tiers, 
   selectedTier, 
   onSelect, 
-  disabled 
+  disabled,
+  showComparison = false
 }: ProposalTierSelectorProps) {
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', {
@@ -96,15 +112,34 @@ export function ProposalTierSelector({
     }).format(amount);
   };
 
+  // Calculate value per dollar for "Best Value" callout
+  const getValueCallout = (tier: TierData): string | null => {
+    if (tier.tier === 'better') {
+      const goodTier = tiers.find(t => t.tier === 'good');
+      if (goodTier) {
+        const priceDiff = tier.totalPrice - goodTier.totalPrice;
+        const warrantyDiff = tier.warranty.years - goodTier.warranty.years;
+        if (warrantyDiff > 0) {
+          return `+${warrantyDiff} years warranty`;
+        }
+      }
+    }
+    if (tier.tier === 'best') {
+      return 'Maximum protection';
+    }
+    return null;
+  };
+
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      {tiers.map((tier) => {
+      {tiers.map((tier, tierIndex) => {
         const config = tierConfig[tier.tier];
         const isSelected = selectedTier === tier.tier;
         const Icon = config.icon;
         const lowestMonthly = tier.financing.length > 0 
           ? Math.min(...tier.financing.map(f => f.monthlyPayment))
           : null;
+        const valueCallout = getValueCallout(tier);
 
         return (
           <Card 
@@ -157,6 +192,18 @@ export function ProposalTierSelector({
                 )}
               </div>
 
+              {/* Value Callout */}
+              {valueCallout && showComparison && (
+                <div className={cn(
+                  'flex items-center justify-center gap-1.5 text-xs font-medium px-2 py-1 rounded-full',
+                  tier.tier === 'better' && 'bg-primary/10 text-primary',
+                  tier.tier === 'best' && 'bg-amber-100 text-amber-700'
+                )}>
+                  <Zap className="h-3 w-3" />
+                  {valueCallout}
+                </div>
+              )}
+
               {/* Warranty */}
               <div className="flex items-center justify-center gap-2 text-sm">
                 <Shield className="h-4 w-4 text-primary" />
@@ -165,17 +212,37 @@ export function ProposalTierSelector({
 
               {/* Features */}
               <ul className="space-y-2">
-                {config.features.map((feature, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm">
-                    <Check className={cn(
-                      'h-4 w-4 mt-0.5 shrink-0',
-                      tier.tier === 'good' && 'text-blue-500',
-                      tier.tier === 'better' && 'text-primary',
-                      tier.tier === 'best' && 'text-amber-500'
-                    )} />
-                    <span>{feature}</span>
-                  </li>
-                ))}
+                {config.features.map((feature, i) => {
+                  const isExclusive = config.exclusiveFeatures?.includes(feature);
+                  return (
+                    <li key={i} className="flex items-start gap-2 text-sm">
+                      {isExclusive && showComparison ? (
+                        <ArrowUp className={cn(
+                          'h-4 w-4 mt-0.5 shrink-0',
+                          tier.tier === 'better' && 'text-primary',
+                          tier.tier === 'best' && 'text-amber-500'
+                        )} />
+                      ) : (
+                        <Check className={cn(
+                          'h-4 w-4 mt-0.5 shrink-0',
+                          tier.tier === 'good' && 'text-blue-500',
+                          tier.tier === 'better' && 'text-primary',
+                          tier.tier === 'best' && 'text-amber-500'
+                        )} />
+                      )}
+                      <span className={cn(
+                        isExclusive && showComparison && 'font-medium'
+                      )}>
+                        {feature}
+                        {isExclusive && showComparison && (
+                          <Badge variant="outline" className="ml-1.5 text-[9px] py-0 px-1">
+                            Upgrade
+                          </Badge>
+                        )}
+                      </span>
+                    </li>
+                  );
+                })}
               </ul>
 
               {/* Select Button */}
