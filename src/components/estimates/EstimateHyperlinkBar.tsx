@@ -9,15 +9,13 @@ import {
   DollarSign,
   FileText,
   Minus,
-  Plus,
-  Pencil
+  Plus
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { Slider } from '@/components/ui/slider';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { ManualCostEntryDialog } from './ManualCostEntryDialog';
 interface HyperlinkBarData {
   materials: number;
   labor: number;
@@ -69,8 +67,6 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
   const queryClient = useQueryClient();
   const [priceAdjustment, setPriceAdjustment] = useState(0); // -20 to +20 percent
   const [isAdjusting, setIsAdjusting] = useState(false);
-  const [showMaterialsDialog, setShowMaterialsDialog] = useState(false);
-  const [showLaborDialog, setShowLaborDialog] = useState(false);
   // Fetch hyperlink bar data using useQuery for automatic refetch
   const { data: hyperlinkData } = useQuery({
     queryKey: ['hyperlink-data', pipelineEntryId],
@@ -383,7 +379,6 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
           const IconComponent = link.icon;
           const isActive = activeSection === link.id;
           const isPending = link.hint !== null;
-          const isClickableForDialog = link.id === 'materials' || link.id === 'labor';
           
           return (
             <a
@@ -391,12 +386,6 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
               href={`#${link.id}`}
               onClick={(e) => {
                 e.preventDefault();
-                // For materials/labor, show dialog on click
-                if (link.id === 'materials') {
-                  setShowMaterialsDialog(true);
-                } else if (link.id === 'labor') {
-                  setShowLaborDialog(true);
-                }
                 onSectionChange(link.id);
               }}
               className={cn(
@@ -407,14 +396,11 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
                 isPending && !isActive && "text-muted-foreground"
               )}
               aria-current={isActive ? "page" : undefined}
-              title={isClickableForDialog ? `Click to enter manual ${link.id} cost` : link.description}
+              title={link.description}
             >
               <div className="flex items-center space-x-1 mb-1">
                 <IconComponent className="h-4 w-4" />
                 <span className="text-sm font-medium truncate">{link.label}</span>
-                {isClickableForDialog && (
-                  <Pencil className="h-3 w-3 opacity-50" />
-                )}
               </div>
               
               <div className="flex items-center space-x-1">
@@ -434,34 +420,6 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
           );
         })}
       </nav>
-
-      {/* Manual Cost Entry Dialogs */}
-      {pipelineEntryId && (
-        <>
-          <ManualCostEntryDialog
-            open={showMaterialsDialog}
-            onOpenChange={setShowMaterialsDialog}
-            type="materials"
-            pipelineEntryId={pipelineEntryId}
-            currentValue={hyperlinkData?.materials || calculations?.materials_cost || 0}
-            selectedEstimateId={hyperlinkData?.selected_estimate_id || null}
-            onSuccess={() => {
-              queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
-            }}
-          />
-          <ManualCostEntryDialog
-            open={showLaborDialog}
-            onOpenChange={setShowLaborDialog}
-            type="labor"
-            pipelineEntryId={pipelineEntryId}
-            currentValue={hyperlinkData?.labor || calculations?.labor_cost || 0}
-            selectedEstimateId={hyperlinkData?.selected_estimate_id || null}
-            onSuccess={() => {
-              queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
-            }}
-          />
-        </>
-      )}
     </div>
   );
 };
