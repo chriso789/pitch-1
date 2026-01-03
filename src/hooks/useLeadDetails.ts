@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client';
 
 export interface LeadDetailsData {
   id: string;
+  tenant_id: string;
   status: string;
   roof_type?: string;
   priority: string;
@@ -166,13 +167,17 @@ async function fetchProductionStage(id: string): Promise<string | null> {
   return workflow?.current_stage || null;
 }
 
-// Fetch sales reps
-async function fetchSalesReps() {
+// Fetch sales reps for a specific tenant
+async function fetchSalesReps(tenantId: string | null) {
+  if (!tenantId) return [];
+  
   const { data, error } = await supabase
     .from('profiles')
-    .select('id, first_name, last_name')
-    .in('role', ['sales_manager', 'regional_manager', 'corporate'])
+    .select('id, first_name, last_name, role')
+    .eq('tenant_id', tenantId)
+    .in('role', ['owner', 'corporate', 'regional_manager', 'sales_manager', 'project_manager'])
     .eq('is_active', true)
+    .neq('role', 'master') // Exclude master users from other tenant lists
     .order('first_name');
 
   if (error) throw error;
@@ -215,10 +220,14 @@ export function useLeadDetails(id: string | undefined) {
     staleTime: 30000,
   });
 
-  // Sales reps - only fetch once globally
+  // Get the tenant ID from the lead data for filtering sales reps
+  const tenantId = leadQuery.data?.tenant_id;
+
+  // Sales reps - fetch based on lead's tenant
   const salesRepsQuery = useQuery({
-    queryKey: ['sales-reps'],
-    queryFn: fetchSalesReps,
+    queryKey: ['sales-reps', tenantId],
+    queryFn: () => fetchSalesReps(tenantId || null),
+    enabled: !!tenantId,
     staleTime: 300000, // 5 minutes - rarely changes
   });
 
