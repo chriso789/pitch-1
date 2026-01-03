@@ -539,3 +539,63 @@ verify_jwt = true
 
 [functions.track-marketing-session]
 verify_jwt = false
+
+[functions.territory-manager]
+verify_jwt = true
+
+[functions.territory-analytics]
+verify_jwt = true
+
+[functions.photo-categorizer]
+verify_jwt = true
+
+[functions.photo-report-generator]
+verify_jwt = true
+
+[functions.voicemail-drop]
+verify_jwt = true
+
+[functions.voicemail-manager]
+verify_jwt = true
+
+[functions.email-sequence-engine]
+verify_jwt = true
+
+[functions.email-sequence-manager]
+verify_jwt = true
+
+[functions.sms-auto-responder]
+verify_jwt = true
+
+[functions.sms-conversation-ai]
+verify_jwt = true
+
+[functions.smart-scheduler]
+verify_jwt = true
+
+[functions.appointment-optimizer]
+verify_jwt = true
+
+[functions.proposal-engagement-tracker]
+verify_jwt = false
+
+[functions.proposal-ai-insights]
+verify_jwt = true
+
+[functions.material-order-processor]
+verify_jwt = true
+
+[functions.material-fulfillment-tracker]
+verify_jwt = true
+
+[functions.supplement-generator]
+verify_jwt = true
+
+[functions.insurance-claim-tracker]
+verify_jwt = true
+
+[functions.platform-analytics]
+verify_jwt = true
+
+[functions.company-health-score]
+verify_jwt = true
