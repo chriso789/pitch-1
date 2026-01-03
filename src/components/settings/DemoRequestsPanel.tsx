@@ -23,9 +23,11 @@ import {
   XCircle,
   UserCheck,
   Copy,
-  ExternalLink
+  ExternalLink,
+  Plus
 } from "lucide-react";
 import { format } from "date-fns";
+import { CreateCompanyFromDemoDialog } from "./CreateCompanyFromDemoDialog";
 
 interface DemoRequest {
   id: string;
@@ -42,6 +44,7 @@ interface DemoRequest {
   status?: string;
   notes?: string;
   contacted_at?: string;
+  converted_to_company_id?: string | null;
 }
 
 type StatusType = 'all' | 'new' | 'contacted' | 'scheduled' | 'converted' | 'declined';
@@ -63,6 +66,8 @@ export const DemoRequestsPanel: React.FC = () => {
   const [notesDialogOpen, setNotesDialogOpen] = useState(false);
   const [notes, setNotes] = useState('');
   const [updating, setUpdating] = useState(false);
+  const [createCompanyDialogOpen, setCreateCompanyDialogOpen] = useState(false);
+  const [selectedForConversion, setSelectedForConversion] = useState<DemoRequest | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
@@ -183,6 +188,16 @@ export const DemoRequestsPanel: React.FC = () => {
     URL.revokeObjectURL(url);
 
     toast({ title: "Export complete", description: `${filteredRequests.length} requests exported` });
+  };
+
+  const handleCreateCompany = (request: DemoRequest) => {
+    setSelectedForConversion(request);
+    setCreateCompanyDialogOpen(true);
+  };
+
+  const handleCompanyCreated = (companyId: string) => {
+    // Reload requests to get updated status
+    loadDemoRequests();
   };
 
   const filteredRequests = requests.filter(r => {
@@ -315,6 +330,7 @@ export const DemoRequestsPanel: React.FC = () => {
                   {filteredRequests.map((request) => {
                     const status = request.status || 'new';
                     const statusConfig = STATUS_CONFIG[status] || STATUS_CONFIG.new;
+                    const isConverted = status === 'converted' || !!request.converted_to_company_id;
                     
                     return (
                       <TableRow key={request.id}>
@@ -385,6 +401,24 @@ export const DemoRequestsPanel: React.FC = () => {
                         </TableCell>
                         <TableCell className="text-right">
                           <div className="flex items-center justify-end gap-1">
+                            {/* Create Company Button - only show if not converted */}
+                            {!isConverted && (
+                              <Button
+                                variant="default"
+                                size="sm"
+                                onClick={() => handleCreateCompany(request)}
+                                className="bg-green-600 hover:bg-green-700"
+                              >
+                                <Plus className="h-4 w-4 mr-1" />
+                                Create Company
+                              </Button>
+                            )}
+                            {isConverted && (
+                              <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                                <CheckCircle className="h-3 w-3 mr-1" />
+                                Company Created
+                              </Badge>
+                            )}
                             <Button
                               variant="ghost"
                               size="sm"
@@ -455,6 +489,14 @@ export const DemoRequestsPanel: React.FC = () => {
           )}
         </CardContent>
       </Card>
+
+      {/* Create Company Dialog */}
+      <CreateCompanyFromDemoDialog
+        open={createCompanyDialogOpen}
+        onOpenChange={setCreateCompanyDialogOpen}
+        demoRequest={selectedForConversion}
+        onSuccess={handleCompanyCreated}
+      />
     </div>
   );
 };
