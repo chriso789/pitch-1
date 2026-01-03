@@ -110,6 +110,8 @@ import AIAgentSettingsPage from "./pages/settings/AIAgentSettingsPage";
 import AIAgentDashboardPage from "./pages/AIAgentDashboardPage";
 import PropertyPhotoGallery from "./components/storm-canvass/PropertyPhotoGallery";
 import PublicPortalView from "./pages/PublicPortalView";
+import SchedulingDashboard from "./pages/SchedulingDashboard";
+import InsuranceClaimsDashboard from "./pages/InsuranceClaimsDashboard";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -268,6 +270,8 @@ const AppContent = () => {
         <Route path="/settings/ai-agent" element={<ProtectedRoute><AIAgentSettingsPage /></ProtectedRoute>} />
         <Route path="/ai-agent-dashboard" element={<ProtectedRoute><AIAgentDashboardPage /></ProtectedRoute>} />
         <Route path="/canvass/property/:propertyId/photos" element={<ProtectedRoute><PropertyPhotoGallery /></ProtectedRoute>} />
+        <Route path="/scheduling" element={<ProtectedRoute><SchedulingDashboard /></ProtectedRoute>} />
+        <Route path="/insurance" element={<ProtectedRoute><InsuranceClaimsDashboard /></ProtectedRoute>} />
         
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
