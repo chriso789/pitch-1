@@ -146,13 +146,16 @@ const handler = async (req: Request): Promise<Response> => {
     
     console.log("[send-demo-request] Sending email from:", fromAddress);
     
+    // Send to multiple recipients for redundancy
     const emailResponse = await resend.emails.send({
       from: fromAddress,
-      to: ["chrisobrien91@gmail.com"],
+      to: ["chrisobrien91@gmail.com", "chris.obfla@gmail.com"],
       replyTo: requestData.email,
-      subject: `Demo Request: ${requestData.firstName} ${requestData.lastName} from ${requestData.companyName}`,
+      subject: `🎯 Demo Request: ${requestData.firstName} ${requestData.lastName} from ${requestData.companyName}`,
       html: emailHtml,
     });
+    
+    console.log("[send-demo-request] Resend API response:", JSON.stringify(emailResponse));
 
     console.log("[send-demo-request] Email sent successfully:", emailResponse);
 
