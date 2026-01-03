@@ -23,6 +23,7 @@ interface CreateUserRequest {
     commission_rate: number;
   };
   locationIds?: string[];
+  skipInvitationEmail?: boolean; // For owners who get company onboarding email instead
 }
 
 const handler = async (req: Request): Promise<Response> => {
@@ -72,7 +73,8 @@ const handler = async (req: Request): Promise<Response> => {
       payType,
       hourlyRate,
       payStructure,
-      locationIds
+      locationIds,
+      skipInvitationEmail
     }: CreateUserRequest = await req.json();
 
     const targetTenantId = assignedTenantId || profile.tenant_id;
@@ -321,37 +323,42 @@ const handler = async (req: Request): Promise<Response> => {
     console.log('Company data for email:', companyData?.name, 'Owner:', ownerData?.first_name);
 
     // Send role-specific onboarding email with company branding
-    try {
-      await supabase.functions.invoke('send-user-invitation', {
-        body: {
-          email,
-          firstName,
-          lastName,
-          phone,
-          role,
-          companyName: companyData?.name || companyName,
-          payType: payType || 'commission',
-          hourlyRate: hourlyRate || null,
-          commissionRate: payStructure?.commission_rate || null,
-          overheadRate: payStructure?.overhead_rate || null,
-          passwordSetupLink,
-          settingsLink: `${appUrl}/settings`,
-          // Company branding
-          companyLogo: companyData?.logo_url || null,
-          companyPrimaryColor: companyData?.primary_color || '#1e40af',
-          companySecondaryColor: companyData?.secondary_color || '#3b82f6',
-          // Owner personal touch
-          ownerName: ownerData?.first_name 
-            ? `${ownerData.first_name} ${ownerData.last_name || ''}`.trim()
-            : companyData?.owner_name || null,
-          ownerHeadshot: ownerData?.avatar_url || null,
-          ownerTitle: ownerData?.title || 'Owner',
-          ownerEmail: ownerData?.email || companyData?.owner_email || null
-        }
-      });
-      console.log('Onboarding email sent with company branding');
-    } catch (emailError) {
-      console.warn('Failed to send onboarding email:', emailError);
+    // SKIP for owners - they get the comprehensive company onboarding email instead
+    if (skipInvitationEmail || role === 'owner') {
+      console.log(`Skipping user invitation email for ${role} - will receive company onboarding email`);
+    } else {
+      try {
+        await supabase.functions.invoke('send-user-invitation', {
+          body: {
+            email,
+            firstName,
+            lastName,
+            phone,
+            role,
+            companyName: companyData?.name || companyName,
+            payType: payType || 'commission',
+            hourlyRate: hourlyRate || null,
+            commissionRate: payStructure?.commission_rate || null,
+            overheadRate: payStructure?.overhead_rate || null,
+            passwordSetupLink,
+            settingsLink: `${appUrl}/settings`,
+            // Company branding
+            companyLogo: companyData?.logo_url || null,
+            companyPrimaryColor: companyData?.primary_color || '#1e40af',
+            companySecondaryColor: companyData?.secondary_color || '#3b82f6',
+            // Owner personal touch
+            ownerName: ownerData?.first_name 
+              ? `${ownerData.first_name} ${ownerData.last_name || ''}`.trim()
+              : companyData?.owner_name || null,
+            ownerHeadshot: ownerData?.avatar_url || null,
+            ownerTitle: ownerData?.title || 'Owner',
+            ownerEmail: ownerData?.email || companyData?.owner_email || null
+          }
+        });
+        console.log('Onboarding email sent with company branding');
+      } catch (emailError) {
+        console.warn('Failed to send onboarding email:', emailError);
+      }
     }
 
     // Log audit trail
