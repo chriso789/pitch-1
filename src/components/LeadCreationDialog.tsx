@@ -195,11 +195,13 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('tenant_id')
+        .select('tenant_id, active_tenant_id')
         .eq('id', user.id)
         .maybeSingle();
 
-      if (!profile?.tenant_id) return;
+      // CRITICAL: Use active_tenant_id (switched company) or fall back to tenant_id (home company)
+      const effectiveTenantId = profile?.active_tenant_id || profile?.tenant_id;
+      if (!effectiveTenantId) return;
 
       // First, try to get the contact's location
       let locationId = contact?.location_id;
@@ -216,12 +218,12 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
         repIds = (locationAssignments || []).map(a => a.user_id);
       }
 
-      // Build query for profiles
+      // Build query for profiles - exclude 'master' role from initial query
       let query = supabase
         .from('profiles')
-        .select('id, first_name, last_name, role')
-        .eq('tenant_id', profile.tenant_id)
-        .in('role', ['sales_manager', 'regional_manager', 'corporate', 'master', 'owner', 'project_manager', 'office_admin'])
+        .select('id, first_name, last_name, role, tenant_id')
+        .eq('tenant_id', effectiveTenantId)
+        .in('role', ['sales_manager', 'regional_manager', 'corporate', 'owner', 'project_manager', 'office_admin'])
         .eq('is_active', true)
         .order('first_name');
 
@@ -233,7 +235,16 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       const { data: profiles, error } = await query;
 
       if (error) throw error;
-      setSalesReps(profiles || []);
+      
+      // Filter out any master users that somehow got included (extra safety)
+      const filteredProfiles = (profiles || []).filter(rep => {
+        if (rep.role === 'master') {
+          return rep.tenant_id === effectiveTenantId;
+        }
+        return true;
+      });
+      
+      setSalesReps(filteredProfiles);
     } catch (error) {
       console.error('Error loading sales reps:', error);
     }

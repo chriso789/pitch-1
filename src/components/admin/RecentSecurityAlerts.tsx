@@ -42,20 +42,23 @@ export function RecentSecurityAlerts({ tenantId }: RecentSecurityAlertsProps) {
       const startDate = subDays(new Date(), 7).toISOString();
 
       // Get recent sessions with location info
-      const { data: sessions } = await supabase
-        .from('session_activity_log')
-        .select(`
-          id,
-          user_id,
-          ip_address,
-          location_info,
-          created_at,
-          event_type
-        `)
+      // Using type assertion to avoid TypeScript recursion issue with complex Supabase types
+      const sessionsResult = await (supabase
+        .from('session_activity_log') as any)
+        .select('id, user_id, ip_address, location_info, created_at, event_type')
         .eq('tenant_id', tenantId)
         .gte('created_at', startDate)
         .order('created_at', { ascending: false })
         .limit(100);
+      
+      const sessions = sessionsResult.data as Array<{
+        id: string;
+        user_id: string;
+        ip_address: string | null;
+        location_info: any;
+        created_at: string;
+        event_type: string;
+      }> | null;
 
       // Get user profiles
       const userIds = [...new Set(sessions?.map(s => s.user_id) || [])];
