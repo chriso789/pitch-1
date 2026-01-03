@@ -207,23 +207,37 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('tenant_id')
+        .select('tenant_id, active_tenant_id')
         .eq('id', user.id)
         .maybeSingle();
 
       if (!profile) return;
 
+      // CRITICAL: Use active_tenant_id (switched company) or fall back to tenant_id (home company)
+      const effectiveTenantId = profile.active_tenant_id || profile.tenant_id;
+      if (!effectiveTenantId) return;
+
       const { data: reps, error } = await supabase
         .from('profiles')
-        .select('id, first_name, last_name, role')
-        .eq('tenant_id', profile.tenant_id)
-        .in('role', ['master', 'corporate', 'office_admin', 'regional_manager', 'sales_manager', 'project_manager', 'owner'])
+        .select('id, first_name, last_name, role, tenant_id')
+        .eq('tenant_id', effectiveTenantId)
+        .in('role', ['corporate', 'office_admin', 'regional_manager', 'sales_manager', 'project_manager', 'owner'])
         .eq('is_active', true)
         .order('first_name');
 
       if (error) throw error;
 
-      setSalesReps(reps || []);
+      // Filter out master users unless they belong to this tenant as their home tenant
+      // This prevents master users from appearing in other companies' dropdowns
+      const filteredReps = (reps || []).filter(rep => {
+        // If rep is a master role, only show if this is their home tenant
+        if (rep.role === 'master') {
+          return rep.tenant_id === effectiveTenantId;
+        }
+        return true;
+      });
+
+      setSalesReps(filteredReps);
     } catch (error) {
       console.error('Error loading sales reps:', error);
       toast({

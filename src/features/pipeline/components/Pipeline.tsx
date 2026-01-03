@@ -154,14 +154,37 @@ const Pipeline = () => {
     try {
       setLoading(true);
       
-      // Load sales reps for assignment
+      // Get current user's effective tenant ID
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      
+      const { data: currentProfile } = await supabase
+        .from('profiles')
+        .select('tenant_id, active_tenant_id')
+        .eq('id', user.id)
+        .maybeSingle();
+      
+      // CRITICAL: Use active_tenant_id (switched company) or fall back to tenant_id (home company)
+      const effectiveTenantId = currentProfile?.active_tenant_id || currentProfile?.tenant_id;
+      
+      // Load sales reps for assignment - FILTERED BY TENANT
       const { data: repsData } = await supabase
         .from('profiles')
-        .select('id, first_name, last_name')
-        .in('role', ['master', 'corporate', 'office_admin', 'regional_manager', 'sales_manager']);
+        .select('id, first_name, last_name, role, tenant_id')
+        .eq('tenant_id', effectiveTenantId)
+        .in('role', ['corporate', 'office_admin', 'regional_manager', 'sales_manager', 'owner'])
+        .eq('is_active', true);
       
       if (repsData) {
-        setSalesReps(repsData.map(rep => ({
+        // Filter out master users from other companies
+        const filteredReps = repsData.filter(rep => {
+          if (rep.role === 'master') {
+            return rep.tenant_id === effectiveTenantId;
+          }
+          return true;
+        });
+        
+        setSalesReps(filteredReps.map(rep => ({
           id: rep.id,
           name: `${rep.first_name} ${rep.last_name}`
         })));
