@@ -6520,6 +6520,184 @@ export type Database = {
           },
         ]
       }
+      email_sequence_enrollments: {
+        Row: {
+          completed_at: string | null
+          contact_id: string
+          created_at: string | null
+          current_step: number | null
+          id: string
+          next_send_at: string | null
+          sequence_id: string
+          started_at: string | null
+          status: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          completed_at?: string | null
+          contact_id: string
+          created_at?: string | null
+          current_step?: number | null
+          id?: string
+          next_send_at?: string | null
+          sequence_id: string
+          started_at?: string | null
+          status?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          completed_at?: string | null
+          contact_id?: string
+          created_at?: string | null
+          current_step?: number | null
+          id?: string
+          next_send_at?: string | null
+          sequence_id?: string
+          started_at?: string | null
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_sequence_enrollments_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_sequence_enrollments_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "email_sequences"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_sequence_enrollments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_sequence_steps: {
+        Row: {
+          ab_variant: string | null
+          body_html: string
+          body_text: string | null
+          created_at: string | null
+          delay_days: number | null
+          delay_hours: number | null
+          id: string
+          is_active: boolean | null
+          sequence_id: string
+          step_order: number
+          subject: string
+          updated_at: string | null
+        }
+        Insert: {
+          ab_variant?: string | null
+          body_html: string
+          body_text?: string | null
+          created_at?: string | null
+          delay_days?: number | null
+          delay_hours?: number | null
+          id?: string
+          is_active?: boolean | null
+          sequence_id: string
+          step_order: number
+          subject: string
+          updated_at?: string | null
+        }
+        Update: {
+          ab_variant?: string | null
+          body_html?: string
+          body_text?: string | null
+          created_at?: string | null
+          delay_days?: number | null
+          delay_hours?: number | null
+          id?: string
+          is_active?: boolean | null
+          sequence_id?: string
+          step_order?: number
+          subject?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_sequence_steps_sequence_id_fkey"
+            columns: ["sequence_id"]
+            isOneToOne: false
+            referencedRelation: "email_sequences"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_sequences: {
+        Row: {
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          name: string
+          stats: Json | null
+          tenant_id: string
+          trigger_type: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name: string
+          stats?: Json | null
+          tenant_id: string
+          trigger_type?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          stats?: Json | null
+          tenant_id?: string
+          trigger_type?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_sequences_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_sequences_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "email_sequences_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       email_templates: {
         Row: {
           created_at: string | null
@@ -19889,6 +20067,168 @@ export type Database = {
         }
         Relationships: []
       }
+      territories: {
+        Row: {
+          active: boolean | null
+          assigned_to: string | null
+          boundary_geojson: Json
+          color: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          metrics: Json | null
+          name: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          active?: boolean | null
+          assigned_to?: string | null
+          boundary_geojson?: Json
+          color?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          metrics?: Json | null
+          name: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          active?: boolean | null
+          assigned_to?: string | null
+          boundary_geojson?: Json
+          color?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          metrics?: Json | null
+          name?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "territories_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "territories_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "territories_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "territories_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "territories_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      territory_visits: {
+        Row: {
+          contact_id: string | null
+          created_at: string | null
+          id: string
+          latitude: number | null
+          longitude: number | null
+          notes: string | null
+          outcome: string | null
+          tenant_id: string
+          territory_id: string | null
+          user_id: string | null
+          visit_type: string
+          visited_at: string
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          notes?: string | null
+          outcome?: string | null
+          tenant_id: string
+          territory_id?: string | null
+          user_id?: string | null
+          visit_type: string
+          visited_at?: string
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string | null
+          id?: string
+          latitude?: number | null
+          longitude?: number | null
+          notes?: string | null
+          outcome?: string | null
+          tenant_id?: string
+          territory_id?: string | null
+          user_id?: string | null
+          visit_type?: string
+          visited_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "territory_visits_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "territory_visits_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "territory_visits_territory_id_fkey"
+            columns: ["territory_id"]
+            isOneToOne: false
+            referencedRelation: "territories"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "territory_visits_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "territory_visits_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       time_entries: {
         Row: {
           approved_at: string | null
@@ -21237,6 +21577,73 @@ export type Database = {
             columns: ["pipeline_entry_id"]
             isOneToOne: false
             referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      voicemail_templates: {
+        Row: {
+          audio_url: string | null
+          callback_rate: number | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_tts: boolean | null
+          name: string
+          script: string | null
+          tenant_id: string
+          updated_at: string | null
+          usage_count: number | null
+          voice: string | null
+        }
+        Insert: {
+          audio_url?: string | null
+          callback_rate?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_tts?: boolean | null
+          name: string
+          script?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          usage_count?: number | null
+          voice?: string | null
+        }
+        Update: {
+          audio_url?: string | null
+          callback_rate?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_tts?: boolean | null
+          name?: string
+          script?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          usage_count?: number | null
+          voice?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "voicemail_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "voicemail_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "voicemail_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
