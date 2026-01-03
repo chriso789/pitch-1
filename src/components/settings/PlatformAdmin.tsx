@@ -21,7 +21,10 @@ import {
   BarChart3,
   Megaphone,
   Mail,
-  UserCog
+  UserCog,
+  UserPlus,
+  Loader2,
+  RefreshCw
 } from "lucide-react";
 import { EnhancedCompanyOnboarding } from "./EnhancedCompanyOnboarding";
 import { LocationUserAssignment } from "./LocationUserAssignment";
@@ -44,6 +47,8 @@ interface Company {
   secondary_color?: string | null;
   phone?: string | null;
   email?: string | null;
+  owner_email?: string | null;
+  owner_name?: string | null;
   address_street?: string | null;
   address_city?: string | null;
   address_state?: string | null;
@@ -54,6 +59,8 @@ interface Company {
   created_at: string;
   user_count?: number;
   location_count?: number;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  settings?: any;
 }
 
 export const PlatformAdmin = () => {
@@ -137,10 +144,18 @@ export const PlatformAdmin = () => {
     }
   };
 
-  const filteredCompanies = companies.filter(company =>
-    company.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    company.email?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  // Filter out demo tenants (like Acme Roofing) and apply search
+  const filteredCompanies = companies.filter(company => {
+    // Filter out demo tenants
+    const isDemo = company.settings?.is_demo === true || 
+      company.id === '550e8400-e29b-41d4-a716-446655440000'; // Acme Roofing demo UUID
+    if (isDemo) return false;
+    
+    // Apply search filter
+    return company.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      company.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      company.owner_email?.toLowerCase().includes(searchQuery.toLowerCase());
+  });
 
   const activeCompanies = filteredCompanies.filter(c => c.is_active !== false);
   const inactiveCompanies = filteredCompanies.filter(c => c.is_active === false);
@@ -382,6 +397,45 @@ interface CompanyGridProps {
 }
 
 const CompanyGrid = ({ companies, loading, onToggleStatus, onViewDetails }: CompanyGridProps) => {
+  const { toast } = useToast();
+  const [provisioningId, setProvisioningId] = useState<string | null>(null);
+
+  const handleProvisionOwner = async (company: Company) => {
+    if (!company.owner_email) {
+      toast({
+        title: "No owner email",
+        description: "This company doesn't have an owner email configured",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setProvisioningId(company.id);
+    try {
+      const { data, error } = await supabase.functions.invoke('provision-tenant-owner', {
+        body: { tenant_id: company.id, send_email: true },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: data.is_new_user ? "Owner Created" : "Owner Updated",
+        description: data.email_sent 
+          ? `Setup email sent to ${data.email}` 
+          : `Account ready for ${data.email}. ${data.invite_link ? 'Invite link generated.' : ''}`,
+      });
+    } catch (error: any) {
+      console.error('Provision owner error:', error);
+      toast({
+        title: "Error provisioning owner",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setProvisioningId(null);
+    }
+  };
+
   if (loading) {
     return (
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -423,8 +477,8 @@ const CompanyGrid = ({ companies, loading, onToggleStatus, onViewDetails }: Comp
                 )}
                 <div>
                   <CardTitle className="text-lg">{company.name}</CardTitle>
-                  {company.email && (
-                    <p className="text-sm text-muted-foreground">{company.email}</p>
+                  {company.owner_email && (
+                    <p className="text-xs text-muted-foreground">{company.owner_email}</p>
                   )}
                 </div>
               </div>
@@ -451,7 +505,7 @@ const CompanyGrid = ({ companies, loading, onToggleStatus, onViewDetails }: Comp
               </p>
             )}
 
-            <div className="flex gap-2 pt-2">
+            <div className="flex flex-wrap gap-2 pt-2">
               <Button 
                 variant="outline" 
                 size="sm" 
@@ -461,14 +515,28 @@ const CompanyGrid = ({ companies, loading, onToggleStatus, onViewDetails }: Comp
                 <Eye className="h-4 w-4 mr-1" />
                 Details
               </Button>
+              {company.owner_email && (
+                <Button
+                  variant="secondary"
+                  size="sm"
+                  onClick={() => handleProvisionOwner(company)}
+                  disabled={provisioningId === company.id}
+                  title="Create/update owner account and send setup email"
+                >
+                  {provisioningId === company.id ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <UserPlus className="h-4 w-4" />
+                  )}
+                </Button>
+              )}
               <Button
                 variant={company.is_active !== false ? "destructive" : "default"}
                 size="sm"
                 onClick={() => onToggleStatus(company)}
                 title={company.is_active !== false ? "Deactivate company" : "Reactivate company"}
               >
-                <Power className="h-4 w-4 mr-1" />
-                {company.is_active === false && "Reactivate"}
+                <Power className="h-4 w-4" />
               </Button>
             </div>
           </CardContent>

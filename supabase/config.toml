@@ -602,3 +602,6 @@ verify_jwt = true
 
 [functions.create-company-user]
 verify_jwt = true
+
+[functions.provision-tenant-owner]
+verify_jwt = true
