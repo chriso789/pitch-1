@@ -599,3 +599,6 @@ verify_jwt = true
 
 [functions.company-health-score]
 verify_jwt = true
+
+[functions.create-company-user]
+verify_jwt = true

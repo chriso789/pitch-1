@@ -137,10 +137,10 @@ const generateEnterpriseEmailHtml = (firstName: string, companyName: string, onb
                 <tr>
                   <td align="center">
                     <a href="${onboardingUrl}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: #ffffff; text-decoration: none; padding: 20px 56px; border-radius: 14px; font-size: 19px; font-weight: 700; letter-spacing: 0.3px; box-shadow: 0 12px 32px rgba(22, 163, 74, 0.4);">
-                      🚀 Log In & Complete Setup
+                      🚀 Log In to Your Account
                     </a>
                     <p style="margin: 16px 0 0; color: #94a3b8; font-size: 14px;">
-                      ⏱️ Takes approximately 15 minutes
+                      📧 Check your email for a password setup link
                     </p>
                   </td>
                 </tr>
@@ -258,7 +258,7 @@ const generateEnterpriseEmailHtml = (firstName: string, companyName: string, onb
                         <td valign="top">
                           <h3 style="margin: 0 0 10px; font-size: 19px; font-weight: 700; color: #0f172a;">Set Your Password</h3>
                           <p style="margin: 0 0 14px; color: #475569; font-size: 16px; line-height: 1.65;">
-                            Click the button above to log in for the first time. You'll be prompted to create a secure password for your account.
+                            <strong>Check your inbox</strong> for a password setup email. Click the link to create your secure password, then log in to your new account.
                           </p>
                           <p style="margin: 0; color: #64748b; font-size: 14px;">
                             ⏱️ <strong>Takes:</strong> 1 minute
@@ -703,9 +703,9 @@ serve(async (req: Request) => {
       );
     }
 
-    // Build onboarding URL
+    // Build login URL - users will set password via the password reset email
     const appUrl = Deno.env.get("APP_URL") || "https://pitch-crm.lovable.app";
-    const onboardingUrl = `${appUrl}/onboarding/${token}`;
+    const onboardingUrl = `${appUrl}/login`;
 
     // Try to fetch custom template from database
     let emailHtml: string;
