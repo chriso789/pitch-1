@@ -7,6 +7,9 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Admin BCC for all onboarding emails
+const ADMIN_BCC = 'support@obriencontractingusa.com';
+
 interface OnboardingEmailRequest {
   tenant_id: string;
   user_id?: string;
@@ -16,51 +19,40 @@ interface OnboardingEmailRequest {
   company_name: string;
 }
 
-const generatePremiumEmailHtml = (firstName: string, companyName: string, onboardingUrl: string) => `
+// Comprehensive 5-step onboarding email template
+const generateComprehensiveEmailHtml = (firstName: string, companyName: string, onboardingUrl: string) => `
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
-  <title>Welcome to PITCH CRM</title>
-  <!--[if mso]>
-  <noscript>
-    <xml>
-      <o:OfficeDocumentSettings>
-        <o:PixelsPerInch>96</o:PixelsPerInch>
-      </o:OfficeDocumentSettings>
-    </xml>
-  </noscript>
-  <![endif]-->
+  <title>Welcome to PITCH CRM - ${companyName}</title>
 </head>
 <body style="margin: 0; padding: 0; background-color: #0f172a; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;">
   
   <!-- Main Container -->
-  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%); min-height: 100vh;">
+  <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);">
     <tr>
       <td align="center" style="padding: 40px 20px;">
         
         <!-- Email Card -->
-        <table role="presentation" width="600" cellspacing="0" cellpadding="0" style="max-width: 600px; width: 100%;">
+        <table role="presentation" width="640" cellspacing="0" cellpadding="0" style="max-width: 640px; width: 100%;">
           
-          <!-- Premium Header with Gold Accent -->
+          <!-- Premium Header -->
           <tr>
-            <td style="background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%); border-radius: 24px 24px 0 0; padding: 0; position: relative; overflow: hidden;">
-              <!-- Gold Top Line -->
+            <td style="background: linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%); border-radius: 24px 24px 0 0; padding: 0;">
               <div style="height: 4px; background: linear-gradient(90deg, #d4af37 0%, #f4e4bc 50%, #d4af37 100%);"></div>
-              
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                 <tr>
                   <td style="padding: 48px 40px 32px;">
-                    <!-- Logo Area -->
                     <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                       <tr>
                         <td align="center">
-                          <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); border-radius: 20px; display: flex; align-items: center; justify-content: center; margin-bottom: 24px; box-shadow: 0 8px 32px rgba(22, 163, 74, 0.3);">
-                            <span style="font-size: 40px; font-weight: 800; color: white; text-shadow: 0 2px 4px rgba(0,0,0,0.2);">P</span>
+                          <div style="width: 80px; height: 80px; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); border-radius: 20px; margin-bottom: 24px; text-align: center; line-height: 80px;">
+                            <span style="font-size: 40px; font-weight: 800; color: white;">P</span>
                           </div>
-                          <h1 style="margin: 0; font-size: 32px; font-weight: 800; letter-spacing: -0.5px;">
+                          <h1 style="margin: 0; font-size: 32px; font-weight: 800;">
                             <span style="color: #ffffff;">PITCH</span>
                             <span style="color: #d4af37;"> CRM</span>
                           </h1>
@@ -86,130 +78,304 @@ const generatePremiumEmailHtml = (firstName: string, companyName: string, onboar
               </h2>
               
               <p style="margin: 0 0 24px; font-size: 17px; line-height: 1.7; color: #475569;">
-                Your account for <strong style="color: #16a34a;">${companyName}</strong> is ready. You're about to transform how your team sells, manages projects, and closes deals.
+                Your <strong style="color: #16a34a;">${companyName}</strong> account is ready! This email will guide you through setting up your entire CRM in just 5 simple steps.
               </p>
               
               <!-- Progress Indicator -->
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 32px;">
                 <tr>
                   <td style="background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 16px; padding: 24px; border: 1px solid #bbf7d0;">
-                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                    <p style="margin: 0 0 16px; font-size: 14px; font-weight: 700; color: #16a34a; text-transform: uppercase; letter-spacing: 1px;">
+                      📋 Your 5-Step Quick Start Checklist
+                    </p>
+                    <table role="presentation" cellspacing="0" cellpadding="0">
                       <tr>
+                        <td style="padding-right: 8px;">
+                          <div style="width: 28px; height: 28px; background: #16a34a; border-radius: 50%; text-align: center; line-height: 28px; color: white; font-weight: 700; font-size: 12px;">1</div>
+                        </td>
+                        <td style="padding-right: 4px;"><div style="width: 40px; height: 3px; background: #e2e8f0;"></div></td>
+                        <td style="padding-right: 8px;">
+                          <div style="width: 28px; height: 28px; background: #e2e8f0; border-radius: 50%; text-align: center; line-height: 28px; color: #94a3b8; font-weight: 700; font-size: 12px;">2</div>
+                        </td>
+                        <td style="padding-right: 4px;"><div style="width: 40px; height: 3px; background: #e2e8f0;"></div></td>
+                        <td style="padding-right: 8px;">
+                          <div style="width: 28px; height: 28px; background: #e2e8f0; border-radius: 50%; text-align: center; line-height: 28px; color: #94a3b8; font-weight: 700; font-size: 12px;">3</div>
+                        </td>
+                        <td style="padding-right: 4px;"><div style="width: 40px; height: 3px; background: #e2e8f0;"></div></td>
+                        <td style="padding-right: 8px;">
+                          <div style="width: 28px; height: 28px; background: #e2e8f0; border-radius: 50%; text-align: center; line-height: 28px; color: #94a3b8; font-weight: 700; font-size: 12px;">4</div>
+                        </td>
+                        <td style="padding-right: 4px;"><div style="width: 40px; height: 3px; background: #e2e8f0;"></div></td>
                         <td>
-                          <p style="margin: 0 0 12px; font-size: 13px; font-weight: 600; color: #16a34a; text-transform: uppercase; letter-spacing: 1px;">
-                            Your Setup Progress
-                          </p>
-                          <table role="presentation" cellspacing="0" cellpadding="0">
-                            <tr>
-                              <td style="width: 32px; height: 32px; background: #16a34a; border-radius: 50%; text-align: center; vertical-align: middle;">
-                                <span style="color: white; font-weight: 700; font-size: 14px;">1</span>
-                              </td>
-                              <td style="width: 60px; height: 4px; background: #e2e8f0;"></td>
-                              <td style="width: 32px; height: 32px; background: #e2e8f0; border-radius: 50%; text-align: center; vertical-align: middle;">
-                                <span style="color: #94a3b8; font-weight: 700; font-size: 14px;">2</span>
-                              </td>
-                              <td style="width: 60px; height: 4px; background: #e2e8f0;"></td>
-                              <td style="width: 32px; height: 32px; background: #e2e8f0; border-radius: 50%; text-align: center; vertical-align: middle;">
-                                <span style="color: #94a3b8; font-weight: 700; font-size: 14px;">3</span>
-                              </td>
-                              <td style="width: 60px; height: 4px; background: #e2e8f0;"></td>
-                              <td style="width: 32px; height: 32px; background: #e2e8f0; border-radius: 50%; text-align: center; vertical-align: middle;">
-                                <span style="color: #94a3b8; font-weight: 700; font-size: 14px;">4</span>
-                              </td>
-                              <td style="width: 60px; height: 4px; background: #e2e8f0;"></td>
-                              <td style="width: 32px; height: 32px; background: #e2e8f0; border-radius: 50%; text-align: center; vertical-align: middle;">
-                                <span style="color: #94a3b8; font-weight: 700; font-size: 14px;">5</span>
-                              </td>
-                            </tr>
-                          </table>
-                          <p style="margin: 12px 0 0; color: #475569; font-size: 14px;">
-                            <strong>Step 1 of 5:</strong> Account Activation
-                          </p>
+                          <div style="width: 28px; height: 28px; background: #e2e8f0; border-radius: 50%; text-align: center; line-height: 28px; color: #94a3b8; font-weight: 700; font-size: 12px;">5</div>
                         </td>
                       </tr>
                     </table>
-                  </td>
-                </tr>
-              </table>
-              
-              <!-- Primary CTA Button -->
-              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 32px;">
-                <tr>
-                  <td align="center">
-                    <a href="${onboardingUrl}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: #ffffff; text-decoration: none; padding: 18px 48px; border-radius: 12px; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; box-shadow: 0 8px 24px rgba(22, 163, 74, 0.35), inset 0 1px 0 rgba(255,255,255,0.2);">
-                      Complete Your Setup →
-                    </a>
-                    <p style="margin: 12px 0 0; color: #94a3b8; font-size: 13px;">
-                      ⏱️ Takes only 10 minutes
+                    <p style="margin: 12px 0 0; color: #475569; font-size: 14px;">
+                      <strong>~15 minutes</strong> to fully set up your business
                     </p>
                   </td>
                 </tr>
               </table>
               
-              <!-- Value Proposition Grid -->
-              <h3 style="margin: 0 0 20px; font-size: 18px; font-weight: 700; color: #0f172a;">
-                What You're Getting:
+              <!-- Primary CTA Button -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 40px;">
+                <tr>
+                  <td align="center">
+                    <a href="${onboardingUrl}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: #ffffff; text-decoration: none; padding: 18px 48px; border-radius: 12px; font-size: 18px; font-weight: 700; letter-spacing: 0.5px; box-shadow: 0 8px 24px rgba(22, 163, 74, 0.35);">
+                      🚀 Log In & Complete Setup
+                    </a>
+                  </td>
+                </tr>
+              </table>
+              
+              <!-- ============================================ -->
+              <!-- STEP 1: SET PASSWORD -->
+              <!-- ============================================ -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 28px;">
+                <tr>
+                  <td style="padding: 24px; background: #fafafa; border-radius: 16px; border-left: 5px solid #16a34a;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td width="50" valign="top">
+                          <div style="width: 44px; height: 44px; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); border-radius: 12px; text-align: center; line-height: 44px; color: white; font-weight: 800; font-size: 18px;">1</div>
+                        </td>
+                        <td valign="top">
+                          <h3 style="margin: 0 0 8px; font-size: 18px; font-weight: 700; color: #0f172a;">Set Your Password</h3>
+                          <p style="margin: 0 0 12px; color: #475569; font-size: 15px; line-height: 1.6;">
+                            Click the button above to log in for the first time. You'll be prompted to create a secure password for your account.
+                          </p>
+                          <p style="margin: 0; color: #64748b; font-size: 13px;">
+                            ⏱️ <strong>Takes:</strong> 1 minute
+                          </p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              
+              <!-- ============================================ -->
+              <!-- STEP 2: UPLOAD COMPANY LOGO -->
+              <!-- ============================================ -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 28px;">
+                <tr>
+                  <td style="padding: 24px; background: #fafafa; border-radius: 16px; border-left: 5px solid #d4af37;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td width="50" valign="top">
+                          <div style="width: 44px; height: 44px; background: linear-gradient(135deg, #d4af37 0%, #f4e4bc 100%); border-radius: 12px; text-align: center; line-height: 44px; color: #0f172a; font-weight: 800; font-size: 18px;">2</div>
+                        </td>
+                        <td valign="top">
+                          <h3 style="margin: 0 0 8px; font-size: 18px; font-weight: 700; color: #0f172a;">Upload Your Company Logo</h3>
+                          <p style="margin: 0 0 12px; color: #475569; font-size: 15px; line-height: 1.6;">
+                            Go to <strong>Settings → Company Profile</strong> and upload your logo. This appears on:
+                          </p>
+                          <ul style="margin: 0 0 12px; padding-left: 20px; color: #475569; font-size: 14px; line-height: 1.8;">
+                            <li>All proposals and estimates sent to customers</li>
+                            <li>Contracts and agreements (DocuSign)</li>
+                            <li>Customer portal &amp; communication</li>
+                            <li>Team dashboards and reports</li>
+                          </ul>
+                          <p style="margin: 0; color: #64748b; font-size: 13px;">
+                            💡 <strong>Tip:</strong> Use a PNG with transparent background for best results
+                          </p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              
+              <!-- ============================================ -->
+              <!-- STEP 3: ADD TEAM MEMBERS -->
+              <!-- ============================================ -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 28px;">
+                <tr>
+                  <td style="padding: 24px; background: #fafafa; border-radius: 16px; border-left: 5px solid #3b82f6;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td width="50" valign="top">
+                          <div style="width: 44px; height: 44px; background: linear-gradient(135deg, #3b82f6 0%, #60a5fa 100%); border-radius: 12px; text-align: center; line-height: 44px; color: white; font-weight: 800; font-size: 18px;">3</div>
+                        </td>
+                        <td valign="top">
+                          <h3 style="margin: 0 0 8px; font-size: 18px; font-weight: 700; color: #0f172a;">Add Your Team Members</h3>
+                          <p style="margin: 0 0 12px; color: #475569; font-size: 15px; line-height: 1.6;">
+                            Navigate to <strong>Settings → Team Management</strong> to invite your team:
+                          </p>
+                          <table role="presentation" cellspacing="0" cellpadding="0" style="margin-bottom: 12px;">
+                            <tr>
+                              <td style="padding: 8px 12px; background: #eff6ff; border-radius: 8px; margin-right: 8px;">
+                                <span style="color: #1d4ed8; font-size: 13px; font-weight: 600;">👔 Sales Reps</span>
+                              </td>
+                              <td style="width: 8px;"></td>
+                              <td style="padding: 8px 12px; background: #f0fdf4; border-radius: 8px;">
+                                <span style="color: #16a34a; font-size: 13px; font-weight: 600;">🏢 Office Staff</span>
+                              </td>
+                              <td style="width: 8px;"></td>
+                              <td style="padding: 8px 12px; background: #fef3c7; border-radius: 8px;">
+                                <span style="color: #d97706; font-size: 13px; font-weight: 600;">🔧 Project Managers</span>
+                              </td>
+                            </tr>
+                          </table>
+                          <ul style="margin: 0 0 12px; padding-left: 20px; color: #475569; font-size: 14px; line-height: 1.8;">
+                            <li>Assign roles with specific permissions</li>
+                            <li>Link team members to office locations</li>
+                            <li>Each person gets their own branded invitation email</li>
+                          </ul>
+                          <p style="margin: 0; color: #64748b; font-size: 13px;">
+                            ⏱️ <strong>Takes:</strong> 2-3 minutes per team member
+                          </p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              
+              <!-- ============================================ -->
+              <!-- STEP 4: CONFIGURE PAY STRUCTURES -->
+              <!-- ============================================ -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 28px;">
+                <tr>
+                  <td style="padding: 24px; background: #fafafa; border-radius: 16px; border-left: 5px solid #8b5cf6;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td width="50" valign="top">
+                          <div style="width: 44px; height: 44px; background: linear-gradient(135deg, #8b5cf6 0%, #a78bfa 100%); border-radius: 12px; text-align: center; line-height: 44px; color: white; font-weight: 800; font-size: 18px;">4</div>
+                        </td>
+                        <td valign="top">
+                          <h3 style="margin: 0 0 8px; font-size: 18px; font-weight: 700; color: #0f172a;">Configure Commission Structures</h3>
+                          <p style="margin: 0 0 12px; color: #475569; font-size: 15px; line-height: 1.6;">
+                            PITCH CRM supports flexible compensation models for your team:
+                          </p>
+                          <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 12px;">
+                            <tr>
+                              <td style="padding: 12px; background: #f5f3ff; border-radius: 8px;">
+                                <p style="margin: 0 0 4px; font-weight: 700; color: #5b21b6; font-size: 14px;">💰 Profit Split</p>
+                                <p style="margin: 0; color: #6b7280; font-size: 13px;">Set overhead % + commission % on job profit</p>
+                              </td>
+                            </tr>
+                            <tr><td style="height: 8px;"></td></tr>
+                            <tr>
+                              <td style="padding: 12px; background: #fef3c7; border-radius: 8px;">
+                                <p style="margin: 0 0 4px; font-weight: 700; color: #92400e; font-size: 14px;">⏰ Hourly Pay</p>
+                                <p style="margin: 0; color: #6b7280; font-size: 13px;">Configure hourly rates for project managers</p>
+                              </td>
+                            </tr>
+                            <tr><td style="height: 8px;"></td></tr>
+                            <tr>
+                              <td style="padding: 12px; background: #dcfce7; border-radius: 8px;">
+                                <p style="margin: 0 0 4px; font-weight: 700; color: #166534; font-size: 14px;">📊 Tiered Commissions</p>
+                                <p style="margin: 0; color: #6b7280; font-size: 13px;">Create performance-based incentive tiers</p>
+                              </td>
+                            </tr>
+                          </table>
+                          <p style="margin: 0; color: #64748b; font-size: 13px;">
+                            💡 <strong>Benefit:</strong> Automatic earnings tracking on every job!
+                          </p>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              
+              <!-- ============================================ -->
+              <!-- STEP 5: CUSTOMIZE PIPELINE -->
+              <!-- ============================================ -->
+              <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 32px;">
+                <tr>
+                  <td style="padding: 24px; background: #fafafa; border-radius: 16px; border-left: 5px solid #ec4899;">
+                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td width="50" valign="top">
+                          <div style="width: 44px; height: 44px; background: linear-gradient(135deg, #ec4899 0%, #f472b6 100%); border-radius: 12px; text-align: center; line-height: 44px; color: white; font-weight: 800; font-size: 18px;">5</div>
+                        </td>
+                        <td valign="top">
+                          <h3 style="margin: 0 0 8px; font-size: 18px; font-weight: 700; color: #0f172a;">Customize Your Sales Pipeline</h3>
+                          <p style="margin: 0 0 12px; color: #475569; font-size: 15px; line-height: 1.6;">
+                            Your CRM comes pre-configured with industry-standard stages:
+                          </p>
+                          <table role="presentation" cellspacing="0" cellpadding="0" style="margin-bottom: 12px;">
+                            <tr>
+                              <td style="padding: 6px 10px; background: #fee2e2; border-radius: 6px; font-size: 12px; font-weight: 600; color: #991b1b;">Lead</td>
+                              <td style="padding: 0 4px; color: #94a3b8;">→</td>
+                              <td style="padding: 6px 10px; background: #fef3c7; border-radius: 6px; font-size: 12px; font-weight: 600; color: #92400e;">Qualified</td>
+                              <td style="padding: 0 4px; color: #94a3b8;">→</td>
+                              <td style="padding: 6px 10px; background: #dbeafe; border-radius: 6px; font-size: 12px; font-weight: 600; color: #1e40af;">Proposal</td>
+                              <td style="padding: 0 4px; color: #94a3b8;">→</td>
+                              <td style="padding: 6px 10px; background: #e0e7ff; border-radius: 6px; font-size: 12px; font-weight: 600; color: #3730a3;">Contract</td>
+                              <td style="padding: 0 4px; color: #94a3b8;">→</td>
+                              <td style="padding: 6px 10px; background: #dcfce7; border-radius: 6px; font-size: 12px; font-weight: 600; color: #166534;">Complete</td>
+                            </tr>
+                          </table>
+                          <p style="margin: 0 0 12px; color: #475569; font-size: 14px; line-height: 1.6;">
+                            Go to <strong>Settings → Pipeline Configuration</strong> to:
+                          </p>
+                          <ul style="margin: 0; padding-left: 20px; color: #475569; font-size: 14px; line-height: 1.8;">
+                            <li>Add/remove pipeline stages</li>
+                            <li>Configure lead sources</li>
+                            <li>Set up job types (Roofing, Siding, Gutters, etc.)</li>
+                            <li>Create automation triggers for stage changes</li>
+                          </ul>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+              
+              <!-- ============================================ -->
+              <!-- WHAT YOU'RE GETTING (Value Props) -->
+              <!-- ============================================ -->
+              <h3 style="margin: 0 0 20px; font-size: 20px; font-weight: 700; color: #0f172a;">
+                💎 What's Included in Your Account:
               </h3>
               
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 32px;">
                 <tr>
-                  <td style="padding: 16px; background: #fafafa; border-radius: 12px; border-left: 4px solid #16a34a;">
+                  <td>
                     <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                       <tr>
-                        <td width="50" valign="top">
-                          <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #16a34a20 0%, #16a34a10 100%); border-radius: 10px; text-align: center; line-height: 40px; font-size: 20px;">📞</div>
+                        <td width="48%" style="padding: 16px; background: #fafafa; border-radius: 12px; vertical-align: top;">
+                          <p style="margin: 0 0 4px; font-size: 20px;">📞</p>
+                          <p style="margin: 0 0 2px; font-weight: 700; color: #0f172a; font-size: 14px;">Power Dialer</p>
+                          <p style="margin: 0; color: #16a34a; font-size: 12px; font-weight: 600;">$149/mo value</p>
                         </td>
-                        <td valign="top">
-                          <p style="margin: 0; font-weight: 600; color: #0f172a;">Power Dialer</p>
-                          <p style="margin: 4px 0 0; color: #64748b; font-size: 14px;">$149/mo value — Triple-line calling, 300 calls/hour</p>
+                        <td width="4%"></td>
+                        <td width="48%" style="padding: 16px; background: #fafafa; border-radius: 12px; vertical-align: top;">
+                          <p style="margin: 0 0 4px; font-size: 20px;">📐</p>
+                          <p style="margin: 0 0 2px; font-weight: 700; color: #0f172a; font-size: 14px;">AI Measurements</p>
+                          <p style="margin: 0; color: #16a34a; font-size: 12px; font-weight: 600;">$50/report saved</p>
                         </td>
                       </tr>
-                    </table>
-                  </td>
-                </tr>
-                <tr><td style="height: 12px;"></td></tr>
-                <tr>
-                  <td style="padding: 16px; background: #fafafa; border-radius: 12px; border-left: 4px solid #d4af37;">
-                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                      <tr><td colspan="3" style="height: 12px;"></td></tr>
                       <tr>
-                        <td width="50" valign="top">
-                          <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #d4af3720 0%, #d4af3710 100%); border-radius: 10px; text-align: center; line-height: 40px; font-size: 20px;">📐</div>
+                        <td width="48%" style="padding: 16px; background: #fafafa; border-radius: 12px; vertical-align: top;">
+                          <p style="margin: 0 0 4px; font-size: 20px;">📋</p>
+                          <p style="margin: 0 0 2px; font-weight: 700; color: #0f172a; font-size: 14px;">Smart Estimates</p>
+                          <p style="margin: 0; color: #16a34a; font-size: 12px; font-weight: 600;">$99/mo value</p>
                         </td>
-                        <td valign="top">
-                          <p style="margin: 0; font-weight: 600; color: #0f172a;">AI Roof Measurements</p>
-                          <p style="margin: 4px 0 0; color: #64748b; font-size: 14px;">$50/report saved — 98% accurate satellite measurements</p>
+                        <td width="4%"></td>
+                        <td width="48%" style="padding: 16px; background: #fafafa; border-radius: 12px; vertical-align: top;">
+                          <p style="margin: 0 0 4px; font-size: 20px;">🗺️</p>
+                          <p style="margin: 0 0 2px; font-weight: 700; color: #0f172a; font-size: 14px;">Territory Mapping</p>
+                          <p style="margin: 0; color: #16a34a; font-size: 12px; font-weight: 600;">$125/mo value</p>
                         </td>
                       </tr>
-                    </table>
-                  </td>
-                </tr>
-                <tr><td style="height: 12px;"></td></tr>
-                <tr>
-                  <td style="padding: 16px; background: #fafafa; border-radius: 12px; border-left: 4px solid #3b82f6;">
-                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
+                      <tr><td colspan="3" style="height: 12px;"></td></tr>
                       <tr>
-                        <td width="50" valign="top">
-                          <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #3b82f620 0%, #3b82f610 100%); border-radius: 10px; text-align: center; line-height: 40px; font-size: 20px;">📋</div>
+                        <td width="48%" style="padding: 16px; background: #fafafa; border-radius: 12px; vertical-align: top;">
+                          <p style="margin: 0 0 4px; font-size: 20px;">✍️</p>
+                          <p style="margin: 0 0 2px; font-weight: 700; color: #0f172a; font-size: 14px;">E-Signatures</p>
+                          <p style="margin: 0; color: #16a34a; font-size: 12px; font-weight: 600;">DocuSign integrated</p>
                         </td>
-                        <td valign="top">
-                          <p style="margin: 0; font-weight: 600; color: #0f172a;">Smart Estimates & Contracts</p>
-                          <p style="margin: 4px 0 0; color: #64748b; font-size: 14px;">$99/mo value — Auto-populated, e-signature ready</p>
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-                <tr><td style="height: 12px;"></td></tr>
-                <tr>
-                  <td style="padding: 16px; background: #fafafa; border-radius: 12px; border-left: 4px solid #8b5cf6;">
-                    <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
-                      <tr>
-                        <td width="50" valign="top">
-                          <div style="width: 40px; height: 40px; background: linear-gradient(135deg, #8b5cf620 0%, #8b5cf610 100%); border-radius: 10px; text-align: center; line-height: 40px; font-size: 20px;">🗺️</div>
-                        </td>
-                        <td valign="top">
-                          <p style="margin: 0; font-weight: 600; color: #0f172a;">Territory Mapping</p>
-                          <p style="margin: 4px 0 0; color: #64748b; font-size: 14px;">$125/mo value — GPS tracking, route optimization</p>
+                        <td width="4%"></td>
+                        <td width="48%" style="padding: 16px; background: #fafafa; border-radius: 12px; vertical-align: top;">
+                          <p style="margin: 0 0 4px; font-size: 20px;">📸</p>
+                          <p style="margin: 0 0 2px; font-weight: 700; color: #0f172a; font-size: 14px;">Photo Management</p>
+                          <p style="margin: 0; color: #16a34a; font-size: 12px; font-weight: 600;">GPS-stamped docs</p>
                         </td>
                       </tr>
                     </table>
@@ -220,35 +386,27 @@ const generatePremiumEmailHtml = (firstName: string, companyName: string, onboar
               <!-- Testimonial -->
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin-bottom: 32px;">
                 <tr>
-                  <td style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-radius: 16px; padding: 28px; position: relative;">
-                    <div style="position: absolute; top: 20px; left: 28px; font-size: 48px; color: #d4af37; opacity: 0.3; font-family: Georgia, serif;">"</div>
-                    <p style="margin: 0 0 16px; color: #f1f5f9; font-size: 16px; line-height: 1.7; font-style: italic; position: relative; z-index: 1;">
+                  <td style="background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); border-radius: 16px; padding: 28px;">
+                    <div style="font-size: 36px; color: #d4af37; opacity: 0.4; font-family: Georgia, serif; line-height: 1;">"</div>
+                    <p style="margin: -10px 0 16px; color: #f1f5f9; font-size: 16px; line-height: 1.7; font-style: italic;">
                       PITCH transformed our business. We closed 40% more deals in the first 90 days. The AI measurements alone saved us thousands.
                     </p>
-                    <table role="presentation" cellspacing="0" cellpadding="0">
-                      <tr>
-                        <td>
-                          <div style="width: 44px; height: 44px; background: linear-gradient(135deg, #16a34a 0%, #22c55e 100%); border-radius: 50%; text-align: center; line-height: 44px; color: white; font-weight: 700; font-size: 16px;">MR</div>
-                        </td>
-                        <td style="padding-left: 12px;">
-                          <p style="margin: 0; color: #f1f5f9; font-weight: 600; font-size: 14px;">Mike Rodriguez</p>
-                          <p style="margin: 2px 0 0; color: #94a3b8; font-size: 13px;">CEO, Apex Roofing Solutions</p>
-                        </td>
-                      </tr>
-                    </table>
+                    <p style="margin: 0; color: #94a3b8; font-size: 14px;">
+                      <strong style="color: #f1f5f9;">Mike Rodriguez</strong> — CEO, Apex Roofing Solutions
+                    </p>
                   </td>
                 </tr>
               </table>
               
-              <!-- Secondary CTA -->
+              <!-- Final CTA -->
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                 <tr>
-                  <td align="center" style="padding: 24px; background: #f8fafc; border-radius: 12px; border: 2px dashed #e2e8f0;">
-                    <p style="margin: 0 0 16px; color: #475569; font-size: 15px;">
-                      Ready to see the difference?
+                  <td align="center" style="padding: 28px; background: linear-gradient(135deg, #f0fdf4 0%, #dcfce7 100%); border-radius: 16px; border: 2px solid #bbf7d0;">
+                    <p style="margin: 0 0 16px; color: #166534; font-size: 17px; font-weight: 600;">
+                      Ready to get started?
                     </p>
-                    <a href="${onboardingUrl}" style="display: inline-block; background: #0f172a; color: #ffffff; text-decoration: none; padding: 14px 32px; border-radius: 8px; font-size: 15px; font-weight: 600;">
-                      Start Your Setup Now
+                    <a href="${onboardingUrl}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 10px; font-size: 17px; font-weight: 700;">
+                      🚀 Complete Your Setup Now
                     </a>
                   </td>
                 </tr>
@@ -263,34 +421,30 @@ const generatePremiumEmailHtml = (firstName: string, companyName: string, onboar
               <table role="presentation" width="100%" cellspacing="0" cellpadding="0">
                 <tr>
                   <td align="center">
-                    <!-- Support Info -->
                     <table role="presentation" cellspacing="0" cellpadding="0" style="margin-bottom: 20px;">
                       <tr>
                         <td style="padding: 0 16px; border-right: 1px solid #334155;">
-                          <p style="margin: 0; color: #94a3b8; font-size: 13px;">📞 Questions?</p>
-                          <p style="margin: 4px 0 0; color: #f1f5f9; font-size: 14px; font-weight: 600;">Reply to this email</p>
+                          <p style="margin: 0; color: #94a3b8; font-size: 12px;">📧 Questions?</p>
+                          <p style="margin: 4px 0 0; color: #f1f5f9; font-size: 13px; font-weight: 600;">Reply to this email</p>
                         </td>
                         <td style="padding: 0 16px; border-right: 1px solid #334155;">
-                          <p style="margin: 0; color: #94a3b8; font-size: 13px;">⏱️ Setup Time</p>
-                          <p style="margin: 4px 0 0; color: #f1f5f9; font-size: 14px; font-weight: 600;">~10 minutes</p>
+                          <p style="margin: 0; color: #94a3b8; font-size: 12px;">⏱️ Setup Time</p>
+                          <p style="margin: 4px 0 0; color: #f1f5f9; font-size: 13px; font-weight: 600;">~15 minutes</p>
                         </td>
                         <td style="padding: 0 16px;">
-                          <p style="margin: 0; color: #94a3b8; font-size: 13px;">🔒 Security</p>
-                          <p style="margin: 4px 0 0; color: #f1f5f9; font-size: 14px; font-weight: 600;">256-bit encrypted</p>
+                          <p style="margin: 0; color: #94a3b8; font-size: 12px;">🔒 Security</p>
+                          <p style="margin: 4px 0 0; color: #f1f5f9; font-size: 13px; font-weight: 600;">256-bit encrypted</p>
                         </td>
                       </tr>
                     </table>
                     
-                    <!-- Link expires notice -->
-                    <p style="margin: 0 0 16px; color: #64748b; font-size: 13px;">
+                    <p style="margin: 0 0 16px; color: #64748b; font-size: 12px;">
                       ⚡ This link expires in 4 hours. If you didn't request this, please ignore this email.
                     </p>
                     
-                    <!-- Gold Divider -->
                     <div style="height: 1px; background: linear-gradient(90deg, transparent 0%, #d4af37 50%, transparent 100%); margin: 20px 0;"></div>
                     
-                    <!-- Copyright -->
-                    <p style="margin: 0; color: #64748b; font-size: 12px;">
+                    <p style="margin: 0; color: #64748b; font-size: 11px;">
                       © ${new Date().getFullYear()} PITCH CRM. All rights reserved.<br>
                       <a href="#" style="color: #94a3b8; text-decoration: none;">Privacy Policy</a> • 
                       <a href="#" style="color: #94a3b8; text-decoration: none;">Terms of Service</a> • 
@@ -326,13 +480,14 @@ serve(async (req: Request) => {
     const { tenant_id, user_id, email, first_name, last_name, company_name }: OnboardingEmailRequest = await req.json();
 
     if (!tenant_id || !email || !first_name || !company_name) {
+      console.error('[send-company-onboarding] Missing required fields:', { tenant_id, email, first_name, company_name });
       return new Response(
         JSON.stringify({ error: "Missing required fields" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    console.log(`Sending premium onboarding email to ${email} for ${company_name}`);
+    console.log(`[send-company-onboarding] Sending comprehensive onboarding email to ${email} for ${company_name}`);
 
     // Generate unique token
     const token = crypto.randomUUID() + '-' + Date.now().toString(36);
@@ -353,7 +508,7 @@ serve(async (req: Request) => {
       });
 
     if (tokenError) {
-      console.error('Failed to create onboarding token:', tokenError);
+      console.error('[send-company-onboarding] Failed to create onboarding token:', tokenError);
       return new Response(
         JSON.stringify({ error: "Failed to create onboarding token" }),
         { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }
@@ -377,8 +532,7 @@ serve(async (req: Request) => {
       .single();
     
     if (customTemplate?.html_body) {
-      console.log('Using custom onboarding template from database');
-      // Replace variables in template
+      console.log('[send-company-onboarding] Using custom template from database');
       emailHtml = customTemplate.html_body
         .replace(/\{\{first_name\}\}/g, first_name)
         .replace(/\{\{company_name\}\}/g, company_name)
@@ -387,56 +541,69 @@ serve(async (req: Request) => {
         .replace(/\{\{first_name\}\}/g, first_name)
         .replace(/\{\{company_name\}\}/g, company_name);
     } else {
-      console.log('Using hardcoded premium onboarding template');
-      emailHtml = generatePremiumEmailHtml(first_name, company_name, onboardingUrl);
-      emailSubject = `🎉 Welcome to PITCH CRM — Complete Your ${company_name} Setup`;
+      console.log('[send-company-onboarding] Using comprehensive 5-step email template');
+      emailHtml = generateComprehensiveEmailHtml(first_name, company_name, onboardingUrl);
+      emailSubject = `🎉 Welcome to PITCH CRM — Complete Your ${company_name} Setup (5 Easy Steps)`;
     }
 
     let resendMessageId = null;
     let emailError: string | null = null;
 
-    // Send email via Resend
+    // Send email via Resend with RETRY LOGIC
     if (resendApiKey) {
-      try {
-        const resend = new Resend(resendApiKey);
+      const resend = new Resend(resendApiKey);
+      const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
+      const fromAddress = `PITCH CRM <onboarding@${fromDomain}>`;
+      
+      const maxAttempts = 3;
+      let attempts = 0;
+      
+      while (!resendMessageId && attempts < maxAttempts) {
+        attempts++;
+        console.log(`[send-company-onboarding] Attempt ${attempts}/${maxAttempts} - Sending from: ${fromAddress} to: ${email}`);
+        
+        try {
+          const emailResult = await resend.emails.send({
+            from: fromAddress,
+            to: [email],
+            bcc: [ADMIN_BCC], // Always BCC admin
+            subject: emailSubject,
+            html: emailHtml,
+            tags: [
+              { name: "email_type", value: "company_onboarding" },
+              { name: "tenant_id", value: tenant_id },
+              { name: "campaign", value: "company_onboarding_v2" }
+            ],
+          });
 
-        // Get verified domain from env or fallback to resend.dev for testing
-        const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
-        const fromAddress = `PITCH CRM <onboarding@${fromDomain}>`;
-        
-        console.log(`[send-company-onboarding] Sending from: ${fromAddress} to: ${email}`);
-        
-        const emailResult = await resend.emails.send({
-          from: fromAddress,
-          to: [email],
-          subject: emailSubject,
-          html: emailHtml,
-          tags: [
-            { name: "email_type", value: "onboarding" },
-            { name: "tenant_id", value: tenant_id },
-            { name: "campaign", value: "company_onboarding" }
-          ],
-        });
-
-        console.log('[send-company-onboarding] Resend response:', JSON.stringify(emailResult));
-        
-        if (emailResult.error) {
-          console.error('[send-company-onboarding] Resend API error:', emailResult.error);
-          emailError = emailResult.error.message || 'Resend API error';
-        } else {
-          resendMessageId = emailResult?.data?.id || null;
-          console.log('[send-company-onboarding] Email sent successfully, ID:', resendMessageId);
+          console.log('[send-company-onboarding] Resend response:', JSON.stringify(emailResult));
+          
+          if (emailResult.error) {
+            console.error(`[send-company-onboarding] Attempt ${attempts} failed:`, emailResult.error);
+            emailError = emailResult.error.message || 'Resend API error';
+          } else {
+            resendMessageId = emailResult?.data?.id || null;
+            emailError = null;
+            console.log(`[send-company-onboarding] Email sent successfully on attempt ${attempts}, ID:`, resendMessageId);
+          }
+        } catch (sendError: any) {
+          console.error(`[send-company-onboarding] Attempt ${attempts} exception:`, sendError);
+          emailError = sendError.message || 'Failed to send email';
         }
-      } catch (sendError: any) {
-        console.error('[send-company-onboarding] Failed to send email:', sendError);
-        emailError = sendError.message || 'Failed to send email';
+        
+        // Wait before retry (exponential backoff)
+        if (!resendMessageId && attempts < maxAttempts) {
+          const waitMs = 1000 * attempts;
+          console.log(`[send-company-onboarding] Waiting ${waitMs}ms before retry...`);
+          await new Promise(resolve => setTimeout(resolve, waitMs));
+        }
       }
     } else {
-      console.warn('[send-company-onboarding] RESEND_API_KEY not configured, skipping email');
+      console.error('[send-company-onboarding] RESEND_API_KEY not configured!');
       emailError = 'RESEND_API_KEY not configured';
     }
 
-    // Log the email send with error details
+    // Log the email send with detailed error info
     const { error: logError } = await supabase
       .from('onboarding_email_log')
       .insert({
@@ -449,7 +616,9 @@ serve(async (req: Request) => {
         metadata: { 
           company_name, 
           onboarding_url: onboardingUrl,
-          error: emailError // Store error details for debugging
+          error: emailError,
+          bcc_admin: ADMIN_BCC,
+          email_type: 'comprehensive_5_step'
         }
       });
 
@@ -463,13 +632,14 @@ serve(async (req: Request) => {
         token,
         onboarding_url: onboardingUrl,
         expires_at: expiresAt.toISOString(),
-        resend_message_id: resendMessageId
+        resend_message_id: resendMessageId,
+        email_sent: !!resendMessageId
       }),
       { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
     );
 
   } catch (error: any) {
-    console.error('Onboarding email error:', error);
+    console.error('[send-company-onboarding] Fatal error:', error);
     return new Response(
       JSON.stringify({ error: error.message }),
       { status: 500, headers: { ...corsHeaders, "Content-Type": "application/json" } }

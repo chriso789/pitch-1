@@ -318,24 +318,48 @@ export function EnhancedCompanyOnboarding({ open, onOpenChange, onComplete }: En
         await supabase.from('locations').insert(locationData);
       }
 
-      // 3. Create admin user via edge function (use camelCase params)
-      const { data: userData, error: userError } = await supabase.functions.invoke('admin-create-user', {
-        body: {
-          email: adminUser.email,
-          password: adminUser.password,
-          firstName: adminUser.first_name,
-          lastName: adminUser.last_name,
-          role: adminUser.role,
-          title: adminUser.title,
-          tenant_id: tenantId,
-          companyName: company.name,
-          isDeveloper: false,
-        }
-      });
+      // 3. Create OWNER user via edge function - THIS IS REQUIRED
+      let userData: any = null;
+      let userCreationFailed = false;
+      
+      try {
+        const { data, error: userError } = await supabase.functions.invoke('admin-create-user', {
+          body: {
+            email: adminUser.email,
+            password: adminUser.password,
+            firstName: adminUser.first_name,
+            lastName: adminUser.last_name,
+            role: 'owner', // ALWAYS owner for company creation
+            title: adminUser.title || 'Owner',
+            tenant_id: tenantId,
+            companyName: company.name,
+            isDeveloper: false,
+            skipInvitationEmail: true, // Owner gets company onboarding email instead
+          }
+        });
 
-      if (userError) {
-        console.error('User creation error:', userError);
-        // Continue even if user creation fails - company is created
+        if (userError) {
+          console.error('User creation error:', userError);
+          userCreationFailed = true;
+        } else if (!data?.user?.id) {
+          console.error('User creation returned no user ID');
+          userCreationFailed = true;
+        } else {
+          userData = data;
+          console.log('Owner user created successfully:', userData.user.id);
+        }
+      } catch (err: any) {
+        console.error('User creation exception:', err);
+        userCreationFailed = true;
+      }
+
+      // Show warning if owner account creation failed
+      if (userCreationFailed) {
+        toast({
+          title: 'Warning: Owner account not created',
+          description: 'Company was created but owner login failed. Add the owner manually from Settings > Team.',
+          variant: 'destructive',
+        });
       }
 
       // 4. Send onboarding email (always, even if user creation failed)
