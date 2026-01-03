@@ -108,6 +108,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
   const [addressSuggestions, setAddressSuggestions] = useState<AddressSuggestion[]>([]);
   const [selectedAddress, setSelectedAddress] = useState<AddressSuggestion | null>(null);
   const [showAddressPicker, setShowAddressPicker] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const { toast } = useToast();
 
   // Pipeline statuses from the database
@@ -312,23 +313,34 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
   };
 
   const validateForm = () => {
-    const errors: string[] = [];
+    const errors: Record<string, string> = {};
     
     // Either need selected contact OR new contact info
-    if (!selectedContact && !formData.name.trim()) errors.push("Lead name is required (or select existing contact)");
-    if (!selectedContact && !formData.phone.trim()) errors.push("Phone number is required (or select existing contact)");
-    if (!formData.roofAge) errors.push("Roof age is required");
-    if (!selectedAddress && !selectedContact) errors.push("Verified address is required (or select existing contact)");
-    if (!formData.status) errors.push("Status selection is required");
-    
-    const roofAgeNum = parseInt(formData.roofAge);
-    if (formData.roofAge && (isNaN(roofAgeNum) || roofAgeNum < 0 || roofAgeNum > 100)) {
-      errors.push("Roof age must be between 0 and 100 years");
+    if (!selectedContact && !formData.name.trim()) {
+      errors.name = "Lead name is required";
+    }
+    if (!selectedContact && !formData.phone.trim()) {
+      errors.phone = "Phone number is required";
+    }
+    if (!formData.roofAge) {
+      errors.roofAge = "Roof age is required";
+    } else {
+      const roofAgeNum = parseInt(formData.roofAge);
+      if (isNaN(roofAgeNum) || roofAgeNum < 0 || roofAgeNum > 100) {
+        errors.roofAge = "Must be between 0 and 100 years";
+      }
+    }
+    if (!selectedAddress && !selectedContact) {
+      errors.address = "Verified address is required";
+    }
+    if (!formData.status) {
+      errors.status = "Status is required";
     }
     if (!formData.roofType) {
-      errors.push("Roof type is required");
+      errors.roofType = "Roof type is required";
     }
     
+    setFieldErrors(errors);
     return errors;
   };
 
@@ -369,10 +381,10 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
   const handleSubmit = async () => {
     const errors = validateForm();
     
-    if (errors.length > 0) {
+    if (Object.keys(errors).length > 0) {
       toast({
-        title: "Validation Error",
-        description: errors.join(", "),
+        title: "Please fix the errors below",
+        description: "Some required fields are missing or invalid",
         variant: "destructive",
       });
       return;
@@ -567,43 +579,78 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
             {/* Left Column */}
             <div className="space-y-4">
               <div>
-                <Label htmlFor="name">Lead Name *</Label>
+                <Label htmlFor="name" className="flex items-center gap-1">
+                  Lead Name <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="name"
                   value={formData.name}
-                  onChange={(e) => setFormData(prev => ({ ...prev, name: e.target.value }))}
+                  onChange={(e) => {
+                    setFormData(prev => ({ ...prev, name: e.target.value }));
+                    if (fieldErrors.name) setFieldErrors(prev => ({ ...prev, name: "" }));
+                  }}
                   placeholder="e.g., Roof Replacement - Smith Residence"
+                  className={fieldErrors.name ? "border-destructive focus-visible:ring-destructive" : ""}
                 />
+                {fieldErrors.name && (
+                  <p className="text-sm text-destructive mt-1">{fieldErrors.name}</p>
+                )}
               </div>
 
               <div>
-                <Label htmlFor="phone">Phone Number *</Label>
+                <Label htmlFor="phone" className="flex items-center gap-1">
+                  Phone Number <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="phone"
                   value={formData.phone}
-                  onChange={(e) => setFormData(prev => ({ ...prev, phone: e.target.value }))}
-                  placeholder="(555) 123-4567"
+                  onChange={(e) => {
+                    setFormData(prev => ({ ...prev, phone: e.target.value }));
+                    if (fieldErrors.phone) setFieldErrors(prev => ({ ...prev, phone: "" }));
+                  }}
+                  placeholder="Enter phone number"
                   disabled={formData.useSameInfo}
+                  className={fieldErrors.phone ? "border-destructive focus-visible:ring-destructive" : ""}
                 />
+                {fieldErrors.phone && (
+                  <p className="text-sm text-destructive mt-1">{fieldErrors.phone}</p>
+                )}
               </div>
 
               <div>
-                <Label htmlFor="roofAge">Roof Age (years) *</Label>
+                <Label htmlFor="roofAge" className="flex items-center gap-1">
+                  Roof Age (years) <span className="text-destructive">*</span>
+                </Label>
                 <Input
                   id="roofAge"
                   type="number"
                   min="0"
                   max="100"
                   value={formData.roofAge}
-                  onChange={(e) => setFormData(prev => ({ ...prev, roofAge: e.target.value }))}
+                  onChange={(e) => {
+                    setFormData(prev => ({ ...prev, roofAge: e.target.value }));
+                    if (fieldErrors.roofAge) setFieldErrors(prev => ({ ...prev, roofAge: "" }));
+                  }}
                   placeholder="e.g., 15"
+                  className={fieldErrors.roofAge ? "border-destructive focus-visible:ring-destructive" : ""}
                 />
+                {fieldErrors.roofAge && (
+                  <p className="text-sm text-destructive mt-1">{fieldErrors.roofAge}</p>
+                )}
               </div>
 
               <div>
-                <Label htmlFor="status">Status *</Label>
-                <Select value={formData.status} onValueChange={(value) => setFormData(prev => ({ ...prev, status: value }))}>
-                  <SelectTrigger>
+                <Label htmlFor="status" className="flex items-center gap-1">
+                  Status <span className="text-destructive">*</span>
+                </Label>
+                <Select 
+                  value={formData.status} 
+                  onValueChange={(value) => {
+                    setFormData(prev => ({ ...prev, status: value }));
+                    if (fieldErrors.status) setFieldErrors(prev => ({ ...prev, status: "" }));
+                  }}
+                >
+                  <SelectTrigger className={fieldErrors.status ? "border-destructive focus:ring-destructive" : ""}>
                     <SelectValue placeholder="Select status" />
                   </SelectTrigger>
                   <SelectContent>
@@ -614,12 +661,23 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
                     ))}
                   </SelectContent>
                 </Select>
+                {fieldErrors.status && (
+                  <p className="text-sm text-destructive mt-1">{fieldErrors.status}</p>
+                )}
               </div>
 
               <div>
-                <Label htmlFor="roofType">Roof Type *</Label>
-                <Select value={formData.roofType} onValueChange={(value) => setFormData(prev => ({ ...prev, roofType: value }))}>
-                  <SelectTrigger>
+                <Label htmlFor="roofType" className="flex items-center gap-1">
+                  Roof Type <span className="text-destructive">*</span>
+                </Label>
+                <Select 
+                  value={formData.roofType} 
+                  onValueChange={(value) => {
+                    setFormData(prev => ({ ...prev, roofType: value }));
+                    if (fieldErrors.roofType) setFieldErrors(prev => ({ ...prev, roofType: "" }));
+                  }}
+                >
+                  <SelectTrigger className={fieldErrors.roofType ? "border-destructive focus:ring-destructive" : ""}>
                     <SelectValue placeholder="Select roof type" />
                   </SelectTrigger>
                   <SelectContent>
@@ -630,6 +688,9 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
                     ))}
                   </SelectContent>
                 </Select>
+                {fieldErrors.roofType && (
+                  <p className="text-sm text-destructive mt-1">{fieldErrors.roofType}</p>
+                )}
               </div>
 
               <div>
@@ -647,7 +708,9 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
             {/* Right Column */}
             <div className="space-y-4">
               <div>
-                <Label htmlFor="address">Lead Address *</Label>
+                <Label htmlFor="address" className="flex items-center gap-1">
+                  Lead Address <span className="text-destructive">*</span>
+                </Label>
                 <div className="flex gap-2">
                   <Input
                     id="address"
@@ -655,9 +718,11 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
                     onChange={(e) => {
                       setFormData(prev => ({ ...prev, address: e.target.value }));
                       setSelectedAddress(null);
+                      if (fieldErrors.address) setFieldErrors(prev => ({ ...prev, address: "" }));
                     }}
                     placeholder="Start typing address..."
                     disabled={formData.useSameInfo}
+                    className={fieldErrors.address ? "border-destructive focus-visible:ring-destructive" : ""}
                   />
                   <Button
                     type="button"
@@ -673,6 +738,9 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
                     Verify
                   </Button>
                 </div>
+                {fieldErrors.address && (
+                  <p className="text-sm text-destructive mt-1">{fieldErrors.address}</p>
+                )}
               </div>
 
               <div>
