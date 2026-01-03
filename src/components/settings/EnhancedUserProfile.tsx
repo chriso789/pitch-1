@@ -15,6 +15,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAvailableCompanies } from "@/hooks/useAvailableCompanies";
 import { UserCommissionSettings } from "./UserCommissionSettings";
+import { UserActivityTab } from "./UserActivityTab";
 import { 
   User, 
   Phone, 
@@ -32,7 +33,8 @@ import {
   Upload,
   Shield,
   FileImage,
-  Calendar
+  Calendar,
+  Activity
 } from "lucide-react";
 import { format } from "date-fns";
 
@@ -494,7 +496,7 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
       </div>
 
       <Tabs defaultValue="profile" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="profile" className="flex items-center gap-2">
             <User className="h-4 w-4" />
             Profile
@@ -502,6 +504,10 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
           <TabsTrigger value="commission" className="flex items-center gap-2">
             <DollarSign className="h-4 w-4" />
             Commission
+          </TabsTrigger>
+          <TabsTrigger value="activity" className="flex items-center gap-2">
+            <Activity className="h-4 w-4" />
+            Activity
           </TabsTrigger>
           <TabsTrigger value="security" className="flex items-center gap-2">
             <Shield className="h-4 w-4" />
@@ -681,6 +687,10 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
               />
             </CardContent>
           </Card>
+        </TabsContent>
+
+        <TabsContent value="activity">
+          <UserActivityTab userId={userId} />
         </TabsContent>
 
         <TabsContent value="security">
