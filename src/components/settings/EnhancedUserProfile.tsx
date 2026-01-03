@@ -213,6 +213,7 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
           personal_overhead_rate: user.personal_overhead_rate,
           phone: user.phone,
           email: user.email,
+          company_email: user.company_email,
           company_name: companyName,
           tenant_id: newTenantId
         })
@@ -573,12 +574,30 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
                   </div>
 
                   <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
+                    <Label htmlFor="email" className="flex items-center gap-1.5">
+                      <Mail className="h-3.5 w-3.5" />
+                      Personal Email
+                    </Label>
                     <Input
                       id="email"
                       value={user.email || ""}
                       onChange={(e) => setUser({ ...user, email: e.target.value })}
                       disabled={!editing}
+                      placeholder="Personal login email"
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="company_email" className="flex items-center gap-1.5">
+                      <Building className="h-3.5 w-3.5" />
+                      Company Email
+                    </Label>
+                    <Input
+                      id="company_email"
+                      value={user.company_email || ""}
+                      onChange={(e) => setUser({ ...user, company_email: e.target.value })}
+                      disabled={!editing}
+                      placeholder="Company/business email (optional)"
                     />
                   </div>
                 </div>
