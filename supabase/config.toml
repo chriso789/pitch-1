@@ -455,3 +455,6 @@ verify_jwt = false
 
 [functions.lookup-ip-location]
 verify_jwt = true
+
+[functions.send-security-alert]
+verify_jwt = true
