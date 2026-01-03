@@ -121,9 +121,31 @@ export const CreateCompanyFromDemoDialog: React.FC<CreateCompanyFromDemoDialogPr
         console.error("Demo request update error:", updateError);
       }
 
-      // 4. Send onboarding email
+      // 4. Create user in Supabase Auth and trigger password reset
+      const [firstName, ...lastNameParts] = formData.ownerName.split(" ");
       try {
-        const [firstName, ...lastNameParts] = formData.ownerName.split(" ");
+        const { data: userResult, error: userError } = await supabase.functions.invoke("create-company-user", {
+          body: {
+            email: formData.ownerEmail,
+            first_name: firstName || "",
+            last_name: lastNameParts.join(" ") || "",
+            tenant_id: tenant.id,
+            phone: formData.ownerPhone || null,
+            role: "owner",
+          },
+        });
+        
+        if (userError) {
+          console.error("User creation error:", userError);
+        } else {
+          console.log("User created:", userResult);
+        }
+      } catch (userCreateError) {
+        console.error("User creation error:", userCreateError);
+      }
+
+      // 5. Send onboarding email
+      try {
         await supabase.functions.invoke("send-company-onboarding", {
           body: {
             tenant_id: tenant.id,
