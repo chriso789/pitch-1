@@ -107,6 +107,8 @@ import ActivityDashboardPage from "./pages/admin/ActivityDashboardPage";
 import CanvasserLeaderboardPage from "./pages/CanvasserLeaderboardPage";
 import NotificationsPage from "./pages/NotificationsPage";
 import AIAgentSettingsPage from "./pages/settings/AIAgentSettingsPage";
+import AIAgentDashboardPage from "./pages/AIAgentDashboardPage";
+import PropertyPhotoGallery from "./components/storm-canvass/PropertyPhotoGallery";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -262,6 +264,8 @@ const AppContent = () => {
         <Route path="/commission-report" element={<ProtectedRoute><CommissionReport /></ProtectedRoute>} />
         <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
         <Route path="/settings/ai-agent" element={<ProtectedRoute><AIAgentSettingsPage /></ProtectedRoute>} />
+        <Route path="/ai-agent-dashboard" element={<ProtectedRoute><AIAgentDashboardPage /></ProtectedRoute>} />
+        <Route path="/canvass/property/:propertyId/photos" element={<ProtectedRoute><PropertyPhotoGallery /></ProtectedRoute>} />
         
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
