@@ -43,6 +43,7 @@ import { ProductTemplateApplicator } from '@/components/estimates/ProductTemplat
 import { SavedEstimatesList } from '@/components/estimates/SavedEstimatesList';
 import { LeadPhotoUploader } from '@/components/photos/LeadPhotoUploader';
 import { LeadActivityTimeline } from '@/components/lead-details/LeadActivityTimeline';
+import { TemplateSectionSelector } from '@/components/estimates/TemplateSectionSelector';
 
 const LeadDetails = () => {
   const { id } = useParams<{ id: string }>();
@@ -268,15 +269,16 @@ const LeadDetails = () => {
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>Material Specifications</span>
-                <span className="text-sm font-normal text-muted-foreground">
-                  Click "Materials" in the bar above to enter a manual cost
-                </span>
+                <Badge variant="outline">Template-Based</Badge>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <ProductTemplateApplicator
-                leadId={id || ''}
-                measurementData={measurementReadiness.data}
+              <TemplateSectionSelector
+                pipelineEntryId={id!}
+                sectionType="material"
+                onTotalChange={(total) => {
+                  console.log('Materials total updated:', total);
+                }}
               />
             </CardContent>
           </Card>
@@ -287,29 +289,17 @@ const LeadDetails = () => {
             <CardHeader>
               <CardTitle className="flex items-center justify-between">
                 <span>Labor Breakdown</span>
-                <span className="text-sm font-normal text-muted-foreground">
-                  Click "Labor" in the bar above to enter a manual cost
-                </span>
+                <Badge variant="outline">Template-Based</Badge>
               </CardTitle>
             </CardHeader>
             <CardContent>
-              {measurementReadiness.isReady ? (
-                <div className="text-center py-12">
-                  <Hammer className="h-12 w-12 text-primary mx-auto mb-4" />
-                  <p className="text-muted-foreground mb-4">Labor calculations ready</p>
-                  <p className="text-sm text-success">
-                    {((measurementReadiness.data?.roof_area_sq_ft || 0) / 100).toFixed(1)} squares of roofing work
-                  </p>
-                </div>
-              ) : (
-                <div className="text-center py-12">
-                  <Hammer className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                  <p className="text-muted-foreground mb-4">Complete measurements and template binding first</p>
-                  <p className="text-sm text-muted-foreground mt-2">
-                    Or click "Labor" in the bar above to enter a manual cost
-                  </p>
-                </div>
-              )}
+              <TemplateSectionSelector
+                pipelineEntryId={id!}
+                sectionType="labor"
+                onTotalChange={(total) => {
+                  console.log('Labor total updated:', total);
+                }}
+              />
             </CardContent>
           </Card>
         );
