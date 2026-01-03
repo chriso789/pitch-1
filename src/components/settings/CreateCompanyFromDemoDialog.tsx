@@ -74,14 +74,16 @@ export const CreateCompanyFromDemoDialog: React.FC<CreateCompanyFromDemoDialogPr
         .from("tenants")
         .insert({
           name: formData.companyName,
-          slug: formData.companyName
+          subdomain: formData.companyName
             .toLowerCase()
             .replace(/[^a-z0-9]+/g, "-")
             .replace(/(^-|-$)/g, ""),
           owner_email: formData.ownerEmail,
           owner_name: formData.ownerName,
           owner_phone: formData.ownerPhone,
-          status: "active",
+          is_active: true,
+          subscription_status: "active",
+          subscription_tier: "professional",
           settings: {
             created_from_demo_request: demoRequest.id,
             job_title: demoRequest.job_title,
@@ -121,12 +123,14 @@ export const CreateCompanyFromDemoDialog: React.FC<CreateCompanyFromDemoDialogPr
 
       // 4. Send onboarding email
       try {
+        const [firstName, ...lastNameParts] = formData.ownerName.split(" ");
         await supabase.functions.invoke("send-company-onboarding", {
           body: {
-            tenantId: tenant.id,
-            companyName: formData.companyName,
-            ownerEmail: formData.ownerEmail,
-            ownerName: formData.ownerName,
+            tenant_id: tenant.id,
+            email: formData.ownerEmail,
+            first_name: firstName || "",
+            last_name: lastNameParts.join(" ") || "",
+            company_name: formData.companyName,
           },
         });
       } catch (emailError) {
