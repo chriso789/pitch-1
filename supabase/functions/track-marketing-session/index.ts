@@ -18,6 +18,7 @@ interface SessionData {
   utm_content?: string;
   utm_term?: string;
   user_id?: string;
+  tenant_id?: string;
 }
 
 interface SessionRequest {
@@ -80,10 +81,11 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    const validActions = ['create', 'update', 'convert', 'track_event'];
+    // track_event is no longer supported since marketing_events table doesn't exist
+    const validActions = ['create', 'update', 'convert'];
     if (!validActions.includes(body.action)) {
       return new Response(
-        JSON.stringify({ success: false, error: 'Invalid action. Must be: create, update, convert, or track_event' }),
+        JSON.stringify({ success: false, error: 'Invalid action. Must be: create, update, or convert' }),
         { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
@@ -113,11 +115,16 @@ Deno.serve(async (req: Request) => {
         );
       }
 
-      // Create new session
+      // Create new session - match actual table schema
+      // marketing_sessions columns: id, tenant_id, contact_id, user_id, session_key, channel, site_domain,
+      // started_at, ended_at, last_activity_at, ip_address, ip_country, user_agent, device_type, device_hash,
+      // referrer, landing_page, utm_source, utm_medium, utm_campaign, utm_content, utm_term,
+      // analytics_consent, marketing_consent, page_views, events_count, converted, converted_at, created_at, updated_at
       const { data: newSession, error } = await supabaseAdmin
         .from('marketing_sessions')
         .insert({
           session_key: body.session_key,
+          tenant_id: data.tenant_id || null,
           channel: data.channel || 'direct',
           site_domain: data.site_domain,
           landing_page: data.landing_page,
@@ -128,7 +135,12 @@ Deno.serve(async (req: Request) => {
           utm_medium: data.utm_medium,
           utm_campaign: data.utm_campaign,
           utm_content: data.utm_content,
-          utm_term: data.utm_term
+          utm_term: data.utm_term,
+          started_at: new Date().toISOString(),
+          last_activity_at: new Date().toISOString(),
+          page_views: 1,
+          events_count: 0,
+          converted: false
         })
         .select('id')
         .single();
@@ -149,12 +161,12 @@ Deno.serve(async (req: Request) => {
     }
 
     if (body.action === 'update') {
-      // Update session
+      // Update session with correct column names
       const { error } = await supabaseAdmin
         .from('marketing_sessions')
         .update({
-          last_seen_at: new Date().toISOString(),
-          pages_viewed: supabaseAdmin.rpc ? undefined : undefined // Can't increment without RPC
+          last_activity_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         })
         .eq('session_key', body.session_key);
 
@@ -185,7 +197,10 @@ Deno.serve(async (req: Request) => {
         .from('marketing_sessions')
         .update({
           user_id: data.user_id,
-          converted_at: new Date().toISOString()
+          tenant_id: data.tenant_id || null,
+          converted: true,
+          converted_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
         })
         .eq('session_key', body.session_key);
 
@@ -200,52 +215,6 @@ Deno.serve(async (req: Request) => {
       console.log(`[track-marketing-session] Converted session for user: ${data.user_id}`);
       return new Response(
         JSON.stringify({ success: true, action: 'converted' }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (body.action === 'track_event') {
-      // Track an event
-      if (!body.event?.event_type) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'event.event_type required for track_event' }),
-          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      // Get session ID first
-      const { data: session } = await supabaseAdmin
-        .from('marketing_sessions')
-        .select('id')
-        .eq('session_key', body.session_key)
-        .single();
-
-      if (!session) {
-        return new Response(
-          JSON.stringify({ success: false, error: 'Session not found' }),
-          { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      const { error } = await supabaseAdmin
-        .from('marketing_events')
-        .insert({
-          session_id: session.id,
-          event_type: body.event.event_type,
-          event_path: body.event.event_path,
-          event_metadata: body.event.event_metadata
-        });
-
-      if (error) {
-        console.error('[track-marketing-session] Event tracking error:', error);
-        return new Response(
-          JSON.stringify({ success: false, error: 'Failed to track event' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      return new Response(
-        JSON.stringify({ success: true, action: 'event_tracked' }),
         { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
