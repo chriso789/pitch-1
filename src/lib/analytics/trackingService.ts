@@ -1,6 +1,7 @@
 /**
  * Marketing & Product Tracking Service
  * Handles session management, consent, event dispatch, and UTM parsing
+ * Uses edge functions to bypass RLS issues across all company profiles
  */
 
 import { supabase } from '@/integrations/supabase/client';
@@ -176,13 +177,51 @@ class TrackingService {
     return 'desktop';
   }
 
-  // Session Initialization
+  // Session Initialization - Uses edge function to bypass RLS
   async initSession(): Promise<string | null> {
     if (this.sessionId) return this.sessionId;
 
     const sessionKey = this.getSessionKey();
     const utmParams = this.getUTMParams();
     
+    try {
+      // Use edge function to create/get session - bypasses RLS issues
+      const { data, error } = await supabase.functions.invoke('track-marketing-session', {
+        body: {
+          action: 'create',
+          session_key: sessionKey,
+          data: {
+            channel: 'MARKETING_SITE',
+            site_domain: 'pitch-crm.ai',
+            referrer: document.referrer || undefined,
+            landing_page: window.location.pathname,
+            user_agent: navigator.userAgent,
+            device_type: this.getDeviceType(),
+            ...utmParams
+          }
+        }
+      });
+
+      if (error) {
+        console.error('[TrackingService] Edge function failed, falling back to direct insert:', error);
+        return await this.initSessionFallback(sessionKey, utmParams);
+      }
+
+      if (data?.success && data?.session_id) {
+        this.sessionId = data.session_id;
+        return this.sessionId;
+      }
+
+      // Fallback if edge function didn't return expected data
+      return await this.initSessionFallback(sessionKey, utmParams);
+    } catch (error) {
+      console.error('[TrackingService] Failed to init session:', error);
+      return await this.initSessionFallback(sessionKey, utmParams);
+    }
+  }
+
+  // Fallback for direct database access (uses new RLS policies)
+  private async initSessionFallback(sessionKey: string, utmParams: UTMParams): Promise<string | null> {
     try {
       // Check if session already exists
       const { data: existing } = await supabase
@@ -223,7 +262,7 @@ class TrackingService {
       this.sessionId = data.id;
       return this.sessionId;
     } catch (error) {
-      console.error('Failed to init session:', error);
+      console.error('[TrackingService] Fallback session init failed:', error);
       return null;
     }
   }
@@ -239,32 +278,55 @@ class TrackingService {
     if (!sessionId) return;
 
     try {
-      await supabase.from('tracking_events').insert({
-        session_id: sessionId,
-        channel: 'MARKETING_SITE',
-        event_type: event.eventType,
-        path: event.path || window.location.pathname,
-        referrer: document.referrer || null,
-        element_id: event.elementId,
-        element_text: event.elementText,
-        metadata: event.metadata || {},
-        scroll_depth: event.scrollDepth,
-        time_on_page: event.timeOnPage,
-        user_agent: navigator.userAgent
+      // Try edge function first for event tracking
+      const { error } = await supabase.functions.invoke('track-marketing-session', {
+        body: {
+          action: 'track_event',
+          session_key: this.getSessionKey(),
+          data: {},
+          event: {
+            event_type: event.eventType,
+            event_path: event.path || window.location.pathname,
+            event_metadata: {
+              element_id: event.elementId,
+              element_text: event.elementText,
+              scroll_depth: event.scrollDepth,
+              time_on_page: event.timeOnPage,
+              ...event.metadata
+            }
+          }
+        }
       });
+
+      if (error) {
+        // Fallback to direct insert
+        await supabase.from('tracking_events').insert({
+          session_id: sessionId,
+          channel: 'MARKETING_SITE',
+          event_type: event.eventType,
+          path: event.path || window.location.pathname,
+          referrer: document.referrer || null,
+          element_id: event.elementId,
+          element_text: event.elementText,
+          metadata: event.metadata || {},
+          scroll_depth: event.scrollDepth,
+          time_on_page: event.timeOnPage,
+          user_agent: navigator.userAgent
+        });
+      }
 
       // Update session counters
       if (event.eventType === 'PAGE_VIEW') {
-        await supabase
-          .from('marketing_sessions')
-          .update({ 
-            page_views: (await supabase.from('marketing_sessions').select('page_views').eq('id', sessionId).single()).data?.page_views || 0 + 1,
-            last_activity_at: new Date().toISOString()
-          })
-          .eq('id', sessionId);
+        await supabase.functions.invoke('track-marketing-session', {
+          body: {
+            action: 'update',
+            session_key: this.getSessionKey(),
+            data: {}
+          }
+        });
       }
     } catch (error) {
-      console.error('Failed to track event:', error);
+      console.error('[TrackingService] Failed to track event:', error);
     }
   }
 
@@ -321,29 +383,41 @@ class TrackingService {
     });
   }
 
-  // Link Marketing Session to User (after signup/login)
+  // Link Marketing Session to User (after signup/login) - Uses edge function
   async linkToUser(userId: string): Promise<void> {
-    if (!this.sessionId) return;
+    if (!this.sessionKey) return;
 
     try {
-      // Update session with user_id
-      await supabase
-        .from('marketing_sessions')
-        .update({ 
-          user_id: userId, 
-          converted: true,
-          converted_at: new Date().toISOString()
-        })
-        .eq('id', this.sessionId);
+      // Use edge function to convert session
+      const { error } = await supabase.functions.invoke('track-marketing-session', {
+        body: {
+          action: 'convert',
+          session_key: this.getSessionKey(),
+          data: { user_id: userId }
+        }
+      });
 
-      // Update all events from this session
-      await supabase
-        .from('tracking_events')
-        .update({ user_id: userId })
-        .eq('session_id', this.sessionId);
+      if (error) {
+        console.error('[TrackingService] Edge function failed for conversion, falling back:', error);
+        // Fallback to direct update
+        if (this.sessionId) {
+          await supabase
+            .from('marketing_sessions')
+            .update({ 
+              user_id: userId, 
+              converted: true,
+              converted_at: new Date().toISOString()
+            })
+            .eq('id', this.sessionId);
 
+          await supabase
+            .from('tracking_events')
+            .update({ user_id: userId })
+            .eq('session_id', this.sessionId);
+        }
+      }
     } catch (error) {
-      console.error('Failed to link session to user:', error);
+      console.error('[TrackingService] Failed to link session to user:', error);
     }
   }
 }
