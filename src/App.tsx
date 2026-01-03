@@ -112,6 +112,7 @@ import PropertyPhotoGallery from "./components/storm-canvass/PropertyPhotoGaller
 import PublicPortalView from "./pages/PublicPortalView";
 import SchedulingDashboard from "./pages/SchedulingDashboard";
 import InsuranceClaimsDashboard from "./pages/InsuranceClaimsDashboard";
+import DispatchDashboard from "./pages/DispatchDashboard";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -272,6 +273,7 @@ const AppContent = () => {
         <Route path="/canvass/property/:propertyId/photos" element={<ProtectedRoute><PropertyPhotoGallery /></ProtectedRoute>} />
         <Route path="/scheduling" element={<ProtectedRoute><SchedulingDashboard /></ProtectedRoute>} />
         <Route path="/insurance" element={<ProtectedRoute><InsuranceClaimsDashboard /></ProtectedRoute>} />
+        <Route path="/dispatch" element={<ProtectedRoute><DispatchDashboard /></ProtectedRoute>} />
         
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
