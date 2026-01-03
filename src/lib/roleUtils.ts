@@ -2,17 +2,19 @@
 
 export const ROLE_HIERARCHY = {
   master: 1,
-  corporate: 2,
-  office_admin: 3,
-  regional_manager: 4,
-  sales_manager: 5,
-  project_manager: 6
+  owner: 2,
+  corporate: 3,
+  office_admin: 4,
+  regional_manager: 5,
+  sales_manager: 6,
+  project_manager: 7
 } as const;
 
 export type AppRole = keyof typeof ROLE_HIERARCHY;
 
 export const ROLE_DISPLAY_NAMES: Record<AppRole, string> = {
   master: 'Master',
+  owner: 'Owner',
   corporate: 'Corporate',
   office_admin: 'Office Admin',
   regional_manager: 'Regional Manager',

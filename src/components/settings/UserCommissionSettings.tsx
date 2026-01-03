@@ -16,7 +16,7 @@ interface UserCommissionSettingsProps {
   canEdit: boolean;
 }
 
-const MANAGER_ROLES = ['sales_manager', 'regional_manager', 'project_manager', 'office_admin', 'corporate', 'master'] as const;
+const MANAGER_ROLES = ['owner', 'sales_manager', 'regional_manager', 'project_manager', 'office_admin', 'corporate', 'master'] as const;
 type ManagerRole = typeof MANAGER_ROLES[number];
 
 export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
