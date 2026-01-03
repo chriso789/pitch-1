@@ -19,7 +19,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 
 import EstimateHyperlinkBar from '@/components/estimates/EstimateHyperlinkBar';
 import ProfitSlider from '@/components/estimates/ProfitSlider';
-import { CompactCommunicationHub } from '@/components/communication/CompactCommunicationHub';
+import { CompactCommunicationHub, ActivityItem } from '@/components/communication/CompactCommunicationHub';
 import MeasurementGating from '@/components/estimates/MeasurementGating';
 import { EnhancedEstimateBuilder } from '@/components/EnhancedEstimateBuilder';
 import { ApprovalRequirementsBubbles } from '@/components/ApprovalRequirementsBubbles';
@@ -842,21 +842,36 @@ const LeadDetails = () => {
         <SMSComposerDialog
           open={showSMSDialog}
           onOpenChange={setShowSMSDialog}
-          phoneNumber={lead.contact.phone || ''}
+          phoneNumbers={(() => {
+            const options: { label: string; number: string }[] = [];
+            if (lead.contact.phone) {
+              options.push({ label: 'Primary', number: lead.contact.phone });
+            }
+            if ((lead.contact as any).secondary_phone) {
+              options.push({ label: 'Secondary', number: (lead.contact as any).secondary_phone });
+            }
+            if ((lead.contact as any).additional_phones?.length) {
+              (lead.contact as any).additional_phones.forEach((phone: string, i: number) => {
+                if (phone) options.push({ label: `Additional ${i + 1}`, number: phone });
+              });
+            }
+            return options;
+          })()}
           contactName={`${lead.contact.first_name} ${lead.contact.last_name}`}
-          onSend={async (message) => {
+          onSend={async (message, selectedPhone) => {
             console.log('🔵 LeadDetails: SMS onSend triggered', {
               message,
-              phone: lead.contact.phone,
+              phone: selectedPhone,
               contactId: lead.contact.id,
-              contactName: `${lead.contact.first_name} ${lead.contact.last_name}`
+              pipelineEntryId: id
             });
             
             try {
               await sendSMS({
-                to: lead.contact.phone || '',
+                to: selectedPhone,
                 message,
-                contactId: lead.contact.id
+                contactId: lead.contact.id,
+                jobId: id // Link to this lead
               });
               
               console.log('✅ LeadDetails: SMS sent successfully, closing dialog');

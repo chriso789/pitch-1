@@ -20,6 +20,8 @@ interface ContactFormData {
   last_name: string;
   email: string;
   phone: string;
+  secondary_phone?: string;
+  additional_phones?: string[];
   company_name?: string;
   type: "homeowner" | "renter" | "business";
   lead_source?: string;
@@ -59,6 +61,8 @@ const ContactForm: React.FC<ContactFormProps> = ({
     last_name: initialData.last_name || "",
     email: initialData.email || "",
     phone: initialData.phone || "",
+    secondary_phone: (initialData as any).secondary_phone || "",
+    additional_phones: (initialData as any).additional_phones || [],
     company_name: initialData.company_name || "",
     type: initialData.type || "homeowner",
     lead_source: initialData.lead_source || "",
@@ -227,6 +231,8 @@ const ContactForm: React.FC<ContactFormProps> = ({
         last_name: formData.last_name,
         email: formData.email || null,
         phone: formData.phone || null,
+        secondary_phone: formData.secondary_phone || null,
+        additional_phones: formData.additional_phones?.filter(p => p.trim()) || [],
         company_name: formData.company_name || null,
         type: formData.type as any, // Allow custom types beyond DB enum
         notes: formData.notes || null,
@@ -430,6 +436,61 @@ const ContactForm: React.FC<ContactFormProps> = ({
                 onChange={(e) => handleInputChange("phone", e.target.value)}
                 placeholder="Enter phone number"
               />
+            </div>
+          </div>
+
+          {/* Secondary Phone */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium">Secondary Phone</label>
+              <Input
+                type="tel"
+                value={formData.secondary_phone || ''}
+                onChange={(e) => handleInputChange("secondary_phone", e.target.value)}
+                placeholder="Enter secondary phone (optional)"
+              />
+            </div>
+          </div>
+
+          {/* Additional Phone Numbers */}
+          <div>
+            <label className="text-sm font-medium">Additional Phone Numbers</label>
+            <div className="space-y-2 mt-1">
+              {formData.additional_phones?.map((phone, index) => (
+                <div key={index} className="flex gap-2">
+                  <Input
+                    type="tel"
+                    value={phone}
+                    onChange={(e) => {
+                      const updated = [...(formData.additional_phones || [])];
+                      updated[index] = e.target.value;
+                      handleInputChange("additional_phones", updated);
+                    }}
+                    placeholder={`Additional phone ${index + 1}`}
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => {
+                      const updated = formData.additional_phones?.filter((_, i) => i !== index);
+                      handleInputChange("additional_phones", updated || []);
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              ))}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  handleInputChange("additional_phones", [...(formData.additional_phones || []), ""]);
+                }}
+              >
+                <UserPlus className="h-4 w-4 mr-1" /> Add Phone
+              </Button>
             </div>
           </div>
 
