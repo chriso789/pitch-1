@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft } from 'lucide-react';
+import { ArrowLeft, Camera } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import LiveLocationMap from '@/components/storm-canvass/LiveLocationMap';
 import QuickActivityPanel from '@/components/storm-canvass/QuickActivityPanel';
@@ -13,6 +13,8 @@ import NavigationPanel from '@/components/storm-canvass/NavigationPanel';
 import GPSAcquiringOverlay from '@/components/storm-canvass/GPSAcquiringOverlay';
 import MapStyleToggle, { MapStyle } from '@/components/storm-canvass/MapStyleToggle';
 import PropertyInfoPanel from '@/components/storm-canvass/PropertyInfoPanel';
+import { CanvassPhotoCapture } from '@/components/storm-canvass/CanvassPhotoCapture';
+import { OfflinePhotoSyncManager } from '@/components/storm-canvass/OfflinePhotoSyncManager';
 import { locationService } from '@/services/locationService';
 import { useToast } from '@/hooks/use-toast';
 import { useStormCanvass } from '@/hooks/useStormCanvass';
@@ -59,6 +61,7 @@ export default function LiveCanvassingPage() {
   const [selectedProperty, setSelectedProperty] = useState<any | null>(null);
   const [dispositions, setDispositions] = useState<Disposition[]>([]);
   const [mapStyle, setMapStyle] = useState<MapStyle>('satellite');
+  const [showPhotoCapture, setShowPhotoCapture] = useState(false);
   const [destination, setDestination] = useState<{
     lat: number;
     lng: number;
@@ -280,9 +283,10 @@ export default function LiveCanvassingPage() {
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <Badge variant={isTracking ? 'default' : 'secondary'} className="hidden sm:flex">
+          <Badge variant={isTracking ? 'default' : 'secondary'} className="hidden sm:flex">
               {isTracking ? 'Tracking' : 'Not Tracking'}
             </Badge>
+            <OfflinePhotoSyncManager compact className="cursor-pointer" />
           </div>
         </div>
         
@@ -320,6 +324,15 @@ export default function LiveCanvassingPage() {
         />
         <LiveStatsOverlay distanceTraveled={distanceTraveled} />
         
+        {/* Camera Floating Action Button */}
+        <Button
+          size="lg"
+          className="fixed bottom-24 right-4 h-14 w-14 rounded-full shadow-lg z-50 bg-primary hover:bg-primary/90"
+          onClick={() => setShowPhotoCapture(true)}
+        >
+          <Camera className="h-6 w-6" />
+        </Button>
+        
         {/* GPS Acquiring Overlay - show while waiting for real GPS */}
         {!hasGPS && <GPSAcquiringOverlay />}
       </div>
@@ -348,6 +361,15 @@ export default function LiveCanvassingPage() {
         userLocation={userLocation}
         onDispositionUpdate={() => setSelectedProperty(null)}
         onNavigate={handleNavigateToProperty}
+      />
+
+      {/* Photo Capture Dialog */}
+      <CanvassPhotoCapture
+        open={showPhotoCapture}
+        onOpenChange={setShowPhotoCapture}
+        propertyId={selectedProperty?.id}
+        propertyAddress={selectedProperty?.address?.formatted || selectedContact?.address_street}
+        userLocation={userLocation}
       />
     </div>
   );
