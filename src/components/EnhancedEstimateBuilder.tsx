@@ -280,6 +280,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 }) => {
   const { toast } = useToast();
   const [searchParams] = useSearchParams();
+  const { profile } = useUserProfile();
   const { fetchLivePricing, applyLivePricing, refreshing: livePricingRefreshing } = useLivePricing();
   const [loading, setLoading] = useState(false);
   const [calculating, setCalculating] = useState(false);
@@ -914,17 +915,34 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   // Auto-sync templates on mount if needed
   useEffect(() => {
     const checkAndSyncTemplates = async () => {
-      const templateCount = await loadTemplates();
+      const tenantId = profile?.tenant_id;
+      if (!tenantId) return;
+      
+      // Count templates for THIS tenant specifically
+      const { count, error } = await supabase
+        .from('estimate_calculation_templates')
+        .select('id', { count: 'exact', head: true })
+        .eq('tenant_id', tenantId);
+      
+      if (error) {
+        console.error('Error counting templates:', error);
+        return;
+      }
+      
+      const templateCount = count || 0;
       
       // If we have fewer templates than defined in code, auto-sync
       if (templateCount < BRAND_TEMPLATES.length) {
-        console.log(`Auto-syncing templates: ${templateCount} in DB, ${BRAND_TEMPLATES.length} defined`);
+        console.log(`Auto-syncing templates: ${templateCount} in DB for tenant, ${BRAND_TEMPLATES.length} defined`);
         await handleSyncTemplates();
+      } else {
+        // Just load templates if already synced
+        await loadTemplates();
       }
     };
     
     checkAndSyncTemplates();
-  }, []);
+  }, [profile?.tenant_id]);
 
   // Auto-populate line items when template is selected
   const handleTemplateSelect = async (selectedTemplateId: string) => {
@@ -2395,7 +2413,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       <AddFromLibraryDialog
         open={showAddFromLibraryDialog}
         onClose={() => setShowAddFromLibraryDialog(false)}
-        tenantId=""
+        tenantId={profile?.tenant_id || ''}
         onAddItems={(items) => {
           items.forEach(item => {
             setLineItems(prev => [...prev, item]);
