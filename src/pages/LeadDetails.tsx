@@ -266,7 +266,12 @@ const LeadDetails = () => {
         return (
           <Card>
             <CardHeader>
-              <CardTitle>Material Specifications</CardTitle>
+              <CardTitle className="flex items-center justify-between">
+                <span>Material Specifications</span>
+                <span className="text-sm font-normal text-muted-foreground">
+                  Click "Materials" in the bar above to enter a manual cost
+                </span>
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <ProductTemplateApplicator
@@ -280,7 +285,12 @@ const LeadDetails = () => {
         return (
           <Card>
             <CardHeader>
-              <CardTitle>Labor Breakdown</CardTitle>
+              <CardTitle className="flex items-center justify-between">
+                <span>Labor Breakdown</span>
+                <span className="text-sm font-normal text-muted-foreground">
+                  Click "Labor" in the bar above to enter a manual cost
+                </span>
+              </CardTitle>
             </CardHeader>
             <CardContent>
               {measurementReadiness.isReady ? (
@@ -295,6 +305,9 @@ const LeadDetails = () => {
                 <div className="text-center py-12">
                   <Hammer className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
                   <p className="text-muted-foreground mb-4">Complete measurements and template binding first</p>
+                  <p className="text-sm text-muted-foreground mt-2">
+                    Or click "Labor" in the bar above to enter a manual cost
+                  </p>
                 </div>
               )}
             </CardContent>

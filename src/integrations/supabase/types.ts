@@ -6603,6 +6603,7 @@ export type Database = {
           internal_notes: string | null
           is_fixed_price: boolean | null
           labor_cost: number
+          labor_cost_manual: boolean | null
           labor_hours: number
           labor_markup_percent: number
           labor_rate_per_hour: number
@@ -6610,7 +6611,9 @@ export type Database = {
           last_viewed_at: string | null
           line_items: Json
           location_zone: string | null
+          manual_override_notes: string | null
           material_cost: number
+          material_cost_manual: boolean | null
           material_markup_percent: number
           material_total: number
           materials_total: number | null
@@ -6683,6 +6686,7 @@ export type Database = {
           internal_notes?: string | null
           is_fixed_price?: boolean | null
           labor_cost?: number
+          labor_cost_manual?: boolean | null
           labor_hours?: number
           labor_markup_percent?: number
           labor_rate_per_hour?: number
@@ -6690,7 +6694,9 @@ export type Database = {
           last_viewed_at?: string | null
           line_items?: Json
           location_zone?: string | null
+          manual_override_notes?: string | null
           material_cost?: number
+          material_cost_manual?: boolean | null
           material_markup_percent?: number
           material_total?: number
           materials_total?: number | null
@@ -6763,6 +6769,7 @@ export type Database = {
           internal_notes?: string | null
           is_fixed_price?: boolean | null
           labor_cost?: number
+          labor_cost_manual?: boolean | null
           labor_hours?: number
           labor_markup_percent?: number
           labor_rate_per_hour?: number
@@ -6770,7 +6777,9 @@ export type Database = {
           last_viewed_at?: string | null
           line_items?: Json
           location_zone?: string | null
+          manual_override_notes?: string | null
           material_cost?: number
+          material_cost_manual?: boolean | null
           material_markup_percent?: number
           material_total?: number
           materials_total?: number | null
