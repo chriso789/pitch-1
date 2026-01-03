@@ -421,9 +421,12 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
     setResetLoading(true);
 
     try {
-      // Send password reset email using Supabase Auth
-      const { error } = await supabase.auth.resetPasswordForEmail(resetEmail, {
-        redirectTo: `${window.location.origin}/reset-password`,
+      // Send password reset email using custom edge function (uses Resend for reliable delivery)
+      const { data, error } = await supabase.functions.invoke('send-password-reset', {
+        body: {
+          email: resetEmail,
+          redirectUrl: `${window.location.origin}/reset-password`
+        }
       });
 
       if (error) {
@@ -435,18 +438,10 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
       } else {
         console.log('✅ Password reset email requested:', {
           email: resetEmail,
-          redirectTo: `${window.location.origin}/reset-password`,
-          timestamp: new Date().toISOString()
+          redirectUrl: `${window.location.origin}/reset-password`,
+          timestamp: new Date().toISOString(),
+          response: data
         });
-        
-        // Log password reset request
-        supabase.functions.invoke('log-auth-activity', {
-          body: {
-            email: resetEmail,
-            event_type: 'password_reset_request',
-            success: true
-          }
-        }).catch(err => console.error('Failed to log activity:', err));
       }
 
       // Always show success message for security (don't reveal if email exists)
