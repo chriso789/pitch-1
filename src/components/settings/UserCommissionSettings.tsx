@@ -134,91 +134,33 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
     try {
       setSaving(true);
       
-      const { data: authUser } = await supabase.auth.getUser();
-      const userTenantId = authUser.user?.user_metadata?.tenant_id;
-
-      // Save profile fields (overhead, manager override, reports_to)
-      const profileUpdate: any = { 
-        personal_overhead_rate: repOverheadRate 
-      };
-      
-      if (isManager) {
-        profileUpdate.manager_override_rate = managerOverrideRate;
-      } else {
-        profileUpdate.reports_to_manager_id = reportsToManagerId;
-      }
-
-      await supabase
-        .from('profiles')
-        .update(profileUpdate)
-        .eq('id', userId);
-
-      // Create or update commission plan for this user
-      const planName = `${user.first_name} ${user.last_name} - Commission Plan`;
-      const dbCommissionType = commissionType === 'profit_split' ? 'net_percent' : 'gross_percent';
-      const dbPaymentMethod = commissionType === 'profit_split' ? 'commission_after_costs' : 'percentage_selling_price';
-
-      // Upsert the commission plan
-      const planData = {
-        name: planName,
-        commission_type: dbCommissionType,
-        plan_config: {
+      // Call edge function to save commission settings (bypasses RLS issues)
+      const { data, error } = await supabase.functions.invoke('save-commission-settings', {
+        body: {
+          target_user_id: userId,
+          commission_type: commissionType,
           commission_rate: commissionRate,
-          description: `Personal commission plan for ${user.first_name} ${user.last_name}`
-        },
-        include_overhead: false,
-        payment_method: dbPaymentMethod,
-        tenant_id: userTenantId,
-        is_active: true,
-        created_by: authUser.user?.id
-      };
+          rep_overhead_rate: repOverheadRate,
+          manager_override_rate: isManager ? managerOverrideRate : undefined,
+          reports_to_manager_id: !isManager ? reportsToManagerId : undefined,
+          is_manager: isManager
+        }
+      });
 
-      let planId = existingPlanId;
+      if (error) throw error;
+      if (!data.success) throw new Error(data.error || 'Failed to save commission settings');
 
-      if (existingPlanId) {
-        // Update existing plan
-        const { error: updateError } = await supabase
-          .from('commission_plans')
-          .update(planData)
-          .eq('id', existingPlanId);
-        
-        if (updateError) throw updateError;
-      } else {
-        // Create new plan
-        const { data: newPlan, error: insertError } = await supabase
-          .from('commission_plans')
-          .insert(planData)
-          .select('id')
-          .single();
-        
-        if (insertError) throw insertError;
-        planId = newPlan.id;
-
-        // Link user to the plan
-        const { error: linkError } = await supabase
-          .from('user_commission_plans')
-          .upsert({
-            user_id: userId,
-            commission_plan_id: planId,
-            tenant_id: userTenantId,
-            is_active: true
-          }, {
-            onConflict: 'user_id,commission_plan_id'
-          });
-
-        if (linkError) throw linkError;
-        setExistingPlanId(planId);
-      }
+      setExistingPlanId(data.plan_id);
 
       toast({
         title: "Commission Settings Saved",
         description: "Commission configuration has been updated successfully.",
       });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving commission settings:', error);
       toast({
         title: "Error",
-        description: "Failed to save commission settings.",
+        description: error.message || "Failed to save commission settings.",
         variant: "destructive",
       });
     } finally {
