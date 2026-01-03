@@ -22,7 +22,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Plus, MapPin, Check, AlertCircle, Loader2, User, Briefcase, Link2 } from "lucide-react";
+import { Plus, MapPin, Check, AlertCircle, Loader2, User, Briefcase, Link2, CheckCircle2 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { ContactSearchSelect } from "@/components/ContactSearchSelect";
@@ -109,6 +109,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
   const [selectedAddress, setSelectedAddress] = useState<AddressSuggestion | null>(null);
   const [showAddressPicker, setShowAddressPicker] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+  const [addressVerified, setAddressVerified] = useState(false);
   const { toast } = useToast();
 
   // Pipeline statuses from the database
@@ -299,6 +300,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
 
   const handleAddressSelect = (suggestion: AddressSuggestion) => {
     setSelectedAddress(suggestion);
+    setAddressVerified(true);
     setFormData(prev => ({ ...prev, address: suggestion.formatted_address }));
     setShowAddressPicker(false);
   };
@@ -375,6 +377,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
           },
           address_components: []
         });
+        setAddressVerified(true);
       }
     }
   };
@@ -448,6 +451,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
       setSelectedAddress(null);
       setSelectedContact(null);
       setShowAddressPicker(false);
+      setAddressVerified(false);
       
     } catch (error: any) {
       console.error('Error creating lead:', error);
@@ -651,9 +655,24 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
             {/* Right Column */}
             <div className="space-y-4">
               <div>
-                <Label htmlFor="address" className="flex items-center gap-1">
-                  Lead Address <span className="text-destructive">*</span>
-                </Label>
+                <div className="flex items-center justify-between mb-1">
+                  <Label htmlFor="address" className="flex items-center gap-1">
+                    Lead Address <span className="text-destructive">*</span>
+                  </Label>
+                  {formData.address.trim() && (
+                    addressVerified ? (
+                      <Badge variant="outline" className="bg-green-500/10 text-green-600 border-green-500/30 flex items-center gap-1">
+                        <CheckCircle2 className="h-3 w-3" />
+                        Verified
+                      </Badge>
+                    ) : (
+                      <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/30 flex items-center gap-1">
+                        <AlertCircle className="h-3 w-3" />
+                        Manual Entry
+                      </Badge>
+                    )
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <Input
                     id="address"
@@ -661,6 +680,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
                     onChange={(e) => {
                       setFormData(prev => ({ ...prev, address: e.target.value }));
                       setSelectedAddress(null);
+                      setAddressVerified(false);
                       if (fieldErrors.address) setFieldErrors(prev => ({ ...prev, address: "" }));
                     }}
                     placeholder="Start typing address..."
@@ -683,6 +703,11 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
                 </div>
                 {fieldErrors.address && (
                   <p className="text-sm text-destructive mt-1">{fieldErrors.address}</p>
+                )}
+                {!addressVerified && formData.address.trim() && !fieldErrors.address && (
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Click "Verify" to validate the address with Google Maps
+                  </p>
                 )}
               </div>
 
