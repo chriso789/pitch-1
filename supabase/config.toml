@@ -458,3 +458,12 @@ verify_jwt = true
 
 [functions.send-security-alert]
 verify_jwt = true
+
+[functions.trigger-sales-notification]
+verify_jwt = true
+
+[functions.telnyx-ai-agent-enhanced]
+verify_jwt = false
+
+[functions.telnyx-ai-outbound]
+verify_jwt = true

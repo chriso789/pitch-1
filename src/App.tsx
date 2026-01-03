@@ -103,6 +103,7 @@ import CommissionReport from "./pages/CommissionReport";
 import RoofMeasurementTrainer from "./pages/RoofMeasurementTrainer";
 import PhoneSettings from "./pages/admin/PhoneSettings";
 import ActivityDashboardPage from "./pages/admin/ActivityDashboardPage";
+import CanvasserLeaderboardPage from "./pages/CanvasserLeaderboardPage";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -244,6 +245,7 @@ const AppContent = () => {
         <Route path="/measurements/:id/corrections" element={<ProtectedRoute><MeasurementCorrectionPage /></ProtectedRoute>} />
         <Route path="/measurement-analytics" element={<ProtectedRoute><MeasurementAnalyticsPage /></ProtectedRoute>} />
         <Route path="/test-roof-measurement" element={<ProtectedRoute><TestRoofMeasurement /></ProtectedRoute>} />
+        <Route path="/canvasser-leaderboard" element={<ProtectedRoute><CanvasserLeaderboardPage /></ProtectedRoute>} />
         <Route path="/templates/smart-editor" element={<ProtectedRoute><SmartTemplateEditorPage /></ProtectedRoute>} />
         <Route path="/templates/smart-editor/:templateId" element={<ProtectedRoute><SmartTemplateEditorPage /></ProtectedRoute>} />
         <Route path="/proposals/create/:projectId" element={<ProtectedRoute><ProposalEditorPage /></ProtectedRoute>} />
