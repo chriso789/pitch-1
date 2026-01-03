@@ -3809,6 +3809,87 @@ export type Database = {
           },
         ]
       }
+      company_template_settings: {
+        Row: {
+          accent_color: string | null
+          company_address: string | null
+          company_email: string | null
+          company_license: string | null
+          company_logo_url: string | null
+          company_name: string | null
+          company_phone: string | null
+          created_at: string | null
+          custom_footer_html: string | null
+          custom_header_html: string | null
+          default_terms: string | null
+          id: string
+          is_active: boolean | null
+          location_id: string | null
+          primary_color: string | null
+          template_slug: string | null
+          tenant_id: string
+          updated_at: string | null
+          warranty_text: string | null
+        }
+        Insert: {
+          accent_color?: string | null
+          company_address?: string | null
+          company_email?: string | null
+          company_license?: string | null
+          company_logo_url?: string | null
+          company_name?: string | null
+          company_phone?: string | null
+          created_at?: string | null
+          custom_footer_html?: string | null
+          custom_header_html?: string | null
+          default_terms?: string | null
+          id?: string
+          is_active?: boolean | null
+          location_id?: string | null
+          primary_color?: string | null
+          template_slug?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          warranty_text?: string | null
+        }
+        Update: {
+          accent_color?: string | null
+          company_address?: string | null
+          company_email?: string | null
+          company_license?: string | null
+          company_logo_url?: string | null
+          company_name?: string | null
+          company_phone?: string | null
+          created_at?: string | null
+          custom_footer_html?: string | null
+          custom_header_html?: string | null
+          default_terms?: string | null
+          id?: string
+          is_active?: boolean | null
+          location_id?: string | null
+          primary_color?: string | null
+          template_slug?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          warranty_text?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_template_settings_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_template_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       competition_leaderboards: {
         Row: {
           competition_id: string
@@ -17263,6 +17344,7 @@ export type Database = {
           lead_id: string | null
           pdf_url: string | null
           rendered_html: string
+          signature_envelope_id: string | null
           storage_path: string | null
           template_id: string | null
           tenant_id: string
@@ -17276,6 +17358,7 @@ export type Database = {
           lead_id?: string | null
           pdf_url?: string | null
           rendered_html: string
+          signature_envelope_id?: string | null
           storage_path?: string | null
           template_id?: string | null
           tenant_id: string
@@ -17289,12 +17372,20 @@ export type Database = {
           lead_id?: string | null
           pdf_url?: string | null
           rendered_html?: string
+          signature_envelope_id?: string | null
           storage_path?: string | null
           template_id?: string | null
           tenant_id?: string
           title?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "smart_doc_instances_signature_envelope_id_fkey"
+            columns: ["signature_envelope_id"]
+            isOneToOne: false
+            referencedRelation: "signature_envelopes"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "smart_doc_instances_template_id_fkey"
             columns: ["template_id"]
