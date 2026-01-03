@@ -1,10 +1,9 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { 
@@ -16,13 +15,13 @@ import {
   Play,
   Square,
   CheckCircle,
-  AlertCircle,
   Upload,
   Send,
   Wrench,
   Calendar,
-  User,
-  LogOut
+  LogOut,
+  Navigation,
+  Loader2
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -66,10 +65,19 @@ export function CrewPortal() {
   const [isLoading, setIsLoading] = useState(true);
   const [crewMember, setCrewMember] = useState<any>(null);
   const [newMessage, setNewMessage] = useState("");
+  const [isTrackingLocation, setIsTrackingLocation] = useState(false);
+  const [lastLocationUpdate, setLastLocationUpdate] = useState<Date | null>(null);
+  const watchIdRef = useRef<number | null>(null);
   const { toast } = useToast();
 
   useEffect(() => {
     loadCrewData();
+    return () => {
+      // Cleanup GPS tracking on unmount
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+      }
+    };
   }, []);
 
   const loadCrewData = async () => {
@@ -305,10 +313,99 @@ export function CrewPortal() {
     }
   };
 
+  // GPS Tracking Functions
+  const startLocationTracking = async () => {
+    if (!navigator.geolocation) {
+      toast({
+        title: "GPS Not Supported",
+        description: "Your device doesn't support GPS tracking",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    try {
+      // Request permission
+      const permission = await navigator.permissions.query({ name: "geolocation" });
+      if (permission.state === "denied") {
+        toast({
+          title: "Location Permission Denied",
+          description: "Please enable location access in your browser settings",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      setIsTrackingLocation(true);
+      
+      watchIdRef.current = navigator.geolocation.watchPosition(
+        async (position) => {
+          await syncGPSLocation(position);
+        },
+        (error) => {
+          console.error("GPS error:", error);
+          toast({
+            title: "GPS Error",
+            description: error.message,
+            variant: "destructive",
+          });
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 30000,
+          timeout: 10000,
+        }
+      );
+
+      toast({
+        title: "GPS Tracking Started",
+        description: "Your location is now being tracked",
+      });
+    } catch (error: any) {
+      console.error("Error starting GPS:", error);
+      setIsTrackingLocation(false);
+    }
+  };
+
+  const stopLocationTracking = () => {
+    if (watchIdRef.current !== null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    setIsTrackingLocation(false);
+    toast({
+      title: "GPS Tracking Stopped",
+      description: "Location tracking has been disabled",
+    });
+  };
+
+  const syncGPSLocation = async (position: GeolocationPosition) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user || !crewMember?.tenant_id) return;
+
+      const { error } = await supabase.functions.invoke("crew-gps-sync", {
+        body: {
+          crew_id: user.id,
+          latitude: position.coords.latitude,
+          longitude: position.coords.longitude,
+          accuracy: position.coords.accuracy,
+          heading: position.coords.heading,
+          speed: position.coords.speed,
+        },
+      });
+
+      if (error) throw error;
+      setLastLocationUpdate(new Date());
+    } catch (error) {
+      console.error("Error syncing GPS location:", error);
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -365,12 +462,50 @@ export function CrewPortal() {
         </div>
       </div>
 
+      {/* GPS Tracking Banner */}
+      <div className="bg-muted/50 border-b px-4 py-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <Navigation className="h-4 w-4 text-muted-foreground" />
+            {isTrackingLocation ? (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-green-600 font-medium flex items-center gap-1">
+                  <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse" />
+                  GPS Active
+                </span>
+                {lastLocationUpdate && (
+                  <span className="text-xs text-muted-foreground">
+                    Last sync: {format(lastLocationUpdate, "h:mm:ss a")}
+                  </span>
+                )}
+              </div>
+            ) : (
+              <span className="text-sm text-muted-foreground">GPS tracking off</span>
+            )}
+          </div>
+          {isTrackingLocation ? (
+            <Button size="sm" variant="outline" onClick={stopLocationTracking}>
+              Stop Tracking
+            </Button>
+          ) : (
+            <Button size="sm" variant="outline" onClick={startLocationTracking}>
+              <Navigation className="h-4 w-4 mr-1" />
+              Start GPS
+            </Button>
+          )}
+        </div>
+      </div>
+
       {/* Main Content */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
         <TabsList className="w-full justify-start rounded-none border-b bg-card px-4 h-12">
           <TabsTrigger value="dashboard" className="flex items-center gap-2">
             <ClipboardList className="h-4 w-4" />
             Work Orders
+          </TabsTrigger>
+          <TabsTrigger value="navigation" className="flex items-center gap-2">
+            <Navigation className="h-4 w-4" />
+            Navigate
           </TabsTrigger>
           <TabsTrigger value="time" className="flex items-center gap-2">
             <Clock className="h-4 w-4" />
@@ -447,6 +582,46 @@ export function CrewPortal() {
                         <Button size="sm" variant="outline">
                           <Camera className="h-4 w-4 mr-1" />
                           Add Photo
+                        </Button>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
+
+          <TabsContent value="navigation" className="mt-0 space-y-4">
+            <h2 className="text-lg font-semibold">Today's Route</h2>
+            {workOrders.length === 0 ? (
+              <Card>
+                <CardContent className="py-8 text-center text-muted-foreground">
+                  <Navigation className="h-12 w-12 mx-auto mb-3 opacity-50" />
+                  <p>No stops assigned for today</p>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="space-y-3">
+                {workOrders.map((order, index) => (
+                  <Card key={order.id}>
+                    <CardContent className="p-4">
+                      <div className="flex items-center gap-3">
+                        <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground text-sm font-bold">
+                          {index + 1}
+                        </div>
+                        <div className="flex-1">
+                          <h3 className="font-medium">{order.title}</h3>
+                          <p className="text-sm text-muted-foreground">{order.project.address}</p>
+                        </div>
+                        <Button size="sm" asChild>
+                          <a
+                            href={`https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(order.project.address)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <Navigation className="h-4 w-4 mr-1" />
+                            Navigate
+                          </a>
                         </Button>
                       </div>
                     </CardContent>
