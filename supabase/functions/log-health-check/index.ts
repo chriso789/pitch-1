@@ -67,43 +67,15 @@ Deno.serve(async (req: Request) => {
       { auth: { persistSession: false } }
     );
 
-    // Try to get tenant_id from authenticated user
-    let tenantId: string | null = null;
-    
-    const authHeader = req.headers.get('Authorization');
-    if (authHeader) {
-      const supabaseClient = createClient(
-        Deno.env.get('SUPABASE_URL') ?? '',
-        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-        { 
-          auth: { persistSession: false },
-          global: { headers: { Authorization: authHeader } }
-        }
-      );
-      
-      const { data: { user } } = await supabaseClient.auth.getUser();
-      if (user) {
-        // Get tenant_id from user's profile
-        const { data: profile } = await supabaseAdmin
-          .from('profiles')
-          .select('tenant_id')
-          .eq('id', user.id)
-          .single();
-        
-        if (profile?.tenant_id) {
-          tenantId = profile.tenant_id;
-        }
-      }
-    }
-
-    // Prepare health checks for insertion
+    // Prepare health checks for insertion - match actual table schema
+    // health_checks table columns: id, service_name, status, response_time_ms, error_message, details, checked_at
     const checksToInsert = body.checks.map(check => ({
-      tenant_id: tenantId,
       service_name: check.service_name,
       status: check.status,
       response_time_ms: check.response_time_ms,
       error_message: check.error_message || null,
-      details: check.details || null
+      details: check.details || null,
+      checked_at: new Date().toISOString()
     }));
 
     // Insert health checks using service role (bypasses RLS)
@@ -120,7 +92,7 @@ Deno.serve(async (req: Request) => {
       );
     }
 
-    console.log(`[log-health-check] Logged ${data.length} health checks (tenant: ${tenantId || 'none'})`);
+    console.log(`[log-health-check] Logged ${data.length} health checks`);
 
     return new Response(
       JSON.stringify({ success: true, count: data.length }),
