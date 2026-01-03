@@ -503,3 +503,18 @@ verify_jwt = true
 
 [functions.process-insurance-claim]
 verify_jwt = true
+
+[functions.triple-line-dialer]
+verify_jwt = true
+
+[functions.ai-measurement-analyzer]
+verify_jwt = true
+
+[functions.request-customer-review]
+verify_jwt = true
+
+[functions.warranty-expiry-notifications]
+verify_jwt = true
+
+[functions.subcontractor-notification]
+verify_jwt = true

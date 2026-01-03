@@ -563,6 +563,121 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_measurement_analysis: {
+        Row: {
+          accuracy_notes: string | null
+          ai_model_version: string | null
+          analysis_status: string | null
+          confidence_score: number | null
+          contact_id: string | null
+          created_at: string | null
+          created_by: string | null
+          eave_length: number | null
+          facet_data: Json | null
+          hip_length: number | null
+          id: string
+          imagery_source: string | null
+          imagery_url: string | null
+          latitude: number | null
+          longitude: number | null
+          material_takeoff: Json | null
+          predominant_pitch: string | null
+          processing_time_ms: number | null
+          project_id: string | null
+          property_address: string | null
+          rake_length: number | null
+          ridge_length: number | null
+          tenant_id: string
+          total_facets: number | null
+          total_roof_area: number | null
+          updated_at: string | null
+          valley_length: number | null
+          waste_factor: number | null
+        }
+        Insert: {
+          accuracy_notes?: string | null
+          ai_model_version?: string | null
+          analysis_status?: string | null
+          confidence_score?: number | null
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          eave_length?: number | null
+          facet_data?: Json | null
+          hip_length?: number | null
+          id?: string
+          imagery_source?: string | null
+          imagery_url?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          material_takeoff?: Json | null
+          predominant_pitch?: string | null
+          processing_time_ms?: number | null
+          project_id?: string | null
+          property_address?: string | null
+          rake_length?: number | null
+          ridge_length?: number | null
+          tenant_id: string
+          total_facets?: number | null
+          total_roof_area?: number | null
+          updated_at?: string | null
+          valley_length?: number | null
+          waste_factor?: number | null
+        }
+        Update: {
+          accuracy_notes?: string | null
+          ai_model_version?: string | null
+          analysis_status?: string | null
+          confidence_score?: number | null
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          eave_length?: number | null
+          facet_data?: Json | null
+          hip_length?: number | null
+          id?: string
+          imagery_source?: string | null
+          imagery_url?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          material_takeoff?: Json | null
+          predominant_pitch?: string | null
+          processing_time_ms?: number | null
+          project_id?: string | null
+          property_address?: string | null
+          rake_length?: number | null
+          ridge_length?: number | null
+          tenant_id?: string
+          total_facets?: number | null
+          total_roof_area?: number | null
+          updated_at?: string | null
+          valley_length?: number | null
+          waste_factor?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_measurement_analysis_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_measurement_analysis_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_measurement_analysis_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_scheduling_suggestions: {
         Row: {
           appointment_type: string | null
@@ -18360,6 +18475,113 @@ export type Database = {
         }
         Relationships: []
       }
+      subcontractor_assignments: {
+        Row: {
+          actual_end_time: string | null
+          actual_hours: number | null
+          actual_start_time: string | null
+          agreed_rate: number | null
+          assignment_type: string
+          completion_photos: string[] | null
+          created_at: string | null
+          created_by: string | null
+          estimated_hours: number | null
+          id: string
+          job_id: string | null
+          notes: string | null
+          project_id: string | null
+          quality_rating: number | null
+          rate_type: string | null
+          scheduled_date: string | null
+          scheduled_end_time: string | null
+          scheduled_start_time: string | null
+          status: string | null
+          subcontractor_id: string
+          tenant_id: string
+          total_amount: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          actual_end_time?: string | null
+          actual_hours?: number | null
+          actual_start_time?: string | null
+          agreed_rate?: number | null
+          assignment_type: string
+          completion_photos?: string[] | null
+          created_at?: string | null
+          created_by?: string | null
+          estimated_hours?: number | null
+          id?: string
+          job_id?: string | null
+          notes?: string | null
+          project_id?: string | null
+          quality_rating?: number | null
+          rate_type?: string | null
+          scheduled_date?: string | null
+          scheduled_end_time?: string | null
+          scheduled_start_time?: string | null
+          status?: string | null
+          subcontractor_id: string
+          tenant_id: string
+          total_amount?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          actual_end_time?: string | null
+          actual_hours?: number | null
+          actual_start_time?: string | null
+          agreed_rate?: number | null
+          assignment_type?: string
+          completion_photos?: string[] | null
+          created_at?: string | null
+          created_by?: string | null
+          estimated_hours?: number | null
+          id?: string
+          job_id?: string | null
+          notes?: string | null
+          project_id?: string | null
+          quality_rating?: number | null
+          rate_type?: string | null
+          scheduled_date?: string | null
+          scheduled_end_time?: string | null
+          scheduled_start_time?: string | null
+          status?: string | null
+          subcontractor_id?: string
+          tenant_id?: string
+          total_amount?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subcontractor_assignments_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subcontractor_assignments_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subcontractor_assignments_subcontractor_id_fkey"
+            columns: ["subcontractor_id"]
+            isOneToOne: false
+            referencedRelation: "subcontractor_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subcontractor_assignments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       subcontractor_capacity: {
         Row: {
           available_slots: number
@@ -18395,6 +18617,87 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      subcontractor_invoices: {
+        Row: {
+          attachments: string[] | null
+          created_at: string | null
+          created_by: string | null
+          due_date: string | null
+          id: string
+          invoice_date: string
+          invoice_number: string
+          line_items: Json
+          notes: string | null
+          payment_date: string | null
+          payment_method: string | null
+          payment_reference: string | null
+          status: string | null
+          subcontractor_id: string
+          subtotal: number
+          tax_amount: number | null
+          tenant_id: string
+          total_amount: number
+          updated_at: string | null
+        }
+        Insert: {
+          attachments?: string[] | null
+          created_at?: string | null
+          created_by?: string | null
+          due_date?: string | null
+          id?: string
+          invoice_date?: string
+          invoice_number: string
+          line_items?: Json
+          notes?: string | null
+          payment_date?: string | null
+          payment_method?: string | null
+          payment_reference?: string | null
+          status?: string | null
+          subcontractor_id: string
+          subtotal: number
+          tax_amount?: number | null
+          tenant_id: string
+          total_amount: number
+          updated_at?: string | null
+        }
+        Update: {
+          attachments?: string[] | null
+          created_at?: string | null
+          created_by?: string | null
+          due_date?: string | null
+          id?: string
+          invoice_date?: string
+          invoice_number?: string
+          line_items?: Json
+          notes?: string | null
+          payment_date?: string | null
+          payment_method?: string | null
+          payment_reference?: string | null
+          status?: string | null
+          subcontractor_id?: string
+          subtotal?: number
+          tax_amount?: number | null
+          tenant_id?: string
+          total_amount?: number
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subcontractor_invoices_subcontractor_id_fkey"
+            columns: ["subcontractor_id"]
+            isOneToOne: false
+            referencedRelation: "subcontractor_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subcontractor_invoices_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       subcontractor_jobs: {
         Row: {
@@ -18452,6 +18755,110 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      subcontractor_profiles: {
+        Row: {
+          address: string | null
+          city: string | null
+          company_name: string
+          contact_name: string
+          created_at: string | null
+          day_rate: number | null
+          documents: Json | null
+          email: string | null
+          hourly_rate: number | null
+          id: string
+          insurance_carrier: string | null
+          insurance_expiry: string | null
+          insurance_policy_number: string | null
+          license_expiry: string | null
+          license_number: string | null
+          notes: string | null
+          phone: string | null
+          rating: number | null
+          service_area: string[] | null
+          specialties: string[] | null
+          state: string | null
+          status: string | null
+          tenant_id: string
+          total_jobs_completed: number | null
+          updated_at: string | null
+          user_id: string | null
+          workers_comp_expiry: string | null
+          workers_comp_policy: string | null
+          zip_code: string | null
+        }
+        Insert: {
+          address?: string | null
+          city?: string | null
+          company_name: string
+          contact_name: string
+          created_at?: string | null
+          day_rate?: number | null
+          documents?: Json | null
+          email?: string | null
+          hourly_rate?: number | null
+          id?: string
+          insurance_carrier?: string | null
+          insurance_expiry?: string | null
+          insurance_policy_number?: string | null
+          license_expiry?: string | null
+          license_number?: string | null
+          notes?: string | null
+          phone?: string | null
+          rating?: number | null
+          service_area?: string[] | null
+          specialties?: string[] | null
+          state?: string | null
+          status?: string | null
+          tenant_id: string
+          total_jobs_completed?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+          workers_comp_expiry?: string | null
+          workers_comp_policy?: string | null
+          zip_code?: string | null
+        }
+        Update: {
+          address?: string | null
+          city?: string | null
+          company_name?: string
+          contact_name?: string
+          created_at?: string | null
+          day_rate?: number | null
+          documents?: Json | null
+          email?: string | null
+          hourly_rate?: number | null
+          id?: string
+          insurance_carrier?: string | null
+          insurance_expiry?: string | null
+          insurance_policy_number?: string | null
+          license_expiry?: string | null
+          license_number?: string | null
+          notes?: string | null
+          phone?: string | null
+          rating?: number | null
+          service_area?: string[] | null
+          specialties?: string[] | null
+          state?: string | null
+          status?: string | null
+          tenant_id?: string
+          total_jobs_completed?: number | null
+          updated_at?: string | null
+          user_id?: string | null
+          workers_comp_expiry?: string | null
+          workers_comp_policy?: string | null
+          zip_code?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subcontractor_profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       subcontractors: {
         Row: {
@@ -20868,6 +21275,178 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      warranties: {
+        Row: {
+          contact_id: string | null
+          coverage_amount: number | null
+          coverage_description: string | null
+          created_at: string | null
+          created_by: string | null
+          document_urls: string[] | null
+          end_date: string
+          id: string
+          is_transferable: boolean | null
+          manufacturer_name: string | null
+          notes: string | null
+          product_name: string | null
+          project_id: string | null
+          reminder_sent_at: string | null
+          start_date: string
+          status: string | null
+          tenant_id: string
+          term_years: number | null
+          transfer_fee: number | null
+          updated_at: string | null
+          warranty_number: string | null
+          warranty_type: string
+        }
+        Insert: {
+          contact_id?: string | null
+          coverage_amount?: number | null
+          coverage_description?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          document_urls?: string[] | null
+          end_date: string
+          id?: string
+          is_transferable?: boolean | null
+          manufacturer_name?: string | null
+          notes?: string | null
+          product_name?: string | null
+          project_id?: string | null
+          reminder_sent_at?: string | null
+          start_date: string
+          status?: string | null
+          tenant_id: string
+          term_years?: number | null
+          transfer_fee?: number | null
+          updated_at?: string | null
+          warranty_number?: string | null
+          warranty_type: string
+        }
+        Update: {
+          contact_id?: string | null
+          coverage_amount?: number | null
+          coverage_description?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          document_urls?: string[] | null
+          end_date?: string
+          id?: string
+          is_transferable?: boolean | null
+          manufacturer_name?: string | null
+          notes?: string | null
+          product_name?: string | null
+          project_id?: string | null
+          reminder_sent_at?: string | null
+          start_date?: string
+          status?: string | null
+          tenant_id?: string
+          term_years?: number | null
+          transfer_fee?: number | null
+          updated_at?: string | null
+          warranty_number?: string | null
+          warranty_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "warranties_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warranties_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warranties_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      warranty_claims: {
+        Row: {
+          approved_amount: number | null
+          claim_amount: number | null
+          claim_date: string
+          claim_number: string | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          issue_description: string
+          issue_photos: string[] | null
+          manufacturer_claim_id: string | null
+          notes: string | null
+          resolution: string | null
+          resolution_date: string | null
+          status: string | null
+          tenant_id: string
+          updated_at: string | null
+          warranty_id: string
+        }
+        Insert: {
+          approved_amount?: number | null
+          claim_amount?: number | null
+          claim_date?: string
+          claim_number?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          issue_description: string
+          issue_photos?: string[] | null
+          manufacturer_claim_id?: string | null
+          notes?: string | null
+          resolution?: string | null
+          resolution_date?: string | null
+          status?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          warranty_id: string
+        }
+        Update: {
+          approved_amount?: number | null
+          claim_amount?: number | null
+          claim_date?: string
+          claim_number?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          issue_description?: string
+          issue_photos?: string[] | null
+          manufacturer_claim_id?: string | null
+          notes?: string | null
+          resolution?: string | null
+          resolution_date?: string | null
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          warranty_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "warranty_claims_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warranty_claims_warranty_id_fkey"
+            columns: ["warranty_id"]
+            isOneToOne: false
+            referencedRelation: "warranties"
             referencedColumns: ["id"]
           },
         ]
