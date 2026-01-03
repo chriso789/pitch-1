@@ -94,6 +94,18 @@ export const CreateCompanyFromDemoDialog: React.FC<CreateCompanyFromDemoDialogPr
 
       if (tenantError) throw tenantError;
 
+      // 1.5 Add current master user to user_company_access for this new company
+      const { data: currentUser } = await supabase.auth.getUser();
+      if (currentUser?.user) {
+        await supabase.from("user_company_access").insert({
+          user_id: currentUser.user.id,
+          tenant_id: tenant.id,
+          access_level: "full",
+          is_active: true,
+          granted_by: currentUser.user.id,
+        });
+      }
+
       // 2. Create the default location
       const { error: locationError } = await supabase
         .from("locations")
