@@ -109,6 +109,7 @@ import NotificationsPage from "./pages/NotificationsPage";
 import AIAgentSettingsPage from "./pages/settings/AIAgentSettingsPage";
 import AIAgentDashboardPage from "./pages/AIAgentDashboardPage";
 import PropertyPhotoGallery from "./components/storm-canvass/PropertyPhotoGallery";
+import PublicPortalView from "./pages/PublicPortalView";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -190,6 +191,7 @@ const AppContent = () => {
         <Route path="/homeowner" element={<HomeownerProtectedRoute><HomeownerPortalPage /></HomeownerProtectedRoute>} />
         <Route path="/view-quote/:token" element={<ViewQuote />} />
         <Route path="/proposal/:token" element={<PublicProposalView />} />
+        <Route path="/portal/:shareToken" element={<PublicPortalView />} />
         
         {/* Protected application routes */}
         <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />

@@ -467,3 +467,6 @@ verify_jwt = false
 
 [functions.telnyx-ai-outbound]
 verify_jwt = true
+
+[functions.analyze-damage]
+verify_jwt = true
