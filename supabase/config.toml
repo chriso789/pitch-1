@@ -524,3 +524,6 @@ verify_jwt = false
 
 [functions.create-lead-with-contact]
 verify_jwt = true
+
+[functions.save-commission-settings]
+verify_jwt = true
