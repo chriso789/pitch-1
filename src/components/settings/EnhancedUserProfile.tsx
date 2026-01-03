@@ -106,11 +106,12 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
     // Role hierarchy for permission checks
     const roleHierarchy = {
       master: 1,
-      corporate: 2,
-      office_admin: 3,
-      regional_manager: 4,
-      sales_manager: 5,
-      project_manager: 6
+      owner: 2,
+      corporate: 3,
+      office_admin: 4,
+      regional_manager: 5,
+      sales_manager: 6,
+      project_manager: 7
     };
     
     const currentLevel = roleHierarchy[currentUser.role] || 999;

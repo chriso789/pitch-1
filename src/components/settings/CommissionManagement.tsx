@@ -98,14 +98,23 @@ export const CommissionManagement = () => {
     staleTime: 30 * 1000, // 30 seconds
   });
 
-  // React Query for sales reps with caching
+  // React Query for sales reps with caching - filtered by current user's tenant
   const { data: salesReps = [], isLoading: repsLoading } = useQuery({
     queryKey: ['sales-reps-commission'],
     queryFn: async () => {
+      // Get current user's tenant first
+      const { data: { user: authUser } } = await supabase.auth.getUser();
+      const { data: currentProfile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', authUser?.id)
+        .single();
+      
       const { data, error } = await supabase
         .from('profiles')
         .select('id, first_name, last_name, email, role, personal_overhead_rate, photo_url')
-        .in('role', ['sales_manager', 'regional_manager', 'corporate'])
+        .eq('tenant_id', currentProfile?.tenant_id)
+        .in('role', ['owner', 'corporate', 'regional_manager', 'sales_manager', 'project_manager'])
         .eq('is_active', true);
       if (error) throw error;
       return data || [];
