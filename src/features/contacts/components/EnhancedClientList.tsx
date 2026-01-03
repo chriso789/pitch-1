@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { useLocation } from "@/contexts/LocationContext";
+import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -119,6 +120,7 @@ type ViewType = 'contacts' | 'jobs';
 export const EnhancedClientList = () => {
   const navigate = useNavigate();
   const { currentLocationId } = useLocation();
+  const { activeCompanyId } = useCompanySwitcher();
   const [activeView, setActiveView] = useState<ViewType>('contacts');
   const [preferredView, setPreferredView] = useState<ViewType>('contacts');
   const [contacts, setContacts] = useState<Contact[]>([]);
@@ -329,22 +331,13 @@ export const EnhancedClientList = () => {
       console.log("User profile:", profile);
       setUserProfile(profile);
 
-      // Query contacts with proper tenant filtering (master sees all)
+      // Query contacts with proper tenant filtering - ALWAYS filter by active company
       console.log("Fetching contacts...");
       console.log("Current location filter:", currentLocationId);
-      const isMaster = profile.role === 'master';
-      let contactsQuery = supabase
-        .from("contacts")
-        .select("*");
       
-      if (!isMaster) {
-        contactsQuery = contactsQuery.eq('tenant_id', profile.tenant_id);
-      }
-      
-      // Apply location filter if a specific location is selected
-      if (currentLocationId) {
-        contactsQuery = contactsQuery.eq('location_id', currentLocationId);
-      }
+      // Use activeCompanyId from company switcher, fallback to profile.tenant_id
+      const effectiveTenantId = activeCompanyId || profile.tenant_id;
+      console.log("Effective tenant ID:", effectiveTenantId);
       
       // Paginated fetch to bypass Supabase 1000 row server limit
       const BATCH_SIZE = 1000;
@@ -355,14 +348,20 @@ export const EnhancedClientList = () => {
 
       while (hasMore) {
         batchNumber++;
-        const { data: batchData, error: batchError } = await supabase
+        let batchQuery = supabase
           .from("contacts")
           .select("*")
           .eq('is_deleted', false)
-          .match(isMaster ? {} : { tenant_id: profile.tenant_id })
-          .match(currentLocationId ? { location_id: currentLocationId } : {})
+          .eq('tenant_id', effectiveTenantId)
           .order("created_at", { ascending: false })
           .range(from, from + BATCH_SIZE - 1);
+        
+        // Apply location filter if a specific location is selected
+        if (currentLocationId) {
+          batchQuery = batchQuery.eq('location_id', currentLocationId);
+        }
+        
+        const { data: batchData, error: batchError } = await batchQuery;
 
         if (batchError) {
           console.error("Contacts batch query error:", batchError);
@@ -387,7 +386,7 @@ export const EnhancedClientList = () => {
       const { data: jobsData, error: jobsError } = await supabase
         .from("jobs")
         .select("*")
-        .eq('tenant_id', profile.tenant_id)
+        .eq('tenant_id', effectiveTenantId)
         .order("created_at", { ascending: false });
 
       if (jobsError) {
@@ -406,7 +405,7 @@ export const EnhancedClientList = () => {
             .from("contacts")
             .select("first_name, last_name, email, phone, address_street, address_city, address_state, location_id")
             .eq("id", job.contact_id)
-            .eq('tenant_id', profile.tenant_id)
+            .eq('tenant_id', effectiveTenantId)
             .maybeSingle();
 
           if (contactError) {
@@ -441,7 +440,7 @@ export const EnhancedClientList = () => {
             address_zip
           )
         `)
-        .eq('tenant_id', profile.tenant_id)
+        .eq('tenant_id', effectiveTenantId)
         .eq('created_by', user.id)
         .order("created_at", { ascending: false });
 
@@ -495,7 +494,7 @@ export const EnhancedClientList = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentLocationId]);
+  }, [currentLocationId, activeCompanyId]);
 
   const filterData = () => {
     console.log(`=== FilterData called ===`);
