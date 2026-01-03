@@ -11,7 +11,8 @@ import {
   ChevronUp,
   Clock,
   ArrowUpRight,
-  ArrowDownLeft
+  ArrowDownLeft,
+  AlertCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -19,57 +20,89 @@ import { format } from 'date-fns';
 
 interface CompactCommunicationHubProps {
   contactId?: string;
+  pipelineEntryId?: string;
   contactPhone?: string;
   contactEmail?: string;
   onCallClick?: () => void;
   onEmailClick?: () => void;
   onSMSClick?: () => void;
+  onActivityClick?: (activity: ActivityItem) => void;
   className?: string;
 }
 
-interface ActivityItem {
+export interface ActivityItem {
   id: string;
   type: 'call' | 'sms' | 'email';
   direction: 'inbound' | 'outbound';
   content: string;
   created_at: string;
   delivery_status?: string | null;
+  sms_thread_id?: string | null;
+  full_content?: string | null;
+  subject?: string | null;
 }
 
 export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = ({
   contactId,
+  pipelineEntryId,
   contactPhone,
   contactEmail,
   onCallClick,
   onEmailClick,
   onSMSClick,
+  onActivityClick,
   className
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [activities, setActivities] = useState<ActivityItem[]>([]);
   const [loading, setLoading] = useState(false);
 
+  // Count failed SMS messages for 10DLC warning
+  const failedCount = activities.filter(a => 
+    a.type === 'sms' && 
+    (a.delivery_status === 'failed' || a.delivery_status === 'delivery_failed' || a.delivery_status === 'undelivered')
+  ).length;
+
   // Fetch combined communication history
   const fetchActivities = async () => {
-    if (!contactId) return;
+    if (!contactId && !pipelineEntryId) return;
     
     setLoading(true);
     try {
-      // Fetch communication history (SMS + Email)
-      const { data: commHistory } = await supabase
+      // Build filter for communication history
+      let commQuery = supabase
         .from('communication_history')
         .select('id, communication_type, direction, content, subject, created_at, delivery_status')
-        .eq('contact_id', contactId)
         .order('created_at', { ascending: false })
         .limit(10);
+      
+      // Filter by contact_id OR pipeline_entry_id
+      if (contactId && pipelineEntryId) {
+        commQuery = commQuery.or(`contact_id.eq.${contactId},pipeline_entry_id.eq.${pipelineEntryId}`);
+      } else if (contactId) {
+        commQuery = commQuery.eq('contact_id', contactId);
+      } else if (pipelineEntryId) {
+        commQuery = commQuery.eq('pipeline_entry_id', pipelineEntryId);
+      }
+      
+      const { data: commHistory } = await commQuery;
 
       // Fetch call logs
-      const { data: callLogs } = await supabase
+      let callQuery = supabase
         .from('call_logs')
         .select('id, direction, status, duration_seconds, created_at')
-        .eq('contact_id', contactId)
         .order('created_at', { ascending: false })
         .limit(10);
+      
+      if (contactId && pipelineEntryId) {
+        callQuery = callQuery.or(`contact_id.eq.${contactId},pipeline_entry_id.eq.${pipelineEntryId}`);
+      } else if (contactId) {
+        callQuery = callQuery.eq('contact_id', contactId);
+      } else if (pipelineEntryId) {
+        callQuery = callQuery.eq('pipeline_entry_id', pipelineEntryId);
+      }
+      
+      const { data: callLogs } = await callQuery;
 
       // Combine and sort
       const combined: ActivityItem[] = [
@@ -81,7 +114,10 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
             ? item.subject || 'No subject' 
             : item.content?.substring(0, 50) + (item.content?.length > 50 ? '...' : ''),
           created_at: item.created_at,
-          delivery_status: item.delivery_status
+          delivery_status: item.delivery_status,
+          sms_thread_id: null,
+          full_content: item.content,
+          subject: item.subject
         })),
         ...(callLogs || []).map(item => ({
           id: item.id,
@@ -102,14 +138,14 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
   };
 
   useEffect(() => {
-    if (contactId) {
+    if (contactId || pipelineEntryId) {
       fetchActivities();
     }
-  }, [contactId]);
+  }, [contactId, pipelineEntryId]);
 
   // Real-time updates
   useEffect(() => {
-    if (!contactId) return;
+    if (!contactId && !pipelineEntryId) return;
 
     const channel = supabase
       .channel('compact-comm-updates')
@@ -119,7 +155,6 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
           event: 'INSERT',
           schema: 'public',
           table: 'communication_history',
-          filter: `contact_id=eq.${contactId}`
         },
         () => fetchActivities()
       )
@@ -129,7 +164,6 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
           event: 'INSERT',
           schema: 'public',
           table: 'call_logs',
-          filter: `contact_id=eq.${contactId}`
         },
         () => fetchActivities()
       )
@@ -138,11 +172,9 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [contactId]);
+  }, [contactId, pipelineEntryId]);
 
   const getActivityIcon = (type: string, direction: string) => {
-    const DirectionIcon = direction === 'outbound' ? ArrowUpRight : ArrowDownLeft;
-    
     switch (type) {
       case 'call':
         return <Phone className="h-3 w-3" />;
@@ -167,9 +199,16 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
         return <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-yellow-500/10 text-yellow-600 border-yellow-500/20">Queued</Badge>;
       case 'failed':
       case 'undelivered':
+      case 'delivery_failed':
         return <Badge variant="outline" className="text-[10px] px-1 py-0 h-4 bg-red-500/10 text-red-600 border-red-500/20">Failed</Badge>;
       default:
         return <Badge variant="outline" className="text-[10px] px-1 py-0 h-4">{status}</Badge>;
+    }
+  };
+
+  const handleActivityClick = (activity: ActivityItem) => {
+    if (onActivityClick) {
+      onActivityClick(activity);
     }
   };
 
@@ -209,6 +248,21 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
         </Button>
       </div>
 
+      {/* 10DLC Warning */}
+      {failedCount > 0 && (
+        <div className="p-2 bg-destructive/10 border border-destructive/30 rounded-lg text-xs">
+          <div className="flex items-start gap-2">
+            <AlertCircle className="h-4 w-4 text-destructive shrink-0 mt-0.5" />
+            <div>
+              <p className="font-medium text-destructive">{failedCount} SMS message{failedCount > 1 ? 's' : ''} failed</p>
+              <p className="text-muted-foreground">
+                10DLC registration may be required. Check your Telnyx messaging campaign.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Collapsible Activity Feed */}
       <Collapsible open={isOpen} onOpenChange={setIsOpen}>
         <CollapsibleTrigger asChild>
@@ -239,7 +293,11 @@ export const CompactCommunicationHub: React.FC<CompactCommunicationHubProps> = (
                 {activities.map((activity) => (
                   <div 
                     key={activity.id}
-                    className="flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 text-xs"
+                    onClick={() => handleActivityClick(activity)}
+                    className={cn(
+                      "flex items-center gap-2 p-2 rounded-md hover:bg-muted/50 text-xs transition-colors",
+                      onActivityClick && "cursor-pointer"
+                    )}
                   >
                     <div className={cn(
                       "flex items-center justify-center w-6 h-6 rounded-full",
