@@ -49,7 +49,7 @@ export const ReviewRequestManager: React.FC<ReviewRequestManagerProps> = ({
 
   const contactName = `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Customer';
 
-  const defaultMessage = `Hi ${contactName}! Thank you for choosing ${currentCompany?.name || 'us'}. We'd love to hear about your experience! Would you mind leaving us a quick review? It really helps our business.`;
+  const defaultMessage = `Hi ${contactName}! Thank you for choosing ${activeCompany?.tenant_name || 'us'}. We'd love to hear about your experience! Would you mind leaving us a quick review? It really helps our business.`;
 
   const handleSendRequest = async () => {
     if (!activeCompany?.tenant_id) {
