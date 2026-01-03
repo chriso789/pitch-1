@@ -393,34 +393,50 @@ serve(async (req: Request) => {
     }
 
     let resendMessageId = null;
+    let emailError: string | null = null;
 
     // Send email via Resend
     if (resendApiKey) {
-      const resend = new Resend(resendApiKey);
+      try {
+        const resend = new Resend(resendApiKey);
 
-      // Get verified domain from env or fallback to resend.dev for testing
-      const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
-      const fromAddress = `PITCH CRM <onboarding@${fromDomain}>`;
-      
-      const emailResult = await resend.emails.send({
-        from: fromAddress,
-        to: [email],
-        subject: emailSubject,
-        html: emailHtml,
-        tags: [
-          { name: "email_type", value: "onboarding" },
-          { name: "tenant_id", value: tenant_id },
-          { name: "campaign", value: "company_onboarding" }
-        ],
-      });
+        // Get verified domain from env or fallback to resend.dev for testing
+        const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
+        const fromAddress = `PITCH CRM <onboarding@${fromDomain}>`;
+        
+        console.log(`[send-company-onboarding] Sending from: ${fromAddress} to: ${email}`);
+        
+        const emailResult = await resend.emails.send({
+          from: fromAddress,
+          to: [email],
+          subject: emailSubject,
+          html: emailHtml,
+          tags: [
+            { name: "email_type", value: "onboarding" },
+            { name: "tenant_id", value: tenant_id },
+            { name: "campaign", value: "company_onboarding" }
+          ],
+        });
 
-      console.log('Premium onboarding email sent:', emailResult);
-      resendMessageId = emailResult?.data?.id || null;
+        console.log('[send-company-onboarding] Resend response:', JSON.stringify(emailResult));
+        
+        if (emailResult.error) {
+          console.error('[send-company-onboarding] Resend API error:', emailResult.error);
+          emailError = emailResult.error.message || 'Resend API error';
+        } else {
+          resendMessageId = emailResult?.data?.id || null;
+          console.log('[send-company-onboarding] Email sent successfully, ID:', resendMessageId);
+        }
+      } catch (sendError: any) {
+        console.error('[send-company-onboarding] Failed to send email:', sendError);
+        emailError = sendError.message || 'Failed to send email';
+      }
     } else {
-      console.warn('RESEND_API_KEY not configured, skipping email');
+      console.warn('[send-company-onboarding] RESEND_API_KEY not configured, skipping email');
+      emailError = 'RESEND_API_KEY not configured';
     }
 
-    // Log the email send
+    // Log the email send with error details
     const { error: logError } = await supabase
       .from('onboarding_email_log')
       .insert({
@@ -430,11 +446,15 @@ serve(async (req: Request) => {
         sent_by: user_id,
         status: resendMessageId ? 'sent' : 'failed',
         resend_message_id: resendMessageId,
-        metadata: { company_name, onboarding_url: onboardingUrl }
+        metadata: { 
+          company_name, 
+          onboarding_url: onboardingUrl,
+          error: emailError // Store error details for debugging
+        }
       });
 
     if (logError) {
-      console.warn('Failed to log onboarding email:', logError);
+      console.warn('[send-company-onboarding] Failed to log email:', logError);
     }
 
     return new Response(

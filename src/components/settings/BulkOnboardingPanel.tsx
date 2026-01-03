@@ -221,6 +221,39 @@ export const BulkOnboardingPanel = () => {
     loadData();
   };
 
+  const [sendingTest, setSendingTest] = useState(false);
+
+  const handleSendTestEmail = async () => {
+    setSendingTest(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('send-test-onboarding', {
+        body: {
+          email: 'support@obriencontractingusa.com',
+          first_name: 'Chris',
+          company_name: "O'Brien Contracting"
+        }
+      });
+      
+      if (error) throw error;
+      
+      toast({
+        title: "Test email sent! 🎉",
+        description: `Email sent to support@obriencontractingusa.com`
+      });
+      
+      console.log('Test email result:', data);
+    } catch (error: any) {
+      console.error('Test email error:', error);
+      toast({
+        title: "Failed to send test email",
+        description: error.message,
+        variant: "destructive"
+      });
+    } finally {
+      setSendingTest(false);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -235,6 +268,20 @@ export const BulkOnboardingPanel = () => {
           </p>
         </div>
         <div className="flex gap-2">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleSendTestEmail} 
+            disabled={sendingTest}
+            className="border-amber-500 text-amber-600 hover:bg-amber-50"
+          >
+            {sendingTest ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Send className="h-4 w-4 mr-2" />
+            )}
+            Send Test Email
+          </Button>
           <Button variant="outline" size="sm" onClick={loadData} disabled={loading}>
             <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
             Refresh

@@ -449,3 +449,6 @@ verify_jwt = false
 
 [functions.proposal-follow-up-scheduler]
 verify_jwt = false
+
+[functions.send-test-onboarding]
+verify_jwt = false
