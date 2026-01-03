@@ -12215,6 +12215,7 @@ export type Database = {
           can_manage_all_companies: boolean | null
           commission_rate: number | null
           commission_structure: string | null
+          company_email: string | null
           company_name: string | null
           created_at: string | null
           created_by_master: string | null
@@ -12254,6 +12255,7 @@ export type Database = {
           can_manage_all_companies?: boolean | null
           commission_rate?: number | null
           commission_structure?: string | null
+          company_email?: string | null
           company_name?: string | null
           created_at?: string | null
           created_by_master?: string | null
@@ -12293,6 +12295,7 @@ export type Database = {
           can_manage_all_companies?: boolean | null
           commission_rate?: number | null
           commission_structure?: string | null
+          company_email?: string | null
           company_name?: string | null
           created_at?: string | null
           created_by_master?: string | null
