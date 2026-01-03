@@ -90,7 +90,8 @@ serve(async (req) => {
         last_name: last_name || "",
         phone: phone || null,
         role: role || "owner",
-        status: "active",
+        is_active: true,
+        active_tenant_id: tenant_id,
       }, {
         onConflict: "id",
       });
@@ -98,6 +99,27 @@ serve(async (req) => {
     if (profileError) {
       console.error("[create-company-user] Error creating profile:", profileError);
       // Don't fail - profile might already exist
+    } else {
+      console.log("[create-company-user] Profile created/updated for:", userId);
+    }
+
+    // Add user to user_company_access for their company
+    const { error: accessError } = await supabase
+      .from("user_company_access")
+      .upsert({
+        user_id: userId,
+        tenant_id,
+        access_level: "full",
+        is_active: true,
+        granted_by: userId,
+      }, {
+        onConflict: "user_id,tenant_id",
+      });
+
+    if (accessError) {
+      console.error("[create-company-user] Error granting company access:", accessError);
+    } else {
+      console.log("[create-company-user] Company access granted for:", userId, "to tenant:", tenant_id);
     }
 
     // Generate password reset link
