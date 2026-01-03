@@ -465,8 +465,10 @@ const CompanyGrid = ({ companies, loading, onToggleStatus, onViewDetails }: Comp
                 variant={company.is_active !== false ? "destructive" : "default"}
                 size="sm"
                 onClick={() => onToggleStatus(company)}
+                title={company.is_active !== false ? "Deactivate company" : "Reactivate company"}
               >
-                <Power className="h-4 w-4" />
+                <Power className="h-4 w-4 mr-1" />
+                {company.is_active === false && "Reactivate"}
               </Button>
             </div>
           </CardContent>
