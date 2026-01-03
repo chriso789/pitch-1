@@ -18,6 +18,7 @@ import { GlobalLoadingHandler } from "@/components/layout/GlobalLoadingHandler";
 import GlobalErrorBoundary from "@/components/error/GlobalErrorBoundary";
 import { initializeMonitoring } from "@/lib/MonitoringSelfHealing";
 import { installFetchInterceptor } from "@/lib/apiInterceptor";
+import { RealTimeNotificationProvider } from "@/components/notifications/RealTimeNotificationProvider";
 import LandingPage from "./pages/LandingPage";
 import Pricing from "./pages/Pricing";
 import Features from "./pages/Features";
@@ -104,6 +105,8 @@ import RoofMeasurementTrainer from "./pages/RoofMeasurementTrainer";
 import PhoneSettings from "./pages/admin/PhoneSettings";
 import ActivityDashboardPage from "./pages/admin/ActivityDashboardPage";
 import CanvasserLeaderboardPage from "./pages/CanvasserLeaderboardPage";
+import NotificationsPage from "./pages/NotificationsPage";
+import AIAgentSettingsPage from "./pages/settings/AIAgentSettingsPage";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -257,7 +260,8 @@ const AppContent = () => {
         <Route path="/admin/phone-settings" element={<ProtectedRoute><PhoneSettings /></ProtectedRoute>} />
         <Route path="/admin/activity" element={<ProtectedRoute><ActivityDashboardPage /></ProtectedRoute>} />
         <Route path="/commission-report" element={<ProtectedRoute><CommissionReport /></ProtectedRoute>} />
-        <Route path="/commission-report" element={<ProtectedRoute><CommissionReport /></ProtectedRoute>} />
+        <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
+        <Route path="/settings/ai-agent" element={<ProtectedRoute><AIAgentSettingsPage /></ProtectedRoute>} />
         
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />
@@ -275,11 +279,13 @@ const App = () => {
             <LocationProvider>
               <ErrorTrackingProvider>
                 <TooltipProvider>
-                  <ImageCacheProvider>
-                    <BrowserRouter>
-                      <AppContent />
-                    </BrowserRouter>
-                  </ImageCacheProvider>
+                    <ImageCacheProvider>
+                      <RealTimeNotificationProvider>
+                        <BrowserRouter>
+                          <AppContent />
+                        </BrowserRouter>
+                      </RealTimeNotificationProvider>
+                    </ImageCacheProvider>
                 </TooltipProvider>
               </ErrorTrackingProvider>
             </LocationProvider>
