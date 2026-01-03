@@ -13,7 +13,8 @@ import {
   RotateCcw,
   Upload,
   Wifi,
-  WifiOff
+  WifiOff,
+  Mic
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -21,6 +22,7 @@ import { useUserProfile } from '@/contexts/UserProfileContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { toast } from 'sonner';
 import { openDB, IDBPDatabase } from 'idb';
+import { VoiceNoteRecorder } from './VoiceNoteRecorder';
 
 interface CanvassPhotoCaptureProps {
   open: boolean;
@@ -76,6 +78,9 @@ export function CanvassPhotoCapture({
   const [gpsLocation, setGpsLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
   const [pendingCount, setPendingCount] = useState(0);
+  const [voiceNoteBlob, setVoiceNoteBlob] = useState<Blob | null>(null);
+  const [voiceNoteBase64, setVoiceNoteBase64] = useState<string | null>(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
 
   // Monitor online status
   useEffect(() => {
@@ -399,14 +404,46 @@ export function CanvassPhotoCapture({
                 </div>
               </div>
 
-              {/* Notes */}
+              {/* Notes with Voice Recording */}
               <div className="space-y-2">
-                <label className="text-sm font-medium">Notes (optional)</label>
+                <div className="flex items-center justify-between">
+                  <label className="text-sm font-medium">Notes (optional)</label>
+                  <VoiceNoteRecorder
+                    onRecordingComplete={async (blob, base64) => {
+                      setVoiceNoteBlob(blob);
+                      setVoiceNoteBase64(base64);
+                      
+                      // Transcribe if online
+                      if (isOnline && tenantId) {
+                        setIsTranscribing(true);
+                        try {
+                          const { data, error } = await supabase.functions.invoke('voice-transcribe', {
+                            body: { 
+                              audio: base64,
+                              tenantId,
+                            },
+                          });
+                          
+                          if (data?.text) {
+                            setNotes(prev => prev ? `${prev}\n\n🎤 ${data.text}` : `🎤 ${data.text}`);
+                          }
+                        } catch (err) {
+                          console.error('Transcription error:', err);
+                          toast.error('Could not transcribe voice note');
+                        } finally {
+                          setIsTranscribing(false);
+                        }
+                      }
+                    }}
+                    isTranscribing={isTranscribing}
+                    maxDurationSeconds={60}
+                  />
+                </div>
                 <Textarea
-                  placeholder="Add notes about this photo..."
+                  placeholder="Add notes about this photo or record a voice note..."
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  rows={2}
+                  rows={3}
                 />
               </div>
 
