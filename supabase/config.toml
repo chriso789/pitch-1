@@ -527,3 +527,15 @@ verify_jwt = true
 
 [functions.save-commission-settings]
 verify_jwt = true
+
+[functions.log-system-crash]
+verify_jwt = false
+
+[functions.log-system-metrics]
+verify_jwt = true
+
+[functions.log-health-check]
+verify_jwt = true
+
+[functions.track-marketing-session]
+verify_jwt = false

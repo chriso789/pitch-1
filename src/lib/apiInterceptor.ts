@@ -1,8 +1,8 @@
-import { reportCrash } from "@/lib/MonitoringSelfHealing";
+import { supabase } from "@/integrations/supabase/client";
 
 /**
  * API Error Interceptor
- * Wraps fetch calls to automatically log failures to the monitoring system
+ * Wraps fetch calls to automatically log failures to the monitoring system via edge function
  */
 
 // Store original fetch
@@ -10,6 +10,39 @@ const originalFetch = window.fetch;
 
 // Track if interceptor is active
 let interceptorActive = false;
+
+/**
+ * Report crash via edge function to bypass RLS issues
+ */
+async function reportCrashViaEdge(crash: {
+  error_type: string;
+  error_message: string;
+  severity: 'low' | 'medium' | 'high' | 'critical';
+  component: string;
+  route: string;
+  metadata?: Record<string, unknown>;
+}): Promise<void> {
+  try {
+    const { error } = await supabase.functions.invoke('log-system-crash', {
+      body: crash
+    });
+
+    if (error) {
+      console.error('[APIInterceptor] Edge function failed, falling back to direct insert:', error);
+      // Fallback to direct insert (will use new RLS policies)
+      await supabase.from('system_crashes').insert([{
+        error_type: crash.error_type,
+        error_message: crash.error_message,
+        severity: crash.severity,
+        component: crash.component,
+        route: crash.route,
+        metadata: crash.metadata ? JSON.parse(JSON.stringify(crash.metadata)) : {}
+      }]);
+    }
+  } catch (err) {
+    console.error('[APIInterceptor] Failed to report crash:', err);
+  }
+}
 
 /**
  * Intercepted fetch that logs all API errors
@@ -46,10 +79,11 @@ export const interceptedFetch: typeof fetch = async (input, init) => {
         apiType = 'telnyx_api';
       }
 
-      reportCrash({
+      // Use edge function to report crash
+      reportCrashViaEdge({
         error_type: 'api_error',
         error_message: `${method} ${url} - ${response.status} ${response.statusText}`,
-        severity,
+        severity: severity as 'low' | 'medium' | 'high',
         component: apiType,
         route: window.location.pathname,
         metadata: {
@@ -68,8 +102,8 @@ export const interceptedFetch: typeof fetch = async (input, init) => {
     const duration = Math.round(performance.now() - start);
     const errorMessage = error instanceof Error ? error.message : String(error);
 
-    // Network errors are critical
-    reportCrash({
+    // Network errors are critical - use edge function
+    reportCrashViaEdge({
       error_type: 'network_error',
       error_message: `${method} ${url} - ${errorMessage}`,
       severity: 'high',

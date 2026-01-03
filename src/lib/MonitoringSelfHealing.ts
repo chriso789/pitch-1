@@ -95,12 +95,14 @@ class MonitoringService {
       { name: "supabase_storage", check: () => this.checkStorageHealth() }
     ];
 
+    const results: HealthCheckResult[] = [];
+
     for (const service of services) {
       try {
         const result = await service.check();
-        await this.recordHealthCheck(result);
+        results.push(result);
       } catch (error) {
-        await this.recordHealthCheck({
+        results.push({
           service_name: service.name,
           status: "down",
           response_time_ms: 0,
@@ -108,6 +110,9 @@ class MonitoringService {
         });
       }
     }
+
+    // Batch record all health checks via edge function
+    await this.recordHealthChecks(results);
   }
 
   private async checkSupabaseHealth(): Promise<HealthCheckResult> {
@@ -176,17 +181,28 @@ class MonitoringService {
     }
   }
 
-  private async recordHealthCheck(result: HealthCheckResult): Promise<void> {
+  private async recordHealthChecks(results: HealthCheckResult[]): Promise<void> {
     try {
-      await supabase.from("health_checks").insert({
-        service_name: result.service_name,
-        status: result.status,
-        response_time_ms: result.response_time_ms,
-        error_message: result.error_message,
-        details: result.details || {}
+      // Use edge function to bypass RLS issues
+      const { error } = await supabase.functions.invoke('log-health-check', {
+        body: { checks: results }
       });
+
+      if (error) {
+        console.error("[Monitoring] Edge function failed, falling back to direct insert:", error);
+        // Fallback to direct insert (will use new RLS policies)
+        for (const result of results) {
+          await supabase.from("health_checks").insert({
+            service_name: result.service_name,
+            status: result.status,
+            response_time_ms: result.response_time_ms,
+            error_message: result.error_message,
+            details: result.details || {}
+          });
+        }
+      }
     } catch (error) {
-      console.error("[Monitoring] Failed to record health check:", error);
+      console.error("[Monitoring] Failed to record health checks:", error);
     }
   }
 
@@ -262,20 +278,35 @@ class MonitoringService {
     this.errorBuffer = [];
 
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      
+      // Use edge function to bypass RLS issues
       for (const crash of crashes) {
-        await supabase.from("system_crashes").insert({
-          error_type: crash.error_type,
-          error_message: crash.error_message,
-          stack_trace: crash.stack_trace,
-          component: crash.component,
-          route: window.location.pathname,
-          user_id: user?.id,
-          severity: crash.severity,
-          metadata: crash.metadata || {},
-          auto_recovered: false
+        const { error } = await supabase.functions.invoke('log-system-crash', {
+          body: {
+            error_type: crash.error_type,
+            error_message: crash.error_message,
+            stack_trace: crash.stack_trace,
+            component: crash.component,
+            route: crash.route || window.location.pathname,
+            severity: crash.severity,
+            metadata: crash.metadata || {},
+            auto_recovered: false
+          }
         });
+
+        if (error) {
+          console.error("[Monitoring] Edge function failed for crash report:", error);
+          // Fallback to direct insert (will use new RLS policies)
+          await supabase.from("system_crashes").insert({
+            error_type: crash.error_type,
+            error_message: crash.error_message,
+            stack_trace: crash.stack_trace,
+            component: crash.component,
+            route: crash.route || window.location.pathname,
+            severity: crash.severity,
+            metadata: crash.metadata || {},
+            auto_recovered: false
+          });
+        }
       }
     } catch (error) {
       console.error("[Monitoring] Failed to flush error buffer:", error);
@@ -286,12 +317,28 @@ class MonitoringService {
 
   async recordMetric(name: string, value: number, unit?: string, tags?: Record<string, any>): Promise<void> {
     try {
-      await supabase.from("system_metrics").insert({
-        metric_name: name,
-        metric_value: value,
-        metric_unit: unit,
-        tags: tags || {}
+      // Use edge function to bypass RLS issues
+      const { error } = await supabase.functions.invoke('log-system-metrics', {
+        body: {
+          metrics: [{
+            metric_name: name,
+            metric_value: value,
+            metric_unit: unit,
+            tags: tags || {}
+          }]
+        }
       });
+
+      if (error) {
+        console.error("[Monitoring] Edge function failed for metric, falling back:", error);
+        // Fallback to direct insert
+        await supabase.from("system_metrics").insert({
+          metric_name: name,
+          metric_value: value,
+          metric_unit: unit,
+          tags: tags || {}
+        });
+      }
     } catch (error) {
       console.error("[Monitoring] Failed to record metric:", error);
     }
