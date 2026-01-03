@@ -102,6 +102,7 @@ import HomeownerSetupAccount from "./pages/HomeownerSetupAccount";
 import CommissionReport from "./pages/CommissionReport";
 import RoofMeasurementTrainer from "./pages/RoofMeasurementTrainer";
 import PhoneSettings from "./pages/admin/PhoneSettings";
+import ActivityDashboardPage from "./pages/admin/ActivityDashboardPage";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -252,6 +253,8 @@ const AppContent = () => {
         <Route path="/admin/companies" element={<ProtectedRoute><CompanyAdminPage /></ProtectedRoute>} />
         <Route path="/admin/monitoring" element={<ProtectedRoute><MonitoringPage /></ProtectedRoute>} />
         <Route path="/admin/phone-settings" element={<ProtectedRoute><PhoneSettings /></ProtectedRoute>} />
+        <Route path="/admin/activity" element={<ProtectedRoute><ActivityDashboardPage /></ProtectedRoute>} />
+        <Route path="/commission-report" element={<ProtectedRoute><CommissionReport /></ProtectedRoute>} />
         <Route path="/commission-report" element={<ProtectedRoute><CommissionReport /></ProtectedRoute>} />
         
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

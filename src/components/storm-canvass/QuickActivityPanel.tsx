@@ -35,7 +35,7 @@ export default function QuickActivityPanel({ userLocation }: QuickActivityPanelP
         activity_type: 'door_knock',
         latitude: userLocation.lat,
         longitude: userLocation.lng,
-        notes: 'Quick door knock logged',
+        activity_data: { notes: 'Quick door knock logged', timestamp: new Date().toISOString() },
       });
 
       if (error) throw error;

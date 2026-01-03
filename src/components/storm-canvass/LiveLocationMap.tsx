@@ -3,7 +3,7 @@ import mapboxgl from 'mapbox-gl';
 import 'mapbox-gl/dist/mapbox-gl.css';
 import NearbyPropertiesLayer from './NearbyPropertiesLayer';
 import RouteVisualization from './RouteVisualization';
-import ParcelBoundaryLayer from './ParcelBoundaryLayer';
+import PropertyMarkersLayer from './PropertyMarkersLayer';
 import { useMapboxToken } from '@/hooks/useMapboxToken';
 import { Loader2 } from 'lucide-react';
 import { MapStyle } from './MapStyleToggle';
@@ -197,11 +197,10 @@ export default function LiveLocationMap({
             userLocation={userLocation}
             onContactSelect={onContactSelect}
           />
-          <ParcelBoundaryLayer
+          <PropertyMarkersLayer
             map={map.current}
             userLocation={userLocation}
-            onParcelClick={handleParcelClick}
-            visible={true}
+            onPropertyClick={handleParcelClick}
           />
           {routeData && destination && (
             <RouteVisualization
