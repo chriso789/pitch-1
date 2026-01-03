@@ -315,7 +315,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
   const validateForm = () => {
     const errors: Record<string, string> = {};
     
-    // Either need selected contact OR new contact info
+    // Either need selected contact OR new contact info (name + phone + address text)
     if (!selectedContact && !formData.name.trim()) {
       errors.name = "Lead name is required";
     }
@@ -330,8 +330,9 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         errors.roofAge = "Must be between 0 and 100 years";
       }
     }
-    if (!selectedAddress && !selectedContact) {
-      errors.address = "Verified address is required";
+    // Allow either: verified address, selected contact with address, OR manual address text
+    if (!selectedAddress && !selectedContact && !formData.address.trim()) {
+      errors.address = "Address is required";
     }
     if (!formData.status) {
       errors.status = "Status is required";
@@ -392,98 +393,39 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
 
     setLoading(true);
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("No authenticated user");
-
-      // Use selected contact or create new one
-      let contactId = selectedContact?.id || contact?.id;
-      
-      if (!contactId) {
-        // Create new contact from lead form data
-        const addressComponents = selectedAddress?.address_components || [];
-        const streetNumber = addressComponents.find((c: any) => c.types.includes('street_number'))?.long_name || '';
-        const route = addressComponents.find((c: any) => c.types.includes('route'))?.long_name || '';
-        const city = addressComponents.find((c: any) => c.types.includes('locality'))?.long_name || '';
-        const state = addressComponents.find((c: any) => c.types.includes('administrative_area_level_1'))?.short_name || '';
-        const zipCode = addressComponents.find((c: any) => c.types.includes('postal_code'))?.long_name || '';
-
-        const streetAddress = `${streetNumber} ${route}`.trim();
-
-        // Check for existing contact at same address to prevent duplicates
-        const { data: existingContact } = await supabase
-          .from('contacts')
-          .select('id, first_name, last_name')
-          .eq('tenant_id', userProfile.tenant_id)
-          .eq('address_street', streetAddress)
-          .maybeSingle();
-
-        if (existingContact) {
-          // Use existing contact instead of creating duplicate
-          contactId = existingContact.id;
-          toast({
-            title: "Using Existing Contact",
-            description: `Found existing contact "${existingContact.first_name} ${existingContact.last_name}" at this address.`,
-          });
-        } else {
-          const nameParts = formData.name.split(' ');
-          const firstName = nameParts[0] || 'Unknown';
-          const lastName = nameParts.slice(1).join(' ') || 'Contact';
-
-          const { data: newContact, error: contactError } = await supabase
-            .from('contacts')
-            .insert({
-              tenant_id: userProfile.tenant_id,
-              first_name: firstName,
-              last_name: lastName,
-              phone: formData.phone,
-              address_street: streetAddress,
-              address_city: city,
-              address_state: state,
-              address_zip: zipCode,
-              type: 'homeowner',
-              created_by: user.id,
-            })
-            .select()
-            .single();
-
-          if (contactError) throw contactError;
-          contactId = newContact.id;
+      // Call edge function to handle contact + lead creation
+      const { data, error } = await supabase.functions.invoke('create-lead-with-contact', {
+        body: {
+          name: formData.name,
+          phone: formData.phone,
+          address: formData.address,
+          description: formData.description,
+          roofAge: formData.roofAge,
+          roofType: formData.roofType,
+          status: formData.status || 'lead',
+          priority: formData.priority,
+          estimatedValue: formData.estimatedValue,
+          salesReps: formData.salesReps,
+          selectedAddress: selectedAddress,
+          existingContactId: selectedContact?.id || contact?.id,
         }
+      });
+
+      if (error) {
+        console.error('Edge function error:', error);
+        throw new Error(error.message || 'Failed to create lead');
       }
 
-      // Create pipeline entry (lead)
-      const pipelineData: any = {
-        tenant_id: userProfile.tenant_id,
-        contact_id: contactId,
-        status: (formData.status as "canceled" | "closed" | "completed" | "contingency_signed" | "duplicate" | "hold_mgr_review" | "lead" | "legal_review" | "lost" | "project"),
-        priority: formData.priority,
-        estimated_value: formData.estimatedValue ? parseFloat(formData.estimatedValue) : null,
-        roof_type: (formData.roofType as "cedar" | "flat" | "metal" | "other" | "shingle" | "slate" | "tile") || null,
-        assigned_to: formData.salesReps[0] || user.id, // Auto-assign to creator if no rep selected
-        notes: formData.description,
-        created_by: user.id,
-        metadata: {
-          verified_address: selectedAddress,
-          secondary_reps: formData.salesReps.slice(1),
-          roof_age_years: parseInt(formData.roofAge),
-          roof_type: formData.roofType
-        }
-      };
-
-      const { data: pipelineEntry, error: pipelineError } = await supabase
-        .from('pipeline_entries')
-        .insert([pipelineData])
-        .select()
-        .single();
-
-      if (pipelineError) throw pipelineError;
+      if (!data?.success) {
+        throw new Error(data?.error || 'Failed to create lead');
+      }
 
       toast({
         title: "Lead Created Successfully",
         description: `Lead "${formData.name}" has been added to the pipeline`,
       });
 
-      onLeadCreated?.(pipelineEntry);
+      onLeadCreated?.(data.lead);
       
       // Navigate to the pipeline page
       navigate(`/pipeline`);
@@ -496,7 +438,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         address: "",
         phone: "",
         roofAge: "",
-        status: "",
+        status: "lead",
         priority: "medium",
         estimatedValue: "",
         roofType: "",
@@ -504,13 +446,14 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
         useSameInfo: false,
       });
       setSelectedAddress(null);
+      setSelectedContact(null);
       setShowAddressPicker(false);
       
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating lead:', error);
       toast({
         title: "Error",
-        description: "Failed to create lead. Please try again.",
+        description: error.message || "Failed to create lead. Please try again.",
         variant: "destructive",
       });
     } finally {
