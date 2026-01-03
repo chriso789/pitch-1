@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { cn } from '@/lib/utils';
 import { useSearchParams } from 'react-router-dom';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -286,8 +287,24 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const [calculating, setCalculating] = useState(false);
   const [savingEstimate, setSavingEstimate] = useState(false);
   const [templates, setTemplates] = useState([]);
+  const [roofTypeFilter, setRoofTypeFilter] = useState<string>('all');
   const [salesReps, setSalesReps] = useState([]);
   const [selectedSalesRep, setSelectedSalesRep] = useState<any>(null);
+  
+  // Roof type filter options
+  const ROOF_TYPE_OPTIONS = [
+    { value: 'all', label: 'All' },
+    { value: 'shingle', label: 'Shingle' },
+    { value: 'metal', label: 'Metal' },
+    { value: 'tile', label: 'Tile' },
+    { value: 'stone_coated', label: 'Stone Coated' },
+  ];
+  
+  // Filter templates by roof type
+  const filteredTemplates = useMemo(() => {
+    if (roofTypeFilter === 'all') return templates;
+    return templates.filter((t: any) => t.roof_type === roofTypeFilter);
+  }, [templates, roofTypeFilter]);
   
   const [propertyDetails, setPropertyDetails] = useState({
     roof_area_sq_ft: 0,
@@ -2055,38 +2072,79 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
           {/* Template Selection */}
           <Card>
             <CardContent className="pt-4 pb-3">
-              <div className="space-y-2">
+              <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <Label htmlFor="template" className="text-sm">Template</Label>
+                  <Label htmlFor="template" className="text-sm font-medium">Template</Label>
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={handleSyncTemplates}
                     disabled={syncingTemplates}
-                    className="h-6 px-2 text-xs"
+                    className={cn(
+                      "h-6 px-2 text-xs",
+                      templates.length < 14 && "text-amber-600 hover:text-amber-700"
+                    )}
                   >
                     {syncingTemplates ? (
                       <Loader2 className="h-3 w-3 animate-spin" />
                     ) : (
                       <RotateCcw className="h-3 w-3" />
                     )}
-                    <span className="ml-1">{syncingTemplates ? 'Syncing...' : 'Sync'}</span>
+                    <span className="ml-1">
+                      {syncingTemplates 
+                        ? 'Syncing...' 
+                        : templates.length < 14 
+                          ? `Sync (${templates.length}/14)` 
+                          : 'Sync'
+                      }
+                    </span>
                   </Button>
                 </div>
+                
+                {/* Roof Type Filter Pills */}
+                <div className="flex flex-wrap gap-1">
+                  {ROOF_TYPE_OPTIONS.map((option) => {
+                    const count = option.value === 'all' 
+                      ? templates.length 
+                      : templates.filter((t: any) => t.roof_type === option.value).length;
+                    return (
+                      <Button
+                        key={option.value}
+                        variant={roofTypeFilter === option.value ? "default" : "outline"}
+                        size="sm"
+                        className="h-6 px-2 text-xs"
+                        onClick={() => setRoofTypeFilter(option.value)}
+                      >
+                        {option.label}
+                        {count > 0 && (
+                          <span className="ml-1 opacity-70">({count})</span>
+                        )}
+                      </Button>
+                    );
+                  })}
+                </div>
+                
+                {/* Template Dropdown */}
                 <Select value={templateId} onValueChange={handleTemplateSelect}>
                   <SelectTrigger className="h-9">
                     <SelectValue placeholder="Select template to auto-populate items" />
                   </SelectTrigger>
                   <SelectContent>
-                    {templates.map((template: any) => (
+                    {filteredTemplates.map((template: any) => (
                       <SelectItem key={template.id} value={template.id}>
-                        {template.name} {template.roof_type && `(${template.roof_type})`}
+                        {template.name}
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+                
                 {templates.length === 0 && (
                   <p className="text-xs text-muted-foreground">No templates available - click Sync</p>
+                )}
+                {templates.length > 0 && filteredTemplates.length === 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    No {ROOF_TYPE_OPTIONS.find(o => o.value === roofTypeFilter)?.label} templates
+                  </p>
                 )}
               </div>
             </CardContent>
