@@ -563,6 +563,83 @@ export type Database = {
         }
         Relationships: []
       }
+      ai_scheduling_suggestions: {
+        Row: {
+          appointment_type: string | null
+          canvasser_id: string | null
+          canvasser_location: Json | null
+          contact_id: string | null
+          created_at: string | null
+          homeowner_preferences: Json | null
+          id: string
+          selected_slot: Json | null
+          status: string | null
+          suggested_slots: Json
+          tenant_id: string | null
+          travel_time_minutes: number | null
+          weather_data: Json | null
+        }
+        Insert: {
+          appointment_type?: string | null
+          canvasser_id?: string | null
+          canvasser_location?: Json | null
+          contact_id?: string | null
+          created_at?: string | null
+          homeowner_preferences?: Json | null
+          id?: string
+          selected_slot?: Json | null
+          status?: string | null
+          suggested_slots: Json
+          tenant_id?: string | null
+          travel_time_minutes?: number | null
+          weather_data?: Json | null
+        }
+        Update: {
+          appointment_type?: string | null
+          canvasser_id?: string | null
+          canvasser_location?: Json | null
+          contact_id?: string | null
+          created_at?: string | null
+          homeowner_preferences?: Json | null
+          id?: string
+          selected_slot?: Json | null
+          status?: string | null
+          suggested_slots?: Json
+          tenant_id?: string | null
+          travel_time_minutes?: number | null
+          weather_data?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_scheduling_suggestions_canvasser_id_fkey"
+            columns: ["canvasser_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_scheduling_suggestions_canvasser_id_fkey"
+            columns: ["canvasser_id"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "ai_scheduling_suggestions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_scheduling_suggestions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_usage_metrics: {
         Row: {
           completion_tokens: number | null
@@ -760,6 +837,137 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "user_activity_summary"
             referencedColumns: ["user_id"]
+          },
+        ]
+      }
+      appointments: {
+        Row: {
+          address: string | null
+          ai_score: number | null
+          ai_suggested: boolean | null
+          appointment_type: string
+          assigned_to: string | null
+          completed_at: string | null
+          confirmed_at: string | null
+          contact_id: string | null
+          created_at: string | null
+          created_by: string | null
+          homeowner_preferences: Json | null
+          id: string
+          job_id: string | null
+          latitude: number | null
+          longitude: number | null
+          notes: string | null
+          scheduled_end: string
+          scheduled_start: string
+          status: string | null
+          tenant_id: string | null
+          title: string
+          updated_at: string | null
+          weather_data: Json | null
+          weather_risk: string | null
+        }
+        Insert: {
+          address?: string | null
+          ai_score?: number | null
+          ai_suggested?: boolean | null
+          appointment_type: string
+          assigned_to?: string | null
+          completed_at?: string | null
+          confirmed_at?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          homeowner_preferences?: Json | null
+          id?: string
+          job_id?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          notes?: string | null
+          scheduled_end: string
+          scheduled_start: string
+          status?: string | null
+          tenant_id?: string | null
+          title: string
+          updated_at?: string | null
+          weather_data?: Json | null
+          weather_risk?: string | null
+        }
+        Update: {
+          address?: string | null
+          ai_score?: number | null
+          ai_suggested?: boolean | null
+          appointment_type?: string
+          assigned_to?: string | null
+          completed_at?: string | null
+          confirmed_at?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          homeowner_preferences?: Json | null
+          id?: string
+          job_id?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          notes?: string | null
+          scheduled_end?: string
+          scheduled_start?: string
+          status?: string | null
+          tenant_id?: string | null
+          title?: string
+          updated_at?: string | null
+          weather_data?: Json | null
+          weather_risk?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "appointments_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "appointments_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "appointments_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "appointments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -4120,6 +4328,127 @@ export type Database = {
           },
         ]
       }
+      crew_assignments: {
+        Row: {
+          actual_duration_minutes: number | null
+          address: string | null
+          arrival_time: string | null
+          assignment_date: string
+          completion_time: string | null
+          created_at: string | null
+          created_by: string | null
+          crew_id: string | null
+          dispatch_time: string | null
+          estimated_duration_minutes: number | null
+          id: string
+          job_id: string | null
+          latitude: number | null
+          longitude: number | null
+          notes: string | null
+          priority: number | null
+          route_order: number | null
+          scheduled_end: string | null
+          scheduled_start: string | null
+          status: string | null
+          tenant_id: string | null
+          updated_at: string | null
+          work_order_id: string | null
+        }
+        Insert: {
+          actual_duration_minutes?: number | null
+          address?: string | null
+          arrival_time?: string | null
+          assignment_date: string
+          completion_time?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          crew_id?: string | null
+          dispatch_time?: string | null
+          estimated_duration_minutes?: number | null
+          id?: string
+          job_id?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          notes?: string | null
+          priority?: number | null
+          route_order?: number | null
+          scheduled_end?: string | null
+          scheduled_start?: string | null
+          status?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          work_order_id?: string | null
+        }
+        Update: {
+          actual_duration_minutes?: number | null
+          address?: string | null
+          arrival_time?: string | null
+          assignment_date?: string
+          completion_time?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          crew_id?: string | null
+          dispatch_time?: string | null
+          estimated_duration_minutes?: number | null
+          id?: string
+          job_id?: string | null
+          latitude?: number | null
+          longitude?: number | null
+          notes?: string | null
+          priority?: number | null
+          route_order?: number | null
+          scheduled_end?: string | null
+          scheduled_start?: string | null
+          status?: string | null
+          tenant_id?: string | null
+          updated_at?: string | null
+          work_order_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crew_assignments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crew_assignments_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "crew_assignments_crew_id_fkey"
+            columns: ["crew_id"]
+            isOneToOne: false
+            referencedRelation: "crews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crew_assignments_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crew_assignments_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crew_assignments_work_order_id_fkey"
+            columns: ["work_order_id"]
+            isOneToOne: false
+            referencedRelation: "work_orders"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       crew_availability: {
         Row: {
           available_slots: number
@@ -4152,6 +4481,77 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      crew_locations: {
+        Row: {
+          accuracy: number | null
+          crew_id: string | null
+          heading: number | null
+          id: string
+          is_active: boolean | null
+          latitude: number
+          longitude: number
+          recorded_at: string | null
+          speed: number | null
+          tenant_id: string | null
+          user_id: string | null
+        }
+        Insert: {
+          accuracy?: number | null
+          crew_id?: string | null
+          heading?: number | null
+          id?: string
+          is_active?: boolean | null
+          latitude: number
+          longitude: number
+          recorded_at?: string | null
+          speed?: number | null
+          tenant_id?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          accuracy?: number | null
+          crew_id?: string | null
+          heading?: number | null
+          id?: string
+          is_active?: boolean | null
+          latitude?: number
+          longitude?: number
+          recorded_at?: string | null
+          speed?: number | null
+          tenant_id?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "crew_locations_crew_id_fkey"
+            columns: ["crew_id"]
+            isOneToOne: false
+            referencedRelation: "crews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crew_locations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crew_locations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "crew_locations_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       crew_portal_sessions: {
         Row: {
@@ -5356,6 +5756,75 @@ export type Database = {
             columns: ["recipient_id"]
             isOneToOne: false
             referencedRelation: "signature_recipients"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      dispatch_routes: {
+        Row: {
+          created_at: string | null
+          crew_id: string | null
+          end_location: Json | null
+          id: string
+          optimization_score: number | null
+          route_date: string
+          route_polyline: string | null
+          start_location: Json | null
+          status: string | null
+          stops: Json
+          tenant_id: string | null
+          total_distance_miles: number | null
+          total_duration_minutes: number | null
+          updated_at: string | null
+          weather_impact: Json | null
+        }
+        Insert: {
+          created_at?: string | null
+          crew_id?: string | null
+          end_location?: Json | null
+          id?: string
+          optimization_score?: number | null
+          route_date: string
+          route_polyline?: string | null
+          start_location?: Json | null
+          status?: string | null
+          stops?: Json
+          tenant_id?: string | null
+          total_distance_miles?: number | null
+          total_duration_minutes?: number | null
+          updated_at?: string | null
+          weather_impact?: Json | null
+        }
+        Update: {
+          created_at?: string | null
+          crew_id?: string | null
+          end_location?: Json | null
+          id?: string
+          optimization_score?: number | null
+          route_date?: string
+          route_polyline?: string | null
+          start_location?: Json | null
+          status?: string | null
+          stops?: Json
+          tenant_id?: string | null
+          total_distance_miles?: number | null
+          total_duration_minutes?: number | null
+          updated_at?: string | null
+          weather_impact?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "dispatch_routes_crew_id_fkey"
+            columns: ["crew_id"]
+            isOneToOne: false
+            referencedRelation: "crews"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "dispatch_routes_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -7878,6 +8347,117 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: []
+      }
+      insurance_claims: {
+        Row: {
+          acv_amount: number | null
+          adjuster_email: string | null
+          adjuster_name: string | null
+          adjuster_phone: string | null
+          approved_amount: number | null
+          claim_number: string | null
+          claim_status: string | null
+          contact_id: string | null
+          created_at: string | null
+          created_by: string | null
+          date_of_loss: string | null
+          deductible_amount: number | null
+          depreciation_amount: number | null
+          id: string
+          insurance_company: string | null
+          job_id: string | null
+          notes: string | null
+          policy_number: string | null
+          rcv_amount: number | null
+          recoverable_depreciation: number | null
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          acv_amount?: number | null
+          adjuster_email?: string | null
+          adjuster_name?: string | null
+          adjuster_phone?: string | null
+          approved_amount?: number | null
+          claim_number?: string | null
+          claim_status?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          date_of_loss?: string | null
+          deductible_amount?: number | null
+          depreciation_amount?: number | null
+          id?: string
+          insurance_company?: string | null
+          job_id?: string | null
+          notes?: string | null
+          policy_number?: string | null
+          rcv_amount?: number | null
+          recoverable_depreciation?: number | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          acv_amount?: number | null
+          adjuster_email?: string | null
+          adjuster_name?: string | null
+          adjuster_phone?: string | null
+          approved_amount?: number | null
+          claim_number?: string | null
+          claim_status?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          date_of_loss?: string | null
+          deductible_amount?: number | null
+          depreciation_amount?: number | null
+          id?: string
+          insurance_company?: string | null
+          job_id?: string | null
+          notes?: string | null
+          policy_number?: string | null
+          rcv_amount?: number | null
+          recoverable_depreciation?: number | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "insurance_claims_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_claims_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_claims_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "insurance_claims_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_claims_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       invoice_ar_mirror: {
         Row: {
@@ -15840,6 +16420,111 @@ export type Database = {
           },
         ]
       }
+      scope_documents: {
+        Row: {
+          approved_at: string | null
+          created_at: string | null
+          created_by: string | null
+          damage_assessment_data: Json | null
+          damage_photos: Json | null
+          document_number: string | null
+          document_type: string
+          id: string
+          insurance_claim_id: string | null
+          job_id: string | null
+          line_items: Json
+          pdf_url: string | null
+          status: string | null
+          submitted_at: string | null
+          tenant_id: string | null
+          total_amount: number | null
+          updated_at: string | null
+          version: number | null
+          xactimate_compatible: boolean | null
+          xactimate_export_data: Json | null
+        }
+        Insert: {
+          approved_at?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          damage_assessment_data?: Json | null
+          damage_photos?: Json | null
+          document_number?: string | null
+          document_type: string
+          id?: string
+          insurance_claim_id?: string | null
+          job_id?: string | null
+          line_items?: Json
+          pdf_url?: string | null
+          status?: string | null
+          submitted_at?: string | null
+          tenant_id?: string | null
+          total_amount?: number | null
+          updated_at?: string | null
+          version?: number | null
+          xactimate_compatible?: boolean | null
+          xactimate_export_data?: Json | null
+        }
+        Update: {
+          approved_at?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          damage_assessment_data?: Json | null
+          damage_photos?: Json | null
+          document_number?: string | null
+          document_type?: string
+          id?: string
+          insurance_claim_id?: string | null
+          job_id?: string | null
+          line_items?: Json
+          pdf_url?: string | null
+          status?: string | null
+          submitted_at?: string | null
+          tenant_id?: string | null
+          total_amount?: number | null
+          updated_at?: string | null
+          version?: number | null
+          xactimate_compatible?: boolean | null
+          xactimate_export_data?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "scope_documents_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scope_documents_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "scope_documents_insurance_claim_id_fkey"
+            columns: ["insurance_claim_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_claims"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scope_documents_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "scope_documents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       security_alerts: {
         Row: {
           acknowledged: boolean | null
@@ -17745,6 +18430,105 @@ export type Database = {
           w9_url?: string | null
         }
         Relationships: []
+      }
+      supplement_requests: {
+        Row: {
+          additional_items: Json
+          adjuster_response: string | null
+          approved_amount: number | null
+          created_at: string | null
+          created_by: string | null
+          id: string
+          insurance_claim_id: string | null
+          original_amount: number | null
+          reason: string
+          requested_amount: number | null
+          response_at: string | null
+          scope_document_id: string | null
+          status: string | null
+          submitted_at: string | null
+          supplement_number: string | null
+          supporting_photos: Json | null
+          tenant_id: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          additional_items?: Json
+          adjuster_response?: string | null
+          approved_amount?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          insurance_claim_id?: string | null
+          original_amount?: number | null
+          reason: string
+          requested_amount?: number | null
+          response_at?: string | null
+          scope_document_id?: string | null
+          status?: string | null
+          submitted_at?: string | null
+          supplement_number?: string | null
+          supporting_photos?: Json | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          additional_items?: Json
+          adjuster_response?: string | null
+          approved_amount?: number | null
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          insurance_claim_id?: string | null
+          original_amount?: number | null
+          reason?: string
+          requested_amount?: number | null
+          response_at?: string | null
+          scope_document_id?: string | null
+          status?: string | null
+          submitted_at?: string | null
+          supplement_number?: string | null
+          supporting_photos?: Json | null
+          tenant_id?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "supplement_requests_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplement_requests_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "supplement_requests_insurance_claim_id_fkey"
+            columns: ["insurance_claim_id"]
+            isOneToOne: false
+            referencedRelation: "insurance_claims"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplement_requests_scope_document_id_fkey"
+            columns: ["scope_document_id"]
+            isOneToOne: false
+            referencedRelation: "scope_documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "supplement_requests_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       supplier_accounts: {
         Row: {
