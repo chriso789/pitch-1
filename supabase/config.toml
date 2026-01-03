@@ -452,3 +452,6 @@ verify_jwt = false
 
 [functions.send-test-onboarding]
 verify_jwt = false
+
+[functions.lookup-ip-location]
+verify_jwt = true

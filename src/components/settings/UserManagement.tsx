@@ -10,7 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Users, Plus, Edit2, Trash2, Settings, Eye, MapPin, Ban, CheckCircle, Building2, Phone, AlertCircle, Mail, RefreshCw, Activity } from "lucide-react";
+import { Users, Plus, Edit2, Trash2, Settings, Eye, MapPin, Ban, CheckCircle, Building2, Phone, AlertCircle, Mail, RefreshCw, Activity, Clock } from "lucide-react";
+import { UserLoginStatusBadge } from "./UserLoginStatusBadge";
 import { UserActivityDashboard } from "./UserActivityDashboard";
 import { ProfileStatusBadge } from "./ProfileStatusBadge";
 import { supabase } from "@/integrations/supabase/client";
@@ -40,6 +41,8 @@ interface User {
   created_at: string;
   phone?: string;
   pay_type?: string;
+  last_login?: string | null;
+  is_activated?: boolean;
 }
 
 interface Location {
@@ -92,7 +95,7 @@ export const UserManagement = () => {
         supabase.from('profiles').select('*').neq('role', 'master').order('created_at', { ascending: false }),
         supabase.from('user_roles').select('user_id, role').order('role', { ascending: true }),
         supabase.from('tenants').select('id, name'),
-        supabase.from('user_company_access').select('user_id, tenant_id, is_active')
+        supabase.from('user_company_access').select('user_id, tenant_id, is_active'),
       ]);
 
       if (profilesResult.error) throw profilesResult.error;
@@ -102,22 +105,61 @@ export const UserManagement = () => {
 
       const tenantMap = new Map(tenantsResult.data?.map(t => [t.id, t.name]) || []);
 
+      // Get login stats for all users in a single query
+      const userIds = profilesResult.data?.map(p => p.id) || [];
+      let loginStatsMap = new Map<string, { last_login: string | null; is_activated: boolean }>();
+      
+      if (userIds.length > 0) {
+        const { data: loginData } = await supabase
+          .from('session_activity_log')
+          .select('user_id, created_at')
+          .in('user_id', userIds)
+          .in('event_type', ['login_success', 'session_start'])
+          .order('created_at', { ascending: false });
+        
+        // Group by user_id and get latest + count
+        const userLogins = new Map<string, { latest: string; count: number }>();
+        loginData?.forEach(log => {
+          const existing = userLogins.get(log.user_id);
+          if (!existing) {
+            userLogins.set(log.user_id, { latest: log.created_at, count: 1 });
+          } else {
+            existing.count++;
+          }
+        });
+        
+        userLogins.forEach((value, key) => {
+          loginStatsMap.set(key, {
+            last_login: value.latest,
+            is_activated: value.count > 0
+          });
+        });
+      }
+
       if (user) {
         const currentProfile = profilesResult.data?.find(p => p.id === user.id);
         const currentUserRole = rolesResult.data?.find(r => r.user_id === user.id);
+        const loginStats = loginStatsMap.get(user.id);
         currentUserData = {
           ...currentProfile,
           role: currentUserRole?.role || currentProfile?.role,
-          resolved_company_name: currentProfile?.tenant_id ? tenantMap.get(currentProfile.tenant_id) : null
+          resolved_company_name: currentProfile?.tenant_id ? tenantMap.get(currentProfile.tenant_id) : null,
+          last_login: loginStats?.last_login || null,
+          is_activated: loginStats?.is_activated ?? false
         };
       }
 
       const roleMap = new Map(rolesResult.data?.map(ur => [ur.user_id, ur.role]) || []);
-      const usersWithRoles = profilesResult.data?.map(profile => ({
-        ...profile,
-        role: roleMap.get(profile.id) || profile.role,
-        resolved_company_name: profile.tenant_id ? tenantMap.get(profile.tenant_id) : profile.company_name
-      })) || [];
+      const usersWithRoles = profilesResult.data?.map(profile => {
+        const loginStats = loginStatsMap.get(profile.id);
+        return {
+          ...profile,
+          role: roleMap.get(profile.id) || profile.role,
+          resolved_company_name: profile.tenant_id ? tenantMap.get(profile.tenant_id) : profile.company_name,
+          last_login: loginStats?.last_login || null,
+          is_activated: loginStats?.is_activated ?? false
+        };
+      }) || [];
 
       return { users: usersWithRoles, currentUser: currentUserData };
     },
@@ -813,7 +855,7 @@ export const UserManagement = () => {
                   <TableHead>Email</TableHead>
                   <TableHead>Role</TableHead>
                   <TableHead>Company</TableHead>
-                  <TableHead>Title</TableHead>
+                  <TableHead>Last Login</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Actions</TableHead>
                 </TableRow>
@@ -842,7 +884,12 @@ export const UserManagement = () => {
                         <span className="text-muted-foreground">—</span>
                       )}
                     </TableCell>
-                    <TableCell>{user.title}</TableCell>
+                    <TableCell>
+                      <UserLoginStatusBadge 
+                        lastLogin={user.last_login || null} 
+                        isActivated={user.is_activated || false}
+                      />
+                    </TableCell>
                     <TableCell>
                       <Badge variant={user.is_active ? "default" : "secondary"}>
                         {user.is_active ? "Active" : "Inactive"}
