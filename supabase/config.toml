@@ -470,3 +470,36 @@ verify_jwt = true
 
 [functions.analyze-damage]
 verify_jwt = true
+
+[functions.smart-docs-renderer]
+verify_jwt = true
+
+[functions.smart-docs-pdf]
+verify_jwt = true
+
+[functions.send-document-for-signature]
+verify_jwt = true
+
+[functions.email-signature-request]
+verify_jwt = true
+
+[functions.capture-digital-signature]
+verify_jwt = false
+
+[functions.send-signature-envelope]
+verify_jwt = true
+
+[functions.crew-gps-sync]
+verify_jwt = true
+
+[functions.optimize-crew-route]
+verify_jwt = true
+
+[functions.schedule-crew-job]
+verify_jwt = true
+
+[functions.submit-crew-schedule-request]
+verify_jwt = true
+
+[functions.process-insurance-claim]
+verify_jwt = true
