@@ -123,7 +123,8 @@ serve(async (req) => {
       ownerName: tenant?.owner_name,
       ownerTitle: "Owner",
       ownerEmail: tenant?.owner_email,
-      isResend: true, // Flag to indicate this is a resend
+      isResend: true,
+      tenantId: profile.tenant_id, // Enable email logging
     };
 
     console.log("Sending invitation email to:", email);
