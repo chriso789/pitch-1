@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Dialog,
@@ -110,7 +110,76 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
   const [showAddressPicker, setShowAddressPicker] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
   const [addressVerified, setAddressVerified] = useState(false);
+  const debounceTimer = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
+
+  // Real-time address autocomplete with debounce
+  useEffect(() => {
+    // Skip if using same info as contact, or address is too short
+    if (formData.useSameInfo || formData.address.length < 3 || addressVerified) {
+      if (formData.address.length < 3) {
+        setAddressSuggestions([]);
+        setShowAddressPicker(false);
+      }
+      return;
+    }
+
+    // Debounce API calls (300ms)
+    if (debounceTimer.current) {
+      clearTimeout(debounceTimer.current);
+    }
+
+    debounceTimer.current = setTimeout(async () => {
+      setAddressLoading(true);
+      try {
+        const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
+          body: {
+            endpoint: 'autocomplete',
+            params: {
+              input: formData.address,
+              types: 'address'
+            }
+          }
+        });
+
+        if (error) throw error;
+
+        if (data?.predictions && data.predictions.length > 0) {
+          // Fetch details for each prediction to get coordinates
+          const detailedSuggestions = await Promise.all(
+            data.predictions.slice(0, 5).map(async (prediction: any) => {
+              const { data: details } = await supabase.functions.invoke('google-maps-proxy', {
+                body: {
+                  endpoint: 'details',
+                  params: {
+                    place_id: prediction.place_id,
+                    fields: 'formatted_address,geometry,address_components'
+                  }
+                }
+              });
+              return details?.result;
+            })
+          );
+
+          setAddressSuggestions(detailedSuggestions.filter(Boolean));
+          setShowAddressPicker(true);
+        } else {
+          setAddressSuggestions([]);
+          setShowAddressPicker(false);
+        }
+      } catch (error) {
+        console.error('Address autocomplete error:', error);
+      } finally {
+        setAddressLoading(false);
+      }
+    }, 300);
+
+    return () => {
+      if (debounceTimer.current) {
+        clearTimeout(debounceTimer.current);
+      }
+    };
+  }, [formData.address, formData.useSameInfo, addressVerified]);
 
   // Pipeline statuses from the database
   const pipelineStatuses = [
@@ -654,7 +723,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
 
             {/* Right Column */}
             <div className="space-y-4">
-              <div>
+              <div className="relative">
                 <div className="flex items-center justify-between mb-1">
                   <Label htmlFor="address" className="flex items-center gap-1">
                     Lead Address <span className="text-destructive">*</span>
@@ -701,12 +770,34 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
                     Verify
                   </Button>
                 </div>
+                
+                {/* Real-time address suggestions dropdown */}
+                {showAddressPicker && addressSuggestions.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 z-50 mt-1 bg-background border border-border rounded-md shadow-lg max-h-60 overflow-y-auto">
+                    {addressSuggestions.map((suggestion, index) => (
+                      <div
+                        key={suggestion.place_id || index}
+                        className={`p-3 cursor-pointer hover:bg-accent flex items-center gap-2 ${
+                          selectedAddress?.place_id === suggestion.place_id ? 'bg-primary/10' : ''
+                        }`}
+                        onClick={() => handleAddressSelect(suggestion)}
+                      >
+                        <MapPin className="h-4 w-4 text-primary flex-shrink-0" />
+                        <span className="text-sm">{suggestion.formatted_address}</span>
+                        {selectedAddress?.place_id === suggestion.place_id && (
+                          <Check className="h-4 w-4 text-primary ml-auto" />
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                
                 {fieldErrors.address && (
                   <p className="text-sm text-destructive mt-1">{fieldErrors.address}</p>
                 )}
-                {!addressVerified && formData.address.trim() && !fieldErrors.address && (
+                {!addressVerified && formData.address.trim() && !showAddressPicker && !fieldErrors.address && (
                   <p className="text-xs text-muted-foreground mt-1">
-                    Click "Verify" to validate the address with Google Maps
+                    Start typing to see suggestions, or click "Verify" to search
                   </p>
                 )}
               </div>
@@ -745,37 +836,6 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
               </div>
             </div>
           </div>
-
-          {showAddressPicker && addressSuggestions.length > 0 && (
-            <div className="space-y-2">
-              <Label>Select Verified Address:</Label>
-              <div className="space-y-2 max-h-60 overflow-y-auto">
-                {addressSuggestions.map((suggestion, index) => (
-                  <Card
-                    key={suggestion.place_id || index}
-                    className={`cursor-pointer transition-all hover:shadow-md ${
-                      selectedAddress?.place_id === suggestion.place_id
-                        ? 'border-primary bg-primary/5'
-                        : 'border-border'
-                    }`}
-                    onClick={() => handleAddressSelect(suggestion)}
-                  >
-                    <CardContent className="p-3">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-start gap-2">
-                          <MapPin className="h-4 w-4 text-muted-foreground mt-1 flex-shrink-0" />
-                          <p className="text-sm">{suggestion.formatted_address}</p>
-                        </div>
-                        {selectedAddress?.place_id === suggestion.place_id && (
-                          <Check className="h-4 w-4 text-primary" />
-                        )}
-                      </div>
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </div>
-          )}
 
           {selectedAddress && (
             <div className="flex items-center gap-2 text-sm text-success">
