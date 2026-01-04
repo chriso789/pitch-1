@@ -32,7 +32,7 @@ import { useCurrentUser } from '@/hooks/useCurrentUser';
 import { canViewAllEstimates } from '@/lib/roleUtils';
 
 const Estimates = () => {
-  const { user } = useCurrentUser();
+  const { user, loading: userLoading } = useCurrentUser();
   const [estimates, setEstimates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
@@ -100,9 +100,10 @@ const Estimates = () => {
         console.error('Error fetching estimates:', error);
         toast({
           title: "Error",
-          description: "Failed to load estimates",
+          description: `Failed to load estimates: ${error.message || 'Unknown error'}`,
           variant: "destructive",
         });
+        setEstimates([]);
         return;
       }
 
@@ -306,6 +307,16 @@ const Estimates = () => {
       </Card>
     );
   };
+
+  // Show loading state while user is being fetched
+  if (userLoading || !user) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <span className="ml-2">Loading...</span>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
