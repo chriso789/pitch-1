@@ -47,12 +47,25 @@ export interface LeadDetailsData {
   updated_at: string;
 }
 
+// Legacy interface for backward compatibility
 export interface ApprovalRequirements {
   hasContract: boolean;
   hasEstimate: boolean;
   hasMaterials: boolean;
   hasLabor: boolean;
   allComplete: boolean;
+}
+
+// Dynamic requirement from database
+export interface DynamicRequirement {
+  id: string;
+  key: string;
+  label: string;
+  icon: string;
+  isRequired: boolean;
+  isComplete: boolean;
+  sortOrder: number;
+  validationType: string;
 }
 
 // Fetch lead details
@@ -77,62 +90,122 @@ async function fetchLeadDetails(id: string): Promise<LeadDetailsData | null> {
   } as unknown as LeadDetailsData;
 }
 
-// Fetch all approval requirements in PARALLEL
-async function fetchApprovalRequirements(id: string): Promise<ApprovalRequirements> {
-  // Run all queries in parallel
-  const [contractsResult, estimateResult, pipelineResult] = await Promise.all([
+// Fetch dynamic approval requirements from tenant settings
+async function fetchDynamicRequirements(tenantId: string, pipelineEntryId: string): Promise<{
+  requirements: DynamicRequirement[];
+  legacy: ApprovalRequirements;
+}> {
+  // Fetch tenant's approval requirements configuration
+  const { data: reqConfig, error: configError } = await supabase
+    .from('tenant_approval_requirements')
+    .select('*')
+    .eq('tenant_id', tenantId)
+    .eq('is_active', true)
+    .order('sort_order', { ascending: true });
+
+  if (configError) throw configError;
+
+  // If no requirements configured, return defaults
+  const requirements = reqConfig || [];
+  
+  if (requirements.length === 0) {
+    // Return legacy default
+    return {
+      requirements: [],
+      legacy: { hasContract: false, hasEstimate: false, hasMaterials: false, hasLabor: false, allComplete: false }
+    };
+  }
+
+  // Fetch validation data in parallel
+  const [contractsResult, pipelineResult, photosResult] = await Promise.all([
     supabase
       .from('documents')
-      .select('id')
-      .eq('pipeline_entry_id', id)
-      .eq('document_type', 'contract')
-      .limit(1),
-    supabase
-      .from('enhanced_estimates')
-      .select('id, selling_price, material_cost, labor_cost')
-      .eq('pipeline_entry_id', id)
-      .order('created_at', { ascending: false })
-      .limit(1),
+      .select('id, document_type')
+      .eq('pipeline_entry_id', pipelineEntryId),
     supabase
       .from('pipeline_entries')
       .select('metadata')
-      .eq('id', id)
-      .maybeSingle()
+      .eq('id', pipelineEntryId)
+      .maybeSingle(),
+    supabase
+      .from('documents')
+      .select('id')
+      .eq('pipeline_entry_id', pipelineEntryId)
+      .eq('document_type', 'inspection_photo')
   ]);
 
+  const documents = contractsResult.data || [];
   const metadata = pipelineResult.data?.metadata as Record<string, any> | null;
-  const selectedEstimateId = metadata?.selected_estimate_id || estimateResult.data?.[0]?.id;
+  const selectedEstimateId = metadata?.selected_estimate_id;
+  const photoCount = photosResult.data?.length || 0;
 
-  // Fetch materials and labor in parallel if we have an estimate
-  let materials: any[] = [];
-  let labor: any[] = [];
-  
+  // Check if estimate has line items if needed
+  let hasLineItems = false;
   if (selectedEstimateId) {
-    const [materialResult, laborResult] = await Promise.all([
-      supabase
-        .from('estimate_line_items')
-        .select('id')
-        .eq('estimate_id', selectedEstimateId)
-        .eq('item_category', 'material')
-        .limit(1),
-      supabase
-        .from('estimate_line_items')
-        .select('id')
-        .eq('estimate_id', selectedEstimateId)
-        .eq('item_category', 'labor')
-        .limit(1)
-    ]);
-    materials = materialResult.data || [];
-    labor = laborResult.data || [];
+    const { data: lineItems } = await supabase
+      .from('estimate_line_items')
+      .select('id')
+      .eq('estimate_id', selectedEstimateId)
+      .limit(1);
+    hasLineItems = (lineItems?.length || 0) > 0;
   }
 
-  const hasContract = (contractsResult.data?.length || 0) > 0;
-  const hasEstimate = !!selectedEstimateId;
-  const hasMaterials = (materials?.length || 0) > 0;
-  const hasLabor = (labor?.length || 0) > 0;
-  const allComplete = hasContract && hasEstimate && hasMaterials && hasLabor;
+  // Validate each requirement based on its type
+  const dynamicReqs: DynamicRequirement[] = requirements.map((req) => {
+    let isComplete = false;
 
-  return { hasContract, hasEstimate, hasMaterials, hasLabor, allComplete };
+    switch (req.validation_type) {
+      case 'document':
+        // Check if a document of the matching type exists
+        // Map requirement key to document type
+        const docTypeMap: Record<string, string> = {
+          'contract': 'contract',
+          'notice_of_commencement': 'notice_of_commencement',
+        };
+        const expectedDocType = docTypeMap[req.requirement_key] || req.requirement_key;
+        isComplete = documents.some(d => d.document_type === expectedDocType);
+        break;
+      case 'estimate':
+        isComplete = !!selectedEstimateId;
+        break;
+      case 'line_items':
+        isComplete = hasLineItems;
+        break;
+      case 'photos':
+        isComplete = photoCount > 0;
+        break;
+      case 'custom':
+        // Custom validation would be defined in validation_config
+        isComplete = false;
+        break;
+    }
+
+    return {
+      id: req.id,
+      key: req.requirement_key,
+      label: req.label,
+      icon: req.icon_name,
+      isRequired: req.is_required,
+      isComplete,
+      sortOrder: req.sort_order,
+      validationType: req.validation_type,
+    };
+  });
+
+  // Build legacy object for backward compatibility
+  const hasContract = dynamicReqs.find(r => r.key === 'contract')?.isComplete || false;
+  const hasEstimate = dynamicReqs.find(r => r.key === 'estimate')?.isComplete || false;
+  const hasMaterials = dynamicReqs.find(r => r.key === 'notice_of_commencement')?.isComplete || false;
+  const hasLabor = dynamicReqs.find(r => r.key === 'required_photos')?.isComplete || false;
+  
+  // All required items must be complete
+  const requiredReqs = dynamicReqs.filter(r => r.isRequired);
+  const allComplete = requiredReqs.length > 0 && requiredReqs.every(r => r.isComplete);
+
+  return {
+    requirements: dynamicReqs,
+    legacy: { hasContract, hasEstimate, hasMaterials, hasLabor, allComplete }
+  };
 }
 
 // Fetch photos
@@ -177,7 +250,7 @@ async function fetchSalesReps(tenantId: string | null) {
     .eq('tenant_id', tenantId)
     .in('role', ['owner', 'corporate', 'regional_manager', 'sales_manager', 'project_manager'])
     .eq('is_active', true)
-    .neq('role', 'master') // Exclude master users from other tenant lists
+    .neq('role', 'master')
     .order('first_name');
 
   if (error) throw error;
@@ -193,14 +266,16 @@ export function useLeadDetails(id: string | undefined) {
     queryKey: ['lead', id],
     queryFn: () => fetchLeadDetails(id!),
     enabled: !!id,
-    staleTime: 30000, // 30 seconds
+    staleTime: 30000,
   });
 
-  // Approval requirements - parallel
-  const requirementsQuery = useQuery({
-    queryKey: ['lead-requirements', id],
-    queryFn: () => fetchApprovalRequirements(id!),
-    enabled: !!id,
+  const tenantId = leadQuery.data?.tenant_id;
+
+  // Dynamic requirements - fetched after we have tenant_id
+  const dynamicRequirementsQuery = useQuery({
+    queryKey: ['lead-dynamic-requirements', id, tenantId],
+    queryFn: () => fetchDynamicRequirements(tenantId!, id!),
+    enabled: !!id && !!tenantId,
     staleTime: 30000,
   });
 
@@ -220,36 +295,36 @@ export function useLeadDetails(id: string | undefined) {
     staleTime: 30000,
   });
 
-  // Get the tenant ID from the lead data for filtering sales reps
-  const tenantId = leadQuery.data?.tenant_id;
-
   // Sales reps - fetch based on lead's tenant
   const salesRepsQuery = useQuery({
     queryKey: ['sales-reps', tenantId],
     queryFn: () => fetchSalesReps(tenantId || null),
     enabled: !!tenantId,
-    staleTime: 300000, // 5 minutes - rarely changes
+    staleTime: 300000,
   });
 
   // Refetch functions
-  const refetchRequirements = () => requirementsQuery.refetch();
+  const refetchRequirements = () => dynamicRequirementsQuery.refetch();
   const refetchPhotos = () => photosQuery.refetch();
   const refetchLead = () => leadQuery.refetch();
 
   // Check if any critical data is still loading
   const isLoading = leadQuery.isLoading;
-  const isLoadingAll = leadQuery.isLoading || requirementsQuery.isLoading || photosQuery.isLoading;
+  const isLoadingAll = leadQuery.isLoading || dynamicRequirementsQuery.isLoading || photosQuery.isLoading;
 
   return {
     // Data
     lead: leadQuery.data,
-    requirements: requirementsQuery.data || {
+    // Legacy requirements for backward compatibility
+    requirements: dynamicRequirementsQuery.data?.legacy || {
       hasContract: false,
       hasEstimate: false,
       hasMaterials: false,
       hasLabor: false,
       allComplete: false
     },
+    // New dynamic requirements
+    dynamicRequirements: dynamicRequirementsQuery.data?.requirements || [],
     photos: photosQuery.data || [],
     productionStage: productionStageQuery.data,
     salesReps: salesRepsQuery.data || [],
@@ -258,7 +333,7 @@ export function useLeadDetails(id: string | undefined) {
     isLoading,
     isLoadingAll,
     isLoadingLead: leadQuery.isLoading,
-    isLoadingRequirements: requirementsQuery.isLoading,
+    isLoadingRequirements: dynamicRequirementsQuery.isLoading,
     isLoadingPhotos: photosQuery.isLoading,
     
     // Refetch functions
@@ -279,15 +354,10 @@ export function usePrefetchLeadDetails() {
   const queryClient = useQueryClient();
 
   return (id: string) => {
-    // Prefetch all lead data in parallel
+    // Prefetch lead data
     queryClient.prefetchQuery({
       queryKey: ['lead', id],
       queryFn: () => fetchLeadDetails(id),
-      staleTime: 30000,
-    });
-    queryClient.prefetchQuery({
-      queryKey: ['lead-requirements', id],
-      queryFn: () => fetchApprovalRequirements(id),
       staleTime: 30000,
     });
     queryClient.prefetchQuery({

@@ -11,6 +11,8 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useQuery } from '@tanstack/react-query';
 import { cn } from '@/lib/utils';
+import { getIcon } from '@/lib/iconMap';
+import type { DynamicRequirement } from '@/hooks/useLeadDetails';
 
 interface ApprovalRequirements {
   hasContract: boolean;
@@ -22,21 +24,32 @@ interface ApprovalRequirements {
 
 interface ApprovalRequirementsBubblesProps {
   requirements: ApprovalRequirements;
+  dynamicRequirements?: DynamicRequirement[];
   onApprove: () => void;
   disabled?: boolean;
   pipelineEntryId?: string;
   onUploadComplete?: () => void;
 }
 
-const bubbleSteps = [
-  { key: 'hasContract', label: 'Contract', icon: FileText, color: 'from-blue-500 to-blue-400' },
-  { key: 'hasEstimate', label: 'Estimate', icon: DollarSign, color: 'from-yellow-500 to-yellow-400' },
-  { key: 'hasMaterials', label: 'Notice of Commencement', icon: Package, color: 'from-purple-500 to-purple-400' },
-  { key: 'hasLabor', label: 'Required Photos', icon: Camera, color: 'from-orange-500 to-orange-400' },
+// Default bubble steps for backward compatibility
+const defaultBubbleSteps = [
+  { key: 'contract', label: 'Contract', icon: 'FileText', color: 'from-blue-500 to-blue-400', validationType: 'document' },
+  { key: 'estimate', label: 'Estimate', icon: 'DollarSign', color: 'from-yellow-500 to-yellow-400', validationType: 'estimate' },
+  { key: 'notice_of_commencement', label: 'Notice of Commencement', icon: 'Package', color: 'from-purple-500 to-purple-400', validationType: 'document' },
+  { key: 'required_photos', label: 'Required Photos', icon: 'Camera', color: 'from-orange-500 to-orange-400', validationType: 'photos' },
 ] as const;
+
+// Map keys to gradient colors
+const colorMap: Record<string, string> = {
+  'contract': 'from-blue-500 to-blue-400',
+  'estimate': 'from-yellow-500 to-yellow-400',
+  'notice_of_commencement': 'from-purple-500 to-purple-400',
+  'required_photos': 'from-orange-500 to-orange-400',
+};
 
 export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesProps> = ({
   requirements,
+  dynamicRequirements = [],
   onApprove,
   disabled = false,
   pipelineEntryId,
@@ -52,6 +65,30 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
   const [approvingJob, setApprovingJob] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+
+  // Use dynamic requirements if available, otherwise fall back to defaults
+  const bubbleSteps = dynamicRequirements.length > 0
+    ? dynamicRequirements.map(req => ({
+        key: req.key,
+        label: req.label,
+        icon: req.icon,
+        color: colorMap[req.key] || 'from-primary to-primary/80',
+        isComplete: req.isComplete,
+        isRequired: req.isRequired,
+        validationType: req.validationType,
+      }))
+    : defaultBubbleSteps.map(step => ({
+        key: step.key,
+        label: step.label,
+        icon: step.icon,
+        color: step.color,
+        isComplete: step.key === 'contract' ? requirements.hasContract 
+          : step.key === 'estimate' ? requirements.hasEstimate
+          : step.key === 'notice_of_commencement' ? requirements.hasMaterials
+          : requirements.hasLabor,
+        isRequired: step.key === 'contract' || step.key === 'estimate',
+        validationType: step.validationType,
+      }));
 
   // Check if user is manager/admin
   const { data: userProfile } = useQuery({
@@ -91,11 +128,9 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
     enabled: !!pipelineEntryId,
   });
   
-  const completedCount = Object.entries(requirements)
-    .filter(([key, value]) => key !== 'allComplete' && value === true)
-    .length;
-  
-  const progressPercentage = (completedCount / 4) * 100;
+  const completedCount = bubbleSteps.filter(step => step.isComplete).length;
+  const totalCount = bubbleSteps.length;
+  const progressPercentage = totalCount > 0 ? (completedCount / totalCount) * 100 : 0;
 
   const handleFileUpload = async (file: File, source: 'camera' | 'file') => {
     if (!pipelineEntryId) {
@@ -274,13 +309,9 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
   };
 
   const getMissingRequirements = () => {
-    const missing: string[] = [];
-    bubbleSteps.forEach(step => {
-      if (!requirements[step.key as keyof ApprovalRequirements]) {
-        missing.push(step.label);
-      }
-    });
-    return missing;
+    return bubbleSteps
+      .filter(step => step.isRequired && !step.isComplete)
+      .map(step => step.label);
   };
 
   return (
@@ -291,7 +322,7 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-medium">Progress</span>
             <span className="text-sm text-muted-foreground">
-              {completedCount} / 4 complete
+              {completedCount} / {totalCount} complete
             </span>
           </div>
           <Progress value={progressPercentage} className="h-2" />
@@ -319,15 +350,15 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
           <div className="flex-1">
             <div className="flex items-center justify-start gap-2 sm:gap-4 md:gap-5 flex-wrap">
           {bubbleSteps.map((step, index) => {
-            const isComplete = requirements[step.key as keyof ApprovalRequirements];
-            const Icon = step.icon;
+            const isComplete = step.isComplete;
+            const Icon = getIcon(step.icon);
             
             return (
               <React.Fragment key={step.key}>
                 {/* Bubble */}
                 <div className="flex flex-col items-center space-y-1 sm:space-y-2 relative">
                   {/* Circular Bubble */}
-                  {step.key === 'hasContract' && !isComplete ? (
+                  {step.key === 'contract' && !isComplete ? (
                     <Popover open={openPopover} onOpenChange={setOpenPopover}>
                       <PopoverTrigger asChild>
                         <div
@@ -365,7 +396,7 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
                         </div>
                       </PopoverContent>
                     </Popover>
-                  ) : step.key === 'hasEstimate' && !isComplete ? (
+                  ) : step.key === 'estimate' && !isComplete ? (
                     <Popover open={openEstimatePopover} onOpenChange={setOpenEstimatePopover}>
                       <PopoverTrigger asChild>
                         <div

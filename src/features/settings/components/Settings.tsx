@@ -50,6 +50,7 @@ import { DemoRequestsPanel } from "@/components/settings/DemoRequestsPanel";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { ApprovalRequirementsSettings } from "@/components/settings/ApprovalRequirementsSettings";
 
 interface SettingsTab {
   id: string;
@@ -199,12 +200,16 @@ export const Settings = () => {
             <TabsList>
               <TabsTrigger value="settings">General Settings</TabsTrigger>
               <TabsTrigger value="lead-sources">Lead Sources</TabsTrigger>
+              <TabsTrigger value="approval-requirements">Approval Requirements</TabsTrigger>
             </TabsList>
             <TabsContent value="settings">
               <GeneralSettings />
             </TabsContent>
             <TabsContent value="lead-sources">
               <LeadSources />
+            </TabsContent>
+            <TabsContent value="approval-requirements">
+              <ApprovalRequirementsSettings />
             </TabsContent>
           </Tabs>
         );
