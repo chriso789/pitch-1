@@ -617,3 +617,6 @@ verify_jwt = true
 
 [functions.update-estimate-line-items]
 verify_jwt = true
+
+[functions.backfill-tenant-defaults]
+verify_jwt = true

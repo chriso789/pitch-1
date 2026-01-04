@@ -90,7 +90,9 @@ serve(async (req: Request) => {
     }
 
     const results: { email: string; status: string; error?: string }[] = [];
-    const origin = req.headers.get("origin") || "https://pitch-1.lovable.app";
+    // Always use APP_URL with reliable production fallback - never rely on origin header
+    const appUrl = Deno.env.get("APP_URL") || "https://pitch-1.lovable.app";
+    const resetRedirectUrl = `${appUrl}/reset-password?onboarding=true`;
 
     for (const owner of OWNERS_TO_CREATE) {
       try {
@@ -194,12 +196,12 @@ serve(async (req: Request) => {
           .eq("id", owner.tenantId)
           .single();
 
-        // Generate invite link for password setup
+        // Generate invite link for password setup - use standardized resetRedirectUrl
         const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
           type: "invite",
           email: owner.email,
           options: {
-            redirectTo: `${origin}/login`
+            redirectTo: resetRedirectUrl
           }
         });
 

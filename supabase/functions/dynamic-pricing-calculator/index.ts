@@ -1,14 +1,11 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+// Remove xhr import - not needed and causes deployment issues
+import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
 interface PricingRequest {
   tenantId: string;
@@ -30,6 +27,8 @@ serve(async (req) => {
   }
 
   try {
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     const pricingRequest: PricingRequest = await req.json();
 
@@ -48,7 +47,8 @@ serve(async (req) => {
 
     console.log(`Calculating dynamic pricing for tenant ${tenantId}, ZIP ${zipCode}`);
 
-    if (!tenantId || !baseCost || !laborCost || !zipCode) {
+    // Validate required fields - use explicit checks to allow 0 values
+    if (!tenantId || baseCost === undefined || laborCost === undefined || !zipCode) {
       throw new Error('tenantId, baseCost, laborCost, and zipCode are required');
     }
 
@@ -68,25 +68,21 @@ serve(async (req) => {
       throw new Error('No active pricing configuration found for tenant');
     }
 
-    // Get weather data if not provided
+    // Get weather data if not provided - use supabase.functions.invoke instead of direct HTTP
     let finalWeatherRiskScore = weatherRiskScore || 0;
     let weatherData = null;
 
-    if (!weatherRiskScore && zipCode) {
+    if (weatherRiskScore === undefined && zipCode) {
       try {
-        const weatherResponse = await fetch(`${supabaseUrl}/functions/v1/weather-risk-analyzer`, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${supabaseServiceKey}`,
-          },
-          body: JSON.stringify({ zipCode, tenantId })
+        const { data: weatherResult, error: weatherError } = await supabase.functions.invoke('weather-risk-analyzer', {
+          body: { zipCode, tenantId }
         });
 
-        if (weatherResponse.ok) {
-          const weatherResult = await weatherResponse.json();
+        if (!weatherError && weatherResult) {
           finalWeatherRiskScore = weatherResult.riskScore || 0;
           weatherData = weatherResult.weatherData;
+        } else if (weatherError) {
+          console.warn(`Weather function error: ${weatherError.message}`);
         }
       } catch (error) {
         console.warn(`Failed to get weather data: ${error instanceof Error ? error.message : String(error)}`);
