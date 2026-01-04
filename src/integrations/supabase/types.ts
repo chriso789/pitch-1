@@ -1722,6 +1722,82 @@ export type Database = {
         }
         Relationships: []
       }
+      business_locations: {
+        Row: {
+          address: Json | null
+          code: string | null
+          created_at: string | null
+          email: string | null
+          id: string
+          is_headquarters: boolean | null
+          lead_routing_rules: Json | null
+          manager_id: string | null
+          name: string
+          phone: string | null
+          settings: Json | null
+          status: string | null
+          tenant_id: string
+          territory_geojson: Json | null
+          updated_at: string | null
+        }
+        Insert: {
+          address?: Json | null
+          code?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          is_headquarters?: boolean | null
+          lead_routing_rules?: Json | null
+          manager_id?: string | null
+          name: string
+          phone?: string | null
+          settings?: Json | null
+          status?: string | null
+          tenant_id: string
+          territory_geojson?: Json | null
+          updated_at?: string | null
+        }
+        Update: {
+          address?: Json | null
+          code?: string | null
+          created_at?: string | null
+          email?: string | null
+          id?: string
+          is_headquarters?: boolean | null
+          lead_routing_rules?: Json | null
+          manager_id?: string | null
+          name?: string
+          phone?: string | null
+          settings?: Json | null
+          status?: string | null
+          tenant_id?: string
+          territory_geojson?: Json | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "business_locations_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "business_locations_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "business_locations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       button_audit_results: {
         Row: {
           button_name: string | null
@@ -4462,6 +4538,85 @@ export type Database = {
             columns: ["competition_id"]
             isOneToOne: false
             referencedRelation: "canvass_competitions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      compliance_items: {
+        Row: {
+          alert_days: number | null
+          assigned_to: string | null
+          created_at: string | null
+          document_url: string | null
+          expiry_date: string
+          id: string
+          issue_date: string | null
+          issuing_authority: string | null
+          item_type: string
+          metadata: Json | null
+          name: string
+          notes: string | null
+          number: string | null
+          status: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          alert_days?: number | null
+          assigned_to?: string | null
+          created_at?: string | null
+          document_url?: string | null
+          expiry_date: string
+          id?: string
+          issue_date?: string | null
+          issuing_authority?: string | null
+          item_type: string
+          metadata?: Json | null
+          name: string
+          notes?: string | null
+          number?: string | null
+          status?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          alert_days?: number | null
+          assigned_to?: string | null
+          created_at?: string | null
+          document_url?: string | null
+          expiry_date?: string
+          id?: string
+          issue_date?: string | null
+          issuing_authority?: string | null
+          item_type?: string
+          metadata?: Json | null
+          name?: string
+          notes?: string | null
+          number?: string | null
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "compliance_items_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "compliance_items_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "compliance_items_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
