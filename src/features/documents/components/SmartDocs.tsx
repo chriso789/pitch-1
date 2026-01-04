@@ -4,13 +4,31 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, FileText, Folder, Upload, Download, Mail, Sparkles, FolderUp } from "lucide-react";
+import { 
+  Plus, 
+  Search, 
+  FileText, 
+  Folder, 
+  Upload, 
+  Download, 
+  Mail, 
+  Sparkles, 
+  FolderUp,
+  Eye,
+  Pencil,
+  Tag,
+  UserPlus
+} from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { TemplateEditor } from "./TemplateEditor";
 import { TemplateLibrary } from "./TemplateLibrary";
 import { ProfessionalTemplatesDialog } from "@/components/documents/ProfessionalTemplatesDialog";
 import { BulkDocumentUpload } from "./BulkDocumentUpload";
+import { DocumentPreviewModal } from "@/components/documents/DocumentPreviewModal";
+import { DocumentRenameDialog } from "./DocumentRenameDialog";
+import { DocumentTagEditor } from "./DocumentTagEditor";
+import { ApplyDocumentToLeadDialog } from "./ApplyDocumentToLeadDialog";
 
 interface SmartDocTemplate {
   id: string;
@@ -31,10 +49,20 @@ interface SmartDocFolder {
   created_at: string;
 }
 
+interface CompanyDoc {
+  id: string;
+  filename: string;
+  file_path: string;
+  file_size: number;
+  mime_type: string;
+  description: string;
+  created_at: string;
+}
+
 const SmartDocs = () => {
   const [templates, setTemplates] = useState<SmartDocTemplate[]>([]);
   const [folders, setFolders] = useState<SmartDocFolder[]>([]);
-  const [companyDocs, setCompanyDocs] = useState<any[]>([]);
+  const [companyDocs, setCompanyDocs] = useState<CompanyDoc[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [showEditor, setShowEditor] = useState(false);
@@ -42,6 +70,12 @@ const SmartDocs = () => {
   const [loading, setLoading] = useState(true);
   const [showProfessionalTemplates, setShowProfessionalTemplates] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
+  
+  // New state for document actions
+  const [previewDoc, setPreviewDoc] = useState<CompanyDoc | null>(null);
+  const [renameDoc, setRenameDoc] = useState<CompanyDoc | null>(null);
+  const [tagEditorDoc, setTagEditorDoc] = useState<CompanyDoc | null>(null);
+  const [applyToLeadDoc, setApplyToLeadDoc] = useState<CompanyDoc | null>(null);
 
   useEffect(() => {
     loadData();
@@ -164,7 +198,7 @@ const SmartDocs = () => {
     }
   };
 
-  const handleDownload = async (doc: any) => {
+  const handleDownload = async (doc: CompanyDoc) => {
     try {
       const { data, error } = await supabase.storage
         .from('smartdoc-assets')
@@ -207,6 +241,20 @@ const SmartDocs = () => {
       <div className="flex items-center justify-center h-64">
         <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
       </div>
+    );
+  }
+
+  // Show tag editor fullscreen
+  if (tagEditorDoc) {
+    return (
+      <DocumentTagEditor
+        document={tagEditorDoc}
+        onClose={() => setTagEditorDoc(null)}
+        onSave={() => {
+          setTagEditorDoc(null);
+          loadData();
+        }}
+      />
     );
   }
 
@@ -343,12 +391,21 @@ const SmartDocs = () => {
                       </p>
                     </div>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap justify-end">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPreviewDoc(doc)}
+                      className="gap-1"
+                    >
+                      <Eye className="h-4 w-4" />
+                      Preview
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => handleDownload(doc)}
-                      className="gap-2"
+                      className="gap-1"
                     >
                       <Download className="h-4 w-4" />
                       Download
@@ -356,11 +413,29 @@ const SmartDocs = () => {
                     <Button
                       size="sm"
                       variant="outline"
-                      onClick={() => toast.info('Email functionality coming soon')}
-                      className="gap-2"
+                      onClick={() => setRenameDoc(doc)}
+                      className="gap-1"
                     >
-                      <Mail className="h-4 w-4" />
-                      Email
+                      <Pencil className="h-4 w-4" />
+                      Rename
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setTagEditorDoc(doc)}
+                      className="gap-1"
+                    >
+                      <Tag className="h-4 w-4" />
+                      Edit Tags
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="default"
+                      onClick={() => setApplyToLeadDoc(doc)}
+                      className="gap-1"
+                    >
+                      <UserPlus className="h-4 w-4" />
+                      Apply to Lead
                     </Button>
                   </div>
                 </div>
@@ -408,6 +483,37 @@ const SmartDocs = () => {
           </div>
         </TabsContent>
       </Tabs>
+
+      {/* Preview Modal */}
+      <DocumentPreviewModal
+        isOpen={!!previewDoc}
+        onClose={() => setPreviewDoc(null)}
+        document={previewDoc ? {
+          id: previewDoc.id,
+          filename: previewDoc.filename,
+          file_path: previewDoc.file_path,
+          mime_type: previewDoc.mime_type
+        } : null}
+        onDownload={() => previewDoc && handleDownload(previewDoc)}
+      />
+
+      {/* Rename Dialog */}
+      <DocumentRenameDialog
+        open={!!renameDoc}
+        onOpenChange={(open) => !open && setRenameDoc(null)}
+        document={renameDoc}
+        onRenameComplete={() => {
+          setRenameDoc(null);
+          loadData();
+        }}
+      />
+
+      {/* Apply to Lead Dialog */}
+      <ApplyDocumentToLeadDialog
+        open={!!applyToLeadDoc}
+        onOpenChange={(open) => !open && setApplyToLeadDoc(null)}
+        document={applyToLeadDoc}
+      />
     </div>
   );
 };
