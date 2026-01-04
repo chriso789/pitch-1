@@ -79,12 +79,14 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Generate password reset link via Supabase Admin API
+    // Generate password reset link via Supabase Admin API - use APP_URL with reliable production fallback
+    const appUrl = Deno.env.get("APP_URL") || "https://pitch-1.lovable.app";
+    const resetRedirectUrl = redirectUrl || `${appUrl}/reset-password`;
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
       type: 'recovery',
       email: authUser.email!,
       options: {
-        redirectTo: redirectUrl || 'https://id-preview--6af530d9-2698-4529-aba4-165abe9112fb.lovable.app/reset-password'
+        redirectTo: resetRedirectUrl
       }
     });
 

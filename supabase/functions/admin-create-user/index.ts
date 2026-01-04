@@ -198,13 +198,14 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('User creation failed');
     }
 
-    // Generate invite link for password setup
+    // Generate invite link for password setup - use APP_URL with reliable production fallback
     const appUrl = Deno.env.get("APP_URL") || "https://pitch-1.lovable.app";
+    const resetRedirectUrl = `${appUrl}/reset-password?onboarding=true`;
     const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.generateLink({
       type: 'invite',
       email: email,
       options: {
-        redirectTo: `${appUrl}/reset-password`
+        redirectTo: resetRedirectUrl
       }
     });
 

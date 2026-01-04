@@ -379,7 +379,50 @@ serve(async (req) => {
       }
     }
 
-    // ===== 8. AUTO-PROVISION OWNER =====
+    // 8. Create default dynamic_pricing_config (CRITICAL for pricing features)
+    const { data: existingPricingConfig } = await supabase
+      .from('dynamic_pricing_config')
+      .select('id')
+      .eq('tenant_id', tenant_id)
+      .maybeSingle();
+
+    if (!existingPricingConfig) {
+      const defaultPricingConfig = {
+        tenant_id,
+        base_markup_percent: 25,
+        min_margin_percent: 15,
+        max_margin_percent: 45,
+        weather_risk_multiplier: 1.15,
+        backlog_multiplier: 1.10,
+        season_multipliers: {
+          spring: 1.05,
+          summer: 1.10,
+          fall: 1.00,
+          winter: 0.95
+        },
+        vendor_leadtime_multipliers: {
+          "0-7": 1.00,
+          "8-14": 1.02,
+          "15-30": 1.05,
+          "30+": 1.08
+        },
+        price_anomaly_threshold_percent: 15,
+        is_active: true
+      };
+
+      const { error: pricingError } = await supabase
+        .from('dynamic_pricing_config')
+        .insert(defaultPricingConfig);
+
+      if (pricingError) {
+        console.error('[initialize-company] Error creating dynamic_pricing_config:', pricingError);
+      } else {
+        console.log('[initialize-company] Created dynamic_pricing_config');
+        results.dynamic_pricing_config = true;
+      }
+    }
+
+    // ===== 9. AUTO-PROVISION OWNER =====
     if (tenant.owner_email) {
       console.log(`[initialize-company] Auto-provisioning owner: ${tenant.owner_email}`);
       
