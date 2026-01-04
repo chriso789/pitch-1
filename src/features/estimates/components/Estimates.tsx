@@ -21,14 +21,18 @@ import {
   AlertCircle,
   FileX,
   GitBranch,
-  History
+  History,
+  Lock
 } from "lucide-react";
 import EstimateVersionControl from './EstimateVersionControl';
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { canViewAllEstimates } from '@/lib/roleUtils';
 
 const Estimates = () => {
+  const { user } = useCurrentUser();
   const [estimates, setEstimates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [filters, setFilters] = useState({
@@ -43,6 +47,8 @@ const Estimates = () => {
   const [versionControlOpen, setVersionControlOpen] = useState(false);
   const [selectedEstimateId, setSelectedEstimateId] = useState<string | null>(null);
   const { toast } = useToast();
+  
+  const canSeeAllEstimates = user && canViewAllEstimates(user.role);
 
   const estimateStatuses = [
     { key: 'draft', label: 'Draft', color: 'bg-muted text-muted-foreground', icon: FileX },
@@ -53,39 +59,27 @@ const Estimates = () => {
   ];
 
   useEffect(() => {
-    fetchEstimates();
-  }, [filters]);
+    if (user) {
+      fetchEstimates();
+    }
+  }, [filters, user]);
 
   const fetchEstimates = async () => {
+    if (!user) return;
+    
     try {
       setLoading(true);
       
-      // Build query with filters
+      // Build query - enhanced_estimates has sales_rep_id directly
       let query = supabase
-        .from('estimates')
-        .select(`
-          *,
-          pipeline_entries (
-            id,
-            roof_type,
-            probability_percent,
-            assigned_to,
-            contacts (
-              first_name,
-              last_name,
-              email,
-              phone,
-              address_street,
-              address_city,
-              address_state,
-              address_zip
-            ),
-            profiles!pipeline_entries_assigned_to_fkey (
-              first_name,
-              last_name
-            )
-          )
-        `);
+        .from('enhanced_estimates')
+        .select('*')
+        .eq('tenant_id', user.tenant_id);
+
+      // Apply role-based filter - users below sales_manager can only see their own estimates
+      if (!canSeeAllEstimates) {
+        query = query.eq('sales_rep_id', user.id);
+      }
 
       // Apply date filters
       if (filters.dateFrom) {
@@ -112,36 +106,55 @@ const Estimates = () => {
         return;
       }
 
-      // Filter data based on sales rep and location
-      let filteredData = data || [];
+      // Get unique sales rep IDs for fetching names
+      const salesRepIds = [...new Set(data?.map(e => e.sales_rep_id).filter(Boolean))];
       
+      // Fetch sales rep profiles
+      let salesRepMap: Record<string, { first_name: string; last_name: string }> = {};
+      if (salesRepIds.length > 0) {
+        const { data: profiles } = await supabase
+          .from('profiles')
+          .select('id, first_name, last_name')
+          .in('id', salesRepIds);
+        
+        profiles?.forEach(p => {
+          salesRepMap[p.id] = { first_name: p.first_name, last_name: p.last_name };
+        });
+      }
+
+      // Enrich estimates with sales rep info
+      let enrichedData = (data || []).map(estimate => ({
+        ...estimate,
+        sales_rep: estimate.sales_rep_id ? salesRepMap[estimate.sales_rep_id] : null
+      }));
+      
+      // Apply sales rep filter (for managers viewing all)
       if (filters.salesRep && filters.salesRep !== 'all') {
-        filteredData = filteredData.filter(estimate => {
-          const profile = estimate.pipeline_entries?.profiles;
-          return profile && `${profile.first_name} ${profile.last_name}` === filters.salesRep;
+        enrichedData = enrichedData.filter(estimate => {
+          const rep = estimate.sales_rep;
+          return rep && `${rep.first_name} ${rep.last_name}` === filters.salesRep;
         });
       }
       
       if (filters.location && filters.location !== 'all') {
-        filteredData = filteredData.filter(estimate => {
-          const contact = estimate.pipeline_entries?.contacts;
-          return contact?.address_city?.toLowerCase().includes(filters.location.toLowerCase());
+        enrichedData = enrichedData.filter(estimate => {
+          return estimate.customer_address?.toLowerCase().includes(filters.location.toLowerCase());
         });
       }
 
       // Extract unique sales reps and locations for filter options
-      const uniqueReps = [...new Set(data?.map(estimate => {
-        const profile = estimate.pipeline_entries?.profiles;
-        return profile ? `${profile.first_name} ${profile.last_name}` : null;
+      const uniqueReps = [...new Set(enrichedData?.map(estimate => {
+        const rep = estimate.sales_rep;
+        return rep ? `${rep.first_name} ${rep.last_name}` : null;
       }).filter(Boolean))];
       
-      const uniqueLocations = [...new Set(data?.map(estimate => 
-        estimate.pipeline_entries?.contacts?.address_city
+      const uniqueLocations = [...new Set(enrichedData?.map(estimate => 
+        estimate.customer_address?.split(',')[1]?.trim() // Extract city from address
       ).filter(Boolean))];
       
       setSalesReps(uniqueReps);
       setLocations(uniqueLocations);
-      setEstimates(filteredData);
+      setEstimates(enrichedData);
     } catch (error) {
       console.error('Error in fetchEstimates:', error);
       toast({
@@ -193,8 +206,7 @@ const Estimates = () => {
   };
 
   const renderEstimateCard = (estimate) => {
-    const contact = estimate.pipeline_entries?.contacts;
-    const profile = estimate.pipeline_entries?.profiles;
+    const salesRep = estimate.sales_rep;
     const statusInfo = getStatusInfo(estimate.status);
     
     return (
@@ -205,10 +217,10 @@ const Estimates = () => {
               <span className="font-mono text-sm text-muted-foreground">
                 {estimate.estimate_number || `EST-${estimate.id.slice(-4)}`}
               </span>
-              <h3 className="font-semibold">{formatName(contact)}</h3>
-              {profile && (
+              <h3 className="font-semibold">{estimate.customer_name || 'Unknown Customer'}</h3>
+              {salesRep && (
                 <p className="text-sm text-muted-foreground">
-                  Rep: {profile.first_name} {profile.last_name}
+                  Rep: {salesRep.first_name} {salesRep.last_name}
                 </p>
               )}
             </div>
@@ -219,21 +231,19 @@ const Estimates = () => {
           </div>
           
           <div className="space-y-2 text-sm">
-            <div className="flex items-center gap-2 text-muted-foreground">
-              <MapPin className="h-4 w-4" />
-              <span>{formatAddress(contact)}</span>
-            </div>
-            
-            {contact?.phone && (
+            {estimate.customer_address && (
               <div className="flex items-center gap-2 text-muted-foreground">
-                <Phone className="h-4 w-4" />
-                <span>{contact.phone}</span>
+                <MapPin className="h-4 w-4" />
+                <span>{estimate.customer_address}</span>
               </div>
             )}
             
             <div className="flex items-center gap-2 text-primary font-medium">
               <FileText className="h-4 w-4" />
-              <span>{estimate.pipeline_entries?.roof_type || 'Roofing Project'}</span>
+              <span>{estimate.roof_pitch ? `${estimate.roof_pitch} Pitch` : 'Roofing Project'}</span>
+              {estimate.roof_area_sq_ft && (
+                <span className="text-muted-foreground">• {estimate.roof_area_sq_ft.toLocaleString()} sq ft</span>
+              )}
             </div>
             
             <div className="grid grid-cols-2 gap-4">
@@ -242,7 +252,7 @@ const Estimates = () => {
                 <span>{formatCurrency(estimate.selling_price)}</span>
               </div>
               <div className="text-right text-sm text-muted-foreground">
-                Margin: {estimate.actual_margin_percent ? `${estimate.actual_margin_percent.toFixed(1)}%` : 'TBD'}
+                Margin: {estimate.actual_profit_percent ? `${Number(estimate.actual_profit_percent).toFixed(1)}%` : 'TBD'}
               </div>
             </div>
 
@@ -252,7 +262,7 @@ const Estimates = () => {
                 <div>Material: {formatCurrency(estimate.material_cost)}</div>
                 <div>Labor: {formatCurrency(estimate.labor_cost)}</div>
                 <div>Overhead: {formatCurrency(estimate.overhead_amount)}</div>
-                <div>Profit: {formatCurrency(estimate.actual_profit)}</div>
+                <div>Profit: {formatCurrency(estimate.actual_profit_amount)}</div>
               </div>
             </div>
 
@@ -260,8 +270,8 @@ const Estimates = () => {
             <div className="mt-3 pt-3 border-t">
               <div className="flex justify-between text-xs text-muted-foreground">
                 <span>Created: {new Date(estimate.created_at).toLocaleDateString()}</span>
-                {estimate.valid_until && (
-                  <span>Valid Until: {new Date(estimate.valid_until).toLocaleDateString()}</span>
+                {estimate.expires_at && (
+                  <span>Expires: {new Date(estimate.expires_at).toLocaleDateString()}</span>
                 )}
               </div>
             </div>
@@ -301,13 +311,23 @@ const Estimates = () => {
     <div className="space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold gradient-primary bg-clip-text text-transparent">
-            Estimates
-          </h1>
-          <p className="text-muted-foreground">
-            Manage pricing proposals and estimates
-          </p>
+        <div className="flex items-center gap-3">
+          <div>
+            <h1 className="text-3xl font-bold gradient-primary bg-clip-text text-transparent">
+              Estimates
+            </h1>
+            <p className="text-muted-foreground">
+              {canSeeAllEstimates 
+                ? "View all company estimates" 
+                : "Your assigned estimates"}
+            </p>
+          </div>
+          {!canSeeAllEstimates && (
+            <Badge variant="outline" className="h-fit">
+              <Lock className="h-3 w-3 mr-1" />
+              My Estimates Only
+            </Badge>
+          )}
         </div>
         <Button className="gradient-primary">
           <FileText className="h-4 w-4 mr-2" />
@@ -413,9 +433,11 @@ const Estimates = () => {
               <FileText className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
               <h3 className="text-lg font-semibold mb-2">No estimates found</h3>
               <p className="text-muted-foreground mb-4">
-                {Object.values(filters).some(f => f !== 'all' && f !== '') 
-                  ? "Try adjusting your filters or create a new estimate"
-                  : "Create your first estimate to get started"
+                {!canSeeAllEstimates 
+                  ? "You don't have any assigned estimates yet. Create your first estimate or ask a manager to assign leads to you."
+                  : Object.values(filters).some(f => f !== 'all' && f !== '') 
+                    ? "Try adjusting your filters or create a new estimate"
+                    : "Create your first estimate to get started"
                 }
               </p>
               <Button className="gradient-primary">
