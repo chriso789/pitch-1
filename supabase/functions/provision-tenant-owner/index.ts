@@ -176,9 +176,9 @@ serve(async (req) => {
       console.log("[provision-tenant-owner] Company access granted for user:", userId);
     }
 
-    // Step 5: Generate invite link (for password setup)
-    const appUrl = Deno.env.get("APP_URL") || "https://pitch-crm.lovable.app";
-    const resetRedirectUrl = `${appUrl}/reset-password`;
+    // Step 5: Generate invite link (for password setup) - use APP_URL env var with reliable production fallback
+    const appUrl = Deno.env.get("APP_URL") || "https://pitch-1.lovable.app";
+    const resetRedirectUrl = `${appUrl}/reset-password?onboarding=true`;
     
     const { data: inviteData, error: inviteError } = await supabase.auth.admin.generateLink({
       type: "invite",
