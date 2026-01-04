@@ -10,6 +10,17 @@ const corsHeaders = {
     "authorization, x-client-info, apikey, content-type",
 };
 
+// Centralized email config - demo requests go to admin
+const DEMO_RECIPIENT = 'demos@pitch-crm.ai';
+
+function getFromEmail(): string {
+  const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN");
+  if (fromDomain) {
+    return `demos@${fromDomain}`;
+  }
+  return 'onboarding@resend.dev';
+}
+
 interface DemoRequestData {
   firstName: string;
   lastName: string;
@@ -22,12 +33,10 @@ interface DemoRequestData {
 }
 
 const handler = async (req: Request): Promise<Response> => {
-  // Handle CORS preflight requests
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
   }
 
-  // Initialize Supabase client
   const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
   const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const supabase = createClient(supabaseUrl, supabaseServiceKey);
@@ -44,7 +53,7 @@ const handler = async (req: Request): Promise<Response> => {
       timestamp: new Date().toISOString()
     });
 
-    // First, log the request to database (even if email fails)
+    // First, log the request to database
     const { data: insertedRequest, error: insertError } = await supabase
       .from('demo_requests')
       .insert({
@@ -140,24 +149,20 @@ const handler = async (req: Request): Promise<Response> => {
       </div>
     `;
 
-    // Use verified domain from environment
-    const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
-    const fromAddress = `PITCH CRM Demos <demos@${fromDomain}>`;
+    const fromEmail = getFromEmail();
+    const fromAddress = `PITCH CRM Demos <${fromEmail}>`;
     
-    console.log("[send-demo-request] Sending email from:", fromAddress);
+    console.log("[send-demo-request] Sending email from:", fromAddress, "to:", DEMO_RECIPIENT);
     
-    // Send to multiple recipients for redundancy
     const emailResponse = await resend.emails.send({
       from: fromAddress,
-      to: ["chrisobrien91@gmail.com", "chris.obfla@gmail.com"],
+      to: [DEMO_RECIPIENT],
       replyTo: requestData.email,
       subject: `🎯 Demo Request: ${requestData.firstName} ${requestData.lastName} from ${requestData.companyName}`,
       html: emailHtml,
     });
     
     console.log("[send-demo-request] Resend API response:", JSON.stringify(emailResponse));
-
-    console.log("[send-demo-request] Email sent successfully:", emailResponse);
 
     // Update database record with email status
     if (insertedRequest?.id) {
@@ -183,13 +188,9 @@ const handler = async (req: Request): Promise<Response> => {
   } catch (error: any) {
     console.error("[send-demo-request] Error:", error);
     
-    // Try to update database with error if we have a record
+    // Try to update database with error
     if (requestData) {
       try {
-        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-        const supabaseServiceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-        const supabase = createClient(supabaseUrl, supabaseServiceKey);
-        
         await supabase
           .from('demo_requests')
           .update({ 

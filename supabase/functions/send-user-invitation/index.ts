@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { Resend } from "https://esm.sh/resend@2.0.0";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
@@ -7,6 +8,28 @@ const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
+
+// Centralized email config
+const EMAIL_CONFIG = {
+  bcc: 'admin@pitch-crm.ai',
+  brand: {
+    name: 'PITCH CRM',
+    primaryColor: '#2563eb',
+    secondaryColor: '#3b82f6',
+  },
+  urls: {
+    login: 'https://pitch-1.lovable.app/login',
+  },
+  linkExpirationHours: 24,
+};
+
+function getFromEmail(): string {
+  const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN");
+  if (fromDomain) {
+    return `onboarding@${fromDomain}`;
+  }
+  return 'onboarding@resend.dev';
+}
 
 interface UserInvitationRequest {
   email: string;
@@ -22,15 +45,14 @@ interface UserInvitationRequest {
   passwordSetupLink?: string;
   settingsLink?: string;
   loginUrl?: string;
-  // Company branding
   companyLogo?: string;
   companyPrimaryColor?: string;
   companySecondaryColor?: string;
-  // Owner personal touch
   ownerName?: string;
   ownerHeadshot?: string;
   ownerTitle?: string;
   ownerEmail?: string;
+  tenantId?: string;
 }
 
 const getEmailTemplate = (data: UserInvitationRequest): { subject: string; html: string } => {
@@ -52,14 +74,12 @@ const getEmailTemplate = (data: UserInvitationRequest): { subject: string; html:
     ownerTitle
   } = data;
   
-  // Use company colors or defaults
-  const primaryColor = companyPrimaryColor || '#1e40af';
-  const secondaryColor = companySecondaryColor || '#3b82f6';
-  const displayLoginUrl = loginUrl || 'https://pitch-1.lovable.app/login';
+  const primaryColor = companyPrimaryColor || EMAIL_CONFIG.brand.primaryColor;
+  const secondaryColor = companySecondaryColor || EMAIL_CONFIG.brand.secondaryColor;
+  const displayLoginUrl = loginUrl || EMAIL_CONFIG.urls.login;
   
   const roleDisplayName = role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
 
-  // Role-specific descriptions
   const roleDescriptions: Record<string, string> = {
     owner: 'As an Owner, you have full access to manage your company, team members, and all business operations.',
     corporate: 'You have company-wide visibility and team leadership capabilities across all locations.',
@@ -152,8 +172,7 @@ const getEmailTemplate = (data: UserInvitationRequest): { subject: string; html:
     `;
   }
 
-  // REP-SPECIFIC subject line - clearly different from owner email
-  const subject = `🎉 Congratulations! You've been added to ${companyName} CRM`;
+  const subject = `🎉 Welcome to ${companyName} - Create Your Password`;
 
   const html = `
 <!DOCTYPE html>
@@ -179,10 +198,10 @@ const getEmailTemplate = (data: UserInvitationRequest): { subject: string; html:
         </div>
       `}
       <h1 style="color: white; margin: 0 0 8px 0; font-size: 28px; font-weight: 700;">
-        Congratulations, ${firstName}! 🎉
+        Welcome, ${firstName}! 🎉
       </h1>
       <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 18px; font-weight: 500;">
-        You've been added to ${companyName}'s CRM
+        You've been added to ${companyName}
       </p>
     </div>
     
@@ -209,7 +228,7 @@ const getEmailTemplate = (data: UserInvitationRequest): { subject: string; html:
       <!-- Getting Started Box -->
       <div style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border: 1px solid #86efac; border-radius: 12px; padding: 24px; margin: 24px 0;">
         <h3 style="margin: 0 0 16px 0; color: #166534; font-size: 16px; font-weight: 600;">
-          📋 Getting Started - 3 Simple Steps
+          📋 Getting Started
         </h3>
         <div style="display: grid; gap: 12px;">
           <div style="display: flex; align-items: center; gap: 12px;">
@@ -218,7 +237,7 @@ const getEmailTemplate = (data: UserInvitationRequest): { subject: string; html:
           </div>
           <div style="display: flex; align-items: center; gap: 12px;">
             <div style="width: 28px; height: 28px; border-radius: 50%; background: #22c55e; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;">2</div>
-            <span style="color: #374151; font-size: 15px;"><strong>Log in</strong> at <a href="${displayLoginUrl}" style="color: ${primaryColor}; text-decoration: underline;">${displayLoginUrl}</a></span>
+            <span style="color: #374151; font-size: 15px;"><strong>Log in</strong> and explore the CRM</span>
           </div>
           <div style="display: flex; align-items: center; gap: 12px;">
             <div style="width: 28px; height: 28px; border-radius: 50%; background: #22c55e; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;">3</div>
@@ -237,12 +256,15 @@ const getEmailTemplate = (data: UserInvitationRequest): { subject: string; html:
             Create My Password →
           </a>
           <p style="margin: 16px 0 0 0; font-size: 13px; color: #9ca3af;">
-            ⏰ This link expires in 24 hours
+            ⏰ This link expires in ${EMAIL_CONFIG.linkExpirationHours} hours
           </p>
         ` : `
-          <p style="color: #6b7280; font-size: 14px; margin: 0;">
-            Your administrator will provide your login credentials.
-          </p>
+          <a 
+            href="${displayLoginUrl}" 
+            style="display: inline-block; background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); color: white; padding: 18px 48px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 18px; box-shadow: 0 4px 14px ${primaryColor}40;"
+          >
+            Go to Login →
+          </a>
         `}
       </div>
       
@@ -259,7 +281,7 @@ const getEmailTemplate = (data: UserInvitationRequest): { subject: string; html:
           </a>
         </div>
         <p style="font-size: 13px; color: #9ca3af; margin: 0 0 8px 0; text-align: center;">
-          Questions? Contact your administrator for assistance.
+          Questions? Reply to this email for support.
         </p>
         <p style="font-size: 12px; color: #d1d5db; margin: 0; text-align: center;">
           © ${new Date().getFullYear()} ${companyName}. All rights reserved.
@@ -282,58 +304,63 @@ const handler = async (req: Request): Promise<Response> => {
 
   try {
     const requestData: UserInvitationRequest = await req.json();
-    const { email, companyName } = requestData;
+    const { email, companyName, tenantId } = requestData;
 
-    // Admin BCC for all user creation emails
-    const ADMIN_BCC_EMAIL = 'chris@obriencontractingusa.com';
-
-    console.log('Sending personalized onboarding email to:', email, 'for company:', companyName);
-    console.log('BCC copy to:', ADMIN_BCC_EMAIL);
-    console.log('User details:', {
-      email,
-      firstName: requestData.firstName,
-      lastName: requestData.lastName,
-      role: requestData.role,
-      company: companyName,
-      payType: requestData.payType,
-      hourlyRate: requestData.hourlyRate,
-      commissionRate: requestData.commissionRate
-    });
-    console.log('Company branding:', {
-      logo: requestData.companyLogo ? 'provided' : 'none',
-      primaryColor: requestData.companyPrimaryColor,
-      ownerName: requestData.ownerName,
-      ownerHeadshot: requestData.ownerHeadshot ? 'provided' : 'none'
-    });
+    console.log('[send-user-invitation] Sending personalized onboarding email to:', email, 'for company:', companyName);
 
     const { subject, html } = getEmailTemplate(requestData);
 
-    // Sanitize company name for email "from" field - remove special characters
+    // Sanitize company name for email "from" field
     const sanitizedCompanyName = (companyName || 'PITCH CRM').replace(/[<>'"]/g, '');
+    const fromEmail = getFromEmail();
     
-    // Use verified domain from environment
-    const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "resend.dev";
-    const fromEmail = `onboarding@${fromDomain}`;
-    
-    console.log('Sending from:', `${sanitizedCompanyName} <${fromEmail}>`);
-    console.log('Sending TO:', email);
+    console.log('[send-user-invitation] Sending from:', `${sanitizedCompanyName} <${fromEmail}>`);
 
     const emailResponse = await resend.emails.send({
       from: `${sanitizedCompanyName} <${fromEmail}>`,
       to: [email],
-      bcc: [ADMIN_BCC_EMAIL],
+      bcc: [EMAIL_CONFIG.bcc],
       subject,
       html,
     });
 
-    console.log("Email sent successfully:", emailResponse);
+    console.log("[send-user-invitation] Email sent successfully:", emailResponse);
+
+    // Log to onboarding_email_log if tenantId provided
+    if (tenantId) {
+      try {
+        const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
+        const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+        const supabase = createClient(supabaseUrl, serviceRoleKey);
+
+        const expiresAt = new Date(Date.now() + EMAIL_CONFIG.linkExpirationHours * 60 * 60 * 1000);
+
+        await supabase.from('onboarding_email_log').insert({
+          tenant_id: tenantId,
+          recipient_email: email,
+          recipient_name: `${requestData.firstName} ${requestData.lastName}`,
+          status: 'sent',
+          resend_message_id: emailResponse.data?.id || null,
+          sent_at: new Date().toISOString(),
+          email_type: 'user_invite',
+          email_body: html,
+          expires_at: expiresAt.toISOString(),
+          metadata: {
+            role: requestData.role,
+            company_name: companyName,
+          },
+        });
+      } catch (logError) {
+        console.error('[send-user-invitation] Failed to log email:', logError);
+      }
+    }
 
     return new Response(JSON.stringify(emailResponse), {
       status: 200,
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });
   } catch (error: unknown) {
-    console.error("Error in send-user-invitation function:", error);
+    console.error("[send-user-invitation] Error:", error);
     const errorMessage = error instanceof Error ? error.message : String(error);
     return new Response(
       JSON.stringify({ error: errorMessage }),
