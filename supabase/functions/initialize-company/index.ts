@@ -24,6 +24,30 @@ const EMAIL_CONFIG = {
   linkExpirationHours: 24,
 };
 
+/**
+ * Convert Supabase action_link to direct app setup link
+ * This bypasses Supabase redirect configuration entirely.
+ */
+function buildDirectSetupLink(actionLink: string): string {
+  try {
+    const url = new URL(actionLink);
+    const tokenHash = url.searchParams.get('token');
+    const type = url.searchParams.get('type') || 'invite';
+    
+    if (!tokenHash) {
+      console.warn('[buildDirectSetupLink] No token found in action_link, returning original');
+      return actionLink;
+    }
+    
+    const directLink = `${EMAIL_CONFIG.urls.app}/setup-account?token_hash=${encodeURIComponent(tokenHash)}&type=${encodeURIComponent(type)}`;
+    console.log('[buildDirectSetupLink] Converted to direct link');
+    return directLink;
+  } catch (err) {
+    console.error('[buildDirectSetupLink] Failed to parse action_link:', err);
+    return actionLink;
+  }
+}
+
 function getFromEmail(): string {
   const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN");
   if (fromDomain) {
@@ -514,14 +538,14 @@ serve(async (req) => {
           const { data: resetData, error: resetError } = await supabase.auth.admin.generateLink({
             type: 'recovery',
             email: ownerEmail,
-            options: {
-              redirectTo: `${EMAIL_CONFIG.urls.resetPassword}?onboarding=true`,
-            },
           });
 
           if (resetError) {
             console.error('[initialize-company] Reset link error:', resetError);
           } else if (resetData?.properties?.action_link) {
+            // Convert to direct link that bypasses Supabase redirect config
+            const directSetupLink = buildDirectSetupLink(resetData.properties.action_link);
+            
             // Send owner setup email
             const resendApiKey = Deno.env.get("RESEND_API_KEY");
             
@@ -530,11 +554,11 @@ serve(async (req) => {
               const fromEmail = getFromEmail();
               const expiresAt = new Date(Date.now() + EMAIL_CONFIG.linkExpirationHours * 60 * 60 * 1000);
               
-              // Generate the email HTML
+              // Generate the email HTML with direct setup link
               const emailHtml = generateOwnerWelcomeEmail(
                 ownerName,
                 tenant.name,
-                resetData.properties.action_link
+                directSetupLink
               );
               
               console.log(`[initialize-company] Sending owner email from: PITCH CRM <${fromEmail}>`);

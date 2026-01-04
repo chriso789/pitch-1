@@ -7,6 +7,32 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const APP_URL = "https://pitch-1.lovable.app";
+
+/**
+ * Convert Supabase action_link to direct app setup link
+ * This bypasses Supabase redirect configuration entirely.
+ */
+function buildDirectSetupLink(actionLink: string): string {
+  try {
+    const url = new URL(actionLink);
+    const tokenHash = url.searchParams.get('token');
+    const type = url.searchParams.get('type') || 'invite';
+    
+    if (!tokenHash) {
+      console.warn('[buildDirectSetupLink] No token found in action_link, returning original');
+      return actionLink;
+    }
+    
+    const directLink = `${APP_URL}/setup-account?token_hash=${encodeURIComponent(tokenHash)}&type=${encodeURIComponent(type)}`;
+    console.log('[buildDirectSetupLink] Converted to direct link');
+    return directLink;
+  } catch (err) {
+    console.error('[buildDirectSetupLink] Failed to parse action_link:', err);
+    return actionLink;
+  }
+}
+
 interface ProvisionOwnerRequest {
   tenant_id: string;
   send_email?: boolean;
@@ -176,16 +202,10 @@ serve(async (req) => {
       console.log("[provision-tenant-owner] Company access granted for user:", userId);
     }
 
-    // Step 5: Generate invite link (for password setup) - use APP_URL env var with reliable production fallback
-    const appUrl = Deno.env.get("APP_URL") || "https://pitch-1.lovable.app";
-    const resetRedirectUrl = `${appUrl}/reset-password?onboarding=true`;
-    
+    // Step 5: Generate invite link (for password setup)
     const { data: inviteData, error: inviteError } = await supabase.auth.admin.generateLink({
       type: "invite",
       email: ownerEmail,
-      options: {
-        redirectTo: resetRedirectUrl,
-      },
     });
 
     let inviteLink: string | null = null;
@@ -195,13 +215,12 @@ serve(async (req) => {
       const { data: recoveryData } = await supabase.auth.admin.generateLink({
         type: "recovery",
         email: ownerEmail,
-        options: {
-          redirectTo: resetRedirectUrl,
-        },
       });
-      inviteLink = recoveryData?.properties?.action_link || null;
-    } else {
-      inviteLink = inviteData?.properties?.action_link || null;
+      if (recoveryData?.properties?.action_link) {
+        inviteLink = buildDirectSetupLink(recoveryData.properties.action_link);
+      }
+    } else if (inviteData?.properties?.action_link) {
+      inviteLink = buildDirectSetupLink(inviteData.properties.action_link);
     }
 
     console.log("[provision-tenant-owner] Generated invite link:", inviteLink ? "Yes" : "No");
@@ -212,7 +231,7 @@ serve(async (req) => {
       try {
         const resend = new Resend(resendApiKey);
         
-        const emailHtml = generateSetupEmailHtml(firstName, tenant.name, inviteLink, appUrl);
+        const emailHtml = generateSetupEmailHtml(firstName, tenant.name, inviteLink, APP_URL);
         
         const { data: emailData, error: emailError } = await resend.emails.send({
           from: "PITCH CRM <onboarding@mail.pitchcrm.io>",

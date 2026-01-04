@@ -6,6 +6,32 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const APP_URL = "https://pitch-1.lovable.app";
+
+/**
+ * Convert Supabase action_link to direct app setup link
+ * This bypasses Supabase redirect configuration entirely.
+ */
+function buildDirectSetupLink(actionLink: string): string {
+  try {
+    const url = new URL(actionLink);
+    const tokenHash = url.searchParams.get('token');
+    const type = url.searchParams.get('type') || 'invite';
+    
+    if (!tokenHash) {
+      console.warn('[buildDirectSetupLink] No token found in action_link, returning original');
+      return actionLink;
+    }
+    
+    const directLink = `${APP_URL}/setup-account?token_hash=${encodeURIComponent(tokenHash)}&type=${encodeURIComponent(type)}`;
+    console.log('[buildDirectSetupLink] Converted to direct link');
+    return directLink;
+  } catch (err) {
+    console.error('[buildDirectSetupLink] Failed to parse action_link:', err);
+    return actionLink;
+  }
+}
+
 interface CreateUserRequest {
   email: string;
   firstName: string;
@@ -198,15 +224,10 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('User creation failed');
     }
 
-    // Generate invite link for password setup - use APP_URL with reliable production fallback
-    const appUrl = Deno.env.get("APP_URL") || "https://pitch-1.lovable.app";
-    const resetRedirectUrl = `${appUrl}/reset-password?onboarding=true`;
+    // Generate invite link for password setup
     const { data: inviteData, error: inviteError } = await supabaseAdmin.auth.admin.generateLink({
       type: 'invite',
       email: email,
-      options: {
-        redirectTo: resetRedirectUrl
-      }
     });
 
     if (inviteError) {
@@ -215,7 +236,10 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error('Failed to generate invite link');
     }
 
-    const passwordSetupLink = inviteData?.properties?.action_link || '';
+    // Convert to direct link that bypasses Supabase redirect config
+    const passwordSetupLink = inviteData?.properties?.action_link 
+      ? buildDirectSetupLink(inviteData.properties.action_link)
+      : '';
     console.log('User created, invite link generated');
 
     // Create profile data
@@ -355,8 +379,8 @@ const handler = async (req: Request): Promise<Response> => {
             commissionRate: payStructure?.commission_rate || null,
             overheadRate: payStructure?.overhead_rate || null,
             passwordSetupLink,
-            settingsLink: `${appUrl}/settings`,
-            loginUrl: `${appUrl}/login`,
+            settingsLink: `${APP_URL}/settings`,
+            loginUrl: `${APP_URL}/login`,
             // Company branding
             companyLogo: companyData?.logo_url || null,
             companyPrimaryColor: companyData?.primary_color || '#1e40af',

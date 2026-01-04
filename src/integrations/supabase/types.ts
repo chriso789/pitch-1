@@ -23570,6 +23570,62 @@ export type Database = {
         }
         Relationships: []
       }
+      tenant_approval_requirements: {
+        Row: {
+          created_at: string | null
+          description: string | null
+          icon_name: string | null
+          id: string
+          is_active: boolean | null
+          is_required: boolean | null
+          label: string
+          requirement_key: string
+          sort_order: number | null
+          tenant_id: string
+          updated_at: string | null
+          validation_config: Json | null
+          validation_type: string
+        }
+        Insert: {
+          created_at?: string | null
+          description?: string | null
+          icon_name?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_required?: boolean | null
+          label: string
+          requirement_key: string
+          sort_order?: number | null
+          tenant_id: string
+          updated_at?: string | null
+          validation_config?: Json | null
+          validation_type: string
+        }
+        Update: {
+          created_at?: string | null
+          description?: string | null
+          icon_name?: string | null
+          id?: string
+          is_active?: boolean | null
+          is_required?: boolean | null
+          label?: string
+          requirement_key?: string
+          sort_order?: number | null
+          tenant_id?: string
+          updated_at?: string | null
+          validation_config?: Json | null
+          validation_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_approval_requirements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_settings: {
         Row: {
           created_at: string | null
