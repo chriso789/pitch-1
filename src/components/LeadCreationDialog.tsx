@@ -482,9 +482,23 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
           .eq('address_street', streetAddress)
           .maybeSingle();
 
+        // Determine the assigned rep - use first selected rep or fall back to current user
+        const assignedRep = formData.assignedTo[0] || session.user.id;
+
         if (existingContact) {
           // Use existing contact instead of creating duplicate
           contactId = existingContact.id;
+          
+          // Update the existing contact's assigned_to to match the lead's rep
+          const { error: updateError } = await supabase
+            .from('contacts')
+            .update({ assigned_to: assignedRep })
+            .eq('id', existingContact.id);
+          
+          if (updateError) {
+            console.error('Failed to update contact assigned_to:', updateError);
+          }
+          
           toast({
             title: "Using Existing Contact",
             description: `Found existing contact "${existingContact.first_name} ${existingContact.last_name}" at this address.`,
@@ -504,7 +518,8 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
               latitude: selectedAddress?.geometry?.location?.lat,
               longitude: selectedAddress?.geometry?.location?.lng,
               verified_address: selectedAddress,
-              created_by: session.user.id
+              created_by: session.user.id,
+              assigned_to: assignedRep  // Set assigned_to on new contacts
             } as any)
             .select()
             .single();
