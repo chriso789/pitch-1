@@ -24493,7 +24493,7 @@ export type Database = {
           created_at: string
           created_by: string | null
           id: string
-          role: Database["public"]["Enums"]["app_role"] | null
+          role: Database["public"]["Enums"]["app_role"]
           tenant_id: string
           user_id: string
         }
@@ -24501,7 +24501,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
-          role?: Database["public"]["Enums"]["app_role"] | null
+          role: Database["public"]["Enums"]["app_role"]
           tenant_id: string
           user_id: string
         }
@@ -24509,7 +24509,7 @@ export type Database = {
           created_at?: string
           created_by?: string | null
           id?: string
-          role?: Database["public"]["Enums"]["app_role"] | null
+          role?: Database["public"]["Enums"]["app_role"]
           tenant_id?: string
           user_id?: string
         }

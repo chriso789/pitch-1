@@ -48,13 +48,35 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error("Unauthorized");
     }
 
+    // Get caller's profile for tenant_id
     const { data: profile } = await supabase
       .from("profiles")
-      .select("role, tenant_id")
+      .select("tenant_id")
       .eq("id", user.id)
       .single();
 
-    if (!profile || !['master', 'corporate', 'office_admin', 'owner'].includes(profile.role)) {
+    // SECURITY: Check role from user_roles table using service role client
+    const supabaseAdmin = createClient(
+      Deno.env.get("SUPABASE_URL") ?? "",
+      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
+      {
+        auth: {
+          autoRefreshToken: false,
+          persistSession: false
+        }
+      }
+    );
+
+    const { data: userRole } = await supabaseAdmin
+      .from("user_roles")
+      .select("role")
+      .eq("user_id", user.id)
+      .maybeSingle();
+
+    const callerRole = userRole?.role;
+    const allowedRoles = ['master', 'corporate', 'office_admin', 'owner'];
+
+    if (!callerRole || !allowedRoles.includes(callerRole)) {
       return new Response(
         JSON.stringify({ error: "Only master, owner, corporate, and office admin can create users" }),
         { status: 403, headers: { "Content-Type": "application/json", ...corsHeaders } }
@@ -77,13 +99,13 @@ const handler = async (req: Request): Promise<Response> => {
       skipInvitationEmail
     }: CreateUserRequest = await req.json();
 
-    const targetTenantId = assignedTenantId || profile.tenant_id;
+    const targetTenantId = assignedTenantId || profile?.tenant_id;
 
     // SECURITY: Non-master users can ONLY create users in their own company
-    if (profile.role !== 'master' && targetTenantId !== profile.tenant_id) {
+    if (callerRole !== 'master' && targetTenantId !== profile?.tenant_id) {
       console.log('Security violation: Non-master user attempted to create user in different company', {
-        callerRole: profile.role,
-        callerTenantId: profile.tenant_id,
+        callerRole,
+        callerTenantId: profile?.tenant_id,
         attemptedTenantId: targetTenantId
       });
       return new Response(
@@ -111,16 +133,7 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    const supabaseAdmin = createClient(
-      Deno.env.get("SUPABASE_URL") ?? "",
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY") ?? "",
-      {
-        auth: {
-          autoRefreshToken: false,
-          persistSession: false
-        }
-      }
-    );
+    // supabaseAdmin already created above for role check
 
     console.log('Creating user with invite link:', email, 'role:', role);
 
