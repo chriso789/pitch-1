@@ -1,5 +1,8 @@
 project_id = "alxelfrbjzkmtnsulcei"
 
+[functions.canvassiq-skip-trace]
+verify_jwt = false
+
 [functions.weather-forecast]
 verify_jwt = true
 

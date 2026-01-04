@@ -3,7 +3,7 @@ import {
   Phone, Mail, MapPin, Navigation, User, Plus, Home, Clock, 
   ThumbsUp, ThumbsDown, X, AlertTriangle, DollarSign, CheckCircle,
   Cloud, Sun, Compass, Calculator, FileText, Camera, CalendarPlus,
-  History, StickyNote, UserPlus
+  History, StickyNote, UserPlus, Loader2, Sparkles
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -17,6 +17,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
+import FastEstimateModal from './FastEstimateModal';
 
 interface PropertyInfoPanelProps {
   open: boolean;
@@ -50,6 +51,9 @@ export default function PropertyInfoPanel({
   const [selectedOwner, setSelectedOwner] = useState<string | null>(null);
   const [notes, setNotes] = useState('');
   const [activeTab, setActiveTab] = useState('tools');
+  const [enriching, setEnriching] = useState(false);
+  const [enrichedOwners, setEnrichedOwners] = useState<any[]>([]);
+  const [showFastEstimate, setShowFastEstimate] = useState(false);
 
   if (!property) return null;
 
@@ -67,16 +71,53 @@ export default function PropertyInfoPanel({
     ? JSON.parse(property.emails)
     : property.emails;
 
-  // Mock enriched owners data (would come from skip-trace API in production)
-  const enrichedOwners = [
+  // Use enriched data if available, otherwise show basic owner
+  const displayOwners = enrichedOwners.length > 0 ? enrichedOwners : [
     { 
       id: '1', 
       name: property.owner_name || homeowner?.name || 'Primary Owner',
       gender: 'Unknown',
-      creditScore: '650-700',
-      isPrimary: true
+      credit_score: 'Unknown',
+      is_primary: true
     },
   ];
+
+  const handleEnrich = async () => {
+    if (!property?.id || !profile?.tenant_id) return;
+    
+    setEnriching(true);
+    try {
+      const address = typeof property.address === 'string' 
+        ? JSON.parse(property.address) 
+        : property.address;
+      
+      const { data, error } = await supabase.functions.invoke('canvassiq-skip-trace', {
+        body: {
+          property_id: property.id,
+          owner_name: property.owner_name || 'Unknown',
+          address: {
+            street: address?.street,
+            city: address?.city,
+            state: address?.state,
+            zip: address?.zip,
+          },
+          tenant_id: profile.tenant_id,
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.data?.owners) {
+        setEnrichedOwners(data.data.owners);
+        toast.success(data.cached ? 'Using cached data' : 'Property enriched!');
+      }
+    } catch (err: any) {
+      console.error('Enrichment error:', err);
+      toast.error('Failed to enrich property');
+    } finally {
+      setEnriching(false);
+    }
+  };
 
   const ownerName = property.owner_name || homeowner?.name || 'Unknown Owner';
   const fullAddress = address?.formatted || 
@@ -167,7 +208,7 @@ export default function PropertyInfoPanel({
         handleNavigate();
         break;
       case 'fast_estimate':
-        toast.info('Generating fast estimate...');
+        setShowFastEstimate(true);
         break;
       default:
         break;
@@ -233,16 +274,32 @@ export default function PropertyInfoPanel({
 
           {/* Select Home Owner Section */}
           <div className="mb-4 p-3 bg-muted/50 rounded-lg">
-            <p className="text-xs font-medium text-muted-foreground mb-2">Select Home Owner</p>
+            <div className="flex items-center justify-between mb-2">
+              <p className="text-xs font-medium text-muted-foreground">Select Home Owner</p>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="h-7 text-xs gap-1"
+                onClick={handleEnrich}
+                disabled={enriching}
+              >
+                {enriching ? (
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                ) : (
+                  <Sparkles className="h-3 w-3" />
+                )}
+                {enriching ? 'Enriching...' : 'Enrich'}
+              </Button>
+            </div>
             <RadioGroup value={selectedOwner || ''} onValueChange={setSelectedOwner}>
-              {enrichedOwners.map((owner) => (
+              {displayOwners.map((owner) => (
                 <div key={owner.id} className="flex items-center justify-between py-2 border-b border-border last:border-0">
                   <div className="flex items-center gap-3">
                     <RadioGroupItem value={owner.id} id={owner.id} />
                     <Label htmlFor={owner.id} className="flex flex-col cursor-pointer">
                       <span className="font-medium text-sm">{owner.name}</span>
                       <span className="text-[10px] text-muted-foreground">
-                        {owner.gender} • Credit: {owner.creditScore}
+                        {owner.gender || 'Unknown'} • Credit: {owner.credit_score || 'Unknown'}
                       </span>
                     </Label>
                   </div>
@@ -396,6 +453,13 @@ export default function PropertyInfoPanel({
             </TabsContent>
           </Tabs>
         </div>
+
+        {/* Fast Estimate Modal */}
+        <FastEstimateModal 
+          open={showFastEstimate}
+          onOpenChange={setShowFastEstimate}
+          property={property}
+        />
       </SheetContent>
     </Sheet>
   );

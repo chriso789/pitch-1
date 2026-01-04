@@ -1,6 +1,8 @@
 /**
  * PropertyMarkersLayer - Displays canvassiq properties as color-coded circular markers
- * Color coding based on disposition status
+ * - Dynamic sizing based on zoom level
+ * - No hover animation (fixes click issues)
+ * - Loads properties based on visible map bounds
  */
 
 import { useEffect, useRef, useCallback, useState } from 'react';
@@ -27,7 +29,7 @@ interface CanvassiqProperty {
   homeowner: any;
 }
 
-// Updated disposition colors matching the reference design
+// Disposition colors matching the reference design
 const DISPOSITION_COLORS: Record<string, string> = {
   not_contacted: '#D4A84B',    // Yellow/gold outline
   new_roof: '#8B6914',         // Brown  
@@ -51,6 +53,25 @@ const DISPOSITION_ICONS: Record<string, string> = {
   old_roof_marker: '!',
 };
 
+// Get marker size based on zoom level
+function getMarkerSize(zoom: number): { size: number; showNumber: boolean; fontSize: number } {
+  if (zoom >= 18) return { size: 28, showNumber: true, fontSize: 9 };
+  if (zoom >= 17) return { size: 24, showNumber: true, fontSize: 8 };
+  if (zoom >= 16) return { size: 20, showNumber: true, fontSize: 7 };
+  if (zoom >= 15) return { size: 16, showNumber: false, fontSize: 0 };
+  if (zoom >= 14) return { size: 12, showNumber: false, fontSize: 0 };
+  return { size: 8, showNumber: false, fontSize: 0 };
+}
+
+// Get radius based on zoom level (in miles)
+function getLoadRadius(zoom: number): number {
+  if (zoom >= 18) return 0.25;
+  if (zoom >= 16) return 0.5;
+  if (zoom >= 14) return 1;
+  if (zoom >= 12) return 2;
+  return 3;
+}
+
 export default function PropertyMarkersLayer({
   map,
   userLocation,
@@ -58,7 +79,8 @@ export default function PropertyMarkersLayer({
 }: PropertyMarkersLayerProps) {
   const { profile } = useUserProfile();
   const markersRef = useRef<mapboxgl.Marker[]>([]);
-  const [isLoading, setIsLoading] = useState(false);
+  const [currentZoom, setCurrentZoom] = useState(map.getZoom());
+  const loadedBoundsRef = useRef<string | null>(null);
 
   const getDispositionColor = (disposition: string | null): string => {
     if (!disposition) return DISPOSITION_COLORS.default;
@@ -79,74 +101,67 @@ export default function PropertyMarkersLayer({
     return match ? match[1] : '';
   };
 
-  const createMarkerElement = (property: CanvassiqProperty): HTMLDivElement => {
+  const createMarkerElement = useCallback((property: CanvassiqProperty, zoom: number): HTMLDivElement => {
     const el = document.createElement('div');
     const color = getDispositionColor(property.disposition);
+    const { size, showNumber, fontSize } = getMarkerSize(zoom);
     const streetNumber = getStreetNumber(property.address);
     const icon = property.disposition ? DISPOSITION_ICONS[property.disposition] : null;
     const isNotContacted = !property.disposition || property.disposition === 'not_contacted';
+    const borderWidth = size >= 20 ? 3 : size >= 14 ? 2 : 1;
     
     el.className = 'property-marker';
     
-    // Style based on disposition
+    // Style based on disposition - NO HOVER ANIMATION (fixes click issues)
     if (isNotContacted) {
       // Yellow outline circle for not contacted
       el.style.cssText = `
-        width: 28px;
-        height: 28px;
+        width: ${size}px;
+        height: ${size}px;
         background-color: transparent;
-        border: 3px solid ${color};
+        border: ${borderWidth}px solid ${color};
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.2);
-        font-size: 9px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        font-size: ${fontSize}px;
         font-weight: bold;
         color: ${color};
-        transition: transform 0.2s, box-shadow 0.2s;
+        pointer-events: auto;
       `;
     } else {
       // Filled circle for contacted properties
       el.style.cssText = `
-        width: 28px;
-        height: 28px;
+        width: ${size}px;
+        height: ${size}px;
         background-color: ${color};
-        border: 2px solid white;
+        border: ${borderWidth}px solid white;
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-        font-size: 11px;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+        font-size: ${fontSize + 2}px;
         font-weight: bold;
         color: white;
-        transition: transform 0.2s, box-shadow 0.2s;
+        pointer-events: auto;
       `;
     }
     
-    // Show icon or street number
-    if (icon) {
-      el.textContent = icon;
-    } else if (streetNumber && streetNumber.length <= 4) {
-      el.textContent = streetNumber;
-      el.style.fontSize = '9px';
+    // Show icon or street number only at higher zoom levels
+    if (showNumber) {
+      if (icon) {
+        el.textContent = icon;
+      } else if (streetNumber && streetNumber.length <= 4) {
+        el.textContent = streetNumber;
+      }
     }
     
-    // Hover effect
-    el.addEventListener('mouseenter', () => {
-      el.style.transform = 'scale(1.2)';
-      el.style.boxShadow = '0 4px 12px rgba(0,0,0,0.4)';
-    });
-    el.addEventListener('mouseleave', () => {
-      el.style.transform = 'scale(1)';
-      el.style.boxShadow = isNotContacted ? '0 2px 6px rgba(0,0,0,0.2)' : '0 2px 6px rgba(0,0,0,0.3)';
-    });
-    
     return el;
-  };
+  }, []);
 
   const clearMarkers = useCallback(() => {
     markersRef.current.forEach(marker => marker.remove());
@@ -156,15 +171,26 @@ export default function PropertyMarkersLayer({
   const loadProperties = useCallback(async () => {
     if (!profile?.tenant_id || !map) return;
     
-    setIsLoading(true);
+    const zoom = map.getZoom();
+    const center = map.getCenter();
+    const radius = getLoadRadius(zoom);
+    
+    // Create a bounds key to avoid reloading same area
+    const boundsKey = `${center.lat.toFixed(3)}_${center.lng.toFixed(3)}_${zoom.toFixed(0)}`;
+    if (loadedBoundsRef.current === boundsKey) return;
+    loadedBoundsRef.current = boundsKey;
+    
     clearMarkers();
     
-    // Calculate bounding box (roughly 0.5 mile radius)
-    const radiusInDegrees = 0.5 / 69;
-    const minLat = userLocation.lat - radiusInDegrees;
-    const maxLat = userLocation.lat + radiusInDegrees;
-    const minLng = userLocation.lng - radiusInDegrees;
-    const maxLng = userLocation.lng + radiusInDegrees;
+    // Calculate bounding box based on dynamic radius
+    const radiusInDegrees = radius / 69;
+    const minLat = center.lat - radiusInDegrees;
+    const maxLat = center.lat + radiusInDegrees;
+    const minLng = center.lng - radiusInDegrees;
+    const maxLng = center.lng + radiusInDegrees;
+    
+    // Limit properties based on zoom
+    const limit = zoom >= 16 ? 200 : zoom >= 14 ? 300 : 500;
     
     try {
       const { data: properties, error } = await supabase
@@ -175,25 +201,25 @@ export default function PropertyMarkersLayer({
         .lte('lat', maxLat)
         .gte('lng', minLng)
         .lte('lng', maxLng)
-        .limit(200);
+        .limit(limit);
       
       if (error) {
         console.error('Error loading properties:', error);
         return;
       }
       
-      // If no properties exist, try to load parcels via edge function
-      if (!properties || properties.length === 0) {
-        console.log('[PropertyMarkersLayer] No properties found, attempting to load parcels...');
-        await loadParcelsFromEdgeFunction();
+      // If no properties exist around user location, try to load parcels
+      if ((!properties || properties.length === 0) && zoom >= 14) {
+        console.log('[PropertyMarkersLayer] No properties found, loading parcels...');
+        await loadParcelsFromEdgeFunction(center.lat, center.lng, radius);
         return;
       }
       
       // Create markers for each property
-      properties.forEach((property: any) => {
+      properties?.forEach((property: any) => {
         if (!property.lat || !property.lng) return;
         
-        const el = createMarkerElement(property as CanvassiqProperty);
+        const el = createMarkerElement(property as CanvassiqProperty, zoom);
         
         el.addEventListener('click', (e) => {
           e.stopPropagation();
@@ -208,22 +234,15 @@ export default function PropertyMarkersLayer({
       });
     } catch (err) {
       console.error('Error in loadProperties:', err);
-    } finally {
-      setIsLoading(false);
     }
-  }, [profile?.tenant_id, userLocation, map, onPropertyClick, clearMarkers]);
+  }, [profile?.tenant_id, map, onPropertyClick, clearMarkers, createMarkerElement]);
 
-  const loadParcelsFromEdgeFunction = async () => {
+  const loadParcelsFromEdgeFunction = async (lat: number, lng: number, radius: number) => {
     if (!profile?.tenant_id) return;
     
     try {
       const { data, error } = await supabase.functions.invoke('canvassiq-load-parcels', {
-        body: {
-          lat: userLocation.lat,
-          lng: userLocation.lng,
-          radius: 0.25, // 0.25 mile radius
-          tenant_id: profile.tenant_id
-        }
+        body: { lat, lng, radius, tenant_id: profile.tenant_id }
       });
 
       if (error) {
@@ -233,7 +252,7 @@ export default function PropertyMarkersLayer({
 
       if (data?.properties?.length > 0) {
         toast.success(`Loaded ${data.properties.length} properties`);
-        // Reload properties after edge function populates them
+        loadedBoundsRef.current = null; // Reset to force reload
         await loadProperties();
       }
     } catch (err) {
@@ -241,21 +260,38 @@ export default function PropertyMarkersLayer({
     }
   };
 
-  // Load properties when location changes
+  // Update marker sizes when zoom changes
+  const updateMarkerSizes = useCallback(() => {
+    const zoom = map.getZoom();
+    setCurrentZoom(zoom);
+    
+    // Force reload when zoom changes significantly
+    loadedBoundsRef.current = null;
+    loadProperties();
+  }, [map, loadProperties]);
+
+  // Listen for zoom and move events
   useEffect(() => {
+    const handleZoomEnd = () => updateMarkerSizes();
+    const handleMoveEnd = () => loadProperties();
+    
+    map.on('zoomend', handleZoomEnd);
+    map.on('moveend', handleMoveEnd);
+    
+    // Initial load
     loadProperties();
     
-    const interval = setInterval(loadProperties, 30000);
-    
     return () => {
-      clearInterval(interval);
+      map.off('zoomend', handleZoomEnd);
+      map.off('moveend', handleMoveEnd);
       clearMarkers();
     };
-  }, [loadProperties, clearMarkers]);
+  }, [map, loadProperties, updateMarkerSizes, clearMarkers]);
 
   // Re-add markers after style change
   useEffect(() => {
     const handleStyleLoad = () => {
+      loadedBoundsRef.current = null;
       loadProperties();
     };
     
