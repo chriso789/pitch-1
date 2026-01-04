@@ -28,22 +28,27 @@ export function MetricCard({ title, count, icon: Icon, onClick, variant = "defau
       onClick={onClick}
     >
       <CardContent className="p-4">
-        <div className="flex items-center justify-between">
-          <div className="flex-1">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex-1 min-w-0">
             <div className={cn(
-              "text-3xl font-bold mb-1",
+              "text-2xl font-bold",
               isZero ? "text-muted-foreground" : variantStyles[variant]
             )}>
               {count}
             </div>
-            <div className="text-sm text-muted-foreground">
+            <div className="text-sm text-muted-foreground truncate" title={title}>
               {title}
             </div>
           </div>
-          <Icon className={cn(
-            "h-8 w-8",
-            isZero ? "text-muted-foreground/50" : variantStyles[variant]
-          )} />
+          <div className={cn(
+            "h-10 w-10 rounded-lg flex items-center justify-center flex-shrink-0",
+            isZero ? "bg-muted" : "bg-primary/10"
+          )}>
+            <Icon className={cn(
+              "h-5 w-5",
+              isZero ? "text-muted-foreground/50" : variantStyles[variant]
+            )} />
+          </div>
         </div>
       </CardContent>
     </Card>

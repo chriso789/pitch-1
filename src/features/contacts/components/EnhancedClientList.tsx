@@ -4,6 +4,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useLocation } from "@/contexts/LocationContext";
 import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatCard } from "@/components/dashboard/StatCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -999,78 +1000,39 @@ export const EnhancedClientList = () => {
       </div>
 
       {/* Statistics Dashboard */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card className="shadow-soft transition-smooth hover:shadow-medium">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Leads Converted to Jobs
-                </p>
-                <p className="text-2xl font-bold text-success">
-                  {leadsConvertedToJobs}
-                </p>
-              </div>
-              <div className="h-12 w-12 rounded-lg bg-success/10 flex items-center justify-center">
-                <Target className="h-6 w-6 text-success" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-soft transition-smooth hover:shadow-medium">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  {activeView === 'contacts' ? 'New (2 Weeks)' : 'Active'}
-                </p>
-                <p className="text-2xl font-bold text-success">
-                  {activeView === 'contacts' ? recentContacts : activeJobs}
-                </p>
-              </div>
-              <div className="h-12 w-12 rounded-lg bg-success/10 flex items-center justify-center">
-                <Target className="h-6 w-6 text-success" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-soft transition-smooth hover:shadow-medium">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  {activeView === 'contacts' ? 'Leads' : 'Pending'}
-                </p>
-                <p className="text-2xl font-bold text-secondary">
-                  {activeView === 'contacts' ? activeLeads : pendingJobs}
-                </p>
-              </div>
-              <div className="h-12 w-12 rounded-lg bg-secondary/10 flex items-center justify-center">
-                <Activity className="h-6 w-6 text-secondary" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="shadow-soft transition-smooth hover:shadow-medium">
-          <CardContent className="p-6">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  {activeView === 'contacts' ? 'Avg Score' : 'Completed'}
-                </p>
-                <p className="text-2xl font-bold text-primary">
-                  {activeView === 'contacts' ? `${avgScore}%` : completedJobs}
-                </p>
-              </div>
-              <div className="h-12 w-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Award className="h-6 w-6 text-primary" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard
+          label="Leads Converted to Jobs"
+          value={leadsConvertedToJobs}
+          icon={Target}
+          iconBgClass="bg-success/10"
+          iconClass="text-success"
+          valueClass="text-success"
+        />
+        <StatCard
+          label={activeView === 'contacts' ? 'New (2 Weeks)' : 'Active'}
+          value={activeView === 'contacts' ? recentContacts : activeJobs}
+          icon={Target}
+          iconBgClass="bg-success/10"
+          iconClass="text-success"
+          valueClass="text-success"
+        />
+        <StatCard
+          label={activeView === 'contacts' ? 'Leads' : 'Pending'}
+          value={activeView === 'contacts' ? activeLeads : pendingJobs}
+          icon={Activity}
+          iconBgClass="bg-secondary/10"
+          iconClass="text-secondary"
+          valueClass="text-secondary"
+        />
+        <StatCard
+          label={activeView === 'contacts' ? 'Avg Score' : 'Completed'}
+          value={activeView === 'contacts' ? `${avgScore}%` : completedJobs}
+          icon={Award}
+          iconBgClass="bg-primary/10"
+          iconClass="text-primary"
+          valueClass="text-primary"
+        />
       </div>
 
       {/* Filters and Controls */}

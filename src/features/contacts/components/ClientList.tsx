@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatCard } from "@/components/dashboard/StatCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { CLJBadge } from "@/components/CLJBadge";
@@ -504,131 +505,68 @@ export const ClientList = () => {
       </Card>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">
-                  Total {activeView === 'contacts' ? 'Contacts' : 'Jobs'}
-                </p>
-                <p className="text-2xl font-bold">
-                  {activeView === 'contacts' ? contacts.length : jobs.length}
-                </p>
-              </div>
-              <div className="h-8 w-8 bg-primary/10 rounded-lg flex items-center justify-center">
-                {activeView === 'contacts' ? (
-                  <Users className="h-4 w-4 text-primary" />
-                ) : (
-                  <Briefcase className="h-4 w-4 text-primary" />
-                )}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard
+          label={`Total ${activeView === 'contacts' ? 'Contacts' : 'Jobs'}`}
+          value={activeView === 'contacts' ? contacts.length : jobs.length}
+          icon={activeView === 'contacts' ? Users : Briefcase}
+          iconBgClass="bg-primary/10"
+          iconClass="text-primary"
+        />
 
         {activeView === 'contacts' ? (
           <>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Qualified</p>
-                    <p className="text-2xl font-bold">
-                      {contacts.filter(c => c.qualification_status === 'qualified').length}
-                    </p>
-                  </div>
-                  <div className="h-8 w-8 bg-green-100 rounded-lg flex items-center justify-center">
-                    <User className="h-4 w-4 text-green-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Hot Leads</p>
-                    <p className="text-2xl font-bold">
-                      {contacts.filter(c => c.qualification_status === 'hot').length}
-                    </p>
-                  </div>
-                  <div className="h-8 w-8 bg-red-100 rounded-lg flex items-center justify-center">
-                    <DollarSign className="h-4 w-4 text-red-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Avg Score</p>
-                    <p className="text-2xl font-bold">
-                      {contacts.length > 0 
-                        ? Math.round(contacts.reduce((sum, c) => sum + (c.lead_score || 0), 0) / contacts.length)
-                        : 0
-                      }
-                    </p>
-                  </div>
-                  <div className="h-8 w-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <Calendar className="h-4 w-4 text-blue-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <StatCard
+              label="Qualified"
+              value={contacts.filter(c => c.qualification_status === 'qualified').length}
+              icon={User}
+              iconBgClass="bg-success/10"
+              iconClass="text-success"
+              valueClass="text-success"
+            />
+            <StatCard
+              label="Hot Leads"
+              value={contacts.filter(c => c.qualification_status === 'hot').length}
+              icon={DollarSign}
+              iconBgClass="bg-destructive/10"
+              iconClass="text-destructive"
+              valueClass="text-destructive"
+            />
+            <StatCard
+              label="Avg Score"
+              value={contacts.length > 0 
+                ? Math.round(contacts.reduce((sum, c) => sum + (c.lead_score || 0), 0) / contacts.length)
+                : 0
+              }
+              icon={Calendar}
+              iconBgClass="bg-secondary/10"
+              iconClass="text-secondary"
+            />
           </>
         ) : (
           <>
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Active</p>
-                    <p className="text-2xl font-bold">
-                      {jobs.filter(j => j.status === 'in_progress').length}
-                    </p>
-                  </div>
-                  <div className="h-8 w-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                    <MapPin className="h-4 w-4 text-blue-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Pending</p>
-                    <p className="text-2xl font-bold">
-                      {jobs.filter(j => j.status === 'pending').length}
-                    </p>
-                  </div>
-                  <div className="h-8 w-8 bg-yellow-100 rounded-lg flex items-center justify-center">
-                    <Calendar className="h-4 w-4 text-yellow-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card>
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-muted-foreground">Completed</p>
-                    <p className="text-2xl font-bold">
-                      {jobs.filter(j => j.status === 'completed').length}
-                    </p>
-                  </div>
-                  <div className="h-8 w-8 bg-green-100 rounded-lg flex items-center justify-center">
-                    <DollarSign className="h-4 w-4 text-green-600" />
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
+            <StatCard
+              label="Active"
+              value={jobs.filter(j => j.status === 'in_progress').length}
+              icon={MapPin}
+              iconBgClass="bg-secondary/10"
+              iconClass="text-secondary"
+            />
+            <StatCard
+              label="Pending"
+              value={jobs.filter(j => j.status === 'pending').length}
+              icon={Calendar}
+              iconBgClass="bg-warning/10"
+              iconClass="text-warning"
+            />
+            <StatCard
+              label="Completed"
+              value={jobs.filter(j => j.status === 'completed').length}
+              icon={DollarSign}
+              iconBgClass="bg-success/10"
+              iconClass="text-success"
+              valueClass="text-success"
+            />
           </>
         )}
       </div>
