@@ -173,11 +173,21 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
               />
             </div>
           ) : previewType === 'pdf' && previewUrl ? (
-            <iframe 
-              src={previewUrl}
-              className="w-full h-[600px] border-0"
-              title={currentDoc?.filename}
-            />
+            <object
+              data={previewUrl}
+              type="application/pdf"
+              className="w-full h-[600px]"
+            >
+              <embed src={previewUrl} type="application/pdf" className="w-full h-[600px]" />
+              <div className="flex flex-col items-center justify-center min-h-[300px] gap-4">
+                <FileText className="h-16 w-16 text-muted-foreground" />
+                <p className="text-muted-foreground">Unable to display PDF inline</p>
+                <Button onClick={() => window.open(previewUrl, '_blank')}>
+                  <Download className="h-4 w-4 mr-2" />
+                  Open PDF in new tab
+                </Button>
+              </div>
+            </object>
           ) : previewType === 'text' && textContent ? (
             <pre className="p-4 text-sm overflow-auto whitespace-pre-wrap font-mono bg-background border rounded m-4">
               {textContent}

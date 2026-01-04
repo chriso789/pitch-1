@@ -7,7 +7,7 @@ interface CompanyInfo {
   logo_url?: string | null;
   phone?: string | null;
   email?: string | null;
-  address_line1?: string | null;
+  address_street?: string | null;
   address_city?: string | null;
   address_state?: string | null;
   address_zip?: string | null;
@@ -96,7 +96,7 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
 
   // Build company address string
   const companyAddressParts = [
-    companyInfo?.address_line1,
+    companyInfo?.address_street,
     [companyInfo?.address_city, companyInfo?.address_state].filter(Boolean).join(', '),
     companyInfo?.address_zip
   ].filter(Boolean);

@@ -25,7 +25,7 @@ interface CompanyInfo {
   logo_url?: string | null;
   phone?: string | null;
   email?: string | null;
-  address_line1?: string | null;
+  address_street?: string | null;
   address_city?: string | null;
   address_state?: string | null;
   address_zip?: string | null;
@@ -137,7 +137,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       // Fetch tenant info for company branding
       const { data: tenant } = await supabaseClient
         .from('tenants')
-        .select('name, logo_url, phone, email, address_line1, address_city, address_state, address_zip, license_number')
+        .select('name, logo_url, phone, email, address_street, address_city, address_state, address_zip, license_number')
         .eq('id', tenantId)
         .single();
 
@@ -337,7 +337,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     try {
       const result = await supabaseClient
         .from('pipeline_entries')
-        .select('metadata, estimate_id')
+        .select('metadata')
         .eq('id', pipelineEntryId)
         .single();
 
@@ -347,9 +347,9 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       const selected = metadata?.selected_template_ids?.[0] || metadata?.selected_template_id || '';
       setSelectedTemplateId(selected);
       
-      // Check if there's an existing estimate linked
-      if (result.data?.estimate_id || metadata?.enhanced_estimate_id) {
-        setExistingEstimateId(result.data?.estimate_id || metadata?.enhanced_estimate_id);
+      // Check if there's an existing estimate linked via metadata
+      if (metadata?.enhanced_estimate_id) {
+        setExistingEstimateId(metadata?.enhanced_estimate_id);
       }
     } catch (error) {
       console.error('Error loading selected template:', error);
@@ -617,7 +617,6 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       await supabaseClient
         .from('pipeline_entries')
         .update({
-          estimate_id: newEstimate.id,
           metadata: {
             ...metadata,
             selected_template_id: selectedTemplateId,
