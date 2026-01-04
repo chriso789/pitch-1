@@ -119,7 +119,7 @@ type ViewType = 'contacts' | 'jobs';
 
 export const EnhancedClientList = () => {
   const navigate = useNavigate();
-  const { currentLocationId } = useLocation();
+  const { currentLocationId, locations } = useLocation();
   const { activeCompanyId } = useCompanySwitcher();
   const [activeView, setActiveView] = useState<ViewType>('contacts');
   const [preferredView, setPreferredView] = useState<ViewType>('contacts');
@@ -358,8 +358,8 @@ export const EnhancedClientList = () => {
           .order("created_at", { ascending: false })
           .range(from, from + BATCH_SIZE - 1);
         
-        // Apply location filter if a specific location is selected
-        if (currentLocationId) {
+        // Apply location filter only if locations exist AND one is selected
+        if (currentLocationId && locations.length > 0) {
           batchQuery = batchQuery.eq('location_id', currentLocationId);
         }
         
