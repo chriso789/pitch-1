@@ -728,35 +728,20 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
           {/* Address Section */}
           <div>
             <Label htmlFor="address">Address *</Label>
-            <div className="flex gap-2">
-              <Input
-                id="address"
-                value={formData.address}
-                onChange={(e) => {
-                  const newAddress = e.target.value;
-                  setFormData(prev => ({ ...prev, address: newAddress }));
-                  // Only clear selectedAddress if user typed something different
-                  if (selectedAddress && newAddress !== selectedAddress.formatted_address) {
-                    setSelectedAddress(null);
-                  }
-                }}
-                placeholder="Start typing address..."
-                disabled={formData.useSameInfo}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => handleAddressVerification(formData.address)}
-                disabled={!formData.address.trim() || addressLoading}
-              >
-                {addressLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <MapPin className="h-4 w-4" />
-                )}
-                Verify
-              </Button>
-            </div>
+            <Input
+              id="address"
+              value={formData.address}
+              onChange={(e) => {
+                const newAddress = e.target.value;
+                setFormData(prev => ({ ...prev, address: newAddress }));
+                // Only clear selectedAddress if user typed something different
+                if (selectedAddress && newAddress !== selectedAddress.formatted_address) {
+                  setSelectedAddress(null);
+                }
+              }}
+              placeholder="Start typing address..."
+              disabled={formData.useSameInfo}
+            />
           </div>
 
           {showAddressPicker && addressSuggestions.length > 0 && (

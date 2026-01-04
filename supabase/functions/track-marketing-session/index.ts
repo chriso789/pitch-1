@@ -100,63 +100,67 @@ Deno.serve(async (req: Request) => {
     const data = body.data || {};
 
     if (body.action === 'create') {
-      // Check if session already exists
-      const { data: existing } = await supabaseAdmin
+      // Use upsert to handle race conditions gracefully
+      const sessionData = {
+        session_key: body.session_key,
+        tenant_id: data.tenant_id || null,
+        channel: data.channel || 'direct',
+        site_domain: data.site_domain,
+        landing_page: data.landing_page,
+        referrer: data.referrer,
+        device_type: data.device_type,
+        user_agent: data.user_agent,
+        utm_source: data.utm_source,
+        utm_medium: data.utm_medium,
+        utm_campaign: data.utm_campaign,
+        utm_content: data.utm_content,
+        utm_term: data.utm_term,
+        started_at: new Date().toISOString(),
+        last_activity_at: new Date().toISOString(),
+        page_views: 1,
+        events_count: 0,
+        converted: false
+      };
+
+      // Try upsert - on conflict, do nothing (keeps existing data)
+      const { data: upsertResult, error: upsertError } = await supabaseAdmin
+        .from('marketing_sessions')
+        .upsert(sessionData, {
+          onConflict: 'session_key',
+          ignoreDuplicates: true
+        })
+        .select('id')
+        .single();
+
+      // If upsert succeeded, return the new session
+      if (upsertResult && !upsertError) {
+        console.log(`[track-marketing-session] Created session: ${upsertResult.id}`);
+        return new Response(
+          JSON.stringify({ success: true, session_id: upsertResult.id, action: 'created' }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      // If upsert failed (likely duplicate), fetch the existing session
+      const { data: existing, error: fetchError } = await supabaseAdmin
         .from('marketing_sessions')
         .select('id')
         .eq('session_key', body.session_key)
         .single();
 
       if (existing) {
-        // Session exists, return it
+        console.log(`[track-marketing-session] Found existing session: ${existing.id}`);
         return new Response(
           JSON.stringify({ success: true, session_id: existing.id, action: 'existing' }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }
 
-      // Create new session - match actual table schema
-      // marketing_sessions columns: id, tenant_id, contact_id, user_id, session_key, channel, site_domain,
-      // started_at, ended_at, last_activity_at, ip_address, ip_country, user_agent, device_type, device_hash,
-      // referrer, landing_page, utm_source, utm_medium, utm_campaign, utm_content, utm_term,
-      // analytics_consent, marketing_consent, page_views, events_count, converted, converted_at, created_at, updated_at
-      const { data: newSession, error } = await supabaseAdmin
-        .from('marketing_sessions')
-        .insert({
-          session_key: body.session_key,
-          tenant_id: data.tenant_id || null,
-          channel: data.channel || 'direct',
-          site_domain: data.site_domain,
-          landing_page: data.landing_page,
-          referrer: data.referrer,
-          device_type: data.device_type,
-          user_agent: data.user_agent,
-          utm_source: data.utm_source,
-          utm_medium: data.utm_medium,
-          utm_campaign: data.utm_campaign,
-          utm_content: data.utm_content,
-          utm_term: data.utm_term,
-          started_at: new Date().toISOString(),
-          last_activity_at: new Date().toISOString(),
-          page_views: 1,
-          events_count: 0,
-          converted: false
-        })
-        .select('id')
-        .single();
-
-      if (error) {
-        console.error('[track-marketing-session] Create error:', error);
-        return new Response(
-          JSON.stringify({ success: false, error: 'Failed to create session' }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
-      }
-
-      console.log(`[track-marketing-session] Created session: ${newSession.id}`);
+      // Both failed - log and return error
+      console.error('[track-marketing-session] Create error:', upsertError, fetchError);
       return new Response(
-        JSON.stringify({ success: true, session_id: newSession.id, action: 'created' }),
-        { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        JSON.stringify({ success: false, error: 'Failed to create session' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
 
