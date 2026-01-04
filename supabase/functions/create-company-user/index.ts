@@ -122,9 +122,9 @@ serve(async (req) => {
       console.log("[create-company-user] Company access granted for:", userId, "to tenant:", tenant_id);
     }
 
-    // Generate password reset link
-    const appUrl = Deno.env.get("APP_URL") || "https://pitch-crm.lovable.app";
-    const resetRedirectUrl = `${appUrl}/reset-password`;
+    // Generate password reset link - use APP_URL env var with reliable production fallback
+    const appUrl = Deno.env.get("APP_URL") || "https://pitch-1.lovable.app";
+    const resetRedirectUrl = `${appUrl}/reset-password?onboarding=true`;
 
     const { data: resetData, error: resetError } = await supabase.auth.admin.generateLink({
       type: "recovery",
