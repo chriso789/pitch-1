@@ -13327,6 +13327,9 @@ export type Database = {
           bounced_at: string | null
           clicks_count: number | null
           delivered_at: string | null
+          email_body: string | null
+          email_type: string | null
+          expires_at: string | null
           id: string
           last_clicked_at: string | null
           last_opened_at: string | null
@@ -13344,6 +13347,9 @@ export type Database = {
           bounced_at?: string | null
           clicks_count?: number | null
           delivered_at?: string | null
+          email_body?: string | null
+          email_type?: string | null
+          expires_at?: string | null
           id?: string
           last_clicked_at?: string | null
           last_opened_at?: string | null
@@ -13361,6 +13367,9 @@ export type Database = {
           bounced_at?: string | null
           clicks_count?: number | null
           delivered_at?: string | null
+          email_body?: string | null
+          email_type?: string | null
+          expires_at?: string | null
           id?: string
           last_clicked_at?: string | null
           last_opened_at?: string | null

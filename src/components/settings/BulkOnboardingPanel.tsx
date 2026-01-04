@@ -228,9 +228,9 @@ export const BulkOnboardingPanel = () => {
     try {
       const { data, error } = await supabase.functions.invoke('send-test-onboarding', {
         body: {
-          email: 'support@obriencontractingusa.com',
-          first_name: 'Chris',
-          company_name: "O'Brien Contracting"
+          email: 'test@pitch-crm.ai',
+          first_name: 'Test',
+          company_name: "PITCH CRM Test"
         }
       });
       
@@ -238,7 +238,7 @@ export const BulkOnboardingPanel = () => {
       
       toast({
         title: "Test email sent! 🎉",
-        description: `Email sent to support@obriencontractingusa.com`
+        description: `Email sent to test@pitch-crm.ai`
       });
       
       console.log('Test email result:', data);

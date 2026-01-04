@@ -7,6 +7,152 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+// Email configuration
+const EMAIL_CONFIG = {
+  brand: {
+    name: 'PITCH CRM',
+    tagline: 'The #1 Construction Sales Platform',
+    primaryColor: '#2563eb',
+    secondaryColor: '#3b82f6',
+  },
+  urls: {
+    app: 'https://pitch-1.lovable.app',
+    login: 'https://pitch-1.lovable.app/login',
+    resetPassword: 'https://pitch-1.lovable.app/reset-password',
+    settings: 'https://pitch-1.lovable.app/settings',
+  },
+  linkExpirationHours: 24,
+};
+
+function getFromEmail(): string {
+  const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN");
+  if (fromDomain) {
+    return `onboarding@${fromDomain}`;
+  }
+  return 'onboarding@resend.dev';
+}
+
+function generateOwnerWelcomeEmail(ownerName: string, companyName: string, passwordSetupLink: string): string {
+  const { primaryColor, secondaryColor } = EMAIL_CONFIG.brand;
+  const expiresIn = EMAIL_CONFIG.linkExpirationHours;
+  
+  return `
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+</head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; background-color: #f3f4f6;">
+  <div style="max-width: 600px; margin: 0 auto; padding: 20px;">
+    
+    <!-- Header -->
+    <div style="background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); padding: 40px 30px; border-radius: 16px 16px 0 0; text-align: center;">
+      <div style="margin-bottom: 16px;">
+        <span style="font-size: 36px; font-weight: bold; color: white;">PITCH</span>
+      </div>
+      <h1 style="color: white; margin: 0 0 8px 0; font-size: 28px; font-weight: 700;">
+        Welcome, ${ownerName}! 🎉
+      </h1>
+      <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 18px;">
+        Your company is ready to go
+      </p>
+    </div>
+    
+    <!-- Main content -->
+    <div style="background: white; padding: 40px 30px; border-radius: 0 0 16px 16px; box-shadow: 0 4px 6px rgba(0,0,0,0.05);">
+      
+      <!-- Company badge -->
+      <div style="text-align: center; margin-bottom: 24px;">
+        <span style="display: inline-block; background: linear-gradient(135deg, ${primaryColor}15 0%, ${secondaryColor}15 100%); color: ${primaryColor}; padding: 10px 24px; border-radius: 20px; font-size: 16px; font-weight: 600; border: 1px solid ${primaryColor}30;">
+          ${companyName}
+        </span>
+      </div>
+      
+      <p style="font-size: 16px; color: #374151; line-height: 1.7; margin: 0 0 16px 0;">
+        Your company <strong style="color: ${primaryColor};">${companyName}</strong> has been set up in PITCH CRM. As the owner, you have full access to manage your team, projects, and business operations.
+      </p>
+      
+      <p style="font-size: 16px; color: #6b7280; line-height: 1.7; margin: 0 0 24px 0;">
+        Click the button below to create your password and start using PITCH CRM.
+      </p>
+      
+      <!-- What's Included Box -->
+      <div style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border: 1px solid #86efac; border-radius: 12px; padding: 24px; margin: 24px 0;">
+        <h3 style="margin: 0 0 16px 0; color: #166534; font-size: 16px; font-weight: 600;">
+          ✨ What's included in your account:
+        </h3>
+        <div style="display: grid; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="color: #22c55e;">✓</span>
+            <span style="color: #374151; font-size: 14px;">Full CRM with leads & project management</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="color: #22c55e;">✓</span>
+            <span style="color: #374151; font-size: 14px;">Power Dialer for high-volume calling</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="color: #22c55e;">✓</span>
+            <span style="color: #374151; font-size: 14px;">AI-powered estimates & proposals</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <span style="color: #22c55e;">✓</span>
+            <span style="color: #374151; font-size: 14px;">Team management & commissions</span>
+          </div>
+        </div>
+      </div>
+      
+      <!-- CTA Button -->
+      <div style="text-align: center; margin: 32px 0;">
+        <a 
+          href="${passwordSetupLink}" 
+          style="display: inline-block; background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); color: white; padding: 18px 48px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 18px; box-shadow: 0 4px 14px ${primaryColor}40;"
+        >
+          Create My Password →
+        </a>
+        <p style="margin: 16px 0 0 0; font-size: 13px; color: #9ca3af;">
+          ⏰ This link expires in ${expiresIn} hours
+        </p>
+      </div>
+      
+      <!-- Next Steps -->
+      <div style="background: #f9fafb; border-radius: 12px; padding: 20px; margin: 24px 0;">
+        <h4 style="margin: 0 0 12px 0; color: #374151; font-size: 14px; font-weight: 600;">
+          After creating your password:
+        </h4>
+        <ol style="margin: 0; padding-left: 20px; color: #6b7280; font-size: 14px; line-height: 1.8;">
+          <li>Complete your company profile in Settings</li>
+          <li>Add your team members</li>
+          <li>Configure your pipeline stages</li>
+          <li>Start adding leads!</li>
+        </ol>
+      </div>
+      
+      <!-- Footer -->
+      <div style="border-top: 1px solid #e5e7eb; padding-top: 24px; margin-top: 32px;">
+        <div style="background: #f9fafb; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+          <p style="font-size: 13px; color: #6b7280; margin: 0 0 4px 0;">
+            <strong>Login URL:</strong>
+          </p>
+          <a href="${EMAIL_CONFIG.urls.login}" style="font-size: 14px; color: ${primaryColor}; font-weight: 500; text-decoration: none;">
+            ${EMAIL_CONFIG.urls.login}
+          </a>
+        </div>
+        <p style="font-size: 13px; color: #9ca3af; margin: 0 0 8px 0; text-align: center;">
+          Questions? Reply to this email for support.
+        </p>
+        <p style="font-size: 12px; color: #d1d5db; margin: 0; text-align: center;">
+          © ${new Date().getFullYear()} PITCH CRM. All rights reserved.
+        </p>
+      </div>
+      
+    </div>
+  </div>
+</body>
+</html>
+  `;
+}
+
 serve(async (req) => {
   if (req.method === "OPTIONS") {
     return new Response(null, { headers: corsHeaders });
@@ -326,50 +472,67 @@ serve(async (req) => {
             type: 'recovery',
             email: ownerEmail,
             options: {
-              redirectTo: `${supabaseUrl.replace('.supabase.co', '.lovable.app')}/auth?mode=reset`,
+              redirectTo: `${EMAIL_CONFIG.urls.resetPassword}?onboarding=true`,
             },
           });
 
           if (resetError) {
             console.error('[initialize-company] Reset link error:', resetError);
-          } else {
+          } else if (resetData?.properties?.action_link) {
             // Send owner setup email
             const resendApiKey = Deno.env.get("RESEND_API_KEY");
-            const resendFromDomain = Deno.env.get("RESEND_FROM_DOMAIN") || "onboarding@resend.dev";
             
-            if (resendApiKey && resetData?.properties?.action_link) {
+            if (resendApiKey) {
               const resend = new Resend(resendApiKey);
+              const fromEmail = getFromEmail();
+              const expiresAt = new Date(Date.now() + EMAIL_CONFIG.linkExpirationHours * 60 * 60 * 1000);
               
-              const { error: emailError } = await resend.emails.send({
-                from: `PITCH CRM <${resendFromDomain}>`,
+              // Generate the email HTML
+              const emailHtml = generateOwnerWelcomeEmail(
+                ownerName,
+                tenant.name,
+                resetData.properties.action_link
+              );
+              
+              console.log(`[initialize-company] Sending owner email from: PITCH CRM <${fromEmail}>`);
+              
+              const { data: emailData, error: emailError } = await resend.emails.send({
+                from: `PITCH CRM <${fromEmail}>`,
                 to: [ownerEmail],
-                subject: `Welcome to ${tenant.name} - Set Up Your Account`,
-                html: `
-                  <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
-                    <h1 style="color: #1a1a2e;">Welcome to PITCH CRM!</h1>
-                    <p>Hi ${ownerName},</p>
-                    <p>Your company <strong>${tenant.name}</strong> has been set up in PITCH CRM. As the owner, you have full access to manage your team, projects, and settings.</p>
-                    <p>Click the button below to set your password and access your account:</p>
-                    <div style="text-align: center; margin: 30px 0;">
-                      <a href="${resetData.properties.action_link}" 
-                         style="background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; display: inline-block;">
-                        Set Up Your Account
-                      </a>
-                    </div>
-                    <p style="color: #666; font-size: 14px;">This link will expire in 24 hours.</p>
-                    <hr style="border: none; border-top: 1px solid #eee; margin: 30px 0;">
-                    <p style="color: #888; font-size: 12px;">
-                      If you didn't expect this email, you can safely ignore it.
-                    </p>
-                  </div>
-                `,
+                subject: `🚀 Welcome to ${tenant.name} - Create Your Password`,
+                html: emailHtml,
               });
 
               if (emailError) {
                 console.error('[initialize-company] Email send error:', emailError);
+                results.owner_email_error = emailError.message;
               } else {
-                console.log('[initialize-company] Owner setup email sent successfully');
+                console.log('[initialize-company] Owner setup email sent successfully:', emailData);
+                results.owner_email_sent = true;
+                results.resend_message_id = emailData?.id;
               }
+
+              // Log to onboarding_email_log
+              await supabase.from('onboarding_email_log').insert({
+                tenant_id: tenant_id,
+                recipient_email: ownerEmail,
+                recipient_name: ownerName,
+                status: emailError ? 'failed' : 'sent',
+                resend_message_id: emailData?.id || null,
+                sent_at: new Date().toISOString(),
+                sent_by: created_by || null,
+                email_type: 'owner_invite',
+                email_body: emailHtml,
+                expires_at: expiresAt.toISOString(),
+                metadata: {
+                  company_name: tenant.name,
+                  is_new_user: isNewUser,
+                  error: emailError?.message || null,
+                },
+              });
+            } else {
+              console.warn('[initialize-company] RESEND_API_KEY not configured, skipping email');
+              results.owner_email_error = 'RESEND_API_KEY not configured';
             }
           }
         }

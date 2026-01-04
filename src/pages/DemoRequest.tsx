@@ -119,7 +119,7 @@ const DemoRequest: React.FC = () => {
                   We've received your demo request and will be in touch within 24 hours to schedule your personalized demonstration.
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  In the meantime, feel free to reach out to us directly at <strong>chris.obfla@gmail.com</strong>
+                  In the meantime, feel free to reach out to us directly at <strong>support@pitch-crm.ai</strong>
                 </p>
               </div>
               
@@ -295,7 +295,7 @@ const DemoRequest: React.FC = () => {
                 <Alert className="bg-blue-50 border-blue-200">
                   <Mail className="h-4 w-4 text-blue-600" />
                   <AlertDescription className="text-sm">
-                    Your demo request will be sent to <strong>chris.obfla@gmail.com</strong> and we'll respond within 24 hours.
+                    Your demo request will be reviewed by our team and we'll respond within 24 hours.
                   </AlertDescription>
                 </Alert>
 

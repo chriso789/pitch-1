@@ -173,7 +173,7 @@ export const EmailDiagnosticsPanel = () => {
       name: 'From Domain (RESEND_FROM_DOMAIN)',
       status: 'warning',
       message: 'Check Supabase secrets for RESEND_FROM_DOMAIN',
-      details: 'Should be set to your verified domain (e.g., pitch-crm.ai). Without this, emails use onboarding@resend.dev which is test-only.'
+      details: 'Should be set to your verified Resend domain (e.g., pitch-crm.ai). Without this, emails use onboarding@resend.dev which is test-only.'
     });
     setDiagnostics([...checks]);
 

@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, AlertCircle, CheckCircle, Eye, EyeOff, Shield, ArrowLeft } from 'lucide-react';
+import { Loader2, AlertCircle, CheckCircle, Eye, EyeOff, Shield, ArrowLeft, Rocket } from 'lucide-react';
 
 const ResetPassword: React.FC = () => {
   const navigate = useNavigate();
@@ -27,10 +27,11 @@ const ResetPassword: React.FC = () => {
   
   const [errors, setErrors] = useState<{ [key: string]: string }>({});
 
-  // Get access token from URL parameters
+  // Get access token and onboarding flag from URL parameters
   const accessToken = searchParams.get('access_token');
   const refreshToken = searchParams.get('refresh_token');
   const tokenType = searchParams.get('type');
+  const isOnboarding = searchParams.get('onboarding') === 'true';
 
   useEffect(() => {
     validateResetToken();
@@ -41,6 +42,7 @@ const ResetPassword: React.FC = () => {
       hasAccessToken: !!accessToken,
       hasRefreshToken: !!refreshToken,
       type: tokenType,
+      isOnboarding,
       timestamp: new Date().toISOString()
     });
 
@@ -109,7 +111,7 @@ const ResetPassword: React.FC = () => {
     }
 
     setLoading(true);
-    console.log('🔄 Attempting password reset...');
+    console.log('🔄 Attempting password reset...', { isOnboarding });
 
     try {
       const { error } = await supabase.auth.updateUser({
@@ -126,18 +128,32 @@ const ResetPassword: React.FC = () => {
       }
 
       console.log('✅ Password updated successfully');
-      toast({
-        title: "Password Reset Successful",
-        description: "Your password has been updated successfully. You can now sign in with your new password.",
-      });
-
-      // Sign out the user after successful password reset
-      await supabase.auth.signOut();
       
-      // Redirect to login page after a brief delay
-      setTimeout(() => {
-        navigate('/login?message=password-reset-success');
-      }, 2000);
+      // Different messaging and redirect based on onboarding context
+      if (isOnboarding) {
+        toast({
+          title: "Welcome to PITCH CRM! 🎉",
+          description: "Your password has been set. Let's complete your company profile.",
+        });
+
+        // For onboarding, redirect to settings to complete profile
+        setTimeout(() => {
+          navigate('/settings?tab=company');
+        }, 1500);
+      } else {
+        toast({
+          title: "Password Reset Successful",
+          description: "Your password has been updated successfully. You can now sign in with your new password.",
+        });
+
+        // Sign out the user after successful password reset
+        await supabase.auth.signOut();
+        
+        // Redirect to login page after a brief delay
+        setTimeout(() => {
+          navigate('/login?message=password-reset-success');
+        }, 2000);
+      }
 
     } catch (error: any) {
       console.error('❌ Password reset exception:', error);
@@ -176,42 +192,34 @@ const ResetPassword: React.FC = () => {
               <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
                 <AlertCircle className="h-6 w-6 text-destructive" />
               </div>
-              <CardTitle className="text-2xl font-semibold text-destructive">Invalid or Expired Reset Link</CardTitle>
+              <CardTitle className="text-2xl font-semibold text-destructive">Invalid or Expired Link</CardTitle>
               <CardDescription>
-                This password reset link cannot be used.
+                This password setup link cannot be used.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
               <Alert variant="destructive">
                 <AlertCircle className="h-4 w-4" />
                 <AlertDescription>
-                  The password reset link is either invalid, expired, or has already been used.
+                  The link is either invalid, expired, or has already been used.
                 </AlertDescription>
               </Alert>
               
               <div className="space-y-2 text-sm text-muted-foreground">
                 <p className="font-semibold text-foreground">Common reasons:</p>
                 <ul className="list-disc pl-5 space-y-1">
-                  <li>The link is more than 1 hour old (links expire for security)</li>
-                  <li>The link has already been used to reset your password</li>
+                  <li>The link is more than 24 hours old (links expire for security)</li>
+                  <li>The link has already been used to set your password</li>
                   <li>The link was not copied completely from your email</li>
-                  <li>The redirect URL is not configured in Supabase settings</li>
                 </ul>
               </div>
-
-              <Alert className="border-primary/50 bg-primary/10">
-                <AlertCircle className="h-4 w-4" />
-                <AlertDescription className="text-sm">
-                  <strong>For administrators:</strong> Make sure <code className="text-xs bg-muted px-1 py-0.5 rounded">{window.location.origin}/reset-password</code> is added to "Redirect URLs" in your Supabase project under Authentication → URL Configuration.
-                </AlertDescription>
-              </Alert>
               
               <div className="space-y-2 pt-2">
                 <Button 
                   onClick={() => navigate('/login?tab=forgot')} 
                   className="w-full"
                 >
-                  Request New Reset Link
+                  Request New Link
                 </Button>
                 <Button 
                   variant="outline" 
@@ -240,21 +248,41 @@ const ResetPassword: React.FC = () => {
         <Card className="shadow-strong border-0 bg-white/95 backdrop-blur-sm">
           <CardHeader className="text-center">
             <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-              <Shield className="h-6 w-6 text-primary" />
+              {isOnboarding ? (
+                <Rocket className="h-6 w-6 text-primary" />
+              ) : (
+                <Shield className="h-6 w-6 text-primary" />
+              )}
             </div>
-            <CardTitle className="text-2xl font-semibold">Reset Your Password</CardTitle>
+            <CardTitle className="text-2xl font-semibold">
+              {isOnboarding ? 'Create Your Password' : 'Reset Your Password'}
+            </CardTitle>
             <CardDescription>
-              Enter your new password below. Make sure it's strong and secure.
+              {isOnboarding 
+                ? "Set a secure password to get started with PITCH CRM."
+                : "Enter your new password below. Make sure it's strong and secure."
+              }
             </CardDescription>
           </CardHeader>
           
           <CardContent>
-            <Alert className="mb-4 border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
-              <AlertCircle className="h-4 w-4 text-amber-600" />
-              <AlertDescription className="text-sm text-amber-800 dark:text-amber-200">
-                ⏰ <strong>Note:</strong> Password reset links expire after 1 hour for security. If your link has expired, request a new one from the login page.
-              </AlertDescription>
-            </Alert>
+            {isOnboarding && (
+              <Alert className="mb-4 border-green-500/50 bg-green-50 dark:bg-green-950/20">
+                <Rocket className="h-4 w-4 text-green-600" />
+                <AlertDescription className="text-sm text-green-800 dark:text-green-200">
+                  🎉 <strong>Welcome!</strong> After setting your password, you'll be taken to complete your company profile.
+                </AlertDescription>
+              </Alert>
+            )}
+
+            {!isOnboarding && (
+              <Alert className="mb-4 border-amber-500/50 bg-amber-50 dark:bg-amber-950/20">
+                <AlertCircle className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-sm text-amber-800 dark:text-amber-200">
+                  ⏰ <strong>Note:</strong> Password reset links expire after 1 hour for security.
+                </AlertDescription>
+              </Alert>
+            )}
 
             {errors.general && (
               <Alert variant="destructive" className="mb-4">
@@ -265,12 +293,14 @@ const ResetPassword: React.FC = () => {
 
             <form onSubmit={handleResetPassword} className="space-y-4">
               <div className="space-y-2">
-                <Label htmlFor="password">New Password</Label>
+                <Label htmlFor="password">
+                  {isOnboarding ? 'Create Password' : 'New Password'}
+                </Label>
                 <div className="relative">
                   <Input
                     id="password"
                     type={showPassword ? 'text' : 'password'}
-                    placeholder="Enter your new password"
+                    placeholder="Enter your password"
                     value={formData.password}
                     onChange={(e) => setFormData({ ...formData, password: e.target.value })}
                     className={errors.password ? 'border-destructive pr-10' : 'pr-10'}
@@ -287,17 +317,17 @@ const ResetPassword: React.FC = () => {
                 </div>
                 {errors.password && <p className="text-sm text-destructive">{errors.password}</p>}
                 <p className="text-xs text-muted-foreground">
-                  Password must contain at least 8 characters with uppercase, lowercase, number, and special character
+                  At least 8 characters with uppercase, lowercase, number, and special character
                 </p>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="confirmPassword">Confirm New Password</Label>
+                <Label htmlFor="confirmPassword">Confirm Password</Label>
                 <div className="relative">
                   <Input
                     id="confirmPassword"
                     type={showConfirmPassword ? 'text' : 'password'}
-                    placeholder="Confirm your new password"
+                    placeholder="Confirm your password"
                     value={formData.confirmPassword}
                     onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
                     className={errors.confirmPassword ? 'border-destructive pr-10' : 'pr-10'}
@@ -324,12 +354,21 @@ const ResetPassword: React.FC = () => {
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Updating Password...
+                    {isOnboarding ? 'Setting up...' : 'Updating Password...'}
                   </>
                 ) : (
                   <>
-                    <CheckCircle className="mr-2 h-4 w-4" />
-                    Update Password
+                    {isOnboarding ? (
+                      <>
+                        <Rocket className="mr-2 h-4 w-4" />
+                        Create Password & Continue
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        Update Password
+                      </>
+                    )}
                   </>
                 )}
               </Button>
@@ -346,12 +385,14 @@ const ResetPassword: React.FC = () => {
               </Button>
             </div>
 
-            <Alert className="mt-4 border-primary/50 bg-primary/10">
-              <Shield className="h-4 w-4" />
-              <AlertDescription className="text-sm">
-                After updating your password, you'll be signed out and can log in with your new credentials.
-              </AlertDescription>
-            </Alert>
+            {!isOnboarding && (
+              <Alert className="mt-4 border-primary/50 bg-primary/10">
+                <Shield className="h-4 w-4" />
+                <AlertDescription className="text-sm">
+                  After updating your password, you'll be signed out and can log in with your new credentials.
+                </AlertDescription>
+              </Alert>
+            )}
           </CardContent>
         </Card>
       </div>
