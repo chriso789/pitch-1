@@ -15,7 +15,8 @@ import {
   ZoomOut,
   Layers,
   Home,
-  CheckCircle2
+  CheckCircle2,
+  X
 } from 'lucide-react';
 import { useMeasurementDrawing } from '@/hooks/useMeasurementDrawing';
 import { calculatePolygonArea, calculatePolygonPerimeter } from '@/utils/measurementGeometry';
@@ -73,6 +74,8 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
     startDrawing,
     addPoint,
     completePolygon,
+    cancelDrawing,
+    removeLastPoint,
     deletePolygon,
     undo,
     clear,
@@ -419,9 +422,10 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
         </div>
       )}
 
-      {/* Toolbar */}
-      <div className="absolute top-4 left-4 z-20 flex flex-col gap-2">
-        <div className="bg-background/95 backdrop-blur rounded-lg p-2 shadow-lg border flex flex-col gap-1">
+      {/* Unified Toolbar */}
+      <div className="absolute top-4 left-4 z-20 bg-background/95 backdrop-blur rounded-lg shadow-lg border overflow-hidden">
+        {/* Mode Selection */}
+        <div className="p-2 border-b flex flex-col gap-1">
           <Button
             variant={mode === 'select' ? 'default' : 'ghost'}
             size="sm"
@@ -441,27 +445,41 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
             Draw
           </Button>
         </div>
-
-        <div className="bg-background/95 backdrop-blur rounded-lg p-2 shadow-lg border flex flex-col gap-1">
-          <Button variant="ghost" size="sm" onClick={handleZoomIn}>
+        
+        {/* Zoom Controls */}
+        <div className="p-2 border-b flex flex-col gap-1">
+          <Button variant="ghost" size="icon" onClick={handleZoomIn} title="Zoom In">
             <ZoomIn className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={handleZoomOut}>
+          <Button variant="ghost" size="icon" onClick={handleZoomOut} title="Zoom Out">
             <ZoomOut className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={handleResetView}>
+          <Button variant="ghost" size="icon" onClick={handleResetView} title="Reset View">
             <Home className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={toggleMapStyle}>
+          <Button variant="ghost" size="icon" onClick={toggleMapStyle} title="Toggle Map Style">
             <Layers className="h-4 w-4" />
           </Button>
         </div>
-
-        <div className="bg-background/95 backdrop-blur rounded-lg p-2 shadow-lg border flex flex-col gap-1">
-          <Button variant="ghost" size="sm" onClick={undo} disabled={!canUndo}>
+        
+        {/* Actions */}
+        <div className="p-2 flex flex-col gap-1">
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={undo} 
+            disabled={!canUndo && !isDrawing}
+            title="Undo"
+          >
             <Undo2 className="h-4 w-4" />
           </Button>
-          <Button variant="ghost" size="sm" onClick={clear} disabled={polygons.length === 0}>
+          <Button 
+            variant="ghost" 
+            size="icon" 
+            onClick={clear} 
+            disabled={polygons.length === 0 && currentPoints.length === 0}
+            title="Clear All"
+          >
             <Trash2 className="h-4 w-4" />
           </Button>
         </div>
@@ -524,10 +542,42 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
         </div>
       )}
 
+      {/* Drawing Controls - shown during active drawing */}
       {isDrawing && (
-        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-primary text-primary-foreground rounded-lg px-4 py-2 shadow-lg flex items-center gap-2">
-          <CheckCircle2 className="h-4 w-4" />
-          <span className="text-sm">Drawing... {currentPoints.length} points. Double-click to close.</span>
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-background/95 backdrop-blur rounded-lg shadow-lg border p-2 flex items-center gap-2">
+          <span className="text-sm text-muted-foreground px-2">
+            {currentPoints.length} points
+          </span>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={removeLastPoint}
+            disabled={currentPoints.length === 0}
+          >
+            <Undo2 className="h-4 w-4 mr-2" /> Undo Point
+          </Button>
+          <Button 
+            variant="destructive" 
+            size="sm" 
+            onClick={() => {
+              cancelDrawing();
+              setMode('select');
+              if (mapRef.current) {
+                mapRef.current.dragPan.enable();
+              }
+            }}
+          >
+            <X className="h-4 w-4 mr-2" /> Cancel
+          </Button>
+          {currentPoints.length >= 3 && (
+            <Button 
+              variant="default" 
+              size="sm" 
+              onClick={completePolygon}
+            >
+              <CheckCircle2 className="h-4 w-4 mr-2" /> Complete
+            </Button>
+          )}
         </div>
       )}
     </div>
