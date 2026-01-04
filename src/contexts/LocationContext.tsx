@@ -20,7 +20,9 @@ interface LocationContextType {
 
 const LocationContext = createContext<LocationContextType | undefined>(undefined);
 
-const STORAGE_KEY = 'pitch_current_location';
+// Helper to get tenant-scoped storage key
+const getStorageKey = (tenantId: string | null) => 
+  tenantId ? `pitch_current_location:${tenantId}` : 'pitch_current_location';
 
 export const LocationProvider = ({ children }: { children: ReactNode }) => {
   const [currentLocationId, setCurrentLocationIdState] = useState<string | null>(null);
@@ -85,43 +87,50 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [activeTenantId]);
 
-  // Load current location from app_settings
+  // Load current location from app_settings - TENANT SCOPED
   const loadCurrentLocationSetting = useCallback(async () => {
+    if (!activeTenantId) return;
+    
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
+      const storageKey = getStorageKey(activeTenantId);
+      
       const { data: setting } = await supabase
         .from('app_settings')
         .select('setting_value')
         .eq('user_id', user.id)
+        .eq('tenant_id', activeTenantId)
         .eq('setting_key', 'current_location_id')
         .maybeSingle();
 
       if (setting?.setting_value && setting.setting_value !== 'null') {
         const locationId = setting.setting_value as string;
         setCurrentLocationIdState(locationId);
-        // Also store in localStorage for cross-tab sync
-        localStorage.setItem(STORAGE_KEY, locationId);
+        // Store in tenant-scoped localStorage key
+        localStorage.setItem(storageKey, locationId);
       } else {
         setCurrentLocationIdState(null);
-        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(storageKey);
       }
     } catch (error) {
       console.error('Error loading current location setting:', error);
     }
-  }, []);
+  }, [activeTenantId]);
 
   // Set current location - OPTIMISTIC UPDATE for instant UI response
   const setCurrentLocationId = useCallback(async (locationId: string | null) => {
+    const storageKey = getStorageKey(activeTenantId);
+    
     // 1. Update local state IMMEDIATELY (optimistic)
     setCurrentLocationIdState(locationId);
     
-    // 2. Store in localStorage for cross-tab sync
+    // 2. Store in tenant-scoped localStorage for cross-tab sync
     if (locationId) {
-      localStorage.setItem(STORAGE_KEY, locationId);
+      localStorage.setItem(storageKey, locationId);
     } else {
-      localStorage.removeItem(STORAGE_KEY);
+      localStorage.removeItem(storageKey);
     }
 
     // 3. Dispatch event immediately for listeners
@@ -129,7 +138,7 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
 
     // 4. Persist to database in BACKGROUND (don't block UI)
     supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user) return;
+      if (!user || !activeTenantId) return;
       
       supabase
         .from('app_settings')
@@ -149,6 +158,8 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
 
   // Update current location object when ID or locations list changes
   useEffect(() => {
+    const storageKey = getStorageKey(activeTenantId);
+    
     if (locations.length > 0 && currentLocationId) {
       const location = locations.find(l => l.id === currentLocationId);
       if (location) {
@@ -157,26 +168,31 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
         // Location doesn't exist in current tenant - reset to "All Locations"
         setCurrentLocationIdState(null);
         setCurrentLocation(null);
-        localStorage.removeItem(STORAGE_KEY);
+        localStorage.removeItem(storageKey);
       }
     } else {
       setCurrentLocation(null);
     }
-  }, [locations, currentLocationId]);
+  }, [locations, currentLocationId, activeTenantId]);
 
-  // Initialize on mount and when tenant changes
+  // Initialize on mount and when tenant changes - RESET location when tenant changes
   useEffect(() => {
     if (activeTenantId) {
+      // Reset location to null immediately when tenant changes to prevent stale data
+      setCurrentLocationIdState(null);
+      setCurrentLocation(null);
       setLoading(true);
       fetchUserLocations();
       loadCurrentLocationSetting();
     }
   }, [activeTenantId, fetchUserLocations, loadCurrentLocationSetting]);
 
-  // Listen for localStorage changes (cross-tab sync)
+  // Listen for localStorage changes (cross-tab sync) - use tenant-scoped key
   useEffect(() => {
+    const storageKey = getStorageKey(activeTenantId);
+    
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === STORAGE_KEY) {
+      if (e.key === storageKey) {
         const newLocationId = e.newValue;
         setCurrentLocationIdState(newLocationId || null);
       }
@@ -184,7 +200,7 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
 
     window.addEventListener('storage', handleStorageChange);
     return () => window.removeEventListener('storage', handleStorageChange);
-  }, []);
+  }, [activeTenantId]);
 
   // Listen for custom location-changed event (same-tab)
   useEffect(() => {

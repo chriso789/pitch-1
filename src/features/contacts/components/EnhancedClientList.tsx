@@ -195,7 +195,9 @@ export const EnhancedClientList = () => {
   // Fetch reps assigned to current location using two-step query
   useEffect(() => {
     const fetchLocationReps = async () => {
-      if (!currentLocationId || !userProfile?.tenant_id) {
+      // Use active_tenant_id for proper company scoping
+      const effectiveTenantId = userProfile?.active_tenant_id || userProfile?.tenant_id;
+      if (!currentLocationId || !effectiveTenantId) {
         setLocationReps([]);
         return;
       }
@@ -206,7 +208,7 @@ export const EnhancedClientList = () => {
           .from('user_location_assignments')
           .select('user_id')
           .eq('location_id', currentLocationId)
-          .eq('tenant_id', userProfile.tenant_id)
+          .eq('tenant_id', effectiveTenantId)
           .eq('is_active', true);
         
         if (assignmentsError) {
@@ -247,7 +249,7 @@ export const EnhancedClientList = () => {
     };
     
     fetchLocationReps();
-  }, [currentLocationId, userProfile?.tenant_id]);
+  }, [currentLocationId, userProfile?.active_tenant_id, userProfile?.tenant_id]);
 
   // Reset rep filter when location changes
   useEffect(() => {
@@ -335,8 +337,8 @@ export const EnhancedClientList = () => {
       console.log("Fetching contacts...");
       console.log("Current location filter:", currentLocationId);
       
-      // Use activeCompanyId from company switcher, fallback to profile.tenant_id
-      const effectiveTenantId = activeCompanyId || profile.tenant_id;
+      // Use active_tenant_id from profile (set by company switcher), fallback to tenant_id
+      const effectiveTenantId = profile.active_tenant_id || profile.tenant_id;
       console.log("Effective tenant ID:", effectiveTenantId);
       
       // Paginated fetch to bypass Supabase 1000 row server limit
