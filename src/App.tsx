@@ -113,6 +113,8 @@ import PublicPortalView from "./pages/PublicPortalView";
 import SchedulingDashboard from "./pages/SchedulingDashboard";
 import InsuranceClaimsDashboard from "./pages/InsuranceClaimsDashboard";
 import DispatchDashboard from "./pages/DispatchDashboard";
+import StormCanvassConfig from "./pages/StormCanvassConfig";
+import StormCanvassPhotos from "./pages/StormCanvassPhotos";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -274,6 +276,8 @@ const AppContent = () => {
         <Route path="/scheduling" element={<ProtectedRoute><SchedulingDashboard /></ProtectedRoute>} />
         <Route path="/insurance" element={<ProtectedRoute><InsuranceClaimsDashboard /></ProtectedRoute>} />
         <Route path="/dispatch" element={<ProtectedRoute><DispatchDashboard /></ProtectedRoute>} />
+        <Route path="/storm-canvass/config" element={<ProtectedRoute><StormCanvassConfig /></ProtectedRoute>} />
+        <Route path="/storm-canvass/photos" element={<ProtectedRoute><StormCanvassPhotos /></ProtectedRoute>} />
         
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />

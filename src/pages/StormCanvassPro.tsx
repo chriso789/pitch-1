@@ -130,7 +130,11 @@ export default function StormCanvassPro() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button className="w-full" variant="outline">
+            <Button 
+              className="w-full" 
+              variant="outline"
+              onClick={() => navigate('/storm-canvass/photos')}
+            >
               View Gallery
             </Button>
           </CardContent>
@@ -174,7 +178,11 @@ export default function StormCanvassPro() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button className="w-full" variant="outline">
+            <Button 
+              className="w-full" 
+              variant="outline"
+              onClick={() => navigate('/storm-canvass/config')}
+            >
               Configure
             </Button>
           </CardContent>

@@ -96,14 +96,28 @@ const PresentationsPage = () => {
     p.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  const handleAIGenerate = async (templateId: string, mode: 'auto' | 'semi') => {
-    // For now, create a new presentation without a pipeline entry
-    // In a full implementation, you'd select a project/lead first
-    toast({
-      title: "Select a project first",
-      description: "To generate an AI presentation, please select a project from the pipeline first, or create a blank presentation.",
+  const handleAIGenerate = async (templateId: string, mode: 'auto' | 'semi', pipelineEntryId?: string) => {
+    if (!pipelineEntryId) {
+      // No project selected - just close dialog and suggest creating blank
+      toast({
+        title: "No project selected",
+        description: "Creating a blank presentation instead. You can add project data later.",
+      });
+      setShowAIDialog(false);
+      handleCreatePresentation();
+      return;
+    }
+    
+    // Generate presentation with AI
+    const result = await generatePresentation({
+      pipelineEntryId,
+      templateId,
+      mode,
     });
-    setShowAIDialog(false);
+    
+    if (result.success) {
+      setShowAIDialog(false);
+    }
   };
 
   return (
