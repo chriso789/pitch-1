@@ -18,10 +18,35 @@ const EMAIL_CONFIG = {
     secondaryColor: '#3b82f6',
   },
   urls: {
+    app: 'https://pitch-1.lovable.app',
     login: 'https://pitch-1.lovable.app/login',
   },
   linkExpirationHours: 24,
 };
+
+/**
+ * Convert Supabase action_link to direct app setup link
+ * This bypasses Supabase redirect configuration entirely.
+ */
+function buildDirectSetupLink(actionLink: string): string {
+  try {
+    const url = new URL(actionLink);
+    const tokenHash = url.searchParams.get('token');
+    const type = url.searchParams.get('type') || 'invite';
+    
+    if (!tokenHash) {
+      console.warn('[buildDirectSetupLink] No token found in action_link, returning original');
+      return actionLink;
+    }
+    
+    const directLink = `${EMAIL_CONFIG.urls.app}/setup-account?token_hash=${encodeURIComponent(tokenHash)}&type=${encodeURIComponent(type)}`;
+    console.log('[buildDirectSetupLink] Converted to direct link');
+    return directLink;
+  } catch (err) {
+    console.error('[buildDirectSetupLink] Failed to parse action_link:', err);
+    return actionLink;
+  }
+}
 
 function getFromEmail(): string {
   const fromDomain = Deno.env.get("RESEND_FROM_DOMAIN");

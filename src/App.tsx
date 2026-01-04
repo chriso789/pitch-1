@@ -24,6 +24,7 @@ import Pricing from "./pages/Pricing";
 import Features from "./pages/Features";
 import Login from "./pages/Login";
 import ResetPassword from "./pages/ResetPassword";
+import SetupAccount from "./pages/SetupAccount";
 import ConfirmEmail from "./pages/ConfirmEmail";
 import ContactProfile from "./pages/ContactProfile";
 import JobDetails from "./pages/JobDetails";
@@ -148,7 +149,7 @@ const AppContent = () => {
       
       // Redirect to landing if signed out (except if already on public pages)
       if (event === 'SIGNED_OUT') {
-        const publicPaths = ['/', '/login', '/signup', '/demo-request', '/reset-password', '/auth/confirm-email', '/reports'];
+        const publicPaths = ['/', '/login', '/signup', '/demo-request', '/reset-password', '/setup-account', '/auth/confirm-email', '/reports'];
         const isPublicPath = publicPaths.some(p => window.location.pathname === p || window.location.pathname.startsWith('/reports/'));
         if (!isPublicPath) {
           navigate('/');
@@ -179,6 +180,7 @@ const AppContent = () => {
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<Login initialTab="signup" />} />
         <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/setup-account" element={<SetupAccount />} />
         <Route path="/auth/confirm-email" element={<ConfirmEmail />} />
         <Route path="/demo-request" element={<DemoRequest />} />
         <Route path="/request-setup-link" element={<RequestSetupLink />} />

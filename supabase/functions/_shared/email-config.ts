@@ -79,3 +79,38 @@ export function getPasswordSetupUrl(token: string, isOnboarding: boolean = true)
   }
   return `${baseUrl}?${params.toString()}`;
 }
+
+/**
+ * Convert Supabase action_link to direct app setup link
+ * 
+ * Supabase action_link format:
+ * https://{project}.supabase.co/auth/v1/verify?token={hash}&type=invite&redirect_to=...
+ * 
+ * We extract the token and build a direct link to our app's /setup-account page
+ * This bypasses Supabase redirect configuration entirely.
+ */
+export function buildDirectSetupLink(actionLink: string): string {
+  try {
+    const url = new URL(actionLink);
+    const tokenHash = url.searchParams.get('token');
+    const type = url.searchParams.get('type') || 'invite';
+    
+    if (!tokenHash) {
+      console.warn('[buildDirectSetupLink] No token found in action_link, returning original');
+      return actionLink;
+    }
+    
+    const appUrl = EMAIL_CONFIG.urls.app;
+    const directLink = `${appUrl}/setup-account?token_hash=${encodeURIComponent(tokenHash)}&type=${encodeURIComponent(type)}`;
+    
+    console.log('[buildDirectSetupLink] Converted action_link to direct link:', {
+      original: actionLink.substring(0, 80) + '...',
+      direct: directLink.substring(0, 80) + '...',
+    });
+    
+    return directLink;
+  } catch (err) {
+    console.error('[buildDirectSetupLink] Failed to parse action_link:', err);
+    return actionLink;
+  }
+}

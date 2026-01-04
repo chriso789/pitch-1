@@ -6,6 +6,32 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
+const APP_URL = "https://pitch-1.lovable.app";
+
+/**
+ * Convert Supabase action_link to direct app setup link
+ * This bypasses Supabase redirect configuration entirely.
+ */
+function buildDirectSetupLink(actionLink: string): string {
+  try {
+    const url = new URL(actionLink);
+    const tokenHash = url.searchParams.get('token');
+    const type = url.searchParams.get('type') || 'invite';
+    
+    if (!tokenHash) {
+      console.warn('[buildDirectSetupLink] No token found in action_link, returning original');
+      return actionLink;
+    }
+    
+    const directLink = `${APP_URL}/setup-account?token_hash=${encodeURIComponent(tokenHash)}&type=${encodeURIComponent(type)}`;
+    console.log('[buildDirectSetupLink] Converted to direct link');
+    return directLink;
+  } catch (err) {
+    console.error('[buildDirectSetupLink] Failed to parse action_link:', err);
+    return actionLink;
+  }
+}
+
 interface OwnerData {
   firstName: string;
   lastName: string;
@@ -196,13 +222,10 @@ serve(async (req: Request) => {
           .eq("id", owner.tenantId)
           .single();
 
-        // Generate invite link for password setup - use standardized resetRedirectUrl
+        // Generate invite link for password setup
         const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
           type: "invite",
           email: owner.email,
-          options: {
-            redirectTo: resetRedirectUrl
-          }
         });
 
         if (linkError) {
@@ -211,6 +234,9 @@ serve(async (req: Request) => {
 
         // Send personalized welcome email with company branding
         if (linkData?.properties?.action_link) {
+          // Convert to direct link that bypasses Supabase redirect config
+          const directSetupLink = buildDirectSetupLink(linkData.properties.action_link);
+          
           try {
             const emailPayload = {
               email: owner.email,
@@ -221,7 +247,7 @@ serve(async (req: Request) => {
               companyLogo: companyData?.logo_url || null,
               companyPrimaryColor: companyData?.primary_color || "#1e3a5f",
               companySecondaryColor: companyData?.secondary_color || "#3b82f6",
-              inviteLink: linkData.properties.action_link,
+              passwordSetupLink: directSetupLink,
               // Platform admin as the sender for owner invitations
               ownerName: "Chris O'Brien",
               ownerHeadshot: null,
