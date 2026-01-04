@@ -4,12 +4,13 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { Plus, Search, FileText, Folder, Upload, Download, Mail, Sparkles } from "lucide-react";
+import { Plus, Search, FileText, Folder, Upload, Download, Mail, Sparkles, FolderUp } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { TemplateEditor } from "./TemplateEditor";
 import { TemplateLibrary } from "./TemplateLibrary";
 import { ProfessionalTemplatesDialog } from "@/components/documents/ProfessionalTemplatesDialog";
+import { BulkDocumentUpload } from "./BulkDocumentUpload";
 
 interface SmartDocTemplate {
   id: string;
@@ -40,6 +41,7 @@ const SmartDocs = () => {
   const [editingTemplate, setEditingTemplate] = useState<SmartDocTemplate | null>(null);
   const [loading, setLoading] = useState(true);
   const [showProfessionalTemplates, setShowProfessionalTemplates] = useState(false);
+  const [showBulkUpload, setShowBulkUpload] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -113,6 +115,24 @@ const SmartDocs = () => {
     if (!file) return;
 
     try {
+      // Get user's tenant_id
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast.error("You must be logged in to upload documents");
+        return;
+      }
+
+      const { data: profile, error: profileError } = await supabase
+        .from("profiles")
+        .select("tenant_id")
+        .eq("id", user.id)
+        .single();
+
+      if (profileError || !profile?.tenant_id) {
+        toast.error("Failed to get tenant information");
+        return;
+      }
+
       // Upload to Supabase storage
       const fileName = `company-docs/${Date.now()}-${file.name}`;
       const { data: uploadData, error: uploadError } = await supabase.storage
@@ -121,7 +141,7 @@ const SmartDocs = () => {
 
       if (uploadError) throw uploadError;
 
-      // Create document record
+      // Create document record with dynamic tenant_id
       const { error: insertError } = await supabase
         .from('documents')
         .insert({
@@ -131,7 +151,7 @@ const SmartDocs = () => {
           mime_type: file.type,
           document_type: 'company_resource',
           description: `Company resource document`,
-          tenant_id: "14de934e-7964-4afd-940a-620d2ace125d"
+          tenant_id: profile.tenant_id
         });
 
       if (insertError) throw insertError;
@@ -282,6 +302,14 @@ const SmartDocs = () => {
                 accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.jpg,.jpeg,.png"
               />
               <Button
+                variant="outline"
+                onClick={() => setShowBulkUpload(true)}
+                className="gap-2"
+              >
+                <FolderUp className="h-4 w-4" />
+                Bulk Upload
+              </Button>
+              <Button
                 onClick={() => document.getElementById('file-upload')?.click()}
                 className="gap-2"
               >
@@ -289,6 +317,12 @@ const SmartDocs = () => {
                 Upload Document
               </Button>
             </div>
+          
+            <BulkDocumentUpload
+              open={showBulkUpload}
+              onOpenChange={setShowBulkUpload}
+              onUploadComplete={loadData}
+            />
           </div>
 
           <div className="grid gap-4">
