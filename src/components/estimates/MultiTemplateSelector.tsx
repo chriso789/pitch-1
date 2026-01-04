@@ -343,12 +343,23 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         metadata?.comprehensive_measurements?.total_area_sqft ??
         0;
 
+      // Get tenant name for prefix
+      const { data: tenant } = await supabaseClient
+        .from('tenants')
+        .select('name')
+        .eq('id', tenantId)
+        .single();
+
+      // Generate tenant prefix (first 3 letters, uppercase)
+      const tenantPrefix = tenant?.name?.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase() || 'EST';
+
+      // Count only this tenant's estimates for unique numbering
       const { count } = await supabaseClient
         .from('enhanced_estimates')
         .select('id', { count: 'exact', head: true })
         .eq('tenant_id', tenantId);
 
-      const estimateNumber = `EST-${String((count || 0) + 1).padStart(5, '0')}`;
+      const estimateNumber = `${tenantPrefix}-${String((count || 0) + 1).padStart(5, '0')}`;
 
       const customerName = contact
         ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim()

@@ -250,7 +250,102 @@ serve(async (req) => {
 
     console.log(`[save-commission-settings] Commission settings saved successfully for user ${target_user_id}, plan: ${planId}`);
 
-    // Log audit event
+    // ==========================================
+    // RECALCULATE PENDING/APPROVED COMMISSIONS
+    // ==========================================
+    console.log(`[save-commission-settings] Recalculating pending commissions for user ${target_user_id}`);
+    let earningsRecalculated = 0;
+
+    // Fetch all pending/approved commission earnings for this user
+    const { data: pendingEarnings, error: fetchEarningsError } = await serviceClient
+      .from('commission_earnings')
+      .select('*')
+      .eq('user_id', target_user_id)
+      .in('status', ['pending', 'approved']);
+
+    if (fetchEarningsError) {
+      console.warn('[save-commission-settings] Error fetching earnings to recalculate:', fetchEarningsError);
+    } else if (pendingEarnings && pendingEarnings.length > 0) {
+      console.log(`[save-commission-settings] Found ${pendingEarnings.length} earnings to recalculate`);
+      
+      for (const earning of pendingEarnings) {
+        let newCommissionAmount = 0;
+        const contractValue = earning.contract_value || 0;
+        const grossProfit = earning.gross_profit || 0;
+        
+        // Recalculate rep overhead
+        const newRepOverheadAmount = contractValue * (rep_overhead_rate / 100);
+        
+        // Recalculate net profit
+        const newNetProfit = grossProfit - newRepOverheadAmount;
+        
+        // Calculate commission based on NEW type (profit_split vs percentage_contract_price)
+        if (commission_type === 'profit_split') {
+          // Net profit split: Commission = Net Profit × Rate %
+          newCommissionAmount = Math.max(0, newNetProfit * (commission_rate / 100));
+        } else {
+          // Percentage of contract: Commission = Contract Value × Rate %
+          newCommissionAmount = contractValue * (commission_rate / 100);
+        }
+        
+        // Update the earning record
+        const { error: updateError } = await serviceClient
+          .from('commission_earnings')
+          .update({
+            commission_rate: commission_rate,
+            commission_type: commission_type === 'profit_split' ? 'net_percent' : 'gross_percent',
+            commission_amount: Math.round(newCommissionAmount * 100) / 100,
+            rep_overhead_rate: rep_overhead_rate,
+            rep_overhead_amount: Math.round(newRepOverheadAmount * 100) / 100,
+            net_profit: Math.round(newNetProfit * 100) / 100,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', earning.id);
+        
+        if (updateError) {
+          console.error(`[save-commission-settings] Failed to update earning ${earning.id}:`, updateError);
+        } else {
+          console.log(`[save-commission-settings] Updated earning ${earning.id}: $${earning.commission_amount} -> $${newCommissionAmount.toFixed(2)}`);
+          earningsRecalculated++;
+        }
+      }
+      
+      console.log(`[save-commission-settings] Successfully recalculated ${earningsRecalculated} commission earnings`);
+    }
+
+    // Recalculate manager overrides if this user is a manager
+    let managerOverridesRecalculated = 0;
+    if (is_manager && manager_override_rate !== undefined && manager_override_rate > 0) {
+      // Find earnings where this user is the manager getting an override
+      const { data: managerOverrides, error: overrideError } = await serviceClient
+        .from('commission_earnings')
+        .select('*')
+        .eq('manager_id', target_user_id)
+        .in('status', ['pending', 'approved']);
+      
+      if (!overrideError && managerOverrides && managerOverrides.length > 0) {
+        for (const earning of managerOverrides) {
+          const newOverrideAmount = (earning.contract_value || 0) * (manager_override_rate / 100);
+          
+          const { error: updateError } = await serviceClient
+            .from('commission_earnings')
+            .update({
+              manager_override_rate: manager_override_rate,
+              manager_override_amount: Math.round(newOverrideAmount * 100) / 100,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', earning.id);
+          
+          if (!updateError) {
+            managerOverridesRecalculated++;
+          }
+        }
+        
+        console.log(`[save-commission-settings] Recalculated ${managerOverridesRecalculated} manager overrides`);
+      }
+    }
+
+    // Log audit event with recalculation details
     try {
       await serviceClient.from('audit_log').insert({
         tenant_id: targetProfile.tenant_id,
@@ -264,7 +359,9 @@ serve(async (req) => {
           rep_overhead_rate,
           manager_override_rate: is_manager ? manager_override_rate : null,
           reports_to_manager_id: !is_manager ? reports_to_manager_id : null,
-          plan_id: planId
+          plan_id: planId,
+          earnings_recalculated: earningsRecalculated,
+          manager_overrides_recalculated: managerOverridesRecalculated
         }
       });
     } catch (auditError) {

@@ -4700,6 +4700,73 @@ export type Database = {
           },
         ]
       }
+      contact_documents: {
+        Row: {
+          contact_id: string
+          created_at: string | null
+          created_by: string | null
+          file_path: string
+          file_size: number | null
+          filename: string
+          id: string
+          merged_tags: Json | null
+          mime_type: string | null
+          original_document_id: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          contact_id: string
+          created_at?: string | null
+          created_by?: string | null
+          file_path: string
+          file_size?: number | null
+          filename: string
+          id?: string
+          merged_tags?: Json | null
+          mime_type?: string | null
+          original_document_id?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          contact_id?: string
+          created_at?: string | null
+          created_by?: string | null
+          file_path?: string
+          file_size?: number | null
+          filename?: string
+          id?: string
+          merged_tags?: Json | null
+          mime_type?: string | null
+          original_document_id?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contact_documents_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_documents_original_document_id_fkey"
+            columns: ["original_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contact_documents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       contact_merge_log: {
         Row: {
           id: string
