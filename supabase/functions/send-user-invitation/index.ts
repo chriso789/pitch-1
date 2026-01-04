@@ -21,6 +21,7 @@ interface UserInvitationRequest {
   overheadRate?: number;
   passwordSetupLink?: string;
   settingsLink?: string;
+  loginUrl?: string;
   // Company branding
   companyLogo?: string;
   companyPrimaryColor?: string;
@@ -42,7 +43,7 @@ const getEmailTemplate = (data: UserInvitationRequest): { subject: string; html:
     commissionRate, 
     overheadRate, 
     passwordSetupLink, 
-    settingsLink,
+    loginUrl,
     companyLogo,
     companyPrimaryColor,
     companySecondaryColor,
@@ -54,6 +55,7 @@ const getEmailTemplate = (data: UserInvitationRequest): { subject: string; html:
   // Use company colors or defaults
   const primaryColor = companyPrimaryColor || '#1e40af';
   const secondaryColor = companySecondaryColor || '#3b82f6';
+  const displayLoginUrl = loginUrl || 'https://pitch-1.lovable.app/login';
   
   const roleDisplayName = role.replace('_', ' ').replace(/\b\w/g, l => l.toUpperCase());
 
@@ -150,7 +152,8 @@ const getEmailTemplate = (data: UserInvitationRequest): { subject: string; html:
     `;
   }
 
-  const subject = `Welcome to ${companyName} - Your Account is Ready! 🎉`;
+  // REP-SPECIFIC subject line - clearly different from owner email
+  const subject = `🎉 Congratulations! You've been added to ${companyName} CRM`;
 
   const html = `
 <!DOCTYPE html>
@@ -176,10 +179,10 @@ const getEmailTemplate = (data: UserInvitationRequest): { subject: string; html:
         </div>
       `}
       <h1 style="color: white; margin: 0 0 8px 0; font-size: 28px; font-weight: 700;">
-        Welcome to the Team, ${firstName}! 🎉
+        Congratulations, ${firstName}! 🎉
       </h1>
-      <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 16px;">
-        Your ${roleDisplayName} account is ready
+      <p style="color: rgba(255,255,255,0.9); margin: 0; font-size: 18px; font-weight: 500;">
+        You've been added to ${companyName}'s CRM
       </p>
     </div>
     
@@ -194,7 +197,7 @@ const getEmailTemplate = (data: UserInvitationRequest): { subject: string; html:
       </div>
       
       <p style="font-size: 16px; color: #374151; line-height: 1.7; margin: 0 0 16px 0;">
-        You've been added as a <strong style="color: ${primaryColor};">${roleDisplayName}</strong> at <strong>${companyName}</strong>.
+        Great news! You've been added to <strong style="color: ${primaryColor};">${companyName}</strong> as a <strong>${roleDisplayName}</strong>.
       </p>
       
       <p style="font-size: 16px; color: #6b7280; line-height: 1.7; margin: 0 0 24px 0;">
@@ -203,17 +206,38 @@ const getEmailTemplate = (data: UserInvitationRequest): { subject: string; html:
       
       ${payStructureSection}
       
+      <!-- Getting Started Box -->
+      <div style="background: linear-gradient(135deg, #f0fdf4 0%, #ecfdf5 100%); border: 1px solid #86efac; border-radius: 12px; padding: 24px; margin: 24px 0;">
+        <h3 style="margin: 0 0 16px 0; color: #166534; font-size: 16px; font-weight: 600;">
+          📋 Getting Started - 3 Simple Steps
+        </h3>
+        <div style="display: grid; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="width: 28px; height: 28px; border-radius: 50%; background: #22c55e; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;">1</div>
+            <span style="color: #374151; font-size: 15px;"><strong>Create your password</strong> using the button below</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="width: 28px; height: 28px; border-radius: 50%; background: #22c55e; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;">2</div>
+            <span style="color: #374151; font-size: 15px;"><strong>Log in</strong> at <a href="${displayLoginUrl}" style="color: ${primaryColor}; text-decoration: underline;">${displayLoginUrl}</a></span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="width: 28px; height: 28px; border-radius: 50%; background: #22c55e; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;">3</div>
+            <span style="color: #374151; font-size: 15px;"><strong>Complete your profile</strong> in Settings</span>
+          </div>
+        </div>
+      </div>
+      
       <!-- CTA Button -->
       <div style="text-align: center; margin: 32px 0;">
         ${passwordSetupLink ? `
           <a 
             href="${passwordSetupLink}" 
-            style="display: inline-block; background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); color: white; padding: 16px 40px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 16px; box-shadow: 0 4px 14px ${primaryColor}40;"
+            style="display: inline-block; background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); color: white; padding: 18px 48px; border-radius: 10px; text-decoration: none; font-weight: 600; font-size: 18px; box-shadow: 0 4px 14px ${primaryColor}40;"
           >
-            Set Up Your Password
+            Create My Password →
           </a>
           <p style="margin: 16px 0 0 0; font-size: 13px; color: #9ca3af;">
-            This link expires in 24 hours
+            ⏰ This link expires in 24 hours
           </p>
         ` : `
           <p style="color: #6b7280; font-size: 14px; margin: 0;">
@@ -222,20 +246,22 @@ const getEmailTemplate = (data: UserInvitationRequest): { subject: string; html:
         `}
       </div>
       
-      ${settingsLink ? `
-        <p style="font-size: 14px; color: #6b7280; text-align: center; margin: 24px 0 0 0;">
-          After setting your password, <a href="${settingsLink}" style="color: ${primaryColor}; font-weight: 500;">complete your profile</a> to add your photo and details.
-        </p>
-      ` : ''}
-      
       ${ownerSection}
       
-      <!-- Footer -->
-      <div style="border-top: 1px solid #e5e7eb; padding-top: 24px; margin-top: 32px; text-align: center;">
-        <p style="font-size: 13px; color: #9ca3af; margin: 0 0 8px 0;">
-          Questions? Contact your system administrator for assistance.
+      <!-- Footer with explicit login URL -->
+      <div style="border-top: 1px solid #e5e7eb; padding-top: 24px; margin-top: 32px;">
+        <div style="background: #f9fafb; border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+          <p style="font-size: 13px; color: #6b7280; margin: 0 0 4px 0;">
+            <strong>Login URL:</strong>
+          </p>
+          <a href="${displayLoginUrl}" style="font-size: 14px; color: ${primaryColor}; font-weight: 500; text-decoration: none;">
+            ${displayLoginUrl}
+          </a>
+        </div>
+        <p style="font-size: 13px; color: #9ca3af; margin: 0 0 8px 0; text-align: center;">
+          Questions? Contact your administrator for assistance.
         </p>
-        <p style="font-size: 12px; color: #d1d5db; margin: 0;">
+        <p style="font-size: 12px; color: #d1d5db; margin: 0; text-align: center;">
           © ${new Date().getFullYear()} ${companyName}. All rights reserved.
         </p>
       </div>

@@ -342,6 +342,7 @@ const handler = async (req: Request): Promise<Response> => {
             overheadRate: payStructure?.overhead_rate || null,
             passwordSetupLink,
             settingsLink: `${appUrl}/settings`,
+            loginUrl: `${appUrl}/login`,
             // Company branding
             companyLogo: companyData?.logo_url || null,
             companyPrimaryColor: companyData?.primary_color || '#1e40af',
