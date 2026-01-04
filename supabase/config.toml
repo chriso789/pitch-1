@@ -614,3 +614,6 @@ verify_jwt = true
 
 [functions.merge-document-tags]
 verify_jwt = true
+
+[functions.update-estimate-line-items]
+verify_jwt = true
