@@ -60,6 +60,7 @@ const LeadDetails = () => {
   const { 
     lead, 
     requirements, 
+    dynamicRequirements,
     photos, 
     productionStage, 
     salesReps: availableSalesReps,
@@ -611,6 +612,7 @@ const LeadDetails = () => {
         <CardContent className="p-4 pt-0">
           <ApprovalRequirementsBubbles 
             requirements={requirements}
+            dynamicRequirements={dynamicRequirements}
             onApprove={handleApproveToProject}
             pipelineEntryId={id}
             onUploadComplete={refetchRequirements}
