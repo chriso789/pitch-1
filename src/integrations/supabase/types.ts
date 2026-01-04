@@ -15668,6 +15668,7 @@ export type Database = {
       }
       profiles: {
         Row: {
+          active_location_id: string | null
           active_tenant_id: string | null
           avatar_url: string | null
           can_manage_all_companies: boolean | null
@@ -15711,6 +15712,7 @@ export type Database = {
           updated_at: string | null
         }
         Insert: {
+          active_location_id?: string | null
           active_tenant_id?: string | null
           avatar_url?: string | null
           can_manage_all_companies?: boolean | null
@@ -15754,6 +15756,7 @@ export type Database = {
           updated_at?: string | null
         }
         Update: {
+          active_location_id?: string | null
           active_tenant_id?: string | null
           avatar_url?: string | null
           can_manage_all_companies?: boolean | null
@@ -15797,6 +15800,13 @@ export type Database = {
           updated_at?: string | null
         }
         Relationships: [
+          {
+            foreignKeyName: "profiles_active_location_id_fkey"
+            columns: ["active_location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "profiles_active_tenant_id_fkey"
             columns: ["active_tenant_id"]
