@@ -742,34 +742,19 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
                     )
                   )}
                 </div>
-                <div className="flex gap-2">
-                  <Input
-                    id="address"
-                    value={formData.address}
-                    onChange={(e) => {
-                      setFormData(prev => ({ ...prev, address: e.target.value }));
-                      setSelectedAddress(null);
-                      setAddressVerified(false);
-                      if (fieldErrors.address) setFieldErrors(prev => ({ ...prev, address: "" }));
-                    }}
-                    placeholder="Start typing address..."
-                    disabled={formData.useSameInfo}
-                    className={fieldErrors.address ? "border-destructive focus-visible:ring-destructive" : ""}
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => handleAddressVerification(formData.address)}
-                    disabled={!formData.address.trim() || addressLoading}
-                  >
-                    {addressLoading ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <MapPin className="h-4 w-4" />
-                    )}
-                    Verify
-                  </Button>
-                </div>
+                <Input
+                  id="address"
+                  value={formData.address}
+                  onChange={(e) => {
+                    setFormData(prev => ({ ...prev, address: e.target.value }));
+                    setSelectedAddress(null);
+                    setAddressVerified(false);
+                    if (fieldErrors.address) setFieldErrors(prev => ({ ...prev, address: "" }));
+                  }}
+                  placeholder="Start typing address..."
+                  disabled={formData.useSameInfo}
+                  className={fieldErrors.address ? "border-destructive focus-visible:ring-destructive" : ""}
+                />
                 
                 {/* Real-time address suggestions dropdown */}
                 {showAddressPicker && addressSuggestions.length > 0 && (

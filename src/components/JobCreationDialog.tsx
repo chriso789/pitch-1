@@ -306,31 +306,16 @@ export const JobCreationDialog: React.FC<JobCreationDialogProps> = ({
 
           <div>
             <Label htmlFor="address">Job Address *</Label>
-            <div className="flex gap-2">
-              <Input
-                id="address"
-                value={formData.address}
-                onChange={(e) => {
-                  setFormData(prev => ({ ...prev, address: e.target.value }));
-                  setSelectedAddress(null);
-                }}
-                placeholder="Start typing address..."
-                disabled={formData.useSameAddress}
-              />
-              <Button
-                type="button"
-                variant="outline"
-                onClick={() => handleAddressVerification(formData.address)}
-                disabled={!formData.address.trim() || addressLoading}
-              >
-                {addressLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <MapPin className="h-4 w-4" />
-                )}
-                Verify
-              </Button>
-            </div>
+            <Input
+              id="address"
+              value={formData.address}
+              onChange={(e) => {
+                setFormData(prev => ({ ...prev, address: e.target.value }));
+                setSelectedAddress(null);
+              }}
+              placeholder="Start typing address..."
+              disabled={formData.useSameAddress}
+            />
           </div>
 
           {showAddressPicker && addressSuggestions.length > 0 && (
