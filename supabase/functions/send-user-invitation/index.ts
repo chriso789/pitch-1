@@ -11,7 +11,7 @@ const corsHeaders = {
 
 // Centralized email config
 const EMAIL_CONFIG = {
-  bcc: 'admin@pitch-crm.ai',
+  bcc: 'support@obriencontractingusa.com',
   brand: {
     name: 'PITCH CRM',
     primaryColor: '#2563eb',
@@ -230,20 +230,44 @@ const getEmailTemplate = (data: UserInvitationRequest): { subject: string; html:
         <h3 style="margin: 0 0 16px 0; color: #166534; font-size: 16px; font-weight: 600;">
           📋 Getting Started
         </h3>
-        <div style="display: grid; gap: 12px;">
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <div style="width: 28px; height: 28px; border-radius: 50%; background: #22c55e; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;">1</div>
-            <span style="color: #374151; font-size: 15px;"><strong>Create your password</strong> using the button below</span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <div style="width: 28px; height: 28px; border-radius: 50%; background: #22c55e; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;">2</div>
-            <span style="color: #374151; font-size: 15px;"><strong>Log in</strong> and explore the CRM</span>
-          </div>
-          <div style="display: flex; align-items: center; gap: 12px;">
-            <div style="width: 28px; height: 28px; border-radius: 50%; background: #22c55e; color: white; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px;">3</div>
-            <span style="color: #374151; font-size: 15px;"><strong>Complete your profile</strong> in Settings</span>
-          </div>
-        </div>
+        <table cellpadding="0" cellspacing="0" border="0" style="width: 100%;">
+          <tr>
+            <td style="padding-bottom: 12px;">
+              <table cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="width: 28px; height: 28px; background-color: #22c55e; border-radius: 50%; text-align: center; vertical-align: middle;">
+                    <span style="color: white; font-weight: bold; font-size: 14px; line-height: 28px;">1</span>
+                  </td>
+                  <td style="padding-left: 12px; color: #374151; font-size: 15px;"><strong>Create your password</strong> using the button below</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding-bottom: 12px;">
+              <table cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="width: 28px; height: 28px; background-color: #22c55e; border-radius: 50%; text-align: center; vertical-align: middle;">
+                    <span style="color: white; font-weight: bold; font-size: 14px; line-height: 28px;">2</span>
+                  </td>
+                  <td style="padding-left: 12px; color: #374151; font-size: 15px;"><strong>Log in</strong> and explore the CRM</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td>
+              <table cellpadding="0" cellspacing="0" border="0">
+                <tr>
+                  <td style="width: 28px; height: 28px; background-color: #22c55e; border-radius: 50%; text-align: center; vertical-align: middle;">
+                    <span style="color: white; font-weight: bold; font-size: 14px; line-height: 28px;">3</span>
+                  </td>
+                  <td style="padding-left: 12px; color: #374151; font-size: 15px;"><strong>Complete your profile</strong> in Settings</td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
       </div>
       
       <!-- CTA Button -->
