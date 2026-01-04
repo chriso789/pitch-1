@@ -440,6 +440,11 @@ export const EnhancedClientList = () => {
             address_city,
             address_state,
             address_zip
+          ),
+          assigned_rep:profiles!pipeline_entries_assigned_to_fkey (
+            id,
+            first_name,
+            last_name
           )
         `)
         .eq('tenant_id', effectiveTenantId)
@@ -605,8 +610,11 @@ export const EnhancedClientList = () => {
             bValue = b.lead_score || 0;
             break;
           case 'assigned_to':
-            const aRepName = a.assigned_to ? (locationReps.find(r => r.id === a.assigned_to)?.first_name || '') : '';
-            const bRepName = b.assigned_to ? (locationReps.find(r => r.id === b.assigned_to)?.first_name || '') : '';
+            // Use joined assigned_rep profile if available, fallback to locationReps lookup
+            const aRep = (a as any).assigned_rep || locationReps.find(r => r.id === a.assigned_to);
+            const bRep = (b as any).assigned_rep || locationReps.find(r => r.id === b.assigned_to);
+            const aRepName = aRep ? (aRep.first_name || '') : '';
+            const bRepName = bRep ? (bRep.first_name || '') : '';
             aValue = aRepName.toLowerCase();
             bValue = bRepName.toLowerCase();
             break;
@@ -1473,7 +1481,8 @@ export const EnhancedClientList = () => {
                               <span className={item.assigned_to ? '' : 'text-muted-foreground italic'}>
                                 {item.assigned_to 
                                   ? (() => {
-                                      const rep = locationReps.find(r => r.id === item.assigned_to);
+                                      // Use joined assigned_rep profile if available, fallback to locationReps lookup
+                                      const rep = (item as any).assigned_rep || locationReps.find(r => r.id === item.assigned_to);
                                       return rep ? `${rep.first_name} ${rep.last_name}`.trim() : 'Unknown';
                                     })()
                                   : 'Unassigned'}

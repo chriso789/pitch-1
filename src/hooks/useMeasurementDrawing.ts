@@ -84,6 +84,15 @@ export function useMeasurementDrawing(options: UseMeasurementDrawingOptions = {}
     setCurrentPoints([]);
   }, []);
 
+  const removeLastPoint = useCallback(() => {
+    if (currentPoints.length > 0) {
+      setCurrentPoints(prev => prev.slice(0, -1));
+    }
+    if (currentPoints.length <= 1) {
+      cancelDrawing();
+    }
+  }, [currentPoints.length, cancelDrawing]);
+
   const movePoint = useCallback((polygonId: string, pointIndex: number, newPosition: Point) => {
     saveToUndoStack();
     setPolygons(prev => prev.map(polygon => {
@@ -193,6 +202,7 @@ export function useMeasurementDrawing(options: UseMeasurementDrawingOptions = {}
     addPoint,
     completePolygon,
     cancelDrawing,
+    removeLastPoint,
     movePoint,
     deletePoint,
     deletePolygon,
