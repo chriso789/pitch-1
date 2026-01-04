@@ -358,9 +358,9 @@ export const EnhancedClientList = () => {
           .order("created_at", { ascending: false })
           .range(from, from + BATCH_SIZE - 1);
         
-        // Apply location filter only if locations exist AND one is selected
+        // Apply location filter - include contacts with matching location_id OR null location_id
         if (currentLocationId && locations.length > 0) {
-          batchQuery = batchQuery.eq('location_id', currentLocationId);
+          batchQuery = batchQuery.or(`location_id.eq.${currentLocationId},location_id.is.null`);
         }
         
         const { data: batchData, error: batchError } = await batchQuery;
@@ -443,7 +443,6 @@ export const EnhancedClientList = () => {
           )
         `)
         .eq('tenant_id', effectiveTenantId)
-        .eq('created_by', user.id)
         .order("created_at", { ascending: false });
 
       if (pipelineError) {
