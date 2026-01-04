@@ -4,19 +4,33 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Save, FileText, Sparkles, Ruler, RotateCcw } from 'lucide-react';
+import { Loader2, Save, FileText, Sparkles, Ruler, RotateCcw, Download } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { seedBrandTemplates } from '@/lib/estimates/brandTemplateSeeder';
 import { useMeasurementContext, evaluateFormula } from '@/hooks/useMeasurementContext';
 import { SectionedLineItemsTable } from './SectionedLineItemsTable';
 import { EstimateBreakdownCard } from './EstimateBreakdownCard';
 import { EstimatePDFTemplate } from './EstimatePDFTemplate';
+import { PDFExportDialog } from './PDFExportDialog';
+import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptions';
 import { useEstimatePricing, type LineItem } from '@/hooks/useEstimatePricing';
 import { usePDFGeneration } from '@/hooks/usePDFGeneration';
 import { useQueryClient } from '@tanstack/react-query';
 import { saveEstimatePdf } from '@/lib/estimates/estimatePdfSaver';
 
 const supabaseClient = supabase as any;
+
+interface CompanyInfo {
+  name: string;
+  logo_url?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  address_line1?: string | null;
+  address_city?: string | null;
+  address_state?: string | null;
+  address_zip?: string | null;
+  license_number?: string | null;
+}
 
 interface Template {
   id: string;
@@ -70,6 +84,12 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [showPDFTemplate, setShowPDFTemplate] = useState(false);
   const [pdfData, setPdfData] = useState<any>(null);
   const [existingEstimateId, setExistingEstimateId] = useState<string | null>(null);
+  const [showExportDialog, setShowExportDialog] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
+  const [finePrintContent, setFinePrintContent] = useState<string>('');
+  const [customerInfo, setCustomerInfo] = useState<{ name: string; address: string; phone?: string; email?: string } | null>(null);
+  const [pdfOptions, setPdfOptions] = useState<PDFComponentOptions>(getDefaultOptions('customer'));
   const { toast } = useToast();
   const { context: measurementContext, summary: measurementSummary } = useMeasurementContext(pipelineEntryId);
   const { generatePDF } = usePDFGeneration();
@@ -95,8 +115,73 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   useEffect(() => {
     fetchTemplates();
     loadSelectedTemplate();
+    fetchCompanyAndEstimateSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Fetch company info and estimate settings
+  const fetchCompanyAndEstimateSettings = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { data: profile } = await supabaseClient
+        .from('profiles')
+        .select('tenant_id, active_tenant_id')
+        .eq('id', user.id)
+        .single();
+
+      const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+      if (!tenantId) return;
+
+      // Fetch tenant info for company branding
+      const { data: tenant } = await supabaseClient
+        .from('tenants')
+        .select('name, logo_url, phone, email, address_line1, address_city, address_state, address_zip, license_number')
+        .eq('id', tenantId)
+        .single();
+
+      if (tenant) {
+        setCompanyInfo(tenant as CompanyInfo);
+      }
+
+      // Fetch estimate settings for fine print
+      const { data: settings } = await supabaseClient
+        .from('tenant_estimate_settings')
+        .select('fine_print_content, default_include_fine_print')
+        .eq('tenant_id', tenantId)
+        .maybeSingle();
+
+      if (settings?.fine_print_content) {
+        setFinePrintContent(settings.fine_print_content);
+      }
+
+      // Fetch customer info from pipeline entry
+      const { data: pipelineEntry } = await supabaseClient
+        .from('pipeline_entries')
+        .select('contacts(first_name, last_name, email, phone, address_street, address_city, address_state, address_zip)')
+        .eq('id', pipelineEntryId)
+        .single();
+
+      if (pipelineEntry?.contacts) {
+        const c = pipelineEntry.contacts;
+        const name = `${c.first_name || ''} ${c.last_name || ''}`.trim();
+        const addressParts = [
+          c.address_street,
+          [c.address_city, c.address_state].filter(Boolean).join(', '),
+          c.address_zip
+        ].filter(Boolean);
+        setCustomerInfo({
+          name,
+          address: addressParts.join(' • '),
+          phone: c.phone,
+          email: c.email,
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching company/estimate settings:', error);
+    }
+  };
 
   useEffect(() => {
     if (selectedTemplateId) {
@@ -653,6 +738,95 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     [templates, selectedTemplateId]
   );
 
+  // Handle PDF export with options
+  const handleExportPDF = async (options: PDFComponentOptions) => {
+    if (lineItems.length === 0) return;
+    
+    setIsExporting(true);
+    setPdfOptions(options);
+    
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+
+      const { data: profile } = await supabaseClient
+        .from('profiles')
+        .select('tenant_id, active_tenant_id')
+        .eq('id', user.id)
+        .single();
+
+      const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+      if (!tenantId) throw new Error('No tenant found');
+
+      // Generate estimate number for export
+      const timestamp = Date.now().toString(36).slice(-4);
+      const estimateNumber = existingEstimateId 
+        ? `EST-EXPORT-${timestamp}`
+        : `EST-DRAFT-${timestamp}`;
+
+      // Set up PDF data with company info and options
+      setPdfData({
+        estimateNumber,
+        customerName: customerInfo?.name || 'Customer',
+        customerAddress: customerInfo?.address || '',
+        customerPhone: customerInfo?.phone,
+        customerEmail: customerInfo?.email,
+        companyInfo,
+        materialItems,
+        laborItems,
+        breakdown,
+        config,
+        finePrintContent: options.showCustomFinePrint ? finePrintContent : undefined,
+        options,
+      });
+      setShowPDFTemplate(true);
+
+      // Wait for render
+      await new Promise(resolve => setTimeout(resolve, 600));
+
+      // Generate PDF
+      const pdfBlob = await generatePDF('estimate-pdf-template', {
+        filename: `${estimateNumber}.pdf`,
+        orientation: 'portrait',
+        format: 'letter',
+        quality: 2
+      });
+
+      setShowPDFTemplate(false);
+      setPdfData(null);
+
+      if (pdfBlob) {
+        // Download the PDF
+        const url = URL.createObjectURL(pdfBlob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `${estimateNumber}.pdf`;
+        a.click();
+        URL.revokeObjectURL(url);
+
+        toast({
+          title: 'PDF Downloaded',
+          description: `${estimateNumber}.pdf has been downloaded`
+        });
+      } else {
+        throw new Error('PDF generation failed');
+      }
+
+      setShowExportDialog(false);
+    } catch (error) {
+      console.error('Error exporting PDF:', error);
+      setShowPDFTemplate(false);
+      setPdfData(null);
+      toast({
+        title: 'Export Failed',
+        description: 'Failed to generate PDF',
+        variant: 'destructive'
+      });
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8">
@@ -807,6 +981,18 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           Save Selection
         </Button>
         
+        {/* Export PDF button */}
+        {lineItems.length > 0 && (
+          <Button
+            variant="outline"
+            onClick={() => setShowExportDialog(true)}
+            className="flex-1 min-w-[140px]"
+          >
+            <Download className="mr-2 h-4 w-4" />
+            Export PDF
+          </Button>
+        )}
+        
         {/* Show Save Changes button when editing existing estimate with modifications */}
         {existingEstimateId && lineItems.some(item => item.is_override) && (
           <Button
@@ -838,6 +1024,16 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         </Button>
       </div>
 
+      {/* PDF Export Dialog */}
+      <PDFExportDialog
+        open={showExportDialog}
+        onOpenChange={setShowExportDialog}
+        onExport={handleExportPDF}
+        isExporting={isExporting}
+        finePrintAvailable={!!finePrintContent}
+        finePrintContent={finePrintContent}
+      />
+
       {/* Hidden PDF Template for capture - positioned in DOM but invisible for html2canvas */}
       {showPDFTemplate && pdfData && (
         <div 
@@ -850,10 +1046,15 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             estimateNumber={pdfData.estimateNumber}
             customerName={pdfData.customerName}
             customerAddress={pdfData.customerAddress}
+            customerPhone={pdfData.customerPhone}
+            customerEmail={pdfData.customerEmail}
+            companyInfo={pdfData.companyInfo}
             materialItems={pdfData.materialItems}
             laborItems={pdfData.laborItems}
             breakdown={pdfData.breakdown}
             config={pdfData.config}
+            finePrintContent={pdfData.finePrintContent}
+            options={pdfData.options}
           />
         </div>
       )}

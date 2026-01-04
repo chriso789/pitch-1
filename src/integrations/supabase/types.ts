@@ -23626,6 +23626,47 @@ export type Database = {
           },
         ]
       }
+      tenant_estimate_settings: {
+        Row: {
+          created_at: string | null
+          default_include_fine_print: boolean | null
+          default_pdf_view_mode: string | null
+          default_terms: string | null
+          fine_print_content: string | null
+          id: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          default_include_fine_print?: boolean | null
+          default_pdf_view_mode?: string | null
+          default_terms?: string | null
+          fine_print_content?: string | null
+          id?: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          default_include_fine_print?: boolean | null
+          default_pdf_view_mode?: string | null
+          default_terms?: string | null
+          fine_print_content?: string | null
+          id?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_estimate_settings_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: true
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_settings: {
         Row: {
           created_at: string | null
@@ -28130,6 +28171,10 @@ export type Database = {
           p_presentation_id: string
         }
         Returns: string
+      }
+      storage_check_document_access: {
+        Args: { folder_name: string; user_id: string }
+        Returns: boolean
       }
       switch_active_tenant: { Args: { p_tenant_id: string }; Returns: Json }
       switch_developer_context: {
