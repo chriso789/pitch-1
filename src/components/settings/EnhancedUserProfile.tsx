@@ -222,6 +222,20 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
 
       if (error) throw error;
 
+      // Sync email to auth.users if email was updated
+      if (user.email) {
+        console.log("Syncing email to auth.users for user:", userId);
+        const { error: syncError } = await supabase.functions.invoke('sync-user-email', {
+          body: { userId }
+        });
+        if (syncError) {
+          console.error("Email sync error (non-blocking):", syncError);
+          // Don't throw - profile was saved, sync is a secondary concern
+        } else {
+          console.log("Email synced successfully to auth.users");
+        }
+      }
+
       // If company changed, update user_company_access
       if (selectedTenantId && selectedTenantId !== oldTenantId) {
         // Upsert new company access
