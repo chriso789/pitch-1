@@ -10,6 +10,9 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { Textarea } from '@/components/ui/textarea';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import { useToast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
 import { getIcon, availableIcons } from '@/lib/iconMap';
@@ -22,7 +25,12 @@ import {
   Trash2,
   Settings2,
   CheckCircle,
-  AlertCircle
+  AlertCircle,
+  Upload,
+  FileText,
+  Camera,
+  ClipboardCheck,
+  DollarSign
 } from 'lucide-react';
 import {
   DndContext,
@@ -52,7 +60,21 @@ interface ApprovalRequirement {
   is_required: boolean;
   sort_order: number;
   validation_type: string;
+  description?: string | null;
 }
+
+// Action types that map to validation_type
+const ACTION_TYPES = [
+  { value: 'document', label: 'Upload Document', icon: FileText, description: 'Requires a document to be uploaded' },
+  { value: 'estimate', label: 'Select Estimate', icon: DollarSign, description: 'Requires an estimate to be selected' },
+  { value: 'photos', label: 'Upload Photos', icon: Camera, description: 'Requires inspection photos' },
+  { value: 'manual', label: 'Manual Verification', icon: ClipboardCheck, description: 'Admin manually marks complete' },
+  { value: 'custom', label: 'Custom Check', icon: Settings2, description: 'Custom validation logic' },
+];
+
+const getActionLabel = (type: string) => {
+  return ACTION_TYPES.find(a => a.value === type)?.label || type;
+};
 
 interface SortableItemProps {
   requirement: ApprovalRequirement;
@@ -100,7 +122,7 @@ function SortableItem({ requirement, onEdit, onToggleActive, onToggleRequired, o
 
       {/* Icon */}
       <div className={cn(
-        "h-10 w-10 rounded-full flex items-center justify-center",
+        "h-10 w-10 rounded-full flex items-center justify-center shrink-0",
         requirement.is_active ? "bg-primary/10" : "bg-muted"
       )}>
         <Icon className={cn(
@@ -118,7 +140,8 @@ function SortableItem({ requirement, onEdit, onToggleActive, onToggleRequired, o
           )}
         </div>
         <p className="text-xs text-muted-foreground truncate">
-          Key: {requirement.requirement_key} • Type: {requirement.validation_type}
+          Action: {getActionLabel(requirement.validation_type)}
+          {requirement.description && ` • ${requirement.description}`}
         </p>
       </div>
 
@@ -174,10 +197,23 @@ export function ApprovalRequirementsSettings() {
   const { user } = useCurrentUser();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  
+  // Edit state
   const [editingRequirement, setEditingRequirement] = useState<ApprovalRequirement | null>(null);
   const [editLabel, setEditLabel] = useState('');
   const [editIcon, setEditIcon] = useState('');
+  const [editValidationType, setEditValidationType] = useState('');
+  const [editDescription, setEditDescription] = useState('');
   const [iconPopoverOpen, setIconPopoverOpen] = useState(false);
+  
+  // Create state
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [newLabel, setNewLabel] = useState('');
+  const [newIcon, setNewIcon] = useState('FileText');
+  const [newValidationType, setNewValidationType] = useState('document');
+  const [newDescription, setNewDescription] = useState('');
+  const [newIsRequired, setNewIsRequired] = useState(false);
+  const [newIconPopoverOpen, setNewIconPopoverOpen] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -224,6 +260,42 @@ export function ApprovalRequirementsSettings() {
     },
   });
 
+  // Create mutation
+  const createMutation = useMutation({
+    mutationFn: async (newReq: {
+      label: string;
+      icon_name: string;
+      validation_type: string;
+      description: string;
+      is_required: boolean;
+    }) => {
+      const key = newReq.label.toLowerCase().replace(/\s+/g, '_').replace(/[^a-z0-9_]/g, '');
+      const { error } = await supabase
+        .from('tenant_approval_requirements')
+        .insert({
+          tenant_id: tenantId,
+          requirement_key: key,
+          label: newReq.label,
+          icon_name: newReq.icon_name,
+          validation_type: newReq.validation_type,
+          description: newReq.description || null,
+          is_active: true,
+          is_required: newReq.is_required,
+          sort_order: requirements.length + 1,
+        });
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tenant-approval-requirements', tenantId] });
+      toast({ title: 'Requirement created' });
+      setCreateDialogOpen(false);
+      resetCreateForm();
+    },
+    onError: (error) => {
+      toast({ title: 'Failed to create', description: error.message, variant: 'destructive' });
+    },
+  });
+
   // Delete mutation
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -255,6 +327,14 @@ export function ApprovalRequirementsSettings() {
     },
   });
 
+  const resetCreateForm = () => {
+    setNewLabel('');
+    setNewIcon('FileText');
+    setNewValidationType('document');
+    setNewDescription('');
+    setNewIsRequired(false);
+  };
+
   const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event;
     if (!over || active.id === over.id) return;
@@ -275,6 +355,8 @@ export function ApprovalRequirementsSettings() {
     setEditingRequirement(req);
     setEditLabel(req.label);
     setEditIcon(req.icon_name);
+    setEditValidationType(req.validation_type);
+    setEditDescription(req.description || '');
   };
 
   const handleSaveEdit = () => {
@@ -283,6 +365,8 @@ export function ApprovalRequirementsSettings() {
       id: editingRequirement.id,
       label: editLabel,
       icon_name: editIcon,
+      validation_type: editValidationType,
+      description: editDescription || null,
     });
     setEditingRequirement(null);
   };
@@ -301,6 +385,20 @@ export function ApprovalRequirementsSettings() {
     }
   };
 
+  const handleCreate = () => {
+    if (!newLabel.trim()) {
+      toast({ title: 'Label is required', variant: 'destructive' });
+      return;
+    }
+    createMutation.mutate({
+      label: newLabel,
+      icon_name: newIcon,
+      validation_type: newValidationType,
+      description: newDescription,
+      is_required: newIsRequired,
+    });
+  };
+
   if (isLoading) {
     return (
       <Card>
@@ -314,21 +412,29 @@ export function ApprovalRequirementsSettings() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Settings2 className="h-5 w-5" />
-          Approval Requirements
-        </CardTitle>
-        <CardDescription>
-          Configure which requirements must be met before a lead can be approved to a project.
-          Drag to reorder, toggle active/required status, or edit labels and icons.
-        </CardDescription>
+        <div className="flex items-center justify-between">
+          <div>
+            <CardTitle className="flex items-center gap-2">
+              <Settings2 className="h-5 w-5" />
+              Approval Requirements
+            </CardTitle>
+            <CardDescription>
+              Configure which requirements must be met before a lead can be approved to a project.
+              Drag to reorder, toggle active/required status, or edit labels and icons.
+            </CardDescription>
+          </div>
+          <Button onClick={() => setCreateDialogOpen(true)}>
+            <Plus className="h-4 w-4 mr-2" />
+            Add Requirement
+          </Button>
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         {requirements.length === 0 ? (
           <div className="text-center py-8 text-muted-foreground">
             <AlertCircle className="h-12 w-12 mx-auto mb-4 opacity-50" />
             <p>No approval requirements configured.</p>
-            <p className="text-sm">Default requirements will be created automatically.</p>
+            <p className="text-sm">Click "Add Requirement" to create your first one.</p>
           </div>
         ) : (
           <DndContext
@@ -363,51 +469,86 @@ export function ApprovalRequirementsSettings() {
               <CardTitle className="text-sm">Edit Requirement</CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label>Label</Label>
+                  <Input
+                    value={editLabel}
+                    onChange={(e) => setEditLabel(e.target.value)}
+                    placeholder="Requirement label"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Icon</Label>
+                  <Popover open={iconPopoverOpen} onOpenChange={setIconPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" className="w-full justify-start gap-2">
+                        {(() => {
+                          const IconComponent = getIcon(editIcon);
+                          return <IconComponent className="h-4 w-4" />;
+                        })()}
+                        {editIcon}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-2">
+                      <ScrollArea className="h-48">
+                        <div className="grid grid-cols-5 gap-1">
+                          {availableIcons.map((iconName) => {
+                            const IconComponent = getIcon(iconName);
+                            return (
+                              <Button
+                                key={iconName}
+                                variant={editIcon === iconName ? 'secondary' : 'ghost'}
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => {
+                                  setEditIcon(iconName);
+                                  setIconPopoverOpen(false);
+                                }}
+                              >
+                                <IconComponent className="h-4 w-4" />
+                              </Button>
+                            );
+                          })}
+                        </div>
+                      </ScrollArea>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+              </div>
+              
               <div className="space-y-2">
-                <Label>Label</Label>
-                <Input
-                  value={editLabel}
-                  onChange={(e) => setEditLabel(e.target.value)}
-                  placeholder="Requirement label"
+                <Label>Action Type</Label>
+                <Select value={editValidationType} onValueChange={setEditValidationType}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select action" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {ACTION_TYPES.map((action) => (
+                      <SelectItem key={action.value} value={action.value}>
+                        <div className="flex items-center gap-2">
+                          <action.icon className="h-4 w-4" />
+                          <span>{action.label}</span>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground">
+                  {ACTION_TYPES.find(a => a.value === editValidationType)?.description}
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <Label>Description (optional)</Label>
+                <Textarea
+                  value={editDescription}
+                  onChange={(e) => setEditDescription(e.target.value)}
+                  placeholder="Brief description of this requirement"
+                  rows={2}
                 />
               </div>
-              <div className="space-y-2">
-                <Label>Icon</Label>
-                <Popover open={iconPopoverOpen} onOpenChange={setIconPopoverOpen}>
-                  <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start gap-2">
-                      {(() => {
-                        const IconComponent = getIcon(editIcon);
-                        return <IconComponent className="h-4 w-4" />;
-                      })()}
-                      {editIcon}
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 p-2">
-                    <ScrollArea className="h-48">
-                      <div className="grid grid-cols-5 gap-1">
-                        {availableIcons.map((iconName) => {
-                          const IconComponent = getIcon(iconName);
-                          return (
-                            <Button
-                              key={iconName}
-                              variant={editIcon === iconName ? 'secondary' : 'ghost'}
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() => {
-                                setEditIcon(iconName);
-                                setIconPopoverOpen(false);
-                              }}
-                            >
-                              <IconComponent className="h-4 w-4" />
-                            </Button>
-                          );
-                        })}
-                      </div>
-                    </ScrollArea>
-                  </PopoverContent>
-                </Popover>
-              </div>
+
               <div className="flex gap-2">
                 <Button onClick={handleSaveEdit} className="flex-1">
                   <Save className="h-4 w-4 mr-2" />
@@ -435,6 +576,114 @@ export function ApprovalRequirementsSettings() {
           </div>
         </div>
       </CardContent>
+
+      {/* Create Dialog */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add New Requirement</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Label *</Label>
+                <Input
+                  value={newLabel}
+                  onChange={(e) => setNewLabel(e.target.value)}
+                  placeholder="e.g., Permit, Insurance, etc."
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>Icon</Label>
+                <Popover open={newIconPopoverOpen} onOpenChange={setNewIconPopoverOpen}>
+                  <PopoverTrigger asChild>
+                    <Button variant="outline" className="w-full justify-start gap-2">
+                      {(() => {
+                        const IconComponent = getIcon(newIcon);
+                        return <IconComponent className="h-4 w-4" />;
+                      })()}
+                      {newIcon}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-2">
+                    <ScrollArea className="h-48">
+                      <div className="grid grid-cols-5 gap-1">
+                        {availableIcons.map((iconName) => {
+                          const IconComponent = getIcon(iconName);
+                          return (
+                            <Button
+                              key={iconName}
+                              variant={newIcon === iconName ? 'secondary' : 'ghost'}
+                              size="icon"
+                              className="h-8 w-8"
+                              onClick={() => {
+                                setNewIcon(iconName);
+                                setNewIconPopoverOpen(false);
+                              }}
+                            >
+                              <IconComponent className="h-4 w-4" />
+                            </Button>
+                          );
+                        })}
+                      </div>
+                    </ScrollArea>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Action Type</Label>
+              <Select value={newValidationType} onValueChange={setNewValidationType}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Select action" />
+                </SelectTrigger>
+                <SelectContent>
+                  {ACTION_TYPES.map((action) => (
+                    <SelectItem key={action.value} value={action.value}>
+                      <div className="flex items-center gap-2">
+                        <action.icon className="h-4 w-4" />
+                        <span>{action.label}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {ACTION_TYPES.find(a => a.value === newValidationType)?.description}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Description (optional)</Label>
+              <Textarea
+                value={newDescription}
+                onChange={(e) => setNewDescription(e.target.value)}
+                placeholder="Brief description of this requirement"
+                rows={2}
+              />
+            </div>
+
+            <div className="flex items-center gap-2">
+              <Switch
+                id="new-is-required"
+                checked={newIsRequired}
+                onCheckedChange={setNewIsRequired}
+              />
+              <Label htmlFor="new-is-required">Required for approval</Label>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setCreateDialogOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={handleCreate} disabled={createMutation.isPending}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Requirement
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }

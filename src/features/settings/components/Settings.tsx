@@ -51,6 +51,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { ApprovalRequirementsSettings } from "@/components/settings/ApprovalRequirementsSettings";
+import { EstimateFinePrintSettings } from "@/components/settings/EstimateFinePrintSettings";
 
 interface SettingsTab {
   id: string;
@@ -201,6 +202,7 @@ export const Settings = () => {
               <TabsTrigger value="settings">General Settings</TabsTrigger>
               <TabsTrigger value="lead-sources">Lead Sources</TabsTrigger>
               <TabsTrigger value="approval-requirements">Approval Requirements</TabsTrigger>
+              <TabsTrigger value="estimate-pdf">Estimate PDF</TabsTrigger>
             </TabsList>
             <TabsContent value="settings">
               <GeneralSettings />
@@ -210,6 +212,9 @@ export const Settings = () => {
             </TabsContent>
             <TabsContent value="approval-requirements">
               <ApprovalRequirementsSettings />
+            </TabsContent>
+            <TabsContent value="estimate-pdf">
+              <EstimateFinePrintSettings />
             </TabsContent>
           </Tabs>
         );
