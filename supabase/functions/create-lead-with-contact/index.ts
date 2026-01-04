@@ -147,6 +147,61 @@ serve(async (req: Request) => {
     const tenantId = profile.active_tenant_id || profile.tenant_id;
     console.log("[create-lead-with-contact] Tenant ID:", tenantId);
 
+    // Determine location_id with fallback logic
+    let locationId = profile.active_location_id;
+    
+    if (!locationId) {
+      console.log("[create-lead-with-contact] No active_location_id, searching for fallback...");
+      
+      // Try to find the primary location for the tenant
+      const { data: primaryLocation } = await supabase
+        .from("locations")
+        .select("id")
+        .eq("tenant_id", tenantId)
+        .eq("is_primary", true)
+        .maybeSingle();
+      
+      if (primaryLocation) {
+        locationId = primaryLocation.id;
+        console.log("[create-lead-with-contact] Using primary location:", locationId);
+      } else {
+        // Check for any active location in the tenant
+        const { data: anyLocation } = await supabase
+          .from("locations")
+          .select("id")
+          .eq("tenant_id", tenantId)
+          .eq("is_active", true)
+          .limit(1)
+          .maybeSingle();
+        
+        if (anyLocation) {
+          locationId = anyLocation.id;
+          console.log("[create-lead-with-contact] Using first active location:", locationId);
+        } else {
+          // Create a default location if none exists
+          console.log("[create-lead-with-contact] No locations found, creating default...");
+          const { data: newLocation, error: locationError } = await supabase
+            .from("locations")
+            .insert({
+              tenant_id: tenantId,
+              name: "Main Office",
+              is_primary: true,
+              is_active: true,
+              created_by: user.id,
+            })
+            .select("id")
+            .single();
+          
+          if (newLocation) {
+            locationId = newLocation.id;
+            console.log("[create-lead-with-contact] Created default location:", locationId);
+          } else {
+            console.error("[create-lead-with-contact] Failed to create location:", locationError);
+          }
+        }
+      }
+    }
+
     const body: LeadRequest = await req.json();
     console.log("[create-lead-with-contact] Request body:", JSON.stringify(body, null, 2));
 
@@ -236,7 +291,14 @@ serve(async (req: Request) => {
           type: "homeowner",
           created_by: user.id,
           assigned_to: body.salesReps?.[0] || null,
-          location_id: profile.active_location_id || null,
+          location_id: locationId,
+          notes: body.description || null,
+          verified_address: body.selectedAddress ? body.selectedAddress.formatted_address : null,
+          metadata: {
+            roof_age_years: parseInt(body.roofAge) || null,
+            roof_type: body.roofType || null,
+            created_via: "create-lead-with-contact",
+          },
         };
 
         console.log("[create-lead-with-contact] Creating contact with data:", contactData);
@@ -261,7 +323,7 @@ serve(async (req: Request) => {
     const pipelineData: any = {
       tenant_id: tenantId,
       contact_id: contactId,
-      location_id: profile.active_location_id || null,
+      location_id: locationId,
       status: body.status || "lead",
       priority: body.priority || "medium",
       estimated_value: body.estimatedValue ? parseFloat(body.estimatedValue) : null,
