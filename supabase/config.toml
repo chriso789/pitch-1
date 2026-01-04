@@ -611,3 +611,6 @@ verify_jwt = true
 
 [functions.canvassiq-load-parcels]
 verify_jwt = true
+
+[functions.merge-document-tags]
+verify_jwt = true

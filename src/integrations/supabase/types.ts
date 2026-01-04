@@ -6957,6 +6957,72 @@ export type Database = {
           },
         ]
       }
+      document_tag_placements: {
+        Row: {
+          created_at: string | null
+          document_id: string
+          font_family: string | null
+          font_size: number | null
+          height: number
+          id: string
+          page_number: number | null
+          tag_key: string
+          tenant_id: string
+          text_align: string | null
+          updated_at: string | null
+          width: number
+          x_position: number
+          y_position: number
+        }
+        Insert: {
+          created_at?: string | null
+          document_id: string
+          font_family?: string | null
+          font_size?: number | null
+          height: number
+          id?: string
+          page_number?: number | null
+          tag_key: string
+          tenant_id: string
+          text_align?: string | null
+          updated_at?: string | null
+          width: number
+          x_position: number
+          y_position: number
+        }
+        Update: {
+          created_at?: string | null
+          document_id?: string
+          font_family?: string | null
+          font_size?: number | null
+          height?: number
+          id?: string
+          page_number?: number | null
+          tag_key?: string
+          tenant_id?: string
+          text_align?: string | null
+          updated_at?: string | null
+          width?: number
+          x_position?: number
+          y_position?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_tag_placements_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_tag_placements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       documents: {
         Row: {
           agreement_instance_id: string | null
