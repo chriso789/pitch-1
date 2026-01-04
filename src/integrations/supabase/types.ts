@@ -15680,11 +15680,14 @@ export type Database = {
           current_location: Json | null
           email: string | null
           first_name: string | null
+          hidden_at: string | null
+          hidden_by: string | null
           hourly_rate: number | null
           id: string
           is_active: boolean | null
           is_developer: boolean | null
           is_ghost_account: boolean | null
+          is_hidden: boolean | null
           is_suspended: boolean | null
           last_name: string | null
           location_updated_at: string | null
@@ -15720,11 +15723,14 @@ export type Database = {
           current_location?: Json | null
           email?: string | null
           first_name?: string | null
+          hidden_at?: string | null
+          hidden_by?: string | null
           hourly_rate?: number | null
           id: string
           is_active?: boolean | null
           is_developer?: boolean | null
           is_ghost_account?: boolean | null
+          is_hidden?: boolean | null
           is_suspended?: boolean | null
           last_name?: string | null
           location_updated_at?: string | null
@@ -15760,11 +15766,14 @@ export type Database = {
           current_location?: Json | null
           email?: string | null
           first_name?: string | null
+          hidden_at?: string | null
+          hidden_by?: string | null
           hourly_rate?: number | null
           id?: string
           is_active?: boolean | null
           is_developer?: boolean | null
           is_ghost_account?: boolean | null
+          is_hidden?: boolean | null
           is_suspended?: boolean | null
           last_name?: string | null
           location_updated_at?: string | null
@@ -26631,6 +26640,7 @@ export type Database = {
         Args: { project_id_param: string; sales_rep_id_param: string }
         Returns: Json
       }
+      can_view_hidden_users: { Args: never; Returns: boolean }
       check_enrollment_eligibility: {
         Args: { campaign_conditions: Json; contact_data: Json }
         Returns: boolean
@@ -27052,6 +27062,10 @@ export type Database = {
         }
       }
       is_order_fully_approved: { Args: { p_po_id: string }; Returns: boolean }
+      is_profile_visible: {
+        Args: { profile_row: Database["public"]["Tables"]["profiles"]["Row"] }
+        Returns: boolean
+      }
       jsonb_get_path: { Args: { obj: Json; path: string }; Returns: string }
       log_company_activity: {
         Args: {

@@ -10,7 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Users, Plus, Edit2, Trash2, Settings, Eye, MapPin, Ban, CheckCircle, Building2, Phone, AlertCircle, Mail, RefreshCw, Activity, Clock } from "lucide-react";
+import { Users, Plus, Edit2, Trash2, Settings, Eye, EyeOff, MapPin, Ban, CheckCircle, Building2, Phone, AlertCircle, Mail, RefreshCw, Activity, Clock } from "lucide-react";
 import { UserLoginStatusBadge } from "./UserLoginStatusBadge";
 import { UserActivityDashboard } from "./UserActivityDashboard";
 import { ProfileStatusBadge } from "./ProfileStatusBadge";
@@ -45,6 +45,9 @@ interface User {
   pay_type?: string;
   last_login?: string | null;
   is_activated?: boolean;
+  is_hidden?: boolean;
+  hidden_by?: string;
+  hidden_at?: string;
 }
 
 interface Location {
@@ -469,6 +472,45 @@ export const UserManagement = () => {
     }
   };
 
+  const toggleHiddenStatus = async (userId: string, isCurrentlyHidden: boolean) => {
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update({ 
+          is_hidden: !isCurrentlyHidden,
+          hidden_by: !isCurrentlyHidden ? currentUser?.id : null,
+          hidden_at: !isCurrentlyHidden ? new Date().toISOString() : null
+        })
+        .eq('id', userId);
+
+      if (error) throw error;
+
+      toast({
+        title: isCurrentlyHidden ? "User Now Visible" : "User Hidden",
+        description: isCurrentlyHidden 
+          ? "This user is now visible to the entire team" 
+          : "This user is now hidden from the team and all reports",
+      });
+
+      await auditService.logChange(
+        'profiles',
+        'UPDATE',
+        userId,
+        { is_hidden: isCurrentlyHidden },
+        { is_hidden: !isCurrentlyHidden }
+      );
+
+      loadUsers();
+    } catch (error) {
+      console.error('Error updating user visibility:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update user visibility",
+        variant: "destructive",
+      });
+    }
+  };
+
   const getActionsForUser = (user: User) => {
     const actions = [];
 
@@ -526,6 +568,16 @@ export const UserManagement = () => {
       onClick: () => resendInvite(user),
       disabled: resendingInvite === user.id
     });
+
+    // Add hide/unhide action for master/owner only
+    if (currentUser.role === 'master' || currentUser.role === 'owner') {
+      actions.push({
+        label: user.is_hidden ? 'Show to Team' : 'Hide from Team',
+        icon: user.is_hidden ? Eye : EyeOff,
+        onClick: () => toggleHiddenStatus(user.id, !!user.is_hidden),
+        separator: true
+      });
+    }
 
     const canDelete = currentUser.role === 'master' || currentLevel < targetLevel;
 
@@ -886,6 +938,12 @@ export const UserManagement = () => {
                     <TableCell className="font-medium">
                       <div className="flex items-center gap-2">
                         {user.first_name} {user.last_name}
+                        {user.is_hidden && (
+                          <Badge variant="outline" className="text-xs bg-muted/50 text-muted-foreground">
+                            <EyeOff className="h-3 w-3 mr-1" />
+                            Hidden
+                          </Badge>
+                        )}
                       </div>
                     </TableCell>
                     <TableCell>{user.email}</TableCell>
