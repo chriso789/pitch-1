@@ -43,10 +43,10 @@ Deno.serve(async (req) => {
 
     console.log(`[sync-user-metadata] Syncing metadata for user: ${user.id}`);
 
-    // Fetch profile data
-    const { data: profile, error: profileError } = await supabaseClient
+    // Use admin client to fetch profile to bypass RLS (avoids infinite recursion)
+    const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
-      .select('first_name, last_name, company_name, title, tenant_id')
+      .select('first_name, last_name, company_name, title, tenant_id, role')
       .eq('id', user.id)
       .single();
 
@@ -73,7 +73,8 @@ Deno.serve(async (req) => {
           last_name: profile.last_name,
           company_name: profile.company_name || '',
           title: profile.title || '',
-          tenant_id: profile.tenant_id
+          tenant_id: profile.tenant_id,
+          role: profile.role || ''
         }
       }
     );
