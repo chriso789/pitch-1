@@ -40,3 +40,13 @@ export const canEditRole = (currentRole: string, targetRole: string): boolean =>
 export const canDeleteRole = (currentRole: string, targetRole: string): boolean => {
   return canEditRole(currentRole, targetRole);
 };
+
+export const canViewAllEstimates = (role: string): boolean => {
+  // sales_manager (level 6) and above can see all estimates
+  return getRoleLevel(role) <= 6;
+};
+
+export const canViewAllLeads = (role: string): boolean => {
+  // Same logic - sales managers and above see everything
+  return getRoleLevel(role) <= 6;
+};
