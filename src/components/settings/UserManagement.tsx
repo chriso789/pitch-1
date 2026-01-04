@@ -14,6 +14,7 @@ import { Users, Plus, Edit2, Trash2, Settings, Eye, MapPin, Ban, CheckCircle, Bu
 import { UserLoginStatusBadge } from "./UserLoginStatusBadge";
 import { UserActivityDashboard } from "./UserActivityDashboard";
 import { ProfileStatusBadge } from "./ProfileStatusBadge";
+import { OwnerProvisioningBanner } from "./OwnerProvisioningBanner";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -26,6 +27,7 @@ import { EmailHealthCheck } from './EmailHealthCheck';
 import { ActionsSelector } from "@/components/ui/actions-selector";
 import { auditService } from "@/services/auditService";
 import { useAvailableCompanies } from "@/hooks/useAvailableCompanies";
+import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
 
 interface User {
   id: string;
@@ -86,17 +88,24 @@ export const UserManagement = () => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
   const { companies: availableCompanies, isLoading: companiesLoading } = useAvailableCompanies();
+  const { activeCompanyId } = useCompanySwitcher();
 
   const { data: userData, isLoading: loading } = useQuery({
-    queryKey: ['user-management-data'],
+    queryKey: ['user-management-data', activeCompanyId],
     queryFn: async () => {
-      const [authResult, profilesResult, rolesResult, tenantsResult, accessResult] = await Promise.all([
+      const [authResult, rolesResult, tenantsResult, accessResult] = await Promise.all([
         supabase.auth.getUser(),
-        supabase.from('profiles').select('*').neq('role', 'master').order('created_at', { ascending: false }),
-        supabase.from('user_roles').select('user_id, role').order('role', { ascending: true }),
+        supabase.from('user_roles').select('user_id, role, tenant_id').order('role', { ascending: true }),
         supabase.from('tenants').select('id, name'),
         supabase.from('user_company_access').select('user_id, tenant_id, is_active'),
       ]);
+
+      // If activeCompanyId is set, filter profiles to that tenant
+      let profilesQuery = supabase.from('profiles').select('*').neq('role', 'master').order('created_at', { ascending: false });
+      if (activeCompanyId) {
+        profilesQuery = profilesQuery.eq('tenant_id', activeCompanyId);
+      }
+      const profilesResult = await profilesQuery;
 
       if (profilesResult.error) throw profilesResult.error;
 
@@ -149,7 +158,17 @@ export const UserManagement = () => {
         };
       }
 
-      const roleMap = new Map(rolesResult.data?.map(ur => [ur.user_id, ur.role]) || []);
+      // Get role from user_roles table, matching tenant_id if available
+      const roleMap = new Map<string, string>();
+      rolesResult.data?.forEach(ur => {
+        // If activeCompanyId is set, prefer roles from that tenant
+        if (activeCompanyId && ur.tenant_id === activeCompanyId) {
+          roleMap.set(ur.user_id, ur.role);
+        } else if (!roleMap.has(ur.user_id)) {
+          roleMap.set(ur.user_id, ur.role);
+        }
+      });
+
       const usersWithRoles = profilesResult.data?.map(profile => {
         const loginStats = loginStatsMap.get(profile.id);
         return {
@@ -611,6 +630,14 @@ export const UserManagement = () => {
       </TabsList>
 
       <TabsContent value="users">
+        {/* Show owner provisioning banner if viewing a specific company */}
+        {activeCompanyId && (
+          <OwnerProvisioningBanner 
+            tenantId={activeCompanyId} 
+            onProvisioned={loadUsers}
+          />
+        )}
+        
         <Card>
           <CardHeader>
             <div className="flex items-center justify-between">

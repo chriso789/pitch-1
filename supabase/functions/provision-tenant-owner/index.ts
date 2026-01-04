@@ -117,7 +117,7 @@ serve(async (req) => {
       console.log("[provision-tenant-owner] Created new auth user:", userId);
     }
 
-    // Step 3: Create or update profile
+    // Step 3: Create or update profile (DO NOT store role here - use user_roles table)
     const { error: profileError } = await supabase
       .from("profiles")
       .upsert({
@@ -127,7 +127,6 @@ serve(async (req) => {
         first_name: firstName,
         last_name: lastName,
         phone: tenant.owner_phone || null,
-        role: "owner",
         is_active: true,
         active_tenant_id: tenant_id,
       }, {
@@ -141,7 +140,24 @@ serve(async (req) => {
       console.log("[provision-tenant-owner] Profile created/updated for user:", userId);
     }
 
-    // Step 4: Add user to user_company_access
+    // Step 4: Create user_roles entry (SECURITY: roles must be in separate table)
+    const { error: roleError } = await supabase
+      .from("user_roles")
+      .upsert({
+        user_id: userId,
+        tenant_id: tenant_id,
+        role: "owner",
+      }, {
+        onConflict: "user_id,tenant_id",
+      });
+
+    if (roleError) {
+      console.error("[provision-tenant-owner] Error creating user role:", roleError);
+    } else {
+      console.log("[provision-tenant-owner] User role 'owner' created for user:", userId);
+    }
+
+    // Step 5: Add user to user_company_access
     const { error: accessError } = await supabase
       .from("user_company_access")
       .upsert({
