@@ -57,7 +57,7 @@ serve(async (req) => {
       .eq("id", profile.tenant_id)
       .single();
 
-    // Get auth user to get email and check if they've signed in
+    // Get auth user to check if they've signed in
     const { data: { user: authUser }, error: authError } = await supabaseAdmin.auth.admin.getUserById(userId);
     
     if (authError || !authUser) {
@@ -68,14 +68,17 @@ serve(async (req) => {
       );
     }
 
-    const email = authUser.email;
+    // CRITICAL: Use profile.email as primary source (UI updates go there)
+    // Fall back to auth email only if profile email is missing
+    const email = profile.email || authUser.email;
     if (!email) {
       return new Response(
-        JSON.stringify({ error: "User has no email" }),
+        JSON.stringify({ error: "User has no email in profile or auth" }),
         { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
+    console.log("Using email from profile:", profile.email, "| Auth email:", authUser.email, "| Selected:", email);
     console.log("User exists, last_sign_in_at:", authUser.last_sign_in_at);
 
     // Since user already exists in auth.users, we MUST use 'recovery' type
