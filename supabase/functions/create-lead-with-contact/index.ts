@@ -132,10 +132,10 @@ serve(async (req: Request) => {
 
     console.log("[create-lead-with-contact] User authenticated:", user.id);
 
-    // Get user profile for tenant_id
+    // Get user profile for tenant_id and active_location_id
     const { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("tenant_id, active_tenant_id, first_name, last_name")
+      .select("tenant_id, active_tenant_id, active_location_id, first_name, last_name")
       .eq("id", user.id)
       .single();
 
@@ -235,6 +235,8 @@ serve(async (req: Request) => {
           longitude: longitude,
           type: "homeowner",
           created_by: user.id,
+          assigned_to: body.salesReps?.[0] || null,
+          location_id: profile.active_location_id || null,
         };
 
         console.log("[create-lead-with-contact] Creating contact with data:", contactData);
@@ -259,6 +261,7 @@ serve(async (req: Request) => {
     const pipelineData: any = {
       tenant_id: tenantId,
       contact_id: contactId,
+      location_id: profile.active_location_id || null,
       status: body.status || "lead",
       priority: body.priority || "medium",
       estimated_value: body.estimatedValue ? parseFloat(body.estimatedValue) : null,
