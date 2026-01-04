@@ -43,27 +43,17 @@ Deno.serve(async (req) => {
 
     console.log(`[sync-user-metadata] Syncing metadata for user: ${user.id}`);
 
+    // Use service role client to bypass RLS and update auth metadata
+    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
+      auth: { autoRefreshToken: false, persistSession: false }
+    });
+
     // Use admin client to fetch profile to bypass RLS (avoids infinite recursion)
     const { data: profile, error: profileError } = await supabaseAdmin
       .from('profiles')
       .select('first_name, last_name, company_name, title, tenant_id, role')
       .eq('id', user.id)
       .single();
-
-    if (profileError || !profile) {
-      console.error('Profile fetch failed:', profileError);
-      return new Response(
-        JSON.stringify({ error: 'Profile not found', details: profileError?.message }),
-        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    console.log(`[sync-user-metadata] Found profile: ${profile.first_name} ${profile.last_name}`);
-
-    // Use service role client to update auth user metadata
-    const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
-      auth: { autoRefreshToken: false, persistSession: false }
-    });
 
     const { data: updatedUser, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
       user.id,
