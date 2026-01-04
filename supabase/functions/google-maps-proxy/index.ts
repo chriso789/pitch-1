@@ -160,7 +160,7 @@ serve(async (req) => {
       const { data: rateLimit } = await supabase.rpc('check_rate_limit', {
         p_user_id: user.id,
         p_resource: 'google_maps_proxy',
-        p_limit: 100,
+        p_limit: 500,
         p_window_minutes: 60
       });
 
