@@ -278,42 +278,20 @@ class TrackingService {
     if (!sessionId) return;
 
     try {
-      // Try edge function first for event tracking
-      const { error } = await supabase.functions.invoke('track-marketing-session', {
-        body: {
-          action: 'track_event',
-          session_key: this.getSessionKey(),
-          data: {},
-          event: {
-            event_type: event.eventType,
-            event_path: event.path || window.location.pathname,
-            event_metadata: {
-              element_id: event.elementId,
-              element_text: event.elementText,
-              scroll_depth: event.scrollDepth,
-              time_on_page: event.timeOnPage,
-              ...event.metadata
-            }
-          }
-        }
+      // Insert event directly to tracking_events table
+      await supabase.from('tracking_events').insert({
+        session_id: sessionId,
+        channel: 'MARKETING_SITE',
+        event_type: event.eventType,
+        path: event.path || window.location.pathname,
+        referrer: document.referrer || null,
+        element_id: event.elementId,
+        element_text: event.elementText,
+        metadata: event.metadata || {},
+        scroll_depth: event.scrollDepth,
+        time_on_page: event.timeOnPage,
+        user_agent: navigator.userAgent
       });
-
-      if (error) {
-        // Fallback to direct insert
-        await supabase.from('tracking_events').insert({
-          session_id: sessionId,
-          channel: 'MARKETING_SITE',
-          event_type: event.eventType,
-          path: event.path || window.location.pathname,
-          referrer: document.referrer || null,
-          element_id: event.elementId,
-          element_text: event.elementText,
-          metadata: event.metadata || {},
-          scroll_depth: event.scrollDepth,
-          time_on_page: event.timeOnPage,
-          user_agent: navigator.userAgent
-        });
-      }
 
       // Update session counters
       if (event.eventType === 'PAGE_VIEW') {
