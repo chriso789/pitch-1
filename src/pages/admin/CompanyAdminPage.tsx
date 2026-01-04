@@ -241,6 +241,9 @@ const CompanyAdminPage = () => {
           address_state: formData.address_state || null,
           address_zip: formData.address_zip || null,
           license_number: formData.license_number || null,
+          owner_name: formData.owner_name || null,
+          owner_email: formData.owner_email || null,
+          owner_phone: formData.owner_phone || null,
         })
         .select()
         .single();
@@ -982,13 +985,59 @@ const CompanyAdminPage = () => {
                     </CardContent>
                   </Card>
 
-                  <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
-                      Cancel
+                  <div className="flex justify-between items-center gap-2">
+                    <Button 
+                      variant="outline"
+                      onClick={async () => {
+                        if (!selectedCompany?.owner_email) {
+                          toast({
+                            title: "No Owner Email",
+                            description: "Please add an owner email first, then save changes.",
+                            variant: "destructive",
+                          });
+                          return;
+                        }
+                        try {
+                          toast({ title: "Provisioning owner...", description: `Sending setup email to ${selectedCompany.owner_email}` });
+                          const { data, error } = await supabase.functions.invoke('initialize-company', {
+                            body: { tenant_id: selectedCompany.id }
+                          });
+                          if (error) throw error;
+                          if (data?.initialized?.owner_provisioned) {
+                            toast({
+                              title: "Owner Provisioned",
+                              description: `Setup email sent to ${data.initialized.owner_email}`,
+                            });
+                          } else if (data?.initialized?.owner_error) {
+                            throw new Error(data.initialized.owner_error);
+                          } else {
+                            toast({
+                              title: "No Owner Email",
+                              description: "Please set an owner email for this company.",
+                              variant: "destructive",
+                            });
+                          }
+                        } catch (err: any) {
+                          toast({
+                            title: "Provisioning Failed",
+                            description: err.message,
+                            variant: "destructive",
+                          });
+                        }
+                      }}
+                      className="gap-2"
+                    >
+                      <UserCheck className="h-4 w-4" />
+                      Provision Owner
                     </Button>
-                    <Button onClick={handleUpdateCompany}>
-                      Save Changes
-                    </Button>
+                    <div className="flex gap-2">
+                      <Button variant="outline" onClick={() => setEditDialogOpen(false)}>
+                        Cancel
+                      </Button>
+                      <Button onClick={handleUpdateCompany}>
+                        Save Changes
+                      </Button>
+                    </div>
                   </div>
                 </TabsContent>
 
