@@ -63,11 +63,13 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [savingLineItems, setSavingLineItems] = useState(false);
   const [creating, setCreating] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const [fetchingItems, setFetchingItems] = useState(false);
   const [showPDFTemplate, setShowPDFTemplate] = useState(false);
   const [pdfData, setPdfData] = useState<any>(null);
+  const [existingEstimateId, setExistingEstimateId] = useState<string | null>(null);
   const { toast } = useToast();
   const { context: measurementContext, summary: measurementSummary } = useMeasurementContext(pipelineEntryId);
   const { generatePDF } = usePDFGeneration();
@@ -250,7 +252,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     try {
       const result = await supabaseClient
         .from('pipeline_entries')
-        .select('metadata')
+        .select('metadata, estimate_id')
         .eq('id', pipelineEntryId)
         .single();
 
@@ -259,6 +261,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       const metadata = result.data?.metadata as any;
       const selected = metadata?.selected_template_ids?.[0] || metadata?.selected_template_id || '';
       setSelectedTemplateId(selected);
+      
+      // Check if there's an existing estimate linked
+      if (result.data?.estimate_id || metadata?.enhanced_estimate_id) {
+        setExistingEstimateId(result.data?.estimate_id || metadata?.enhanced_estimate_id);
+      }
     } catch (error) {
       console.error('Error loading selected template:', error);
     }
@@ -331,7 +338,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
       const { data: pipelineEntry } = await supabaseClient
         .from('pipeline_entries')
-        .select('contact_id, metadata, contacts(first_name, last_name, address, city, state, zip_code)')
+        .select('contact_id, metadata, contacts(first_name, last_name, address_street, address_city, address_state, address_zip)')
         .eq('id', pipelineEntryId)
         .single();
 
@@ -353,31 +360,32 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       // Generate tenant prefix (first 3 letters, uppercase)
       const tenantPrefix = tenant?.name?.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase() || 'EST';
 
-      // Count only this tenant's estimates for unique numbering
+      // Count only this tenant's estimates for unique numbering + add random suffix to prevent collisions
       const { count } = await supabaseClient
         .from('enhanced_estimates')
         .select('id', { count: 'exact', head: true })
         .eq('tenant_id', tenantId);
 
-      const estimateNumber = `${tenantPrefix}-${String((count || 0) + 1).padStart(5, '0')}`;
+      const timestamp = Date.now().toString(36).slice(-4);
+      const estimateNumber = `${tenantPrefix}-${String((count || 0) + 1).padStart(5, '0')}-${timestamp}`;
 
       const customerName = contact
         ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim()
         : '';
 
       const customerAddressParts = [
-        contact?.address,
-        [contact?.city, contact?.state].filter(Boolean).join(', '),
-        contact?.zip_code
+        contact?.address_street,
+        [contact?.address_city, contact?.address_state].filter(Boolean).join(', '),
+        contact?.address_zip
       ].filter(Boolean);
 
       const customerAddress = customerAddressParts.join(' • ');
 
       const propertyDetails = {
-        address_line1: contact?.address || '',
-        city: contact?.city || '',
-        state: contact?.state || '',
-        zip_code: contact?.zip_code || '',
+        address_line1: contact?.address_street || '',
+        city: contact?.address_city || '',
+        state: contact?.address_state || '',
+        zip_code: contact?.address_zip || '',
         contact_id: pipelineEntry?.contact_id || null
       };
 
@@ -565,6 +573,70 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     }
   };
 
+  // Handle saving line item changes for existing estimate
+  const handleSaveLineItemChanges = async () => {
+    if (!existingEstimateId || lineItems.length === 0) return;
+    
+    setSavingLineItems(true);
+    try {
+      const lineItemsJson = {
+        materials: materialItems.map(item => ({
+          id: item.id,
+          item_name: item.item_name,
+          qty: item.qty,
+          qty_original: item.qty_original,
+          unit: item.unit,
+          unit_cost: item.unit_cost,
+          unit_cost_original: item.unit_cost_original,
+          line_total: item.line_total,
+          is_override: item.is_override,
+        })),
+        labor: laborItems.map(item => ({
+          id: item.id,
+          item_name: item.item_name,
+          qty: item.qty,
+          qty_original: item.qty_original,
+          unit: item.unit,
+          unit_cost: item.unit_cost,
+          unit_cost_original: item.unit_cost_original,
+          line_total: item.line_total,
+          is_override: item.is_override,
+        })),
+      };
+
+      const { data, error } = await supabase.functions.invoke('update-estimate-line-items', {
+        body: {
+          estimate_id: existingEstimateId,
+          line_items: lineItemsJson,
+          selling_price: breakdown.sellingPrice,
+          pricing_config: config
+        }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: 'Changes Saved',
+        description: 'Estimate line items updated successfully'
+      });
+
+      // Invalidate queries to refresh the data
+      queryClient.invalidateQueries({ queryKey: ['saved-estimates', pipelineEntryId] });
+      
+      // Reset override state since changes are now saved
+      resetToOriginal();
+    } catch (error) {
+      console.error('Error saving line item changes:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to save line item changes',
+        variant: 'destructive'
+      });
+    } finally {
+      setSavingLineItems(false);
+    }
+  };
+
   const handleResetItem = (id: string) => {
     const item = lineItems.find(i => i.id === id);
     if (item) {
@@ -720,12 +792,12 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       )}
 
       {/* Action Buttons */}
-      <div className="flex gap-3 pb-8">
+      <div className="flex gap-3 pb-8 flex-wrap">
         <Button
           variant="outline"
           onClick={handleSaveSelection}
           disabled={!selectedTemplateId || saving}
-          className="flex-1"
+          className="flex-1 min-w-[140px]"
         >
           {saving ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -734,10 +806,28 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           )}
           Save Selection
         </Button>
+        
+        {/* Show Save Changes button when editing existing estimate with modifications */}
+        {existingEstimateId && lineItems.some(item => item.is_override) && (
+          <Button
+            variant="secondary"
+            onClick={handleSaveLineItemChanges}
+            disabled={savingLineItems}
+            className="flex-1 min-w-[140px]"
+          >
+            {savingLineItems ? (
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            ) : (
+              <Save className="mr-2 h-4 w-4" />
+            )}
+            Save Changes
+          </Button>
+        )}
+        
         <Button
           onClick={handleCreateEstimate}
           disabled={!selectedTemplateId || lineItems.length === 0 || creating}
-          className="flex-1"
+          className="flex-1 min-w-[140px]"
         >
           {creating ? (
             <Loader2 className="mr-2 h-4 w-4 animate-spin" />
