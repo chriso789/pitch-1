@@ -14,7 +14,7 @@ import { Users, Plus, Edit2, Trash2, Settings, Eye, MapPin, Ban, CheckCircle, Bu
 import { UserLoginStatusBadge } from "./UserLoginStatusBadge";
 import { UserActivityDashboard } from "./UserActivityDashboard";
 import { ProfileStatusBadge } from "./ProfileStatusBadge";
-import { OwnerProvisioningBanner } from "./OwnerProvisioningBanner";
+
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -630,13 +630,6 @@ export const UserManagement = () => {
       </TabsList>
 
       <TabsContent value="users">
-        {/* Show owner provisioning banner if viewing a specific company */}
-        {activeCompanyId && (
-          <OwnerProvisioningBanner 
-            tenantId={activeCompanyId} 
-            onProvisioned={loadUsers}
-          />
-        )}
         
         <Card>
           <CardHeader>
