@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { StatCard } from "@/components/dashboard/StatCard";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -18,7 +19,8 @@ import {
   Phone,
   Mail,
   MessageSquare,
-  Trash2
+  Trash2,
+  Briefcase
 } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
@@ -386,68 +388,36 @@ export const Jobs = () => {
       </Card>
 
       {/* Stats */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Total Jobs</p>
-                <p className="text-2xl font-bold">{jobs.length}</p>
-              </div>
-              <div className="h-8 w-8 bg-primary/10 rounded-lg flex items-center justify-center">
-                <User className="h-4 w-4 text-primary" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Pending</p>
-                <p className="text-2xl font-bold">
-                  {jobs.filter(job => job.status === 'pending').length}
-                </p>
-              </div>
-              <div className="h-8 w-8 bg-yellow-100 rounded-lg flex items-center justify-center">
-                <Calendar className="h-4 w-4 text-yellow-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">In Progress</p>
-                <p className="text-2xl font-bold">
-                  {jobs.filter(job => job.status === 'in_progress').length}
-                </p>
-              </div>
-              <div className="h-8 w-8 bg-blue-100 rounded-lg flex items-center justify-center">
-                <MapPin className="h-4 w-4 text-blue-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-sm font-medium text-muted-foreground">Completed</p>
-                <p className="text-2xl font-bold">
-                  {jobs.filter(job => job.status === 'completed').length}
-                </p>
-              </div>
-              <div className="h-8 w-8 bg-green-100 rounded-lg flex items-center justify-center">
-                <DollarSign className="h-4 w-4 text-green-600" />
-              </div>
-            </div>
-          </CardContent>
-        </Card>
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-4">
+        <StatCard
+          label="Total Jobs"
+          value={jobs.length}
+          icon={Briefcase}
+          iconBgClass="bg-primary/10"
+          iconClass="text-primary"
+        />
+        <StatCard
+          label="Pending"
+          value={jobs.filter(job => job.status === 'pending').length}
+          icon={Calendar}
+          iconBgClass="bg-warning/10"
+          iconClass="text-warning"
+        />
+        <StatCard
+          label="In Progress"
+          value={jobs.filter(job => job.status === 'in_progress').length}
+          icon={MapPin}
+          iconBgClass="bg-secondary/10"
+          iconClass="text-secondary"
+        />
+        <StatCard
+          label="Completed"
+          value={jobs.filter(job => job.status === 'completed').length}
+          icon={DollarSign}
+          iconBgClass="bg-success/10"
+          iconClass="text-success"
+          valueClass="text-success"
+        />
       </div>
 
       {/* Jobs List */}
