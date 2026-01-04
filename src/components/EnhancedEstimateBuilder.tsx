@@ -1355,12 +1355,23 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
 
       if (!profile?.tenant_id) throw new Error('Tenant ID not found');
 
-      // Generate estimate number
+      // Get tenant name for prefix
+      const { data: tenant } = await supabase
+        .from('tenants')
+        .select('name')
+        .eq('id', profile.tenant_id)
+        .single();
+
+      // Generate tenant prefix (first 3 letters, uppercase)
+      const tenantPrefix = tenant?.name?.replace(/[^a-zA-Z]/g, '').substring(0, 3).toUpperCase() || 'EST';
+
+      // Count only this tenant's estimates for unique numbering
       const { count } = await supabase
         .from('enhanced_estimates')
-        .select('*', { count: 'exact', head: true });
+        .select('*', { count: 'exact', head: true })
+        .eq('tenant_id', profile.tenant_id);
       
-      const estimateNumber = `EST-${String((count || 0) + 1).padStart(5, '0')}`;
+      const estimateNumber = `${tenantPrefix}-${String((count || 0) + 1).padStart(5, '0')}`;
 
       // Save estimate (tenant_id will be set by RLS/trigger)
       const { data: newEstimate, error } = await (supabase

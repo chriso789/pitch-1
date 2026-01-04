@@ -421,21 +421,12 @@ const SmartDocs = () => {
                     </Button>
                     <Button
                       size="sm"
-                      variant="outline"
+                      variant="secondary"
                       onClick={() => setTagEditorDoc(doc)}
-                      className="gap-1"
+                      className="gap-1 bg-primary/10 hover:bg-primary/20 text-primary"
                     >
-                      <Tag className="h-4 w-4" />
-                      Edit Tags
-                    </Button>
-                    <Button
-                      size="sm"
-                      variant="default"
-                      onClick={() => setApplyToLeadDoc(doc)}
-                      className="gap-1"
-                    >
-                      <UserPlus className="h-4 w-4" />
-                      Apply to Lead
+                      <Sparkles className="h-4 w-4" />
+                      Configure Smart Tags
                     </Button>
                   </div>
                 </div>
