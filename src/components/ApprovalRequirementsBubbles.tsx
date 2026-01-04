@@ -59,12 +59,16 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
   const [uploadingContract, setUploadingContract] = useState(false);
   const [openPopover, setOpenPopover] = useState(false);
   const [openEstimatePopover, setOpenEstimatePopover] = useState(false);
+  const [openGenericPopover, setOpenGenericPopover] = useState<string | null>(null);
+  const [uploadingGeneric, setUploadingGeneric] = useState(false);
   const [selectedEstimateId, setSelectedEstimateId] = useState<string | null>(null);
   const [showOverrideDialog, setShowOverrideDialog] = useState(false);
   const [overrideAcknowledged, setOverrideAcknowledged] = useState(false);
   const [approvingJob, setApprovingJob] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const genericFileInputRef = useRef<HTMLInputElement>(null);
+  const genericCameraInputRef = useRef<HTMLInputElement>(null);
 
   // Use dynamic requirements if available, otherwise fall back to defaults
   const bubbleSteps = dynamicRequirements.length > 0
@@ -254,6 +258,69 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
     }
   };
 
+  // Generic file upload handler for photos/documents bubbles
+  const handleGenericUpload = async (file: File, documentType: string, source: 'camera' | 'file') => {
+    if (!pipelineEntryId) {
+      toast({
+        title: "Error",
+        description: "Pipeline entry ID is required",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setUploadingGeneric(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', user?.id)
+        .single();
+
+      const fileExt = file.name.split('.').pop();
+      const fileName = `${pipelineEntryId}/${Date.now()}_${documentType}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(fileName, file);
+
+      if (uploadError) throw uploadError;
+
+      const { error: dbError } = await supabase
+        .from('documents')
+        .insert({
+          tenant_id: profile?.tenant_id,
+          pipeline_entry_id: pipelineEntryId,
+          document_type: documentType,
+          filename: file.name,
+          file_path: fileName,
+          file_size: file.size,
+          mime_type: file.type,
+          uploaded_by: user?.id,
+        });
+
+      if (dbError) throw dbError;
+
+      toast({
+        title: "Upload Successful",
+        description: `${documentType.replace(/_/g, ' ')} uploaded via ${source}`,
+      });
+      
+      setOpenGenericPopover(null);
+      onUploadComplete?.();
+    } catch (error) {
+      console.error('Generic upload error:', error);
+      toast({
+        title: "Upload Failed",
+        description: "Failed to upload file. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setUploadingGeneric(false);
+    }
+  };
+
   const handleManagerApprove = async () => {
     if (!requirements.allComplete) {
       setShowOverrideDialog(true);
@@ -263,10 +330,19 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
   };
 
   const processApproval = async () => {
-    if (!pipelineEntryId) return;
+    if (!pipelineEntryId) {
+      toast({
+        title: "Error",
+        description: "Pipeline entry ID is required",
+        variant: "destructive",
+      });
+      return;
+    }
 
     setApprovingJob(true);
     try {
+      console.log('[Approval] Starting project approval for:', pipelineEntryId);
+      
       // Call edge function to approve job and create project
       const { data, error } = await supabase.functions.invoke('api-approve-job-from-lead', {
         body: { 
@@ -278,7 +354,26 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
         }
       });
 
-      if (error) throw error;
+      console.log('[Approval] Response:', { data, error });
+
+      if (error) {
+        console.error('[Approval] Edge function error:', error);
+        throw new Error(error.message || 'Edge function returned an error');
+      }
+
+      if (data?.error) {
+        console.error('[Approval] Data error:', data.error);
+        throw new Error(data.error.message || data.error || 'Approval failed');
+      }
+
+      if (data?.requires_approval) {
+        toast({
+          title: "Approval Required",
+          description: `Projects over $25,000 require manager approval. Value: $${data.estimated_value?.toLocaleString()}`,
+          variant: "destructive",
+        });
+        return;
+      }
 
       // Check if project already existed
       if (data.already_existed) {
@@ -297,10 +392,10 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
       setOverrideAcknowledged(false);
       onApprove();
     } catch (error: any) {
-      console.error('Approval error:', error);
+      console.error('[Approval] Error details:', error);
       toast({
         title: "Approval Failed",
-        description: error.message || "Failed to approve project. Please try again.",
+        description: error.message || "Failed to approve project. Please check the console for details.",
         variant: "destructive",
       });
     } finally {
@@ -450,6 +545,43 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
                         </div>
                       </PopoverContent>
                     </Popover>
+                  ) : (step.validationType === 'photos' || step.validationType === 'document') && !isComplete && step.key !== 'contract' && step.key !== 'estimate' ? (
+                    // Generic photo/document upload popover for non-contract, non-estimate requirements
+                    <Popover open={openGenericPopover === step.key} onOpenChange={(open) => setOpenGenericPopover(open ? step.key : null)}>
+                      <PopoverTrigger asChild>
+                        <div
+                          className={cn(
+                            "relative w-10 h-10 sm:w-14 sm:h-14 rounded-full flex items-center justify-center transition-all duration-300",
+                            "border-2 sm:border-4 cursor-pointer",
+                            "bg-muted border-border opacity-50 hover:opacity-100 hover:border-primary hover:scale-105"
+                          )}
+                        >
+                          <Icon className="h-4 w-4 sm:h-6 sm:w-6 text-muted-foreground" />
+                        </div>
+                      </PopoverTrigger>
+                      <PopoverContent className="w-56 p-2">
+                        <div className="space-y-1">
+                          <Button
+                            variant="ghost"
+                            className="w-full justify-start"
+                            onClick={() => genericCameraInputRef.current?.click()}
+                            disabled={uploadingGeneric}
+                          >
+                            <Camera className="h-4 w-4 mr-2" />
+                            {step.validationType === 'photos' ? 'Take Photo' : 'Scan Document'}
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            className="w-full justify-start"
+                            onClick={() => genericFileInputRef.current?.click()}
+                            disabled={uploadingGeneric}
+                          >
+                            <Upload className="h-4 w-4 mr-2" />
+                            Upload from Device
+                          </Button>
+                        </div>
+                      </PopoverContent>
+                    </Popover>
                   ) : (
                     <div
                       className={cn(
@@ -592,6 +724,34 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
         accept="image/*"
         capture="environment"
         onChange={handleCameraCapture}
+        className="hidden"
+      />
+      {/* Generic file inputs for photos/documents bubbles */}
+      <input
+        ref={genericFileInputRef}
+        type="file"
+        accept="application/pdf,image/*,.doc,.docx"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file && openGenericPopover) {
+            handleGenericUpload(file, openGenericPopover, 'file');
+          }
+          e.target.value = '';
+        }}
+        className="hidden"
+      />
+      <input
+        ref={genericCameraInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file && openGenericPopover) {
+            handleGenericUpload(file, openGenericPopover, 'camera');
+          }
+          e.target.value = '';
+        }}
         className="hidden"
       />
     </div>

@@ -210,6 +210,19 @@ serve(async (req: Request) => {
     let latitude: number | null = null;
     let longitude: number | null = null;
 
+    // If using an existing contact, update its assigned_to if a rep is selected
+    if (contactId && body.salesReps?.[0]) {
+      console.log("[create-lead-with-contact] Updating existing contact's assigned_to...");
+      const { error: updateError } = await supabase
+        .from("contacts")
+        .update({ assigned_to: body.salesReps[0] })
+        .eq("id", contactId);
+      
+      if (updateError) {
+        console.error("[create-lead-with-contact] Failed to update contact assigned_to:", updateError);
+      }
+    }
+
     // Parse address - prefer Google Maps data if available
     if (body.selectedAddress?.address_components?.length > 0) {
       console.log("[create-lead-with-contact] Using Google Maps verified address");
@@ -259,7 +272,7 @@ serve(async (req: Request) => {
       if (addressComponents.street) {
         const { data: existingContact } = await supabase
           .from("contacts")
-          .select("id, first_name, last_name")
+          .select("id, first_name, last_name, assigned_to")
           .eq("tenant_id", tenantId)
           .eq("address_street", addressComponents.street)
           .maybeSingle();
@@ -267,6 +280,20 @@ serve(async (req: Request) => {
         if (existingContact) {
           console.log("[create-lead-with-contact] Found existing contact:", existingContact.id);
           contactId = existingContact.id;
+          
+          // Sync assigned_to from lead to contact if a rep is selected
+          const selectedRep = body.salesReps?.[0];
+          if (selectedRep && existingContact.assigned_to !== selectedRep) {
+            console.log("[create-lead-with-contact] Updating contact assigned_to:", selectedRep);
+            const { error: updateError } = await supabase
+              .from("contacts")
+              .update({ assigned_to: selectedRep })
+              .eq("id", existingContact.id);
+            
+            if (updateError) {
+              console.error("[create-lead-with-contact] Failed to update contact assigned_to:", updateError);
+            }
+          }
         }
       }
 
