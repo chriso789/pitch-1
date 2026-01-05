@@ -128,6 +128,25 @@ export default function SetupAccount() {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (user) {
+        // Log successful login/account activation for activity tracking
+        supabase.functions.invoke('log-auth-activity', {
+          body: {
+            user_id: user.id,
+            email: user.email,
+            event_type: 'login_success',
+            success: true,
+            metadata: {
+              source: 'password_setup',
+              first_login: true
+            }
+          }
+        }).catch((err: any) => console.warn('[SetupAccount] Failed to log activity:', err));
+        
+        // Sync user metadata from profiles to auth
+        supabase.functions.invoke('sync-user-metadata').catch((err: any) => 
+          console.warn('[SetupAccount] Failed to sync metadata:', err)
+        );
+
         const { data: roleData } = await supabase
           .from('user_roles')
           .select('role')
