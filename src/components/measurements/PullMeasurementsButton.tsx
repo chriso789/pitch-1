@@ -237,8 +237,8 @@ export function PullMeasurementsButton({
       console.log('📍 Using user-selected PIN coordinates:', { pullLat, pullLng });
 
       toast({
-        title: "📍 Measuring Selected Structure",
-        description: "Analyzing roof with AI Vision on Mapbox satellite imagery. If current image is unclear, checking historical archives...",
+        title: "Measuring Roof",
+        description: "Analyzing satellite imagery...",
       });
 
       // 🚀 Call the NEW analyze-roof-aerial edge function
