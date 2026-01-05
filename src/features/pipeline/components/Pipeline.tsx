@@ -179,13 +179,31 @@ const Pipeline = () => {
       // CRITICAL: Use active_tenant_id (switched company) or fall back to tenant_id (home company)
       const effectiveTenantId = currentProfile?.active_tenant_id || currentProfile?.tenant_id;
       
-      // Load sales reps for assignment - FILTERED BY TENANT
-      const { data: repsData } = await supabase
+      // Load sales reps for assignment - FILTERED BY LOCATION
+      const effectiveLocationId = filters.location !== 'all' ? filters.location : currentLocationId;
+      
+      let repsQuery = supabase
         .from('profiles')
         .select('id, first_name, last_name, role, tenant_id')
         .eq('tenant_id', effectiveTenantId)
-        .in('role', ['corporate', 'office_admin', 'regional_manager', 'sales_manager', 'owner'])
+        .in('role', ['sales_rep', 'sales_manager', 'regional_manager', 'office_admin', 'corporate', 'owner'] as any)
         .eq('is_active', true);
+      
+      // If we have a location, filter by location assignments
+      if (effectiveLocationId) {
+        const { data: locationAssignments } = await supabase
+          .from('user_location_assignments')
+          .select('user_id')
+          .eq('location_id', effectiveLocationId)
+          .eq('is_active', true);
+        
+        if (locationAssignments && locationAssignments.length > 0) {
+          const assignedUserIds = locationAssignments.map(a => a.user_id);
+          repsQuery = repsQuery.in('id', assignedUserIds);
+        }
+      }
+      
+      const { data: repsData } = await repsQuery;
       
       if (repsData) {
         // Filter out master users from other companies
@@ -200,6 +218,18 @@ const Pipeline = () => {
           id: rep.id,
           name: `${rep.first_name} ${rep.last_name}`
         })));
+      }
+      
+      // Load locations for filter dropdown
+      const { data: locationsData } = await supabase
+        .from('business_locations')
+        .select('id, name')
+        .eq('tenant_id', effectiveTenantId)
+        .eq('status', 'active')
+        .order('name');
+      
+      if (locationsData) {
+        setLocations(locationsData);
       }
       
       // Build query with filters
@@ -279,12 +309,7 @@ const Pipeline = () => {
         }
       });
       
-      const repsArray = Array.from(uniqueRepsMap.values());
-      if (hasUnassigned) {
-        repsArray.push({ id: 'unassigned', name: 'Unassigned' });
-      }
-      setSalesReps(repsArray);
-      setLocations([]);
+      // Note: salesReps and locations are loaded separately above, not derived from pipeline data
 
       // Group data by status and calculate stage totals
       const groupedData = {};
