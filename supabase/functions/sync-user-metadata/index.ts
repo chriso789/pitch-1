@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
     const [profileResult, roleResult] = await Promise.all([
       supabaseAdmin
         .from('profiles')
-        .select('first_name, last_name, company_name, title, tenant_id, role')
+        .select('first_name, last_name, company_name, title, tenant_id, active_tenant_id, role')
         .eq('id', user.id)
         .single(),
       supabaseAdmin
@@ -73,15 +73,32 @@ Deno.serve(async (req) => {
     // Use role from user_roles table, fallback to profiles table
     const userRole = roleResult.data?.role || profile.role || '';
 
+    // Determine active_tenant_id (use profile's active_tenant_id or fallback to tenant_id)
+    const activeTenantId = profile.active_tenant_id || profile.tenant_id;
+
+    // Fetch tenant name for company branding
+    let tenantName = profile.company_name || '';
+    if (activeTenantId) {
+      const { data: tenant } = await supabaseAdmin
+        .from('tenants')
+        .select('name')
+        .eq('id', activeTenantId)
+        .single();
+      tenantName = tenant?.name || tenantName;
+    }
+
+    console.log(`[sync-user-metadata] User ${user.id} - active_tenant: ${activeTenantId}, company: ${tenantName}`);
+
     const { data: updatedUser, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
       user.id,
       {
         user_metadata: {
           first_name: profile.first_name,
           last_name: profile.last_name,
-          company_name: profile.company_name || '',
+          company_name: tenantName,
           title: profile.title || '',
           tenant_id: profile.tenant_id,
+          active_tenant_id: activeTenantId,
           role: userRole
         }
       }

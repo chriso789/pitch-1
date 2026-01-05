@@ -120,7 +120,7 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
       company_name: user.user_metadata?.company_name,
       role: effectiveRole, // Use cached role or session storage, never fallback to 'user' - wait for DB
       tenant_id: user.user_metadata?.tenant_id || user.id,
-      active_tenant_id: user.user_metadata?.tenant_id || user.id,
+      active_tenant_id: user.user_metadata?.active_tenant_id || user.user_metadata?.tenant_id || user.id,
       title: effectiveTitle, // Use cached title from session storage
       profileLoaded: hasValidCache, // Mark loaded if we have valid cached data
     };

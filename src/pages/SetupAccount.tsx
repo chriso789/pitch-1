@@ -134,20 +134,6 @@ export default function SetupAccount() {
           .update({ password_set_at: new Date().toISOString() })
           .eq('id', user.id);
 
-        // Ensure active_tenant_id is set for proper company context
-        const { data: profileData } = await supabase
-          .from('profiles')
-          .select('tenant_id, active_tenant_id')
-          .eq('id', user.id)
-          .single();
-
-        if (profileData && !profileData.active_tenant_id && profileData.tenant_id) {
-          await supabase
-            .from('profiles')
-            .update({ active_tenant_id: profileData.tenant_id })
-            .eq('id', user.id);
-        }
-
         // Log successful login/account activation for activity tracking
         supabase.functions.invoke('log-auth-activity', {
           body: {
@@ -162,10 +148,17 @@ export default function SetupAccount() {
           }
         }).catch((err: any) => console.warn('[SetupAccount] Failed to log activity:', err));
         
-        // Sync user metadata from profiles to auth
-        await supabase.functions.invoke('sync-user-metadata').catch((err: any) => 
-          console.warn('[SetupAccount] Failed to sync metadata:', err)
-        );
+        // Call initialize-user-context to set up full tenant/company context
+        console.log('[SetupAccount] Calling initialize-user-context...');
+        const { data: contextData, error: contextError } = await supabase.functions.invoke('initialize-user-context', {
+          body: { location_id: null }
+        });
+        
+        if (contextError) {
+          console.warn('[SetupAccount] Failed to initialize context:', contextError);
+        } else {
+          console.log('[SetupAccount] Context initialized:', contextData);
+        }
 
         // Refresh session to pick up updated metadata
         await supabase.auth.refreshSession();
@@ -176,7 +169,7 @@ export default function SetupAccount() {
           .eq('user_id', user.id)
           .maybeSingle();
 
-        // Role-based redirect
+        // Role-based redirect with delay to ensure context is ready
         setTimeout(() => {
           if (roleData?.role === 'owner') {
             navigate('/settings?tab=company');
