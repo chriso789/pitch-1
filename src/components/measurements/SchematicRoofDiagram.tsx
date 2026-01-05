@@ -31,9 +31,11 @@ const FACET_COLORS = [
 // Plausibility thresholds for linear features
 const LINE_PLAUSIBILITY = {
   MAX_LINES_PER_TYPE: 20,      // Max ridges/hips/valleys (increased for complex buildings)
-  MAX_STARBURST_RATIO: 0.5,    // Max % of lines meeting at one point (relaxed)
+  MAX_STARBURST_RATIO: 0.35,   // Max % of lines meeting at one point (stricter - catches starburst)
   MIN_LINE_LENGTH_FT: 2,       // Ignore very short lines
   MAX_LINE_LENGTH_FT: 200,     // Flag unusually long lines (increased for large roofs)
+  MAX_CONVERGENCE_POINTS: 3,   // Max central points where lines can converge
+  MIN_LINES_FOR_STARBURST: 5,  // Minimum lines before checking for starburst pattern
 };
 
 interface LinearFeature {
@@ -105,7 +107,7 @@ function getDirectionFromAzimuth(azimuth: number): string {
 // Filter out implausible linear features - BUT NOT EAVES/RAKES (they need to be reliable)
 function filterPlausibleLines(
   features: Array<{ type: string; coords: { lat: number; lng: number }[]; length: number }>
-): { plausible: typeof features; implausibleCount: number } {
+): { plausible: typeof features; implausibleCount: number; starburstDetected: boolean } {
   // Separate eaves/rakes from interior lines - eaves/rakes bypass filtering
   const eavesRakes = features.filter(f => f.type === 'eave' || f.type === 'rake');
   const interiorLines = features.filter(f => f.type !== 'eave' && f.type !== 'rake');
@@ -116,24 +118,49 @@ function filterPlausibleLines(
     typeCounts[f.type] = (typeCounts[f.type] || 0) + 1;
   });
   
-  // Count lines meeting at same start point (starburst detection) - interior only
-  const startPoints: Record<string, number> = {};
+  // ENHANCED STARBURST DETECTION: Check BOTH start AND end points
+  // The bug was that all lines were converging to 1-2 central points
+  const allEndpoints: Record<string, number> = {};
   interiorLines.forEach(f => {
     if (f.coords.length >= 2) {
-      const key = `${f.coords[0].lat.toFixed(6)},${f.coords[0].lng.toFixed(6)}`;
-      startPoints[key] = (startPoints[key] || 0) + 1;
+      // Check start point
+      const startKey = `${f.coords[0].lat.toFixed(5)},${f.coords[0].lng.toFixed(5)}`;
+      allEndpoints[startKey] = (allEndpoints[startKey] || 0) + 1;
+      
+      // Check end point (where the actual convergence happens)
+      const lastIdx = f.coords.length - 1;
+      const endKey = `${f.coords[lastIdx].lat.toFixed(5)},${f.coords[lastIdx].lng.toFixed(5)}`;
+      allEndpoints[endKey] = (allEndpoints[endKey] || 0) + 1;
     }
   });
   
-  const maxAtSinglePoint = Math.max(...Object.values(startPoints), 0);
-  const starburstRatio = interiorLines.length > 0 ? maxAtSinglePoint / interiorLines.length : 0;
+  // Count how many unique high-convergence points exist
+  const convergenceThreshold = Math.max(3, interiorLines.length * 0.25); // 25% of lines or 3, whichever is higher
+  const highConvergencePoints = Object.entries(allEndpoints)
+    .filter(([_, count]) => count >= convergenceThreshold);
+  
+  const maxAtSinglePoint = Math.max(...Object.values(allEndpoints), 0);
+  const totalInteriorEndpoints = interiorLines.length * 2; // Each line has 2 endpoints
+  const starburstRatio = totalInteriorEndpoints > 0 ? maxAtSinglePoint / totalInteriorEndpoints : 0;
   
   let plausibleInterior = interiorLines;
+  let starburstDetected = false;
   
-  // If starburst detected, hide interior lines (but keep eaves/rakes!)
-  if (starburstRatio > LINE_PLAUSIBILITY.MAX_STARBURST_RATIO && maxAtSinglePoint > 4) {
-    console.warn(`🚨 Starburst detected: ${maxAtSinglePoint} interior lines at single point - hiding interior, keeping eaves/rakes`);
+  // STARBURST DETECTION CRITERIA:
+  // 1. More than X% of lines share endpoints at just 1-2 points
+  // 2. We have enough lines to make this judgment (at least 5)
+  const hasEnoughLines = interiorLines.length >= LINE_PLAUSIBILITY.MIN_LINES_FOR_STARBURST;
+  const tooFewConvergencePoints = highConvergencePoints.length <= 2 && maxAtSinglePoint >= 4;
+  const highStarburstRatio = starburstRatio > LINE_PLAUSIBILITY.MAX_STARBURST_RATIO;
+  
+  if (hasEnoughLines && (tooFewConvergencePoints || highStarburstRatio)) {
+    console.warn(`🚨 STARBURST DETECTED:`);
+    console.warn(`   - ${maxAtSinglePoint} lines converge to single point`);
+    console.warn(`   - Only ${highConvergencePoints.length} convergence point(s)`);
+    console.warn(`   - Starburst ratio: ${(starburstRatio * 100).toFixed(1)}%`);
+    console.warn(`   - Hiding interior lines, keeping only eaves/rakes`);
     plausibleInterior = [];
+    starburstDetected = true;
   } else {
     // Filter individual interior lines only
     plausibleInterior = interiorLines.filter(f => {
@@ -145,11 +172,12 @@ function filterPlausibleLines(
   }
   
   // Always include eaves/rakes with basic length filter
-  const plausibleEavesRakes = eavesRakes.filter(f => f.length >= 1); // Very loose filter
+  const plausibleEavesRakes = eavesRakes.filter(f => f.length >= 1);
   
   return { 
     plausible: [...plausibleEavesRakes, ...plausibleInterior], 
-    implausibleCount: features.length - plausibleEavesRakes.length - plausibleInterior.length 
+    implausibleCount: features.length - plausibleEavesRakes.length - plausibleInterior.length,
+    starburstDetected
   };
 }
 
@@ -378,9 +406,14 @@ export function SchematicRoofDiagram({
     console.log('📊 Linear features by type (raw):', featureCounts);
     
     // Apply plausibility filter (eaves/rakes bypass the strict filtering)
-    const { plausible: plausibleLinearFeatures, implausibleCount } = filterPlausibleLines(linearFeaturesData);
+    const { plausible: plausibleLinearFeatures, implausibleCount, starburstDetected } = filterPlausibleLines(linearFeaturesData);
     
-    console.log(`📐 Plausible features: ${plausibleLinearFeatures.length}, Filtered: ${implausibleCount}`);
+    console.log(`📐 Plausible features: ${plausibleLinearFeatures.length}, Filtered: ${implausibleCount}${starburstDetected ? ' (STARBURST HIDDEN)' : ''}`);
+    
+    // Update diagram source if starburst was detected
+    if (starburstDetected) {
+      geometrySource = 'perimeter';
+    }
     
     // Calculate bounds from perimeter primarily (more stable)
     if (allLatLngs.length === 0) {

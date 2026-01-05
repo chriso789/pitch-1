@@ -189,6 +189,32 @@ function reconstructMultiWingRoof(
   const ridges: RoofLine[] = [];
   const hips: RoofLine[] = [];
   const valleys: RoofLine[] = [];
+  const warnings: string[] = [];
+  
+  const n = vertices.length;
+  const reflexArray = Array.from(reflexIndices);
+  
+  // If too many reflex vertices (>4), use simplified perimeter-only mode
+  if (reflexArray.length > 4) {
+    console.log(`  ⚠️ ${reflexArray.length} reflex vertices - using perimeter-only mode`);
+    return {
+      ridges: [],
+      hips: [],
+      valleys: [],
+      facets: [{
+        id: 'facet_0',
+        index: 0,
+        polygon: [...vertices, vertices[0]],
+        areaSqft: calculatePolygonAreaSqft(vertices),
+        pitch,
+        azimuthDegrees: 0,
+        direction: 'Mixed',
+        color: FACET_COLORS[0]
+      }],
+      diagramQuality: 'simplified',
+      warnings: ['Complex roof - showing perimeter only']
+    };
+  }
   
   // Detect wings
   const wings = detectWings(vertices, reflexIndices);
@@ -197,13 +223,16 @@ function reconstructMultiWingRoof(
     return reconstructComplexRoof(vertices, reflexIndices, pitch);
   }
   
-  // Create ridge for each wing
+  // Create ridge for each wing - store endpoints for junction finding
+  const wingRidgeEndpoints: GPSCoord[][] = [];
+  
   wings.forEach((wing, wingIdx) => {
     const bounds = getBounds(wing);
     const width = bounds.maxLng - bounds.minLng;
     const height = bounds.maxLat - bounds.minLat;
     const isWider = width >= height;
-    const inset = (isWider ? height : width) * 0.35;
+    const shortSide = isWider ? height : width;
+    const inset = shortSide * 0.4;
     const centerLat = (bounds.minLat + bounds.maxLat) / 2;
     const centerLng = (bounds.minLng + bounds.maxLng) / 2;
     
@@ -216,6 +245,8 @@ function reconstructMultiWingRoof(
       ridgeEnd = { lat: bounds.maxLat - inset, lng: centerLng };
     }
     
+    wingRidgeEndpoints.push([ridgeStart, ridgeEnd]);
+    
     ridges.push({
       id: `ridge_${wingIdx}`,
       start: ridgeStart,
@@ -225,37 +256,97 @@ function reconstructMultiWingRoof(
     });
   });
   
-  // Create hips from non-reflex corners
-  const n = vertices.length;
+  // Find junction points where wing ridges should connect
+  const junctionPoints: GPSCoord[] = [];
+  
+  for (let i = 0; i < wings.length; i++) {
+    for (let j = i + 1; j < wings.length; j++) {
+      const [startI, endI] = wingRidgeEndpoints[i];
+      const [startJ, endJ] = wingRidgeEndpoints[j];
+      
+      const pairs = [
+        { p1: endI, p2: startJ, dist: distance(endI, startJ) },
+        { p1: startI, p2: endJ, dist: distance(startI, endJ) },
+        { p1: endI, p2: endJ, dist: distance(endI, endJ) },
+        { p1: startI, p2: startJ, dist: distance(startI, startJ) },
+      ];
+      
+      const closest = pairs.sort((a, b) => a.dist - b.dist)[0];
+      
+      if (closest.dist < 0.001) {
+        const junction: GPSCoord = {
+          lat: (closest.p1.lat + closest.p2.lat) / 2,
+          lng: (closest.p1.lng + closest.p2.lng) / 2
+        };
+        junctionPoints.push(junction);
+      }
+    }
+  }
+  
+  // Create hips from non-reflex corners to their wing's ridge endpoints
   let hipIdx = 0;
   for (let i = 0; i < n; i++) {
     if (reflexIndices.has(i)) continue;
     
     const vertex = vertices[i];
-    const nearestEndpoint = findNearestRidgeEndpoint(vertex, ridges);
     
-    hips.push({
-      id: `hip_${hipIdx}`,
-      start: vertex,
-      end: nearestEndpoint.point,
-      lengthFt: distanceFt(vertex, nearestEndpoint.point),
-      connectedTo: [nearestEndpoint.ridgeId]
+    // Find which wing this corner belongs to
+    let bestWingIdx = 0;
+    let bestDist = Infinity;
+    
+    wings.forEach((wing, wIdx) => {
+      const wingBounds = getBounds(wing);
+      const withinLng = vertex.lng >= wingBounds.minLng - 0.0001 && vertex.lng <= wingBounds.maxLng + 0.0001;
+      const withinLat = vertex.lat >= wingBounds.minLat - 0.0001 && vertex.lat <= wingBounds.maxLat + 0.0001;
+      
+      if (withinLng && withinLat) {
+        const dist = Math.min(...wing.map(v => distance(vertex, v)));
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestWingIdx = wIdx;
+        }
+      }
     });
-    hipIdx++;
+    
+    // Connect to THIS wing's ridge only
+    const wingRidge = ridges.find(r => r.id === `ridge_${bestWingIdx}`);
+    if (wingRidge) {
+      const distToStart = distance(vertex, wingRidge.start);
+      const distToEnd = distance(vertex, wingRidge.end);
+      const targetEndpoint = distToStart <= distToEnd ? wingRidge.start : wingRidge.end;
+      
+      hips.push({
+        id: `hip_${hipIdx}`,
+        start: vertex,
+        end: targetEndpoint,
+        lengthFt: distanceFt(vertex, targetEndpoint),
+        connectedTo: [wingRidge.id]
+      });
+      hipIdx++;
+    }
   }
   
-  // Create valleys from reflex corners
+  // Create valleys from reflex corners to junction points
   let valleyIdx = 0;
   reflexIndices.forEach(idx => {
     const vertex = vertices[idx];
-    const nearestEndpoint = findNearestRidgeEndpoint(vertex, ridges);
+    
+    let target: GPSCoord;
+    if (junctionPoints.length > 0) {
+      target = junctionPoints.reduce((nearest, jp) => 
+        distance(vertex, jp) < distance(vertex, nearest) ? jp : nearest
+      , junctionPoints[0]);
+    } else {
+      const nearest = findNearestRidgeEndpoint(vertex, ridges);
+      target = nearest.point;
+    }
     
     valleys.push({
       id: `valley_${valleyIdx}`,
       start: vertex,
-      end: nearestEndpoint.point,
-      lengthFt: distanceFt(vertex, nearestEndpoint.point),
-      connectedTo: [nearestEndpoint.ridgeId]
+      end: target,
+      lengthFt: distanceFt(vertex, target),
+      connectedTo: []
     });
     valleyIdx++;
   });
@@ -278,7 +369,7 @@ function reconstructMultiWingRoof(
     valleys,
     facets,
     diagramQuality: 'good',
-    warnings: []
+    warnings
   };
 }
 
