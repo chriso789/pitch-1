@@ -11,6 +11,17 @@ interface LinearFeature {
   label?: string;
 }
 
+interface TransformConfig {
+  tileCenterLng: number;
+  tileCenterLat: number;
+  tileZoom: number;
+  canvasWidth: number;
+  canvasHeight: number;
+  offsetX?: number;
+  offsetY?: number;
+  scale?: number;
+}
+
 interface RidgeLineVisualizerProps {
   canvas: FabricCanvas | null;
   linearFeatures?: {
@@ -24,9 +35,56 @@ interface RidgeLineVisualizerProps {
   canvasWidth: number;
   canvasHeight: number;
   visible?: boolean;
+  // Calibration props for manual adjustment
+  offsetX?: number;
+  offsetY?: number;
+  scaleAdjustment?: number;
 }
 
-// Convert geo coordinates to canvas pixels
+// IMPROVED: Tile-aligned geo to pixel conversion
+// This accounts for how satellite tiles are actually fetched and displayed
+function geoToPixelAligned(
+  lng: number, 
+  lat: number, 
+  config: TransformConfig
+): { x: number; y: number } {
+  const { 
+    tileCenterLng, 
+    tileCenterLat, 
+    tileZoom, 
+    canvasWidth, 
+    canvasHeight, 
+    offsetX = 0, 
+    offsetY = 0, 
+    scale = 1 
+  } = config;
+  
+  // Calculate meters per pixel at this zoom level
+  // At zoom 20, 1 pixel ≈ 0.15 meters at equator
+  const metersPerPixelAtEquator = 156543.03392 / Math.pow(2, tileZoom);
+  const metersPerPixel = metersPerPixelAtEquator * Math.cos(tileCenterLat * Math.PI / 180);
+  
+  // Convert coordinate difference to meters
+  const metersPerDegreeLng = 111320 * Math.cos(tileCenterLat * Math.PI / 180);
+  const metersPerDegreeLat = 110540;
+  
+  const deltaLng = lng - tileCenterLng;
+  const deltaLat = lat - tileCenterLat;
+  
+  const deltaMetersX = deltaLng * metersPerDegreeLng;
+  const deltaMetersY = deltaLat * metersPerDegreeLat;
+  
+  // Convert meters to pixels with scale adjustment
+  const deltaPixelsX = (deltaMetersX / metersPerPixel) * scale;
+  const deltaPixelsY = -(deltaMetersY / metersPerPixel) * scale; // Y is inverted
+  
+  return {
+    x: (canvasWidth / 2) + deltaPixelsX + offsetX,
+    y: (canvasHeight / 2) + deltaPixelsY + offsetY
+  };
+}
+
+// Legacy function for backwards compatibility
 function geoToPixel(
   lng: number, 
   lat: number, 
@@ -34,25 +92,21 @@ function geoToPixel(
   centerLat: number, 
   zoom: number, 
   width: number, 
-  height: number
+  height: number,
+  offsetX: number = 0,
+  offsetY: number = 0,
+  scale: number = 1
 ): { x: number; y: number } {
-  const scale = 256 * Math.pow(2, zoom);
-  
-  // Longitude to X
-  const centerX = (centerLng + 180) * (scale / 360);
-  const pointX = (lng + 180) * (scale / 360);
-  const x = width / 2 + (pointX - centerX);
-  
-  // Latitude to Y (Web Mercator projection)
-  const latRad = (lat * Math.PI) / 180;
-  const mercN = Math.log(Math.tan(Math.PI / 4 + latRad / 2));
-  const centerLatRad = (centerLat * Math.PI) / 180;
-  const centerMercN = Math.log(Math.tan(Math.PI / 4 + centerLatRad / 2));
-  const centerY = (scale / 2) - (centerMercN * scale / (2 * Math.PI));
-  const pointY = (scale / 2) - (mercN * scale / (2 * Math.PI));
-  const y = height / 2 + (pointY - centerY);
-  
-  return { x, y };
+  return geoToPixelAligned(lng, lat, {
+    tileCenterLng: centerLng,
+    tileCenterLat: centerLat,
+    tileZoom: zoom,
+    canvasWidth: width,
+    canvasHeight: height,
+    offsetX,
+    offsetY,
+    scale
+  });
 }
 
 // Parse WKT LINESTRING to coordinates
@@ -77,6 +131,9 @@ export function RidgeLineVisualizer({
   canvasWidth,
   canvasHeight,
   visible = true,
+  offsetX = 0,
+  offsetY = 0,
+  scaleAdjustment = 1,
 }: RidgeLineVisualizerProps) {
   
   useEffect(() => {
@@ -88,6 +145,17 @@ export function RidgeLineVisualizer({
     );
     existingObjects.forEach(obj => canvas.remove(obj));
 
+    const transformConfig: TransformConfig = {
+      tileCenterLng: centerLng,
+      tileCenterLat: centerLat,
+      tileZoom: zoom,
+      canvasWidth,
+      canvasHeight,
+      offsetX,
+      offsetY,
+      scale: scaleAdjustment,
+    };
+
     // Render ridges (green)
     if (linearFeatures.ridges) {
       linearFeatures.ridges.forEach((ridge, index) => {
@@ -95,7 +163,7 @@ export function RidgeLineVisualizer({
         if (coords.length < 2) return;
 
         const points: { x: number; y: number }[] = coords.map(([lng, lat]) => 
-          geoToPixel(lng, lat, centerLng, centerLat, zoom, canvasWidth, canvasHeight)
+          geoToPixelAligned(lng, lat, transformConfig)
         );
 
         // Draw line
@@ -163,7 +231,7 @@ export function RidgeLineVisualizer({
         if (coords.length < 2) return;
 
         const points: { x: number; y: number }[] = coords.map(([lng, lat]) => 
-          geoToPixel(lng, lat, centerLng, centerLat, zoom, canvasWidth, canvasHeight)
+          geoToPixelAligned(lng, lat, transformConfig)
         );
 
         for (let i = 0; i < points.length - 1; i++) {
@@ -230,7 +298,7 @@ export function RidgeLineVisualizer({
         if (coords.length < 2) return;
 
         const points: { x: number; y: number }[] = coords.map(([lng, lat]) => 
-          geoToPixel(lng, lat, centerLng, centerLat, zoom, canvasWidth, canvasHeight)
+          geoToPixelAligned(lng, lat, transformConfig)
         );
 
         for (let i = 0; i < points.length - 1; i++) {
@@ -291,7 +359,10 @@ export function RidgeLineVisualizer({
     }
 
     canvas.renderAll();
-  }, [canvas, linearFeatures, centerLng, centerLat, zoom, canvasWidth, canvasHeight, visible]);
+  }, [canvas, linearFeatures, centerLng, centerLat, zoom, canvasWidth, canvasHeight, visible, offsetX, offsetY, scaleAdjustment]);
 
   return null; // This is a pure effect component
 }
+
+// Export transform function for use in other components
+export { geoToPixelAligned, type TransformConfig };
