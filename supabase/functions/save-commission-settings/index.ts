@@ -196,55 +196,121 @@ serve(async (req) => {
         );
       }
     } else {
-      // Create new plan
-      console.log(`[save-commission-settings] Creating new commission plan`);
-
-      const { data: newPlan, error: planInsertError } = await serviceClient
+      // Check for orphaned plan with the same name (from a previously failed save)
+      console.log(`[save-commission-settings] Checking for existing orphaned plan with name: ${planName}`);
+      
+      const { data: orphanedPlan } = await serviceClient
         .from('commission_plans')
-        .insert({
-          name: planName,
-          commission_type: dbCommissionType,
-          plan_config: {
-            commission_rate: commission_rate,
-            description: `Personal commission plan for ${targetProfile.first_name} ${targetProfile.last_name}`
-          },
-          include_overhead: false,
-          payment_method: dbPaymentMethod,
-          tenant_id: targetProfile.tenant_id,
-          is_active: true,
-          created_by: user.id
-        })
         .select('id')
-        .single();
+        .eq('tenant_id', targetProfile.tenant_id)
+        .eq('name', planName)
+        .maybeSingle();
 
-      if (planInsertError || !newPlan) {
-        console.error('[save-commission-settings] Plan insert error:', planInsertError);
-        return new Response(
-          JSON.stringify({ success: false, error: `Failed to create commission plan: ${planInsertError?.message}` }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+      if (orphanedPlan) {
+        // Reuse the orphaned plan
+        planId = orphanedPlan.id;
+        console.log(`[save-commission-settings] Found orphaned plan, reusing: ${planId}`);
+
+        const { error: planUpdateError } = await serviceClient
+          .from('commission_plans')
+          .update({
+            commission_type: dbCommissionType,
+            plan_config: {
+              commission_rate: commission_rate,
+              description: `Personal commission plan for ${targetProfile.first_name} ${targetProfile.last_name}`
+            },
+            include_overhead: false,
+            payment_method: dbPaymentMethod,
+            is_active: true,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', planId);
+
+        if (planUpdateError) {
+          console.error('[save-commission-settings] Orphaned plan update error:', planUpdateError);
+          return new Response(
+            JSON.stringify({ success: false, error: `Failed to update orphaned commission plan: ${planUpdateError.message}` }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      } else {
+        // Create new plan
+        console.log(`[save-commission-settings] Creating new commission plan`);
+
+        const { data: newPlan, error: planInsertError } = await serviceClient
+          .from('commission_plans')
+          .insert({
+            name: planName,
+            commission_type: dbCommissionType,
+            plan_config: {
+              commission_rate: commission_rate,
+              description: `Personal commission plan for ${targetProfile.first_name} ${targetProfile.last_name}`
+            },
+            include_overhead: false,
+            payment_method: dbPaymentMethod,
+            tenant_id: targetProfile.tenant_id,
+            is_active: true,
+            created_by: user.id
+          })
+          .select('id')
+          .single();
+
+        if (planInsertError || !newPlan) {
+          console.error('[save-commission-settings] Plan insert error:', planInsertError);
+          return new Response(
+            JSON.stringify({ success: false, error: `Failed to create commission plan: ${planInsertError?.message}` }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        planId = newPlan.id;
       }
 
-      planId = newPlan.id;
-
-      // Link user to the plan
-      const { error: linkError } = await serviceClient
+      // Link user to the plan - check for existing active link first
+      const { data: existingLink } = await serviceClient
         .from('user_commission_plans')
-        .upsert({
-          user_id: target_user_id,
-          commission_plan_id: planId,
-          tenant_id: targetProfile.tenant_id,
-          is_active: true
-        }, {
-          onConflict: 'user_id,commission_plan_id'
-        });
+        .select('id')
+        .eq('user_id', target_user_id)
+        .eq('is_active', true)
+        .maybeSingle();
 
-      if (linkError) {
-        console.error('[save-commission-settings] Link error:', linkError);
-        return new Response(
-          JSON.stringify({ success: false, error: `Failed to link commission plan: ${linkError.message}` }),
-          { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-        );
+      if (existingLink) {
+        // Update the existing link to point to the new/reused plan
+        console.log(`[save-commission-settings] Updating existing user_commission_plans link: ${existingLink.id}`);
+        const { error: linkUpdateError } = await serviceClient
+          .from('user_commission_plans')
+          .update({ 
+            commission_plan_id: planId,
+            updated_at: new Date().toISOString()
+          })
+          .eq('id', existingLink.id);
+
+        if (linkUpdateError) {
+          console.error('[save-commission-settings] Link update error:', linkUpdateError);
+          return new Response(
+            JSON.stringify({ success: false, error: `Failed to update commission plan link: ${linkUpdateError.message}` }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+      } else {
+        // Insert new link
+        console.log(`[save-commission-settings] Creating new user_commission_plans link`);
+        const { error: linkInsertError } = await serviceClient
+          .from('user_commission_plans')
+          .insert({
+            user_id: target_user_id,
+            commission_plan_id: planId,
+            tenant_id: targetProfile.tenant_id,
+            is_active: true
+          });
+
+        if (linkInsertError) {
+          console.error('[save-commission-settings] Link insert error:', linkInsertError);
+          return new Response(
+            JSON.stringify({ success: false, error: `Failed to link commission plan: ${linkInsertError.message}` }),
+            { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
       }
     }
 
