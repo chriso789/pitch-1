@@ -1,5 +1,8 @@
 project_id = "alxelfrbjzkmtnsulcei"
 
+[functions.send-account-deactivation]
+verify_jwt = true
+
 [functions.canvassiq-skip-trace]
 verify_jwt = false
 
