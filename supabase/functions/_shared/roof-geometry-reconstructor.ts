@@ -155,10 +155,14 @@ function reconstructRectangularRoof(
     connectedTo: ['hip_0', 'hip_1', 'hip_2', 'hip_3']
   };
   
-  // Create 4 hips from corners to ridge endpoints
+  // Create 4 hips from corners to NEAREST ridge endpoint
   const hips: RoofLine[] = [];
   corners.forEach((corner, i) => {
-    const targetEndpoint = i < 2 ? ridgeStart : ridgeEnd;
+    // Connect each corner to the geometrically nearest ridge endpoint
+    const distToStart = distance(corner, ridgeStart);
+    const distToEnd = distance(corner, ridgeEnd);
+    const targetEndpoint = distToStart <= distToEnd ? ridgeStart : ridgeEnd;
+    
     hips.push({
       id: `hip_${i}`,
       start: corner,
