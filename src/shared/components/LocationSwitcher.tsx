@@ -7,10 +7,10 @@ import {
   DropdownMenuTrigger 
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
-import { toast } from "@/components/ui/use-toast";
 import { MapPin, ChevronDown, Building2 } from "lucide-react";
 import { useLocation } from "@/contexts/LocationContext";
 import { useQueryClient } from "@tanstack/react-query";
+import { setLocationSwitchingFlag } from "@/components/layout/GlobalLocationHandler";
 
 interface LocationSwitcherProps {
   onLocationChange?: (locationId: string | null) => void;
@@ -26,26 +26,25 @@ export const LocationSwitcher = ({ onLocationChange }: LocationSwitcherProps) =>
   } = useLocation();
   const queryClient = useQueryClient();
 
-  const handleLocationSelect = (locationId: string | null) => {
-    // Update context immediately (optimistic - no await needed)
-    setCurrentLocationId(locationId);
-    
-    // Invalidate only location-sensitive queries for faster refresh
-    queryClient.invalidateQueries({ queryKey: ['contacts'] });
-    queryClient.invalidateQueries({ queryKey: ['leads'] });
-    queryClient.invalidateQueries({ queryKey: ['jobs'] });
-    queryClient.invalidateQueries({ queryKey: ['pipeline'] });
-    queryClient.invalidateQueries({ queryKey: ['projects'] });
-    
+  const handleLocationSelect = async (locationId: string | null) => {
     const location = locations.find(l => l.id === locationId);
+    
+    // Set switching flag for overlay immediately
+    setLocationSwitchingFlag(location?.name || null);
+    
+    // Persist to database
+    await setCurrentLocationId(locationId);
+    
+    // Clear all React Query cache
+    queryClient.clear();
+    
+    // Notify callback if provided
     onLocationChange?.(locationId);
-
-    toast({
-      title: "Location Changed",
-      description: locationId 
-        ? `Switched to ${location?.name}` 
-        : "Viewing all locations",
-    });
+    
+    // Full page redirect to dashboard
+    setTimeout(() => {
+      window.location.href = '/dashboard';
+    }, 150);
   };
 
   if (loading) {

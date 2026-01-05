@@ -7,11 +7,11 @@ import {
   DropdownMenuTrigger,
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
-import { toast } from "@/components/ui/use-toast";
 import { MapPin, ChevronDown, Building2, Check } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "@/contexts/LocationContext";
+import { setLocationSwitchingFlag } from "./GlobalLocationHandler";
 
 interface QuickLocationSwitcherProps {
   isCollapsed?: boolean;
@@ -29,29 +29,24 @@ export const QuickLocationSwitcher = ({ isCollapsed = false, onLocationChange }:
   } = useLocation();
 
   const handleLocationSelect = async (locationId: string | null) => {
-    try {
-      await setCurrentLocationId(locationId);
-      
-      // Invalidate queries to refresh data with new location filter
-      queryClient.invalidateQueries();
-      
-      onLocationChange?.(locationId);
-
-      const location = locations.find(l => l.id === locationId);
-      toast({
-        title: "Location Changed",
-        description: locationId 
-          ? `Switched to ${location?.name}` 
-          : "Viewing all locations",
-      });
-    } catch (error) {
-      console.error('Error updating location:', error);
-      toast({
-        title: "Error",
-        description: "Failed to change location",
-        variant: "destructive",
-      });
-    }
+    const location = locations.find(l => l.id === locationId);
+    
+    // Set switching flag for overlay immediately
+    setLocationSwitchingFlag(location?.name || null);
+    
+    // Persist to database in background
+    await setCurrentLocationId(locationId);
+    
+    // Clear all React Query cache
+    queryClient.clear();
+    
+    // Notify callback if provided
+    onLocationChange?.(locationId);
+    
+    // Full page redirect to dashboard
+    setTimeout(() => {
+      window.location.href = '/dashboard';
+    }, 150);
   };
 
   if (loading) {
