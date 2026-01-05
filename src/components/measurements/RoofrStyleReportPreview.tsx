@@ -47,7 +47,7 @@ export function RoofrStyleReportPreview({
   onReportGenerated,
 }: RoofrStyleReportPreviewProps) {
   const { toast } = useToast();
-  const { downloadPDF, isGenerating: isPDFGenerating, progress } = useMultiPagePDFGeneration();
+  const { generateMultiPagePDF, downloadPDF, isGenerating: isPDFGenerating, progress } = useMultiPagePDFGeneration();
   const [currentPage, setCurrentPage] = useState(1);
   const [reportUrl, setReportUrl] = useState<string | null>(null);
   const [showScrollHint, setShowScrollHint] = useState(true);
@@ -347,7 +347,7 @@ export function RoofrStyleReportPreview({
       setShowHiddenPages(true);
       await new Promise(resolve => setTimeout(resolve, 500));
       
-      const result = await downloadPDF('all-report-pages-container', totalPages, {
+      const result = await generateMultiPagePDF('all-report-pages-container', totalPages, {
         filename: `roof-report-${address.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`,
         propertyAddress: address,
         measurementId,

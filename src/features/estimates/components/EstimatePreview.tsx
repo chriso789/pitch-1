@@ -4,6 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Input } from "@/components/ui/input";
 import { 
   Calculator, 
   FileText, 
@@ -17,7 +18,12 @@ import {
   Droplets,
   Square,
   LayoutGrid,
-  Package
+  Package,
+  Plus,
+  Trash2,
+  Edit2,
+  X,
+  Check
 } from "lucide-react";
 import { useState } from "react";
 
@@ -212,9 +218,34 @@ const categoryLabels: Record<string, string> = {
   bundle: "Bundle Package"
 };
 
+// Custom line item interface
+interface CustomLineItem {
+  id: string;
+  type: 'material' | 'labor';
+  item: string;
+  quantity: number;
+  unitCost: number;
+  unit: string;
+  total: number;
+}
+
 const EstimatePreview = () => {
   const [selectedTemplate, setSelectedTemplate] = useState("shingle");
   const [activeCategory, setActiveCategory] = useState("roofing");
+  
+  // Custom line items added by user
+  const [customMaterials, setCustomMaterials] = useState<CustomLineItem[]>([]);
+  const [customLabor, setCustomLabor] = useState<CustomLineItem[]>([]);
+  
+  // Editing state
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editValues, setEditValues] = useState<{ item: string; quantity: number; unitCost: number; unit: string }>({
+    item: '', quantity: 0, unitCost: 0, unit: ''
+  });
+  
+  // Deleted template items (to exclude from calculations)
+  const [deletedTemplateItems, setDeletedTemplateItems] = useState<Set<number>>(new Set());
+  const [deletedLaborItems, setDeletedLaborItems] = useState<Set<number>>(new Set());
 
   // Mock measurement data for demonstration
   const mockMeasurements = {
@@ -275,31 +306,121 @@ const EstimatePreview = () => {
       return 1;
     }
   };
+  
+  // Add new material item
+  const addMaterialItem = () => {
+    const newItem: CustomLineItem = {
+      id: `custom-mat-${Date.now()}`,
+      type: 'material',
+      item: 'New Material',
+      quantity: 1,
+      unitCost: 0,
+      unit: 'each',
+      total: 0
+    };
+    setCustomMaterials([...customMaterials, newItem]);
+    startEditing(newItem.id, newItem.item, newItem.quantity, newItem.unitCost, newItem.unit);
+  };
+  
+  // Add new labor item
+  const addLaborItem = () => {
+    const newItem: CustomLineItem = {
+      id: `custom-lab-${Date.now()}`,
+      type: 'labor',
+      item: 'New Labor',
+      quantity: 1,
+      unitCost: 45,
+      unit: 'hours',
+      total: 45
+    };
+    setCustomLabor([...customLabor, newItem]);
+    startEditing(newItem.id, newItem.item, newItem.quantity, newItem.unitCost, newItem.unit);
+  };
+  
+  // Delete custom item
+  const deleteCustomItem = (id: string, type: 'material' | 'labor') => {
+    if (type === 'material') {
+      setCustomMaterials(items => items.filter(i => i.id !== id));
+    } else {
+      setCustomLabor(items => items.filter(i => i.id !== id));
+    }
+  };
+  
+  // Delete template item (mark as deleted)
+  const deleteTemplateItem = (index: number, type: 'material' | 'labor') => {
+    if (type === 'material') {
+      setDeletedTemplateItems(prev => new Set([...prev, index]));
+    } else {
+      setDeletedLaborItems(prev => new Set([...prev, index]));
+    }
+  };
+  
+  // Start editing
+  const startEditing = (id: string, item: string, quantity: number, unitCost: number, unit: string) => {
+    setEditingId(id);
+    setEditValues({ item, quantity, unitCost, unit });
+  };
+  
+  // Save editing
+  const saveEditing = (id: string, type: 'material' | 'labor') => {
+    if (type === 'material') {
+      setCustomMaterials(items => items.map(i => 
+        i.id === id 
+          ? { ...i, ...editValues, total: editValues.quantity * editValues.unitCost }
+          : i
+      ));
+    } else {
+      setCustomLabor(items => items.map(i => 
+        i.id === id 
+          ? { ...i, ...editValues, total: editValues.quantity * editValues.unitCost }
+          : i
+      ));
+    }
+    setEditingId(null);
+  };
+  
+  // Cancel editing
+  const cancelEditing = () => {
+    setEditingId(null);
+  };
 
   const currentTemplate = ESTIMATE_TEMPLATES[selectedTemplate as keyof typeof ESTIMATE_TEMPLATES];
   
-  // Calculate materials with evaluated quantities
-  const calculatedMaterials = currentTemplate.materials.map(item => {
-    const qty = evaluateFormula(item.quantity);
-    return {
-      ...item,
-      calculatedQty: qty,
-      total: qty * item.unitCost
-    };
-  });
+  // Calculate materials with evaluated quantities (excluding deleted ones)
+  const calculatedMaterials = currentTemplate.materials
+    .map((item, index) => {
+      const qty = evaluateFormula(item.quantity);
+      return {
+        ...item,
+        templateIndex: index,
+        calculatedQty: qty,
+        total: qty * item.unitCost
+      };
+    })
+    .filter((_, index) => !deletedTemplateItems.has(index));
   
-  // Calculate labor with evaluated hours
-  const calculatedLabor = currentTemplate.labor.map(item => {
-    const hrs = evaluateFormula(String(item.hours));
-    return {
-      ...item,
-      calculatedHours: hrs,
-      total: hrs * item.rate
-    };
-  });
+  // Calculate labor with evaluated hours (excluding deleted ones)
+  const calculatedLabor = currentTemplate.labor
+    .map((item, index) => {
+      const hrs = evaluateFormula(String(item.hours));
+      return {
+        ...item,
+        templateIndex: index,
+        calculatedHours: hrs,
+        total: hrs * item.rate
+      };
+    })
+    .filter((_, index) => !deletedLaborItems.has(index));
   
-  const materialCost = calculatedMaterials.reduce((sum, item) => sum + item.total, 0);
-  const laborCost = calculatedLabor.reduce((sum, item) => sum + item.total, 0);
+  // Combine template items with custom items
+  const allMaterialCost = calculatedMaterials.reduce((sum, item) => sum + item.total, 0) 
+    + customMaterials.reduce((sum, item) => sum + item.total, 0);
+  const allLaborCost = calculatedLabor.reduce((sum, item) => sum + item.total, 0)
+    + customLabor.reduce((sum, item) => sum + item.total, 0);
+  const totalItemCount = calculatedMaterials.length + customMaterials.length + calculatedLabor.length + customLabor.length;
+  
+  const materialCost = allMaterialCost;
+  const laborCost = allLaborCost;
   const totalJobCost = materialCost + laborCost;
   
   const overheadRate = 0.15;
@@ -456,31 +577,117 @@ const EstimatePreview = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Materials Breakdown */}
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2">
               <Wrench className="h-5 w-5 text-secondary" />
               Materials
-              <Badge variant="outline" className="ml-auto">{calculatedMaterials.length} items</Badge>
+              <Badge variant="outline" className="ml-auto">{calculatedMaterials.length + customMaterials.length} items</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-[320px] pr-4">
-              <div className="space-y-3">
+              <div className="space-y-2">
+                {/* Template materials */}
                 {calculatedMaterials.map((item, index) => (
-                  <div key={index} className="flex justify-between items-center py-2 border-b border-border/50 last:border-0">
+                  <div key={`template-${index}`} className="group flex justify-between items-center py-2 border-b border-border/50 last:border-0">
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-sm truncate">{item.item}</div>
                       <div className="text-xs text-muted-foreground">
                         {item.calculatedQty.toFixed(1)} {item.unit} × {formatCurrency(item.unitCost)}
                       </div>
                     </div>
-                    <div className="font-semibold text-right">
-                      {formatCurrency(item.total)}
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-right">
+                        {formatCurrency(item.total)}
+                      </span>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
+                        onClick={() => deleteTemplateItem(item.templateIndex, 'material')}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
+                  </div>
+                ))}
+                
+                {/* Custom materials */}
+                {customMaterials.map((item) => (
+                  <div key={item.id} className="group flex justify-between items-center py-2 border-b border-border/50 last:border-0 bg-primary/5 -mx-2 px-2 rounded">
+                    {editingId === item.id ? (
+                      <div className="flex-1 flex gap-2 items-center">
+                        <Input 
+                          value={editValues.item} 
+                          onChange={(e) => setEditValues({ ...editValues, item: e.target.value })}
+                          className="h-7 text-sm flex-1"
+                          placeholder="Item name"
+                        />
+                        <Input 
+                          type="number"
+                          value={editValues.quantity} 
+                          onChange={(e) => setEditValues({ ...editValues, quantity: parseFloat(e.target.value) || 0 })}
+                          className="h-7 text-sm w-16"
+                          placeholder="Qty"
+                        />
+                        <Input 
+                          type="number"
+                          value={editValues.unitCost} 
+                          onChange={(e) => setEditValues({ ...editValues, unitCost: parseFloat(e.target.value) || 0 })}
+                          className="h-7 text-sm w-20"
+                          placeholder="Cost"
+                        />
+                        <Button size="icon" className="h-6 w-6" onClick={() => saveEditing(item.id, 'material')}>
+                          <Check className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-6 w-6" onClick={cancelEditing}>
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm truncate flex items-center gap-1">
+                            {item.item}
+                            <Badge variant="secondary" className="text-[10px] px-1 py-0">Custom</Badge>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {item.quantity.toFixed(1)} {item.unit} × {formatCurrency(item.unitCost)}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-right">
+                            {formatCurrency(item.total)}
+                          </span>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => startEditing(item.id, item.item, item.quantity, item.unitCost, item.unit)}
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
+                            onClick={() => deleteCustomItem(item.id, 'material')}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
             </ScrollArea>
+            
+            <Button variant="outline" size="sm" className="w-full mt-3" onClick={addMaterialItem}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Material
+            </Button>
+            
             <Separator className="my-3" />
             <div className="flex justify-between items-center font-bold text-lg">
               <span>Material Total</span>
@@ -491,31 +698,117 @@ const EstimatePreview = () => {
 
         {/* Labor Breakdown */}
         <Card>
-          <CardHeader>
+          <CardHeader className="pb-2">
             <CardTitle className="flex items-center gap-2">
               <TrendingUp className="h-5 w-5 text-primary" />
               Labor
-              <Badge variant="outline" className="ml-auto">{calculatedLabor.length} items</Badge>
+              <Badge variant="outline" className="ml-auto">{calculatedLabor.length + customLabor.length} items</Badge>
             </CardTitle>
           </CardHeader>
           <CardContent>
             <ScrollArea className="h-[320px] pr-4">
-              <div className="space-y-3">
+              <div className="space-y-2">
+                {/* Template labor */}
                 {calculatedLabor.map((item, index) => (
-                  <div key={index} className="flex justify-between items-center py-2 border-b border-border/50 last:border-0">
+                  <div key={`template-${index}`} className="group flex justify-between items-center py-2 border-b border-border/50 last:border-0">
                     <div className="flex-1 min-w-0">
                       <div className="font-medium text-sm truncate">{item.item}</div>
                       <div className="text-xs text-muted-foreground">
                         {item.calculatedHours.toFixed(1)}h × {formatCurrency(item.rate)}/hr
                       </div>
                     </div>
-                    <div className="font-semibold text-right">
-                      {formatCurrency(item.total)}
+                    <div className="flex items-center gap-2">
+                      <span className="font-semibold text-right">
+                        {formatCurrency(item.total)}
+                      </span>
+                      <Button 
+                        variant="ghost" 
+                        size="icon" 
+                        className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
+                        onClick={() => deleteTemplateItem(item.templateIndex, 'labor')}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
                     </div>
+                  </div>
+                ))}
+                
+                {/* Custom labor */}
+                {customLabor.map((item) => (
+                  <div key={item.id} className="group flex justify-between items-center py-2 border-b border-border/50 last:border-0 bg-primary/5 -mx-2 px-2 rounded">
+                    {editingId === item.id ? (
+                      <div className="flex-1 flex gap-2 items-center">
+                        <Input 
+                          value={editValues.item} 
+                          onChange={(e) => setEditValues({ ...editValues, item: e.target.value })}
+                          className="h-7 text-sm flex-1"
+                          placeholder="Item name"
+                        />
+                        <Input 
+                          type="number"
+                          value={editValues.quantity} 
+                          onChange={(e) => setEditValues({ ...editValues, quantity: parseFloat(e.target.value) || 0 })}
+                          className="h-7 text-sm w-16"
+                          placeholder="Hours"
+                        />
+                        <Input 
+                          type="number"
+                          value={editValues.unitCost} 
+                          onChange={(e) => setEditValues({ ...editValues, unitCost: parseFloat(e.target.value) || 0 })}
+                          className="h-7 text-sm w-20"
+                          placeholder="Rate"
+                        />
+                        <Button size="icon" className="h-6 w-6" onClick={() => saveEditing(item.id, 'labor')}>
+                          <Check className="h-3.5 w-3.5" />
+                        </Button>
+                        <Button size="icon" variant="ghost" className="h-6 w-6" onClick={cancelEditing}>
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="flex-1 min-w-0">
+                          <div className="font-medium text-sm truncate flex items-center gap-1">
+                            {item.item}
+                            <Badge variant="secondary" className="text-[10px] px-1 py-0">Custom</Badge>
+                          </div>
+                          <div className="text-xs text-muted-foreground">
+                            {item.quantity.toFixed(1)}h × {formatCurrency(item.unitCost)}/hr
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="font-semibold text-right">
+                            {formatCurrency(item.total)}
+                          </span>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity"
+                            onClick={() => startEditing(item.id, item.item, item.quantity, item.unitCost, item.unit)}
+                          >
+                            <Edit2 className="h-3.5 w-3.5" />
+                          </Button>
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="h-6 w-6 opacity-0 group-hover:opacity-100 transition-opacity text-destructive hover:text-destructive"
+                            onClick={() => deleteCustomItem(item.id, 'labor')}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                          </Button>
+                        </div>
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
             </ScrollArea>
+            
+            <Button variant="outline" size="sm" className="w-full mt-3" onClick={addLaborItem}>
+              <Plus className="h-4 w-4 mr-2" />
+              Add Labor
+            </Button>
+            
             <Separator className="my-3" />
             <div className="flex justify-between items-center font-bold text-lg">
               <span>Labor Total</span>
@@ -600,7 +893,7 @@ const EstimatePreview = () => {
             <div>
               <h3 className="font-semibold">Estimate Ready for Review</h3>
               <p className="text-sm text-muted-foreground">
-                All calculations verified • {calculatedMaterials.length + calculatedLabor.length} line items • {currentTemplate.name}
+                All calculations verified • {totalItemCount} line items • {currentTemplate.name}
               </p>
             </div>
             <div className="flex gap-3">
