@@ -11,7 +11,7 @@ const corsHeaders = {
 
 // Centralized email config
 const EMAIL_CONFIG = {
-  bcc: 'support@obriencontractingusa.com',
+  bcc: 'chrisobrien91@gmail.com',
   brand: {
     name: 'PITCH CRM',
     primaryColor: '#2563eb',

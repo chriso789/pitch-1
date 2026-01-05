@@ -7,8 +7,8 @@ const corsHeaders = {
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
 };
 
-// Admin BCC for all onboarding emails
-const ADMIN_BCC = 'support@obriencontractingusa.com';
+// Admin BCC for all onboarding emails - Master developer email
+const ADMIN_BCC = 'chrisobrien91@gmail.com';
 
 interface OnboardingEmailRequest {
   tenant_id: string;

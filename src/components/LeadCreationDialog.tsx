@@ -236,13 +236,8 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
 
       if (error) throw error;
       
-      // Filter out any master users that somehow got included (extra safety)
-      const filteredProfiles = (profiles || []).filter(rep => {
-        if (rep.role === 'master') {
-          return rep.tenant_id === effectiveTenantId;
-        }
-        return true;
-      });
+      // Completely exclude master role from assignments
+      const filteredProfiles = (profiles || []).filter(rep => rep.role !== 'master');
       
       setSalesReps(filteredProfiles);
     } catch (error) {

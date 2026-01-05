@@ -15992,6 +15992,7 @@ export type Database = {
           manager_override_rate: number | null
           metadata: Json | null
           overhead_rate: number | null
+          password_set_at: string | null
           pay_structure_created_at: string | null
           pay_structure_created_by: string | null
           pay_structure_display: Json | null
@@ -16036,6 +16037,7 @@ export type Database = {
           manager_override_rate?: number | null
           metadata?: Json | null
           overhead_rate?: number | null
+          password_set_at?: string | null
           pay_structure_created_at?: string | null
           pay_structure_created_by?: string | null
           pay_structure_display?: Json | null
@@ -16080,6 +16082,7 @@ export type Database = {
           manager_override_rate?: number | null
           metadata?: Json | null
           overhead_rate?: number | null
+          password_set_at?: string | null
           pay_structure_created_at?: string | null
           pay_structure_created_by?: string | null
           pay_structure_display?: Json | null
