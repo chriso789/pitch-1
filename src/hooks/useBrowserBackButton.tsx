@@ -49,16 +49,7 @@ export const useBrowserBackButton = ({
     // window.history.length > 2 because: 1 = blank, 2 = current page
     const hasHistory = window.history.length > 2;
     
-    // Also check if referrer is from our own app
-    let referrerIsOurApp = false;
-    try {
-      referrerIsOurApp = document.referrer && 
-        new URL(document.referrer).origin === window.location.origin;
-    } catch {
-      // Invalid URL, ignore
-    }
-    
-    if (hasHistory && referrerIsOurApp) {
+    if (hasHistory) {
       navigate(-1);
     } else {
       // No reliable history - use fallback path
