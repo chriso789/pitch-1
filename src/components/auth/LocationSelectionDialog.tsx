@@ -115,37 +115,41 @@ export function LocationSelectionDialog({ userId, onLocationSelected }: Location
       return;
     }
 
-    if (!activeTenantId) {
-      toast.error('Unable to save location preference');
-      return;
-    }
-
     setIsSaving(true);
     try {
-      // Save to database (app_settings table)
-      const { error } = await supabase
-        .from('app_settings')
-        .upsert({
-          user_id: userId,
-          setting_key: 'current_location_id',
-          setting_value: selectedLocation,
-          tenant_id: activeTenantId
-        }, {
-          onConflict: 'user_id,tenant_id,setting_key'
-        });
+      console.log('[LocationSelectionDialog] Calling initialize-user-context with location:', selectedLocation);
+      
+      // Call edge function to initialize context with selected location
+      const { data, error } = await supabase.functions.invoke('initialize-user-context', {
+        body: { location_id: selectedLocation }
+      });
 
-      if (error) throw error;
+      if (error) {
+        console.error('[LocationSelectionDialog] Failed to initialize context:', error);
+        throw error;
+      }
 
-      // Also store in localStorage for cross-tab sync
+      console.log('[LocationSelectionDialog] Context initialized:', data);
+
+      // Save to localStorage for immediate access
       localStorage.setItem('pitch_current_location', selectedLocation);
 
+      // Refresh session to pick up updated metadata
+      await supabase.auth.refreshSession();
+
+      // Notify callback
       onLocationSelected(selectedLocation);
+      
+      // Close dialog
       setOpen(false);
+      
       toast.success('Location selected');
+
+      // Full page redirect to dashboard to ensure all contexts reload properly
+      window.location.href = '/dashboard';
     } catch (error) {
       console.error('Error saving location:', error);
       toast.error('Failed to save location preference');
-    } finally {
       setIsSaving(false);
     }
   };
