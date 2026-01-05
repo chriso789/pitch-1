@@ -200,6 +200,23 @@ serve(async (req) => {
       }
     }
     
+    // NEW: Pass 2.5 - Clean up perimeter vertices (remove collinear points, smooth eyebrows)
+    const cleanupResult = cleanupPerimeterVertices(
+      perimeterResult.vertices,
+      coordinates,
+      logicalImageSize,
+      {
+        collinearThresholdDeg: 10,  // Remove vertices on lines within 10° of straight
+        minBumpOutFt: 3,            // Smooth eyebrows smaller than 3ft deviation
+        preserveCornerTypes: ['valley-entry', 'gable-peak', 'hip-corner']  // Never remove these
+      }
+    );
+    
+    if (cleanupResult.removed > 0) {
+      console.log(`🧹 Perimeter cleanup: removed ${cleanupResult.removed} collinear/eyebrow vertices`);
+      perimeterResult.vertices = cleanupResult.cleaned;
+    }
+    
     // Pass 3: Detect interior junction vertices (where ridges/hips/valleys meet)
     const interiorVertices = await detectInteriorJunctions(selectedImage.url, perimeterResult.vertices, buildingIsolation.bounds)
     console.log(`⏱️ Pass 3 (interior junctions) complete: ${Date.now() - startTime}ms`)
@@ -591,6 +608,159 @@ async function fetchMapboxSatellite(coords: any) {
     console.error('Mapbox error:', err)
     return { url: null, source: 'mapbox', resolution: '1280x1280', quality: 0 }
   }
+}
+
+// ============================================================================
+// PERIMETER CLEANUP - Remove collinear vertices and smooth eyebrow features
+// ============================================================================
+
+/**
+ * Clean up perimeter vertices by:
+ * 1. Removing collinear vertices (points on straight lines)
+ * 2. Smoothing "eyebrow" features (small bump-outs under threshold)
+ * 
+ * An "eyebrow" is a small architectural feature like a dormer that can cause
+ * the AI to add extra vertices. For schematic purposes, we smooth these out
+ * unless they're significant (>3ft deviation from baseline).
+ */
+function cleanupPerimeterVertices(
+  vertices: any[],
+  coordinates: { lat: number; lng: number },
+  imageSize: number = 640,
+  options: {
+    collinearThresholdDeg?: number;  // Angle threshold for collinear detection (default 8°)
+    minBumpOutFt?: number;           // Minimum bump-out to keep (default 3ft)
+    preserveCornerTypes?: string[];  // Corner types to never remove
+  } = {}
+): { cleaned: any[]; removed: number; eyebrowsSmoothed: number } {
+  const {
+    collinearThresholdDeg = 8,
+    minBumpOutFt = 3,
+    preserveCornerTypes = ['valley-entry', 'gable-peak']
+  } = options;
+  
+  if (!vertices || vertices.length < 5) {
+    return { cleaned: vertices || [], removed: 0, eyebrowsSmoothed: 0 };
+  }
+  
+  // Convert degrees to radians for threshold
+  const collinearThresholdRad = collinearThresholdDeg * (Math.PI / 180);
+  
+  // Meters per pixel at this zoom level
+  const metersPerPixel = (156543.03392 * Math.cos(coordinates.lat * Math.PI / 180)) / Math.pow(2, IMAGE_ZOOM);
+  const feetPerPixelPct = (metersPerPixel * imageSize / 100) * 3.28084;
+  
+  let cleaned = [...vertices];
+  let removed = 0;
+  let eyebrowsSmoothed = 0;
+  
+  // Pass 1: Remove collinear vertices (straighten lines)
+  let i = 0;
+  while (i < cleaned.length && cleaned.length > 4) {
+    const prev = cleaned[(i - 1 + cleaned.length) % cleaned.length];
+    const curr = cleaned[i];
+    const next = cleaned[(i + 1) % cleaned.length];
+    
+    // Skip protected corner types
+    if (preserveCornerTypes.includes(curr.cornerType)) {
+      i++;
+      continue;
+    }
+    
+    // Calculate angle at this vertex
+    const v1 = { x: curr.x - prev.x, y: curr.y - prev.y };
+    const v2 = { x: next.x - curr.x, y: next.y - curr.y };
+    
+    const dot = v1.x * v2.x + v1.y * v2.y;
+    const mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+    const mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+    
+    if (mag1 === 0 || mag2 === 0) {
+      i++;
+      continue;
+    }
+    
+    const cosAngle = dot / (mag1 * mag2);
+    const angle = Math.acos(Math.max(-1, Math.min(1, cosAngle)));
+    
+    // If nearly straight (angle close to 180° / π radians)
+    if (Math.abs(angle - Math.PI) < collinearThresholdRad) {
+      // This vertex is on a straight line - remove it
+      console.log(`🧹 Removing collinear vertex at (${curr.x.toFixed(1)}%, ${curr.y.toFixed(1)}%) - angle: ${(angle * 180 / Math.PI).toFixed(1)}°`);
+      cleaned.splice(i, 1);
+      removed++;
+      // Don't increment i - check the new vertex at this position
+    } else {
+      i++;
+    }
+  }
+  
+  // Pass 2: Smooth "eyebrow" features (small bump-outs)
+  i = 0;
+  while (i < cleaned.length && cleaned.length > 4) {
+    const curr = cleaned[i];
+    
+    // Skip protected corner types
+    if (preserveCornerTypes.includes(curr.cornerType)) {
+      i++;
+      continue;
+    }
+    
+    // Check if this is a potential eyebrow - look for pattern: prev -> curr -> next -> afterNext
+    // where curr and next form a small protrusion
+    const prev = cleaned[(i - 1 + cleaned.length) % cleaned.length];
+    const next = cleaned[(i + 1) % cleaned.length];
+    const afterNext = cleaned[(i + 2) % cleaned.length];
+    
+    // Check if prev->curr->next->afterNext forms a small bump
+    // by seeing if the direct line prev->afterNext is close to the path
+    
+    // Distance from curr to line prev->afterNext
+    const lineLen = Math.sqrt(Math.pow(afterNext.x - prev.x, 2) + Math.pow(afterNext.y - prev.y, 2));
+    if (lineLen < 0.1) {
+      i++;
+      continue;
+    }
+    
+    // Perpendicular distance of curr from line prev->afterNext
+    const distCurr = Math.abs(
+      (afterNext.y - prev.y) * curr.x - (afterNext.x - prev.x) * curr.y + 
+      afterNext.x * prev.y - afterNext.y * prev.x
+    ) / lineLen;
+    
+    // Perpendicular distance of next from line prev->afterNext  
+    const distNext = Math.abs(
+      (afterNext.y - prev.y) * next.x - (afterNext.x - prev.x) * next.y + 
+      afterNext.x * prev.y - afterNext.y * prev.x
+    ) / lineLen;
+    
+    // Convert to feet
+    const distCurrFt = distCurr * feetPerPixelPct;
+    const distNextFt = distNext * feetPerPixelPct;
+    
+    // If both curr and next are close to the line and form a small bump, remove both
+    if (distCurrFt < minBumpOutFt && distNextFt < minBumpOutFt) {
+      // Check that the bump is truly small (not a significant protrusion)
+      const bumpWidth = Math.sqrt(Math.pow(next.x - curr.x, 2) + Math.pow(next.y - curr.y, 2));
+      const bumpWidthFt = bumpWidth * feetPerPixelPct;
+      
+      if (bumpWidthFt < 8) { // Small eyebrow - smooth it
+        console.log(`🧹 Smoothing eyebrow at (${curr.x.toFixed(1)}%, ${curr.y.toFixed(1)}%) - deviation: ${distCurrFt.toFixed(1)}ft, width: ${bumpWidthFt.toFixed(1)}ft`);
+        // Remove curr and next (the bump vertices)
+        cleaned.splice(i, 2);
+        eyebrowsSmoothed += 2;
+        removed += 2;
+        // Don't increment - check the new vertex at this position
+        continue;
+      }
+    }
+    
+    i++;
+  }
+  
+  console.log(`🧹 Perimeter cleanup: removed ${removed} vertices (${eyebrowsSmoothed} from eyebrows), ${cleaned.length} remaining`);
+  
+  return { cleaned, removed, eyebrowsSmoothed };
 }
 
 // NEW: Validate that detected footprint covers the full roof
@@ -1018,6 +1188,25 @@ COMMON MISTAKES TO AVOID:
 ❌ Segments > 50 feet without a vertex = MISSING A CORNER
 ❌ Tracing OUTSIDE the roof edge - this causes OVER-ESTIMATION
 ❌ INCLUDING SCREEN ENCLOSURES OR POOL CAGES (Florida properties!)
+❌ Adding extra vertices on STRAIGHT EAVES - keep straight edges straight!
+❌ Creating zigzag patterns where the eave is actually a SINGLE STRAIGHT LINE
+
+════════════════════════════════════════════════════════════════════════════════
+🏠 STRAIGHT EDGES & EYEBROW FEATURES
+════════════════════════════════════════════════════════════════════════════════
+
+STRAIGHT EAVES: If an eave runs in a straight line (no visible bends), use ONLY TWO vertices 
+(start and end). Do NOT add intermediate vertices that create artificial bends!
+Look at the actual roof edge - if it's straight, trace it with 2 points only.
+
+EYEBROW/DORMER FEATURES: Small bump-outs under 3-4 feet deviation from the main roof line 
+should be SIMPLIFIED. These are often:
+- Small dormers or "eyebrow" windows
+- Minor step-backs in the roofline
+- Shadow artifacts that look like small indentations
+
+If the feature is less than 3-4 feet from the main roof line, SKIP IT and continue
+tracing the main roof edge. Only trace bump-outs that are SIGNIFICANT (>4ft deviation).
 
 CORNER TYPES (classify each):
 - "hip-corner": Diagonal 45° corner where hip meets eave
@@ -1033,6 +1222,7 @@ EXCLUDE FROM TRACING:
 - Carports, awnings, pergolas
 - Adjacent outbuildings
 - Pool cages (aluminum frame structures)
+- Small dormers/eyebrows under 4ft deviation from main roof line
 
 ════════════════════════════════════════════════════════════════════════════════
 RESPONSE FORMAT (JSON only)
