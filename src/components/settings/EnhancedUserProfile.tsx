@@ -14,6 +14,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useAvailableCompanies } from "@/hooks/useAvailableCompanies";
+import { useQueryClient } from "@tanstack/react-query";
 import { UserCommissionSettings } from "./UserCommissionSettings";
 import { UserActivityTab } from "./UserActivityTab";
 import { 
@@ -42,9 +43,10 @@ interface EnhancedUserProfileProps {
   userId: string;
   onClose: () => void;
   initialEditMode?: boolean;
+  onProfileUpdated?: () => void;
 }
 
-export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId, onClose, initialEditMode = false }) => {
+export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId, onClose, initialEditMode = false, onProfileUpdated }) => {
   const [user, setUser] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [editing, setEditing] = useState(initialEditMode);
@@ -58,9 +60,24 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
   const [currentUser, setCurrentUser] = useState<any>(null);
   const [checkingPermissions, setCheckingPermissions] = useState(true);
   const [selectedTenantId, setSelectedTenantId] = useState<string | null>(null);
+  const [selectedRole, setSelectedRole] = useState<string | null>(null);
+  const [updatingRole, setUpdatingRole] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
   const { companies } = useAvailableCompanies();
+  const queryClient = useQueryClient();
+
+  const ROLE_HIERARCHY: Record<string, number> = {
+    master: 1,
+    owner: 2,
+    corporate: 3,
+    office_admin: 4,
+    regional_manager: 5,
+    sales_manager: 6,
+    project_manager: 7,
+  };
+
+  const ALL_ROLES = ['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager', 'project_manager'];
 
   useEffect(() => {
     loadUserProfile();
@@ -137,6 +154,31 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
 
     console.log('✗ Permission denied');
     return false;
+  };
+
+  // Check if current user can change this user's role
+  const canChangeRole = () => {
+    if (!currentUser || !user) return false;
+    if (currentUser.id === user.id) return false; // Can't change own role
+    if (currentUser.role === 'master') return true;
+    
+    const currentLevel = ROLE_HIERARCHY[currentUser.role] || 999;
+    const targetLevel = ROLE_HIERARCHY[user.role] || 999;
+    
+    return currentLevel < targetLevel;
+  };
+
+  // Get roles that the current user can assign
+  const getAssignableRoles = () => {
+    if (!currentUser) return [];
+    if (currentUser.role === 'master') return ALL_ROLES;
+    
+    const currentLevel = ROLE_HIERARCHY[currentUser.role] || 999;
+    return ALL_ROLES.filter(role => ROLE_HIERARCHY[role] > currentLevel);
+  };
+
+  const formatRoleName = (role: string) => {
+    return role.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   };
 
   const loadUserProfile = async () => {
@@ -222,6 +264,40 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
 
       if (error) throw error;
 
+      // If role was changed, call the edge function
+      if (selectedRole && selectedRole !== user.role) {
+        setUpdatingRole(true);
+        const { data: roleData, error: roleError } = await supabase.functions.invoke('update-user-role', {
+          body: {
+            userId: userId,
+            newRole: selectedRole,
+            tenantId: newTenantId
+          }
+        });
+        setUpdatingRole(false);
+        
+        if (roleError) {
+          console.error('Role update error:', roleError);
+          toast({
+            title: "Role Update Failed",
+            description: roleError.message || "Failed to update role",
+            variant: "destructive",
+          });
+        } else if (roleData?.error) {
+          toast({
+            title: "Role Update Failed",
+            description: roleData.error,
+            variant: "destructive",
+          });
+        } else {
+          setUser({ ...user, role: selectedRole });
+          toast({
+            title: "Role Updated",
+            description: `Role changed to ${formatRoleName(selectedRole)}`,
+          });
+        }
+      }
+
       // Sync email to auth.users if email was updated
       if (user.email) {
         console.log("Syncing email to auth.users for user:", userId);
@@ -230,7 +306,6 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
         });
         if (syncError) {
           console.error("Email sync error (non-blocking):", syncError);
-          // Don't throw - profile was saved, sync is a secondary concern
         } else {
           console.log("Email synced successfully to auth.users");
         }
@@ -238,7 +313,6 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
 
       // If company changed, update user_company_access
       if (selectedTenantId && selectedTenantId !== oldTenantId) {
-        // Upsert new company access
         const { error: accessError } = await supabase
           .from('user_company_access')
           .upsert({
@@ -260,6 +334,12 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
         description: "User profile has been updated successfully.",
       });
       setEditing(false);
+      
+      // Invalidate user management cache to refresh the list immediately
+      queryClient.invalidateQueries({ queryKey: ['user-management-data'] });
+      
+      // Call the callback to notify parent component
+      onProfileUpdated?.();
       
       // Reload to reflect changes
       loadUserProfile();
@@ -660,6 +740,45 @@ export const EnhancedUserProfile: React.FC<EnhancedUserProfileProps> = ({ userId
                         ))}
                       </SelectContent>
                     </Select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="role" className="flex items-center gap-1.5">
+                      <Shield className="h-3.5 w-3.5" />
+                      Role
+                    </Label>
+                    {editing && canChangeRole() ? (
+                      <Select
+                        value={selectedRole || user.role || ""}
+                        onValueChange={(value) => setSelectedRole(value)}
+                        disabled={updatingRole}
+                      >
+                        <SelectTrigger className="w-full">
+                          <SelectValue placeholder="Select role..." />
+                        </SelectTrigger>
+                        <SelectContent className="bg-popover z-50">
+                          {getAssignableRoles().map((role) => (
+                            <SelectItem key={role} value={role}>
+                              <div className="flex items-center gap-2">
+                                <Shield className="h-4 w-4 text-muted-foreground" />
+                                <span className="font-medium">{formatRoleName(role)}</span>
+                              </div>
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    ) : (
+                      <div className="flex items-center gap-2 p-2 border rounded-md bg-muted/50">
+                        <Badge variant="outline" className="capitalize">
+                          {formatRoleName(user.role || 'unknown')}
+                        </Badge>
+                        {!canChangeRole() && editing && (
+                          <span className="text-xs text-muted-foreground">
+                            Cannot change role
+                          </span>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>

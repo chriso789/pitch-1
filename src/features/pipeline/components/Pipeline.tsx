@@ -40,6 +40,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { EnhancedLeadCreationDialog } from "@/components/EnhancedLeadCreationDialog";
+import { useLocation } from "@/contexts/LocationContext";
 
 const Pipeline = () => {
   const [pipelineData, setPipelineData] = useState({});
@@ -69,6 +70,7 @@ const Pipeline = () => {
   } | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { currentLocationId } = useLocation();
 
   const jobStages = [
     { name: "Leads", key: "lead", color: "bg-amber-500", icon: User },
@@ -88,7 +90,17 @@ const Pipeline = () => {
   // Fetch pipeline data from Supabase
   useEffect(() => {
     fetchPipelineData();
-  }, [filters]);
+  }, [filters, currentLocationId]);
+
+  // Listen for location changes
+  useEffect(() => {
+    const handleLocationChange = () => {
+      fetchPipelineData();
+    };
+    
+    window.addEventListener('location-changed', handleLocationChange);
+    return () => window.removeEventListener('location-changed', handleLocationChange);
+  }, []);
 
   // Set up real-time listener for pipeline_entries changes
   useEffect(() => {
@@ -212,6 +224,11 @@ const Pipeline = () => {
           )
         `)
         .eq('is_deleted', false);
+
+      // Filter by current location if selected
+      if (currentLocationId) {
+        query = query.eq('location_id', currentLocationId);
+      }
 
       // Apply date filters
       if (filters.dateFrom) {
