@@ -32,6 +32,8 @@ import { useLatestMeasurement } from '@/hooks/useMeasurement';
 import { useLivePricing } from '@/hooks/useLivePricing';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { seedBrandTemplates, BRAND_TEMPLATES } from '@/lib/estimates/brandTemplateSeeder';
+import { MaterialAutocomplete, MaterialSuggestion } from '@/components/ui/material-autocomplete';
+
 // LineItemRow component for rendering individual line items
 const LineItemRow: React.FC<{
   item: LineItem;
@@ -41,100 +43,118 @@ const LineItemRow: React.FC<{
   lineItemsCount: number;
   isPriceStale: (lastUpdated?: string) => boolean;
   formatLastUpdated: (lastUpdated?: string) => string;
-}> = ({ item, index, updateLineItem, removeLineItem, lineItemsCount, isPriceStale, formatLastUpdated }) => (
-  <div className="border rounded-lg p-4 space-y-3">
-    <div className="flex justify-between items-center">
-      <div className="flex items-center gap-2">
-        <span className="text-sm font-medium">{item.item_name || `New ${item.item_category}`}</span>
-        {item.last_price_updated && isPriceStale(item.last_price_updated) && (
-          <Badge variant="destructive" className="text-xs">
-            <AlertTriangle className="h-3 w-3 mr-1" />
-            Stale Price
-          </Badge>
-        )}
-      </div>
-      <div className="flex items-center gap-2">
-        {item.last_price_updated && (
-          <span className="text-xs text-muted-foreground">
-            Updated: {formatLastUpdated(item.last_price_updated)}
-          </span>
-        )}
-        <Button
-          onClick={() => removeLineItem(index)}
-          size="sm"
-          variant="ghost"
-          className="text-red-500 hover:text-red-700"
-        >
-          <Trash2 className="h-4 w-4" />
-        </Button>
-      </div>
-    </div>
-    
-    <div className="grid grid-cols-2 gap-3">
-      <div className="space-y-2">
-        <Label>Item Name</Label>
-        <Input
-          value={item.item_name}
-          onChange={(e) => updateLineItem(index, 'item_name', e.target.value)}
-          placeholder="Enter item name"
-        />
-      </div>
-      <div className="space-y-2">
-        <Label>Description</Label>
-        <Input
-          value={item.description}
-          onChange={(e) => updateLineItem(index, 'description', e.target.value)}
-          placeholder="Enter description"
-        />
-      </div>
-    </div>
+}> = ({ item, index, updateLineItem, removeLineItem, lineItemsCount, isPriceStale, formatLastUpdated }) => {
+  
+  const handleMaterialSelect = (material: MaterialSuggestion) => {
+    updateLineItem(index, 'item_name', material.name);
+    updateLineItem(index, 'unit_cost', material.unit_cost);
+    updateLineItem(index, 'unit_type', material.unit);
+    if (material.description) {
+      updateLineItem(index, 'description', material.description);
+    }
+    if (material.item_code) {
+      updateLineItem(index, 'sku', material.item_code);
+    }
+    updateLineItem(index, 'last_price_updated', new Date().toISOString());
+  };
 
-    <div className="grid grid-cols-4 gap-3">
-      <div className="space-y-2">
-        <Label>Quantity</Label>
-        <Input
-          type="number"
-          value={item.quantity}
-          onChange={(e) => updateLineItem(index, 'quantity', parseFloat(e.target.value) || 0)}
-        />
+  return (
+    <div className="border rounded-lg p-4 space-y-3">
+      <div className="flex justify-between items-center">
+        <div className="flex items-center gap-2">
+          <span className="text-sm font-medium">{item.item_name || `New ${item.item_category}`}</span>
+          {item.last_price_updated && isPriceStale(item.last_price_updated) && (
+            <Badge variant="destructive" className="text-xs">
+              <AlertTriangle className="h-3 w-3 mr-1" />
+              Stale Price
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {item.last_price_updated && (
+            <span className="text-xs text-muted-foreground">
+              Updated: {formatLastUpdated(item.last_price_updated)}
+            </span>
+          )}
+          <Button
+            onClick={() => removeLineItem(index)}
+            size="sm"
+            variant="ghost"
+            className="text-red-500 hover:text-red-700"
+          >
+            <Trash2 className="h-4 w-4" />
+          </Button>
+        </div>
       </div>
-      <div className="space-y-2">
-        <Label>Unit Cost</Label>
-        <Input
-          type="number"
-          value={item.unit_cost}
-          onChange={(e) => updateLineItem(index, 'unit_cost', parseFloat(e.target.value) || 0)}
-        />
+      
+      <div className="grid grid-cols-2 gap-3">
+        <div className="space-y-2">
+          <Label>Item Name</Label>
+          <MaterialAutocomplete
+            value={item.item_name}
+            onChange={(val) => updateLineItem(index, 'item_name', val)}
+            onSelect={handleMaterialSelect}
+            placeholder="Start typing product name..."
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Description</Label>
+          <Input
+            value={item.description}
+            onChange={(e) => updateLineItem(index, 'description', e.target.value)}
+            placeholder="Enter description"
+          />
+        </div>
       </div>
-      <div className="space-y-2">
-        <Label>Unit Type</Label>
-        <Select
-          value={item.unit_type}
-          onValueChange={(value) => updateLineItem(index, 'unit_type', value)}
-        >
-          <SelectTrigger>
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="each">Each</SelectItem>
-            <SelectItem value="square">Square</SelectItem>
-            <SelectItem value="bundle">Bundle</SelectItem>
-            <SelectItem value="linear_ft">Linear Ft</SelectItem>
-            <SelectItem value="hour">Hour</SelectItem>
-          </SelectContent>
-        </Select>
-      </div>
-      <div className="space-y-2">
-        <Label>Markup %</Label>
-        <Input
-          type="number"
-          value={item.markup_percent}
-          onChange={(e) => updateLineItem(index, 'markup_percent', parseFloat(e.target.value) || 0)}
-        />
+
+      <div className="grid grid-cols-4 gap-3">
+        <div className="space-y-2">
+          <Label>Quantity</Label>
+          <Input
+            type="number"
+            value={item.quantity}
+            onChange={(e) => updateLineItem(index, 'quantity', parseFloat(e.target.value) || 0)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Unit Cost</Label>
+          <Input
+            type="number"
+            value={item.unit_cost}
+            onChange={(e) => updateLineItem(index, 'unit_cost', parseFloat(e.target.value) || 0)}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Unit Type</Label>
+          <Select
+            value={item.unit_type}
+            onValueChange={(value) => updateLineItem(index, 'unit_type', value)}
+          >
+            <SelectTrigger>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="each">Each</SelectItem>
+              <SelectItem value="square">Square</SelectItem>
+              <SelectItem value="bundle">Bundle</SelectItem>
+              <SelectItem value="roll">Roll</SelectItem>
+              <SelectItem value="linear_ft">Linear Ft</SelectItem>
+              <SelectItem value="hour">Hour</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-2">
+          <Label>Markup %</Label>
+          <Input
+            type="number"
+            value={item.markup_percent}
+            onChange={(e) => updateLineItem(index, 'markup_percent', parseFloat(e.target.value) || 0)}
+          />
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // PreCapCommissionCard - Auto-calculates commission based on logged-in user's profile settings
 const PreCapCommissionCard: React.FC<{
