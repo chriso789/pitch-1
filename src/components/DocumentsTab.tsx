@@ -258,18 +258,79 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
     }
   };
 
-  const handleDelete = async (docId: string, filePath: string) => {
-    if (!confirm('Are you sure you want to delete this document?')) return;
-
+  const handleDeleteDocuments = async (docIds: string[], mode: 'delete_only' | 'detach_approvals' | 'cascade_approvals' = 'delete_only') => {
+    setIsDeleting(true);
     try {
-      await supabase.storage.from('documents').remove([filePath]);
-      await supabase.from('documents').delete().eq('id', docId);
-
-      toast({
-        title: 'Deleted',
-        description: 'Document deleted successfully',
+      const { data, error } = await supabase.functions.invoke('delete-documents', {
+        body: { document_ids: docIds, mode }
       });
 
+      if (error) {
+        console.error('Delete error:', error);
+        toast({
+          title: 'Delete Failed',
+          description: error.message || 'Failed to delete documents',
+          variant: 'destructive',
+        });
+        return { success: false };
+      }
+
+      if (!data.success && data.blocked_ids?.length > 0) {
+        // Documents are blocked by FK - ask user what to do
+        const blockedCount = data.blocked_ids.length;
+        const choice = window.confirm(
+          `${blockedCount} document(s) are linked to approved measurements.\n\n` +
+          `Click OK to delete the linked approvals too, or Cancel to detach them (keep approvals, remove report link).`
+        );
+        
+        const newMode = choice ? 'cascade_approvals' : 'detach_approvals';
+        return handleDeleteDocuments(docIds, newMode);
+      }
+
+      if (data.errors?.length > 0) {
+        console.warn('Partial errors during delete:', data.errors);
+      }
+
+      const deletedCount = data.docs_deleted || 0;
+      if (deletedCount > 0) {
+        let description = `${deletedCount} document(s) deleted`;
+        if (data.approvals_detached > 0) {
+          description += `, ${data.approvals_detached} approval(s) detached`;
+        }
+        if (data.approvals_deleted > 0) {
+          description += `, ${data.approvals_deleted} approval(s) also deleted`;
+        }
+        toast({
+          title: 'Deleted',
+          description,
+        });
+      } else if (data.blocked_ids?.length > 0) {
+        toast({
+          title: 'Delete Failed',
+          description: data.errors?.[0] || 'Documents are linked to approvals',
+          variant: 'destructive',
+        });
+      }
+
+      return { success: data.success, deleted: deletedCount };
+    } catch (error: any) {
+      console.error('Delete error:', error);
+      toast({
+        title: 'Delete Failed',
+        description: error.message || 'Failed to delete documents',
+        variant: 'destructive',
+      });
+      return { success: false };
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDelete = async (docId: string, _filePath: string) => {
+    if (!confirm('Are you sure you want to delete this document?')) return;
+
+    const result = await handleDeleteDocuments([docId]);
+    if (result.success) {
       setSelectedDocs(prev => {
         const next = new Set(prev);
         next.delete(docId);
@@ -277,13 +338,6 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
       });
       fetchDocuments();
       onUploadComplete?.();
-    } catch (error) {
-      console.error('Delete error:', error);
-      toast({
-        title: 'Delete Failed',
-        description: 'Failed to delete document',
-        variant: 'destructive',
-      });
     }
   };
 
@@ -291,38 +345,11 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
     if (selectedDocs.size === 0) return;
     if (!confirm(`Delete ${selectedDocs.size} document(s)? This cannot be undone.`)) return;
 
-    setIsDeleting(true);
-    try {
-      const docsToDelete = documents.filter(d => selectedDocs.has(d.id));
-      const filePaths = docsToDelete.map(d => d.file_path).filter(p => 
-        !p.startsWith('http://') && !p.startsWith('https://') && !p.startsWith('data:')
-      );
-
-      // Delete from storage
-      if (filePaths.length > 0) {
-        await supabase.storage.from('documents').remove(filePaths);
-      }
-
-      // Delete from database
-      await supabase.from('documents').delete().in('id', Array.from(selectedDocs));
-
-      toast({
-        title: 'Deleted',
-        description: `${selectedDocs.size} document(s) deleted successfully`,
-      });
-
+    const result = await handleDeleteDocuments(Array.from(selectedDocs));
+    if (result.success || (result.deleted && result.deleted > 0)) {
       setSelectedDocs(new Set());
       fetchDocuments();
       onUploadComplete?.();
-    } catch (error) {
-      console.error('Bulk delete error:', error);
-      toast({
-        title: 'Delete Failed',
-        description: 'Failed to delete some documents',
-        variant: 'destructive',
-      });
-    } finally {
-      setIsDeleting(false);
     }
   };
 

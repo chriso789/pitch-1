@@ -623,3 +623,6 @@ verify_jwt = true
 
 [functions.initialize-user-context]
 verify_jwt = true
+
+[functions.delete-documents]
+verify_jwt = true
