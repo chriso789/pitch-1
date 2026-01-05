@@ -204,10 +204,11 @@ function reconstructMultiWingRoof(
   const n = vertices.length;
   const reflexArray = Array.from(reflexIndices).sort((a, b) => a - b);
   
-  // If too many reflex vertices (>4), use simplified approach to avoid starburst
-  if (reflexArray.length > 4) {
+  // If too many reflex vertices (>2), use simplified approach to avoid starburst
+  // Lowered from >4 to >2 to catch L/T/U shapes that still produce starburst patterns
+  if (reflexArray.length > 2) {
     console.log(`  ⚠️ ${reflexArray.length} reflex vertices - using perimeter-only mode to avoid starburst`);
-    warnings.push('Complex roof with many reflex corners - showing perimeter only');
+    warnings.push('Complex roof with multiple reflex corners - showing perimeter only');
     
     // Only create eave lines along the perimeter, no interior lines
     return {

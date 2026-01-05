@@ -31,11 +31,12 @@ const FACET_COLORS = [
 // Plausibility thresholds for linear features
 const LINE_PLAUSIBILITY = {
   MAX_LINES_PER_TYPE: 20,      // Max ridges/hips/valleys (increased for complex buildings)
-  MAX_STARBURST_RATIO: 0.35,   // Max % of lines meeting at one point (stricter - catches starburst)
+  MAX_STARBURST_RATIO: 0.30,   // Max % of lines meeting at one point (lowered from 0.35 to catch more starburst)
   MIN_LINE_LENGTH_FT: 2,       // Ignore very short lines
   MAX_LINE_LENGTH_FT: 200,     // Flag unusually long lines (increased for large roofs)
   MAX_CONVERGENCE_POINTS: 3,   // Max central points where lines can converge
   MIN_LINES_FOR_STARBURST: 5,  // Minimum lines before checking for starburst pattern
+  ABSOLUTE_MAX_CONVERGENCE: 5, // If ANY point has 5+ lines, that's a starburst (simple check)
 };
 
 interface LinearFeature {
@@ -149,15 +150,24 @@ function filterPlausibleLines(
   // STARBURST DETECTION CRITERIA:
   // 1. More than X% of lines share endpoints at just 1-2 points
   // 2. We have enough lines to make this judgment (at least 5)
+  // 3. ANY single point has 5+ lines converging (absolute check)
   const hasEnoughLines = interiorLines.length >= LINE_PLAUSIBILITY.MIN_LINES_FOR_STARBURST;
   const tooFewConvergencePoints = highConvergencePoints.length <= 2 && maxAtSinglePoint >= 4;
   const highStarburstRatio = starburstRatio > LINE_PLAUSIBILITY.MAX_STARBURST_RATIO;
+  const absoluteConvergenceExceeded = maxAtSinglePoint >= LINE_PLAUSIBILITY.ABSOLUTE_MAX_CONVERGENCE;
   
-  if (hasEnoughLines && (tooFewConvergencePoints || highStarburstRatio)) {
+  // Debug logging for starburst detection
+  console.log(`🔍 Starburst check: ${interiorLines.length} interior lines`);
+  console.log(`   - Max at single point: ${maxAtSinglePoint}`);
+  console.log(`   - High convergence points: ${highConvergencePoints.length}`);
+  console.log(`   - Starburst ratio: ${(starburstRatio * 100).toFixed(1)}% (threshold: ${LINE_PLAUSIBILITY.MAX_STARBURST_RATIO * 100}%)`);
+  
+  if (hasEnoughLines && (tooFewConvergencePoints || highStarburstRatio || absoluteConvergenceExceeded)) {
     console.warn(`🚨 STARBURST DETECTED:`);
-    console.warn(`   - ${maxAtSinglePoint} lines converge to single point`);
+    console.warn(`   - ${maxAtSinglePoint} lines converge to single point (max allowed: ${LINE_PLAUSIBILITY.ABSOLUTE_MAX_CONVERGENCE})`);
     console.warn(`   - Only ${highConvergencePoints.length} convergence point(s)`);
     console.warn(`   - Starburst ratio: ${(starburstRatio * 100).toFixed(1)}%`);
+    console.warn(`   - Triggered by: ${absoluteConvergenceExceeded ? 'ABSOLUTE_MAX' : highStarburstRatio ? 'RATIO' : 'FEW_POINTS'}`);
     console.warn(`   - Hiding interior lines, keeping only eaves/rakes`);
     plausibleInterior = [];
     starburstDetected = true;

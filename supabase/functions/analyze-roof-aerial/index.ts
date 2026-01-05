@@ -3124,19 +3124,15 @@ async function saveEdgesToDatabase(
     const lengthFt = calculateLengthFt(line.startX, line.startY, line.endX, line.endY)
     
     if (lengthFt >= 3) {
+      // Use wkt_geometry column (matches existing schema) instead of individual lat/lng columns
+      const wktGeometry = `LINESTRING(${startCoords.lng} ${startCoords.lat}, ${endCoords.lng} ${endCoords.lat})`
+      
       edgeRecords.push({
         measurement_id: measurementId,
         edge_type: line.type,
-        start_x_percent: line.startX,
-        start_y_percent: line.startY,
-        end_x_percent: line.endX,
-        end_y_percent: line.endY,
-        start_lat: startCoords.lat,
-        start_lng: startCoords.lng,
-        end_lat: endCoords.lat,
-        end_lng: endCoords.lng,
+        edge_position: (line.type === 'eave' || line.type === 'rake') ? 'exterior' : 'interior',
         length_ft: Math.round(lengthFt * 10) / 10,
-        sequence_order: index,
+        wkt_geometry: wktGeometry,
         detection_source: line.source,
         detection_confidence: 70
       })
