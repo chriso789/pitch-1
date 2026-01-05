@@ -85,7 +85,7 @@ export function reconstructRoofFromPerimeter(
   // Generate clean geometry based on shape
   if (shapeType === 'rectangle') {
     return reconstructRectangularRoof(vertices, pitch);
-  } else if (shapeType === 'L-shape' || shapeType === 'T-shape' || shapeType === 'U-shape') {
+  } else if (['L-shape', 'T-shape', 'U-shape', 'H-shape', 'multi-wing'].includes(shapeType)) {
     return reconstructMultiWingRoof(vertices, reflexIndices, pitch, shapeType);
   } else {
     return reconstructComplexRoof(vertices, reflexIndices, pitch);
@@ -391,16 +391,26 @@ function findReflexVertices(vertices: GPSCoord[]): Set<number> {
 
 function detectShape(vertices: GPSCoord[], reflexIndices: Set<number>): string {
   const n = vertices.length;
+  const reflexCount = reflexIndices.size;
   
-  if (n === 4 && reflexIndices.size === 0) {
+  if (n === 4 && reflexCount === 0) {
     return 'rectangle';
   }
   
-  if (n >= 6 && n <= 12) {
-    if (reflexIndices.size === 1) return 'L-shape';
-    if (reflexIndices.size === 2) return 'T-shape';
-    if (reflexIndices.size >= 3) return 'U-shape';
-  }
+  // L-shape: 6-8 vertices, 1 reflex
+  if (n >= 6 && n <= 8 && reflexCount === 1) return 'L-shape';
+  
+  // T-shape: 8-10 vertices, 2 reflex
+  if (n >= 6 && n <= 10 && reflexCount === 2) return 'T-shape';
+  
+  // U-shape: 8-12 vertices, 3-4 reflex
+  if (n >= 8 && n <= 12 && reflexCount >= 3 && reflexCount <= 4) return 'U-shape';
+  
+  // H-shape: 10-16 vertices, 4+ reflex  
+  if (n >= 10 && n <= 16 && reflexCount >= 4) return 'H-shape';
+  
+  // Multi-wing complex: 12-24 vertices, many reflex vertices
+  if (n >= 12 && n <= 24 && reflexCount >= 5) return 'multi-wing';
   
   return 'complex';
 }
