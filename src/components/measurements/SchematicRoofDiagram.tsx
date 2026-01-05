@@ -539,6 +539,9 @@ export function SchematicRoofDiagram({
     // Build facet paths - ONLY use database facets (Solar API segments are bounding boxes, not real facets)
     let facetPathsData: any[] = [];
     
+    // Get faces from measurement for direction fallback
+    const measurementFaces = measurement?.faces || [];
+    
     // Use database facets only - Solar API bounding boxes produce garbage rectangular shapes
     facetPathsData = facets.map((facet, index) => {
       if (!facet.polygon_points || facet.polygon_points.length < 3) return null;
@@ -550,6 +553,15 @@ export function SchematicRoofDiagram({
         y: svgCoords.reduce((sum, c) => sum + c.y, 0) / svgCoords.length,
       };
       
+      // Get direction from database, or fallback to measurement.faces by matching index
+      let direction = facet.primary_direction;
+      if (!direction && measurementFaces[index]) {
+        const face = measurementFaces[index];
+        direction = face.direction || (face.azimuth_degrees != null 
+          ? getDirectionFromAzimuth(face.azimuth_degrees) 
+          : null);
+      }
+      
       return {
         facetNumber: facet.facet_number,
         path: pathD,
@@ -557,7 +569,7 @@ export function SchematicRoofDiagram({
         color: FACET_COLORS[index % FACET_COLORS.length],
         area: facet.area_adjusted_sqft || facet.area_flat_sqft,
         pitch: facet.pitch,
-        direction: facet.primary_direction,
+        direction,
         isSolarSegment: false,
       };
     }).filter(Boolean);
@@ -709,11 +721,24 @@ export function SchematicRoofDiagram({
             >
               {facet.facetNumber}
             </text>
-            {/* Area label below number */}
+            {/* Direction label below number */}
+            {facet.direction && (
+              <text
+                x={facet.centroid.x}
+                y={facet.centroid.y + 18}
+                textAnchor="middle"
+                fontSize={10}
+                fontWeight="500"
+                fill="#374151"
+              >
+                {facet.direction}
+              </text>
+            )}
+            {/* Area label below direction */}
             {facet.area > 0 && (
               <text
                 x={facet.centroid.x}
-                y={facet.centroid.y + 28}
+                y={facet.centroid.y + (facet.direction ? 32 : 28)}
                 textAnchor="middle"
                 fontSize={9}
                 fill="#6b7280"
@@ -895,7 +920,7 @@ export function SchematicRoofDiagram({
           );
         })}
         
-        {/* Compass rose */}
+        {/* Compass rose with primary facing direction */}
         {showCompass && (
           <g transform={`translate(${width - 45}, 45)`}>
             <circle cx={0} cy={0} r={22} fill="white" stroke="#d1d5db" strokeWidth={1} />
@@ -905,6 +930,23 @@ export function SchematicRoofDiagram({
             <text x={0} y={12} textAnchor="middle" fontSize={7} fill="#6b7280">S</text>
             <text x={10} y={3} textAnchor="middle" fontSize={7} fill="#6b7280">E</text>
             <text x={-10} y={3} textAnchor="middle" fontSize={7} fill="#6b7280">W</text>
+            {/* Primary facing direction from largest facet */}
+            {(() => {
+              const faces = measurement?.faces || [];
+              if (faces.length === 0) return null;
+              const largest = faces.reduce((max: any, face: any) => 
+                (face.area_sqft || 0) > (max?.area_sqft || 0) ? face : max
+              , faces[0]);
+              const dir = largest?.direction || (largest?.azimuth_degrees != null 
+                ? getDirectionFromAzimuth(largest.azimuth_degrees) 
+                : null);
+              if (!dir) return null;
+              return (
+                <text x={0} y={32} textAnchor="middle" fontSize={8} fill="#6b7280">
+                  Facing {dir}
+                </text>
+              );
+            })()}
           </g>
         )}
       </svg>
