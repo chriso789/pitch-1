@@ -338,6 +338,10 @@ serve(async (req) => {
       mapbox_visualization_url: publicUrl,
       visualization_metadata: metadata,
       visualization_generated_at: new Date().toISOString(),
+      // Store analysis parameters for overlay alignment
+      gps_coordinates: { lat: finalCenterLat, lng: finalCenterLng },
+      analysis_zoom: Math.round(zoom),
+      analysis_image_size: { width: width * 2, height: height * 2 }, // Account for @2x retina
     };
 
     const { error: updateError } = await supabase
