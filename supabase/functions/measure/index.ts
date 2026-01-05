@@ -1219,8 +1219,21 @@ async function providerOSM(lat: number, lng: number) {
   return result;
 }
 
+// Analysis parameters interface for overlay alignment
+interface AnalysisParams {
+  lat: number;
+  lng: number;
+  zoom?: number;
+  imageSize?: { width: number; height: number };
+}
+
 // Persistence helpers
-async function persistMeasurement(supabase: any, m: MeasureResult, userId?: string) {
+async function persistMeasurement(
+  supabase: any, 
+  m: MeasureResult, 
+  userId?: string,
+  analysisParams?: AnalysisParams
+) {
   const { data, error } = await supabase.rpc('insert_measurement', {
     p_property_id: m.property_id,
     p_source: m.source,
@@ -1228,7 +1241,11 @@ async function persistMeasurement(supabase: any, m: MeasureResult, userId?: stri
     p_linear_features: m.linear_features || [],
     p_summary: m.summary,
     p_created_by: userId || null,
-    p_geom_wkt: m.geom_wkt || null
+    p_geom_wkt: m.geom_wkt || null,
+    // Store analysis parameters for overlay alignment
+    p_gps_coordinates: analysisParams ? { lat: analysisParams.lat, lng: analysisParams.lng } : null,
+    p_analysis_zoom: analysisParams?.zoom || 20,
+    p_analysis_image_size: analysisParams?.imageSize || { width: 640, height: 640 }
   });
 
   if (error) throw new Error(`DB insert failed: ${error.message}`);
@@ -1418,8 +1435,8 @@ serve(async (req) => {
           }, corsHeaders, 404);
         }
 
-        // Save measurement
-        const row = await persistMeasurement(supabase, meas, userId);
+        // Save measurement with analysis coordinates for overlay alignment
+        const row = await persistMeasurement(supabase, meas, userId, { lat, lng, zoom: 20 });
         
         // Generate and save Smart Tags
         const tags = buildSmartTags({ ...meas, id: row.id });
@@ -1549,7 +1566,7 @@ serve(async (req) => {
           geom_wkt: unionFacesWKT(faces)
         };
 
-        const row = await persistMeasurement(supabase, result, userId);
+        const row = await persistMeasurement(supabase, result, userId, lat && lng ? { lat, lng, zoom: 20 } : undefined);
         const tags = buildSmartTags({ ...result, id: row.id });
         await persistTags(supabase, row.id, propertyId, tags, userId);
 
@@ -1773,7 +1790,7 @@ serve(async (req) => {
             geom_wkt: toPolygonWKT(coords),
           };
 
-          const row = await persistMeasurement(supabase, measureResult, userId);
+          const row = await persistMeasurement(supabase, measureResult, userId, { lat, lng, zoom: 20 });
           const tags = buildSmartTags({ ...measureResult, id: row.id });
           await persistTags(supabase, row.id, propertyId, tags, userId);
 
@@ -1831,7 +1848,7 @@ serve(async (req) => {
 
       // Route: action=manual-verify
       if (action === 'manual-verify') {
-        const { propertyId, measurement: manualMeasurement, tags: manualTags } = body;
+        const { propertyId, measurement: manualMeasurement, tags: manualTags, lat, lng } = body;
 
         if (!propertyId || !manualMeasurement || !manualTags) {
           return json({ ok: false, error: 'propertyId, measurement, and tags required' }, corsHeaders, 400);
@@ -1855,8 +1872,13 @@ serve(async (req) => {
         const unifiedSummary = buildUnifiedSummary(verifiedMeasurement as MeasureResult);
         const verifiedWithSummary = { ...verifiedMeasurement, summary: unifiedSummary };
 
-        // Save to database
-        const row = await persistMeasurement(supabase, verifiedWithSummary as MeasureResult, userId);
+        // Save to database with analysis coordinates for overlay alignment
+        const row = await persistMeasurement(
+          supabase, 
+          verifiedWithSummary as MeasureResult, 
+          userId,
+          lat && lng ? { lat, lng, zoom: 20 } : undefined
+        );
         
         // Update tags with verified status
         const updatedTags = {

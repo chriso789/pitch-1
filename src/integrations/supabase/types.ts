@@ -13000,12 +13000,15 @@ export type Database = {
       }
       measurements: {
         Row: {
+          analysis_image_size: Json | null
+          analysis_zoom: number | null
           created_at: string
           created_by: string | null
           faces: Json
           flagged_for_review: boolean | null
           flagged_reason: string | null
           geom_geog: unknown
+          gps_coordinates: Json | null
           id: string
           imagery_date: string | null
           imagery_source: string | null
@@ -13032,12 +13035,15 @@ export type Database = {
           visualization_metadata: Json | null
         }
         Insert: {
+          analysis_image_size?: Json | null
+          analysis_zoom?: number | null
           created_at?: string
           created_by?: string | null
           faces?: Json
           flagged_for_review?: boolean | null
           flagged_reason?: string | null
           geom_geog?: unknown
+          gps_coordinates?: Json | null
           id?: string
           imagery_date?: string | null
           imagery_source?: string | null
@@ -13064,12 +13070,15 @@ export type Database = {
           visualization_metadata?: Json | null
         }
         Update: {
+          analysis_image_size?: Json | null
+          analysis_zoom?: number | null
           created_at?: string
           created_by?: string | null
           faces?: Json
           flagged_for_review?: boolean | null
           flagged_reason?: string | null
           geom_geog?: unknown
+          gps_coordinates?: Json | null
           id?: string
           imagery_date?: string | null
           imagery_source?: string | null
@@ -27418,55 +27427,114 @@ export type Database = {
         Args: { p_estimate_id: string }
         Returns: undefined
       }
-      insert_measurement: {
-        Args: {
-          p_created_by: string
-          p_faces: Json
-          p_geom_wkt: string
-          p_linear_features?: Json
-          p_property_id: string
-          p_source: string
-          p_summary: Json
-        }
-        Returns: {
-          created_at: string
-          created_by: string | null
-          faces: Json
-          flagged_for_review: boolean | null
-          flagged_reason: string | null
-          geom_geog: unknown
-          id: string
-          imagery_date: string | null
-          imagery_source: string | null
-          is_active: boolean
-          linear_features: Json | null
-          manual_override: boolean | null
-          mapbox_visualization_url: string | null
-          obstruction_analysis: Json | null
-          obstruction_analyzed_at: string | null
-          obstruction_confidence: number | null
-          obstruction_detected: boolean | null
-          obstruction_type: string | null
-          penetrations: Json
-          property_id: string
-          source: string
-          summary: Json
-          supersedes: string | null
-          updated_at: string
-          validation_notes: string | null
-          validation_score: number | null
-          validation_status: string | null
-          version: number
-          visualization_generated_at: string | null
-          visualization_metadata: Json | null
-        }
-        SetofOptions: {
-          from: "*"
-          to: "measurements"
-          isOneToOne: true
-          isSetofReturn: false
-        }
-      }
+      insert_measurement:
+        | {
+            Args: {
+              p_analysis_image_size?: Json
+              p_analysis_zoom?: number
+              p_created_by: string
+              p_faces: Json
+              p_geom_wkt: string
+              p_gps_coordinates?: Json
+              p_linear_features: Json
+              p_property_id: string
+              p_source: string
+              p_summary: Json
+            }
+            Returns: {
+              analysis_image_size: Json | null
+              analysis_zoom: number | null
+              created_at: string
+              created_by: string | null
+              faces: Json
+              flagged_for_review: boolean | null
+              flagged_reason: string | null
+              geom_geog: unknown
+              gps_coordinates: Json | null
+              id: string
+              imagery_date: string | null
+              imagery_source: string | null
+              is_active: boolean
+              linear_features: Json | null
+              manual_override: boolean | null
+              mapbox_visualization_url: string | null
+              obstruction_analysis: Json | null
+              obstruction_analyzed_at: string | null
+              obstruction_confidence: number | null
+              obstruction_detected: boolean | null
+              obstruction_type: string | null
+              penetrations: Json
+              property_id: string
+              source: string
+              summary: Json
+              supersedes: string | null
+              updated_at: string
+              validation_notes: string | null
+              validation_score: number | null
+              validation_status: string | null
+              version: number
+              visualization_generated_at: string | null
+              visualization_metadata: Json | null
+            }
+            SetofOptions: {
+              from: "*"
+              to: "measurements"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
+        | {
+            Args: {
+              p_created_by: string
+              p_faces: Json
+              p_geom_wkt: string
+              p_linear_features?: Json
+              p_property_id: string
+              p_source: string
+              p_summary: Json
+            }
+            Returns: {
+              analysis_image_size: Json | null
+              analysis_zoom: number | null
+              created_at: string
+              created_by: string | null
+              faces: Json
+              flagged_for_review: boolean | null
+              flagged_reason: string | null
+              geom_geog: unknown
+              gps_coordinates: Json | null
+              id: string
+              imagery_date: string | null
+              imagery_source: string | null
+              is_active: boolean
+              linear_features: Json | null
+              manual_override: boolean | null
+              mapbox_visualization_url: string | null
+              obstruction_analysis: Json | null
+              obstruction_analyzed_at: string | null
+              obstruction_confidence: number | null
+              obstruction_detected: boolean | null
+              obstruction_type: string | null
+              penetrations: Json
+              property_id: string
+              source: string
+              summary: Json
+              supersedes: string | null
+              updated_at: string
+              validation_notes: string | null
+              validation_score: number | null
+              validation_status: string | null
+              version: number
+              visualization_generated_at: string | null
+              visualization_metadata: Json | null
+            }
+            SetofOptions: {
+              from: "*"
+              to: "measurements"
+              isOneToOne: true
+              isSetofReturn: false
+            }
+          }
       is_order_fully_approved: { Args: { p_po_id: string }; Returns: boolean }
       is_profile_visible: {
         Args: { profile_row: Database["public"]["Tables"]["profiles"]["Row"] }

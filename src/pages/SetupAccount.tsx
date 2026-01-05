@@ -21,6 +21,11 @@ export default function SetupAccount() {
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [userEmail, setUserEmail] = useState<string | null>(null);
+  
+  // Company branding state
+  const [companyName, setCompanyName] = useState<string | null>(null);
+  const [companyLogo, setCompanyLogo] = useState<string | null>(null);
+  const [userFirstName, setUserFirstName] = useState<string | null>(null);
 
   // Get token from URL
   const tokenHash = searchParams.get('token_hash');
@@ -53,6 +58,26 @@ export default function SetupAccount() {
         if (data?.user) {
           console.log('[SetupAccount] Token verified, user:', data.user.email);
           setUserEmail(data.user.email || null);
+          
+          // Fetch user's company info for branding
+          const { data: profileData } = await supabase
+            .from('profiles')
+            .select('tenant_id, first_name')
+            .eq('id', data.user.id)
+            .single();
+            
+          if (profileData?.tenant_id) {
+            const { data: tenantData } = await supabase
+              .from('tenants')
+              .select('name, logo_url')
+              .eq('id', profileData.tenant_id)
+              .single();
+              
+            setCompanyName(tenantData?.name || null);
+            setCompanyLogo(tenantData?.logo_url || null);
+          }
+          setUserFirstName(profileData?.first_name || null);
+          
           setSetupState('ready');
         } else {
           setSetupState('error');
@@ -131,16 +156,27 @@ export default function SetupAccount() {
     navigate('/request-setup-link');
   };
 
+  // PITCH CRM Branding Header
+  const BrandingHeader = () => (
+    <div className="text-center mb-6">
+      <h1 className="text-4xl font-bold text-primary">PITCH</h1>
+      <p className="text-muted-foreground text-lg">Professional Roofing CRM</p>
+    </div>
+  );
+
   // Loading state
   if (setupState === 'loading') {
     return (
       <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-8 pb-8 flex flex-col items-center gap-4">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
-            <p className="text-muted-foreground">Verifying your link...</p>
-          </CardContent>
-        </Card>
+        <div className="w-full max-w-md">
+          <BrandingHeader />
+          <Card>
+            <CardContent className="pt-8 pb-8 flex flex-col items-center gap-4">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <p className="text-muted-foreground">Verifying your link...</p>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
@@ -149,25 +185,28 @@ export default function SetupAccount() {
   if (setupState === 'error') {
     return (
       <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
-            <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
-              <AlertCircle className="h-6 w-6 text-destructive" />
-            </div>
-            <CardTitle className="text-xl">Link Invalid or Expired</CardTitle>
-            <CardDescription className="mt-2">
-              {errorMessage}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-3">
-            <Button onClick={handleRequestNewLink} className="w-full">
-              Request New Setup Link
-            </Button>
-            <Button variant="outline" onClick={() => navigate('/login')} className="w-full">
-              Go to Login
-            </Button>
-          </CardContent>
-        </Card>
+        <div className="w-full max-w-md">
+          <BrandingHeader />
+          <Card>
+            <CardHeader className="text-center">
+              <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-destructive/10 flex items-center justify-center">
+                <AlertCircle className="h-6 w-6 text-destructive" />
+              </div>
+              <CardTitle className="text-xl">Link Invalid or Expired</CardTitle>
+              <CardDescription className="mt-2">
+                {errorMessage}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="flex flex-col gap-3">
+              <Button onClick={handleRequestNewLink} className="w-full">
+                Request New Setup Link
+              </Button>
+              <Button variant="outline" onClick={() => navigate('/login')} className="w-full">
+                Go to Login
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
@@ -176,18 +215,26 @@ export default function SetupAccount() {
   if (setupState === 'success') {
     return (
       <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 flex items-center justify-center p-4">
-        <Card className="w-full max-w-md">
-          <CardContent className="pt-8 pb-8 flex flex-col items-center gap-4">
-            <div className="h-16 w-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
-              <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
-            </div>
-            <h2 className="text-xl font-semibold text-center">Password Created!</h2>
-            <p className="text-muted-foreground text-center">
-              Redirecting you to your dashboard...
-            </p>
-            <Loader2 className="h-5 w-5 animate-spin text-primary mt-2" />
-          </CardContent>
-        </Card>
+        <div className="w-full max-w-md">
+          <BrandingHeader />
+          <Card>
+            <CardContent className="pt-8 pb-8 flex flex-col items-center gap-4">
+              {companyLogo && (
+                <img src={companyLogo} alt={companyName || 'Company'} className="h-16 object-contain mb-2" />
+              )}
+              <div className="h-16 w-16 rounded-full bg-green-100 dark:bg-green-900/30 flex items-center justify-center">
+                <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
+              </div>
+              <h2 className="text-xl font-semibold text-center">
+                Welcome to {companyName || 'PITCH CRM'}!
+              </h2>
+              <p className="text-muted-foreground text-center">
+                Your password has been created. Redirecting to your dashboard...
+              </p>
+              <Loader2 className="h-5 w-5 animate-spin text-primary mt-2" />
+            </CardContent>
+          </Card>
+        </div>
       </div>
     );
   }
@@ -195,75 +242,86 @@ export default function SetupAccount() {
   // Ready state - show password form
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-muted/30 flex items-center justify-center p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
-            <Lock className="h-6 w-6 text-primary" />
-          </div>
-          <CardTitle className="text-2xl">Create Your Password</CardTitle>
-          <CardDescription className="mt-2">
-            {userEmail ? (
-              <>Setting up account for <strong className="text-foreground">{userEmail}</strong></>
+      <div className="w-full max-w-md">
+        <BrandingHeader />
+        <Card>
+          <CardHeader className="text-center">
+            {companyLogo ? (
+              <img src={companyLogo} alt={companyName || 'Company'} className="h-12 mx-auto mb-4 object-contain" />
             ) : (
-              'Create a secure password to access your account'
-            )}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <div className="relative">
-                <Input
-                  id="password"
-                  type={showPassword ? 'text' : 'password'}
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  required
-                  minLength={8}
-                  className="pr-10"
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                </button>
+              <div className="mx-auto mb-4 h-12 w-12 rounded-full bg-primary/10 flex items-center justify-center">
+                <Lock className="h-6 w-6 text-primary" />
               </div>
-              <p className="text-xs text-muted-foreground">Must be at least 8 characters</p>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="confirmPassword">Confirm Password</Label>
-              <Input
-                id="confirmPassword"
-                type={showPassword ? 'text' : 'password'}
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
-                placeholder="Confirm your password"
-                required
-              />
-            </div>
-
-            <Button 
-              type="submit" 
-              className="w-full mt-6" 
-              disabled={isSubmitting || password.length < 8}
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                  Creating Password...
-                </>
+            )}
+            <CardTitle className="text-2xl">
+              {userFirstName ? `Welcome, ${userFirstName}!` : 'Create Your Password'}
+            </CardTitle>
+            <CardDescription className="mt-2">
+              {companyName ? (
+                <>You've been invited to join <strong className="text-primary">{companyName}</strong></>
+              ) : userEmail ? (
+                <>Setting up account for <strong className="text-foreground">{userEmail}</strong></>
               ) : (
-                'Create Password'
+                'Create a secure password to access your account'
               )}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="space-y-2">
+                <Label htmlFor="password">Password</Label>
+                <div className="relative">
+                  <Input
+                    id="password"
+                    type={showPassword ? 'text' : 'password'}
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
+                    placeholder="Enter your password"
+                    required
+                    minLength={8}
+                    className="pr-10"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                  >
+                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <p className="text-xs text-muted-foreground">Must be at least 8 characters</p>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="confirmPassword">Confirm Password</Label>
+                <Input
+                  id="confirmPassword"
+                  type={showPassword ? 'text' : 'password'}
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  placeholder="Confirm your password"
+                  required
+                />
+              </div>
+
+              <Button 
+                type="submit" 
+                className="w-full mt-6" 
+                disabled={isSubmitting || password.length < 8}
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Creating Password...
+                  </>
+                ) : (
+                  'Create Password'
+                )}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
