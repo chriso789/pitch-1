@@ -1,12 +1,14 @@
-import { useQuery } from '@tanstack/react-query';
+import { useState } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
-  CheckCircle2, FileText, Download, Calendar, User, 
-  Ruler, Home, ExternalLink, Loader2
+  CheckCircle2, Download, User, Trash2,
+  Ruler, Home, Loader2, X
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from '@/components/ui/use-toast';
@@ -33,6 +35,10 @@ interface ApprovedMeasurementsListProps {
 }
 
 export function ApprovedMeasurementsList({ pipelineEntryId }: ApprovedMeasurementsListProps) {
+  const queryClient = useQueryClient();
+  const [selectedApprovals, setSelectedApprovals] = useState<Set<string>>(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
+
   const { data: approvals, isLoading } = useQuery({
     queryKey: ['measurement-approvals', pipelineEntryId],
     queryFn: async () => {
@@ -110,6 +116,107 @@ export function ApprovedMeasurementsList({ pipelineEntryId }: ApprovedMeasuremen
     }
   };
 
+  const handleDeleteApproval = async (approvalId: string, documentId?: string | null, storagePath?: string) => {
+    if (!confirm('Delete this approved measurement? This cannot be undone.')) return;
+
+    try {
+      // Delete associated document from storage and DB if exists
+      if (documentId && storagePath) {
+        const isExternalUrl = storagePath.startsWith('http://') || storagePath.startsWith('https://');
+        if (!isExternalUrl) {
+          await supabase.storage.from('documents').remove([storagePath]);
+        }
+        await supabase.from('documents').delete().eq('id', documentId);
+      }
+
+      // Delete the approval
+      await supabase.from('measurement_approvals').delete().eq('id', approvalId);
+
+      toast({
+        title: 'Deleted',
+        description: 'Approved measurement deleted successfully',
+      });
+
+      setSelectedApprovals(prev => {
+        const next = new Set(prev);
+        next.delete(approvalId);
+        return next;
+      });
+
+      queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
+    } catch (error) {
+      console.error('Delete error:', error);
+      toast({
+        title: 'Delete Failed',
+        description: 'Failed to delete approved measurement',
+        variant: 'destructive',
+      });
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedApprovals.size === 0 || !approvals) return;
+    if (!confirm(`Delete ${selectedApprovals.size} approved measurement(s)? This cannot be undone.`)) return;
+
+    setIsDeleting(true);
+    try {
+      const approvalsToDelete = approvals.filter(a => selectedApprovals.has(a.id));
+      
+      // Delete associated documents
+      for (const approval of approvalsToDelete) {
+        if (approval.document) {
+          const isExternalUrl = approval.document.storage_path.startsWith('http://') || 
+                               approval.document.storage_path.startsWith('https://');
+          if (!isExternalUrl) {
+            await supabase.storage.from('documents').remove([approval.document.storage_path]);
+          }
+          await supabase.from('documents').delete().eq('id', approval.document.id);
+        }
+      }
+
+      // Delete the approvals
+      await supabase.from('measurement_approvals').delete().in('id', Array.from(selectedApprovals));
+
+      toast({
+        title: 'Deleted',
+        description: `${selectedApprovals.size} approved measurement(s) deleted successfully`,
+      });
+
+      setSelectedApprovals(new Set());
+      queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
+    } catch (error) {
+      console.error('Bulk delete error:', error);
+      toast({
+        title: 'Delete Failed',
+        description: 'Failed to delete some approved measurements',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const toggleApprovalSelection = (approvalId: string) => {
+    setSelectedApprovals(prev => {
+      const next = new Set(prev);
+      if (next.has(approvalId)) {
+        next.delete(approvalId);
+      } else {
+        next.add(approvalId);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (!approvals) return;
+    if (selectedApprovals.size === approvals.length) {
+      setSelectedApprovals(new Set());
+    } else {
+      setSelectedApprovals(new Set(approvals.map(a => a.id)));
+    }
+  };
+
   if (isLoading) {
     return (
       <Card>
@@ -130,14 +237,52 @@ export function ApprovedMeasurementsList({ pipelineEntryId }: ApprovedMeasuremen
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-lg flex items-center gap-2">
-          <CheckCircle2 className="h-5 w-5 text-green-600" />
-          Approved Measurements
-        </CardTitle>
+        <div className="flex items-center justify-between">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <CheckCircle2 className="h-5 w-5 text-green-600" />
+            Approved Measurements
+            {selectedApprovals.size > 0 && (
+              <Badge variant="secondary">{selectedApprovals.size} selected</Badge>
+            )}
+          </CardTitle>
+          {selectedApprovals.size > 0 && (
+            <div className="flex items-center gap-2">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => setSelectedApprovals(new Set())}
+              >
+                <X className="h-4 w-4 mr-1" />
+                Clear
+              </Button>
+              <Button
+                variant="destructive"
+                size="sm"
+                onClick={handleBulkDelete}
+                disabled={isDeleting}
+              >
+                <Trash2 className="h-4 w-4 mr-1" />
+                Delete {selectedApprovals.size}
+              </Button>
+            </div>
+          )}
+        </div>
       </CardHeader>
       <CardContent>
         <ScrollArea className={approvals.length > 3 ? 'h-[300px]' : undefined}>
           <div className="space-y-3">
+            {approvals.length > 1 && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 rounded-lg">
+                <Checkbox
+                  checked={selectedApprovals.size === approvals.length && approvals.length > 0}
+                  onCheckedChange={toggleSelectAll}
+                  aria-label="Select all approvals"
+                />
+                <span className="text-sm text-muted-foreground">
+                  Select all ({approvals.length})
+                </span>
+              </div>
+            )}
             {approvals.map((approval) => {
               const tags = approval.saved_tags || {};
               const squares = tags['roof.squares'] || tags['roof.plan_area'] 
@@ -145,59 +290,70 @@ export function ApprovedMeasurementsList({ pipelineEntryId }: ApprovedMeasuremen
                 : null;
               const pitch = tags['roof.predominant_pitch'] || tags['roof.pitch'];
               const facets = tags['roof.faces_count'];
+              const isSelected = selectedApprovals.has(approval.id);
 
               return (
                 <div
                   key={approval.id}
-                  className="flex items-center justify-between p-4 rounded-lg border bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-900"
+                  className={`flex items-center justify-between p-4 rounded-lg border bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-900 ${
+                    isSelected ? 'ring-2 ring-primary' : ''
+                  }`}
                 >
-                  <div className="flex-1">
-                    <div className="flex items-center gap-2 mb-2">
-                      <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/30">
-                        <CheckCircle2 className="h-3 w-3 mr-1" />
-                        Approved
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {format(new Date(approval.approved_at), 'MMM d, yyyy h:mm a')}
-                      </span>
-                    </div>
-
-                    {/* Key Measurements */}
-                    <div className="flex flex-wrap gap-4 text-sm">
-                      {squares && (
-                        <div className="flex items-center gap-1.5">
-                          <Home className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span className="font-medium">{squares}</span>
-                          <span className="text-muted-foreground">squares</span>
-                        </div>
-                      )}
-                      {pitch && (
-                        <div className="flex items-center gap-1.5">
-                          <Ruler className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span className="font-medium">{pitch}</span>
-                          <span className="text-muted-foreground">pitch</span>
-                        </div>
-                      )}
-                      {facets && (
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-medium">{facets}</span>
-                          <span className="text-muted-foreground">facets</span>
-                        </div>
-                      )}
-                    </div>
-
-                    {approval.approved_by_profile && (
-                      <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-2">
-                        <User className="h-3 w-3" />
-                        <span>Approved by {approval.approved_by_profile.full_name}</span>
+                  <div className="flex items-start gap-3 flex-1">
+                    <Checkbox
+                      checked={isSelected}
+                      onCheckedChange={() => toggleApprovalSelection(approval.id)}
+                      aria-label={`Select approval from ${format(new Date(approval.approved_at), 'MMM d, yyyy')}`}
+                      className="mt-1"
+                    />
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/30">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />
+                          Approved
+                        </Badge>
+                        <span className="text-xs text-muted-foreground">
+                          {format(new Date(approval.approved_at), 'MMM d, yyyy h:mm a')}
+                        </span>
                       </div>
-                    )}
 
-                    {approval.approval_notes && (
-                      <p className="text-xs text-muted-foreground mt-1 italic">
-                        "{approval.approval_notes}"
-                      </p>
-                    )}
+                      {/* Key Measurements */}
+                      <div className="flex flex-wrap gap-4 text-sm">
+                        {squares && (
+                          <div className="flex items-center gap-1.5">
+                            <Home className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="font-medium">{squares}</span>
+                            <span className="text-muted-foreground">squares</span>
+                          </div>
+                        )}
+                        {pitch && (
+                          <div className="flex items-center gap-1.5">
+                            <Ruler className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="font-medium">{pitch}</span>
+                            <span className="text-muted-foreground">pitch</span>
+                          </div>
+                        )}
+                        {facets && (
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-medium">{facets}</span>
+                            <span className="text-muted-foreground">facets</span>
+                          </div>
+                        )}
+                      </div>
+
+                      {approval.approved_by_profile && (
+                        <div className="flex items-center gap-1.5 text-xs text-muted-foreground mt-2">
+                          <User className="h-3 w-3" />
+                          <span>Approved by {approval.approved_by_profile.full_name}</span>
+                        </div>
+                      )}
+
+                      {approval.approval_notes && (
+                        <p className="text-xs text-muted-foreground mt-1 italic">
+                          "{approval.approval_notes}"
+                        </p>
+                      )}
+                    </div>
                   </div>
 
                   <div className="flex items-center gap-2 ml-4">
@@ -214,6 +370,19 @@ export function ApprovedMeasurementsList({ pipelineEntryId }: ApprovedMeasuremen
                         View Report
                       </Button>
                     )}
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDeleteApproval(
+                        approval.id,
+                        approval.document?.id,
+                        approval.document?.storage_path
+                      )}
+                      className="text-destructive hover:text-destructive"
+                      title="Delete approval"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                   </div>
                 </div>
               );

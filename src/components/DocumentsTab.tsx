@@ -3,9 +3,10 @@ import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Checkbox } from '@/components/ui/checkbox';
 import { 
   FileText, Download, Trash2, Upload, Eye,
-  File, Image as ImageIcon, FileCheck, FileLock 
+  File, Image as ImageIcon, FileCheck, FileLock, X
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { formatDistanceToNow, isAfter, isBefore, startOfDay, endOfDay } from 'date-fns';
@@ -53,6 +54,10 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
   const [uploading, setUploading] = useState(false);
   const [showAllDocs, setShowAllDocs] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
+  
+  // Bulk selection state
+  const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
+  const [isDeleting, setIsDeleting] = useState(false);
   
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -265,6 +270,11 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
         description: 'Document deleted successfully',
       });
 
+      setSelectedDocs(prev => {
+        const next = new Set(prev);
+        next.delete(docId);
+        return next;
+      });
       fetchDocuments();
       onUploadComplete?.();
     } catch (error) {
@@ -274,6 +284,65 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
         description: 'Failed to delete document',
         variant: 'destructive',
       });
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (selectedDocs.size === 0) return;
+    if (!confirm(`Delete ${selectedDocs.size} document(s)? This cannot be undone.`)) return;
+
+    setIsDeleting(true);
+    try {
+      const docsToDelete = documents.filter(d => selectedDocs.has(d.id));
+      const filePaths = docsToDelete.map(d => d.file_path).filter(p => 
+        !p.startsWith('http://') && !p.startsWith('https://') && !p.startsWith('data:')
+      );
+
+      // Delete from storage
+      if (filePaths.length > 0) {
+        await supabase.storage.from('documents').remove(filePaths);
+      }
+
+      // Delete from database
+      await supabase.from('documents').delete().in('id', Array.from(selectedDocs));
+
+      toast({
+        title: 'Deleted',
+        description: `${selectedDocs.size} document(s) deleted successfully`,
+      });
+
+      setSelectedDocs(new Set());
+      fetchDocuments();
+      onUploadComplete?.();
+    } catch (error) {
+      console.error('Bulk delete error:', error);
+      toast({
+        title: 'Delete Failed',
+        description: 'Failed to delete some documents',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsDeleting(false);
+    }
+  };
+
+  const toggleDocSelection = (docId: string) => {
+    setSelectedDocs(prev => {
+      const next = new Set(prev);
+      if (next.has(docId)) {
+        next.delete(docId);
+      } else {
+        next.add(docId);
+      }
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedDocs.size === displayedDocuments.length) {
+      setSelectedDocs(new Set());
+    } else {
+      setSelectedDocs(new Set(displayedDocuments.map(d => d.id)));
     }
   };
 
@@ -362,16 +431,44 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
       {/* Recent Documents */}
       <div className="space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-semibold">Recent Documents</h3>
-          {filteredDocuments.length > RECENT_DOCS_LIMIT && (
-            <Button 
-              variant="link" 
-              onClick={() => setShowAllDocs(!showAllDocs)}
-              className="text-sm"
-            >
-              {showAllDocs ? 'Show Less' : `View All (${filteredDocuments.length})`}
-            </Button>
-          )}
+          <div className="flex items-center gap-3">
+            <h3 className="text-lg font-semibold">Recent Documents</h3>
+            {selectedDocs.size > 0 && (
+              <Badge variant="secondary">{selectedDocs.size} selected</Badge>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            {selectedDocs.size > 0 && (
+              <>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setSelectedDocs(new Set())}
+                >
+                  <X className="h-4 w-4 mr-1" />
+                  Clear
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={handleBulkDelete}
+                  disabled={isDeleting}
+                >
+                  <Trash2 className="h-4 w-4 mr-1" />
+                  Delete {selectedDocs.size}
+                </Button>
+              </>
+            )}
+            {filteredDocuments.length > RECENT_DOCS_LIMIT && (
+              <Button 
+                variant="link" 
+                onClick={() => setShowAllDocs(!showAllDocs)}
+                className="text-sm"
+              >
+                {showAllDocs ? 'Show Less' : `View All (${filteredDocuments.length})`}
+              </Button>
+            )}
+          </div>
         </div>
 
         {loading ? (
@@ -390,31 +487,51 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
           </Card>
         ) : (
           <div className="grid gap-4">
+            {displayedDocuments.length > 0 && (
+              <div className="flex items-center gap-2 px-4 py-2 bg-muted/50 rounded-lg">
+                <Checkbox
+                  checked={selectedDocs.size === displayedDocuments.length && displayedDocuments.length > 0}
+                  onCheckedChange={toggleSelectAll}
+                  aria-label="Select all documents"
+                />
+                <span className="text-sm text-muted-foreground">
+                  Select all ({displayedDocuments.length})
+                </span>
+              </div>
+            )}
             {displayedDocuments.map((doc) => {
               const Icon = getCategoryIcon(doc.document_type);
               const category = DOCUMENT_CATEGORIES.find(c => c.value === doc.document_type);
+              const isSelected = selectedDocs.has(doc.id);
               
               return (
-                <Card key={doc.id}>
+                <Card key={doc.id} className={isSelected ? 'ring-2 ring-primary' : ''}>
                   <CardContent className="flex items-center justify-between p-4">
-                    <div 
-                      className="flex items-center gap-4 flex-1 cursor-pointer hover:opacity-80"
-                      onClick={() => setPreviewDoc(doc)}
-                    >
-                      <div className={`${category?.color || 'bg-gray-500'} text-white p-3 rounded-lg`}>
-                        <Icon className="h-5 w-5" />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="font-medium truncate">{doc.filename}</p>
-                        <div className="flex items-center gap-3 text-sm text-muted-foreground">
-                          <Badge variant="outline">{category?.label || 'Other'}</Badge>
-                          <span>{formatFileSize(doc.file_size)}</span>
-                          <span>{formatDistanceToNow(new Date(doc.created_at), { addSuffix: true })}</span>
-                          {doc.uploader && (
-                            <span>
-                              by {doc.uploader.first_name} {doc.uploader.last_name}
-                            </span>
-                          )}
+                    <div className="flex items-center gap-4 flex-1">
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleDocSelection(doc.id)}
+                        aria-label={`Select ${doc.filename}`}
+                      />
+                      <div 
+                        className="flex items-center gap-4 flex-1 cursor-pointer hover:opacity-80"
+                        onClick={() => setPreviewDoc(doc)}
+                      >
+                        <div className={`${category?.color || 'bg-gray-500'} text-white p-3 rounded-lg`}>
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{doc.filename}</p>
+                          <div className="flex items-center gap-3 text-sm text-muted-foreground">
+                            <Badge variant="outline">{category?.label || 'Other'}</Badge>
+                            <span>{formatFileSize(doc.file_size)}</span>
+                            <span>{formatDistanceToNow(new Date(doc.created_at), { addSuffix: true })}</span>
+                            {doc.uploader && (
+                              <span>
+                                by {doc.uploader.first_name} {doc.uploader.last_name}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
