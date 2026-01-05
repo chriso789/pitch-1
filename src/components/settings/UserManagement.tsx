@@ -649,6 +649,9 @@ export const UserManagement = () => {
           setOpenInEditMode(false);
         }}
         initialEditMode={openInEditMode}
+        onProfileUpdated={() => {
+          queryClient.invalidateQueries({ queryKey: ['user-management-data'] });
+        }}
       />
     );
   }

@@ -48,12 +48,30 @@ Deno.serve(async (req) => {
       auth: { autoRefreshToken: false, persistSession: false }
     });
 
-    // Use admin client to fetch profile to bypass RLS (avoids infinite recursion)
-    const { data: profile, error: profileError } = await supabaseAdmin
-      .from('profiles')
-      .select('first_name, last_name, company_name, title, tenant_id, role')
-      .eq('id', user.id)
-      .single();
+    // Use admin client to fetch profile and role to bypass RLS
+    const [profileResult, roleResult] = await Promise.all([
+      supabaseAdmin
+        .from('profiles')
+        .select('first_name, last_name, company_name, title, tenant_id, role')
+        .eq('id', user.id)
+        .single(),
+      supabaseAdmin
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id)
+        .maybeSingle()
+    ]);
+
+    const profile = profileResult.data;
+    if (!profile) {
+      return new Response(
+        JSON.stringify({ error: 'Profile not found' }),
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Use role from user_roles table, fallback to profiles table
+    const userRole = roleResult.data?.role || profile.role || '';
 
     const { data: updatedUser, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
       user.id,
@@ -64,7 +82,7 @@ Deno.serve(async (req) => {
           company_name: profile.company_name || '',
           title: profile.title || '',
           tenant_id: profile.tenant_id,
-          role: profile.role || ''
+          role: userRole
         }
       }
     );
