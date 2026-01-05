@@ -201,8 +201,36 @@ function reconstructMultiWingRoof(
   const facets: ReconstructedFacet[] = [];
   const warnings: string[] = [];
   
-  // Detect building wings
-  const wings = detectWings(vertices, reflexIndices);
+  const n = vertices.length;
+  const reflexArray = Array.from(reflexIndices).sort((a, b) => a - b);
+  
+  // If too many reflex vertices (>4), use simplified approach to avoid starburst
+  if (reflexArray.length > 4) {
+    console.log(`  ⚠️ ${reflexArray.length} reflex vertices - using perimeter-only mode to avoid starburst`);
+    warnings.push('Complex roof with many reflex corners - showing perimeter only');
+    
+    // Only create eave lines along the perimeter, no interior lines
+    return {
+      ridges: [],
+      hips: [],
+      valleys: [],
+      facets: [{
+        id: 'facet_0',
+        index: 0,
+        polygon: [...vertices, vertices[0]],
+        areaSqft: calculatePolygonAreaSqft(vertices),
+        pitch,
+        azimuthDegrees: 0,
+        direction: 'Mixed',
+        color: FACET_COLORS[0]
+      }],
+      diagramQuality: 'simplified',
+      warnings
+    };
+  }
+  
+  // Detect building wings using improved algorithm
+  const wings = detectWingsImproved(vertices, reflexIndices);
   
   if (wings.length < 2) {
     warnings.push('Could not detect multiple wings, using simplified approach');
@@ -211,13 +239,18 @@ function reconstructMultiWingRoof(
   
   console.log(`  Detected ${wings.length} wings for ${shapeType}`);
   
-  // Create ridge for each wing
+  // Create ridge for each wing - INSET from wing bounds, not overall bounds
+  const wingRidgeEndpoints: XY[][] = []; // Store [start, end] for each wing
+  
   wings.forEach((wing, wingIdx) => {
     const bounds = getBounds(wing.vertices);
     const width = bounds.maxX - bounds.minX;
     const height = bounds.maxY - bounds.minY;
     const isWider = width >= height;
-    const inset = (isWider ? height : width) * 0.35;
+    
+    // Use proportional inset based on wing size (not a fixed percentage)
+    const shortSide = isWider ? height : width;
+    const inset = shortSide * 0.4;
     
     let ridgeStart: XY, ridgeEnd: XY;
     if (isWider) {
@@ -228,6 +261,8 @@ function reconstructMultiWingRoof(
       ridgeEnd = [(bounds.minX + bounds.maxX) / 2, bounds.maxY - inset];
     }
     
+    wingRidgeEndpoints.push([ridgeStart, ridgeEnd]);
+    
     ridges.push({
       id: `ridge_${wingIdx}`,
       start: ridgeStart,
@@ -237,74 +272,137 @@ function reconstructMultiWingRoof(
     });
   });
   
-  // Connect adjacent wing ridges
-  for (let i = 0; i < ridges.length - 1; i++) {
-    const dist = distance(ridges[i].end, ridges[i + 1].start);
-    if (dist > 0.00001) {
-      // Add connecting ridge segment
-      ridges.push({
-        id: `ridge_connector_${i}`,
-        start: ridges[i].end,
-        end: ridges[i + 1].start,
-        lengthFt: distanceFt(ridges[i].end, ridges[i + 1].start),
-        connectedTo: [`ridge_${i}`, `ridge_${i + 1}`]
-      });
+  // Find junction points where wing ridges should connect
+  // These are the points where valleys terminate
+  const junctionPoints: XY[] = [];
+  
+  // For each pair of adjacent wings, find where their ridges should meet
+  for (let i = 0; i < wings.length; i++) {
+    for (let j = i + 1; j < wings.length; j++) {
+      const [startI, endI] = wingRidgeEndpoints[i];
+      const [startJ, endJ] = wingRidgeEndpoints[j];
+      
+      // Find closest pair of endpoints between the two ridges
+      const pairs = [
+        { p1: endI, p2: startJ, dist: distance(endI, startJ) },
+        { p1: startI, p2: endJ, dist: distance(startI, endJ) },
+        { p1: endI, p2: endJ, dist: distance(endI, endJ) },
+        { p1: startI, p2: startJ, dist: distance(startI, startJ) },
+      ];
+      
+      const closest = pairs.sort((a, b) => a.dist - b.dist)[0];
+      
+      // If ridges are close, create a junction point at their midpoint
+      if (closest.dist < 0.001) { // Within ~300 feet
+        const junction: XY = [
+          (closest.p1[0] + closest.p2[0]) / 2,
+          (closest.p1[1] + closest.p2[1]) / 2
+        ];
+        junctionPoints.push(junction);
+        
+        // Connect ridges to junction
+        ridges.push({
+          id: `ridge_connector_${i}_${j}`,
+          start: closest.p1,
+          end: junction,
+          lengthFt: distanceFt(closest.p1, junction),
+          connectedTo: [`ridge_${i}`]
+        });
+        
+        if (closest.dist > 0.00001) {
+          ridges.push({
+            id: `ridge_connector_${j}_${i}`,
+            start: junction,
+            end: closest.p2,
+            lengthFt: distanceFt(junction, closest.p2),
+            connectedTo: [`ridge_${j}`]
+          });
+        }
+      }
     }
-    ridges[i].connectedTo.push(`ridge_${i + 1}`);
-    ridges[i + 1].connectedTo.push(`ridge_${i}`);
   }
   
-  // Create hips from non-reflex corners to nearest ridge endpoint
-  const n = vertices.length;
+  // Create hips from NON-reflex corners to their wing's ridge endpoints
+  // NOT to the nearest endpoint globally (which causes starburst)
   let hipIdx = 0;
   for (let i = 0; i < n; i++) {
     if (reflexIndices.has(i)) continue;
     
     const vertex = vertices[i];
-    const nearestEndpoint = findNearestRidgeEndpoint(vertex, ridges);
     
-    hips.push({
-      id: `hip_${hipIdx}`,
-      start: vertex,
-      end: nearestEndpoint.point,
-      lengthFt: distanceFt(vertex, nearestEndpoint.point),
-      connectedTo: [nearestEndpoint.ridgeId]
+    // Find which wing this corner belongs to
+    let bestWingIdx = 0;
+    let bestDist = Infinity;
+    
+    wings.forEach((wing, wIdx) => {
+      const wingBounds = getBounds(wing.vertices);
+      // Check if vertex is within or near this wing's bounds
+      const withinX = vertex[0] >= wingBounds.minX - 0.0001 && vertex[0] <= wingBounds.maxX + 0.0001;
+      const withinY = vertex[1] >= wingBounds.minY - 0.0001 && vertex[1] <= wingBounds.maxY + 0.0001;
+      
+      if (withinX && withinY) {
+        const dist = distanceToWing(vertex, wing.vertices);
+        if (dist < bestDist) {
+          bestDist = dist;
+          bestWingIdx = wIdx;
+        }
+      }
     });
-    hipIdx++;
+    
+    // Connect to the nearest endpoint of THIS wing's ridge only
+    const wingRidge = ridges.find(r => r.id === `ridge_${bestWingIdx}`);
+    if (wingRidge) {
+      const distToStart = distance(vertex, wingRidge.start);
+      const distToEnd = distance(vertex, wingRidge.end);
+      const targetEndpoint = distToStart <= distToEnd ? wingRidge.start : wingRidge.end;
+      
+      hips.push({
+        id: `hip_${hipIdx}`,
+        start: vertex,
+        end: targetEndpoint,
+        lengthFt: distanceFt(vertex, targetEndpoint),
+        connectedTo: [wingRidge.id]
+      });
+      hipIdx++;
+    }
   }
   
-  // Create valleys from reflex corners
+  // Create valleys from reflex corners to JUNCTION POINTS (not ridge endpoints)
   let valleyIdx = 0;
   reflexIndices.forEach(idx => {
     const vertex = vertices[idx];
-    const nearestEndpoint = findNearestRidgeEndpoint(vertex, ridges);
+    
+    // Find nearest junction point, or if no junctions, use nearest ridge endpoint
+    let target: XY;
+    if (junctionPoints.length > 0) {
+      target = junctionPoints.reduce((nearest, jp) => 
+        distance(vertex, jp) < distance(vertex, nearest) ? jp : nearest
+      , junctionPoints[0]);
+    } else {
+      const nearest = findNearestRidgeEndpoint(vertex, ridges);
+      target = nearest.point;
+    }
     
     valleys.push({
       id: `valley_${valleyIdx}`,
       start: vertex,
-      end: nearestEndpoint.point,
-      lengthFt: distanceFt(vertex, nearestEndpoint.point),
-      connectedTo: [nearestEndpoint.ridgeId]
+      end: target,
+      lengthFt: distanceFt(vertex, target),
+      connectedTo: []
     });
     valleyIdx++;
   });
   
-  // Create facets (simplified: one per wing + connector areas)
-  wings.forEach((wing, wingIdx) => {
-    const wingRidge = ridges.find(r => r.id === `ridge_${wingIdx}`);
-    if (!wingRidge) return;
-    
-    const facetPolygon = [...wing.vertices, wing.vertices[0]];
-    facets.push({
-      id: `facet_${wingIdx}`,
-      index: wingIdx,
-      polygon: facetPolygon,
-      areaSqft: calculatePolygonAreaSqft(wing.vertices),
-      pitch,
-      azimuthDegrees: 0,
-      direction: wingIdx % 2 === 0 ? 'N/S' : 'E/W',
-      color: FACET_COLORS[wingIdx % FACET_COLORS.length]
-    });
+  // Create single facet covering entire roof
+  facets.push({
+    id: 'facet_0',
+    index: 0,
+    polygon: [...vertices, vertices[0]],
+    areaSqft: calculatePolygonAreaSqft(vertices),
+    pitch,
+    azimuthDegrees: 0,
+    direction: 'Mixed',
+    color: FACET_COLORS[0]
   });
   
   return {
@@ -315,6 +413,67 @@ function reconstructMultiWingRoof(
     diagramQuality: valleys.length > 0 ? 'good' : 'excellent',
     warnings
   };
+}
+
+// Improved wing detection that handles L/T/U shapes better
+function detectWingsImproved(vertices: XY[], reflexIndices: Set<number>): Wing[] {
+  const wings: Wing[] = [];
+  const n = vertices.length;
+  
+  if (reflexIndices.size === 0) {
+    return [{ vertices, indices: Array.from({ length: n }, (_, i) => i) }];
+  }
+  
+  const reflexArray = Array.from(reflexIndices).sort((a, b) => a - b);
+  
+  // For L-shape (1 reflex): create 2 wings
+  // For T-shape (2 reflex): create 2-3 wings
+  // For U-shape (3-4 reflex): create 2-3 wings
+  
+  // Group consecutive non-reflex vertices into wings
+  let currentWing: number[] = [];
+  let wingStart = -1;
+  
+  for (let i = 0; i < n; i++) {
+    if (reflexIndices.has(i)) {
+      // End current wing if it exists
+      if (currentWing.length >= 2) {
+        wings.push({
+          vertices: currentWing.map(idx => vertices[idx]),
+          indices: [...currentWing]
+        });
+      }
+      currentWing = [i]; // Start new wing with reflex vertex
+      wingStart = i;
+    } else {
+      currentWing.push(i);
+    }
+  }
+  
+  // Handle wrap-around (connect last wing to first if needed)
+  if (currentWing.length >= 2) {
+    // Check if first vertex was reflex
+    if (reflexIndices.has(0) && wings.length > 0) {
+      // Merge with first wing
+      wings[0].indices = [...currentWing, ...wings[0].indices];
+      wings[0].vertices = wings[0].indices.map(idx => vertices[idx]);
+    } else {
+      wings.push({
+        vertices: currentWing.map(idx => vertices[idx]),
+        indices: [...currentWing]
+      });
+    }
+  }
+  
+  // Merge small wings (< 3 vertices) with adjacent wings
+  const validWings = wings.filter(w => w.vertices.length >= 3);
+  
+  return validWings.length > 0 ? validWings : [{ vertices, indices: Array.from({ length: n }, (_, i) => i) }];
+}
+
+// Calculate minimum distance from a point to any vertex in a wing
+function distanceToWing(point: XY, wingVertices: XY[]): number {
+  return Math.min(...wingVertices.map(v => distance(point, v)));
 }
 
 /**
