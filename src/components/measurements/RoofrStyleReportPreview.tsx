@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Printer, Share2, ChevronLeft, ChevronRight, Loader2, FileText, ChevronsDown } from 'lucide-react';
+import { Download, Share2, ChevronLeft, ChevronRight, Loader2, FileText, ChevronsDown, Check } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { ReportPage } from './ReportPage';
@@ -265,30 +265,154 @@ export function RoofrStyleReportPreview({
     };
   });
 
-  const handleDownload = async () => {
-    // Show hidden pages for capture
-    setShowHiddenPages(true);
-    
-    // Wait for render
-    await new Promise(resolve => setTimeout(resolve, 500));
-    
-    const result = await downloadPDF('all-report-pages-container', totalPages, {
-      filename: `roof-report-${address.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`,
-      propertyAddress: address,
-      measurementId,
-      pipelineEntryId,
-    });
-    
-    setShowHiddenPages(false);
-    
-    if (result.success && result.storageUrl) {
-      setReportUrl(result.storageUrl);
-      onReportGenerated?.(result.storageUrl);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [isSharing, setIsSharing] = useState(false);
+
+  // Native share using Web Share API
+  const handleShare = async () => {
+    setIsSharing(true);
+    try {
+      // Generate PDF blob first
+      setShowHiddenPages(true);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const result = await downloadPDF('all-report-pages-container', totalPages, {
+        filename: `roof-report-${address.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`,
+        propertyAddress: address,
+        measurementId,
+        pipelineEntryId,
+      });
+      
+      setShowHiddenPages(false);
+      
+      if (result.success && result.blob) {
+        const file = new File([result.blob], `roof-report-${address.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`, { type: 'application/pdf' });
+        
+        // Check if native file sharing is supported
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          await navigator.share({
+            title: `Roof Report - ${address}`,
+            text: `Measurement report for ${address}`,
+            files: [file],
+          });
+          toast({ title: "Shared successfully" });
+        } else if (navigator.share) {
+          // Fallback: share URL if file sharing not supported
+          if (result.storageUrl) {
+            await navigator.share({
+              title: `Roof Report - ${address}`,
+              text: `Measurement report for ${address}`,
+              url: result.storageUrl,
+            });
+            toast({ title: "Shared successfully" });
+          } else {
+            throw new Error('URL not available');
+          }
+        } else {
+          // Final fallback: copy link to clipboard
+          if (result.storageUrl) {
+            await navigator.clipboard.writeText(result.storageUrl);
+            toast({ title: "Link copied to clipboard" });
+          } else {
+            throw new Error('Share not supported');
+          }
+        }
+      }
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        console.error('Share error:', error);
+        toast({ title: "Share failed", description: error.message, variant: "destructive" });
+      }
+    } finally {
+      setIsSharing(false);
     }
   };
 
-  const handlePrint = () => {
-    window.print();
+  // Confirm & Save: generates PDF, uploads to documents bucket, saves smart tags
+  const handleConfirm = async () => {
+    setIsConfirming(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error('Not authenticated');
+      
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', user.id)
+        .maybeSingle();
+      
+      if (!profile?.tenant_id) throw new Error('No tenant found');
+      
+      // Generate PDF
+      setShowHiddenPages(true);
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      const result = await downloadPDF('all-report-pages-container', totalPages, {
+        filename: `roof-report-${address.replace(/[^a-zA-Z0-9]/g, '-')}.pdf`,
+        propertyAddress: address,
+        measurementId,
+        pipelineEntryId,
+      });
+      
+      setShowHiddenPages(false);
+      
+      if (!result.success || !result.blob) {
+        throw new Error('Failed to generate PDF');
+      }
+      
+      const filename = `measurement-report-${Date.now()}.pdf`;
+      const storagePath = `${profile.tenant_id}/pipeline/${pipelineEntryId || 'general'}/documents/${filename}`;
+      
+      // Upload to documents bucket
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(storagePath, result.blob, { contentType: 'application/pdf' });
+      
+      if (uploadError) throw uploadError;
+      
+      // Insert into documents table
+      const { data: docData, error: docError } = await supabase
+        .from('documents')
+        .insert({
+          tenant_id: profile.tenant_id,
+          pipeline_entry_id: pipelineEntryId || null,
+          document_type: 'measurement_report',
+          filename,
+          file_path: storagePath,
+          mime_type: 'application/pdf',
+          file_size: result.blob.size,
+          description: `Measurement report for ${address}`,
+          uploaded_by: user.id,
+        })
+        .select('id')
+        .single();
+      
+      if (docError) throw docError;
+      
+      // Save measurement approval with tags for smart templates
+      if (pipelineEntryId && measurementId) {
+        await supabase.from('measurement_approvals').upsert({
+          tenant_id: profile.tenant_id,
+          pipeline_entry_id: pipelineEntryId,
+          measurement_id: measurementId,
+          approved_by: user.id,
+          approved_at: new Date().toISOString(),
+          saved_tags: tags,
+          report_generated: true,
+          report_document_id: docData.id,
+        }, { onConflict: 'pipeline_entry_id,measurement_id' });
+      }
+      
+      toast({ title: "Confirmed", description: "Saved to Documents" });
+      onReportGenerated?.(storagePath);
+      onOpenChange(false);
+      
+    } catch (error: any) {
+      console.error('Confirm error:', error);
+      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } finally {
+      setIsConfirming(false);
+    }
   };
 
   const formatFeetInches = (feet: number) => {
@@ -324,24 +448,24 @@ export function RoofrStyleReportPreview({
             </Badge>
           </div>
           <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={handlePrint}>
-              <Printer className="h-4 w-4 mr-1" />
-              Print
-            </Button>
-            <Button variant="outline" size="sm" disabled>
-              <Share2 className="h-4 w-4 mr-1" />
+            <Button variant="outline" size="sm" onClick={handleShare} disabled={isSharing}>
+              {isSharing ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Share2 className="h-4 w-4 mr-1" />
+              )}
               Share
             </Button>
-            <Button size="sm" onClick={handleDownload} disabled={isPDFGenerating}>
-              {isPDFGenerating ? (
+            <Button size="sm" onClick={handleConfirm} disabled={isConfirming || isPDFGenerating}>
+              {isConfirming || isPDFGenerating ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-1 animate-spin" />
                   {Math.round(progress)}%
                 </>
               ) : (
-                <Download className="h-4 w-4 mr-1" />
+                <Check className="h-4 w-4 mr-1" />
               )}
-              Download PDF
+              Confirm
             </Button>
           </div>
         </DialogHeader>

@@ -441,19 +441,35 @@ export function SchematicRoofDiagram({
     
     console.log('🗺️ Coordinate bounds verification:', dbgInfo);
     
-    // Coordinate transformation function (bounds-fit mode)
+    // Project lat/lng to local planar meters to fix aspect ratio distortion
+    // 1 degree latitude ≈ 111,320 meters everywhere
+    // 1 degree longitude ≈ 111,320 * cos(latitude) meters
+    const centerLat = (minLat + maxLat) / 2;
+    const metersPerDegreeLat = 111320;
+    const metersPerDegreeLng = 111320 * Math.cos(centerLat * Math.PI / 180);
+    
+    // Convert bounds to meters
+    const boundsWidthMeters = (maxLng - minLng) * metersPerDegreeLng;
+    const boundsHeightMeters = (maxLat - minLat) * metersPerDegreeLat;
+    
+    // Coordinate transformation function (meters-based for correct proportions)
     const toSvg = (coord: { lat: number; lng: number }) => {
-      const scaleX = (width - padding * 2) / (maxLng - minLng || 0.0001);
-      const scaleY = (height - padding * 2) / (maxLat - minLat || 0.0001);
+      // Convert to meters from origin (minLng, minLat)
+      const xMeters = (coord.lng - minLng) * metersPerDegreeLng;
+      const yMeters = (coord.lat - minLat) * metersPerDegreeLat;
+      
+      // Calculate uniform scale to fit in canvas
+      const scaleX = (width - padding * 2) / (boundsWidthMeters || 0.0001);
+      const scaleY = (height - padding * 2) / (boundsHeightMeters || 0.0001);
       const scale = Math.min(scaleX, scaleY);
       
       // Center the diagram
-      const offsetX = (width - (maxLng - minLng) * scale) / 2;
-      const offsetY = (height - (maxLat - minLat) * scale) / 2;
+      const offsetX = (width - boundsWidthMeters * scale) / 2;
+      const offsetY = (height - boundsHeightMeters * scale) / 2;
       
       return {
-        x: offsetX + (coord.lng - minLng) * scale,
-        y: offsetY + (maxLat - coord.lat) * scale, // Flip Y
+        x: offsetX + xMeters * scale,
+        y: offsetY + (boundsHeightMeters - yMeters) * scale, // Flip Y (SVG y grows down)
       };
     };
     
