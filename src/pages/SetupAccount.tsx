@@ -128,6 +128,26 @@ export default function SetupAccount() {
       const { data: { user } } = await supabase.auth.getUser();
       
       if (user) {
+        // Update password_set_at timestamp in profile
+        await supabase
+          .from('profiles')
+          .update({ password_set_at: new Date().toISOString() })
+          .eq('id', user.id);
+
+        // Ensure active_tenant_id is set for proper company context
+        const { data: profileData } = await supabase
+          .from('profiles')
+          .select('tenant_id, active_tenant_id')
+          .eq('id', user.id)
+          .single();
+
+        if (profileData && !profileData.active_tenant_id && profileData.tenant_id) {
+          await supabase
+            .from('profiles')
+            .update({ active_tenant_id: profileData.tenant_id })
+            .eq('id', user.id);
+        }
+
         // Log successful login/account activation for activity tracking
         supabase.functions.invoke('log-auth-activity', {
           body: {
@@ -143,9 +163,12 @@ export default function SetupAccount() {
         }).catch((err: any) => console.warn('[SetupAccount] Failed to log activity:', err));
         
         // Sync user metadata from profiles to auth
-        supabase.functions.invoke('sync-user-metadata').catch((err: any) => 
+        await supabase.functions.invoke('sync-user-metadata').catch((err: any) => 
           console.warn('[SetupAccount] Failed to sync metadata:', err)
         );
+
+        // Refresh session to pick up updated metadata
+        await supabase.auth.refreshSession();
 
         const { data: roleData } = await supabase
           .from('user_roles')

@@ -12,15 +12,42 @@ import { AlertCircle, CheckCircle2, Clock, Activity } from "lucide-react";
 interface UserLoginStatusBadgeProps {
   lastLogin: string | null;
   isActivated: boolean;
+  passwordSetAt?: string | null;
   compact?: boolean;
 }
 
 export const UserLoginStatusBadge: React.FC<UserLoginStatusBadgeProps> = ({
   lastLogin,
   isActivated,
+  passwordSetAt,
   compact = false,
 }) => {
-  // Never logged in
+  // Password created but never logged in since
+  if (passwordSetAt && !lastLogin) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Badge variant="secondary" className="gap-1 cursor-default bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-400">
+              <CheckCircle2 className="h-3 w-3" />
+              {!compact && "Password Created"}
+            </Badge>
+          </TooltipTrigger>
+          <TooltipContent>
+            <p className="font-medium">Password Set</p>
+            <p className="text-xs text-muted-foreground">
+              Created: {format(new Date(passwordSetAt), "MMM d, yyyy 'at' h:mm a")}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              User has not logged in since setting password
+            </p>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  // Never logged in and no password set
   if (!lastLogin || !isActivated) {
     return (
       <TooltipProvider>

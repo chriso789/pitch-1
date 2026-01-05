@@ -48,6 +48,7 @@ interface User {
   is_hidden?: boolean;
   hidden_by?: string;
   hidden_at?: string;
+  password_set_at?: string | null;
 }
 
 interface Location {
@@ -179,7 +180,8 @@ export const UserManagement = () => {
           role: roleMap.get(profile.id) || profile.role,
           resolved_company_name: profile.tenant_id ? tenantMap.get(profile.tenant_id) : profile.company_name,
           last_login: loginStats?.last_login || null,
-          is_activated: loginStats?.is_activated ?? false
+          is_activated: loginStats?.is_activated ?? false,
+          password_set_at: profile.password_set_at || null
         };
       }) || [];
 
@@ -969,6 +971,7 @@ export const UserManagement = () => {
                       <UserLoginStatusBadge 
                         lastLogin={user.last_login || null} 
                         isActivated={user.is_activated || false}
+                        passwordSetAt={user.password_set_at || null}
                       />
                     </TableCell>
                     <TableCell>
