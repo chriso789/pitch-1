@@ -628,13 +628,13 @@ function cleanupPerimeterVertices(
   coordinates: { lat: number; lng: number },
   imageSize: number = 640,
   options: {
-    collinearThresholdDeg?: number;  // Angle threshold for collinear detection (default 8°)
+    collinearThresholdDeg?: number;  // Angle threshold for collinear detection (default 12°)
     minBumpOutFt?: number;           // Minimum bump-out to keep (default 3ft)
     preserveCornerTypes?: string[];  // Corner types to never remove
   } = {}
 ): { cleaned: any[]; removed: number; eyebrowsSmoothed: number } {
   const {
-    collinearThresholdDeg = 8,
+    collinearThresholdDeg = 12,  // Increased from 8° to be more aggressive on straight lines
     minBumpOutFt = 3,
     preserveCornerTypes = ['valley-entry', 'gable-peak']
   } = options;
@@ -654,49 +654,57 @@ function cleanupPerimeterVertices(
   let removed = 0;
   let eyebrowsSmoothed = 0;
   
-  // Pass 1: Remove collinear vertices (straighten lines)
-  let i = 0;
-  while (i < cleaned.length && cleaned.length > 4) {
-    const prev = cleaned[(i - 1 + cleaned.length) % cleaned.length];
-    const curr = cleaned[i];
-    const next = cleaned[(i + 1) % cleaned.length];
-    
-    // Skip protected corner types
-    if (preserveCornerTypes.includes(curr.cornerType)) {
-      i++;
-      continue;
+  // Pass 1: More aggressive collinear vertex removal (straighten eaves)
+  // Do multiple passes until no more vertices are removed
+  let passRemoved = 0;
+  let passCount = 0;
+  do {
+    passRemoved = 0;
+    let i = 0;
+    while (i < cleaned.length && cleaned.length > 4) {
+      const prev = cleaned[(i - 1 + cleaned.length) % cleaned.length];
+      const curr = cleaned[i];
+      const next = cleaned[(i + 1) % cleaned.length];
+      
+      // Skip protected corner types
+      if (preserveCornerTypes.includes(curr.cornerType)) {
+        i++;
+        continue;
+      }
+      
+      // Calculate angle at this vertex
+      const v1 = { x: curr.x - prev.x, y: curr.y - prev.y };
+      const v2 = { x: next.x - curr.x, y: next.y - curr.y };
+      
+      const dot = v1.x * v2.x + v1.y * v2.y;
+      const mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+      const mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+      
+      if (mag1 === 0 || mag2 === 0) {
+        i++;
+        continue;
+      }
+      
+      const cosAngle = dot / (mag1 * mag2);
+      const angle = Math.acos(Math.max(-1, Math.min(1, cosAngle)));
+      
+      // If nearly straight (angle close to 180° / π radians)
+      if (Math.abs(angle - Math.PI) < collinearThresholdRad) {
+        // This vertex is on a straight line - remove it
+        console.log(`🧹 Removing collinear vertex at (${curr.x.toFixed(1)}%, ${curr.y.toFixed(1)}%) - angle: ${(angle * 180 / Math.PI).toFixed(1)}°`);
+        cleaned.splice(i, 1);
+        removed++;
+        passRemoved++;
+        // Don't increment i - check the new vertex at this position
+      } else {
+        i++;
+      }
     }
-    
-    // Calculate angle at this vertex
-    const v1 = { x: curr.x - prev.x, y: curr.y - prev.y };
-    const v2 = { x: next.x - curr.x, y: next.y - curr.y };
-    
-    const dot = v1.x * v2.x + v1.y * v2.y;
-    const mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
-    const mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
-    
-    if (mag1 === 0 || mag2 === 0) {
-      i++;
-      continue;
-    }
-    
-    const cosAngle = dot / (mag1 * mag2);
-    const angle = Math.acos(Math.max(-1, Math.min(1, cosAngle)));
-    
-    // If nearly straight (angle close to 180° / π radians)
-    if (Math.abs(angle - Math.PI) < collinearThresholdRad) {
-      // This vertex is on a straight line - remove it
-      console.log(`🧹 Removing collinear vertex at (${curr.x.toFixed(1)}%, ${curr.y.toFixed(1)}%) - angle: ${(angle * 180 / Math.PI).toFixed(1)}°`);
-      cleaned.splice(i, 1);
-      removed++;
-      // Don't increment i - check the new vertex at this position
-    } else {
-      i++;
-    }
-  }
+    passCount++;
+  } while (passRemoved > 0 && passCount < 5); // Multiple passes for cascading removals
   
-  // Pass 2: Smooth "eyebrow" features (small bump-outs)
-  i = 0;
+  // Pass 2: Smooth "eyebrow" features (small bump-outs < minBumpOutFt deviation)
+  let i = 0;
   while (i < cleaned.length && cleaned.length > 4) {
     const curr = cleaned[i];
     
@@ -755,6 +763,39 @@ function cleanupPerimeterVertices(
       }
     }
     
+    i++;
+  }
+  
+  // Pass 3: Final check for any remaining near-collinear vertices (use stricter 15° threshold)
+  const strictThresholdRad = 15 * (Math.PI / 180);
+  i = 0;
+  while (i < cleaned.length && cleaned.length > 4) {
+    const prev = cleaned[(i - 1 + cleaned.length) % cleaned.length];
+    const curr = cleaned[i];
+    const next = cleaned[(i + 1) % cleaned.length];
+    
+    if (preserveCornerTypes.includes(curr.cornerType)) {
+      i++;
+      continue;
+    }
+    
+    const v1 = { x: curr.x - prev.x, y: curr.y - prev.y };
+    const v2 = { x: next.x - curr.x, y: next.y - curr.y };
+    const dot = v1.x * v2.x + v1.y * v2.y;
+    const mag1 = Math.sqrt(v1.x * v1.x + v1.y * v1.y);
+    const mag2 = Math.sqrt(v2.x * v2.x + v2.y * v2.y);
+    
+    if (mag1 > 0 && mag2 > 0) {
+      const cosAngle = dot / (mag1 * mag2);
+      const angle = Math.acos(Math.max(-1, Math.min(1, cosAngle)));
+      
+      if (Math.abs(angle - Math.PI) < strictThresholdRad) {
+        console.log(`🧹 Final pass: removing near-collinear vertex at (${curr.x.toFixed(1)}%, ${curr.y.toFixed(1)}%) - angle: ${(angle * 180 / Math.PI).toFixed(1)}°`);
+        cleaned.splice(i, 1);
+        removed++;
+        continue;
+      }
+    }
     i++;
   }
   
@@ -1192,21 +1233,34 @@ COMMON MISTAKES TO AVOID:
 ❌ Creating zigzag patterns where the eave is actually a SINGLE STRAIGHT LINE
 
 ════════════════════════════════════════════════════════════════════════════════
-🏠 STRAIGHT EDGES & EYEBROW FEATURES
+🏠 STRAIGHT EDGES & EYEBROW FEATURES - CRITICAL!
 ════════════════════════════════════════════════════════════════════════════════
 
-STRAIGHT EAVES: If an eave runs in a straight line (no visible bends), use ONLY TWO vertices 
-(start and end). Do NOT add intermediate vertices that create artificial bends!
-Look at the actual roof edge - if it's straight, trace it with 2 points only.
+*** STRAIGHT EAVES (MOST IMPORTANT) ***
+Look carefully at each eave edge. If it runs in a STRAIGHT LINE from corner to corner 
+with no visible bends or direction changes, trace it with ONLY TWO VERTICES (start and end).
 
-EYEBROW/DORMER FEATURES: Small bump-outs under 3-4 feet deviation from the main roof line 
-should be SIMPLIFIED. These are often:
-- Small dormers or "eyebrow" windows
-- Minor step-backs in the roofline
+DO NOT add intermediate vertices on straight edges! This creates artificial "zigzag" 
+patterns that corrupt the measurement. The southern eave is especially likely to be 
+one straight line - verify it before adding extra vertices.
+
+BAD EXAMPLE (do NOT do this):
+  Eave with 5 vertices creating zigzag: (10,80) -> (20,81) -> (30,79) -> (40,80) -> (50,80)
+  
+GOOD EXAMPLE:
+  Straight eave with 2 vertices: (10,80) -> (50,80)
+
+*** EYEBROW/DORMER FEATURES (SKIP SMALL ONES) ***
+"Eyebrows" are small bump-out features that deviate less than 3-4 feet from the main 
+roof line. These include:
+- Small decorative dormers
+- Minor step-backs in the roofline  
 - Shadow artifacts that look like small indentations
+- Architectural details that don't affect roof area
 
-If the feature is less than 3-4 feet from the main roof line, SKIP IT and continue
-tracing the main roof edge. Only trace bump-outs that are SIGNIFICANT (>4ft deviation).
+RULE: If a feature deviates LESS than 4 feet from the main roof line, SKIP IT entirely!
+Continue tracing the main roof edge as if the eyebrow doesn't exist. This prevents
+chaotic linear feature generation.
 
 CORNER TYPES (classify each):
 - "hip-corner": Diagonal 45° corner where hip meets eave
