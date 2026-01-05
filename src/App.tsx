@@ -15,6 +15,7 @@ import { LocationProvider } from "@/contexts/LocationContext";
 import { useGlobalActivityTracking } from "@/hooks/useGlobalActivityTracking";
 import { SessionExpiryHandler } from "@/components/auth/SessionExpiryHandler";
 import { GlobalLoadingHandler } from "@/components/layout/GlobalLoadingHandler";
+import { GlobalLocationHandler } from "@/components/layout/GlobalLocationHandler";
 import GlobalErrorBoundary from "@/components/error/GlobalErrorBoundary";
 import { initializeMonitoring } from "@/lib/MonitoringSelfHealing";
 import { installFetchInterceptor } from "@/lib/apiInterceptor";
@@ -165,6 +166,7 @@ const AppContent = () => {
   return (
     <>
       <GlobalLoadingHandler />
+      <GlobalLocationHandler />
       <Toaster />
       <Sonner />
       <SessionExpiryHandler />
