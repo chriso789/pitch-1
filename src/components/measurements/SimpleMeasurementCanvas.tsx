@@ -85,6 +85,14 @@ export function SimpleMeasurementCanvas({
   const [isOffline, setIsOffline] = useState(!navigator.onLine);
   const [fabricZoomLevel, setFabricZoomLevel] = useState(1);
   const [coordinateOffset, setCoordinateOffset] = useState(0);
+  
+  // Skeleton alignment calibration controls
+  const [skeletonOffsetX, setSkeletonOffsetX] = useState(0);
+  const [skeletonOffsetY, setSkeletonOffsetY] = useState(0);
+  const [skeletonScale, setSkeletonScale] = useState(1);
+  const [showCalibrationControls, setShowCalibrationControls] = useState(false);
+  const [footprintSource, setFootprintSource] = useState<string>('unknown');
+  const [showBuildingOutline, setShowBuildingOutline] = useState(true);
 
   const isMobile = useIsMobile();
   const { vibrate, isSupported: hapticSupported } = useHapticFeedback();
@@ -375,8 +383,11 @@ export function SimpleMeasurementCanvas({
       
       if (measurement?.buildingFootprint?.coordinates) {
         const coords = measurement.buildingFootprint.coordinates[0];
-        const geoCoords = coords.map(c => [c.lng, c.lat] as [number, number]);
+        const geoCoords = coords.map((c: any) => [c.lng, c.lat] as [number, number]);
         setBuildingPolygon(geoCoords);
+        
+        // Store footprint source for visual indicator
+        setFootprintSource(measurement.footprintSource || 'unknown');
         
         const points = convertSolarPolygonToPoints(
           coords,
@@ -410,10 +421,14 @@ export function SimpleMeasurementCanvas({
             })),
           });
           
+          const sourceLabel = measurement.footprintSource === 'osm' 
+            ? '✓ Using actual OSM building footprint' 
+            : '⚠️ Using rectangular approximation';
+          
           toast.success(
             'Building detected with roof topology!',
             { 
-              description: `${ridges.length} ridges, ${hips.length} hips, ${valleys.length} valleys`
+              description: `${sourceLabel} | ${ridges.length} ridges, ${hips.length} hips, ${valleys.length} valleys`
             }
           );
         } else {
@@ -857,14 +872,25 @@ export function SimpleMeasurementCanvas({
             </Button>
 
             {detectedLinearFeatures && (
-              <Button
-                variant="ghost"
-                size="icon"
-                onClick={() => setShowLinearFeatures(!showLinearFeatures)}
-                title={showLinearFeatures ? 'Hide Ridge/Hip/Valley Lines' : 'Show Ridge/Hip/Valley Lines'}
-              >
-                {showLinearFeatures ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
-              </Button>
+              <>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => setShowLinearFeatures(!showLinearFeatures)}
+                  title={showLinearFeatures ? 'Hide Ridge/Hip/Valley Lines' : 'Show Ridge/Hip/Valley Lines'}
+                >
+                  {showLinearFeatures ? <Eye className="w-4 h-4" /> : <EyeOff className="w-4 h-4" />}
+                </Button>
+                <Button
+                  variant={showCalibrationControls ? 'default' : 'ghost'}
+                  size="sm"
+                  onClick={() => setShowCalibrationControls(!showCalibrationControls)}
+                  title="Skeleton Alignment Controls"
+                  className="text-xs"
+                >
+                  Align
+                </Button>
+              </>
             )}
           </div>
 
@@ -925,6 +951,83 @@ export function SimpleMeasurementCanvas({
         />
       )}
 
+      {/* Skeleton Calibration Controls */}
+      {showCalibrationControls && detectedLinearFeatures && (
+        <Card className="p-4">
+          <div className="flex items-center justify-between gap-4 flex-wrap">
+            <div className="flex items-center gap-6">
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">X Offset</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min={-50}
+                    max={50}
+                    value={skeletonOffsetX}
+                    onChange={(e) => setSkeletonOffsetX(Number(e.target.value))}
+                    className="w-24"
+                  />
+                  <span className="text-xs w-10">{skeletonOffsetX}px</span>
+                </div>
+              </div>
+              
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Y Offset</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min={-50}
+                    max={50}
+                    value={skeletonOffsetY}
+                    onChange={(e) => setSkeletonOffsetY(Number(e.target.value))}
+                    className="w-24"
+                  />
+                  <span className="text-xs w-10">{skeletonOffsetY}px</span>
+                </div>
+              </div>
+              
+              <div className="space-y-1">
+                <label className="text-xs text-muted-foreground">Scale</label>
+                <div className="flex items-center gap-2">
+                  <input
+                    type="range"
+                    min={0.9}
+                    max={1.1}
+                    step={0.01}
+                    value={skeletonScale}
+                    onChange={(e) => setSkeletonScale(Number(e.target.value))}
+                    className="w-24"
+                  />
+                  <span className="text-xs w-10">{skeletonScale.toFixed(2)}x</span>
+                </div>
+              </div>
+            </div>
+            
+            <div className="flex items-center gap-2">
+              <Badge 
+                variant={footprintSource === 'osm' ? 'default' : 'secondary'}
+                className="text-xs"
+              >
+                Source: {footprintSource === 'osm' ? '✓ OSM' : footprintSource === 'google_solar_bbox' ? '⚠️ Bounding Box' : footprintSource}
+              </Badge>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setSkeletonOffsetX(0);
+                  setSkeletonOffsetY(0);
+                  setSkeletonScale(1);
+                }}
+              >
+                <RotateCcw className="h-3 w-3 mr-1" />
+                Reset
+              </Button>
+            </div>
+          </div>
+        </Card>
+      )}
+
       {/* Canvas */}
       <Card className="relative overflow-hidden">
         {isLoadingImage && (
@@ -938,7 +1041,7 @@ export function SimpleMeasurementCanvas({
         
         <canvas ref={canvasRef} />
         
-        {/* Ridge/Hip/Valley Line Visualizer */}
+        {/* Ridge/Hip/Valley Line Visualizer with calibration */}
         <RidgeLineVisualizer
           canvas={fabricCanvasRef.current}
           linearFeatures={detectedLinearFeatures}
@@ -948,6 +1051,9 @@ export function SimpleMeasurementCanvas({
           canvasWidth={width}
           canvasHeight={height}
           visible={showLinearFeatures}
+          offsetX={skeletonOffsetX}
+          offsetY={skeletonOffsetY}
+          scaleAdjustment={skeletonScale}
         />
       </Card>
 

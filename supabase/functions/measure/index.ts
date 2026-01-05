@@ -863,8 +863,36 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     throw new Error("No building data from Google Solar");
   }
 
-  // Extract building polygon
-  const coords = boundingBoxToPolygon(json.boundingBox);
+  // TRY OSM FOOTPRINT FIRST for actual building shape
+  // Priority: 1) OSM (real shape) → 2) Google Solar bounding box (rectangle fallback)
+  let coords: [number, number][];
+  let footprintSource: string;
+  let footprintConfidence: number;
+
+  const osmResult = await osmOverpassFootprint(lat, lng).catch(() => null);
+  
+  if (osmResult && osmResult.plan_sqft > 100) {
+    // Use actual OSM building footprint
+    coords = wktToCoords(osmResult.faceWKT);
+    footprintSource = 'osm';
+    footprintConfidence = 0.95;
+    console.log(`✓ Using OSM footprint: ${coords.length} vertices, ${Math.round(osmResult.plan_sqft)} sqft`);
+  } else {
+    // Fallback to Google's bounding box (rectangular)
+    coords = boundingBoxToPolygon(json.boundingBox);
+    footprintSource = 'google_solar_bbox';
+    footprintConfidence = 0.70;
+    console.log(`⚠️ Using Google Solar bounding box (rectangular approximation)`);
+  }
+
+  // Validate footprint geometry
+  const qaResult = validateFootprintGeometry(coords, lat, lng);
+  if (!qaResult.isValid) {
+    console.error('Footprint QA failed:', qaResult.errors);
+    // Don't throw - use the footprint anyway but log warning
+    console.warn('Proceeding with potentially problematic footprint');
+  }
+
   const plan_sqft = polygonAreaSqftFromLngLat(coords);
   const midLat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
   
@@ -906,7 +934,16 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
   const wastePct = 12;
   const totalArea = faces.reduce((s, f) => s + f.area_sqft, 0) * (1 + wastePct / 100);
 
-  const result: MeasureResult = {
+  // Calculate meters per pixel for frontend transformation
+  const metersPerPixelAtEquator = 156543.03392 / Math.pow(2, 20); // zoom 20
+  const metersPerPixel = metersPerPixelAtEquator * Math.cos(lat * Math.PI / 180);
+
+  const result: MeasureResult & { 
+    buildingFootprint?: any; 
+    transformConfig?: any;
+    footprintSource?: string;
+    footprintConfidence?: number;
+  } = {
     property_id: "",
     source: 'google_solar',
     faces,
@@ -920,7 +957,21 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
       roof_age_years: null,
       roof_age_source: 'unknown'
     },
-    geom_wkt: unionFacesWKT(faces)
+    geom_wkt: unionFacesWKT(faces),
+    // NEW: Include actual footprint coordinates for frontend rendering
+    buildingFootprint: {
+      type: 'Polygon',
+      coordinates: [coords.map(c => ({ lng: c[0], lat: c[1] }))],
+    },
+    footprintSource,
+    footprintConfidence,
+    // NEW: Include transformation config for accurate geo-to-pixel conversion
+    transformConfig: {
+      centerLng: lng,
+      centerLat: lat,
+      zoom: 20,
+      metersPerPixel,
+    },
   };
 
   // Cache for future use
