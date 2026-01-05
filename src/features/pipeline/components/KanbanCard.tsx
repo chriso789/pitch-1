@@ -303,170 +303,174 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
   };
 
   return (
-    <Card 
-      ref={setNodeRef} 
-      style={style}
-      {...attributes}
-      {...listeners}
-      className={cn(
-        "w-full min-w-0 max-w-full min-h-[80px] max-h-[100px]",
-        "shadow-soft border-0 hover:shadow-medium transition-smooth",
-        "cursor-pointer",
-        "relative group overflow-hidden",
-        "bg-card",
-        isDragging || isSortableDragging ? 'shadow-2xl scale-105 border-2 border-primary rotate-2 animate-pulse z-50' : '',
-        isSortableDragging ? 'cursor-grabbing' : 'cursor-grab'
-      )}
-      onClick={handleCardClick}
-      onMouseEnter={handleMouseEnter}
-      onMouseLeave={handleMouseLeave}
-      role="button"
-      tabIndex={0}
-      aria-label={`${displayNumber}, ${lastName}, ${daysInStatus} days in status, last contact ${daysSinceLastComm} days ago`}
-    >
-      <CardContent className="p-1.5 h-full flex flex-col justify-between">
-        {/* Row 1: Days Badge + Job Number + Comm Badge */}
-        <div className="flex items-center justify-between w-full mb-0.5">
-          {/* Days in Status Badge */}
-          <Badge 
-            className={cn(
-              "text-[8px] px-1 py-0.5 border font-medium leading-none",
-              getStatusBadgeColor()
-            )}
-          >
-            {daysInStatus}d
-          </Badge>
-
-          {/* Display Number - Centered */}
-          <div 
-            className="flex-1 text-center px-0.5 min-w-0 flex items-center justify-center"
-            title={displayNumber}
-          >
-            <CLJBadge 
-              cljNumber={entry.clj_formatted_number} 
-              variant="outline" 
-              size="sm"
-              className="text-[8px] px-1 py-0"
-            />
-          </div>
-
-          {/* Communication Recency Badge */}
-          <Badge 
-            className="text-[8px] px-1 py-0.5 bg-muted/10 text-muted-foreground border-muted/20 flex items-center gap-0.5 leading-none"
-            title={`Last contact ${daysSinceLastComm} days ago`}
-          >
-            <span role="img" aria-label="communication status" className="text-[7px]">{commEmoji}</span>
-            <span>{daysSinceLastComm > 99 ? '99+' : `${daysSinceLastComm}`}d</span>
-          </Badge>
-        </div>
-
-        {/* Row 2: Last Name */}
-        <div className="flex-1 flex items-center justify-center min-h-0">
-          <div 
-            className="text-center w-full min-w-0"
-            title={lastName}
-          >
-            <span 
+    <>
+      <Card 
+        ref={setNodeRef} 
+        style={style}
+        {...attributes}
+        {...listeners}
+        className={cn(
+          "w-full min-w-0 max-w-full min-h-[80px] max-h-[100px]",
+          "shadow-soft border-0 hover:shadow-medium transition-smooth",
+          "cursor-pointer",
+          "relative group overflow-hidden",
+          "bg-card",
+          isDragging || isSortableDragging ? 'shadow-2xl scale-105 border-2 border-primary rotate-2 animate-pulse z-50' : '',
+          isSortableDragging ? 'cursor-grabbing' : 'cursor-grab'
+        )}
+        onClick={handleCardClick}
+        onMouseEnter={handleMouseEnter}
+        onMouseLeave={handleMouseLeave}
+        role="button"
+        tabIndex={0}
+        aria-label={`${displayNumber}, ${lastName}, ${daysInStatus} days in status, last contact ${daysSinceLastComm} days ago`}
+      >
+        <CardContent className="p-1.5 h-full flex flex-col justify-between">
+          {/* Row 1: Days Badge + Job Number + Comm Badge */}
+          <div className="flex items-center justify-between w-full mb-0.5">
+            {/* Days in Status Badge */}
+            <Badge 
               className={cn(
-                "font-medium text-foreground block truncate px-0.5 text-[10px]",
-                lastName.length > 15 ? "group-hover:text-clip" : ""
+                "text-[8px] px-1 py-0.5 border font-medium leading-none",
+                getStatusBadgeColor()
               )}
             >
-              {lastName}
-            </span>
-          </div>
-        </div>
+              {daysInStatus}d
+            </Badge>
 
-        {/* Lead Details Button (bottom left) */}
-        <Button
-          variant="ghost"
-          size="sm"
-          className="absolute bottom-0 left-0 h-3.5 w-3.5 p-0 text-primary/70 hover:text-primary hover:bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity"
-          onClick={handleLeadDetailsClick}
-          onPointerDown={(e) => e.stopPropagation()}
-          aria-label={`View lead details for ${displayNumber}`}
-        >
-          <ArrowRight className="h-2.5 w-2.5" />
-        </Button>
-
-        {/* Quick Actions Menu (top right, next to drag handle) */}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="sm"
-              className="absolute top-0 left-0 h-3.5 w-3.5 p-0 text-muted-foreground/70 hover:text-foreground hover:bg-muted/20 opacity-0 group-hover:opacity-100 transition-opacity z-10"
-              onClick={(e) => e.stopPropagation()}
-              onPointerDown={(e) => e.stopPropagation()}
-              aria-label={`Quick actions for ${displayNumber}`}
-              disabled={generating}
+            {/* Display Number - Centered */}
+            <div 
+              className="flex-1 text-center px-0.5 min-w-0 flex items-center justify-center"
+              title={displayNumber}
             >
-              <MoreVertical className="h-2.5 w-2.5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start" className="w-48">
-            <DropdownMenuItem onClick={handleGeneratePDF} disabled={generating}>
-              <FileText className="h-3.5 w-3.5 mr-2" />
-              {generating ? 'Generating...' : 'Download PDF Report'}
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={handleEmailPDF} disabled={generating || !contact?.email}>
-              <Mail className="h-3.5 w-3.5 mr-2" />
-              Email PDF Report
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={handleLeadDetailsClick}>
-              <ArrowRight className="h-3.5 w-3.5 mr-2" />
-              View Lead Details
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              <CLJBadge 
+                cljNumber={entry.clj_formatted_number} 
+                variant="outline" 
+                size="sm"
+                className="text-[8px] px-1 py-0"
+              />
+            </div>
 
-        {/* Delete Button (only visible to authorized users on hover) */}
-        {canDelete && (
-          <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
-            <AlertDialogTrigger asChild>
+            {/* Communication Recency Badge */}
+            <Badge 
+              className="text-[8px] px-1 py-0.5 bg-muted/10 text-muted-foreground border-muted/20 flex items-center gap-0.5 leading-none"
+              title={`Last contact ${daysSinceLastComm} days ago`}
+            >
+              <span role="img" aria-label="communication status" className="text-[7px]">{commEmoji}</span>
+              <span>{daysSinceLastComm > 99 ? '99+' : `${daysSinceLastComm}`}d</span>
+            </Badge>
+          </div>
+
+          {/* Row 2: Last Name */}
+          <div className="flex-1 flex items-center justify-center min-h-0">
+            <div 
+              className="text-center w-full min-w-0"
+              title={lastName}
+            >
+              <span 
+                className={cn(
+                  "font-medium text-foreground block truncate px-0.5 text-[10px]",
+                  lastName.length > 15 ? "group-hover:text-clip" : ""
+                )}
+              >
+                {lastName}
+              </span>
+            </div>
+          </div>
+
+          {/* Lead Details Button (bottom left) */}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="absolute bottom-0 left-0 h-3.5 w-3.5 p-0 text-primary/70 hover:text-primary hover:bg-primary/10 opacity-0 group-hover:opacity-100 transition-opacity"
+            onClick={handleLeadDetailsClick}
+            onPointerDown={(e) => e.stopPropagation()}
+            aria-label={`View lead details for ${displayNumber}`}
+          >
+            <ArrowRight className="h-2.5 w-2.5" />
+          </Button>
+
+          {/* Quick Actions Menu (top right, next to drag handle) */}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <Button
                 variant="ghost"
                 size="sm"
-                className="absolute bottom-0.5 right-0.5 h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/20 opacity-70 group-hover:opacity-100 transition-opacity rounded-sm"
-                onClick={handleDeleteClick}
+                className="absolute top-0 left-0 h-3.5 w-3.5 p-0 text-muted-foreground/70 hover:text-foreground hover:bg-muted/20 opacity-0 group-hover:opacity-100 transition-opacity z-10"
+                onClick={(e) => e.stopPropagation()}
                 onPointerDown={(e) => e.stopPropagation()}
-                aria-label={`Delete ${displayNumber}`}
+                aria-label={`Quick actions for ${displayNumber}`}
+                disabled={generating}
               >
-                <X className="h-4 w-4" />
+                <MoreVertical className="h-2.5 w-2.5" />
               </Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>Delete {entry.status === 'project' ? 'Job' : 'Lead'}</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Are you sure you want to delete {displayNumber} for {lastName}? This action cannot be undone.
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
-                <AlertDialogAction
-                  onClick={handleConfirmDelete}
-                  disabled={isDeleting}
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                >
-                  {isDeleting ? 'Deleting...' : `Delete ${entry.status === 'project' ? 'Job' : 'Lead'}`}
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        )}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-48">
+              <DropdownMenuItem onClick={handleGeneratePDF} disabled={generating}>
+                <FileText className="h-3.5 w-3.5 mr-2" />
+                {generating ? 'Generating...' : 'Download PDF Report'}
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={handleEmailPDF} disabled={generating || !contact?.email}>
+                <Mail className="h-3.5 w-3.5 mr-2" />
+                Email PDF Report
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleLeadDetailsClick}>
+                <ArrowRight className="h-3.5 w-3.5 mr-2" />
+                View Lead Details
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
 
-        {/* Drag Handle - Visual indicator only */}
-        <div
-          className="absolute top-0 right-0 h-5 w-5 flex items-center justify-center pointer-events-none opacity-50 group-hover:opacity-100 transition-opacity"
-          aria-label="Draggable card"
-        >
-          <GripVertical 
-            className="h-3 w-3 text-muted-foreground"
-          />
-        </div>
-      </CardContent>
-    </Card>
+          {/* Delete Button (only visible to authorized users on hover) - trigger only */}
+          {canDelete && (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="absolute bottom-0.5 right-0.5 h-6 w-6 p-0 text-destructive hover:text-destructive hover:bg-destructive/20 opacity-70 group-hover:opacity-100 transition-opacity rounded-sm"
+              onClick={handleDeleteClick}
+              onPointerDown={(e) => e.stopPropagation()}
+              aria-label={`Delete ${displayNumber}`}
+            >
+              <X className="h-4 w-4" />
+            </Button>
+          )}
+
+          {/* Drag Handle - Visual indicator only */}
+          <div
+            className="absolute top-0 right-0 h-5 w-5 flex items-center justify-center pointer-events-none opacity-50 group-hover:opacity-100 transition-opacity"
+            aria-label="Draggable card"
+          >
+            <GripVertical 
+              className="h-3 w-3 text-muted-foreground"
+            />
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* AlertDialog rendered OUTSIDE the Card to avoid drag event interference */}
+      {canDelete && (
+        <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>Delete {entry.status === 'project' ? 'Job' : 'Lead'}</AlertDialogTitle>
+              <AlertDialogDescription>
+                Are you sure you want to delete {displayNumber} for {lastName}? This action cannot be undone.
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleConfirmDelete}
+                disabled={isDeleting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {isDeleting ? 'Deleting...' : `Delete ${entry.status === 'project' ? 'Job' : 'Lead'}`}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+    </>
   );
 };
