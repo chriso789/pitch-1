@@ -116,21 +116,34 @@ export function ApprovedMeasurementsList({ pipelineEntryId }: ApprovedMeasuremen
     }
   };
 
-  const handleDeleteApproval = async (approvalId: string, documentId?: string | null, storagePath?: string) => {
+  const handleDeleteApproval = async (approvalId: string, documentId?: string | null, _storagePath?: string) => {
     if (!confirm('Delete this approved measurement? This cannot be undone.')) return;
 
+    setIsDeleting(true);
     try {
-      // Delete associated document from storage and DB if exists
-      if (documentId && storagePath) {
-        const isExternalUrl = storagePath.startsWith('http://') || storagePath.startsWith('https://');
-        if (!isExternalUrl) {
-          await supabase.storage.from('documents').remove([storagePath]);
-        }
-        await supabase.from('documents').delete().eq('id', documentId);
+      // Delete the approval first (removes FK reference)
+      const { error: approvalError } = await supabase
+        .from('measurement_approvals')
+        .delete()
+        .eq('id', approvalId);
+
+      if (approvalError) {
+        throw new Error(`Failed to delete approval: ${approvalError.message}`);
       }
 
-      // Delete the approval
-      await supabase.from('measurement_approvals').delete().eq('id', approvalId);
+      // Now delete the associated document via edge function (handles storage safely)
+      if (documentId) {
+        const { data, error: docError } = await supabase.functions.invoke('delete-documents', {
+          body: { document_ids: [documentId], mode: 'delete_only' }
+        });
+
+        if (docError) {
+          console.warn('Document deletion warning:', docError);
+          // Don't fail the whole operation - approval is already deleted
+        } else if (data?.errors?.length > 0) {
+          console.warn('Document deletion partial errors:', data.errors);
+        }
+      }
 
       toast({
         title: 'Deleted',
@@ -144,13 +157,15 @@ export function ApprovedMeasurementsList({ pipelineEntryId }: ApprovedMeasuremen
       });
 
       queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Delete error:', error);
       toast({
         title: 'Delete Failed',
-        description: 'Failed to delete approved measurement',
+        description: error.message || 'Failed to delete approved measurement',
         variant: 'destructive',
       });
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -161,34 +176,48 @@ export function ApprovedMeasurementsList({ pipelineEntryId }: ApprovedMeasuremen
     setIsDeleting(true);
     try {
       const approvalsToDelete = approvals.filter(a => selectedApprovals.has(a.id));
+      const approvalIds = approvalsToDelete.map(a => a.id);
       
-      // Delete associated documents
-      for (const approval of approvalsToDelete) {
-        if (approval.document) {
-          const isExternalUrl = approval.document.storage_path.startsWith('http://') || 
-                               approval.document.storage_path.startsWith('https://');
-          if (!isExternalUrl) {
-            await supabase.storage.from('documents').remove([approval.document.storage_path]);
-          }
-          await supabase.from('documents').delete().eq('id', approval.document.id);
+      // Delete the approvals first (removes FK references)
+      const { error: approvalError } = await supabase
+        .from('measurement_approvals')
+        .delete()
+        .in('id', approvalIds);
+
+      if (approvalError) {
+        throw new Error(`Failed to delete approvals: ${approvalError.message}`);
+      }
+
+      // Collect document IDs to delete
+      const documentIds = approvalsToDelete
+        .filter(a => a.document?.id)
+        .map(a => a.document!.id);
+
+      // Delete associated documents via edge function
+      if (documentIds.length > 0) {
+        const { data, error: docError } = await supabase.functions.invoke('delete-documents', {
+          body: { document_ids: documentIds, mode: 'delete_only' }
+        });
+
+        if (docError) {
+          console.warn('Document deletion warning:', docError);
+        } else if (data?.errors?.length > 0) {
+          console.warn('Document deletion partial errors:', data.errors);
         }
       }
 
-      // Delete the approvals
-      await supabase.from('measurement_approvals').delete().in('id', Array.from(selectedApprovals));
-
       toast({
         title: 'Deleted',
-        description: `${selectedApprovals.size} approved measurement(s) deleted successfully`,
+        description: `${approvalIds.length} approved measurement(s) deleted successfully`,
       });
 
       setSelectedApprovals(new Set());
       queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
-    } catch (error) {
+    } catch (error: any) {
       console.error('Bulk delete error:', error);
       toast({
         title: 'Delete Failed',
-        description: 'Failed to delete some approved measurements',
+        description: error.message || 'Failed to delete some approved measurements',
         variant: 'destructive',
       });
     } finally {
