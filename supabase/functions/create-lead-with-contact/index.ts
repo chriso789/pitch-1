@@ -320,7 +320,12 @@ serve(async (req: Request) => {
           assigned_to: body.salesReps?.[0] || null,
           location_id: locationId,
           notes: body.description || null,
-          verified_address: body.selectedAddress ? body.selectedAddress.formatted_address : null,
+          verified_address: body.selectedAddress ? {
+            formatted_address: body.selectedAddress.formatted_address,
+            place_id: body.selectedAddress.place_id,
+            geometry: body.selectedAddress.geometry,
+            address_components: body.selectedAddress.address_components
+          } : null,
           metadata: {
             roof_age_years: parseInt(body.roofAge) || null,
             roof_type: body.roofType || null,
