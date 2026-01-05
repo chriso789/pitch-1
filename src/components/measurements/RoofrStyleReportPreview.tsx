@@ -447,7 +447,7 @@ export function RoofrStyleReportPreview({
               Page {currentPage} of {totalPages}
             </Badge>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 mr-8">
             <Button variant="outline" size="sm" onClick={handleShare} disabled={isSharing}>
               {isSharing ? (
                 <Loader2 className="h-4 w-4 mr-1 animate-spin" />
