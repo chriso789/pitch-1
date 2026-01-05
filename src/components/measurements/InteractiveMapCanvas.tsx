@@ -309,6 +309,15 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
   }, [polygons, currentPoints, pixelsPerFoot, getCurrentArea]);
 
   const updateMeasurements = useCallback(() => {
+    const map = mapRef.current;
+    const center = map?.getCenter();
+    const zoom = map?.getZoom() || initialZoom;
+    
+    // Build Mapbox static image URL for the current view
+    const satelliteUrl = center 
+      ? `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${center.lng},${center.lat},${zoom},0/${canvasSize.width}x${canvasSize.height}@2x?access_token=${mapboxToken}`
+      : '';
+
     const faces = polygons.map((p, index) => ({
       id: p.id,
       label: p.label || `Facet ${index + 1}`,
@@ -328,8 +337,14 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
       },
       canvasWidth: canvasSize.width,
       canvasHeight: canvasSize.height,
+      satelliteImageUrl: satelliteUrl,
+      gps_coordinates: {
+        lat: center?.lat || centerLat,
+        lng: center?.lng || centerLng,
+      },
+      analysis_zoom: zoom,
     });
-  }, [polygons, pixelsPerFoot, getTotalArea, canvasSize, onMeasurementsChange]);
+  }, [polygons, pixelsPerFoot, getTotalArea, canvasSize, onMeasurementsChange, mapboxToken, centerLat, centerLng, initialZoom]);
 
   const handleStartDrawing = () => {
     // Lock pixelsPerFoot at drawing start to prevent mid-draw scale changes
