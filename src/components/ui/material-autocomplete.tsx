@@ -1,8 +1,10 @@
 import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { Search, Package, Loader2 } from 'lucide-react';
+import { Search, Package, Loader2, Star } from 'lucide-react';
 import { SRS_PRICELIST, SRSPricelistItem } from '@/data/srs-pricelist-data';
+import { supabase } from '@/integrations/supabase/client';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 
 export interface MaterialSuggestion {
   name: string;
@@ -90,8 +92,47 @@ export function MaterialAutocomplete({
   const [suggestions, setSuggestions] = useState<MaterialSuggestion[]>([]);
   const [loading, setLoading] = useState(false);
   const [highlightedIndex, setHighlightedIndex] = useState(-1);
+  const [templateItems, setTemplateItems] = useState<MaterialSuggestion[]>([]);
   const containerRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const { profile } = useUserProfile();
+
+  // Fetch template items from backend on mount
+  useEffect(() => {
+    const fetchTemplateItems = async () => {
+      if (!profile?.tenant_id) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('estimate_calc_template_items')
+          .select('*')
+          .eq('tenant_id', profile.tenant_id);
+        
+        if (error) {
+          console.error('Error fetching template items:', error);
+          return;
+        }
+        
+        if (data) {
+          const items: MaterialSuggestion[] = data.map(item => ({
+            name: item.item_name,
+            item_code: item.sku_pattern || undefined,
+            unit_cost: item.unit_cost || 0,
+            unit: item.unit || 'each',
+            description: item.description || undefined,
+            category: item.item_type || undefined,
+            brand: item.manufacturer || undefined,
+            source: 'template' as const
+          }));
+          setTemplateItems(items);
+        }
+      } catch (err) {
+        console.error('Failed to fetch template items:', err);
+      }
+    };
+    
+    fetchTemplateItems();
+  }, [profile?.tenant_id]);
 
   // Search function with debounce
   const searchMaterials = useCallback((query: string) => {
@@ -101,9 +142,20 @@ export function MaterialAutocomplete({
     }
 
     setLoading(true);
+    const lowerQuery = query.toLowerCase();
+
+    // Search template items (priority)
+    const templateResults = templateItems
+      .filter(item => 
+        item.name.toLowerCase().includes(lowerQuery) ||
+        (item.brand?.toLowerCase().includes(lowerQuery)) ||
+        (item.item_code?.toLowerCase().includes(lowerQuery)) ||
+        (item.category?.toLowerCase().includes(lowerQuery))
+      )
+      .slice(0, 5);
 
     // Search SRS_PRICELIST
-    const results = SRS_PRICELIST
+    const pricelistResults = SRS_PRICELIST
       .filter(item => 
         fuzzyMatch(item.product, query) ||
         fuzzyMatch(item.brand, query) ||
@@ -115,7 +167,7 @@ export function MaterialAutocomplete({
         score: scoreMatch(item, query)
       }))
       .sort((a, b) => b.score - a.score)
-      .slice(0, 10)
+      .slice(0, 10 - templateResults.length)
       .map(({ item }): MaterialSuggestion => ({
         name: item.product,
         item_code: item.item_code,
@@ -127,10 +179,11 @@ export function MaterialAutocomplete({
         source: 'pricelist'
       }));
 
-    setSuggestions(results);
+    // Combine: template items first, then pricelist
+    setSuggestions([...templateResults, ...pricelistResults]);
     setLoading(false);
     setHighlightedIndex(-1);
-  }, []);
+  }, [templateItems]);
 
   // Debounced search
   useEffect(() => {
