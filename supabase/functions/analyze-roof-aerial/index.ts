@@ -26,6 +26,9 @@ import { computeStraightSkeleton } from '../_shared/straight-skeleton.ts'
 // Import new roof geometry reconstructor for cleaner, connected roof diagrams
 import { reconstructRoofGeometry, roofToLinearFeaturesWKT } from '../_shared/roof-geometry-reconstructor.ts'
 
+// Import solar segment assembler for accurate facet positioning from Google Solar data
+import { assembleFacetsFromSolarSegments, type AssembledGeometry, type SolarSegment } from '../_shared/solar-segment-assembler.ts'
+
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!
 const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY')!
 const GOOGLE_SOLAR_API_KEY = Deno.env.get('GOOGLE_SOLAR_API_KEY')!
@@ -359,24 +362,69 @@ serve(async (req) => {
       IMAGE_ZOOM
     )
     
-    // Generate and save facet polygons - ALWAYS save at least 1 facet
-    const facetPolygons = generateFacetPolygons(
-      perimeterResult.vertices,
-      interiorVertices.junctions,
-      derivedLines,
-      coordinates,
-      logicalImageSize,
-      IMAGE_ZOOM,
-      derivedFacetCount,
-      measurements.predominantPitch
-    )
+    // Generate and save facet polygons - PREFER Solar Segment Assembler for accurate positioning
+    let facetPolygons: any[] = [];
+    let facetSource = 'legacy';
+    
+    // Convert perimeter vertices to XY format for Solar assembler
+    const perimeterXY = convertPerimeterVerticesToXY(perimeterResult.vertices, coordinates, logicalImageSize, IMAGE_ZOOM);
+    
+    // PRIORITY: Use Solar Segment Assembler if we have segment data with positioning
+    if (solarData?.available && solarData?.roofSegments?.length >= 2) {
+      console.log(`🛰️ Attempting Solar Segment Assembly with ${solarData.roofSegments.length} segments...`);
+      
+      try {
+        const assembledGeometry = assembleFacetsFromSolarSegments(
+          perimeterXY,
+          solarData.roofSegments as SolarSegment[],
+          measurements.predominantPitch
+        );
+        
+        if (assembledGeometry.facets.length >= 2) {
+          console.log(`✅ Solar Segment Assembly succeeded: ${assembledGeometry.facets.length} facets (quality: ${assembledGeometry.quality})`);
+          
+          // Convert assembled facets to database format
+          facetPolygons = assembledGeometry.facets.map((facet, index) => ({
+            facetNumber: index + 1,
+            points: facet.polygon.map(xy => ({ lng: xy[0], lat: xy[1] })),
+            centroid: getCentroidFromXY(facet.polygon),
+            primaryDirection: facet.direction,
+            azimuthDegrees: facet.azimuthDegrees,
+            shapeType: 'solar_segment',
+            areaEstimate: facet.areaSqft,
+            solarSegmentIndex: facet.sourceSegmentIndex
+          }));
+          facetSource = 'solar_assembler';
+        } else {
+          console.log(`⚠️ Solar Segment Assembly produced ${assembledGeometry.facets.length} facets, falling back to legacy`);
+        }
+      } catch (err) {
+        console.warn('⚠️ Solar Segment Assembly failed:', err);
+      }
+    }
+    
+    // FALLBACK: Use legacy facet generation if Solar assembly didn't work
+    if (facetPolygons.length === 0) {
+      facetPolygons = generateFacetPolygons(
+        perimeterResult.vertices,
+        interiorVertices.junctions,
+        derivedLines,
+        coordinates,
+        logicalImageSize,
+        IMAGE_ZOOM,
+        derivedFacetCount,
+        measurements.predominantPitch
+      );
+      facetSource = 'legacy';
+    }
     
     // Track facet generation status
     const facetGenerationStatus = {
       requested: derivedFacetCount,
       generated: facetPolygons.length,
       status: facetPolygons.length >= 1 ? 'ok' : 'failed',
-      hasFallback: facetPolygons.some((f: any) => f.isFallback)
+      hasFallback: facetPolygons.some((f: any) => f.isFallback),
+      source: facetSource
     }
     console.log(`📐 Facet generation:`, facetGenerationStatus)
     
@@ -3206,4 +3254,36 @@ function assessShadowRisk(
     factors,
     recommendManualReview: risk === 'high' || qualityScore < 60
   }
+}
+
+// Convert perimeter vertices (percent format) to XY (lng, lat) format for Solar assembler
+function convertPerimeterVerticesToXY(
+  vertices: any[],
+  imageCenter: { lat: number; lng: number },
+  imageSize: number,
+  zoom: number
+): [number, number][] {
+  if (!vertices || vertices.length === 0) return [];
+  
+  const metersPerPixel = (156543.03392 * Math.cos(imageCenter.lat * Math.PI / 180)) / Math.pow(2, zoom);
+  const metersPerDegLat = 111320;
+  const metersPerDegLng = 111320 * Math.cos(imageCenter.lat * Math.PI / 180);
+  
+  return vertices.map((v: any) => {
+    const pixelX = ((v.x / 100) - 0.5) * imageSize;
+    const pixelY = ((v.y / 100) - 0.5) * imageSize;
+    const metersX = pixelX * metersPerPixel;
+    const metersY = pixelY * metersPerPixel;
+    const lng = imageCenter.lng + (metersX / metersPerDegLng);
+    const lat = imageCenter.lat - (metersY / metersPerDegLat);
+    return [lng, lat] as [number, number];
+  });
+}
+
+// Get centroid from XY array
+function getCentroidFromXY(polygon: [number, number][]): { lng: number; lat: number } {
+  if (polygon.length === 0) return { lng: 0, lat: 0 };
+  const sumLng = polygon.reduce((sum, p) => sum + p[0], 0);
+  const sumLat = polygon.reduce((sum, p) => sum + p[1], 0);
+  return { lng: sumLng / polygon.length, lat: sumLat / polygon.length };
 }

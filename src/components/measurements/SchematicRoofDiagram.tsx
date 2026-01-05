@@ -635,7 +635,10 @@ export function SchematicRoofDiagram({
   }), [tags, measurement, facets]);
   
   // Check if we should show "perimeter only" warning
-  const showPerimeterOnlyWarning = facets.length === 0 && measurement?.facet_count > 0;
+  // Only show if: no database facets loaded AND measurement expects facets AND reconstructor didn't help
+  const showPerimeterOnlyWarning = facets.length === 0 && 
+    (measurement?.facet_count || 0) > 1 && 
+    facetPaths.length <= 1;
 
   // If no geometry, show placeholder with totals
   if (!bounds) {
