@@ -432,6 +432,7 @@ export function RoofrStyleReportPreview({
           enrichedMeasurement={enrichedMeasurement}
           tags={tags}
           address={address}
+          measurementId={roofMeasurementData?.id || measurementId}
           satelliteImageUrl={satelliteImageUrl}
           companyInfo={companyInfo}
         />
@@ -564,6 +565,7 @@ export function RoofrStyleReportPreview({
                     <SchematicRoofDiagram 
                       measurement={enrichedMeasurement}
                       tags={tags}
+                      measurementId={roofMeasurementData?.id || measurementId}
                       width={500}
                       height={500}
                       showLengthLabels={false}
@@ -617,6 +619,7 @@ export function RoofrStyleReportPreview({
                     <SchematicRoofDiagram 
                       measurement={enrichedMeasurement}
                       tags={tags}
+                      measurementId={roofMeasurementData?.id || measurementId}
                       width={550}
                       height={350}
                       showLengthLabels={true}
@@ -670,6 +673,7 @@ export function RoofrStyleReportPreview({
                     <SchematicRoofDiagram 
                       measurement={enrichedMeasurement}
                       tags={tags}
+                      measurementId={roofMeasurementData?.id || measurementId}
                       width={550}
                       height={350}
                       showLengthLabels={false}
@@ -719,6 +723,7 @@ export function RoofrStyleReportPreview({
                     <SchematicRoofDiagram 
                       measurement={enrichedMeasurement}
                       tags={tags}
+                      measurementId={roofMeasurementData?.id || measurementId}
                       width={550}
                       height={350}
                       showLengthLabels={true}

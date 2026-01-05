@@ -8,6 +8,7 @@ interface AllReportPagesProps {
   enrichedMeasurement: any;
   tags: Record<string, any>;
   address: string;
+  measurementId?: string;
   satelliteImageUrl?: string;
   companyInfo?: {
     name: string;
@@ -25,6 +26,7 @@ export const AllReportPages = forwardRef<HTMLDivElement, AllReportPagesProps>(({
   enrichedMeasurement,
   tags,
   address,
+  measurementId,
   satelliteImageUrl,
   companyInfo,
 }, ref) => {
@@ -159,6 +161,7 @@ export const AllReportPages = forwardRef<HTMLDivElement, AllReportPagesProps>(({
             <SchematicRoofDiagram 
               measurement={enrichedMeasurement}
               tags={tags}
+              measurementId={measurementId}
               width={500}
               height={500}
               showLengthLabels={false}
@@ -212,6 +215,7 @@ export const AllReportPages = forwardRef<HTMLDivElement, AllReportPagesProps>(({
             <SchematicRoofDiagram 
               measurement={enrichedMeasurement}
               tags={tags}
+              measurementId={measurementId}
               width={550}
               height={350}
               showLengthLabels={true}
@@ -265,6 +269,7 @@ export const AllReportPages = forwardRef<HTMLDivElement, AllReportPagesProps>(({
             <SchematicRoofDiagram 
               measurement={enrichedMeasurement}
               tags={tags}
+              measurementId={measurementId}
               width={550}
               height={350}
               showLengthLabels={false}
@@ -314,6 +319,7 @@ export const AllReportPages = forwardRef<HTMLDivElement, AllReportPagesProps>(({
             <SchematicRoofDiagram 
               measurement={enrichedMeasurement}
               tags={tags}
+              measurementId={measurementId}
               width={550}
               height={350}
               showLengthLabels={true}
