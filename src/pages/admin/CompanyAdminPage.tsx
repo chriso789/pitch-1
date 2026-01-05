@@ -378,13 +378,38 @@ const CompanyAdminPage = () => {
 
   const toggleCompanyStatus = async (company: Company) => {
     try {
+      const isDeactivating = company.is_active;
+      
       const { error } = await supabase
         .from('tenants')
         .update({ is_active: !company.is_active })
         .eq('id', company.id);
 
       if (error) throw error;
-      toast({ title: `Company ${company.is_active ? 'deactivated' : 'activated'}` });
+      
+      // If deactivating, send farewell email to owner
+      if (isDeactivating && company.owner_email) {
+        try {
+          const { error: emailError } = await supabase.functions.invoke('send-account-deactivation', {
+            body: {
+              tenant_id: company.id,
+              owner_email: company.owner_email,
+              owner_name: company.owner_name || 'Valued Customer',
+              company_name: company.name,
+            },
+          });
+          
+          if (emailError) {
+            console.error('Failed to send deactivation email:', emailError);
+          } else {
+            console.log('Deactivation email sent to:', company.owner_email);
+          }
+        } catch (emailErr) {
+          console.error('Error sending deactivation email:', emailErr);
+        }
+      }
+      
+      toast({ title: `Company ${isDeactivating ? 'deactivated' : 'activated'}` });
       fetchCompanies();
     } catch (error: any) {
       toast({ title: "Error", description: error.message, variant: "destructive" });
