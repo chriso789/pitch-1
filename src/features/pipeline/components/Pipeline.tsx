@@ -50,7 +50,6 @@ const Pipeline = () => {
   const [activeId, setActiveId] = useState<string | null>(null);
   const [filters, setFilters] = useState({
     salesRep: 'all',
-    location: 'all',
     dateFrom: '',
     dateTo: ''
   });
@@ -70,7 +69,7 @@ const Pipeline = () => {
   } | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
-  const { currentLocationId } = useLocation();
+  const { currentLocationId, currentLocation } = useLocation();
 
   const jobStages = [
     { name: "Leads", key: "lead", color: "bg-amber-500", icon: User },
@@ -180,7 +179,7 @@ const Pipeline = () => {
       const effectiveTenantId = currentProfile?.active_tenant_id || currentProfile?.tenant_id;
       
       // Load sales reps for assignment - FILTERED BY LOCATION
-      const effectiveLocationId = filters.location !== 'all' ? filters.location : currentLocationId;
+      const effectiveLocationId = currentLocationId;
       
       // Use valid app_role enum values (sales_rep doesn't exist in enum)
       let repsQuery = supabase
@@ -971,9 +970,17 @@ const Pipeline = () => {
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold gradient-primary bg-clip-text text-transparent">
-            Job Pipeline
-          </h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold gradient-primary bg-clip-text text-transparent">
+              Job Pipeline
+            </h1>
+            {currentLocation && (
+              <Badge variant="outline" className="flex items-center gap-1">
+                <MapPin className="h-3 w-3" />
+                {currentLocation.name}
+              </Badge>
+            )}
+          </div>
           <p className="text-muted-foreground">
             Track and manage jobs through their lifecycle
           </p>
@@ -1017,20 +1024,6 @@ const Pipeline = () => {
               </Select>
             </div>
             
-            <div>
-              <label className="text-sm font-medium mb-2 block">Location</label>
-              <Select value={filters.location} onValueChange={(value) => setFilters(prev => ({ ...prev, location: value }))}>
-                <SelectTrigger>
-                  <SelectValue placeholder="All Locations" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">All Locations</SelectItem>
-                  {locations.map(location => (
-                    <SelectItem key={location.id} value={location.id}>{location.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
             
             <div>
               <label className="text-sm font-medium mb-2 block">Date From</label>
@@ -1051,12 +1044,12 @@ const Pipeline = () => {
             </div>
           </div>
           
-          {(filters.salesRep !== 'all' || filters.location !== 'all' || filters.dateFrom || filters.dateTo) && (
+          {(filters.salesRep !== 'all' || filters.dateFrom || filters.dateTo) && (
             <div className="mt-4">
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={() => setFilters({ salesRep: 'all', location: 'all', dateFrom: '', dateTo: '' })}
+                onClick={() => setFilters({ salesRep: 'all', dateFrom: '', dateTo: '' })}
               >
                 <Filter className="h-4 w-4 mr-2" />
                 Clear Filters
