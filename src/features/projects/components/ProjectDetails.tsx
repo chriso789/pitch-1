@@ -8,6 +8,8 @@ import { Progress } from "@/components/ui/progress";
 import { BudgetTracker } from "./BudgetTracker";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
+import { CostReconciliationPanel } from "@/components/production/CostReconciliationPanel";
+import { InvoiceUploadCard } from "@/components/production/InvoiceUploadCard";
 import { 
   DollarSign, 
   FileText, 
@@ -26,7 +28,8 @@ import {
   Upload,
   Target,
   BarChart3,
-  RefreshCw
+  RefreshCw,
+  ClipboardCheck
 } from "lucide-react";
 
 interface ProjectDetailsProps {
@@ -351,9 +354,13 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
 
       {/* Detailed Tabs */}
       <Tabs defaultValue="overview" className="space-y-4">
-        <TabsList>
+        <TabsList className="flex-wrap">
           <TabsTrigger value="overview">Overview</TabsTrigger>
           <TabsTrigger value="budget">Budget</TabsTrigger>
+          <TabsTrigger value="cost-verification" className="flex items-center gap-1">
+            <ClipboardCheck className="h-3 w-3" />
+            Cost Verification
+          </TabsTrigger>
           <TabsTrigger value="estimate">Estimate</TabsTrigger>
           <TabsTrigger value="commission">Commission</TabsTrigger>
           <TabsTrigger value="costs">Costs</TabsTrigger>
@@ -435,6 +442,26 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
             budgetItems={budgetItems}
             onRefresh={fetchProjectDetails}
           />
+        </TabsContent>
+
+        <TabsContent value="cost-verification" className="space-y-4">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <CostReconciliationPanel projectId={projectId} />
+            </div>
+            <div className="space-y-4">
+              <InvoiceUploadCard
+                projectId={projectId}
+                invoiceType="material"
+                onSuccess={fetchProjectDetails}
+              />
+              <InvoiceUploadCard
+                projectId={projectId}
+                invoiceType="labor"
+                onSuccess={fetchProjectDetails}
+              />
+            </div>
+          </div>
         </TabsContent>
 
         <TabsContent value="estimate">
