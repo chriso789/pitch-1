@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, FileText, ExternalLink, TrendingUp, TrendingDown, Check, Pencil, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+// Simplified delete confirmation - v2
 import {
   AlertDialog,
   AlertDialogAction,
