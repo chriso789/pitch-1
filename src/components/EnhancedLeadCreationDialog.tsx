@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQueryClient } from "@tanstack/react-query";
 import {
   Dialog,
   DialogContent,
@@ -77,6 +78,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
   onOpenChange: controlledOnOpenChange,
 }) => {
   const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const [internalOpen, setInternalOpen] = useState(false);
   const open = controlledOpen !== undefined ? controlledOpen : internalOpen;
   const setOpen = (newOpen: boolean) => {
@@ -524,6 +526,13 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
       });
 
       onLeadCreated?.(data.lead);
+      
+      // Invalidate all pipeline/dashboard queries to force immediate refresh
+      queryClient.invalidateQueries({ queryKey: ['pipeline_entries'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-pipeline-counts'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-leads-count'] });
+      queryClient.invalidateQueries({ queryKey: ['dashboard-unassigned-leads'] });
+      queryClient.invalidateQueries({ queryKey: ['pipelineEntries'] });
       
       // Navigate to the pipeline page
       navigate(`/pipeline`);

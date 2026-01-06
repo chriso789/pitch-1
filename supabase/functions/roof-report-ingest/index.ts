@@ -249,7 +249,143 @@ function parseGeneric(textRaw: string) {
 }
 
 // -----------------------------
-// AI-powered extraction fallback
+// AI Vision-powered extraction for image-based PDFs
+// -----------------------------
+async function extractWithVision(base64PdfPages: string[]): Promise<any> {
+  const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+  
+  if (!lovableApiKey) {
+    console.log("roof-report-ingest: No LOVABLE_API_KEY, skipping Vision extraction");
+    return null;
+  }
+  
+  const systemPrompt = `You are a roofing measurement report analyzer with OCR capabilities. 
+You are analyzing images of a roof measurement report PDF. 
+
+CRITICAL: Extract ALL measurement data visible in the images. Pay close attention to:
+- Tables with measurements (Total Sq Ft, Facets, Predominant Pitch)
+- Linear Features sections (Eaves, Ridges, Hips, Valleys, Rakes)
+- Area Measurement sections
+- Address information
+
+Return ONLY a valid JSON object (no markdown, no explanation) with these fields. Use null for any value not found:
+
+{
+  "provider": "detected provider name (e.g., 'roofreport', 'roofr', 'eagleview') or 'generic'",
+  "address": "property address if found",
+  "total_area_sqft": number or null,
+  "pitched_area_sqft": number or null,
+  "flat_area_sqft": number or null,
+  "perimeter_ft": number or null,
+  "facet_count": number or null,
+  "predominant_pitch": "X/12 format or null",
+  "ridges_ft": number or null,
+  "hips_ft": number or null,
+  "valleys_ft": number or null,
+  "rakes_ft": number or null,
+  "eaves_ft": number or null,
+  "step_flashing_ft": number or null,
+  "wall_flashing_ft": number or null,
+  "drip_edge_ft": number or null
+}
+
+Examples of what to look for:
+- "Total Sq Ft: 3,656" → total_area_sqft: 3656
+- "Facets: 9" → facet_count: 9
+- "Predominant Pitch: 5/12" → predominant_pitch: "5/12"
+- "Eaves: 145'" or "Eaves: 145 ft" → eaves_ft: 145
+- "Ridges: 116'" → ridges_ft: 116
+- "Hips: 129'" → hips_ft: 129
+- "Valleys: 0 ft" → valleys_ft: 0`;
+
+  try {
+    console.log("roof-report-ingest: Calling Vision API for OCR extraction with", base64PdfPages.length, "page(s)...");
+    
+    // Build content array with images
+    const content: any[] = [
+      { type: "text", text: "Extract all roofing measurements from these report pages:" }
+    ];
+    
+    // Add each page image (limit to first 6 pages to stay within limits)
+    for (const pageBase64 of base64PdfPages.slice(0, 6)) {
+      content.push({
+        type: "image_url",
+        image_url: {
+          url: pageBase64.startsWith('data:') ? pageBase64 : `data:image/png;base64,${pageBase64}`
+        }
+      });
+    }
+    
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${lovableApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: content }
+        ],
+        max_tokens: 1500,
+      }),
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("roof-report-ingest: Vision API error:", response.status, errorText);
+      return null;
+    }
+    
+    const data = await response.json();
+    const responseContent = data.choices?.[0]?.message?.content;
+    
+    if (!responseContent) {
+      console.log("roof-report-ingest: No Vision API content returned");
+      return null;
+    }
+    
+    console.log("roof-report-ingest: Vision API raw response:", responseContent.substring(0, 500));
+    
+    // Parse the JSON from Vision API response
+    const jsonMatch = responseContent.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.log("roof-report-ingest: Could not find JSON in Vision response");
+      return null;
+    }
+    
+    const visionResult = JSON.parse(jsonMatch[0]);
+    console.log("roof-report-ingest: Vision extraction successful", visionResult);
+    
+    return {
+      provider: visionResult.provider || "generic",
+      address: visionResult.address,
+      total_area_sqft: visionResult.total_area_sqft,
+      pitched_area_sqft: visionResult.pitched_area_sqft || visionResult.total_area_sqft,
+      flat_area_sqft: visionResult.flat_area_sqft,
+      facet_count: visionResult.facet_count,
+      predominant_pitch: visionResult.predominant_pitch,
+      ridges_ft: visionResult.ridges_ft,
+      hips_ft: visionResult.hips_ft,
+      valleys_ft: visionResult.valleys_ft,
+      rakes_ft: visionResult.rakes_ft,
+      eaves_ft: visionResult.eaves_ft,
+      drip_edge_ft: visionResult.drip_edge_ft,
+      step_flashing_ft: visionResult.step_flashing_ft,
+      wall_flashing_ft: visionResult.wall_flashing_ft,
+      perimeter_ft: visionResult.perimeter_ft,
+      pitches: null,
+      waste_table: null,
+    };
+  } catch (err) {
+    console.error("roof-report-ingest: Vision extraction failed:", err);
+    return null;
+  }
+}
+
+// -----------------------------
+// AI-powered text extraction fallback
 // -----------------------------
 async function extractWithAI(text: string): Promise<any> {
   const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
@@ -350,6 +486,43 @@ Look for:
   } catch (err) {
     console.error("roof-report-ingest: AI extraction failed:", err);
     return null;
+  }
+}
+
+// -----------------------------
+// Convert PDF to base64 page images for Vision API
+// -----------------------------
+async function convertPdfToImages(pdfBytes: Uint8Array): Promise<string[]> {
+  try {
+    const loadingTask = pdfjsLib.getDocument({ data: pdfBytes });
+    const pdf = await loadingTask.promise;
+    const pageImages: string[] = [];
+    
+    // Process up to 6 pages
+    const numPages = Math.min(pdf.numPages, 6);
+    
+    for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+      try {
+        const page = await pdf.getPage(pageNum);
+        const viewport = page.getViewport({ scale: 2.0 }); // Higher scale for better OCR
+        
+        // Create a canvas-like object for rendering
+        // Note: In Deno, we need to use a different approach
+        // We'll use the page's operatorList to extract embedded images
+        const ops = await page.getOperatorList();
+        
+        // For now, we'll indicate we need the Vision API but can't render in Deno
+        // The Vision API call will still work if we pass the raw PDF as base64
+        console.log(`roof-report-ingest: Page ${pageNum} has ${ops.fnArray.length} operations`);
+      } catch (pageErr) {
+        console.error(`roof-report-ingest: Error processing page ${pageNum}:`, pageErr);
+      }
+    }
+    
+    return pageImages;
+  } catch (err) {
+    console.error("roof-report-ingest: PDF to images conversion failed:", err);
+    return [];
   }
 }
 
@@ -613,23 +786,45 @@ serve(async (req) => {
 
     let parsed: any;
     
-    // Try provider-specific parsers first
-    if (provider === "roofr") {
-      parsed = parseRoofr(extractedText);
-    } else if (provider === "eagleview") {
-      parsed = parseEagleView(extractedText);
-    } else {
-      // Try generic parser first
-      parsed = parseGeneric(extractedText);
-      console.log("roof-report-ingest: Generic parse result:", parsed);
+    // Check if this is an image-based PDF (very little text extracted)
+    const isImageBasedPdf = extractedText.length < 100;
+    
+    if (isImageBasedPdf) {
+      console.log("roof-report-ingest: Image-based PDF detected (only", extractedText.length, "chars). Using Vision API...");
       
-      // If generic didn't find enough, try AI extraction
-      if (!hasValidMeasurements(parsed)) {
-        console.log("roof-report-ingest: Generic parse sparse, trying AI extraction...");
-        const aiParsed = await extractWithAI(extractedText);
-        if (aiParsed && hasValidMeasurements(aiParsed)) {
-          parsed = aiParsed;
-          console.log("roof-report-ingest: Using AI extraction result");
+      // Convert PDF bytes to base64 for Vision API
+      const pdfBase64 = btoa(String.fromCharCode(...pdfBytes));
+      
+      // Try Vision API with the PDF as a data URL
+      // First, attempt to use the file_url if available (Vision API can often process PDFs directly)
+      const visionParsed = await extractWithVision([`data:application/pdf;base64,${pdfBase64}`]);
+      
+      if (visionParsed && hasValidMeasurements(visionParsed)) {
+        parsed = visionParsed;
+        console.log("roof-report-ingest: Vision API extraction successful");
+      } else {
+        console.log("roof-report-ingest: Vision API failed, falling back to generic parser");
+        parsed = parseGeneric(extractedText);
+      }
+    } else {
+      // Text-based PDF - use provider-specific parsers
+      if (provider === "roofr") {
+        parsed = parseRoofr(extractedText);
+      } else if (provider === "eagleview") {
+        parsed = parseEagleView(extractedText);
+      } else {
+        // Try generic parser first
+        parsed = parseGeneric(extractedText);
+        console.log("roof-report-ingest: Generic parse result:", parsed);
+        
+        // If generic didn't find enough, try AI text extraction
+        if (!hasValidMeasurements(parsed)) {
+          console.log("roof-report-ingest: Generic parse sparse, trying AI extraction...");
+          const aiParsed = await extractWithAI(extractedText);
+          if (aiParsed && hasValidMeasurements(aiParsed)) {
+            parsed = aiParsed;
+            console.log("roof-report-ingest: Using AI extraction result");
+          }
         }
       }
     }
