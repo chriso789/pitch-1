@@ -27196,7 +27196,7 @@ export type Database = {
       generate_share_token: { Args: never; Returns: string }
       generate_signature_access_token: { Args: never; Returns: string }
       generate_simple_job_number:
-        | { Args: never; Returns: string }
+        | { Args: never; Returns: number }
         | { Args: { p_tenant_id: string }; Returns: number }
       geometry: { Args: { "": string }; Returns: unknown }
       geometry_above: {
