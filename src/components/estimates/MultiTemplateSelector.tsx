@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Save, FileText, Sparkles, Ruler, RotateCcw, Download } from 'lucide-react';
+import { Loader2, Save, FileText, Sparkles, Ruler, RotateCcw, Download, FileUp } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { seedBrandTemplates } from '@/lib/estimates/brandTemplateSeeder';
 import { useMeasurementContext, evaluateFormula } from '@/hooks/useMeasurementContext';
@@ -17,6 +17,7 @@ import { useEstimatePricing, type LineItem } from '@/hooks/useEstimatePricing';
 import { usePDFGeneration } from '@/hooks/usePDFGeneration';
 import { useQueryClient } from '@tanstack/react-query';
 import { saveEstimatePdf } from '@/lib/estimates/estimatePdfSaver';
+import { ImportMeasurementReport } from '@/components/measurements/ImportMeasurementReport';
 
 const supabaseClient = supabase as any;
 
@@ -90,6 +91,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [finePrintContent, setFinePrintContent] = useState<string>('');
   const [customerInfo, setCustomerInfo] = useState<{ name: string; address: string; phone?: string; email?: string } | null>(null);
   const [pdfOptions, setPdfOptions] = useState<PDFComponentOptions>(getDefaultOptions('customer'));
+  const [showImportDialog, setShowImportDialog] = useState(false);
   const { toast } = useToast();
   const { context: measurementContext, summary: measurementSummary } = useMeasurementContext(pipelineEntryId);
   const { generatePDF } = usePDFGeneration();
@@ -873,16 +875,26 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         </CardContent>
       </Card>
 
-      {/* Measurement Summary */}
-      {measurementSummary && measurementSummary.totalSquares > 0 && (
-        <Card>
-          <CardHeader className="pb-2">
+      {/* Measurement Summary with Import Button */}
+      <Card>
+        <CardHeader className="pb-2">
+          <div className="flex items-center justify-between">
             <CardTitle className="text-base flex items-center gap-2">
               <Ruler className="h-4 w-4" />
-              Applied Measurements
+              {measurementSummary && measurementSummary.totalSquares > 0 ? 'Applied Measurements' : 'Measurements'}
             </CardTitle>
-          </CardHeader>
-          <CardContent>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => setShowImportDialog(true)}
+            >
+              <FileUp className="h-4 w-4 mr-2" />
+              Import Report
+            </Button>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {measurementSummary && measurementSummary.totalSquares > 0 ? (
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-sm">
               <div><span className="text-muted-foreground">Squares:</span> <span className="font-medium">{measurementSummary.totalSquares.toFixed(2)}</span></div>
               <div><span className="text-muted-foreground">Area:</span> <span className="font-medium">{measurementSummary.totalSqFt.toFixed(0)} sqft</span></div>
@@ -893,9 +905,13 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
               <div><span className="text-muted-foreground">Rake:</span> <span className="font-medium">{measurementSummary.rakeLength.toFixed(0)} lf</span></div>
               <div><span className="text-muted-foreground">Waste:</span> <span className="font-medium">{measurementSummary.wastePercent}%</span></div>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              No measurements loaded. Use AI Measure, draw manually, or import a report.
+            </p>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Loading Items */}
       {fetchingItems && (
@@ -1057,6 +1073,21 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           />
         </div>
       )}
+
+      {/* Import Measurement Report Dialog */}
+      <ImportMeasurementReport
+        open={showImportDialog}
+        onOpenChange={setShowImportDialog}
+        pipelineEntryId={pipelineEntryId}
+        onMeasurementsApplied={() => {
+          // Refresh measurement context after import
+          queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
+          // Re-fetch line items with new measurements
+          if (selectedTemplateId) {
+            fetchLineItems(selectedTemplateId);
+          }
+        }}
+      />
     </div>
   );
 };

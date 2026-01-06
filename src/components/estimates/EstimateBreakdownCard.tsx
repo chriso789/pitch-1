@@ -56,8 +56,8 @@ export function EstimateBreakdownCard({
 
   const handleFixedPriceToggle = (enabled: boolean) => {
     if (enabled) {
-      // Default to calculated selling price when enabling
-      const defaultPrice = Math.round(breakdown.sellingPrice);
+      // Default to calculated selling price when enabling, minimum $100
+      const defaultPrice = Math.max(100, Math.round(breakdown.sellingPrice));
       setFixedPriceInput(defaultPrice.toString());
       onFixedPriceChange(defaultPrice);
     } else {
