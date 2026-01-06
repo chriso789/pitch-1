@@ -208,13 +208,26 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
           .remove([estimateToRemove.pdf_url]);
       }
       
-      // Delete the estimate from the database
-      const { error } = await supabase
+      // Delete the estimate from the database and verify it was actually deleted
+      const { data: deletedRows, error } = await supabase
         .from('enhanced_estimates')
         .delete()
-        .eq('id', estimateToRemove.id);
+        .eq('id', estimateToRemove.id)
+        .select('id');
       
       if (error) throw error;
+      
+      // Verify the delete actually affected a row (RLS may silently block it)
+      if (!deletedRows || deletedRows.length === 0) {
+        // Refetch to restore correct UI state
+        queryClient.invalidateQueries({ queryKey: ['saved-estimates', pipelineEntryId] });
+        toast({
+          title: 'Delete Failed',
+          description: 'Unable to delete this estimate. You may not have permission.',
+          variant: 'destructive',
+        });
+        return;
+      }
       
       // If this was the selected estimate, clear the selection
       if (currentSelectedId === estimateToRemove.id) {
@@ -255,6 +268,8 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
       });
     } catch (error) {
       console.error('Error deleting estimate:', error);
+      // Refetch to restore correct UI state on error
+      queryClient.invalidateQueries({ queryKey: ['saved-estimates', pipelineEntryId] });
       toast({
         title: 'Error',
         description: 'Failed to delete estimate.',
