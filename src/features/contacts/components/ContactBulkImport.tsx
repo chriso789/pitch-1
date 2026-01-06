@@ -1149,31 +1149,59 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
             };
           });
 
-          // Batch insert to prevent timeout for large imports
-          const batchSize = 100;
+          // Batch insert with smaller batches for large imports to prevent timeout
+          // Use smaller batches for large imports to avoid statement timeout
+          const batchSize = contacts.length > 500 ? 25 : contacts.length > 100 ? 50 : 100;
           let successCount = 0;
+          let failedCount = 0;
           const totalBatches = Math.ceil(contacts.length / batchSize);
 
           for (let i = 0; i < contacts.length; i += batchSize) {
             const batchNumber = Math.floor(i / batchSize) + 1;
-            setImportProgress(`Importing batch ${batchNumber} of ${totalBatches}...`);
+            const percentage = Math.round(((i + batchSize) / contacts.length) * 100);
+            setImportProgress(`Importing ${Math.min(i + batchSize, contacts.length)} of ${contacts.length} (${Math.min(percentage, 100)}%)`);
             
             const batch = contacts.slice(i, i + batchSize);
-            const { data, error } = await supabase
-              .from('contacts')
-              .insert(batch)
-              .select();
+            
+            try {
+              const { data, error } = await supabase
+                .from('contacts')
+                .insert(batch)
+                .select('id'); // Only select id to reduce response size
 
-            if (error) {
-              console.error(`Batch ${batchNumber} failed:`, error);
-              throw error;
+              if (error) {
+                console.error(`Batch ${batchNumber} failed:`, error);
+                failedCount += batch.length;
+                // Continue with next batch instead of throwing - more resilient
+                continue;
+              }
+              
+              successCount += data?.length || 0;
+            } catch (batchError) {
+              console.error(`Batch ${batchNumber} threw error:`, batchError);
+              failedCount += batch.length;
+              // Continue instead of throwing
+              continue;
             }
             
-            successCount += data?.length || 0;
+            // Add delay between batches for large imports to prevent overwhelming the DB
+            if (contacts.length > 100 && i + batchSize < contacts.length) {
+              await new Promise(resolve => setTimeout(resolve, 150));
+            }
+          }
+          
+          // Check if import had failures
+          if (failedCount > 0 && successCount === 0) {
+            throw new Error(`All ${failedCount} contacts failed to import. Please try with a smaller file.`);
           }
 
-          // Show success message
-          toast.success(`Imported ${successCount} contacts successfully`);
+          // Show success message with details
+          if (failedCount > 0) {
+            toast.warning(`Imported ${successCount} contacts. ${failedCount} contacts failed - try importing those separately.`);
+          } else {
+            toast.success(`Imported ${successCount} contacts successfully`);
+          }
+          
           
           // Warn about unmatched sales reps
           if (unmatchedReps.size > 0) {
