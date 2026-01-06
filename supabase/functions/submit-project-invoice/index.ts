@@ -31,6 +31,7 @@ serve(async (req) => {
 
     const { 
       project_id,
+      pipeline_entry_id,
       invoice_type,
       vendor_name,
       crew_name,
@@ -42,15 +43,21 @@ serve(async (req) => {
       notes
     } = await req.json();
 
-    if (!project_id || !invoice_type || !invoice_amount) {
-      throw new Error('project_id, invoice_type, and invoice_amount are required');
+    if (!project_id && !pipeline_entry_id) {
+      throw new Error('Either project_id or pipeline_entry_id is required');
+    }
+
+    if (!invoice_type || !invoice_amount) {
+      throw new Error('invoice_type and invoice_amount are required');
     }
 
     if (!['material', 'labor'].includes(invoice_type)) {
       throw new Error('invoice_type must be "material" or "labor"');
     }
 
-    console.log(`[submit-project-invoice] Submitting ${invoice_type} invoice for project: ${project_id}`);
+    const targetId = project_id || pipeline_entry_id;
+    const targetType = project_id ? 'project' : 'pipeline_entry';
+    console.log(`[submit-project-invoice] Submitting ${invoice_type} invoice for ${targetType}: ${targetId}`);
 
     // Get user's tenant
     const { data: profile } = await supabase
@@ -63,20 +70,24 @@ serve(async (req) => {
       throw new Error('User has no tenant');
     }
 
-    // Get project's pipeline_entry_id
-    const { data: project } = await supabase
-      .from('projects')
-      .select('pipeline_entry_id')
-      .eq('id', project_id)
-      .single();
+    // Get project's pipeline_entry_id if project_id is provided
+    let effectivePipelineEntryId = pipeline_entry_id;
+    if (project_id && !effectivePipelineEntryId) {
+      const { data: project } = await supabase
+        .from('projects')
+        .select('pipeline_entry_id')
+        .eq('id', project_id)
+        .single();
+      effectivePipelineEntryId = project?.pipeline_entry_id;
+    }
 
     // Create invoice record
     const { data: invoice, error: invoiceError } = await supabase
       .from('project_cost_invoices')
       .insert({
         tenant_id: profile.tenant_id,
-        project_id,
-        pipeline_entry_id: project?.pipeline_entry_id,
+        project_id: project_id || null,
+        pipeline_entry_id: effectivePipelineEntryId || null,
         invoice_type,
         vendor_name: vendor_name || null,
         crew_name: crew_name || null,
@@ -99,12 +110,19 @@ serve(async (req) => {
 
     console.log(`[submit-project-invoice] Created invoice: ${invoice.id}`);
 
-    // Calculate new totals from all invoices
-    const { data: allInvoices } = await supabase
+    // Calculate new totals from all invoices (by project_id or pipeline_entry_id)
+    let invoiceQuery = supabase
       .from('project_cost_invoices')
       .select('invoice_type, invoice_amount')
-      .eq('project_id', project_id)
       .in('status', ['pending', 'approved']);
+    
+    if (project_id) {
+      invoiceQuery = invoiceQuery.eq('project_id', project_id);
+    } else if (effectivePipelineEntryId) {
+      invoiceQuery = invoiceQuery.eq('pipeline_entry_id', effectivePipelineEntryId);
+    }
+    
+    const { data: allInvoices } = await invoiceQuery;
 
     const materialTotal = (allInvoices || [])
       .filter(inv => inv.invoice_type === 'material')
@@ -114,31 +132,36 @@ serve(async (req) => {
       .filter(inv => inv.invoice_type === 'labor')
       .reduce((sum, inv) => sum + parseFloat(inv.invoice_amount), 0);
 
-    // Update reconciliation with new actual costs
-    const { data: reconciliation, error: reconError } = await supabase
-      .from('project_cost_reconciliation')
-      .update({
-        actual_material_cost: materialTotal,
-        actual_labor_cost: laborTotal,
-        status: 'in_progress',
-        updated_at: new Date().toISOString()
-      })
-      .eq('project_id', project_id)
-      .select()
-      .single();
+    // Update reconciliation with new actual costs (only if project_id exists)
+    let reconciliation = null;
+    if (project_id) {
+      const { data: reconData, error: reconError } = await supabase
+        .from('project_cost_reconciliation')
+        .update({
+          actual_material_cost: materialTotal,
+          actual_labor_cost: laborTotal,
+          status: 'in_progress',
+          updated_at: new Date().toISOString()
+        })
+        .eq('project_id', project_id)
+        .select()
+        .single();
 
-    if (reconError) {
-      console.error('[submit-project-invoice] Error updating reconciliation:', reconError);
-      // Don't fail - reconciliation might not exist yet
+      if (reconError) {
+        console.error('[submit-project-invoice] Error updating reconciliation:', reconError);
+        // Don't fail - reconciliation might not exist yet
+      } else {
+        reconciliation = reconData;
+      }
+
+      // Update production workflow status
+      await supabase
+        .from('production_workflows')
+        .update({
+          cost_verification_status: 'in_progress'
+        })
+        .eq('project_id', project_id);
     }
-
-    // Update production workflow status
-    await supabase
-      .from('production_workflows')
-      .update({
-        cost_verification_status: 'in_progress'
-      })
-      .eq('project_id', project_id);
 
     console.log(`[submit-project-invoice] Updated reconciliation - Materials: $${materialTotal}, Labor: $${laborTotal}`);
 

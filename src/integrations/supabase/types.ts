@@ -16515,7 +16515,7 @@ export type Database = {
           invoice_type: string
           notes: string | null
           pipeline_entry_id: string | null
-          project_id: string
+          project_id: string | null
           rejection_reason: string | null
           status: string | null
           tenant_id: string
@@ -16537,7 +16537,7 @@ export type Database = {
           invoice_type: string
           notes?: string | null
           pipeline_entry_id?: string | null
-          project_id: string
+          project_id?: string | null
           rejection_reason?: string | null
           status?: string | null
           tenant_id: string
@@ -16559,7 +16559,7 @@ export type Database = {
           invoice_type?: string
           notes?: string | null
           pipeline_entry_id?: string | null
-          project_id?: string
+          project_id?: string | null
           rejection_reason?: string | null
           status?: string | null
           tenant_id?: string

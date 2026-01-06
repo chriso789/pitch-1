@@ -18,7 +18,7 @@ import { toast } from '@/components/ui/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import EstimateHyperlinkBar from '@/components/estimates/EstimateHyperlinkBar';
-import RepProfitBreakdown from '@/components/estimates/RepProfitBreakdown';
+import ProfitCenterPanel from '@/components/estimates/ProfitCenterPanel';
 import { CompactCommunicationHub, ActivityItem } from '@/components/communication/CompactCommunicationHub';
 import MeasurementGating from '@/components/estimates/MeasurementGating';
 import { EnhancedEstimateBuilder } from '@/components/EnhancedEstimateBuilder';
@@ -169,30 +169,10 @@ const LaborSection = ({ pipelineEntryId }: { pipelineEntryId: string }) => {
   );
 };
 
-// Profit Section with rep commission breakdown
+// Profit Section with rep commission breakdown and invoice upload
 const ProfitSection = ({ pipelineEntryId }: { pipelineEntryId: string }) => {
-  // Fetch estimate data for costs and selling price
-  const { data: estimateData } = useTanstackQuery({
-    queryKey: ['estimate-costs', pipelineEntryId],
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .rpc('api_estimate_hyperlink_bar', { p_pipeline_entry_id: pipelineEntryId });
-      if (error) throw error;
-      return data as { materials: number; labor: number; sale_price: number } | null;
-    }
-  });
-
-  const sellingPrice = estimateData?.sale_price || 0;
-  const materialCost = estimateData?.materials || 0;
-  const laborCost = estimateData?.labor || 0;
-
   return (
-    <RepProfitBreakdown
-      pipelineEntryId={pipelineEntryId}
-      sellingPrice={sellingPrice}
-      materialCost={materialCost}
-      laborCost={laborCost}
-    />
+    <ProfitCenterPanel pipelineEntryId={pipelineEntryId} />
   );
 };
 
