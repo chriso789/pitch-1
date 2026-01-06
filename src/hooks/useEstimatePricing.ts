@@ -60,7 +60,7 @@ export function useEstimatePricing(initialItems: LineItem[] = []): UseEstimatePr
   const [config, setConfigState] = useState<PricingConfig>(DEFAULT_CONFIG);
   const [fixedPrice, setFixedPriceState] = useState<number | null>(null);
 
-  const isFixedPrice = fixedPrice !== null && fixedPrice > 0;
+  const isFixedPrice = fixedPrice !== null;
 
   // Separate items by type
   const materialItems = useMemo(() => 
