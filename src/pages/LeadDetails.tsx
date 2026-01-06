@@ -29,6 +29,7 @@ import { PhoneNumberSelector } from '@/components/communication/PhoneNumberSelec
 import { useLatestMeasurement } from '@/hooks/useMeasurement';
 import { LinearFeaturesPanel } from '@/components/measurements/LinearFeaturesPanel';
 import { PullMeasurementsButton } from '@/components/measurements/PullMeasurementsButton';
+import { ImportReportButton } from '@/components/measurements/ImportReportButton';
 import { ApprovedMeasurementsList } from '@/components/measurements/ApprovedMeasurementsList';
 import { CallStatusMonitor } from '@/components/communication/CallStatusMonitor';
 import { CallDispositionDialog } from '@/components/communication/CallDispositionDialog';
@@ -363,13 +364,24 @@ const LeadDetails = () => {
             {/* Measurement Tools Section */}
             <Card>
               <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Ruler className="h-5 w-5" />
-                  Roof Measurements
-                </CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Choose how to measure the roof - manually draw or use AI automation
-                </p>
+                <div className="flex items-center justify-between">
+                  <div>
+                    <CardTitle className="flex items-center gap-2">
+                      <Ruler className="h-5 w-5" />
+                      Roof Measurements
+                    </CardTitle>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      Choose how to measure the roof - manually draw or use AI automation
+                    </p>
+                  </div>
+                  <ImportReportButton 
+                    pipelineEntryId={id!}
+                    onSuccess={() => {
+                      refetchMeasurements();
+                      refetchRequirements();
+                    }}
+                  />
+                </div>
               </CardHeader>
               <CardContent>
                 <PullMeasurementsButton 
