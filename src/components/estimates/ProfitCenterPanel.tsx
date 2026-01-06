@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
@@ -44,6 +44,20 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 }) => {
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState('summary');
+
+  // Listen for invoice updates from DocumentsTab
+  useEffect(() => {
+    const handleInvoiceUpdate = (event: CustomEvent) => {
+      if (event.detail?.pipelineEntryId === pipelineEntryId) {
+        queryClient.invalidateQueries({ queryKey: ['pipeline-invoices', pipelineEntryId] });
+      }
+    };
+
+    window.addEventListener('invoice-updated', handleInvoiceUpdate as EventListener);
+    return () => {
+      window.removeEventListener('invoice-updated', handleInvoiceUpdate as EventListener);
+    };
+  }, [pipelineEntryId, queryClient]);
 
   // Fetch sales rep's commission settings
   const { data: salesRepData, isLoading: isLoadingRep } = useQuery({

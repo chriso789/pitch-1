@@ -350,6 +350,11 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
       setInvoiceNumber('');
       fetchDocuments();
       onUploadComplete?.();
+      
+      // Dispatch event to refresh Profit Center panel
+      window.dispatchEvent(new CustomEvent('invoice-updated', { 
+        detail: { pipelineEntryId } 
+      }));
 
     } catch (error: any) {
       console.error('Invoice upload error:', error);
