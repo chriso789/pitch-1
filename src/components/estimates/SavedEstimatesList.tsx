@@ -7,7 +7,16 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Loader2, FileText, ExternalLink, TrendingUp, TrendingDown, Check, Pencil, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
-import { PermanentDeleteDialog } from '@/components/PermanentDeleteDialog';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-US', {
@@ -49,6 +58,7 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
   const queryClient = useQueryClient();
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [estimateToDelete, setEstimateToDelete] = useState<SavedEstimate | null>(null);
+  const [showCannotDeleteDialog, setShowCannotDeleteDialog] = useState(false);
   
   // Fetch the current selected estimate from pipeline_entries metadata
   const { data: pipelineData } = useQuery({
@@ -338,7 +348,12 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                   onClick={(e) => {
                     e.stopPropagation();
                     setEstimateToDelete(estimate);
-                    setDeleteDialogOpen(true);
+                    // Check if this is the only estimate
+                    if (estimates && estimates.length === 1) {
+                      setShowCannotDeleteDialog(true);
+                    } else {
+                      setDeleteDialogOpen(true);
+                    }
                   }}
                   className="h-8 px-2 text-muted-foreground hover:text-destructive"
                   title="Delete Estimate"
@@ -362,13 +377,49 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
         })}
       </CardContent>
 
-      <PermanentDeleteDialog
-        open={deleteDialogOpen}
-        onOpenChange={setDeleteDialogOpen}
-        itemName={estimateToDelete?.estimate_number || ''}
-        itemType="estimate"
-        onConfirm={handleDeleteEstimate}
-      />
+      {/* Simple delete confirmation dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Estimate?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete <strong>{estimateToDelete?.estimate_number}</strong>? This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteEstimate}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Cannot delete last estimate dialog */}
+      <AlertDialog open={showCannotDeleteDialog} onOpenChange={setShowCannotDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cannot Delete Last Estimate</AlertDialogTitle>
+            <AlertDialogDescription>
+              You must have at least one estimate for this project. Create a new estimate first, then you can delete this one.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>OK</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setShowCannotDeleteDialog(false);
+                onCreateNew?.();
+              }}
+            >
+              Create New Estimate
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </Card>
   );
 };
