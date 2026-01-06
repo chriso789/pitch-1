@@ -224,7 +224,11 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
 
   return (
     <div className="space-y-6">
-      <BackButton onClick={onBack} />
+      <BackButton 
+        label="Back to Dashboard"
+        fallbackPath="/dashboard"
+        respectHistory={false}
+      />
       
       {/* Project Header */}
       <div className="flex items-start justify-between">
@@ -458,6 +462,11 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
               <InvoiceUploadCard
                 projectId={projectId}
                 invoiceType="labor"
+                onSuccess={fetchProjectDetails}
+              />
+              <InvoiceUploadCard
+                projectId={projectId}
+                invoiceType="overhead"
                 onSuccess={fetchProjectDetails}
               />
             </div>

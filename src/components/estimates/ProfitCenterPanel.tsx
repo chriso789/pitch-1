@@ -28,9 +28,10 @@ interface SalesRepData {
 
 interface InvoiceData {
   id: string;
-  invoice_type: 'material' | 'labor';
+  invoice_type: 'material' | 'labor' | 'overhead';
   vendor_name: string | null;
   crew_name: string | null;
+  overhead_category?: string | null;
   invoice_number: string | null;
   invoice_amount: number;
   invoice_date: string | null;
@@ -103,7 +104,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
         .from('project_cost_invoices')
         .select('*')
         .eq('pipeline_entry_id', pipelineEntryId)
-        .in('status', ['pending', 'approved'])
+        .in('status', ['pending', 'approved', 'verified'])
         .order('created_at', { ascending: false });
       
       if (error) throw error;
@@ -143,10 +144,15 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const actualLaborCost = (invoices || [])
     .filter(inv => inv.invoice_type === 'labor')
     .reduce((sum, inv) => sum + inv.invoice_amount, 0);
+  
+  const actualOverheadCost = (invoices || [])
+    .filter(inv => inv.invoice_type === 'overhead')
+    .reduce((sum, inv) => sum + inv.invoice_amount, 0);
 
   // Use actual if invoices exist, otherwise use original
   const hasActualMaterial = actualMaterialCost > 0;
   const hasActualLabor = actualLaborCost > 0;
+  const hasActualOverhead = actualOverheadCost > 0;
   
   const effectiveMaterialCost = hasActualMaterial ? actualMaterialCost : originalMaterialCost;
   const effectiveLaborCost = hasActualLabor ? actualLaborCost : originalLaborCost;
@@ -155,8 +161,8 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   const materialVariance = actualMaterialCost - originalMaterialCost;
   const laborVariance = actualLaborCost - originalLaborCost;
 
-  // Calculate breakdown using effective costs
-  const totalCost = effectiveMaterialCost + effectiveLaborCost;
+  // Calculate breakdown using effective costs (include overhead invoices in total cost)
+  const totalCost = effectiveMaterialCost + effectiveLaborCost + actualOverheadCost;
   const overheadAmount = sellingPrice * (overheadRate / 100);
   const grossProfit = sellingPrice - totalCost;
   const netProfit = grossProfit - overheadAmount;
@@ -167,6 +173,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
   // Invoice counts
   const materialInvoiceCount = (invoices || []).filter(inv => inv.invoice_type === 'material').length;
   const laborInvoiceCount = (invoices || []).filter(inv => inv.invoice_type === 'labor').length;
+  const overheadInvoiceCount = (invoices || []).filter(inv => inv.invoice_type === 'overhead').length;
 
   const hasValidData = sellingPrice > 0 && (originalMaterialCost > 0 || originalLaborCost > 0);
 
@@ -333,12 +340,12 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                 </div>
 
                 {/* Invoice Status */}
-                {(materialInvoiceCount > 0 || laborInvoiceCount > 0) && (
+                {(materialInvoiceCount > 0 || laborInvoiceCount > 0 || overheadInvoiceCount > 0) && (
                   <div className="bg-muted/50 rounded-lg p-3">
                     <div className="flex items-center gap-2 text-sm">
                       <FileText className="h-4 w-4 text-muted-foreground" />
                       <span className="text-muted-foreground">
-                        {materialInvoiceCount} material, {laborInvoiceCount} labor invoice(s) uploaded
+                        {materialInvoiceCount} material, {laborInvoiceCount} labor, {overheadInvoiceCount} overhead invoice(s) uploaded
                       </span>
                     </div>
                   </div>
@@ -359,6 +366,11 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                 invoiceType="labor"
                 onSuccess={handleInvoiceSuccess}
               />
+              <InvoiceUploadCard
+                pipelineEntryId={pipelineEntryId}
+                invoiceType="overhead"
+                onSuccess={handleInvoiceSuccess}
+              />
             </div>
 
             {/* Recent Invoices List */}
@@ -371,14 +383,23 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                       <div className="flex items-center gap-2">
                         {invoice.invoice_type === 'material' ? (
                           <Package className="h-3 w-3 text-blue-500" />
-                        ) : (
+                        ) : invoice.invoice_type === 'labor' ? (
                           <Wrench className="h-3 w-3 text-orange-500" />
+                        ) : (
+                          <Receipt className="h-3 w-3 text-purple-500" />
                         )}
-                        <span>{invoice.vendor_name || invoice.crew_name || 'Unknown'}</span>
+                        <span>{invoice.vendor_name || invoice.crew_name || invoice.overhead_category || 'Unknown'}</span>
                       </div>
                       <div className="flex items-center gap-2">
                         <span className="font-medium">{formatCurrency(invoice.invoice_amount)}</span>
-                        <Badge variant="outline" className="text-xs">
+                        <Badge 
+                          variant="outline" 
+                          className={cn(
+                            "text-xs",
+                            invoice.status === 'verified' ? "bg-green-500/10 text-green-600 border-green-500/30" :
+                            invoice.status === 'pending' ? "bg-yellow-500/10 text-yellow-600 border-yellow-500/30" : ""
+                          )}
+                        >
                           {invoice.status}
                         </Badge>
                       </div>
