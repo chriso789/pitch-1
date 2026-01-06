@@ -18,13 +18,15 @@ import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
 interface InvoiceUploadCardProps {
-  projectId: string;
+  projectId?: string;
+  pipelineEntryId?: string;
   invoiceType: 'material' | 'labor';
   onSuccess?: (invoice: any) => void;
 }
 
 export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
   projectId,
+  pipelineEntryId,
   invoiceType,
   onSuccess
 }) => {
@@ -49,7 +51,8 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
     setUploading(true);
     try {
       const fileExt = file.name.split('.').pop();
-      const fileName = `${projectId}/${invoiceType}-${Date.now()}.${fileExt}`;
+      const folderId = projectId || pipelineEntryId || 'unknown';
+      const fileName = `${folderId}/${invoiceType}-${Date.now()}.${fileExt}`;
       
       const { data, error } = await supabase.storage
         .from('project-invoices')
@@ -92,11 +95,21 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
       return;
     }
 
+    if (!projectId && !pipelineEntryId) {
+      toast({
+        title: 'Validation Error',
+        description: 'Project or pipeline entry is required',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('submit-project-invoice', {
         body: {
-          project_id: projectId,
+          project_id: projectId || null,
+          pipeline_entry_id: pipelineEntryId || null,
           invoice_type: invoiceType,
           ...formData,
           invoice_amount: parseFloat(formData.invoice_amount)
