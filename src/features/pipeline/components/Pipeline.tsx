@@ -138,7 +138,7 @@ const Pipeline = () => {
 
       if (profile) {
         setUserRole(profile.role);
-        setIsManager(['master', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'].includes(profile.role));
+        setIsManager(['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'].includes(profile.role));
       }
     } catch (error) {
       console.error('Error fetching user role:', error);
@@ -182,11 +182,12 @@ const Pipeline = () => {
       // Load sales reps for assignment - FILTERED BY LOCATION
       const effectiveLocationId = filters.location !== 'all' ? filters.location : currentLocationId;
       
+      // Use valid app_role enum values (sales_rep doesn't exist in enum)
       let repsQuery = supabase
         .from('profiles')
         .select('id, first_name, last_name, role, tenant_id')
         .eq('tenant_id', effectiveTenantId)
-        .in('role', ['sales_rep', 'sales_manager', 'regional_manager', 'office_admin', 'corporate', 'owner'] as any)
+        .in('role', ['project_manager', 'sales_manager', 'regional_manager', 'office_admin', 'corporate', 'owner'])
         .eq('is_active', true);
       
       // If we have a location, filter by location assignments
@@ -203,7 +204,11 @@ const Pipeline = () => {
         }
       }
       
-      const { data: repsData } = await repsQuery;
+      const { data: repsData, error: repsError } = await repsQuery;
+      
+      if (repsError) {
+        console.error('Error fetching sales reps:', repsError);
+      }
       
       if (repsData) {
         // Filter out master users from other companies

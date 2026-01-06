@@ -5,6 +5,16 @@ import { corsHeaders } from '../_shared/cors.ts';
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 
+// Manager-level roles that can approve projects and move from ready_for_approval
+const MANAGER_ROLES = ['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'];
+
+// Legacy role mappings for backwards compatibility with transition_rules
+const LEGACY_ROLE_MAPPINGS: Record<string, string[]> = {
+  'admin': ['master', 'owner', 'corporate', 'office_admin'],
+  'manager': ['master', 'owner', 'corporate', 'office_admin', 'regional_manager', 'sales_manager'],
+  'sales_rep': ['project_manager'],
+};
+
 serve(async (req) => {
   // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
@@ -40,12 +50,16 @@ serve(async (req) => {
       });
     }
 
+    console.log(`[pipeline-drag-handler] User: ${user.id}, Role: ${profile.role}, Tenant: ${profile.tenant_id}`);
+
     const { pipelineEntryId, newStatus, fromStatus, reason } = await req.json();
+
+    console.log(`[pipeline-drag-handler] Transition: ${fromStatus} -> ${newStatus}, Entry: ${pipelineEntryId}`);
 
     // Get pipeline entry details
     const { data: pipelineEntry } = await supabase
       .from('pipeline_entries')
-      .select('*, status_entered_at')
+      .select('*, status_entered_at, contact_id')
       .eq('id', pipelineEntryId)
       .single();
 
@@ -56,6 +70,10 @@ serve(async (req) => {
       });
     }
 
+    // Determine if user has manager-level permissions using correct app_role values
+    const isManager = MANAGER_ROLES.includes(profile.role);
+    console.log(`[pipeline-drag-handler] isManager: ${isManager} (role: ${profile.role})`);
+
     // Check transition rules
     const { data: transitionRules } = await supabase
       .from('transition_rules')
@@ -65,22 +83,32 @@ serve(async (req) => {
       .eq('to_status', newStatus)
       .eq('is_active', true);
 
-    // If no specific rule found, use default permissions
-    const isManager = ['manager', 'admin', 'master'].includes(profile.role);
     const isBackward = isStatusBackward(fromStatus, newStatus);
     
     if (transitionRules && transitionRules.length > 0) {
       const rule = transitionRules[0];
       
-      // Check role permissions
-      if (rule.required_role && !rule.required_role.includes(profile.role)) {
-        return new Response(JSON.stringify({ 
-          error: 'Insufficient permissions',
-          message: `This transition requires one of the following roles: ${rule.required_role.join(', ')}`
-        }), {
-          status: 403,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      // Check role permissions with legacy mapping support
+      if (rule.required_role && rule.required_role.length > 0) {
+        const hasRequiredRole = rule.required_role.some((requiredRole: string) => {
+          // Direct match
+          if (requiredRole === profile.role) return true;
+          // Legacy mapping: check if user's role is in the mapped roles
+          const mappedRoles = LEGACY_ROLE_MAPPINGS[requiredRole];
+          if (mappedRoles && mappedRoles.includes(profile.role)) return true;
+          return false;
         });
+
+        if (!hasRequiredRole) {
+          console.log(`[pipeline-drag-handler] Role check failed. Required: ${rule.required_role.join(', ')}, User: ${profile.role}`);
+          return new Response(JSON.stringify({ 
+            error: 'Insufficient permissions',
+            message: `This transition requires one of the following roles: ${rule.required_role.join(', ')}`
+          }), {
+            status: 403,
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
       }
 
       // Check if reason is required
@@ -125,6 +153,7 @@ serve(async (req) => {
 
       // Prevent non-managers from moving OUT of 'ready_for_approval' status
       if (fromStatus === 'ready_for_approval' && !isManager) {
+        console.log(`[pipeline-drag-handler] Blocking non-manager from moving out of ready_for_approval`);
         return new Response(JSON.stringify({ 
           error: 'Manager approval required',
           message: 'Only managers can move jobs from Ready for Approval status'
@@ -136,6 +165,7 @@ serve(async (req) => {
 
       // Prevent non-managers from moving directly to 'project'
       if (newStatus === 'project' && !isManager) {
+        console.log(`[pipeline-drag-handler] Blocking non-manager from moving to project`);
         return new Response(JSON.stringify({ 
           error: 'Manager approval required',
           message: 'Only managers can approve projects. Please move to "Hold (Mgr Review)" first.'
@@ -187,6 +217,112 @@ serve(async (req) => {
       }
     }
 
+    // SPECIAL HANDLING: If moving to 'project', create project record if not exists
+    if (newStatus === 'project') {
+      console.log(`[pipeline-drag-handler] Converting to project for pipeline entry: ${pipelineEntryId}`);
+      
+      // Check if project already exists for this pipeline entry
+      const { data: existingProject } = await supabase
+        .from('projects')
+        .select('id')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .maybeSingle();
+
+      if (!existingProject) {
+        console.log(`[pipeline-drag-handler] Creating new project for pipeline entry: ${pipelineEntryId}`);
+        
+        // Get full pipeline entry with contact info for project creation
+        const { data: fullEntry } = await supabase
+          .from('pipeline_entries')
+          .select(`
+            *,
+            contacts (
+              id, first_name, last_name, address_street, address_city, address_state, address_zip
+            )
+          `)
+          .eq('id', pipelineEntryId)
+          .single();
+
+        if (fullEntry) {
+          const contact = fullEntry.contacts;
+          const projectName = contact 
+            ? `${contact.first_name} ${contact.last_name} - ${contact.address_street || 'Project'}`
+            : `Project ${new Date().toISOString().split('T')[0]}`;
+
+          // Create the project
+          const { data: newProject, error: projectError } = await supabase
+            .from('projects')
+            .insert({
+              tenant_id: profile.tenant_id,
+              pipeline_entry_id: pipelineEntryId,
+              contact_id: fullEntry.contact_id,
+              location_id: fullEntry.location_id,
+              name: projectName,
+              status: 'active',
+              project_type: fullEntry.lead_type || 'roofing',
+              address_street: contact?.address_street,
+              address_city: contact?.address_city,
+              address_state: contact?.address_state,
+              address_zip: contact?.address_zip,
+              selling_price: fullEntry.selling_price,
+              gross_profit: fullEntry.gross_profit,
+              created_by: user.id,
+              approved_by: user.id,
+              approved_at: new Date().toISOString()
+            })
+            .select()
+            .single();
+
+          if (projectError) {
+            console.error('[pipeline-drag-handler] Error creating project:', projectError);
+            return new Response(JSON.stringify({ 
+              error: 'Failed to create project',
+              message: projectError.message 
+            }), {
+              status: 500,
+              headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+            });
+          }
+
+          console.log(`[pipeline-drag-handler] Project created: ${newProject.id}`);
+
+          // Create production workflow
+          try {
+            await supabase
+              .from('production_workflows')
+              .insert({
+                tenant_id: profile.tenant_id,
+                project_id: newProject.id,
+                status: 'scheduled',
+                workflow_data: { initialized_from: 'pipeline_drag' }
+              });
+          } catch (workflowError) {
+            console.error('[pipeline-drag-handler] Error creating workflow (non-fatal):', workflowError);
+          }
+
+          // Log the conversion
+          await supabase
+            .from('communication_history')
+            .insert({
+              tenant_id: profile.tenant_id,
+              contact_id: fullEntry.contact_id,
+              communication_type: 'system',
+              direction: 'internal',
+              subject: 'Lead Converted to Project',
+              content: `Pipeline entry converted to project by ${profile.first_name} ${profile.last_name} via drag-and-drop`,
+              rep_id: user.id,
+              metadata: {
+                pipeline_entry_id: pipelineEntryId,
+                project_id: newProject.id,
+                converted_by: `${profile.first_name} ${profile.last_name}`
+              }
+            });
+        }
+      } else {
+        console.log(`[pipeline-drag-handler] Project already exists: ${existingProject.id}`);
+      }
+    }
+
     // Update pipeline entry status
     const { error: updateError } = await supabase
       .from('pipeline_entries')
@@ -208,20 +344,14 @@ serve(async (req) => {
     }
 
     // Update contact's current_stage if contact exists
-    const { data: contactEntry } = await supabase
-      .from('pipeline_entries')
-      .select('contact_id')
-      .eq('id', pipelineEntryId)
-      .single();
-
-    if (contactEntry?.contact_id) {
+    if (pipelineEntry?.contact_id) {
       await supabase
         .from('contacts')
         .update({ 
           qualification_status: newStatus,
           updated_at: new Date().toISOString()
         })
-        .eq('id', contactEntry.contact_id)
+        .eq('id', pipelineEntry.contact_id)
         .eq('tenant_id', profile.tenant_id);
     }
 
@@ -238,6 +368,7 @@ serve(async (req) => {
         is_backward: isBackward,
         metadata: {
           user_name: `${profile.first_name} ${profile.last_name}`,
+          user_role: profile.role,
           timestamp: new Date().toISOString()
         }
       });
@@ -248,7 +379,7 @@ serve(async (req) => {
       .insert({
         tenant_id: profile.tenant_id,
         pipeline_entry_id: pipelineEntryId,
-        contact_id: contactEntry?.contact_id,
+        contact_id: pipelineEntry?.contact_id,
         activity_type: 'status_change',
         title: `Stage changed from ${fromStatus} to ${newStatus}`,
         description: reason 
@@ -257,7 +388,7 @@ serve(async (req) => {
         status: 'completed'
       });
 
-    // Auto-approve if moving to hold and user is a sales rep
+    // Auto-approve if moving to hold and user is NOT a manager
     if (newStatus === 'hold_mgr_review' && !isManager) {
       // Create approval request
       await supabase
@@ -269,6 +400,8 @@ serve(async (req) => {
           notes: `Approval requested by ${profile.first_name} ${profile.last_name}`
         });
     }
+
+    console.log(`[pipeline-drag-handler] Success: ${fromStatus} -> ${newStatus}`);
 
     return new Response(JSON.stringify({ 
       success: true,
