@@ -27400,6 +27400,7 @@ export type Database = {
         Args: never
         Returns: {
           access_level: string
+          is_active: boolean
           is_primary: boolean
           location_count: number
           tenant_id: string
