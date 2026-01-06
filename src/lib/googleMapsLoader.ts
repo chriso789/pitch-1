@@ -1,43 +1,49 @@
 /**
  * Google Maps Dynamic Loader
- * Loads Google Maps API dynamically without exposing API key in client code
+ * Loads Google Maps API dynamically with API key from edge function
  */
 
 let isLoading = false;
 let isLoaded = false;
-const loadPromises: Array<(value: void) => void> = [];
+let loadedApiKey: string | null = null;
+const loadPromises: Array<{ resolve: (value: void) => void; reject: (error: Error) => void }>[] = [];
 
-export const loadGoogleMaps = (): Promise<void> => {
-  // Already loaded
-  if (isLoaded && window.google?.maps) {
+export const loadGoogleMaps = (apiKey: string): Promise<void> => {
+  // Already loaded with same key
+  if (isLoaded && window.google?.maps && loadedApiKey === apiKey) {
     return Promise.resolve();
   }
 
   // Currently loading - return existing promise
   if (isLoading) {
-    return new Promise((resolve) => {
-      loadPromises.push(resolve);
+    return new Promise((resolve, reject) => {
+      const checkInterval = setInterval(() => {
+        if (isLoaded && window.google?.maps) {
+          clearInterval(checkInterval);
+          resolve();
+        }
+      }, 100);
+      
+      // Timeout after 30 seconds
+      setTimeout(() => {
+        clearInterval(checkInterval);
+        if (!isLoaded) {
+          reject(new Error('Google Maps loading timeout'));
+        }
+      }, 30000);
     });
   }
 
   isLoading = true;
 
   return new Promise((resolve, reject) => {
-    // Create script element
-    const script = document.createElement('script');
-    
-    // Use the Supabase edge function proxy to get a signed URL or load via callback
-    // For now, we'll use the Maps JavaScript API with a callback approach
     const callbackName = '_googleMapsLoaded';
     
     // @ts-ignore - Adding callback to window
     window[callbackName] = () => {
       isLoaded = true;
       isLoading = false;
-      
-      // Resolve all waiting promises
-      loadPromises.forEach(promiseResolve => promiseResolve());
-      loadPromises.length = 0;
+      loadedApiKey = apiKey;
       
       resolve();
       
@@ -46,17 +52,16 @@ export const loadGoogleMaps = (): Promise<void> => {
       delete window[callbackName];
     };
 
+    const script = document.createElement('script');
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places,geometry&callback=${callbackName}`;
+    script.async = true;
+    script.defer = true;
+    
     script.onerror = (error) => {
       isLoading = false;
       console.error('Failed to load Google Maps', error);
       reject(new Error('Failed to load Google Maps API'));
     };
-
-    // Load via proxy endpoint that securely handles API key
-    // The key is stored in Supabase secrets, not exposed to client
-    script.src = `https://maps.googleapis.com/maps/api/js?libraries=places,geometry&callback=${callbackName}&loading=async`;
-    script.async = true;
-    script.defer = true;
     
     document.head.appendChild(script);
   });

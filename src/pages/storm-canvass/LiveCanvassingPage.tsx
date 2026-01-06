@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Camera } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
-import LiveLocationMap from '@/components/storm-canvass/LiveLocationMap';
+import GoogleLiveLocationMap from '@/components/storm-canvass/GoogleLiveLocationMap';
 import LiveStatsOverlay from '@/components/storm-canvass/LiveStatsOverlay';
 import MobileDispositionPanel from '@/components/storm-canvass/MobileDispositionPanel';
 import AddressSearchBar from '@/components/storm-canvass/AddressSearchBar';
@@ -310,7 +310,7 @@ export default function LiveCanvassingPage() {
 
       {/* Map Container - Always render map immediately */}
       <div className="flex-1 relative">
-        <LiveLocationMap
+        <GoogleLiveLocationMap
           userLocation={userLocation}
           currentAddress={currentAddress}
           onContactSelect={setSelectedContact}
