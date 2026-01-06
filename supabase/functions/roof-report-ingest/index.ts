@@ -26,6 +26,19 @@ function n(v: unknown, fallback = 0): number {
   return Number.isFinite(x) ? x : fallback;
 }
 
+// Safe base64 conversion for large byte arrays (avoids stack overflow)
+function bytesToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const chunkSize = 8192; // Process 8KB at a time
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, Math.min(i + chunkSize, bytes.length));
+    for (let j = 0; j < chunk.length; j++) {
+      binary += String.fromCharCode(chunk[j]);
+    }
+  }
+  return btoa(binary);
+}
+
 function parseIntSafe(s: string | null | undefined): number | null {
   if (!s) return null;
   const v = Number(String(s).replace(/,/g, ""));
@@ -251,7 +264,7 @@ function parseGeneric(textRaw: string) {
 // -----------------------------
 // AI Vision-powered extraction for image-based PDFs
 // -----------------------------
-async function extractWithVision(base64PdfPages: string[]): Promise<any> {
+async function extractWithVision(pdfBase64: string): Promise<any> {
   const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
   
   if (!lovableApiKey) {
@@ -259,26 +272,29 @@ async function extractWithVision(base64PdfPages: string[]): Promise<any> {
     return null;
   }
   
-  const systemPrompt = `You are a roofing measurement report analyzer with OCR capabilities. 
-You are analyzing images of a roof measurement report PDF. 
+  const systemPrompt = `You are a roofing measurement report analyzer with advanced OCR capabilities.
+You are analyzing a PDF roof measurement report. CAREFULLY EXAMINE EVERY PAGE for measurement data.
 
-CRITICAL: Extract ALL measurement data visible in the images. Pay close attention to:
-- Tables with measurements (Total Sq Ft, Facets, Predominant Pitch)
-- Linear Features sections (Eaves, Ridges, Hips, Valleys, Rakes)
-- Area Measurement sections
-- Address information
+CRITICAL INSTRUCTIONS:
+1. Look at EVERY page of the document - measurements are often on different pages
+2. Pay close attention to tables, diagrams, and measurement summaries
+3. Look for Linear Features sections (Eaves, Ridges, Hips, Valleys, Rakes)
+4. Look for Area Measurement sections and Total Sq Ft values
+5. Look for address information at the top of the report
+
+IMPORTANT: Extract the EXACT values shown. Do not estimate or guess.
 
 Return ONLY a valid JSON object (no markdown, no explanation) with these fields. Use null for any value not found:
 
 {
-  "provider": "detected provider name (e.g., 'roofreport', 'roofr', 'eagleview') or 'generic'",
-  "address": "property address if found",
+  "provider": "detected provider name (e.g., 'roofreport', 'roofr', 'eagleview', 'obrien') or 'generic'",
+  "address": "full property address if found",
   "total_area_sqft": number or null,
   "pitched_area_sqft": number or null,
   "flat_area_sqft": number or null,
   "perimeter_ft": number or null,
   "facet_count": number or null,
-  "predominant_pitch": "X/12 format or null",
+  "predominant_pitch": "X/12 format string or null",
   "ridges_ft": number or null,
   "hips_ft": number or null,
   "valleys_ft": number or null,
@@ -289,33 +305,22 @@ Return ONLY a valid JSON object (no markdown, no explanation) with these fields.
   "drip_edge_ft": number or null
 }
 
-Examples of what to look for:
-- "Total Sq Ft: 3,656" → total_area_sqft: 3656
-- "Facets: 9" → facet_count: 9
-- "Predominant Pitch: 5/12" → predominant_pitch: "5/12"
-- "Eaves: 145'" or "Eaves: 145 ft" → eaves_ft: 145
-- "Ridges: 116'" → ridges_ft: 116
-- "Hips: 129'" → hips_ft: 129
-- "Valleys: 0 ft" → valleys_ft: 0`;
+EXAMPLES of what to look for on each page:
+- "Total Sq Ft: 3,656" or "Area: 3,656 sq ft" → total_area_sqft: 3656
+- "Facets: 9" or "9 facets" → facet_count: 9
+- "Predominant Pitch: 5/12" or "Pitch: 5:12" → predominant_pitch: "5/12"
+- "Eaves: 144' 8\"" or "Eaves: 145 ft" → eaves_ft: 145
+- "Ridges: 116'" or "Ridge Length: 116 ft" → ridges_ft: 116
+- "Hips: 128' 11\"" or "Hips: 129 ft" → hips_ft: 129
+- "Valleys: 0 ft" or "Valley: 0'" → valleys_ft: 0
+- "Rakes: 0 ft" → rakes_ft: 0
+
+Be thorough - check ALL pages for data.`;
 
   try {
-    console.log("roof-report-ingest: Calling Vision API for OCR extraction with", base64PdfPages.length, "page(s)...");
+    console.log("roof-report-ingest: Calling Gemini Vision API for PDF analysis...");
     
-    // Build content array with images
-    const content: any[] = [
-      { type: "text", text: "Extract all roofing measurements from these report pages:" }
-    ];
-    
-    // Add each page image (limit to first 6 pages to stay within limits)
-    for (const pageBase64 of base64PdfPages.slice(0, 6)) {
-      content.push({
-        type: "image_url",
-        image_url: {
-          url: pageBase64.startsWith('data:') ? pageBase64 : `data:image/png;base64,${pageBase64}`
-        }
-      });
-    }
-    
+    // Use Gemini which can process PDFs natively
     const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
       method: "POST",
       headers: {
@@ -323,12 +328,22 @@ Examples of what to look for:
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
-        model: "gpt-4o",
+        model: "google/gemini-2.5-flash", // Gemini can process PDFs directly
         messages: [
           { role: "system", content: systemPrompt },
-          { role: "user", content: content }
+          { 
+            role: "user", 
+            content: [
+              { type: "text", text: "Analyze this roof measurement report PDF and extract ALL measurements from EVERY page:" },
+              { 
+                type: "image_url", 
+                image_url: { 
+                  url: `data:application/pdf;base64,${pdfBase64}` 
+                } 
+              }
+            ]
+          }
         ],
-        max_tokens: 1500,
       }),
     });
     
@@ -792,18 +807,31 @@ serve(async (req) => {
     if (isImageBasedPdf) {
       console.log("roof-report-ingest: Image-based PDF detected (only", extractedText.length, "chars). Using Vision API...");
       
-      // Convert PDF bytes to base64 for Vision API
-      const pdfBase64 = btoa(String.fromCharCode(...pdfBytes));
-      
-      // Try Vision API with the PDF as a data URL
-      // First, attempt to use the file_url if available (Vision API can often process PDFs directly)
-      const visionParsed = await extractWithVision([`data:application/pdf;base64,${pdfBase64}`]);
-      
-      if (visionParsed && hasValidMeasurements(visionParsed)) {
-        parsed = visionParsed;
-        console.log("roof-report-ingest: Vision API extraction successful");
-      } else {
-        console.log("roof-report-ingest: Vision API failed, falling back to generic parser");
+      try {
+        // Convert PDF bytes to base64 using chunked conversion (avoids stack overflow)
+        const pdfBase64 = bytesToBase64(pdfBytes);
+        console.log("roof-report-ingest: PDF converted to base64, length:", pdfBase64.length);
+        
+        // Try Vision API with Gemini which can process PDFs directly
+        const visionParsed = await extractWithVision(pdfBase64);
+        
+        if (visionParsed && hasValidMeasurements(visionParsed)) {
+          parsed = visionParsed;
+          console.log("roof-report-ingest: Vision API extraction successful", {
+            total_area: visionParsed.total_area_sqft,
+            facets: visionParsed.facet_count,
+            pitch: visionParsed.predominant_pitch,
+            eaves: visionParsed.eaves_ft,
+            ridges: visionParsed.ridges_ft,
+            hips: visionParsed.hips_ft,
+            valleys: visionParsed.valleys_ft
+          });
+        } else {
+          console.log("roof-report-ingest: Vision API returned no valid measurements, falling back to generic parser");
+          parsed = parseGeneric(extractedText);
+        }
+      } catch (visionErr) {
+        console.error("roof-report-ingest: Vision API error:", visionErr);
         parsed = parseGeneric(extractedText);
       }
     } else {
