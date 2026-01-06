@@ -195,24 +195,29 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
   const handleDeleteEstimate = async () => {
     if (!estimateToDelete) return;
     
+    // Store reference and close dialog immediately for better UX
+    const estimateToRemove = estimateToDelete;
+    setDeleteDialogOpen(false);
+    setEstimateToDelete(null);
+    
     try {
       // If this estimate has a PDF, delete it from storage first
-      if (estimateToDelete.pdf_url) {
+      if (estimateToRemove.pdf_url) {
         await supabase.storage
           .from('documents')
-          .remove([estimateToDelete.pdf_url]);
+          .remove([estimateToRemove.pdf_url]);
       }
       
       // Delete the estimate from the database
       const { error } = await supabase
         .from('enhanced_estimates')
         .delete()
-        .eq('id', estimateToDelete.id);
+        .eq('id', estimateToRemove.id);
       
       if (error) throw error;
       
       // If this was the selected estimate, clear the selection
-      if (currentSelectedId === estimateToDelete.id) {
+      if (currentSelectedId === estimateToRemove.id) {
         const { data: currentEntry } = await supabase
           .from('pipeline_entries')
           .select('metadata')
@@ -232,17 +237,15 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
           .eq('id', pipelineEntryId);
       }
       
-      // Refresh the estimates list
-      queryClient.invalidateQueries({ queryKey: ['saved-estimates', pipelineEntryId] });
+      // Immediately refetch to update UI
+      await queryClient.refetchQueries({ queryKey: ['saved-estimates', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-entry-metadata', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
       
       toast({
         title: 'Estimate Deleted',
-        description: `${estimateToDelete.estimate_number} has been permanently deleted.`,
+        description: `${estimateToRemove.estimate_number} has been permanently deleted.`,
       });
-      
-      setEstimateToDelete(null);
     } catch (error) {
       console.error('Error deleting estimate:', error);
       toast({
