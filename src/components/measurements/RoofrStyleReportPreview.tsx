@@ -337,11 +337,12 @@ export function RoofrStyleReportPreview({
       
       const { data: profile } = await supabase
         .from('profiles')
-        .select('tenant_id')
+        .select('tenant_id, active_tenant_id')
         .eq('id', user.id)
         .maybeSingle();
       
-      if (!profile?.tenant_id) throw new Error('No tenant found');
+      const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+      if (!tenantId) throw new Error('No tenant found');
       
       // Generate PDF
       setShowHiddenPages(true);
@@ -361,7 +362,7 @@ export function RoofrStyleReportPreview({
       }
       
       const filename = `measurement-report-${Date.now()}.pdf`;
-      const storagePath = `${profile.tenant_id}/pipeline/${pipelineEntryId || 'general'}/documents/${filename}`;
+      const storagePath = `${tenantId}/pipeline/${pipelineEntryId || 'general'}/documents/${filename}`;
       
       // Upload to documents bucket
       const { error: uploadError } = await supabase.storage
@@ -374,7 +375,7 @@ export function RoofrStyleReportPreview({
       const { data: docData, error: docError } = await supabase
         .from('documents')
         .insert({
-          tenant_id: profile.tenant_id,
+          tenant_id: tenantId,
           pipeline_entry_id: pipelineEntryId || null,
           document_type: 'measurement_report',
           filename,
@@ -392,7 +393,7 @@ export function RoofrStyleReportPreview({
       // Save measurement approval with tags for smart templates
       if (pipelineEntryId && measurementId) {
         await supabase.from('measurement_approvals').upsert({
-          tenant_id: profile.tenant_id,
+          tenant_id: tenantId,
           pipeline_entry_id: pipelineEntryId,
           measurement_id: measurementId,
           approved_by: user.id,
