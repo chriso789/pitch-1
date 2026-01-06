@@ -73,8 +73,9 @@ export const useCompanySwitcher = () => {
     gcTime: 10 * 60 * 1000, // Keep in cache for 10 minutes
   });
 
-  // Update local state when data changes
-  const companies = companiesData?.companies || [];
+  // Update local state when data changes - filter out inactive companies from the switcher
+  const allCompanies = companiesData?.companies || [];
+  const companies = allCompanies.filter(c => c.is_active !== false);
   const computedActiveCompanyId = activeCompanyId || companiesData?.activeTenantId || null;
 
   const [isSwitching, setIsSwitching] = useState(false);
