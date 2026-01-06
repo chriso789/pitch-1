@@ -50,7 +50,7 @@ serve(async (req) => {
     }
 
     // Check if user has permission to approve jobs
-    if (!['admin', 'manager', 'master'].includes(profile.role)) {
+    if (!['owner', 'admin', 'manager', 'master'].includes(profile.role)) {
       return new Response(JSON.stringify({ error: 'Insufficient permissions' }), {
         status: 403,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -79,7 +79,7 @@ serve(async (req) => {
     const estimatedValue = pipelineEntry.estimated_value || 0;
     const userRole = profile.role || 'user';
 
-    if (estimatedValue > 25000 && !['admin', 'manager', 'master'].includes(userRole)) {
+    if (estimatedValue > 25000 && !['owner', 'admin', 'manager', 'master'].includes(userRole)) {
       // Check if there's an approved request for this pipeline entry
       const { data: approvalCheck } = await supabase
         .from('manager_approval_queue')
