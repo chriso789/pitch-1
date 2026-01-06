@@ -16,7 +16,7 @@ interface PermanentDeleteDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   itemName: string;
-  itemType: "contact" | "job";
+  itemType: "contact" | "job" | "estimate";
   onConfirm: () => Promise<void>;
 }
 
