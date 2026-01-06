@@ -70,6 +70,7 @@ export const PlatformAdmin = () => {
   const [selectedCompany, setSelectedCompany] = useState<Company | null>(null);
   const [onboardingOpen, setOnboardingOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("active");
   const { toast } = useToast();
 
   useEffect(() => {
@@ -198,7 +199,10 @@ export const PlatformAdmin = () => {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card 
+          className="cursor-pointer hover:border-primary transition-colors"
+          onClick={() => setActiveTab("inactive")}
+        >
           <CardContent className="pt-6">
             <div className="flex items-center gap-3">
               <div className="p-2 bg-destructive/10 rounded-lg">
@@ -207,6 +211,7 @@ export const PlatformAdmin = () => {
               <div>
                 <p className="text-2xl font-bold">{inactiveCompanies.length}</p>
                 <p className="text-sm text-muted-foreground">Inactive Companies</p>
+                <p className="text-xs text-primary">Click to view</p>
               </div>
             </div>
           </CardContent>
@@ -255,7 +260,7 @@ export const PlatformAdmin = () => {
       </div>
 
       {/* Companies Tabs */}
-      <Tabs defaultValue="active">
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="flex-wrap">
           <TabsTrigger value="active">
             Active ({activeCompanies.length})
