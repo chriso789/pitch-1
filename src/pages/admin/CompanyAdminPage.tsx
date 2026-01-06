@@ -92,6 +92,7 @@ const CompanyAdminPage = () => {
   const [deleteConfirmation, setDeleteConfirmation] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
   const [seedingOwners, setSeedingOwners] = useState(false);
+  const [viewFilter, setViewFilter] = useState<'all' | 'active' | 'inactive'>('all');
   const { toast } = useToast();
   const { user: currentUser } = useCurrentUser();
   const [searchParams] = useSearchParams();
@@ -147,7 +148,6 @@ const CompanyAdminPage = () => {
       const { data, error } = await supabase
         .from('tenants')
         .select('*')
-        .eq('is_active', true)  // Only show active companies (soft-deleted companies are filtered out)
         .order('name');
 
       if (error) throw error;
@@ -503,10 +503,16 @@ const CompanyAdminPage = () => {
     });
   };
 
-  const filteredCompanies = companies.filter(c =>
-    c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    c.subdomain?.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredCompanies = companies
+    .filter(c => {
+      if (viewFilter === 'active') return c.is_active !== false;
+      if (viewFilter === 'inactive') return c.is_active === false;
+      return true; // 'all'
+    })
+    .filter(c =>
+      c.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      c.subdomain?.toLowerCase().includes(searchQuery.toLowerCase())
+    );
 
   const seedCompanyOwners = async () => {
     setSeedingOwners(true);
@@ -598,28 +604,40 @@ const CompanyAdminPage = () => {
           <TabsContent value="companies" className="space-y-6">
             {/* Stats */}
             <div className="grid gap-4 md:grid-cols-3">
-              <Card>
+              <Card 
+                className={`cursor-pointer transition-colors ${viewFilter === 'all' ? 'ring-2 ring-primary' : 'hover:border-primary'}`}
+                onClick={() => setViewFilter('all')}
+              >
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium">Total Companies</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold">{stats.total}</div>
+                  {viewFilter === 'all' && <p className="text-xs text-primary mt-1">Currently viewing</p>}
                 </CardContent>
               </Card>
-              <Card>
+              <Card 
+                className={`cursor-pointer transition-colors ${viewFilter === 'active' ? 'ring-2 ring-green-500' : 'hover:border-green-500'}`}
+                onClick={() => setViewFilter('active')}
+              >
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-green-600">Active</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-green-600">{stats.active}</div>
+                  {viewFilter === 'active' && <p className="text-xs text-green-600 mt-1">Currently viewing</p>}
                 </CardContent>
               </Card>
-              <Card>
+              <Card 
+                className={`cursor-pointer transition-colors ${viewFilter === 'inactive' ? 'ring-2 ring-muted-foreground' : 'hover:border-muted-foreground'}`}
+                onClick={() => setViewFilter('inactive')}
+              >
                 <CardHeader className="pb-2">
                   <CardTitle className="text-sm font-medium text-muted-foreground">Inactive</CardTitle>
                 </CardHeader>
                 <CardContent>
                   <div className="text-2xl font-bold text-muted-foreground">{stats.inactive}</div>
+                  {viewFilter === 'inactive' && <p className="text-xs text-muted-foreground mt-1">Currently viewing</p>}
                 </CardContent>
               </Card>
             </div>
