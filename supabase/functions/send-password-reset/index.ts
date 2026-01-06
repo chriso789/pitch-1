@@ -1,6 +1,7 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { Resend } from "https://esm.sh/resend@2.0.0";
+import { buildDirectSetupLink, EMAIL_CONFIG } from "../_shared/email-config.ts";
 
 const resend = new Resend(Deno.env.get("RESEND_API_KEY"));
 
@@ -79,9 +80,8 @@ const handler = async (req: Request): Promise<Response> => {
       );
     }
 
-    // Generate password reset link via Supabase Admin API - use APP_URL with reliable production fallback
-    const appUrl = Deno.env.get("APP_URL") || "https://pitch-1.lovable.app";
-    const resetRedirectUrl = redirectUrl || `${appUrl}/reset-password`;
+    // Generate password reset link via Supabase Admin API
+    const resetRedirectUrl = `${EMAIL_CONFIG.urls.app}/reset-password`;
     const { data: linkData, error: linkError } = await supabaseAdmin.auth.admin.generateLink({
       type: 'recovery',
       email: authUser.email!,
@@ -95,13 +95,15 @@ const handler = async (req: Request): Promise<Response> => {
       throw new Error("Failed to generate reset link");
     }
 
-    const resetLink = linkData.properties?.action_link;
-    if (!resetLink) {
+    const rawResetLink = linkData.properties?.action_link;
+    if (!rawResetLink) {
       console.error("No reset link generated");
       throw new Error("Failed to generate reset link");
     }
 
-    console.log("Generated reset link for:", email);
+    // Convert Supabase action link to direct app link to bypass redirect issues
+    const resetLink = buildDirectSetupLink(rawResetLink);
+    console.log("Generated direct reset link for:", email);
 
     // Get company name for branding
     const { data: tenant } = await supabaseAdmin
