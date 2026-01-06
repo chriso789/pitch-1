@@ -417,10 +417,18 @@ const ProductionKanban = () => {
         };
       });
 
-      // Group by stage
+      // Deduplicate projects by ID to prevent duplicate cards
+      const uniqueProjects = productionProjects.reduce((acc, project) => {
+        if (!acc.find(p => p.id === project.id)) {
+          acc.push(project);
+        }
+        return acc;
+      }, [] as ProductionProject[]);
+
+      // Group by stage using deduplicated projects
       const groupedData: Record<string, ProductionProject[]> = {};
       stages.forEach(stage => {
-        groupedData[stage.stage_key] = productionProjects.filter(
+        groupedData[stage.stage_key] = uniqueProjects.filter(
           project => project.stage === stage.stage_key
         );
       });
@@ -475,15 +483,29 @@ const ProductionKanban = () => {
     try {
       // Get user tenant_id for the workflow update
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
+      if (!user) {
+        console.error('No authenticated user found');
+        throw new Error('You must be logged in to move projects');
+      }
 
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('tenant_id')
+        .select('tenant_id, role')
         .eq('id', user.id)
         .single();
 
-      if (!profile?.tenant_id) return;
+      if (profileError) {
+        console.error('Error fetching profile:', profileError);
+        throw new Error('Could not verify your permissions');
+      }
+
+      if (!profile?.tenant_id) {
+        console.error('User has no tenant_id');
+        throw new Error('Your account is not properly configured');
+      }
+
+      // Log the move attempt for debugging
+      console.log(`[ProductionKanban] User ${user.id} (role: ${profile.role}) moving project ${projectId} from ${fromStage} to ${newStage}`);
 
       // Update production workflow stage
       const { error } = await supabase
@@ -496,7 +518,11 @@ const ProductionKanban = () => {
           stage_changed_at: new Date().toISOString()
         });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Production workflow update failed:', error);
+        console.error('User role:', profile.role, 'Tenant:', profile.tenant_id);
+        throw error;
+      }
 
       // Also update the job status to match the production stage
       const { error: jobUpdateError } = await supabase
@@ -524,7 +550,7 @@ const ProductionKanban = () => {
 
       // Refresh data
       await fetchProductionData();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error moving project:', error);
       
       // Revert optimistic update
@@ -535,7 +561,7 @@ const ProductionKanban = () => {
 
       toast({
         title: "Error",
-        description: "Failed to move project",
+        description: error.message || "Failed to move project. Please check your permissions.",
         variant: "destructive",
       });
     }

@@ -11,7 +11,8 @@ import {
   TrendingUp,
   TrendingDown,
   Loader2,
-  ExternalLink
+  ExternalLink,
+  PlayCircle
 } from 'lucide-react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
@@ -54,6 +55,31 @@ export const CostReconciliationPanel: React.FC<CostReconciliationPanelProps> = (
 
       if (error) throw error;
       return data || [];
+    }
+  });
+
+  // Initiate verification mutation
+  const initiateMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await supabase.functions.invoke('request-cost-verification', {
+        body: { project_id: projectId }
+      });
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      toast({
+        title: 'Verification Initiated',
+        description: 'Cost verification has been started. You can now upload invoices.'
+      });
+      queryClient.invalidateQueries({ queryKey: ['cost-reconciliation', projectId] });
+    },
+    onError: (error: any) => {
+      toast({
+        title: 'Initiation Failed',
+        description: error.message,
+        variant: 'destructive'
+      });
     }
   });
 
@@ -123,9 +149,25 @@ export const CostReconciliationPanel: React.FC<CostReconciliationPanelProps> = (
           <p className="text-muted-foreground">
             Cost verification not yet initiated for this project
           </p>
-          <p className="text-sm text-muted-foreground mt-1">
-            Move project to "Final Inspection" to start cost verification
+          <p className="text-sm text-muted-foreground mt-1 mb-4">
+            Click below to start cost verification and upload actual invoices
           </p>
+          <Button 
+            onClick={() => initiateMutation.mutate()}
+            disabled={initiateMutation.isPending}
+          >
+            {initiateMutation.isPending ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Initiating...
+              </>
+            ) : (
+              <>
+                <PlayCircle className="h-4 w-4 mr-2" />
+                Initiate Cost Verification
+              </>
+            )}
+          </Button>
         </CardContent>
       </Card>
     );
