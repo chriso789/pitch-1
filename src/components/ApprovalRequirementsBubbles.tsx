@@ -112,7 +112,7 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
     },
   });
 
-  const isManager = userProfile?.role === 'master' || userProfile?.role === 'corporate' || userProfile?.role === 'office_admin' || userProfile?.role === 'regional_manager';
+  const isManager = userProfile?.role === 'owner' || userProfile?.role === 'master' || userProfile?.role === 'corporate' || userProfile?.role === 'office_admin' || userProfile?.role === 'regional_manager';
 
   // Fetch available estimates for this pipeline entry
   const { data: availableEstimates, isLoading: estimatesLoading } = useQuery({
