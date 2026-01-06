@@ -28,6 +28,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { MetricCard } from "@/components/dashboard/MetricCard";
 import { useQuery } from "@tanstack/react-query";
+import { FinalInspectionCostDialog } from "@/components/production/FinalInspectionCostDialog";
 
 interface ProductionProject {
   id: string;
@@ -62,6 +63,8 @@ const ProductionKanban = () => {
   const [stages, setStages] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [costDialogOpen, setCostDialogOpen] = useState(false);
+  const [costDialogProject, setCostDialogProject] = useState<ProductionProject | null>(null);
   const { toast } = useToast();
   const navigate = useNavigate();
 
@@ -513,6 +516,12 @@ const ProductionKanban = () => {
         description: `Project moved to ${stages.find(s => s.stage_key === newStage)?.name}`,
       });
 
+      // Show cost verification dialog when moving to final_inspection
+      if (newStage === 'final_inspection') {
+        setCostDialogProject(movedProject);
+        setCostDialogOpen(true);
+      }
+
       // Refresh data
       await fetchProductionData();
     } catch (error) {
@@ -734,6 +743,14 @@ const ProductionKanban = () => {
           </Button>
         </div>
       )}
+
+      {/* Cost Verification Dialog */}
+      <FinalInspectionCostDialog
+        open={costDialogOpen}
+        onOpenChange={setCostDialogOpen}
+        projectId={costDialogProject?.id || ''}
+        projectName={costDialogProject?.name || costDialogProject?.project_number}
+      />
     </div>
   );
 };

@@ -632,3 +632,12 @@ verify_jwt = true
 
 [functions.get-google-maps-key]
 verify_jwt = true
+
+[functions.request-cost-verification]
+verify_jwt = true
+
+[functions.submit-project-invoice]
+verify_jwt = true
+
+[functions.approve-cost-reconciliation]
+verify_jwt = true

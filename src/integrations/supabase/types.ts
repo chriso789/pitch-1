@@ -15852,6 +15852,9 @@ export type Database = {
       }
       production_workflows: {
         Row: {
+          cost_verification_completed_at: string | null
+          cost_verification_requested_at: string | null
+          cost_verification_status: string | null
           created_at: string
           created_by: string | null
           current_stage: string
@@ -15868,6 +15871,9 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          cost_verification_completed_at?: string | null
+          cost_verification_requested_at?: string | null
+          cost_verification_status?: string | null
           created_at?: string
           created_by?: string | null
           current_stage?: string
@@ -15884,6 +15890,9 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          cost_verification_completed_at?: string | null
+          cost_verification_requested_at?: string | null
+          cost_verification_status?: string | null
           created_at?: string
           created_by?: string | null
           current_stage?: string
@@ -16443,6 +16452,223 @@ export type Database = {
           },
           {
             foreignKeyName: "project_budget_snapshots_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_cost_invoices: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          created_at: string | null
+          created_by: string | null
+          crew_name: string | null
+          document_name: string | null
+          document_url: string | null
+          id: string
+          invoice_amount: number
+          invoice_date: string | null
+          invoice_number: string | null
+          invoice_type: string
+          notes: string | null
+          pipeline_entry_id: string | null
+          project_id: string
+          rejection_reason: string | null
+          status: string | null
+          tenant_id: string
+          updated_at: string | null
+          vendor_name: string | null
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          crew_name?: string | null
+          document_name?: string | null
+          document_url?: string | null
+          id?: string
+          invoice_amount: number
+          invoice_date?: string | null
+          invoice_number?: string | null
+          invoice_type: string
+          notes?: string | null
+          pipeline_entry_id?: string | null
+          project_id: string
+          rejection_reason?: string | null
+          status?: string | null
+          tenant_id: string
+          updated_at?: string | null
+          vendor_name?: string | null
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          crew_name?: string | null
+          document_name?: string | null
+          document_url?: string | null
+          id?: string
+          invoice_amount?: number
+          invoice_date?: string | null
+          invoice_number?: string | null
+          invoice_type?: string
+          notes?: string | null
+          pipeline_entry_id?: string | null
+          project_id?: string
+          rejection_reason?: string | null
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+          vendor_name?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_cost_invoices_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_cost_invoices_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "project_cost_invoices_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_cost_invoices_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "project_cost_invoices_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_cost_invoices_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_cost_invoices_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      project_cost_reconciliation: {
+        Row: {
+          actual_labor_cost: number | null
+          actual_material_cost: number | null
+          actual_overhead: number | null
+          created_at: string | null
+          final_approved_at: string | null
+          final_approved_by: string | null
+          final_profit: number | null
+          id: string
+          labor_variance: number | null
+          material_variance: number | null
+          original_labor_cost: number | null
+          original_material_cost: number | null
+          original_overhead: number | null
+          original_profit: number | null
+          original_selling_price: number | null
+          project_id: string
+          status: string | null
+          tenant_id: string
+          total_variance: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          actual_labor_cost?: number | null
+          actual_material_cost?: number | null
+          actual_overhead?: number | null
+          created_at?: string | null
+          final_approved_at?: string | null
+          final_approved_by?: string | null
+          final_profit?: number | null
+          id?: string
+          labor_variance?: number | null
+          material_variance?: number | null
+          original_labor_cost?: number | null
+          original_material_cost?: number | null
+          original_overhead?: number | null
+          original_profit?: number | null
+          original_selling_price?: number | null
+          project_id: string
+          status?: string | null
+          tenant_id: string
+          total_variance?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          actual_labor_cost?: number | null
+          actual_material_cost?: number | null
+          actual_overhead?: number | null
+          created_at?: string | null
+          final_approved_at?: string | null
+          final_approved_by?: string | null
+          final_profit?: number | null
+          id?: string
+          labor_variance?: number | null
+          material_variance?: number | null
+          original_labor_cost?: number | null
+          original_material_cost?: number | null
+          original_overhead?: number | null
+          original_profit?: number | null
+          original_selling_price?: number | null
+          project_id?: string
+          status?: string | null
+          tenant_id?: string
+          total_variance?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_cost_reconciliation_final_approved_by_fkey"
+            columns: ["final_approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_cost_reconciliation_final_approved_by_fkey"
+            columns: ["final_approved_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "project_cost_reconciliation_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: true
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_cost_reconciliation_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
