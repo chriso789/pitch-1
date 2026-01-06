@@ -19853,6 +19853,7 @@ export type Database = {
           latitude: number | null
           longitude: number | null
           parapet_walls_ft: number | null
+          perimeter_ft: number | null
           pitched_area_sqft: number | null
           pitches: Json | null
           predominant_pitch: string | null
@@ -19882,6 +19883,7 @@ export type Database = {
           latitude?: number | null
           longitude?: number | null
           parapet_walls_ft?: number | null
+          perimeter_ft?: number | null
           pitched_area_sqft?: number | null
           pitches?: Json | null
           predominant_pitch?: string | null
@@ -19911,6 +19913,7 @@ export type Database = {
           latitude?: number | null
           longitude?: number | null
           parapet_walls_ft?: number | null
+          perimeter_ft?: number | null
           pitched_area_sqft?: number | null
           pitches?: Json | null
           predominant_pitch?: string | null

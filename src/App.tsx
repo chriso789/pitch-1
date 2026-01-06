@@ -20,6 +20,7 @@ import GlobalErrorBoundary from "@/components/error/GlobalErrorBoundary";
 import { initializeMonitoring } from "@/lib/MonitoringSelfHealing";
 import { installFetchInterceptor } from "@/lib/apiInterceptor";
 import { RealTimeNotificationProvider } from "@/components/notifications/RealTimeNotificationProvider";
+import { AIFixProvider } from "@/components/error/AIFixProvider";
 import LandingPage from "./pages/LandingPage";
 import Pricing from "./pages/Pricing";
 import Features from "./pages/Features";
@@ -303,9 +304,11 @@ const App = () => {
                 <TooltipProvider>
                     <ImageCacheProvider>
                       <RealTimeNotificationProvider>
-                        <BrowserRouter>
-                          <AppContent />
-                        </BrowserRouter>
+                        <AIFixProvider>
+                          <BrowserRouter>
+                            <AppContent />
+                          </BrowserRouter>
+                        </AIFixProvider>
                       </RealTimeNotificationProvider>
                     </ImageCacheProvider>
                 </TooltipProvider>
