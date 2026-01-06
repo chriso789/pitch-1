@@ -644,3 +644,6 @@ verify_jwt = true
 
 [functions.lock-original-costs]
 verify_jwt = true
+
+[functions.link-document-invoice]
+verify_jwt = true

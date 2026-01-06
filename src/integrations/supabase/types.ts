@@ -7102,8 +7102,11 @@ export type Database = {
           file_size: number | null
           filename: string
           id: string
+          invoice_amount: number | null
+          invoice_number: string | null
           is_signed_pdf: boolean | null
           is_visible_to_homeowner: boolean | null
+          linked_invoice_id: string | null
           location_id: string | null
           mime_type: string | null
           pipeline_entry_id: string | null
@@ -7112,6 +7115,7 @@ export type Database = {
           tenant_id: string | null
           updated_at: string | null
           uploaded_by: string | null
+          vendor_name: string | null
         }
         Insert: {
           agreement_instance_id?: string | null
@@ -7124,8 +7128,11 @@ export type Database = {
           file_size?: number | null
           filename: string
           id?: string
+          invoice_amount?: number | null
+          invoice_number?: string | null
           is_signed_pdf?: boolean | null
           is_visible_to_homeowner?: boolean | null
+          linked_invoice_id?: string | null
           location_id?: string | null
           mime_type?: string | null
           pipeline_entry_id?: string | null
@@ -7134,6 +7141,7 @@ export type Database = {
           tenant_id?: string | null
           updated_at?: string | null
           uploaded_by?: string | null
+          vendor_name?: string | null
         }
         Update: {
           agreement_instance_id?: string | null
@@ -7146,8 +7154,11 @@ export type Database = {
           file_size?: number | null
           filename?: string
           id?: string
+          invoice_amount?: number | null
+          invoice_number?: string | null
           is_signed_pdf?: boolean | null
           is_visible_to_homeowner?: boolean | null
+          linked_invoice_id?: string | null
           location_id?: string | null
           mime_type?: string | null
           pipeline_entry_id?: string | null
@@ -7156,6 +7167,7 @@ export type Database = {
           tenant_id?: string | null
           updated_at?: string | null
           uploaded_by?: string | null
+          vendor_name?: string | null
         }
         Relationships: [
           {
@@ -7170,6 +7182,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "documents_linked_invoice_id_fkey"
+            columns: ["linked_invoice_id"]
+            isOneToOne: false
+            referencedRelation: "project_cost_invoices"
             referencedColumns: ["id"]
           },
           {
