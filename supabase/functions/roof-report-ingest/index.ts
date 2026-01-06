@@ -1,4 +1,5 @@
-// PITCH-CRM — Vendor PDF ingestion engine (Roofr + EagleView)
+// PITCH-CRM — Universal PDF ingestion engine
+// Supports: Roofr, EagleView, RoofScope, Hover, Google Maps, and generic formats
 //
 // Accepts either:
 //   { file_url: "https://..." }
@@ -7,10 +8,7 @@
 //
 // Extracts text from PDF (via pdfjs), detects vendor, parses key measurements,
 // then stores both raw+parsed output in Supabase tables.
-//
-// Requires env vars:
-// - SUPABASE_URL
-// - SUPABASE_SERVICE_ROLE_KEY
+// Falls back to AI extraction for unknown formats.
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -53,11 +51,16 @@ function normalizeText(t: string): string {
     .replace(/\r/g, "\n");
 }
 
-function detectProvider(text: string): "roofr" | "eagleview" | "unknown" {
+type Provider = "roofr" | "eagleview" | "roofscope" | "hover" | "google" | "generic";
+
+function detectProvider(text: string): Provider {
   const t = text.toLowerCase();
   if (t.includes("this report was prepared by roofr")) return "roofr";
   if (t.includes("eagle view technologies") || t.includes("eagleview")) return "eagleview";
-  return "unknown";
+  if (t.includes("roofscope")) return "roofscope";
+  if (t.includes("hover.to") || t.includes("hover inc")) return "hover";
+  if (t.includes("google maps") || t.includes("imagery ©") || t.includes("map data ©")) return "google";
+  return "generic";
 }
 
 function extractAllPagesText(pdfBytes: Uint8Array): Promise<string> {
@@ -75,12 +78,287 @@ function extractAllPagesText(pdfBytes: Uint8Array): Promise<string> {
 }
 
 // -----------------------------
+// Generic parser - works with any format
+// -----------------------------
+function parseGeneric(textRaw: string) {
+  const text = normalizeText(textRaw);
+  
+  // Multiple patterns for area detection
+  const areaPatterns = [
+    /(?:total\s*)?(?:roof\s*)?area\s*[:=]?\s*([\d,]+(?:\.\d+)?)\s*(?:sq\.?\s*ft|sqft|square\s*feet)/i,
+    /A\s*\|\s*([\d,]+(?:\.\d+)?)\s*sq\s*ft/i,  // Pattern: "A | 3,897.07 sq ft"
+    /([\d,]+(?:\.\d+)?)\s*(?:sq\.?\s*ft|sqft)\s*(?:total|area)?/i,
+    /(?:area|size)\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i,
+  ];
+  
+  let totalArea: number | null = null;
+  for (const pattern of areaPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      totalArea = parseFloatSafe(match[1]);
+      if (totalArea && totalArea > 100) break; // Valid area found
+    }
+  }
+  
+  // Multiple patterns for perimeter
+  const perimeterPatterns = [
+    /(?:perimeter|perim\.?)\s*[:=]?\s*([\d,]+(?:\.\d+)?)\s*(?:ft|feet|')/i,
+    /P\s*\|\s*([\d,]+(?:\.\d+)?)\s*ft/i,  // Pattern: "P | 303.83 ft"
+    /(?:total\s*)?perimeter\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i,
+  ];
+  
+  let perimeter: number | null = null;
+  for (const pattern of perimeterPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      perimeter = parseFloatSafe(match[1]);
+      if (perimeter && perimeter > 10) break;
+    }
+  }
+  
+  // Ridge detection
+  const ridgePatterns = [
+    /(?:ridge|ridges)\s*[:=]?\s*([\d,]+(?:\.\d+)?)\s*(?:ft|feet|')/i,
+    /(?:ridge|ridges)\s*(?:length)?\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i,
+  ];
+  let ridges: number | null = null;
+  for (const pattern of ridgePatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      ridges = parseFloatSafe(match[1]);
+      if (ridges) break;
+    }
+  }
+  
+  // Hip detection
+  const hipPatterns = [
+    /(?:hip|hips)\s*[:=]?\s*([\d,]+(?:\.\d+)?)\s*(?:ft|feet|')/i,
+    /(?:hip|hips)\s*(?:length)?\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i,
+  ];
+  let hips: number | null = null;
+  for (const pattern of hipPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      hips = parseFloatSafe(match[1]);
+      if (hips) break;
+    }
+  }
+  
+  // Valley detection
+  const valleyPatterns = [
+    /(?:valley|valleys)\s*[:=]?\s*([\d,]+(?:\.\d+)?)\s*(?:ft|feet|')/i,
+    /(?:valley|valleys)\s*(?:length)?\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i,
+  ];
+  let valleys: number | null = null;
+  for (const pattern of valleyPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      valleys = parseFloatSafe(match[1]);
+      if (valleys) break;
+    }
+  }
+  
+  // Eave detection
+  const eavePatterns = [
+    /(?:eave|eaves)\s*[:=]?\s*([\d,]+(?:\.\d+)?)\s*(?:ft|feet|')/i,
+    /(?:eave|eaves)\s*(?:length)?\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i,
+  ];
+  let eaves: number | null = null;
+  for (const pattern of eavePatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      eaves = parseFloatSafe(match[1]);
+      if (eaves) break;
+    }
+  }
+  
+  // Rake detection
+  const rakePatterns = [
+    /(?:rake|rakes)\s*[:=]?\s*([\d,]+(?:\.\d+)?)\s*(?:ft|feet|')/i,
+    /(?:rake|rakes)\s*(?:length)?\s*[:=]?\s*([\d,]+(?:\.\d+)?)/i,
+  ];
+  let rakes: number | null = null;
+  for (const pattern of rakePatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      rakes = parseFloatSafe(match[1]);
+      if (rakes) break;
+    }
+  }
+  
+  // Pitch detection
+  const pitchPatterns = [
+    /(?:predominant\s*)?pitch\s*[:=]?\s*(\d+\/\d+)/i,
+    /(\d+\/\d+)\s*pitch/i,
+    /pitch\s*[:=]?\s*(\d+:\d+)/i,
+  ];
+  let pitch: string | null = null;
+  for (const pattern of pitchPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      pitch = match[1].replace(":", "/");
+      break;
+    }
+  }
+  
+  // Facet count
+  const facetMatch = text.match(/(\d+)\s*(?:facet|facets|section|sections|plane|planes)/i);
+  const facetCount = facetMatch ? parseIntSafe(facetMatch[1]) : null;
+  
+  // Address detection
+  const addressPatterns = [
+    /(\d+[^,\n]+,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?)/i,
+    /address\s*[:=]?\s*([^\n]+)/i,
+  ];
+  let address: string | null = null;
+  for (const pattern of addressPatterns) {
+    const match = text.match(pattern);
+    if (match) {
+      address = match[1].trim();
+      if (address.length > 10) break;
+    }
+  }
+  
+  // Step flashing
+  const stepFlashingMatch = text.match(/step\s*flashing\s*[:=]?\s*([\d,]+(?:\.\d+)?)\s*(?:ft|feet|')/i);
+  const stepFlashing = stepFlashingMatch ? parseFloatSafe(stepFlashingMatch[1]) : null;
+  
+  // Drip edge
+  const dripEdgeMatch = text.match(/drip\s*edge\s*[:=]?\s*([\d,]+(?:\.\d+)?)\s*(?:ft|feet|')/i);
+  const dripEdge = dripEdgeMatch ? parseFloatSafe(dripEdgeMatch[1]) : null;
+  
+  return {
+    provider: "generic" as const,
+    address,
+    total_area_sqft: totalArea,
+    pitched_area_sqft: totalArea,
+    flat_area_sqft: null,
+    facet_count: facetCount,
+    predominant_pitch: pitch,
+    ridges_ft: ridges,
+    hips_ft: hips,
+    valleys_ft: valleys,
+    rakes_ft: rakes,
+    eaves_ft: eaves,
+    drip_edge_ft: dripEdge,
+    step_flashing_ft: stepFlashing,
+    perimeter_ft: perimeter,
+    pitches: null,
+    waste_table: null,
+  };
+}
+
+// -----------------------------
+// AI-powered extraction fallback
+// -----------------------------
+async function extractWithAI(text: string): Promise<any> {
+  const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+  
+  if (!lovableApiKey) {
+    console.log("roof-report-ingest: No LOVABLE_API_KEY, skipping AI extraction");
+    return null;
+  }
+  
+  const systemPrompt = `You are a roofing measurement report analyzer. Extract ALL measurement data from the provided text.
+
+Return ONLY a valid JSON object (no markdown, no explanation) with these fields. Use null for any value not found:
+
+{
+  "provider": "detected provider name or 'generic'",
+  "address": "property address if found",
+  "total_area_sqft": number or null,
+  "perimeter_ft": number or null,
+  "facet_count": number or null,
+  "predominant_pitch": "X/12 format or null",
+  "ridges_ft": number or null,
+  "hips_ft": number or null,
+  "valleys_ft": number or null,
+  "rakes_ft": number or null,
+  "eaves_ft": number or null,
+  "step_flashing_ft": number or null,
+  "drip_edge_ft": number or null
+}
+
+Look for:
+- Area values (sq ft, sqft, square feet) - may appear as "A | 3,897.07 sq ft"
+- Perimeter/length values (ft, feet) - may appear as "P | 303.83 ft"
+- Pitch notations (4/12, 6:12, etc.)
+- Feature labels (ridge, hip, valley, eave, rake)
+- Any labeled measurements with units`;
+
+  try {
+    console.log("roof-report-ingest: Calling AI for measurement extraction...");
+    
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${lovableApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Extract measurements from this roof report text:\n\n${text.substring(0, 8000)}` }
+        ],
+        max_tokens: 1000,
+      }),
+    });
+    
+    if (!response.ok) {
+      console.error("roof-report-ingest: AI API error:", response.status);
+      return null;
+    }
+    
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    
+    if (!content) {
+      console.log("roof-report-ingest: No AI content returned");
+      return null;
+    }
+    
+    // Parse the JSON from AI response
+    const jsonMatch = content.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.log("roof-report-ingest: Could not find JSON in AI response");
+      return null;
+    }
+    
+    const aiResult = JSON.parse(jsonMatch[0]);
+    console.log("roof-report-ingest: AI extraction successful", aiResult);
+    
+    return {
+      provider: aiResult.provider || "generic",
+      address: aiResult.address,
+      total_area_sqft: aiResult.total_area_sqft,
+      pitched_area_sqft: aiResult.total_area_sqft,
+      flat_area_sqft: null,
+      facet_count: aiResult.facet_count,
+      predominant_pitch: aiResult.predominant_pitch,
+      ridges_ft: aiResult.ridges_ft,
+      hips_ft: aiResult.hips_ft,
+      valleys_ft: aiResult.valleys_ft,
+      rakes_ft: aiResult.rakes_ft,
+      eaves_ft: aiResult.eaves_ft,
+      drip_edge_ft: aiResult.drip_edge_ft,
+      step_flashing_ft: aiResult.step_flashing_ft,
+      perimeter_ft: aiResult.perimeter_ft,
+      pitches: null,
+      waste_table: null,
+    };
+  } catch (err) {
+    console.error("roof-report-ingest: AI extraction failed:", err);
+    return null;
+  }
+}
+
+// -----------------------------
 // Roofr parser
 // -----------------------------
 function parseRoofr(textRaw: string) {
   const text = normalizeText(textRaw);
 
-  // Address: try the "Report summary" section header
   const addrMatch = text.match(/Report summary\s*\n([^\n]+)\n/i);
   const address = addrMatch?.[1]?.trim() ?? null;
 
@@ -90,7 +368,6 @@ function parseRoofr(textRaw: string) {
   const facetCount = parseIntSafe(text.match(/Total roof facets\s+([\d,]+)\s*facets/i)?.[1]);
   const predominantPitch = text.match(/Predominant pitch\s+(\d+\/\d+)/i)?.[1] ?? null;
 
-  // Linear features in "Total eaves 258ft 9in"
   function parseFtIn(key: string) {
     const m = text.match(new RegExp(`${key}\\s+(\\d+)\\s*ft\\s*(\\d+)\\s*in`, "i"));
     if (!m) return null;
@@ -108,7 +385,6 @@ function parseRoofr(textRaw: string) {
   const parapetWall = parseFtIn("Total parapet wall");
   const unspecified = parseFtIn("Total unspecified");
 
-  // Pitch rows: "Pitch 6/12 ... Area (sqft) 3,077"
   const pitchRows: Array<{ pitch: string; area_sqft: number }> = [];
   const pitchRe = /Pitch\s+(\d+\/\d+)\s+Area\s+\(sqft\)\s+([\d,]+)/gi;
   let m: RegExpExecArray | null;
@@ -118,7 +394,6 @@ function parseRoofr(textRaw: string) {
     if (pitch && area !== null) pitchRows.push({ pitch, area_sqft: area });
   }
 
-  // Waste table: parse 0/10/12/15/17/20/22
   const wastePercents = [0, 10, 12, 15, 17, 20, 22];
   const wasteAreaLine = text.match(/Area\s+\(sqft\)\s+([\d,\s]+)/i);
   const wasteSquaresLine = text.match(/Squares\s+([\d\.\s]+)/i);
@@ -165,10 +440,7 @@ function parseRoofr(textRaw: string) {
 function parseEagleView(textRaw: string) {
   const text = normalizeText(textRaw);
 
-  // Address + report number commonly appear near "Report:" on summary pages
   const reportNo = text.match(/Report:\s*([0-9]{6,})/i)?.[1] ?? null;
-
-  // A best-effort address line: "... , ST 12345 ... Report:"
   const addrMatch = text.match(/([^\n]+,\s*[A-Z]{2}\s*\d{5}(?:-\d{4})?)\s+Report:\s*[0-9]{6,}/i);
   const address = addrMatch?.[1]?.trim() ?? null;
 
@@ -196,10 +468,6 @@ function parseEagleView(textRaw: string) {
   const flashing = parseLen("Flashing");
   const stepFlashing = parseLen("Step flashing");
 
-  // Pitch breakdown block:
-  // - a line with multiple pitches like "0/12 4/12 5/12 ..."
-  // - next line areas
-  // - next line percents
   const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
 
   let pitches: string[] | null = null;
@@ -228,7 +496,6 @@ function parseEagleView(textRaw: string) {
       }))
     : null;
 
-  // Waste table
   const wastePercents = [0, 10, 12, 15, 17, 20, 22];
   const wasteAreaMatch = text.match(/Area\s+\(sq ft\)\s+([\d,\s]+)/i);
   const wasteSquaresMatch = text.match(/Squares\s+([\d\.\s]+)/i);
@@ -255,7 +522,6 @@ function parseEagleView(textRaw: string) {
     predominant_pitch: predominantPitch,
     longitude,
     latitude,
-    // linears
     ridges_ft: ridges,
     hips_ft: hips,
     valleys_ft: valleys,
@@ -268,6 +534,19 @@ function parseEagleView(textRaw: string) {
     pitches: pitchRows,
     waste_table: wasteTable,
   };
+}
+
+// Check if parsed result has meaningful data
+function hasValidMeasurements(parsed: any): boolean {
+  return !!(
+    parsed.total_area_sqft ||
+    parsed.perimeter_ft ||
+    parsed.ridges_ft ||
+    parsed.hips_ft ||
+    parsed.valleys_ft ||
+    parsed.eaves_ft ||
+    parsed.rakes_ft
+  );
 }
 
 serve(async (req) => {
@@ -311,7 +590,6 @@ serve(async (req) => {
       if (!res.ok) throw new Error(`fetch_pdf_failed: ${res.status} ${res.statusText}`);
       pdfBytes = new Uint8Array(await res.arrayBuffer());
     } else if (base64) {
-      // base64 to bytes (works for small PDFs)
       const bin = atob(base64);
       const arr = new Uint8Array(bin.length);
       for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
@@ -326,21 +604,42 @@ serve(async (req) => {
     console.log("roof-report-ingest: Extracting text from PDF...");
     const extractedTextRaw = await extractAllPagesText(pdfBytes);
     const extractedText = normalizeText(extractedTextRaw);
+    
+    console.log("roof-report-ingest: Extracted text length:", extractedText.length);
+    console.log("roof-report-ingest: First 500 chars:", extractedText.substring(0, 500));
 
     const provider = detectProvider(extractedText);
     console.log("roof-report-ingest: Detected provider:", provider);
 
     let parsed: any;
-    if (provider === "roofr") parsed = parseRoofr(extractedText);
-    else if (provider === "eagleview") parsed = parseEagleView(extractedText);
-    else parsed = { provider: "unknown" };
+    
+    // Try provider-specific parsers first
+    if (provider === "roofr") {
+      parsed = parseRoofr(extractedText);
+    } else if (provider === "eagleview") {
+      parsed = parseEagleView(extractedText);
+    } else {
+      // Try generic parser first
+      parsed = parseGeneric(extractedText);
+      console.log("roof-report-ingest: Generic parse result:", parsed);
+      
+      // If generic didn't find enough, try AI extraction
+      if (!hasValidMeasurements(parsed)) {
+        console.log("roof-report-ingest: Generic parse sparse, trying AI extraction...");
+        const aiParsed = await extractWithAI(extractedText);
+        if (aiParsed && hasValidMeasurements(aiParsed)) {
+          parsed = aiParsed;
+          console.log("roof-report-ingest: Using AI extraction result");
+        }
+      }
+    }
 
     // Store raw + parsed
     const lead_id = body.lead_id ?? null;
 
     const insertPayload = {
       lead_id,
-      provider,
+      provider: parsed.provider || provider,
       report_number: parsed.report_number ?? null,
       address: parsed.address ?? null,
       file_bucket: bucket,
@@ -359,10 +658,10 @@ serve(async (req) => {
 
     if (insertErr) throw new Error(`db_insert_failed: ${insertErr.message}`);
 
-    // Also upsert a normalized measurements row (best-effort)
+    // Also upsert a normalized measurements row
     const m = {
       report_id: reportRow.id,
-      provider,
+      provider: parsed.provider || provider,
       report_number: parsed.report_number ?? null,
       address: parsed.address ?? null,
       total_area_sqft: parsed.total_area_sqft ?? null,
@@ -382,6 +681,7 @@ serve(async (req) => {
       wall_flashing_ft: parsed.wall_flashing_ft ?? null,
       transitions_ft: parsed.transitions_ft ?? null,
       unspecified_ft: parsed.unspecified_ft ?? null,
+      perimeter_ft: parsed.perimeter_ft ?? null,
       latitude: parsed.latitude ?? null,
       longitude: parsed.longitude ?? null,
       pitches: parsed.pitches ?? null,
@@ -389,13 +689,17 @@ serve(async (req) => {
     };
 
     const { error: measErr } = await supabase.from("roof_measurements_truth").insert(m);
-    // Don't fail hard if this insert fails; the raw row is the important part.
     if (measErr) console.warn("roof_measurements_truth insert failed:", measErr.message);
 
-    console.log("roof-report-ingest: Successfully processed report", { provider, address: parsed.address });
+    console.log("roof-report-ingest: Successfully processed report", { 
+      provider: parsed.provider || provider, 
+      address: parsed.address,
+      total_area_sqft: parsed.total_area_sqft,
+      perimeter_ft: parsed.perimeter_ft
+    });
 
     return new Response(
-      JSON.stringify({ ok: true, provider, parsed, report_row: reportRow }),
+      JSON.stringify({ ok: true, provider: parsed.provider || provider, parsed, report_row: reportRow }),
       { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
     );
   } catch (err) {
