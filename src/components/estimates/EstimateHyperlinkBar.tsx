@@ -67,6 +67,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
   const queryClient = useQueryClient();
   const [priceAdjustment, setPriceAdjustment] = useState(0); // -20 to +20 percent
   const [isAdjusting, setIsAdjusting] = useState(false);
+  
   // Fetch hyperlink bar data using useQuery for automatic refetch
   const { data: hyperlinkData } = useQuery({
     queryKey: ['hyperlink-data', pipelineEntryId],
@@ -75,6 +76,21 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
         .rpc('api_estimate_hyperlink_bar', { p_pipeline_entry_id: pipelineEntryId });
       if (error) throw error;
       return data as unknown as HyperlinkBarData;
+    },
+    enabled: !!pipelineEntryId,
+  });
+
+  // Fetch cost lock status
+  const { data: lockStatus } = useQuery({
+    queryKey: ['cost-lock-status', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('enhanced_estimates')
+        .select('material_cost_locked_at, labor_cost_locked_at')
+        .eq('pipeline_entry_id', pipelineEntryId!)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
     },
     enabled: !!pipelineEntryId,
   });
@@ -189,7 +205,9 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       label: `Materials: ${formatCurrency(hyperlinkData.materials)}`,
       icon: Package,
       value: formatCurrency(hyperlinkData.materials),
-      hint: hyperlinkData.sections?.materials?.status === 'pending' ? 'Pending' : null,
+      hint: lockStatus?.material_cost_locked_at 
+        ? 'Locked ✓' 
+        : (hyperlinkData.sections?.materials?.status === 'pending' ? 'Pending' : null),
       description: 'Material costs and specifications'
     },
     {
@@ -197,7 +215,9 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       label: `Labor: ${formatCurrency(hyperlinkData.labor)}`,
       icon: Hammer,
       value: formatCurrency(hyperlinkData.labor),
-      hint: hyperlinkData.sections?.labor?.status === 'pending' ? 'Pending' : null,
+      hint: lockStatus?.labor_cost_locked_at 
+        ? 'Locked ✓' 
+        : (hyperlinkData.sections?.labor?.status === 'pending' ? 'Pending' : null),
       description: 'Labor costs per square'
     },
     {

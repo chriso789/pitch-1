@@ -63,19 +63,28 @@ serve(async (req) => {
       throw new Error('Project not found');
     }
 
-    // Get original estimate values
+    // Get original estimate values - prefer locked costs
     const estimate = project.estimates?.[0];
     const enhancedEstimate = project.enhanced_estimates?.[0];
     
-    const originalMaterialCost = enhancedEstimate?.material_cost_manual 
-      || estimate?.material_cost 
-      || 0;
-    const originalLaborCost = enhancedEstimate?.labor_cost_manual 
-      || estimate?.labor_cost 
-      || 0;
+    // Use locked costs if available, otherwise fall back to manual/calculated costs
+    const originalMaterialCost = enhancedEstimate?.material_cost_locked_at 
+      ? enhancedEstimate.material_cost
+      : (enhancedEstimate?.material_cost_manual || estimate?.material_cost || 0);
+    
+    const originalLaborCost = enhancedEstimate?.labor_cost_locked_at
+      ? enhancedEstimate.labor_cost
+      : (enhancedEstimate?.labor_cost_manual || estimate?.labor_cost || 0);
+    
     const originalOverhead = estimate?.overhead_amount || 0;
-    const originalSellingPrice = estimate?.selling_price || 0;
+    const originalSellingPrice = enhancedEstimate?.selling_price || estimate?.selling_price || 0;
     const originalProfit = originalSellingPrice - originalMaterialCost - originalLaborCost - originalOverhead;
+    
+    // Check if costs are locked
+    const materialsLocked = !!enhancedEstimate?.material_cost_locked_at;
+    const laborLocked = !!enhancedEstimate?.labor_cost_locked_at;
+    
+    console.log(`[request-cost-verification] Using costs - Materials: ${originalMaterialCost} (locked: ${materialsLocked}), Labor: ${originalLaborCost} (locked: ${laborLocked})`);
 
     // Create or update cost reconciliation record
     const { data: reconciliation, error: reconError } = await supabase

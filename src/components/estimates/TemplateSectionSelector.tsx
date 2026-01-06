@@ -5,9 +5,21 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Trash2, Loader2 } from 'lucide-react';
+import { Plus, Trash2, Loader2, Lock, CheckCircle } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
+import { format } from 'date-fns';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 
 interface LineItem {
   id: string;
@@ -22,18 +34,27 @@ interface TemplateSectionSelectorProps {
   pipelineEntryId: string;
   sectionType: 'material' | 'labor';
   onTotalChange?: (total: number) => void;
+  isLocked?: boolean;
+  lockedAt?: string | null;
+  lockedByName?: string | null;
+  onLockSuccess?: () => void;
 }
 
 export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = ({
   pipelineEntryId,
   sectionType,
-  onTotalChange
+  onTotalChange,
+  isLocked = false,
+  lockedAt,
+  lockedByName,
+  onLockSuccess
 }) => {
   const queryClient = useQueryClient();
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [newItem, setNewItem] = useState({ item_name: '', qty: 1, unit: 'ea', unit_cost: 0 });
+  const [showLockDialog, setShowLockDialog] = useState(false);
 
   // Fetch templates for this tenant
   const { data: templates, isLoading: templatesLoading } = useQuery({
@@ -288,37 +309,47 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                 <TableRow key={item.id}>
                   <TableCell className="font-medium">{item.item_name}</TableCell>
                   <TableCell>
-                    <Input
-                      type="number"
-                      value={item.qty}
-                      onChange={(e) => handleUpdateItem(item.id, 'qty', parseFloat(e.target.value) || 0)}
-                      onBlur={handleSave}
-                      className="h-8 text-right"
-                    />
+                    {isLocked ? (
+                      <span className="text-right block">{item.qty}</span>
+                    ) : (
+                      <Input
+                        type="number"
+                        value={item.qty}
+                        onChange={(e) => handleUpdateItem(item.id, 'qty', parseFloat(e.target.value) || 0)}
+                        onBlur={handleSave}
+                        className="h-8 text-right"
+                      />
+                    )}
                   </TableCell>
                   <TableCell className="text-muted-foreground">{item.unit}</TableCell>
                   <TableCell>
-                    <Input
-                      type="number"
-                      step="0.01"
-                      value={item.unit_cost}
-                      onChange={(e) => handleUpdateItem(item.id, 'unit_cost', parseFloat(e.target.value) || 0)}
-                      onBlur={handleSave}
-                      className="h-8 text-right"
-                    />
+                    {isLocked ? (
+                      <span className="text-right block">{formatCurrency(item.unit_cost)}</span>
+                    ) : (
+                      <Input
+                        type="number"
+                        step="0.01"
+                        value={item.unit_cost}
+                        onChange={(e) => handleUpdateItem(item.id, 'unit_cost', parseFloat(e.target.value) || 0)}
+                        onBlur={handleSave}
+                        className="h-8 text-right"
+                      />
+                    )}
                   </TableCell>
                   <TableCell className="text-right font-semibold">
                     {formatCurrency(item.line_total)}
                   </TableCell>
                   <TableCell>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-destructive hover:text-destructive"
-                      onClick={() => handleRemoveItem(item.id)}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                    {!isLocked && (
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8 text-destructive hover:text-destructive"
+                        onClick={() => handleRemoveItem(item.id)}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
                   </TableCell>
                 </TableRow>
               ))}
@@ -327,57 +358,59 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
         </div>
       )}
 
-      {/* Add Item Form */}
-      {isAddingItem ? (
-        <div className="flex items-end gap-2 p-3 border rounded-lg bg-muted/30">
-          <div className="flex-1">
-            <label className="text-xs text-muted-foreground">Item Name</label>
-            <Input
-              value={newItem.item_name}
-              onChange={(e) => setNewItem({ ...newItem, item_name: e.target.value })}
-              placeholder="Item name"
-              className="h-8"
-            />
+      {/* Add Item Form - only show if not locked */}
+      {!isLocked && (
+        isAddingItem ? (
+          <div className="flex items-end gap-2 p-3 border rounded-lg bg-muted/30">
+            <div className="flex-1">
+              <label className="text-xs text-muted-foreground">Item Name</label>
+              <Input
+                value={newItem.item_name}
+                onChange={(e) => setNewItem({ ...newItem, item_name: e.target.value })}
+                placeholder="Item name"
+                className="h-8"
+              />
+            </div>
+            <div className="w-20">
+              <label className="text-xs text-muted-foreground">Qty</label>
+              <Input
+                type="number"
+                value={newItem.qty}
+                onChange={(e) => setNewItem({ ...newItem, qty: parseFloat(e.target.value) || 0 })}
+                className="h-8"
+              />
+            </div>
+            <div className="w-20">
+              <label className="text-xs text-muted-foreground">Unit</label>
+              <Input
+                value={newItem.unit}
+                onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
+                className="h-8"
+              />
+            </div>
+            <div className="w-24">
+              <label className="text-xs text-muted-foreground">Unit Cost</label>
+              <Input
+                type="number"
+                step="0.01"
+                value={newItem.unit_cost}
+                onChange={(e) => setNewItem({ ...newItem, unit_cost: parseFloat(e.target.value) || 0 })}
+                className="h-8"
+              />
+            </div>
+            <Button onClick={handleAddItem} size="sm">Add</Button>
+            <Button variant="ghost" size="sm" onClick={() => setIsAddingItem(false)}>Cancel</Button>
           </div>
-          <div className="w-20">
-            <label className="text-xs text-muted-foreground">Qty</label>
-            <Input
-              type="number"
-              value={newItem.qty}
-              onChange={(e) => setNewItem({ ...newItem, qty: parseFloat(e.target.value) || 0 })}
-              className="h-8"
-            />
-          </div>
-          <div className="w-20">
-            <label className="text-xs text-muted-foreground">Unit</label>
-            <Input
-              value={newItem.unit}
-              onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
-              className="h-8"
-            />
-          </div>
-          <div className="w-24">
-            <label className="text-xs text-muted-foreground">Unit Cost</label>
-            <Input
-              type="number"
-              step="0.01"
-              value={newItem.unit_cost}
-              onChange={(e) => setNewItem({ ...newItem, unit_cost: parseFloat(e.target.value) || 0 })}
-              className="h-8"
-            />
-          </div>
-          <Button onClick={handleAddItem} size="sm">Add</Button>
-          <Button variant="ghost" size="sm" onClick={() => setIsAddingItem(false)}>Cancel</Button>
-        </div>
-      ) : (
-        <Button 
-          variant="outline" 
-          className="w-full" 
-          onClick={() => setIsAddingItem(true)}
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Add Line Item
-        </Button>
+        ) : (
+          <Button 
+            variant="outline" 
+            className="w-full" 
+            onClick={() => setIsAddingItem(true)}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Add Line Item
+          </Button>
+        )
       )}
 
       {/* Section Total */}
@@ -394,6 +427,78 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
           </Badge>
         </div>
       </div>
+
+      {/* Lock Status or Lock Button */}
+      {isLocked ? (
+        <div className="mt-4 p-4 bg-green-50 dark:bg-green-950/30 border border-green-200 dark:border-green-800 rounded-lg">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-5 w-5 text-green-600" />
+              <div>
+                <p className="text-sm font-medium text-green-800 dark:text-green-200">
+                  Original {sectionType === 'material' ? 'Material' : 'Labor'} Cost Locked
+                </p>
+                <p className="text-xs text-green-600 dark:text-green-400">
+                  {lockedAt && format(new Date(lockedAt), 'MMM d, yyyy h:mm a')}
+                  {lockedByName && ` by ${lockedByName}`}
+                </p>
+              </div>
+            </div>
+            <span className="text-lg font-bold text-green-800 dark:text-green-200">
+              {formatCurrency(sectionTotal)}
+            </span>
+          </div>
+        </div>
+      ) : lineItems.length > 0 ? (
+        <div className="mt-4">
+          <AlertDialog open={showLockDialog} onOpenChange={setShowLockDialog}>
+            <AlertDialogTrigger asChild>
+              <Button 
+                className="w-full bg-green-600 hover:bg-green-700 text-white"
+                disabled={lineItems.length === 0}
+              >
+                <Lock className="h-4 w-4 mr-2" />
+                Save & Lock Original {sectionType === 'material' ? 'Material' : 'Labor'} Cost
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Lock {sectionType === 'material' ? 'Material' : 'Labor'} Costs?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  This will lock the current {sectionType} cost of <strong>{formatCurrency(sectionTotal)}</strong> as the original baseline for cost verification.
+                  <br /><br />
+                  Once locked, this amount will be used to compare against actual invoices during the Final Inspection phase.
+                  <br /><br />
+                  <strong>This action cannot be undone.</strong>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  className="bg-green-600 hover:bg-green-700"
+                  onClick={async () => {
+                    try {
+                      const { data, error } = await supabase.functions.invoke('lock-original-costs', {
+                        body: { pipeline_entry_id: pipelineEntryId, section: sectionType }
+                      });
+                      if (error) throw error;
+                      toast.success(data.message);
+                      queryClient.invalidateQueries({ queryKey: ['enhanced-estimate-items', pipelineEntryId] });
+                      queryClient.invalidateQueries({ queryKey: ['cost-lock-status', pipelineEntryId] });
+                      onLockSuccess?.();
+                    } catch (error: any) {
+                      toast.error(error.message || 'Failed to lock costs');
+                    }
+                  }}
+                >
+                  <Lock className="h-4 w-4 mr-2" />
+                  Lock {sectionType === 'material' ? 'Material' : 'Labor'} Cost
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </div>
+      ) : null}
     </div>
   );
 };
