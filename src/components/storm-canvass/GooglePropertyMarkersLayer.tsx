@@ -47,6 +47,12 @@ function getStreetNumber(address: any): string {
     }
   }
   
+  // First check for explicit street_number field (from Google Geocoding)
+  if (parsed?.street_number) {
+    return parsed.street_number;
+  }
+  
+  // Fall back to extracting from street or formatted address
   const street = parsed?.street || parsed?.formatted || parsed?.address_line1 || '';
   const match = street.match(/^(\d+)/);
   return match ? match[1] : '';
