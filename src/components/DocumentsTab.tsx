@@ -1,17 +1,27 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { 
   FileText, Download, Trash2, Upload, Eye,
-  File, Image as ImageIcon, FileCheck, FileLock, X
+  File, Image as ImageIcon, FileCheck, FileLock, X,
+  Package, Wrench, DollarSign, Loader2
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { formatDistanceToNow, isAfter, isBefore, startOfDay, endOfDay } from 'date-fns';
 import { DocumentPreviewModal } from '@/components/documents/DocumentPreviewModal';
 import { DocumentSearchFilters } from '@/components/documents/DocumentSearchFilters';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from '@/components/ui/dialog';
 
 interface Document {
   id: string;
@@ -35,12 +45,14 @@ interface DocumentsTabProps {
 }
 
 const DOCUMENT_CATEGORIES = [
-  { value: 'contract', label: 'Contracts', icon: FileCheck, color: 'bg-blue-500' },
-  { value: 'estimate', label: 'Estimates', icon: FileText, color: 'bg-green-500' },
-  { value: 'insurance', label: 'Insurance', icon: FileLock, color: 'bg-purple-500' },
-  { value: 'photo', label: 'Photos', icon: ImageIcon, color: 'bg-orange-500' },
-  { value: 'permit', label: 'Permits', icon: FileCheck, color: 'bg-red-500' },
-  { value: 'other', label: 'Other', icon: File, color: 'bg-gray-500' },
+  { value: 'contract', label: 'Contracts', icon: FileCheck, color: 'bg-blue-500', tracksCost: false },
+  { value: 'estimate', label: 'Estimates', icon: FileText, color: 'bg-green-500', tracksCost: false },
+  { value: 'insurance', label: 'Insurance', icon: FileLock, color: 'bg-purple-500', tracksCost: false },
+  { value: 'photo', label: 'Photos', icon: ImageIcon, color: 'bg-orange-500', tracksCost: false },
+  { value: 'permit', label: 'Permits', icon: FileCheck, color: 'bg-red-500', tracksCost: false },
+  { value: 'invoice_material', label: 'Material Invoice', icon: Package, color: 'bg-amber-500', tracksCost: true },
+  { value: 'invoice_labor', label: 'Labor Invoice', icon: Wrench, color: 'bg-cyan-500', tracksCost: true },
+  { value: 'other', label: 'Other', icon: File, color: 'bg-gray-500', tracksCost: false },
 ];
 
 const RECENT_DOCS_LIMIT = 10;
@@ -58,6 +70,15 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
   // Bulk selection state
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
+  
+  // Invoice dialog state
+  const [invoiceDialogOpen, setInvoiceDialogOpen] = useState(false);
+  const [pendingInvoiceFile, setPendingInvoiceFile] = useState<File | null>(null);
+  const [pendingInvoiceType, setPendingInvoiceType] = useState<'material' | 'labor'>('material');
+  const [invoiceAmount, setInvoiceAmount] = useState('');
+  const [vendorName, setVendorName] = useState('');
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [isLinkingInvoice, setIsLinkingInvoice] = useState(false);
   
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -217,6 +238,128 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
       });
     } finally {
       setUploading(false);
+    }
+  };
+
+  // Handle invoice file selection - opens dialog to enter amount
+  const handleInvoiceFileSelect = (file: File, invoiceType: 'material' | 'labor') => {
+    setPendingInvoiceFile(file);
+    setPendingInvoiceType(invoiceType);
+    setInvoiceAmount('');
+    setVendorName('');
+    setInvoiceNumber('');
+    setInvoiceDialogOpen(true);
+  };
+
+  // Complete invoice upload with amount
+  const handleInvoiceUploadComplete = async () => {
+    if (!pendingInvoiceFile || !invoiceAmount) {
+      toast({
+        title: 'Missing Information',
+        description: 'Please enter the invoice amount',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    const amount = parseFloat(invoiceAmount.replace(/[^0-9.]/g, ''));
+    if (isNaN(amount) || amount <= 0) {
+      toast({
+        title: 'Invalid Amount',
+        description: 'Please enter a valid invoice amount',
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    setIsLinkingInvoice(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .eq('id', user?.id)
+        .single();
+
+      if (!profile?.tenant_id) throw new Error('Profile not found');
+
+      // 1. Upload the file to storage
+      const fileExt = pendingInvoiceFile.name.split('.').pop();
+      const fileName = `${pipelineEntryId}/${Date.now()}.${fileExt}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('documents')
+        .upload(fileName, pendingInvoiceFile);
+
+      if (uploadError) throw uploadError;
+
+      // 2. Insert document record
+      const docType = pendingInvoiceType === 'material' ? 'invoice_material' : 'invoice_labor';
+      const { data: docData, error: dbError } = await supabase
+        .from('documents')
+        .insert({
+          tenant_id: profile.tenant_id,
+          pipeline_entry_id: pipelineEntryId,
+          document_type: docType,
+          filename: pendingInvoiceFile.name,
+          file_path: fileName,
+          file_size: pendingInvoiceFile.size,
+          mime_type: pendingInvoiceFile.type,
+          uploaded_by: user?.id,
+          invoice_amount: amount,
+          vendor_name: vendorName || null,
+          invoice_number: invoiceNumber || null,
+        })
+        .select()
+        .single();
+
+      if (dbError) throw dbError;
+
+      // 3. Call edge function to create invoice record
+      const { error: linkError } = await supabase.functions.invoke('link-document-invoice', {
+        body: {
+          document_id: docData.id,
+          pipeline_entry_id: pipelineEntryId,
+          invoice_type: pendingInvoiceType,
+          invoice_amount: amount,
+          vendor_name: vendorName || null,
+          invoice_number: invoiceNumber || null,
+        }
+      });
+
+      if (linkError) {
+        console.error('Error linking invoice:', linkError);
+        // Invoice was uploaded, just show warning
+        toast({
+          title: 'Document Uploaded',
+          description: 'Document saved but invoice tracking may not be linked. Refresh and check Profit Center.',
+          variant: 'default',
+        });
+      } else {
+        toast({
+          title: 'Invoice Added',
+          description: `${pendingInvoiceType === 'material' ? 'Material' : 'Labor'} invoice for $${amount.toFixed(2)} added to cost tracking`,
+        });
+      }
+
+      // Reset and close
+      setInvoiceDialogOpen(false);
+      setPendingInvoiceFile(null);
+      setInvoiceAmount('');
+      setVendorName('');
+      setInvoiceNumber('');
+      fetchDocuments();
+      onUploadComplete?.();
+
+    } catch (error: any) {
+      console.error('Invoice upload error:', error);
+      toast({
+        title: 'Upload Failed',
+        description: error.message || 'Failed to upload invoice',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsLinkingInvoice(false);
     }
   };
 
@@ -396,10 +539,14 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
           </CardTitle>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {DOCUMENT_CATEGORIES.map((category) => {
               const Icon = category.icon;
               const count = categoryCounts[category.value] || 0;
+              const isInvoiceCategory = category.tracksCost;
+              const invoiceType = category.value === 'invoice_material' ? 'material' : 
+                                 category.value === 'invoice_labor' ? 'labor' : null;
+              
               return (
                 <label
                   key={category.value}
@@ -410,14 +557,24 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
                     className="hidden"
                     onChange={(e) => {
                       const file = e.target.files?.[0];
-                      if (file) handleFileUpload(file, category.value);
+                      if (file) {
+                        if (isInvoiceCategory && invoiceType) {
+                          handleInvoiceFileSelect(file, invoiceType);
+                        } else {
+                          handleFileUpload(file, category.value);
+                        }
+                      }
+                      e.target.value = ''; // Reset input
                     }}
-                    disabled={uploading}
+                    disabled={uploading || isLinkingInvoice}
                   />
                   <Card className="hover:border-primary transition-colors relative">
                     <CardContent className="flex flex-col items-center justify-center p-6 space-y-2">
                       <div className={`${category.color} text-white p-3 rounded-lg relative`}>
                         <Icon className="h-6 w-6" />
+                        {isInvoiceCategory && (
+                          <DollarSign className="absolute -top-1 -right-1 h-3 w-3" />
+                        )}
                         {count > 0 && (
                           <Badge 
                             variant="secondary" 
@@ -427,7 +584,10 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
                           </Badge>
                         )}
                       </div>
-                      <span className="text-sm font-medium">{category.label}</span>
+                      <span className="text-sm font-medium text-center">{category.label}</span>
+                      {isInvoiceCategory && (
+                        <span className="text-xs text-muted-foreground">Tracks cost</span>
+                      )}
                     </CardContent>
                   </Card>
                 </label>
@@ -605,6 +765,78 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
         onClose={() => setPreviewDoc(null)}
         onDownload={handleDownload}
       />
+
+      {/* Invoice Amount Dialog */}
+      <Dialog open={invoiceDialogOpen} onOpenChange={(open) => {
+        if (!isLinkingInvoice) {
+          setInvoiceDialogOpen(open);
+          if (!open) setPendingInvoiceFile(null);
+        }
+      }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {pendingInvoiceType === 'material' ? <Package className="h-5 w-5" /> : <Wrench className="h-5 w-5" />}
+              Add {pendingInvoiceType === 'material' ? 'Material' : 'Labor'} Invoice
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="text-sm text-muted-foreground">
+              <strong>File:</strong> {pendingInvoiceFile?.name}
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="invoice-amount">Invoice Amount *</Label>
+              <div className="relative">
+                <DollarSign className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+                <Input
+                  id="invoice-amount"
+                  type="text"
+                  placeholder="0.00"
+                  value={invoiceAmount}
+                  onChange={(e) => setInvoiceAmount(e.target.value)}
+                  className="pl-9"
+                  autoFocus
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="vendor-name">{pendingInvoiceType === 'material' ? 'Vendor Name' : 'Crew Name'}</Label>
+              <Input
+                id="vendor-name"
+                type="text"
+                placeholder={pendingInvoiceType === 'material' ? 'ABC Supply, etc.' : 'Crew name'}
+                value={vendorName}
+                onChange={(e) => setVendorName(e.target.value)}
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="invoice-number">Invoice Number</Label>
+              <Input
+                id="invoice-number"
+                type="text"
+                placeholder="INV-001"
+                value={invoiceNumber}
+                onChange={(e) => setInvoiceNumber(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setInvoiceDialogOpen(false)} disabled={isLinkingInvoice}>
+              Cancel
+            </Button>
+            <Button onClick={handleInvoiceUploadComplete} disabled={isLinkingInvoice || !invoiceAmount}>
+              {isLinkingInvoice ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Uploading...
+                </>
+              ) : (
+                'Add Invoice'
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
