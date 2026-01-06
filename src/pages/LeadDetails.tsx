@@ -353,7 +353,12 @@ const LeadDetails = () => {
         return (
           <div className="space-y-6">
             {/* Saved Estimates List */}
-            <SavedEstimatesList pipelineEntryId={id!} />
+            <SavedEstimatesList 
+              pipelineEntryId={id!} 
+              onEditEstimate={(estimateId) => {
+                navigate(`/lead/${id}?tab=estimate&editEstimate=${estimateId}`);
+              }}
+            />
 
             {/* Measurement Tools Section */}
             <Card>

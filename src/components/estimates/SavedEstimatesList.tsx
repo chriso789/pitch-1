@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, FileText, ExternalLink, TrendingUp, TrendingDown, Check } from 'lucide-react';
+import { Loader2, FileText, ExternalLink, TrendingUp, TrendingDown, Check, Pencil } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const formatCurrency = (amount: number) => {
@@ -34,13 +34,15 @@ interface SavedEstimatesListProps {
   onCreateNew?: () => void;
   selectedEstimateId?: string | null;
   onEstimateSelect?: (estimateId: string) => void;
+  onEditEstimate?: (estimateId: string) => void;
 }
 
 export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
   pipelineEntryId,
   onCreateNew,
   selectedEstimateId: externalSelectedId,
-  onEstimateSelect
+  onEstimateSelect,
+  onEditEstimate
 }) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -254,12 +256,25 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                 <span className="text-lg font-bold">
                   {formatCurrency(estimate.selling_price || 0)}
                 </span>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onEditEstimate?.(estimate.id);
+                  }}
+                  className="h-8 px-2"
+                  title="Edit Estimate"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
                 {estimate.pdf_url && (
                   <Button
                     variant="ghost"
                     size="sm"
                     onClick={() => handleViewPDF(estimate.pdf_url!)}
                     className="h-8 px-2"
+                    title="View PDF"
                   >
                     <ExternalLink className="h-4 w-4" />
                   </Button>

@@ -380,6 +380,7 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
   const [solarMeasurementData, setSolarMeasurementData] = useState<any>(null);
   const [coordinates, setCoordinates] = useState<{lat: number, lng: number} | null>(null);
   const [syncingTemplates, setSyncingTemplates] = useState(false);
+  const [editEstimateProcessed, setEditEstimateProcessed] = useState(false);
 
   // Clear stale measurement data
   const handleClearMeasurements = async () => {
@@ -509,6 +510,20 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       loadSavedEstimates();
     }
   }, [pipelineEntryId]);
+
+  // Handle editEstimate URL parameter to load estimate for editing
+  useEffect(() => {
+    const editEstimateId = searchParams.get('editEstimate');
+    if (editEstimateId && !editEstimateProcessed && !editingEstimateId) {
+      setEditEstimateProcessed(true);
+      handleLoadEstimate(editEstimateId);
+      // Clear the URL param after loading
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('editEstimate');
+      const newUrl = `${window.location.pathname}?${newParams.toString()}`;
+      window.history.replaceState({}, '', newUrl);
+    }
+  }, [searchParams, editEstimateProcessed, editingEstimateId]);
 
   // Load measurement data from pipeline entry
   useEffect(() => {
