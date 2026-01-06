@@ -237,8 +237,15 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
           .eq('id', pipelineEntryId);
       }
       
-      // Immediately refetch to update UI
-      await queryClient.refetchQueries({ queryKey: ['saved-estimates', pipelineEntryId] });
+      // OPTIMISTIC UPDATE: Immediately remove from cache for instant UI update
+      queryClient.setQueryData(
+        ['saved-estimates', pipelineEntryId], 
+        (oldData: SavedEstimate[] | undefined) => 
+          oldData?.filter(est => est.id !== estimateToRemove.id) ?? []
+      );
+      
+      // Background sync to ensure data consistency
+      queryClient.invalidateQueries({ queryKey: ['saved-estimates', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['pipeline-entry-metadata', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
       
