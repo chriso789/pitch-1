@@ -135,7 +135,7 @@ Deno.serve(async (req) => {
         document_url: documentUrl,
         document_name: document.filename,
         notes: notes || null,
-        status: 'pending',
+        status: 'verified',
         created_by: user.id,
       })
       .select()
