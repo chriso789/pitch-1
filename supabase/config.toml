@@ -641,3 +641,6 @@ verify_jwt = true
 
 [functions.approve-cost-reconciliation]
 verify_jwt = true
+
+[functions.lock-original-costs]
+verify_jwt = true

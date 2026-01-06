@@ -12,7 +12,7 @@ import {
   FileText, CheckCircle, AlertCircle, ExternalLink,
   DollarSign, Hammer, Package, Settings, ChevronLeft,
   ChevronRight, X, Camera, Image as ImageIcon, Edit2, Plus, MessageSquare,
-  Pencil, Crosshair, Ruler, Calculator
+  Pencil, Crosshair, Ruler, Calculator, Lock
 } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -44,6 +44,130 @@ import { SavedEstimatesList } from '@/components/estimates/SavedEstimatesList';
 import { LeadPhotoUploader } from '@/components/photos/LeadPhotoUploader';
 import { LeadActivityTimeline } from '@/components/lead-details/LeadActivityTimeline';
 import { TemplateSectionSelector } from '@/components/estimates/TemplateSectionSelector';
+import { useQuery as useTanstackQuery, useQueryClient } from '@tanstack/react-query';
+import { format } from 'date-fns';
+
+// Materials Section with locking
+const MaterialsSection = ({ pipelineEntryId }: { pipelineEntryId: string }) => {
+  const queryClient = useQueryClient();
+  
+  const { data: lockStatus } = useTanstackQuery({
+    queryKey: ['cost-lock-status', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('enhanced_estimates')
+        .select(`
+          material_cost_locked_at,
+          material_cost_locked_by,
+          labor_cost_locked_at,
+          labor_cost_locked_by,
+          material_locked_by_profile:profiles!enhanced_estimates_material_cost_locked_by_fkey(full_name),
+          labor_locked_by_profile:profiles!enhanced_estimates_labor_cost_locked_by_fkey(full_name)
+        `)
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  const isLocked = !!lockStatus?.material_cost_locked_at;
+  const lockedAt = lockStatus?.material_cost_locked_at;
+  const lockedByName = (lockStatus?.material_locked_by_profile as any)?.full_name;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <span>Material Specifications</span>
+          {isLocked ? (
+            <Badge className="bg-green-600 text-white">
+              <CheckCircle className="h-3 w-3 mr-1" /> Locked
+            </Badge>
+          ) : (
+            <Badge variant="outline">Template-Based</Badge>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <TemplateSectionSelector
+          pipelineEntryId={pipelineEntryId}
+          sectionType="material"
+          isLocked={isLocked}
+          lockedAt={lockedAt}
+          lockedByName={lockedByName}
+          onTotalChange={(total) => {
+            console.log('Materials total updated:', total);
+          }}
+          onLockSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['cost-lock-status', pipelineEntryId] });
+          }}
+        />
+      </CardContent>
+    </Card>
+  );
+};
+
+// Labor Section with locking
+const LaborSection = ({ pipelineEntryId }: { pipelineEntryId: string }) => {
+  const queryClient = useQueryClient();
+  
+  const { data: lockStatus } = useTanstackQuery({
+    queryKey: ['cost-lock-status', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('enhanced_estimates')
+        .select(`
+          material_cost_locked_at,
+          material_cost_locked_by,
+          labor_cost_locked_at,
+          labor_cost_locked_by,
+          material_locked_by_profile:profiles!enhanced_estimates_material_cost_locked_by_fkey(full_name),
+          labor_locked_by_profile:profiles!enhanced_estimates_labor_cost_locked_by_fkey(full_name)
+        `)
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  const isLocked = !!lockStatus?.labor_cost_locked_at;
+  const lockedAt = lockStatus?.labor_cost_locked_at;
+  const lockedByName = (lockStatus?.labor_locked_by_profile as any)?.full_name;
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center justify-between">
+          <span>Labor Breakdown</span>
+          {isLocked ? (
+            <Badge className="bg-green-600 text-white">
+              <CheckCircle className="h-3 w-3 mr-1" /> Locked
+            </Badge>
+          ) : (
+            <Badge variant="outline">Template-Based</Badge>
+          )}
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <TemplateSectionSelector
+          pipelineEntryId={pipelineEntryId}
+          sectionType="labor"
+          isLocked={isLocked}
+          lockedAt={lockedAt}
+          lockedByName={lockedByName}
+          onTotalChange={(total) => {
+            console.log('Labor total updated:', total);
+          }}
+          onLockSuccess={() => {
+            queryClient.invalidateQueries({ queryKey: ['cost-lock-status', pipelineEntryId] });
+          }}
+        />
+      </CardContent>
+    </Card>
+  );
+};
 
 const LeadDetails = () => {
   const { id } = useParams<{ id: string }>();
@@ -266,43 +390,11 @@ const LeadDetails = () => {
         );
       case 'materials':
         return (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Material Specifications</span>
-                <Badge variant="outline">Template-Based</Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <TemplateSectionSelector
-                pipelineEntryId={id!}
-                sectionType="material"
-                onTotalChange={(total) => {
-                  console.log('Materials total updated:', total);
-                }}
-              />
-            </CardContent>
-          </Card>
+          <MaterialsSection pipelineEntryId={id!} />
         );
       case 'labor':
         return (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center justify-between">
-                <span>Labor Breakdown</span>
-                <Badge variant="outline">Template-Based</Badge>
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              <TemplateSectionSelector
-                pipelineEntryId={id!}
-                sectionType="labor"
-                onTotalChange={(total) => {
-                  console.log('Labor total updated:', total);
-                }}
-              />
-            </CardContent>
-          </Card>
+          <LaborSection pipelineEntryId={id!} />
         );
       case 'overhead':
         return (

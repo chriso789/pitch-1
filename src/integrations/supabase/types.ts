@@ -7808,6 +7808,8 @@ export type Database = {
           internal_notes: string | null
           is_fixed_price: boolean | null
           labor_cost: number
+          labor_cost_locked_at: string | null
+          labor_cost_locked_by: string | null
           labor_cost_manual: boolean | null
           labor_hours: number
           labor_markup_percent: number
@@ -7818,6 +7820,8 @@ export type Database = {
           location_zone: string | null
           manual_override_notes: string | null
           material_cost: number
+          material_cost_locked_at: string | null
+          material_cost_locked_by: string | null
           material_cost_manual: boolean | null
           material_markup_percent: number
           material_total: number
@@ -7891,6 +7895,8 @@ export type Database = {
           internal_notes?: string | null
           is_fixed_price?: boolean | null
           labor_cost?: number
+          labor_cost_locked_at?: string | null
+          labor_cost_locked_by?: string | null
           labor_cost_manual?: boolean | null
           labor_hours?: number
           labor_markup_percent?: number
@@ -7901,6 +7907,8 @@ export type Database = {
           location_zone?: string | null
           manual_override_notes?: string | null
           material_cost?: number
+          material_cost_locked_at?: string | null
+          material_cost_locked_by?: string | null
           material_cost_manual?: boolean | null
           material_markup_percent?: number
           material_total?: number
@@ -7974,6 +7982,8 @@ export type Database = {
           internal_notes?: string | null
           is_fixed_price?: boolean | null
           labor_cost?: number
+          labor_cost_locked_at?: string | null
+          labor_cost_locked_by?: string | null
           labor_cost_manual?: boolean | null
           labor_hours?: number
           labor_markup_percent?: number
@@ -7984,6 +7994,8 @@ export type Database = {
           location_zone?: string | null
           manual_override_notes?: string | null
           material_cost?: number
+          material_cost_locked_at?: string | null
+          material_cost_locked_by?: string | null
           material_cost_manual?: boolean | null
           material_markup_percent?: number
           material_total?: number
@@ -8029,6 +8041,34 @@ export type Database = {
           waste_factor_percent?: number
         }
         Relationships: [
+          {
+            foreignKeyName: "enhanced_estimates_labor_cost_locked_by_fkey"
+            columns: ["labor_cost_locked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "enhanced_estimates_labor_cost_locked_by_fkey"
+            columns: ["labor_cost_locked_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "enhanced_estimates_material_cost_locked_by_fkey"
+            columns: ["material_cost_locked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "enhanced_estimates_material_cost_locked_by_fkey"
+            columns: ["material_cost_locked_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
           {
             foreignKeyName: "enhanced_estimates_measurement_report_id_fkey"
             columns: ["measurement_report_id"]
