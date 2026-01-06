@@ -18,7 +18,7 @@ import { toast } from '@/components/ui/use-toast';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 
 import EstimateHyperlinkBar from '@/components/estimates/EstimateHyperlinkBar';
-import ProfitSlider from '@/components/estimates/ProfitSlider';
+import RepProfitBreakdown from '@/components/estimates/RepProfitBreakdown';
 import { CompactCommunicationHub, ActivityItem } from '@/components/communication/CompactCommunicationHub';
 import MeasurementGating from '@/components/estimates/MeasurementGating';
 import { EnhancedEstimateBuilder } from '@/components/EnhancedEstimateBuilder';
@@ -166,6 +166,33 @@ const LaborSection = ({ pipelineEntryId }: { pipelineEntryId: string }) => {
         />
       </CardContent>
     </Card>
+  );
+};
+
+// Profit Section with rep commission breakdown
+const ProfitSection = ({ pipelineEntryId }: { pipelineEntryId: string }) => {
+  // Fetch estimate data for costs and selling price
+  const { data: estimateData } = useTanstackQuery({
+    queryKey: ['estimate-costs', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .rpc('api_estimate_hyperlink_bar', { p_pipeline_entry_id: pipelineEntryId });
+      if (error) throw error;
+      return data as { materials: number; labor: number; sale_price: number } | null;
+    }
+  });
+
+  const sellingPrice = estimateData?.sale_price || 0;
+  const materialCost = estimateData?.materials || 0;
+  const laborCost = estimateData?.labor || 0;
+
+  return (
+    <RepProfitBreakdown
+      pipelineEntryId={pipelineEntryId}
+      sellingPrice={sellingPrice}
+      materialCost={materialCost}
+      laborCost={laborCost}
+    />
   );
 };
 
@@ -412,18 +439,7 @@ const LeadDetails = () => {
           </Card>
         );
       case 'profit':
-        return (
-          <div className="space-y-6">
-            <ProfitSlider
-              value={30}
-              onChange={(value) => console.log('Profit margin changed:', value)}
-              estimateId={id}
-              disabled={!measurementReadiness.isReady}
-              sellingPrice={measurementReadiness.isReady ? 34000 : 0}
-              costPreProfit={measurementReadiness.isReady ? 23800 : 0}
-            />
-          </div>
-        );
+        return <ProfitSection pipelineEntryId={id!} />;
       case 'total':
         return (
           <Card>
