@@ -1,10 +1,11 @@
 import React, { useEffect, useState, useMemo, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Save, FileText, Sparkles, Ruler, RotateCcw, Download, FileUp, Eye } from 'lucide-react';
+import { Loader2, Save, FileText, Sparkles, Ruler, RotateCcw, Download, FileUp, Eye, Edit, X } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { seedBrandTemplates } from '@/lib/estimates/brandTemplateSeeder';
 import { useMeasurementContext, evaluateFormula } from '@/hooks/useMeasurementContext';
@@ -94,11 +95,14 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [pdfOptions, setPdfOptions] = useState<PDFComponentOptions>(getDefaultOptions('customer'));
   const [showImportDialog, setShowImportDialog] = useState(false);
   const [showPreviewPanel, setShowPreviewPanel] = useState(false);
+  const [editEstimateProcessed, setEditEstimateProcessed] = useState(false);
+  const [editingEstimateNumber, setEditingEstimateNumber] = useState<string | null>(null);
   const { toast } = useToast();
   const { context: measurementContext, summary: measurementSummary } = useMeasurementContext(pipelineEntryId);
   const { generatePDF } = usePDFGeneration();
   const queryClient = useQueryClient();
   const pdfContainerRef = useRef<HTMLDivElement>(null);
+  const [searchParams] = useSearchParams();
 
   // Use the pricing hook
   const {
@@ -122,6 +126,111 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     fetchCompanyAndEstimateSettings();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Handle editEstimate URL parameter to load estimate for editing
+  useEffect(() => {
+    const editEstimateId = searchParams.get('editEstimate');
+    if (editEstimateId && !editEstimateProcessed && !existingEstimateId) {
+      setEditEstimateProcessed(true);
+      loadEstimateForEditing(editEstimateId);
+      // Clear the URL param after loading
+      const newParams = new URLSearchParams(searchParams);
+      newParams.delete('editEstimate');
+      const newUrl = `${window.location.pathname}?${newParams.toString()}`;
+      window.history.replaceState({}, '', newUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, editEstimateProcessed, existingEstimateId]);
+
+  // Load an existing estimate for editing
+  const loadEstimateForEditing = async (estimateId: string) => {
+    setLoading(true);
+    try {
+      // Fetch the estimate from enhanced_estimates
+      const { data: estimate, error } = await supabaseClient
+        .from('enhanced_estimates')
+        .select('*')
+        .eq('id', estimateId)
+        .single();
+
+      if (error || !estimate) {
+        toast({
+          title: 'Error',
+          description: 'Could not load estimate for editing',
+          variant: 'destructive'
+        });
+        return;
+      }
+
+      // Set the template ID from the estimate
+      if (estimate.template_id) {
+        setSelectedTemplateId(estimate.template_id);
+      }
+
+      // Set the existing estimate ID to enable save/update mode
+      setExistingEstimateId(estimateId);
+      setEditingEstimateNumber(estimate.estimate_number);
+
+      // Load line items from the estimate
+      const lineItemsData = estimate.line_items as any;
+      if (lineItemsData) {
+        const materials = lineItemsData.materials || [];
+        const labor = lineItemsData.labor || [];
+        
+        const allItems: LineItem[] = [
+          ...materials.map((item: any) => ({
+            ...item,
+            item_type: 'material' as const,
+          })),
+          ...labor.map((item: any) => ({
+            ...item,
+            item_type: 'labor' as const,
+          })),
+        ];
+
+        if (allItems.length > 0) {
+          setLineItems(allItems);
+        }
+      }
+
+      // Set pricing config from the estimate
+      setConfig({
+        overheadPercent: estimate.overhead_percent || 15,
+        profitMarginPercent: estimate.actual_profit_percent || 30,
+        repCommissionPercent: estimate.rep_commission_percent || 5,
+      });
+
+      // Handle fixed price
+      if (estimate.is_fixed_price && estimate.fixed_selling_price) {
+        setFixedPrice(estimate.fixed_selling_price);
+      }
+
+      toast({
+        title: 'Estimate Loaded',
+        description: `${estimate.estimate_number} is ready for editing`
+      });
+
+    } catch (err) {
+      console.error('Error loading estimate for editing:', err);
+      toast({
+        title: 'Error',
+        description: 'Failed to load estimate',
+        variant: 'destructive'
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Cancel edit mode
+  const handleCancelEdit = () => {
+    setExistingEstimateId(null);
+    setEditingEstimateNumber(null);
+    setEditEstimateProcessed(false);
+    setSelectedTemplateId('');
+    setLineItems([]);
+    resetToOriginal();
+  };
 
   // Fetch company info and estimate settings
   const fetchCompanyAndEstimateSettings = async () => {
@@ -840,6 +949,26 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
   return (
     <div className="space-y-6">
+      {/* Editing Mode Banner */}
+      {existingEstimateId && (
+        <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex items-center gap-2">
+          <Edit className="h-4 w-4 text-yellow-600" />
+          <span className="text-yellow-800 font-medium">Editing Mode</span>
+          <span className="text-yellow-700 text-sm">
+            - {editingEstimateNumber || 'Estimate'} - Changes will update this estimate
+          </span>
+          <Button 
+            variant="ghost" 
+            size="sm" 
+            onClick={handleCancelEdit}
+            className="ml-auto h-7 text-yellow-700 hover:text-yellow-900 hover:bg-yellow-100"
+          >
+            <X className="h-4 w-4 mr-1" />
+            Cancel Edit
+          </Button>
+        </div>
+      )}
+
       {/* Template Selection Dropdown */}
       <Card>
         <CardHeader>
