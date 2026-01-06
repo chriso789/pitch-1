@@ -4,7 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Loader2, Save, FileText, Sparkles, Ruler, RotateCcw, Download, FileUp } from 'lucide-react';
+import { Loader2, Save, FileText, Sparkles, Ruler, RotateCcw, Download, FileUp, Eye } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { seedBrandTemplates } from '@/lib/estimates/brandTemplateSeeder';
 import { useMeasurementContext, evaluateFormula } from '@/hooks/useMeasurementContext';
@@ -12,6 +12,7 @@ import { SectionedLineItemsTable } from './SectionedLineItemsTable';
 import { EstimateBreakdownCard } from './EstimateBreakdownCard';
 import { EstimatePDFTemplate } from './EstimatePDFTemplate';
 import { PDFExportDialog } from './PDFExportDialog';
+import { EstimatePreviewPanel } from './EstimatePreviewPanel';
 import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptions';
 import { useEstimatePricing, type LineItem } from '@/hooks/useEstimatePricing';
 import { usePDFGeneration } from '@/hooks/usePDFGeneration';
@@ -92,6 +93,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [customerInfo, setCustomerInfo] = useState<{ name: string; address: string; phone?: string; email?: string } | null>(null);
   const [pdfOptions, setPdfOptions] = useState<PDFComponentOptions>(getDefaultOptions('customer'));
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const [showPreviewPanel, setShowPreviewPanel] = useState(false);
   const { toast } = useToast();
   const { context: measurementContext, summary: measurementSummary } = useMeasurementContext(pipelineEntryId);
   const { generatePDF } = usePDFGeneration();
@@ -996,16 +998,26 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           Save Selection
         </Button>
         
-        {/* Export PDF button */}
+        {/* Preview and Export PDF buttons */}
         {lineItems.length > 0 && (
-          <Button
-            variant="outline"
-            onClick={() => setShowExportDialog(true)}
-            className="flex-1 min-w-[140px]"
-          >
-            <Download className="mr-2 h-4 w-4" />
-            Export PDF
-          </Button>
+          <>
+            <Button
+              variant="outline"
+              onClick={() => setShowPreviewPanel(true)}
+              className="flex-1 min-w-[140px]"
+            >
+              <Eye className="mr-2 h-4 w-4" />
+              Preview
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => setShowExportDialog(true)}
+              className="flex-1 min-w-[140px]"
+            >
+              <Download className="mr-2 h-4 w-4" />
+              Export PDF
+            </Button>
+          </>
         )}
         
         {/* Show Save Changes button when editing existing estimate with modifications */}
@@ -1087,6 +1099,24 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             fetchLineItems(selectedTemplateId);
           }
         }}
+      />
+
+      {/* Estimate Preview Panel */}
+      <EstimatePreviewPanel
+        open={showPreviewPanel}
+        onOpenChange={setShowPreviewPanel}
+        estimateNumber={existingEstimateId ? `EST-${existingEstimateId.slice(0, 8)}` : `EST-DRAFT-${Date.now().toString(36).slice(-4)}`}
+        customerName={customerInfo?.name || 'Customer'}
+        customerAddress={customerInfo?.address || ''}
+        customerPhone={customerInfo?.phone}
+        customerEmail={customerInfo?.email}
+        companyInfo={companyInfo}
+        materialItems={materialItems}
+        laborItems={laborItems}
+        breakdown={breakdown}
+        config={config}
+        finePrintContent={finePrintContent}
+        measurementSummary={measurementSummary}
       />
     </div>
   );
