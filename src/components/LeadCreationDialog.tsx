@@ -19,6 +19,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useNavigate } from "react-router-dom";
 import { useFormNavigationGuard } from "@/hooks/useFormNavigationGuard";
+import { useLocation } from "@/contexts/LocationContext";
 
 interface LeadCreationDialogProps {
   trigger?: React.ReactNode;
@@ -73,6 +74,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
   const [showAddressPicker, setShowAddressPicker] = useState(false);
   const { toast } = useToast();
   const navigate = useNavigate();
+  const { currentLocationId } = useLocation();
 
   // Initialize form navigation guard
   const {
@@ -203,10 +205,10 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
       const effectiveTenantId = profile?.active_tenant_id || profile?.tenant_id;
       if (!effectiveTenantId) return;
 
-      // First, try to get the contact's location
-      let locationId = contact?.location_id;
+      // Use current location from location switcher first, then fall back to contact's location
+      const locationId = currentLocationId || contact?.location_id;
       
-      // If contact has location, filter reps by location assignments
+      // If we have a location, filter reps by location assignments
       let repIds: string[] = [];
       if (locationId) {
         const { data: locationAssignments } = await supabase
@@ -216,6 +218,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
           .eq('is_active', true);
         
         repIds = (locationAssignments || []).map(a => a.user_id);
+        console.log('[LeadCreationDialog] Location-based reps:', repIds.length, 'for location:', locationId);
       }
 
       // Build query for profiles - exclude 'master' role from initial query
@@ -514,7 +517,8 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
               longitude: selectedAddress?.geometry?.location?.lng,
               verified_address: selectedAddress,
               created_by: session.user.id,
-              assigned_to: assignedRep  // Set assigned_to on new contacts
+              assigned_to: assignedRep,  // Set assigned_to on new contacts
+              location_id: currentLocationId, // Set location from location switcher
             } as any)
             .select()
             .single();
@@ -530,6 +534,7 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
         .insert({
           tenant_id: userProfile.tenant_id,
           contact_id: contactId,
+          location_id: currentLocationId, // Set location from location switcher
           status: formData.status,
           roof_type: formData.roofType || null,
           priority: formData.priority,

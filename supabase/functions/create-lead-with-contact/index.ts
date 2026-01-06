@@ -25,6 +25,7 @@ interface LeadRequest {
     address_components: any[];
   };
   existingContactId?: string;
+  locationId?: string; // Location ID from the location switcher
 }
 
 // Parse address string into components
@@ -147,11 +148,15 @@ serve(async (req: Request) => {
     const tenantId = profile.active_tenant_id || profile.tenant_id;
     console.log("[create-lead-with-contact] Tenant ID:", tenantId);
 
-    // Determine location_id with fallback logic
-    let locationId = profile.active_location_id;
+    const body: LeadRequest = await req.json();
+    console.log("[create-lead-with-contact] Request body:", JSON.stringify(body, null, 2));
+
+    // PRIORITY: Use locationId from request (client's current location switcher selection)
+    // Then fall back to profile's active_location_id, then find a default
+    let locationId = body.locationId || profile.active_location_id;
     
     if (!locationId) {
-      console.log("[create-lead-with-contact] No active_location_id, searching for fallback...");
+      console.log("[create-lead-with-contact] No locationId provided, searching for fallback...");
       
       // Try to find the primary location for the tenant
       const { data: primaryLocation } = await supabase
@@ -200,10 +205,9 @@ serve(async (req: Request) => {
           }
         }
       }
+    } else {
+      console.log("[create-lead-with-contact] Using provided locationId:", locationId);
     }
-
-    const body: LeadRequest = await req.json();
-    console.log("[create-lead-with-contact] Request body:", JSON.stringify(body, null, 2));
 
     let contactId = body.existingContactId;
     let addressComponents: { street: string; city: string; state: string; zip: string };

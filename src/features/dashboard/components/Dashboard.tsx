@@ -16,6 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { useNavigate } from "react-router-dom";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
+import { useLocation } from "@/contexts/LocationContext";
 import { DashboardAIAssistant } from "./DashboardAIAssistant";
 import { cn } from "@/lib/utils";
 import { 
@@ -38,7 +39,8 @@ import {
   HardHat,
   Home,
   Activity,
-  Building2
+  Building2,
+  MapPin
 } from "lucide-react";
 import { DateRange } from "react-day-picker";
 import { subDays, format } from "date-fns";
@@ -49,20 +51,26 @@ const Dashboard = () => {
   const navigate = useNavigate();
   const { user } = useCurrentUser();
   const { activeCompany } = useCompanySwitcher();
+  const { currentLocationId, currentLocation } = useLocation();
   const [dateRange, setDateRange] = useState<DateRange>({
     from: subDays(new Date(), 90),
     to: new Date()
   });
 
-  // Fetch Job Action Items metrics
+  // Fetch Job Action Items metrics - filtered by location
   const { data: unassignedLeads = 0 } = useQuery({
-    queryKey: ['dashboard-unassigned-leads', dateRange],
+    queryKey: ['dashboard-unassigned-leads', dateRange, currentLocationId],
     queryFn: async () => {
       let query = supabase
         .from('pipeline_entries')
         .select('*', { count: 'exact', head: true })
         .is('assigned_to', null)
         .in('status', ['lead', 'estimate', 'negotiating']);
+      
+      // Filter by location if selected
+      if (currentLocationId) {
+        query = query.eq('location_id', currentLocationId);
+      }
       
       if (dateRange?.from) {
         query = query.gte('created_at', dateRange.from.toISOString());
@@ -77,12 +85,17 @@ const Dashboard = () => {
   });
 
   const { data: jobsForApproval = 0 } = useQuery({
-    queryKey: ['dashboard-jobs-approval', dateRange],
+    queryKey: ['dashboard-jobs-approval', dateRange, currentLocationId],
     queryFn: async () => {
       let query = supabase
         .from('pipeline_entries')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'ready_for_approval');
+      
+      // Filter by location if selected
+      if (currentLocationId) {
+        query = query.eq('location_id', currentLocationId);
+      }
       
       if (dateRange?.from) {
         query = query.gte('created_at', dateRange.from.toISOString());
@@ -97,12 +110,17 @@ const Dashboard = () => {
   });
 
   const { data: jobsInProgress = 0 } = useQuery({
-    queryKey: ['dashboard-jobs-progress', dateRange],
+    queryKey: ['dashboard-jobs-progress', dateRange, currentLocationId],
     queryFn: async () => {
       let query = supabase
         .from('pipeline_entries')
         .select('*', { count: 'exact', head: true })
         .in('status', ['project', 'production', 'installation']);
+      
+      // Filter by location if selected
+      if (currentLocationId) {
+        query = query.eq('location_id', currentLocationId);
+      }
       
       if (dateRange?.from) {
         query = query.gte('created_at', dateRange.from.toISOString());
@@ -117,12 +135,19 @@ const Dashboard = () => {
   });
 
   const { data: watchListCount = 0 } = useQuery({
-    queryKey: ['dashboard-watch-list'],
+    queryKey: ['dashboard-watch-list', currentLocationId],
     queryFn: async () => {
-      const { data } = await supabase
+      let query = supabase
         .from('pipeline_entries')
-        .select('metadata')
+        .select('metadata, location_id')
         .not('metadata', 'is', null);
+      
+      // Filter by location if selected
+      if (currentLocationId) {
+        query = query.eq('location_id', currentLocationId);
+      }
+      
+      const { data } = await query;
       const watchList = data?.filter(entry => {
         const metadata = entry.metadata as any;
         return metadata?.watch_list === true;
@@ -132,12 +157,17 @@ const Dashboard = () => {
   });
 
   const { data: leadsCount = 0 } = useQuery({
-    queryKey: ['dashboard-leads-count', dateRange],
+    queryKey: ['dashboard-leads-count', dateRange, currentLocationId],
     queryFn: async () => {
       let query = supabase
         .from('pipeline_entries')
         .select('*', { count: 'exact', head: true })
         .eq('status', 'lead');
+      
+      // Filter by location if selected
+      if (currentLocationId) {
+        query = query.eq('location_id', currentLocationId);
+      }
       
       if (dateRange?.from) {
         query = query.gte('created_at', dateRange.from.toISOString());
@@ -151,9 +181,9 @@ const Dashboard = () => {
     }
   });
 
-  // Pipeline status counts - filtered by tenant and role (no date filter)
+  // Pipeline status counts - filtered by tenant, role, AND location
   const { data: pipelineStatusCounts = {}, isError: pipelineError } = useQuery({
-    queryKey: ['dashboard-pipeline-counts', user?.id, user?.active_tenant_id || user?.tenant_id],
+    queryKey: ['dashboard-pipeline-counts', user?.id, user?.active_tenant_id || user?.tenant_id, currentLocationId],
     queryFn: async () => {
       if (!user) return {};
       
@@ -164,13 +194,18 @@ const Dashboard = () => {
         return {};
       }
       
-      console.log('[Dashboard] Fetching pipeline counts for tenant:', tenantId, 'user:', user.id, 'role:', user.role);
+      console.log('[Dashboard] Fetching pipeline counts for tenant:', tenantId, 'location:', currentLocationId, 'user:', user.id, 'role:', user.role);
       
       // Build query - NO date range filter for pipeline status (shows current state)
       let query = supabase
         .from('pipeline_entries')
         .select('status')
         .eq('tenant_id', tenantId);
+      
+      // Filter by location if selected
+      if (currentLocationId) {
+        query = query.eq('location_id', currentLocationId);
+      }
       
       // For non-admin roles, only show their assigned/created entries
       const adminRoles = ['master', 'corporate', 'office_admin'];
@@ -434,9 +469,17 @@ const Dashboard = () => {
       <div className="flex flex-col gap-3 md:gap-4">
         <div className="flex items-center justify-between w-full">
           <div>
-            <h1 className="text-2xl md:text-3xl font-bold gradient-primary bg-clip-text text-transparent">
-              {activeCompany?.tenant_name || 'PITCH'} Dashboard
-            </h1>
+          <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl md:text-3xl font-bold gradient-primary bg-clip-text text-transparent">
+                {activeCompany?.tenant_name || 'PITCH'} Dashboard
+              </h1>
+              {currentLocation && (
+                <Badge variant="outline" className="text-xs md:text-sm">
+                  <MapPin className="h-3 w-3 mr-1" />
+                  {currentLocation.name}
+                </Badge>
+              )}
+            </div>
             <p className="text-sm md:text-base text-muted-foreground">
               Welcome back! Here's your roofing business overview.
             </p>

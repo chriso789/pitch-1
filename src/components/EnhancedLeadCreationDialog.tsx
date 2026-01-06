@@ -26,6 +26,7 @@ import { Plus, MapPin, Check, AlertCircle, Loader2, User, Briefcase, Link2, Chec
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { ContactSearchSelect } from "@/components/ContactSearchSelect";
+import { useLocation } from "@/contexts/LocationContext";
 
 interface EnhancedLeadCreationDialogProps {
   trigger?: React.ReactNode;
@@ -112,6 +113,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
   const [addressVerified, setAddressVerified] = useState(false);
   const debounceTimer = useRef<NodeJS.Timeout | null>(null);
   const { toast } = useToast();
+  const { currentLocationId } = useLocation();
 
   // Real-time address autocomplete with debounce
   useEffect(() => {
@@ -288,13 +290,36 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
       const effectiveTenantId = profile.active_tenant_id || profile.tenant_id;
       if (!effectiveTenantId) return;
 
-      const { data: reps, error } = await supabase
+      // Use current location from location switcher first, then fall back to contact's location
+      const locationId = currentLocationId || contact?.location_id;
+      
+      // If we have a location, filter reps by location assignments
+      let repIds: string[] = [];
+      if (locationId) {
+        const { data: locationAssignments } = await supabase
+          .from('user_location_assignments')
+          .select('user_id')
+          .eq('location_id', locationId)
+          .eq('is_active', true);
+        
+        repIds = (locationAssignments || []).map(a => a.user_id);
+        console.log('[EnhancedLeadCreationDialog] Location-based reps:', repIds.length, 'for location:', locationId);
+      }
+
+      let query = supabase
         .from('profiles')
         .select('id, first_name, last_name, role, tenant_id')
         .eq('tenant_id', effectiveTenantId)
         .in('role', ['corporate', 'office_admin', 'regional_manager', 'sales_manager', 'project_manager', 'owner'])
         .eq('is_active', true)
         .order('first_name');
+
+      // If we have location-based rep IDs, filter by them
+      if (locationId && repIds.length > 0) {
+        query = query.in('id', repIds);
+      }
+
+      const { data: reps, error } = await query;
 
       if (error) throw error;
 
@@ -480,6 +505,7 @@ export const EnhancedLeadCreationDialog: React.FC<EnhancedLeadCreationDialogProp
           salesReps: formData.salesReps,
           selectedAddress: selectedAddress,
           existingContactId: selectedContact?.id || contact?.id,
+          locationId: currentLocationId, // Pass current location from location switcher
         }
       });
 
