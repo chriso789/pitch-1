@@ -647,3 +647,6 @@ verify_jwt = true
 
 [functions.link-document-invoice]
 verify_jwt = true
+
+[functions.ai-error-fixer]
+verify_jwt = false
