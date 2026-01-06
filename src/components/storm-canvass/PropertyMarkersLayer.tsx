@@ -44,23 +44,14 @@ const DISPOSITION_COLORS: Record<string, string> = {
   default: '#D4A84B',          // Yellow outline (not contacted)
 };
 
-// Icons to show for certain dispositions
-const DISPOSITION_ICONS: Record<string, string> = {
-  interested: '$',
-  sold: '$',
-  unqualified: '✕',
-  not_interested: '✕',
-  old_roof_marker: '!',
-};
-
-// Get marker size based on zoom level
+// Get marker size based on zoom level - always show house numbers at zoom 14+
 function getMarkerSize(zoom: number): { size: number; showNumber: boolean; fontSize: number } {
-  if (zoom >= 18) return { size: 28, showNumber: true, fontSize: 9 };
-  if (zoom >= 17) return { size: 24, showNumber: true, fontSize: 8 };
-  if (zoom >= 16) return { size: 20, showNumber: true, fontSize: 7 };
-  if (zoom >= 15) return { size: 16, showNumber: false, fontSize: 0 };
-  if (zoom >= 14) return { size: 12, showNumber: false, fontSize: 0 };
-  return { size: 8, showNumber: false, fontSize: 0 };
+  if (zoom >= 18) return { size: 36, showNumber: true, fontSize: 12 };
+  if (zoom >= 17) return { size: 32, showNumber: true, fontSize: 11 };
+  if (zoom >= 16) return { size: 28, showNumber: true, fontSize: 10 };
+  if (zoom >= 15) return { size: 24, showNumber: true, fontSize: 9 };
+  if (zoom >= 14) return { size: 20, showNumber: true, fontSize: 8 };
+  return { size: 10, showNumber: false, fontSize: 0 };
 }
 
 // Get radius based on zoom level (in miles)
@@ -106,33 +97,34 @@ export default function PropertyMarkersLayer({
     const color = getDispositionColor(property.disposition);
     const { size, showNumber, fontSize } = getMarkerSize(zoom);
     const streetNumber = getStreetNumber(property.address);
-    const icon = property.disposition ? DISPOSITION_ICONS[property.disposition] : null;
     const isNotContacted = !property.disposition || property.disposition === 'not_contacted';
-    const borderWidth = size >= 20 ? 3 : size >= 14 ? 2 : 1;
+    const borderWidth = size >= 24 ? 3 : size >= 16 ? 2 : 1;
     
     el.className = 'property-marker';
     
-    // Style based on disposition - NO HOVER ANIMATION (fixes click issues)
+    // Google Maps style - always show house number inside circle
+    // Yellow/gold outline for not contacted, filled color for contacted
     if (isNotContacted) {
-      // Yellow outline circle for not contacted
+      // Google Maps style: white fill with yellow/gold border, dark text
       el.style.cssText = `
         width: ${size}px;
         height: ${size}px;
-        background-color: transparent;
+        background-color: #FFFFFF;
         border: ${borderWidth}px solid ${color};
         border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
         font-size: ${fontSize}px;
-        font-weight: bold;
-        color: ${color};
+        font-weight: 600;
+        color: #1F2937;
         pointer-events: auto;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       `;
     } else {
-      // Filled circle for contacted properties
+      // Filled circle for contacted properties with white text
       el.style.cssText = `
         width: ${size}px;
         height: ${size}px;
@@ -143,21 +135,18 @@ export default function PropertyMarkersLayer({
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-        font-size: ${fontSize + 2}px;
-        font-weight: bold;
+        box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        font-size: ${fontSize}px;
+        font-weight: 600;
         color: white;
         pointer-events: auto;
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
       `;
     }
     
-    // Show icon or street number only at higher zoom levels
-    if (showNumber) {
-      if (icon) {
-        el.textContent = icon;
-      } else if (streetNumber && streetNumber.length <= 4) {
-        el.textContent = streetNumber;
-      }
+    // Always show house number when showNumber is true
+    if (showNumber && streetNumber) {
+      el.textContent = streetNumber;
     }
     
     return el;

@@ -79,6 +79,7 @@ import MeasurementWorkflowDemo from "./pages/MeasurementWorkflowDemo";
 import RoofMeasure from "./pages/RoofMeasure";
 import LiveCanvassingPage from "./pages/storm-canvass/LiveCanvassingPage";
 import TerritoryMapPage from "./pages/storm-canvass/TerritoryMapPage";
+import PropertyInteractionPage from "./pages/storm-canvass/PropertyInteractionPage";
 import CanvasserDashboard from "./pages/storm-canvass/CanvasserDashboard";
 import LeaderboardPage from "./pages/storm-canvass/LeaderboardPage";
 import ImportContacts from "./pages/storm-canvass/ImportContacts";
@@ -214,6 +215,7 @@ const AppContent = () => {
         <Route path="/storm-canvass/dashboard" element={<ProtectedRoute><CanvasserDashboard /></ProtectedRoute>} />
         <Route path="/storm-canvass/leaderboard" element={<ProtectedRoute><LeaderboardPage /></ProtectedRoute>} />
         <Route path="/storm-canvass/import" element={<ProtectedRoute><ImportContacts /></ProtectedRoute>} />
+        <Route path="/storm-canvass/property/:propertyId" element={<ProtectedRoute><PropertyInteractionPage /></ProtectedRoute>} />
         <Route path="/communications" element={<ProtectedRoute><CommunicationsHub /></ProtectedRoute>} />
         <Route path="/dialer" element={<ProtectedRoute><CommunicationsHub /></ProtectedRoute>} />
         <Route path="/campaigns" element={<ProtectedRoute><Campaigns /></ProtectedRoute>} />

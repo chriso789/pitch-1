@@ -5,14 +5,12 @@ import { Badge } from '@/components/ui/badge';
 import { ArrowLeft, Camera } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import LiveLocationMap from '@/components/storm-canvass/LiveLocationMap';
-import QuickActivityPanel from '@/components/storm-canvass/QuickActivityPanel';
 import LiveStatsOverlay from '@/components/storm-canvass/LiveStatsOverlay';
 import MobileDispositionPanel from '@/components/storm-canvass/MobileDispositionPanel';
 import AddressSearchBar from '@/components/storm-canvass/AddressSearchBar';
 import NavigationPanel from '@/components/storm-canvass/NavigationPanel';
 import GPSAcquiringOverlay from '@/components/storm-canvass/GPSAcquiringOverlay';
 import MapStyleToggle, { MapStyle } from '@/components/storm-canvass/MapStyleToggle';
-import PropertyInfoPanel from '@/components/storm-canvass/PropertyInfoPanel';
 import { CanvassPhotoCapture } from '@/components/storm-canvass/CanvassPhotoCapture';
 import { OfflinePhotoSyncManager } from '@/components/storm-canvass/OfflinePhotoSyncManager';
 import { locationService } from '@/services/locationService';
@@ -58,7 +56,6 @@ export default function LiveCanvassingPage() {
   const [isTracking, setIsTracking] = useState(false);
   const [distanceTraveled, setDistanceTraveled] = useState(0);
   const [selectedContact, setSelectedContact] = useState<Contact | null>(null);
-  const [selectedProperty, setSelectedProperty] = useState<any | null>(null);
   const [dispositions, setDispositions] = useState<Disposition[]>([]);
   const [mapStyle, setMapStyle] = useState<MapStyle>('satellite');
   const [showPhotoCapture, setShowPhotoCapture] = useState(false);
@@ -317,7 +314,12 @@ export default function LiveCanvassingPage() {
           userLocation={userLocation}
           currentAddress={currentAddress}
           onContactSelect={setSelectedContact}
-          onParcelSelect={setSelectedProperty}
+          onParcelSelect={(property) => {
+            // Navigate to property interaction page
+            navigate(`/storm-canvass/property/${property.id}`, { 
+              state: { property, userLocation } 
+            });
+          }}
           routeData={routeData}
           destination={destination}
           mapStyle={mapStyle}
@@ -337,9 +339,6 @@ export default function LiveCanvassingPage() {
         {!hasGPS && <GPSAcquiringOverlay />}
       </div>
 
-      {/* Quick Activity Panel */}
-      <QuickActivityPanel userLocation={userLocation} />
-
       {/* Mobile Disposition Panel (for contacts) */}
       <MobileDispositionPanel
         contact={selectedContact}
@@ -353,22 +352,11 @@ export default function LiveCanvassingPage() {
         onNavigate={handleNavigateToContact}
       />
 
-      {/* Property Info Panel (for parcels) */}
-      <PropertyInfoPanel
-        open={!!selectedProperty}
-        onOpenChange={(open) => !open && setSelectedProperty(null)}
-        property={selectedProperty}
-        userLocation={userLocation}
-        onDispositionUpdate={() => setSelectedProperty(null)}
-        onNavigate={handleNavigateToProperty}
-      />
-
       {/* Photo Capture Dialog */}
       <CanvassPhotoCapture
         open={showPhotoCapture}
         onOpenChange={setShowPhotoCapture}
-        propertyId={selectedProperty?.id}
-        propertyAddress={selectedProperty?.address?.formatted || selectedContact?.address_street}
+        propertyAddress={selectedContact?.address_street}
         userLocation={userLocation}
       />
     </div>
