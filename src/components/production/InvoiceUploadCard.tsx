@@ -12,17 +12,35 @@ import {
   Loader2,
   CheckCircle,
   Package,
-  Wrench
+  Wrench,
+  Receipt
 } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
 interface InvoiceUploadCardProps {
   projectId?: string;
   pipelineEntryId?: string;
-  invoiceType: 'material' | 'labor';
+  invoiceType: 'material' | 'labor' | 'overhead';
   onSuccess?: (invoice: any) => void;
 }
+
+const OVERHEAD_CATEGORIES = [
+  { value: 'permit', label: 'Permit Fees' },
+  { value: 'dumpster', label: 'Dumpster Rental' },
+  { value: 'porta_potty', label: 'Porta-Potty' },
+  { value: 'crane', label: 'Crane/Equipment Rental' },
+  { value: 'disposal', label: 'Disposal Fees' },
+  { value: 'delivery', label: 'Delivery Charges' },
+  { value: 'other', label: 'Other Overhead' },
+];
 
 export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
   projectId,
@@ -36,6 +54,7 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
   const [formData, setFormData] = useState({
     vendor_name: '',
     crew_name: '',
+    overhead_category: '',
     invoice_number: '',
     invoice_date: '',
     invoice_amount: '',
@@ -118,15 +137,21 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
 
       if (error) throw error;
 
+      const typeLabels = {
+        material: 'Material',
+        labor: 'Labor',
+        overhead: 'Overhead'
+      };
       toast({
         title: 'Invoice Submitted',
-        description: `${invoiceType === 'material' ? 'Material' : 'Labor'} invoice recorded successfully`
+        description: `${typeLabels[invoiceType]} invoice recorded successfully`
       });
 
       // Reset form
       setFormData({
         vendor_name: '',
         crew_name: '',
+        overhead_category: '',
         invoice_number: '',
         invoice_date: '',
         invoice_amount: '',
@@ -148,19 +173,24 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
   };
 
   const isMaterial = invoiceType === 'material';
-  const Icon = isMaterial ? Package : Wrench;
+  const isLabor = invoiceType === 'labor';
+  const isOverhead = invoiceType === 'overhead';
+  
+  const Icon = isMaterial ? Package : isLabor ? Wrench : Receipt;
+  const iconColor = isMaterial ? 'text-blue-500' : isLabor ? 'text-orange-500' : 'text-purple-500';
+  const title = isMaterial ? 'Material Invoice' : isLabor ? 'Labor Invoice' : 'Overhead Cost';
 
   return (
     <Card className="border-border">
       <CardHeader className="pb-3">
         <CardTitle className="flex items-center gap-2 text-base">
-          <Icon className={`h-4 w-4 ${isMaterial ? 'text-blue-500' : 'text-orange-500'}`} />
-          {isMaterial ? 'Material Invoice' : 'Labor Invoice'}
+          <Icon className={`h-4 w-4 ${iconColor}`} />
+          {title}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
-          {isMaterial ? (
+          {isMaterial && (
             <div className="col-span-2">
               <Label htmlFor="vendor_name">Vendor Name</Label>
               <Input
@@ -170,7 +200,9 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
                 onChange={(e) => setFormData(prev => ({ ...prev, vendor_name: e.target.value }))}
               />
             </div>
-          ) : (
+          )}
+          
+          {isLabor && (
             <div className="col-span-2">
               <Label htmlFor="crew_name">Crew Name</Label>
               <Input
@@ -180,6 +212,38 @@ export const InvoiceUploadCard: React.FC<InvoiceUploadCardProps> = ({
                 onChange={(e) => setFormData(prev => ({ ...prev, crew_name: e.target.value }))}
               />
             </div>
+          )}
+          
+          {isOverhead && (
+            <>
+              <div className="col-span-2">
+                <Label htmlFor="overhead_category">Cost Category *</Label>
+                <Select
+                  value={formData.overhead_category}
+                  onValueChange={(value) => setFormData(prev => ({ ...prev, overhead_category: value }))}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select category..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {OVERHEAD_CATEGORIES.map((cat) => (
+                      <SelectItem key={cat.value} value={cat.value}>
+                        {cat.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="col-span-2">
+                <Label htmlFor="vendor_name">Vendor/Provider</Label>
+                <Input
+                  id="vendor_name"
+                  placeholder="City of Austin Permits, Waste Management..."
+                  value={formData.vendor_name}
+                  onChange={(e) => setFormData(prev => ({ ...prev, vendor_name: e.target.value }))}
+                />
+              </div>
+            </>
           )}
 
           <div>

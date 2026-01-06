@@ -34,6 +34,7 @@ Deno.serve(async (req) => {
       invoice_type,
       vendor_name,
       crew_name,
+      overhead_category,
       invoice_number,
       invoice_date,
       invoice_amount,
@@ -50,8 +51,8 @@ Deno.serve(async (req) => {
       throw new Error('invoice_type and invoice_amount are required');
     }
 
-    if (!['material', 'labor'].includes(invoice_type)) {
-      throw new Error('invoice_type must be "material" or "labor"');
+    if (!['material', 'labor', 'overhead'].includes(invoice_type)) {
+      throw new Error('invoice_type must be "material", "labor", or "overhead"');
     }
 
     const targetId = project_id || pipeline_entry_id;

@@ -32,19 +32,23 @@ export const LocationSwitcher = ({ onLocationChange }: LocationSwitcherProps) =>
     // Set switching flag for overlay immediately
     setLocationSwitchingFlag(location?.name || null);
     
-    // Persist to database
-    await setCurrentLocationId(locationId);
-    
-    // Clear all React Query cache
-    queryClient.clear();
-    
-    // Notify callback if provided
-    onLocationChange?.(locationId);
-    
-    // Full page redirect to dashboard
-    setTimeout(() => {
+    try {
+      // Persist to database - wait for completion
+      await setCurrentLocationId(locationId);
+      
+      // Clear all React Query cache
+      queryClient.clear();
+      
+      // Notify callback if provided
+      onLocationChange?.(locationId);
+      
+      // Full page redirect to dashboard after successful save
       window.location.href = '/dashboard';
-    }, 150);
+    } catch (error) {
+      console.error('Failed to switch location:', error);
+      // Clear the switching flag on error
+      setLocationSwitchingFlag(null);
+    }
   };
 
   if (loading) {

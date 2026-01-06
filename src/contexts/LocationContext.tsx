@@ -119,8 +119,8 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [activeTenantId]);
 
-  // Set current location - OPTIMISTIC UPDATE for instant UI response
-  const setCurrentLocationId = useCallback(async (locationId: string | null) => {
+  // Set current location - AWAIT database write for reliable switching
+  const setCurrentLocationId = useCallback(async (locationId: string | null): Promise<void> => {
     const storageKey = getStorageKey(activeTenantId);
     
     // 1. Update local state IMMEDIATELY (optimistic)
@@ -136,24 +136,25 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
     // 3. Dispatch event immediately for listeners
     window.dispatchEvent(new CustomEvent('location-changed', { detail: { locationId } }));
 
-    // 4. Persist to database in BACKGROUND (don't block UI)
-    supabase.auth.getUser().then(({ data: { user } }) => {
-      if (!user || !activeTenantId) return;
-      
-      supabase
-        .from('app_settings')
-        .upsert({
-          user_id: user.id,
-          setting_key: 'current_location_id',
-          setting_value: locationId || 'null',
-          tenant_id: activeTenantId
-        }, {
-          onConflict: 'user_id,tenant_id,setting_key'
-        })
-        .then(({ error }) => {
-          if (error) console.error('Error saving location setting:', error);
-        });
-    });
+    // 4. Persist to database - AWAIT completion for reliable switching
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user || !activeTenantId) return;
+    
+    const { error } = await supabase
+      .from('app_settings')
+      .upsert({
+        user_id: user.id,
+        setting_key: 'current_location_id',
+        setting_value: locationId || 'null',
+        tenant_id: activeTenantId
+      }, {
+        onConflict: 'user_id,tenant_id,setting_key'
+      });
+    
+    if (error) {
+      console.error('Error saving location setting:', error);
+      throw error; // Propagate error so caller can handle
+    }
   }, [activeTenantId]);
 
   // Update current location object when ID or locations list changes
