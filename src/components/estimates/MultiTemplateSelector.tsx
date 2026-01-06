@@ -119,6 +119,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [showPreviewPanel, setShowPreviewPanel] = useState(false);
   const [editEstimateProcessed, setEditEstimateProcessed] = useState(false);
   const [editingEstimateNumber, setEditingEstimateNumber] = useState<string | null>(null);
+  const [isEditingLoadedEstimate, setIsEditingLoadedEstimate] = useState(false);
   
   // Inline import state (replaces dialog)
   const [isImporting, setIsImporting] = useState(false);
@@ -201,6 +202,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       // Set the existing estimate ID to enable save/update mode
       setExistingEstimateId(estimateId);
       setEditingEstimateNumber(estimate.estimate_number);
+      setIsEditingLoadedEstimate(true); // Mark as editing loaded estimate to prevent auto-recalculation
 
       // Load line items from the estimate
       const lineItemsData = estimate.line_items as any;
@@ -258,6 +260,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     setExistingEstimateId(null);
     setEditingEstimateNumber(null);
     setEditEstimateProcessed(false);
+    setIsEditingLoadedEstimate(false);
     setSelectedTemplateId('');
     setLineItems([]);
     resetToOriginal();
@@ -328,13 +331,19 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   };
 
   useEffect(() => {
+    // IMPORTANT: Don't auto-recalculate when editing a loaded estimate
+    // The loaded line items should be preserved as the source of truth
+    if (isEditingLoadedEstimate) {
+      return;
+    }
+    
     if (selectedTemplateId) {
       fetchLineItems(selectedTemplateId);
     } else {
       setLineItems([]);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedTemplateId, measurementContext]);
+  }, [selectedTemplateId, measurementContext, isEditingLoadedEstimate]);
 
   // Update parent with calculations when breakdown changes
   useEffect(() => {
@@ -953,8 +962,14 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
       const existingMetadata = (entry?.metadata as Record<string, any>) || {};
 
+      // Build comprehensive measurements with BOTH key formats
+      // - The original import keys (ridges_lf, eaves_lf, etc.)
+      // - The keys useMeasurementContext expects (ridge_length, eave_length, etc.)
+      const totalSquares = importParsedData.total_area_sqft ? importParsedData.total_area_sqft / 100 : 0;
+      
       const comprehensiveMeasurements = {
         ...existingMetadata.comprehensive_measurements,
+        // Original import keys
         roof_area_sq_ft: importParsedData.total_area_sqft,
         total_area_sqft: importParsedData.total_area_sqft,
         pitched_area_sqft: importParsedData.pitched_area_sqft,
@@ -969,6 +984,17 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         waste_table: importParsedData.waste_table,
         source: `imported_${importParsedData.provider}`,
         imported_at: new Date().toISOString(),
+        // Keys expected by useMeasurementContext (for smart tag formulas)
+        roof_squares: totalSquares,
+        total_squares: totalSquares,
+        eave_length: importParsedData.eaves_ft || 0,
+        rake_length: importParsedData.rakes_ft || 0,
+        ridge_length: importParsedData.ridges_ft || 0,
+        hip_length: importParsedData.hips_ft || 0,
+        valley_length: importParsedData.valleys_ft || 0,
+        step_flashing_length: 0,
+        penetration_count: 3,
+        waste_factor_percent: 10,
       };
 
       const { error: updateError } = await supabase
@@ -1153,7 +1179,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           <CardTitle>Select Estimate Template</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Select value={selectedTemplateId} onValueChange={handleTemplateSelect}>
+          <Select 
+            value={selectedTemplateId} 
+            onValueChange={handleTemplateSelect}
+            disabled={isEditingLoadedEstimate}
+          >
             <SelectTrigger className="w-full">
               <SelectValue placeholder="Select a template..." />
             </SelectTrigger>
@@ -1165,6 +1195,30 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
               ))}
             </SelectContent>
           </Select>
+
+          {/* Show note when editing + option to recalculate */}
+          {isEditingLoadedEstimate && selectedTemplateId && (
+            <div className="flex items-center justify-between gap-2 p-3 bg-muted/50 rounded-lg">
+              <p className="text-sm text-muted-foreground">
+                Template locked while editing. Line items are from the saved estimate.
+              </p>
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => {
+                  setIsEditingLoadedEstimate(false);
+                  fetchLineItems(selectedTemplateId);
+                  toast({
+                    title: 'Recalculating',
+                    description: 'Line items recalculated from template measurements',
+                  });
+                }}
+              >
+                <RotateCcw className="h-4 w-4 mr-1" />
+                Recalculate
+              </Button>
+            </div>
+          )}
 
           {templates.length === 0 && (
             <div className="text-center py-4 space-y-3">
