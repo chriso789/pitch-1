@@ -97,7 +97,7 @@ Deno.serve(async (req) => {
         document_name: document_name || null,
         notes: notes || null,
         status: 'pending',
-        created_by: user.id
+        submitted_by: user.id
       })
       .select()
       .single();
