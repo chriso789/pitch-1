@@ -11,6 +11,7 @@ import { MapPin, ChevronDown, Building2 } from "lucide-react";
 import { useLocation } from "@/contexts/LocationContext";
 import { useQueryClient } from "@tanstack/react-query";
 import { setLocationSwitchingFlag } from "@/components/layout/GlobalLocationHandler";
+import { useToast } from "@/hooks/use-toast";
 
 interface LocationSwitcherProps {
   onLocationChange?: (locationId: string | null) => void;
@@ -25,9 +26,12 @@ export const LocationSwitcher = ({ onLocationChange }: LocationSwitcherProps) =>
     setCurrentLocationId 
   } = useLocation();
   const queryClient = useQueryClient();
+  const { toast } = useToast();
 
   const handleLocationSelect = async (locationId: string | null) => {
     const location = locations.find(l => l.id === locationId);
+    
+    console.log('[LocationSwitcher] Switching to location:', locationId, location?.name);
     
     // Set switching flag for overlay immediately
     setLocationSwitchingFlag(location?.name || null);
@@ -35,6 +39,8 @@ export const LocationSwitcher = ({ onLocationChange }: LocationSwitcherProps) =>
     try {
       // Persist to database - wait for completion
       await setCurrentLocationId(locationId);
+      
+      console.log('[LocationSwitcher] Database save successful for location:', locationId);
       
       // Clear all React Query cache
       queryClient.clear();
@@ -45,9 +51,15 @@ export const LocationSwitcher = ({ onLocationChange }: LocationSwitcherProps) =>
       // Full page redirect to dashboard after successful save
       window.location.href = '/dashboard';
     } catch (error) {
-      console.error('Failed to switch location:', error);
+      console.error('[LocationSwitcher] Failed to switch location:', error);
       // Clear the switching flag on error
       setLocationSwitchingFlag(null);
+      
+      toast({
+        title: "Location Switch Failed",
+        description: error instanceof Error ? error.message : "Could not save location change. Please try again.",
+        variant: "destructive"
+      });
     }
   };
 
