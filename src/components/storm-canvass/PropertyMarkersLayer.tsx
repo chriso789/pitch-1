@@ -80,14 +80,25 @@ export default function PropertyMarkersLayer({
 
   const getStreetNumber = (address: any): string => {
     if (!address) return '';
+    
+    let parsed = address;
     if (typeof address === 'string') {
       try {
-        address = JSON.parse(address);
+        parsed = JSON.parse(address);
       } catch {
-        return '';
+        // Try to extract number from raw string
+        const match = address.match(/^(\d+)/);
+        return match ? match[1] : '';
       }
     }
-    const street = address.street || address.formatted || '';
+    
+    // First check for explicit street_number field (from Google Geocoding)
+    if (parsed.street_number) {
+      return parsed.street_number;
+    }
+    
+    // Fall back to extracting from street or formatted address
+    const street = parsed.street || parsed.formatted || parsed.address_line1 || '';
     const match = street.match(/^(\d+)/);
     return match ? match[1] : '';
   };
