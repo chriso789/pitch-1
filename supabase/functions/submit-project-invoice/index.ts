@@ -109,6 +109,37 @@ Deno.serve(async (req) => {
 
     console.log(`[submit-project-invoice] Created invoice: ${invoice.id}`);
 
+    // Create document record if a file was attached (so it shows in Documents tab)
+    if (document_url) {
+      const docType = invoice_type === 'material' ? 'invoice_material' : 'invoice_labor';
+      
+      const { data: docRecord, error: docError } = await supabase
+        .from('documents')
+        .insert({
+          tenant_id: profile.tenant_id,
+          pipeline_entry_id: effectivePipelineEntryId || null,
+          project_id: project_id || null,
+          document_type: docType,
+          filename: document_name || 'Invoice Document',
+          file_path: document_url,
+          mime_type: 'application/pdf',
+          invoice_amount: parseFloat(invoice_amount),
+          vendor_name: vendor_name || null,
+          invoice_number: invoice_number || null,
+          linked_invoice_id: invoice.id,
+          uploaded_by: user.id,
+        })
+        .select()
+        .single();
+
+      if (docError) {
+        console.error('[submit-project-invoice] Error creating document record:', docError);
+        // Non-fatal - invoice was still created
+      } else {
+        console.log(`[submit-project-invoice] Created document record: ${docRecord.id}`);
+      }
+    }
+
     // Calculate new totals from all invoices (by project_id or pipeline_entry_id)
     let invoiceQuery = supabase
       .from('project_cost_invoices')
