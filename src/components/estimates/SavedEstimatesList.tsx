@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Loader2, FileText, ExternalLink, TrendingUp, TrendingDown, Check, Pencil } from 'lucide-react';
+import { Loader2, FileText, ExternalLink, TrendingUp, TrendingDown, Check, Pencil, Trash2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { PermanentDeleteDialog } from '@/components/PermanentDeleteDialog';
 
 const formatCurrency = (amount: number) => {
   return new Intl.NumberFormat('en-US', {
@@ -46,6 +47,8 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
 }) => {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const [estimateToDelete, setEstimateToDelete] = useState<SavedEstimate | null>(null);
   
   // Fetch the current selected estimate from pipeline_entries metadata
   const { data: pipelineData } = useQuery({
@@ -178,6 +181,67 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
     }
   };
 
+  const handleDeleteEstimate = async () => {
+    if (!estimateToDelete) return;
+    
+    try {
+      // If this estimate has a PDF, delete it from storage first
+      if (estimateToDelete.pdf_url) {
+        await supabase.storage
+          .from('documents')
+          .remove([estimateToDelete.pdf_url]);
+      }
+      
+      // Delete the estimate from the database
+      const { error } = await supabase
+        .from('enhanced_estimates')
+        .delete()
+        .eq('id', estimateToDelete.id);
+      
+      if (error) throw error;
+      
+      // If this was the selected estimate, clear the selection
+      if (currentSelectedId === estimateToDelete.id) {
+        const { data: currentEntry } = await supabase
+          .from('pipeline_entries')
+          .select('metadata')
+          .eq('id', pipelineEntryId)
+          .single();
+        
+        const currentMetadata = (currentEntry?.metadata as Record<string, any>) || {};
+        
+        await supabase
+          .from('pipeline_entries')
+          .update({ 
+            metadata: { 
+              ...currentMetadata,
+              selected_estimate_id: null 
+            }
+          })
+          .eq('id', pipelineEntryId);
+      }
+      
+      // Refresh the estimates list
+      queryClient.invalidateQueries({ queryKey: ['saved-estimates', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-entry-metadata', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
+      
+      toast({
+        title: 'Estimate Deleted',
+        description: `${estimateToDelete.estimate_number} has been permanently deleted.`,
+      });
+      
+      setEstimateToDelete(null);
+    } catch (error) {
+      console.error('Error deleting estimate:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to delete estimate.',
+        variant: 'destructive',
+      });
+    }
+  };
+
   if (isLoading) {
     return (
       <Card>
@@ -268,6 +332,19 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
                 >
                   <Pencil className="h-4 w-4" />
                 </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEstimateToDelete(estimate);
+                    setDeleteDialogOpen(true);
+                  }}
+                  className="h-8 px-2 text-muted-foreground hover:text-destructive"
+                  title="Delete Estimate"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
                 {estimate.pdf_url && (
                   <Button
                     variant="ghost"
@@ -284,6 +361,14 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
           );
         })}
       </CardContent>
+
+      <PermanentDeleteDialog
+        open={deleteDialogOpen}
+        onOpenChange={setDeleteDialogOpen}
+        itemName={estimateToDelete?.estimate_number || ''}
+        itemType="estimate"
+        onConfirm={handleDeleteEstimate}
+      />
     </Card>
   );
 };
