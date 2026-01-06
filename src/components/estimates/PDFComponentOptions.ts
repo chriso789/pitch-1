@@ -31,6 +31,16 @@ export interface PDFComponentOptions {
   // Meta
   showEstimateNumber: boolean;
   showDate: boolean;
+  
+  // Extra Pages (NEW)
+  showMeasurementDetails: boolean; // Full measurement breakdown page
+  showJobPhotos: boolean; // Job photos grid
+  showRoofDiagram: boolean; // Schematic roof diagram (future)
+  showWarrantyInfo: boolean; // Warranty details page
+  
+  // Header/Footer on every page
+  showPageHeader: boolean;
+  showPageFooter: boolean;
 }
 
 export type PDFViewMode = 'customer' | 'internal';
@@ -63,6 +73,14 @@ export const PDF_PRESETS: Record<PDFViewMode, PDFComponentOptions> = {
     // Meta
     showEstimateNumber: true,
     showDate: true,
+    // Extra Pages
+    showMeasurementDetails: false,
+    showJobPhotos: false,
+    showRoofDiagram: false,
+    showWarrantyInfo: true,
+    // Header/Footer
+    showPageHeader: true,
+    showPageFooter: true,
   },
   internal: {
     // Header
@@ -90,6 +108,14 @@ export const PDF_PRESETS: Record<PDFViewMode, PDFComponentOptions> = {
     // Meta
     showEstimateNumber: true,
     showDate: true,
+    // Extra Pages
+    showMeasurementDetails: true,
+    showJobPhotos: false,
+    showRoofDiagram: false,
+    showWarrantyInfo: false,
+    // Header/Footer
+    showPageHeader: true,
+    showPageFooter: true,
   },
 };
 

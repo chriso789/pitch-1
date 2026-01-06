@@ -24,7 +24,10 @@ import {
   DollarSign, 
   FileSignature,
   Loader2,
-  AlertTriangle
+  AlertTriangle,
+  Ruler,
+  Image,
+  Shield
 } from 'lucide-react';
 import { 
   type PDFComponentOptions, 
@@ -263,6 +266,58 @@ export function PDFExportDialog({
                   </div>
                 </>
               )}
+            </div>
+          </div>
+
+          <Separator />
+
+          {/* Extra Pages */}
+          <div className="space-y-3">
+            <h4 className="font-medium flex items-center gap-2 text-sm">
+              <Ruler className="h-4 w-4" />
+              Extra Pages
+            </h4>
+            <div className="grid grid-cols-2 gap-4 pl-6">
+              <div className="flex items-center justify-between">
+                <Label htmlFor="showMeasurementDetails" className="text-sm">Measurement Details</Label>
+                <Switch
+                  id="showMeasurementDetails"
+                  checked={options.showMeasurementDetails}
+                  onCheckedChange={(v) => updateOption('showMeasurementDetails', v)}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="showJobPhotos" className="text-sm">Job Photos</Label>
+                <Switch
+                  id="showJobPhotos"
+                  checked={options.showJobPhotos}
+                  onCheckedChange={(v) => updateOption('showJobPhotos', v)}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="showWarrantyInfo" className="text-sm">Warranty Info</Label>
+                <Switch
+                  id="showWarrantyInfo"
+                  checked={options.showWarrantyInfo}
+                  onCheckedChange={(v) => updateOption('showWarrantyInfo', v)}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="showPageHeader" className="text-sm">Page Header</Label>
+                <Switch
+                  id="showPageHeader"
+                  checked={options.showPageHeader}
+                  onCheckedChange={(v) => updateOption('showPageHeader', v)}
+                />
+              </div>
+              <div className="flex items-center justify-between">
+                <Label htmlFor="showPageFooter" className="text-sm">Page Footer</Label>
+                <Switch
+                  id="showPageFooter"
+                  checked={options.showPageFooter}
+                  onCheckedChange={(v) => updateOption('showPageFooter', v)}
+                />
+              </div>
             </div>
           </div>
 

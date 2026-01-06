@@ -21,6 +21,17 @@ interface CustomerInfo {
   email?: string | null;
 }
 
+interface MeasurementSummary {
+  totalSquares: number;
+  totalSqFt: number;
+  eaveLength: number;
+  ridgeLength: number;
+  hipLength: number;
+  valleyLength: number;
+  rakeLength: number;
+  wastePercent: number;
+}
+
 interface EstimatePDFTemplateProps {
   estimateNumber: string;
   customerName: string;
@@ -51,6 +62,7 @@ interface EstimatePDFTemplateProps {
   createdAt?: string;
   finePrintContent?: string;
   options?: Partial<PDFComponentOptions>;
+  measurementSummary?: MeasurementSummary;
 }
 
 const formatCurrency = (amount: number) => {
@@ -61,6 +73,17 @@ const formatCurrency = (amount: number) => {
     maximumFractionDigits: 2,
   }).format(amount);
 };
+
+// Page break CSS styles
+const pageBreakStyles = `
+  @media print {
+    .page-break-before { page-break-before: always; break-before: page; }
+    .page-break-after { page-break-after: always; break-after: page; }
+    .avoid-break { page-break-inside: avoid; break-inside: avoid; }
+    .pdf-header { position: running(header); }
+    .pdf-footer { position: running(footer); }
+  }
+`;
 
 export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
   estimateNumber,
@@ -78,6 +101,7 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
   createdAt,
   finePrintContent,
   options: partialOptions,
+  measurementSummary,
 }) => {
   // Merge with defaults (customer mode by default = hide internal info)
   const opts: PDFComponentOptions = { ...getDefaultOptions('customer'), ...partialOptions };
@@ -102,12 +126,39 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
   ].filter(Boolean);
   const companyAddressStr = companyAddressParts.join(' ');
 
+  const currentYear = new Date().getFullYear();
+
   return (
     <div 
       id="estimate-pdf-template"
-      className="bg-white text-black p-8 w-[816px] min-h-[1056px]"
+      className="bg-white text-black w-[816px]"
       style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
     >
+      <style>{pageBreakStyles}</style>
+      
+      {/* Page Header - Repeats on every page when printing */}
+      {opts.showPageHeader && companyInfo && (
+        <div className="pdf-header bg-gray-50 border-b px-8 py-3 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            {opts.showCompanyLogo && (companyLogo || companyInfo?.logo_url) && (
+              <img 
+                src={companyLogo || companyInfo?.logo_url || ''} 
+                alt="Logo" 
+                className="h-8 object-contain" 
+              />
+            )}
+            <span className="font-semibold text-gray-800">{companyInfo?.name || companyName}</span>
+          </div>
+          <div className="text-xs text-gray-500">
+            {companyInfo?.phone && <span>{companyInfo.phone}</span>}
+            {companyInfo?.phone && companyInfo?.email && <span className="mx-2">•</span>}
+            {companyInfo?.email && <span>{companyInfo.email}</span>}
+          </div>
+        </div>
+      )}
+
+      {/* Main Content */}
+      <div className="p-8 min-h-[1000px]">
       {/* Header */}
       <div className="flex justify-between items-start mb-8 pb-6 border-b-2 border-gray-200">
         <div>
@@ -177,7 +228,7 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
 
       {/* Materials Section */}
       {!opts.showOnlyTotal && opts.showMaterialsSection && materialItems.length > 0 && (
-        <div className="mb-6">
+        <div className="mb-6 avoid-break">
           <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
             <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
             Materials
@@ -241,7 +292,7 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
 
       {/* Labor Section */}
       {!opts.showOnlyTotal && opts.showLaborSection && laborItems.length > 0 && (
-        <div className="mb-8">
+        <div className="mb-8 avoid-break">
           <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
             <span className="w-2 h-2 bg-green-500 rounded-full"></span>
             Labor
@@ -305,7 +356,7 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
 
       {/* Cost Summary */}
       {!opts.showOnlyTotal && (
-        <div className="bg-gray-50 rounded-lg p-6 mb-8">
+        <div className="bg-gray-50 rounded-lg p-6 mb-8 avoid-break">
           <h3 className="text-lg font-semibold text-gray-900 mb-4">Estimate Summary</h3>
           <div className="space-y-2 text-sm">
             {/* Internal-only cost breakdown */}
@@ -373,7 +424,7 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
 
       {/* Signature Block */}
       {opts.showSignatureBlock && (
-        <div className="mt-8 pt-6 border-t grid grid-cols-2 gap-8">
+        <div className="avoid-break mt-8 pt-6 border-t grid grid-cols-2 gap-8">
           <div>
             <div className="border-b border-gray-400 h-12 mb-2"></div>
             <p className="text-xs text-gray-500">Customer Signature</p>
@@ -382,6 +433,90 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
             <div className="border-b border-gray-400 h-12 mb-2"></div>
             <p className="text-xs text-gray-500">Date</p>
           </div>
+        </div>
+      )}
+
+      {/* Measurement Details Page */}
+      {opts.showMeasurementDetails && measurementSummary && (
+        <div className="page-break-before pt-8">
+          <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
+            <span className="w-2 h-2 bg-purple-500 rounded-full"></span>
+            Measurement Details
+          </h3>
+          <div className="grid grid-cols-2 gap-4">
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-3">Roof Area</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Total Area</span>
+                  <span className="font-medium">{measurementSummary.totalSqFt.toLocaleString()} sqft</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Total Squares</span>
+                  <span className="font-medium">{measurementSummary.totalSquares.toFixed(2)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Waste Factor</span>
+                  <span className="font-medium">{measurementSummary.wastePercent}%</span>
+                </div>
+              </div>
+            </div>
+            <div className="bg-gray-50 rounded-lg p-4">
+              <h4 className="text-sm font-medium text-gray-700 mb-3">Linear Footage</h4>
+              <div className="space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Eave</span>
+                  <span className="font-medium">{measurementSummary.eaveLength.toFixed(0)} lf</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Ridge</span>
+                  <span className="font-medium">{measurementSummary.ridgeLength.toFixed(0)} lf</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Hip</span>
+                  <span className="font-medium">{measurementSummary.hipLength.toFixed(0)} lf</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Valley</span>
+                  <span className="font-medium">{measurementSummary.valleyLength.toFixed(0)} lf</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-gray-600">Rake</span>
+                  <span className="font-medium">{measurementSummary.rakeLength.toFixed(0)} lf</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Warranty Info Page */}
+      {opts.showWarrantyInfo && (
+        <div className="avoid-break mt-8 pt-6 border-t">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <span className="w-2 h-2 bg-amber-500 rounded-full"></span>
+            Warranty Information
+          </h3>
+          <div className="text-sm text-gray-600 space-y-3">
+            <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+              <h4 className="font-medium text-amber-900 mb-2">Manufacturer Warranty</h4>
+              <p className="text-amber-800">All roofing materials include the full manufacturer's warranty as specified by the selected product line.</p>
+            </div>
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h4 className="font-medium text-blue-900 mb-2">Workmanship Warranty</h4>
+              <p className="text-blue-800">Our installation work is backed by a comprehensive workmanship warranty covering labor and installation quality.</p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      </div>
+      
+      {/* Page Footer */}
+      {opts.showPageFooter && (
+        <div className="pdf-footer border-t px-8 py-3 flex items-center justify-between text-xs text-gray-500">
+          <span>© {currentYear} {companyInfo?.name || companyName}</span>
+          <span>{companyInfo?.license_number ? `License #${companyInfo.license_number}` : ''}</span>
         </div>
       )}
     </div>
