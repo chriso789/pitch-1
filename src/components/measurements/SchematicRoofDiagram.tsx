@@ -28,15 +28,15 @@ const FACET_COLORS = [
   'rgba(249, 115, 22, 0.3)',   // Orange
 ];
 
-// Plausibility thresholds for linear features
+// Plausibility thresholds for linear features - AGGRESSIVE starburst detection
 const LINE_PLAUSIBILITY = {
-  MAX_LINES_PER_TYPE: 20,      // Max ridges/hips/valleys (increased for complex buildings)
-  MAX_STARBURST_RATIO: 0.30,   // Max % of lines meeting at one point (lowered from 0.35 to catch more starburst)
+  MAX_LINES_PER_TYPE: 15,      // Reduced from 20 - fewer lines per type
+  MAX_STARBURST_RATIO: 0.20,   // Reduced from 0.30 - more aggressive starburst detection
   MIN_LINE_LENGTH_FT: 2,       // Ignore very short lines
-  MAX_LINE_LENGTH_FT: 200,     // Flag unusually long lines (increased for large roofs)
-  MAX_CONVERGENCE_POINTS: 3,   // Max central points where lines can converge
-  MIN_LINES_FOR_STARBURST: 5,  // Minimum lines before checking for starburst pattern
-  ABSOLUTE_MAX_CONVERGENCE: 5, // If ANY point has 5+ lines, that's a starburst (simple check)
+  MAX_LINE_LENGTH_FT: 150,     // Reduced from 200 - flag unusually long lines
+  MAX_CONVERGENCE_POINTS: 2,   // Reduced from 3 - fewer convergence points allowed
+  MIN_LINES_FOR_STARBURST: 4,  // Reduced from 5 - catch starburst patterns earlier
+  ABSOLUTE_MAX_CONVERGENCE: 4, // Reduced from 5 - stricter convergence limit
 };
 
 interface LinearFeature {
