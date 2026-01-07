@@ -3,7 +3,7 @@ import { Canvas as FabricCanvas, Line, Circle, FabricImage, FabricText } from 'f
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { MousePointer, Mountain, Triangle, ArrowDownUp, Square, Undo2, Trash2, Save, X } from 'lucide-react';
+import { MousePointer, Mountain, Triangle, ArrowDownUp, Square, Undo2, Trash2, Save, X, Minus, Slash } from 'lucide-react';
 import { useRoofTracer, TracerTool, TracedLine } from '@/hooks/useRoofTracer';
 import { toast } from 'sonner';
 
@@ -23,6 +23,8 @@ const TOOL_CONFIG: { tool: TracerTool; label: string; icon: React.ReactNode; sho
   { tool: 'ridge', label: 'Ridge', icon: <Mountain className="h-4 w-4" />, shortcut: 'R' },
   { tool: 'hip', label: 'Hip', icon: <Triangle className="h-4 w-4" />, shortcut: 'H' },
   { tool: 'valley', label: 'Valley', icon: <ArrowDownUp className="h-4 w-4" />, shortcut: 'V' },
+  { tool: 'eave', label: 'Eave', icon: <Minus className="h-4 w-4" />, shortcut: 'E' },
+  { tool: 'rake', label: 'Rake', icon: <Slash className="h-4 w-4" />, shortcut: 'K' },
   { tool: 'perimeter', label: 'Perimeter', icon: <Square className="h-4 w-4" />, shortcut: 'P' },
 ];
 
@@ -274,6 +276,10 @@ export function RoofTracerOverlay({
         tracer.setActiveTool('hip');
       } else if (e.key.toLowerCase() === 'v') {
         tracer.setActiveTool('valley');
+      } else if (e.key.toLowerCase() === 'e') {
+        tracer.setActiveTool('eave');
+      } else if (e.key.toLowerCase() === 'k') {
+        tracer.setActiveTool('rake');
       } else if (e.key.toLowerCase() === 'p') {
         tracer.setActiveTool('perimeter');
       }
@@ -350,6 +356,17 @@ export function RoofTracerOverlay({
           </div>
         )}
         
+        {/* Scale Bar */}
+        {imageLoaded && (
+          <div className="absolute bottom-3 right-3 flex flex-col items-end gap-1 bg-black/70 p-2 rounded text-white text-xs">
+            <div className="flex items-center gap-1">
+              <div className="w-16 h-1 bg-white border border-black" />
+              <span>{Math.round(tracer.feetPerPixel * 64)} ft</span>
+            </div>
+            <span className="text-[10px] opacity-70">Zoom {zoom}</span>
+          </div>
+        )}
+        
         {/* Drawing hint */}
         {tracer.activeTool !== 'select' && !tracer.isDrawing && imageLoaded && (
           <div className="absolute bottom-3 left-1/2 -translate-x-1/2 px-3 py-1.5 bg-black/70 text-white text-sm rounded-full">
@@ -380,6 +397,16 @@ export function RoofTracerOverlay({
         {tracer.totals.valleyCount > 0 && (
           <Badge variant="outline" style={{ borderColor: tracer.getToolColor('valley'), color: tracer.getToolColor('valley') }}>
             {tracer.totals.valleyCount} valley{tracer.totals.valleyCount !== 1 ? 's' : ''} ({Math.round(tracer.totals.valley)} ft)
+          </Badge>
+        )}
+        {tracer.totals.eaveCount > 0 && (
+          <Badge variant="outline" style={{ borderColor: tracer.getToolColor('eave'), color: tracer.getToolColor('eave') }}>
+            {tracer.totals.eaveCount} eave{tracer.totals.eaveCount !== 1 ? 's' : ''} ({Math.round(tracer.totals.eave)} ft)
+          </Badge>
+        )}
+        {tracer.totals.rakeCount > 0 && (
+          <Badge variant="outline" style={{ borderColor: tracer.getToolColor('rake'), color: tracer.getToolColor('rake') }}>
+            {tracer.totals.rakeCount} rake{tracer.totals.rakeCount !== 1 ? 's' : ''} ({Math.round(tracer.totals.rake)} ft)
           </Badge>
         )}
         {tracer.totals.perimeter > 0 && (

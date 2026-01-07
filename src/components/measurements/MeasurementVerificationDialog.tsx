@@ -1669,22 +1669,28 @@ export function MeasurementVerificationDialog({
                             hip_ft: linearFeatures.filter(f => f.type === 'hip').reduce((sum, f) => sum + f.length_ft, 0),
                             valley_ft: linearFeatures.filter(f => f.type === 'valley').reduce((sum, f) => sum + f.length_ft, 0),
                             perimeter_ft: linearFeatures.filter(f => f.type === 'perimeter').reduce((sum, f) => sum + f.length_ft, 0),
+                            eave_ft: linearFeatures.filter(f => f.type === 'eave').reduce((sum, f) => sum + f.length_ft, 0),
+                            rake_ft: linearFeatures.filter(f => f.type === 'rake').reduce((sum, f) => sum + f.length_ft, 0),
                           };
                           
-                          // Update the roof_measurements record
+                          // Update the roof_measurements record with correct column names
                           const { error } = await supabase
                             .from('roof_measurements')
                             .update({
-                              linear_features: linearFeatures,
+                              linear_features_wkt: linearFeatures, // Correct column name
+                              linear_features: linearFeatures, // Also update legacy column
+                              total_ridge_length: Math.round(totals.ridge_ft),
+                              total_hip_length: Math.round(totals.hip_ft),
+                              total_valley_length: Math.round(totals.valley_ft),
+                              total_eave_length: Math.round(totals.eave_ft),
+                              total_rake_length: Math.round(totals.rake_ft),
                               summary: {
                                 ...measurement?.summary,
                                 ...totals,
                               },
                               updated_at: new Date().toISOString(),
                             })
-                            .eq('customer_id', pipelineEntryId)
-                            .order('created_at', { ascending: false })
-                            .limit(1);
+                            .eq('customer_id', pipelineEntryId);
                           
                           if (error) throw error;
                           
