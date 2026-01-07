@@ -1,6 +1,6 @@
 import { useState, useCallback, useMemo } from 'react';
 
-export type TracerTool = 'select' | 'perimeter' | 'ridge' | 'hip' | 'valley';
+export type TracerTool = 'select' | 'perimeter' | 'ridge' | 'hip' | 'valley' | 'eave' | 'rake';
 
 export interface TracedLine {
   id: string;
@@ -133,9 +133,13 @@ export function useRoofTracer(options: UseRoofTracerOptions) {
       hip: 0,
       valley: 0,
       perimeter: 0,
+      eave: 0,
+      rake: 0,
       ridgeCount: 0,
       hipCount: 0,
       valleyCount: 0,
+      eaveCount: 0,
+      rakeCount: 0,
     };
     
     tracedLines.forEach(line => {
@@ -150,6 +154,12 @@ export function useRoofTracer(options: UseRoofTracerOptions) {
         result.valleyCount++;
       } else if (line.type === 'perimeter') {
         result.perimeter += line.lengthFt;
+      } else if (line.type === 'eave') {
+        result.eave += line.lengthFt;
+        result.eaveCount++;
+      } else if (line.type === 'rake') {
+        result.rake += line.lengthFt;
+        result.rakeCount++;
       }
     });
     
@@ -172,9 +182,16 @@ export function useRoofTracer(options: UseRoofTracerOptions) {
       case 'hip': return '#8b5cf6'; // Purple
       case 'valley': return '#ef4444'; // Red
       case 'perimeter': return '#f97316'; // Orange
+      case 'eave': return '#14b8a6'; // Teal
+      case 'rake': return '#06b6d4'; // Cyan
       default: return '#6b7280'; // Gray
     }
   }, []);
+  
+  // Get feet per pixel for scale bar
+  const feetPerPixel = useMemo(() => {
+    return metersPerPixel * 3.28084;
+  }, [metersPerPixel]);
   
   return {
     // State
@@ -183,6 +200,7 @@ export function useRoofTracer(options: UseRoofTracerOptions) {
     currentPoints,
     isDrawing,
     totals,
+    feetPerPixel,
     
     // Actions
     setActiveTool,
