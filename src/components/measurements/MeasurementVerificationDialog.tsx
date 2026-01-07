@@ -10,7 +10,7 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Split, Info, MapPin, ZoomIn, Maximize2, Minimize2, ImageIcon, History, FileText, Trash2, AlertTriangle, Sparkles, Loader2 } from 'lucide-react';
+import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Split, Info, MapPin, ZoomIn, Maximize2, Minimize2, ImageIcon, History, FileText, Trash2, AlertTriangle, Sparkles, Loader2, Pencil } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PolygonEditor } from './PolygonEditor';
@@ -18,6 +18,7 @@ import { ComprehensiveMeasurementOverlay } from './ComprehensiveMeasurementOverl
 import { ManualMeasurementEditor } from './ManualMeasurementEditor';
 import { FacetSplitterOverlay } from './FacetSplitterOverlay';
 import { SchematicRoofDiagram } from './SchematicRoofDiagram';
+import { RoofTracerOverlay } from './RoofTracerOverlay';
 import { MeasurementTracePanel } from './MeasurementTracePanel';
 import { MeasurementSystemLimitations } from '@/components/documentation/MeasurementSystemLimitations';
 import { ImageryAgeWarning } from './ImageryAgeWarning';
@@ -323,8 +324,8 @@ export function MeasurementVerificationDialog({
   const [validationOpen, setValidationOpen] = useState(false); // Validation report collapsible
   const [showReportPreview, setShowReportPreview] = useState(false); // Roofr-style report preview
   
-  // View mode toggle: 'satellite' for overlay, 'schematic' for clean diagram
-  const [viewMode, setViewMode] = useState<'satellite' | 'schematic'>('schematic');
+  // View mode toggle: 'satellite' for overlay, 'schematic' for clean diagram, 'trace' for manual roof tracing
+  const [viewMode, setViewMode] = useState<'satellite' | 'schematic' | 'trace'>('schematic');
   
   // Manual overlay offset adjustment controls
   const [overlayOffsetX, setOverlayOffsetX] = useState(0); // Horizontal offset in pixels
@@ -1541,6 +1542,15 @@ export function MeasurementVerificationDialog({
                       <Satellite className="h-3.5 w-3.5 mr-1.5" />
                       Satellite
                     </Button>
+                    <Button
+                      variant={viewMode === 'trace' ? 'default' : 'ghost'}
+                      size="sm"
+                      className="h-7 text-xs px-3"
+                      onClick={() => setViewMode('trace')}
+                    >
+                      <Pencil className="h-3.5 w-3.5 mr-1.5" />
+                      Trace
+                    </Button>
                   </div>
                   
                   {/* Re-analyze Roof Button */}
@@ -1636,7 +1646,80 @@ export function MeasurementVerificationDialog({
                 
                 {/* Roof Visualization */}
                 <div className="relative rounded-lg overflow-hidden border">
-                  {viewMode === 'schematic' ? (
+                  {viewMode === 'trace' ? (
+                    /* Trace Mode - Draw roof features on satellite photo */
+                    <RoofTracerOverlay
+                      satelliteImageUrl={cleanSatelliteImageUrl}
+                      centerLat={overlayCoordinates.lat}
+                      centerLng={overlayCoordinates.lng}
+                      zoom={satelliteZoom}
+                      canvasWidth={RESOLUTION_CONFIG[resolution].width}
+                      canvasHeight={RESOLUTION_CONFIG[resolution].height}
+                      onSave={async (linearFeatures) => {
+                        // Save traced features to database
+                        try {
+                          if (!pipelineEntryId) {
+                            toast({ title: 'Missing property ID', variant: 'destructive' });
+                            return;
+                          }
+                          
+                          // Calculate totals from traced features
+                          const totals = {
+                            ridge_ft: linearFeatures.filter(f => f.type === 'ridge').reduce((sum, f) => sum + f.length_ft, 0),
+                            hip_ft: linearFeatures.filter(f => f.type === 'hip').reduce((sum, f) => sum + f.length_ft, 0),
+                            valley_ft: linearFeatures.filter(f => f.type === 'valley').reduce((sum, f) => sum + f.length_ft, 0),
+                            perimeter_ft: linearFeatures.filter(f => f.type === 'perimeter').reduce((sum, f) => sum + f.length_ft, 0),
+                          };
+                          
+                          // Update the roof_measurements record
+                          const { error } = await supabase
+                            .from('roof_measurements')
+                            .update({
+                              linear_features: linearFeatures,
+                              summary: {
+                                ...measurement?.summary,
+                                ...totals,
+                              },
+                              updated_at: new Date().toISOString(),
+                            })
+                            .eq('customer_id', pipelineEntryId)
+                            .order('created_at', { ascending: false })
+                            .limit(1);
+                          
+                          if (error) throw error;
+                          
+                          // Reload dbMeasurement
+                          const { data: freshDb } = await supabase
+                            .from('roof_measurements')
+                            .select('*')
+                            .eq('customer_id', pipelineEntryId)
+                            .order('created_at', { ascending: false })
+                            .limit(1)
+                            .single();
+                          
+                          if (freshDb) {
+                            setDbMeasurement(freshDb);
+                          }
+                          
+                          toast({
+                            title: 'Traced Features Saved',
+                            description: `Saved ${linearFeatures.length} roof features`,
+                          });
+                          
+                          // Switch to schematic view to see results
+                          setViewMode('schematic');
+                        } catch (err: any) {
+                          console.error('Failed to save traced features:', err);
+                          toast({
+                            title: 'Save Failed',
+                            description: err.message,
+                            variant: 'destructive',
+                          });
+                        }
+                      }}
+                      onCancel={() => setViewMode('schematic')}
+                    />
+                  ) : viewMode === 'schematic' ? (
                     /* Schematic Roof Diagram - Clean vector rendering */
                     <SchematicRoofDiagram
                       measurement={(() => {
