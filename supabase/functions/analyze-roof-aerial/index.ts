@@ -1928,12 +1928,8 @@ function deriveLinesToPerimeter(
     console.log(`📐 AI Ridge mode: ${dedupedLines.filter(l => l.type === 'ridge').length} ridges, ${dedupedLines.filter(l => l.type === 'hip').length} hips`);
     return dedupedLines;
   }
-  const lines: DerivedLine[] = []
   
-  if (!perimeterVertices || perimeterVertices.length < 3) {
-    return lines
-  }
-  
+  // FALLBACK: Geometric estimation when AI ridge detection unavailable or low confidence
   // PRIMARY: Use new roof geometry reconstructor for clean, connected topology
   let usedReconstructor = false
   
