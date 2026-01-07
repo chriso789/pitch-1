@@ -44,6 +44,7 @@ import { ProductTemplateApplicator } from '@/components/estimates/ProductTemplat
 import { SavedEstimatesList } from '@/components/estimates/SavedEstimatesList';
 import { LeadPhotoUploader } from '@/components/photos/LeadPhotoUploader';
 import { LeadActivityTimeline } from '@/components/lead-details/LeadActivityTimeline';
+import { LeadNotesSection } from '@/components/lead-details/LeadNotesSection';
 import { TemplateSectionSelector } from '@/components/estimates/TemplateSectionSelector';
 import { useQuery as useTanstackQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
@@ -743,6 +744,10 @@ const LeadDetails = () => {
                   </Badge>
                 )}
               </TabsTrigger>
+              <TabsTrigger value="notes" className="text-xs h-7 px-3">
+                <FileText className="h-3 w-3 mr-1" />
+                Notes
+              </TabsTrigger>
               <TabsTrigger value="activity" className="text-xs h-7 px-3">
                 <FileText className="h-3 w-3 mr-1" />
                 Activity
@@ -842,6 +847,14 @@ const LeadDetails = () => {
                   </div>
                 </div>
               )}
+            </TabsContent>
+
+            <TabsContent value="notes" className="mt-0">
+              <LeadNotesSection 
+                pipelineEntryId={id!}
+                initialNotes={lead.notes}
+                onNotesUpdate={refetchLead}
+              />
             </TabsContent>
 
             <TabsContent value="activity" className="mt-0">
