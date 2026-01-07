@@ -7,3 +7,5 @@ export { MeasurementAnalyticsDashboard } from './MeasurementAnalyticsDashboard';
 export { StaticMeasurementView } from '../measurements/StaticMeasurementView';
 export { MapboxRoofViewer } from './MapboxRoofViewer';
 export { MeasurementWorkflow } from './MeasurementWorkflow';
+export { AIRoofSkeletonViewer } from './AIRoofSkeletonViewer';
+export { PostPerimeterDialog } from './PostPerimeterDialog';

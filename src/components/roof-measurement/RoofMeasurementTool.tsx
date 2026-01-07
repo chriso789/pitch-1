@@ -5,11 +5,12 @@ import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { 
   Loader2, Download, AlertCircle, CheckCircle, 
-  MapPin, Ruler, Home, TrendingUp
+  MapPin, Ruler, Home, TrendingUp, Layers
 } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
+import { AIRoofSkeletonViewer } from './AIRoofSkeletonViewer'
 
 export interface RoofMeasurements {
   // New API properties
@@ -355,14 +356,83 @@ export function RoofMeasurementTool({
             </div>
           </Card>
 
-          <Tabs defaultValue="summary" className="w-full">
-            <TabsList className="grid w-full grid-cols-5">
+          <Tabs defaultValue="diagram" className="w-full">
+            <TabsList className="grid w-full grid-cols-6">
+              <TabsTrigger value="diagram" className="flex items-center gap-1">
+                <Layers className="h-3.5 w-3.5" />
+                Diagram
+              </TabsTrigger>
               <TabsTrigger value="summary">Summary</TabsTrigger>
               <TabsTrigger value="facets">Facets</TabsTrigger>
               <TabsTrigger value="linear">Linear</TabsTrigger>
               <TabsTrigger value="materials">Materials</TabsTrigger>
               <TabsTrigger value="images">Images</TabsTrigger>
             </TabsList>
+
+            {/* Roof Diagram Tab - AI Skeleton on Satellite */}
+            <TabsContent value="diagram" className="space-y-4">
+              <Card className="p-6">
+                <div className="flex items-center justify-between mb-4">
+                  <div>
+                    <h3 className="text-lg font-semibold">AI Roof Skeleton</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Ridge, hip, valley, and perimeter lines detected by AI
+                    </p>
+                  </div>
+                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                    <CheckCircle className="h-3 w-3 mr-1" />
+                    AI Analyzed
+                  </Badge>
+                </div>
+                
+                <AIRoofSkeletonViewer
+                  satelliteImageUrl={measurementData.images?.google?.url || measurementData.images?.mapbox?.url}
+                  linearFeatures={measurementData.linearFeatures || []}
+                  perimeterWkt={measurementData.perimeterWkt}
+                  coordinates={{
+                    lat: effectiveLat || 0,
+                    lng: effectiveLng || 0
+                  }}
+                  imageSize={640}
+                />
+
+                {/* Linear measurements summary below diagram */}
+                <div className="mt-4 pt-4 border-t">
+                  <div className="grid grid-cols-5 gap-4 text-center">
+                    <div>
+                      <div className="text-xs text-muted-foreground">Ridge</div>
+                      <div className="text-lg font-bold text-green-600">
+                        {measurementData.measurements?.linear?.ridge?.toFixed(0) || 0} ft
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Hip</div>
+                      <div className="text-lg font-bold text-purple-600">
+                        {measurementData.measurements?.linear?.hip?.toFixed(0) || 0} ft
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Valley</div>
+                      <div className="text-lg font-bold text-red-600">
+                        {measurementData.measurements?.linear?.valley?.toFixed(0) || 0} ft
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Eave</div>
+                      <div className="text-lg font-bold text-cyan-600">
+                        {measurementData.measurements?.linear?.eave?.toFixed(0) || 0} ft
+                      </div>
+                    </div>
+                    <div>
+                      <div className="text-xs text-muted-foreground">Rake</div>
+                      <div className="text-lg font-bold text-orange-600">
+                        {measurementData.measurements?.linear?.rake?.toFixed(0) || 0} ft
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </Card>
+            </TabsContent>
 
             {/* Summary Tab */}
             <TabsContent value="summary" className="space-y-4">

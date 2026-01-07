@@ -2,6 +2,8 @@ import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react'
 import { Canvas as FabricCanvas, Image as FabricImage, Polygon, Line, Circle, Point } from 'fabric';
 import type { DrawingTool } from './MeasurementToolbar';
 import type { DetailedMeasurements } from './RoofComponentLineItems';
+import { PostPerimeterDialog } from './PostPerimeterDialog';
+import { toast } from 'sonner';
 
 interface RoofDrawingCanvasProps {
   imageUrl: string;
@@ -61,6 +63,9 @@ export function RoofDrawingCanvas({
   const [drawnObjects, setDrawnObjects] = useState<DrawnObject[]>([]);
   const [currentPoints, setCurrentPoints] = useState<Point[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [showPostPerimeterDialog, setShowPostPerimeterDialog] = useState(false);
+  const [lastPerimeterArea, setLastPerimeterArea] = useState(0);
+  const [lastPerimeterVertices, setLastPerimeterVertices] = useState(0);
   const tempLineRef = useRef<Line | null>(null);
   const tempPointsRef = useRef<Circle[]>([]);
 
@@ -304,6 +309,12 @@ export function RoofDrawingCanvas({
     setCurrentPoints([]);
     setIsDrawing(false);
 
+    // Show post-perimeter dialog to guide user to next step
+    setLastPerimeterArea(areaSqFt);
+    setLastPerimeterVertices(polyPoints.length);
+    setShowPostPerimeterDialog(true);
+    toast.success(`Perimeter saved: ${areaSqFt.toFixed(0)} sq ft`);
+
     canvas.renderAll();
   };
 
@@ -436,6 +447,25 @@ export function RoofDrawingCanvas({
           ))}
         </div>
       </div>
+
+      {/* Post-Perimeter Dialog */}
+      <PostPerimeterDialog
+        open={showPostPerimeterDialog}
+        onOpenChange={setShowPostPerimeterDialog}
+        areaSqFt={lastPerimeterArea}
+        vertexCount={lastPerimeterVertices}
+        onAIAnalyze={() => {
+          setShowPostPerimeterDialog(false);
+          toast.info('AI analysis would be triggered here');
+        }}
+        onDrawManually={() => {
+          setShowPostPerimeterDialog(false);
+          toast.info('Select Ridge, Hip, or Valley tool to continue drawing');
+        }}
+        onDone={() => {
+          setShowPostPerimeterDialog(false);
+        }}
+      />
     </div>
   );
 }
