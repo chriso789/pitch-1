@@ -337,15 +337,17 @@ export default function ProfessionalMeasurement() {
                         satelliteImageUrl={satelliteImageUrl}
                         measurement={adjustedMeasurement}
                         tags={adjustedMeasurement.tags || {}}
-                        centerLng={0}
-                        centerLat={0}
-                        zoom={20}
+                        centerLng={adjustedMeasurement.gps_coordinates?.lng || lng || 0}
+                        centerLat={adjustedMeasurement.gps_coordinates?.lat || lat || 0}
+                        zoom={adjustedMeasurement.analysis_zoom || 20}
                         canvasWidth={adjustedMeasurement.canvasWidth || 1200}
                         canvasHeight={adjustedMeasurement.canvasHeight || 800}
                         onMeasurementUpdate={handleMeasurementUpdate}
                         measurementId={currentMeasurementId}
                         propertyId={id}
                         pipelineEntryId={id}
+                        verifiedAddressLat={lat || undefined}
+                        verifiedAddressLng={lng || undefined}
                       />
                     )}
                   </div>
