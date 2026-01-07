@@ -29,16 +29,144 @@ import { reconstructRoofGeometry, roofToLinearFeaturesWKT } from '../_shared/roo
 // Import solar segment assembler for accurate facet positioning from Google Solar data
 import { assembleFacetsFromSolarSegments, type AssembledGeometry, type SolarSegment } from '../_shared/solar-segment-assembler.ts'
 
-// Import structure analyzer for orientation detection, L/T-shape recognition, and screen enclosure exclusion
-import { 
-  analyzeSegmentOrientation, 
-  createStructureAnalysisPrompt, 
-  parseStructureAnalysisResponse,
-  mergeOrientationData,
-  createDefaultStructureAnalysis,
-  type StructureAnalysis,
-  type SolarSegmentOrientation
-} from '../_shared/structure-analyzer.ts'
+// Inline structure analyzer functions to avoid bundle timeout issues
+// Types
+interface StructureAnalysis {
+  houseOrientation: {
+    frontFacing: 'N' | 'S' | 'E' | 'W' | 'NE' | 'NW' | 'SE' | 'SW' | 'unknown';
+    drivewayPosition: 'N' | 'S' | 'E' | 'W' | 'NE' | 'NW' | 'SE' | 'SW' | 'unknown';
+    garagePosition: string;
+    confidence: number;
+  };
+  footprintShape: 'rectangular' | 'L-shaped' | 'T-shaped' | 'U-shaped' | 'H-shaped' | 'complex';
+  mainStructure: {
+    bounds: { minX: number; minY: number; maxX: number; maxY: number };
+    ridgeDirection: 'east-west' | 'north-south';
+    estimatedWidthFt: number;
+    estimatedDepthFt: number;
+  };
+  extensions: Array<{
+    type: string;
+    bounds: { minX: number; minY: number; maxX: number; maxY: number };
+    attachmentSide: 'N' | 'S' | 'E' | 'W';
+    ridgeDirection: 'east-west' | 'north-south';
+  }>;
+  exclusions: Array<{
+    type: string;
+    bounds: { minX: number; minY: number; maxX: number; maxY: number };
+    estimatedAreaSqft: number;
+  }>;
+  ridgeTopology: {
+    primaryRidgeCount: number;
+    hasMultipleRidgeDirections: boolean;
+    junctionPoints: number;
+  };
+  overallConfidence: 'high' | 'medium' | 'low';
+}
+
+interface SolarSegmentOrientation {
+  primaryRidgeDirection: 'east-west' | 'north-south';
+  hasMultipleRidges: boolean;
+  segmentGroups: {
+    north: { count: number; totalArea: number };
+    south: { count: number; totalArea: number };
+    east: { count: number; totalArea: number };
+    west: { count: number; totalArea: number };
+  };
+  suggestedShape: 'rectangular' | 'L-shaped' | 'T-shaped' | 'complex';
+  confidence: number;
+}
+
+// Inlined analyzeSegmentOrientation function
+function analyzeSegmentOrientation(
+  segments: Array<{ azimuthDegrees: number; areaMeters2?: number }>
+): SolarSegmentOrientation {
+  if (!segments || segments.length === 0) {
+    return {
+      primaryRidgeDirection: 'east-west',
+      hasMultipleRidges: false,
+      segmentGroups: { north: { count: 0, totalArea: 0 }, south: { count: 0, totalArea: 0 }, east: { count: 0, totalArea: 0 }, west: { count: 0, totalArea: 0 } },
+      suggestedShape: 'rectangular',
+      confidence: 0
+    };
+  }
+  
+  const groups = { north: { count: 0, totalArea: 0 }, south: { count: 0, totalArea: 0 }, east: { count: 0, totalArea: 0 }, west: { count: 0, totalArea: 0 } };
+  
+  segments.forEach(segment => {
+    const azimuth = ((segment.azimuthDegrees % 360) + 360) % 360;
+    const area = (segment.areaMeters2 || 0) * 10.764;
+    
+    if (azimuth >= 315 || azimuth < 45) { groups.north.count++; groups.north.totalArea += area; }
+    else if (azimuth >= 45 && azimuth < 135) { groups.east.count++; groups.east.totalArea += area; }
+    else if (azimuth >= 135 && azimuth < 225) { groups.south.count++; groups.south.totalArea += area; }
+    else { groups.west.count++; groups.west.totalArea += area; }
+  });
+  
+  const nsTotal = groups.north.count + groups.south.count;
+  const ewTotal = groups.east.count + groups.west.count;
+  const primaryRidgeDirection = nsTotal >= ewTotal ? 'east-west' : 'north-south';
+  
+  const hasNS = groups.north.count >= 1 && groups.south.count >= 1;
+  const hasEW = groups.east.count >= 1 && groups.west.count >= 1;
+  const hasMultipleRidges = hasNS && hasEW && segments.length >= 4;
+  
+  let suggestedShape: 'rectangular' | 'L-shaped' | 'T-shaped' | 'complex' = 'rectangular';
+  if (hasMultipleRidges) {
+    const nsArea = groups.north.totalArea + groups.south.totalArea;
+    const ewArea = groups.east.totalArea + groups.west.totalArea;
+    const areaRatio = Math.max(nsArea, ewArea) / Math.min(nsArea, ewArea);
+    if (areaRatio > 1.5 && areaRatio < 3) suggestedShape = 'L-shaped';
+    else if (areaRatio >= 3) suggestedShape = 'T-shaped';
+    else suggestedShape = 'complex';
+  }
+  
+  console.log(`🧭 Segment orientation: ${primaryRidgeDirection} ridge, ${suggestedShape} shape`);
+  return { primaryRidgeDirection, hasMultipleRidges, segmentGroups: groups, suggestedShape, confidence: Math.min(0.95, 0.5 + (segments.length * 0.1)) };
+}
+
+// Inlined createDefaultStructureAnalysis
+function createDefaultStructureAnalysis(): StructureAnalysis {
+  return {
+    houseOrientation: { frontFacing: 'unknown', drivewayPosition: 'unknown', garagePosition: 'unknown', confidence: 0 },
+    footprintShape: 'rectangular',
+    mainStructure: { bounds: { minX: 25, minY: 25, maxX: 75, maxY: 75 }, ridgeDirection: 'east-west', estimatedWidthFt: 50, estimatedDepthFt: 40 },
+    extensions: [],
+    exclusions: [],
+    ridgeTopology: { primaryRidgeCount: 1, hasMultipleRidgeDirections: false, junctionPoints: 0 },
+    overallConfidence: 'low'
+  };
+}
+
+// Inlined mergeOrientationData
+function mergeOrientationData(structureAnalysis: StructureAnalysis | null, segmentOrientation: SolarSegmentOrientation): StructureAnalysis {
+  if (!structureAnalysis) {
+    return {
+      houseOrientation: { frontFacing: 'unknown', drivewayPosition: 'unknown', garagePosition: 'unknown', confidence: segmentOrientation.confidence * 0.7 },
+      footprintShape: segmentOrientation.suggestedShape,
+      mainStructure: { bounds: { minX: 25, minY: 25, maxX: 75, maxY: 75 }, ridgeDirection: segmentOrientation.primaryRidgeDirection, estimatedWidthFt: 50, estimatedDepthFt: 40 },
+      extensions: [],
+      exclusions: [],
+      ridgeTopology: { primaryRidgeCount: segmentOrientation.hasMultipleRidges ? 2 : 1, hasMultipleRidgeDirections: segmentOrientation.hasMultipleRidges, junctionPoints: segmentOrientation.hasMultipleRidges ? 1 : 0 },
+      overallConfidence: segmentOrientation.confidence > 0.7 ? 'medium' : 'low'
+    };
+  }
+  if (segmentOrientation.confidence > 0.8 && structureAnalysis.mainStructure.ridgeDirection !== segmentOrientation.primaryRidgeDirection) {
+    structureAnalysis.mainStructure.ridgeDirection = segmentOrientation.primaryRidgeDirection;
+  }
+  if (segmentOrientation.hasMultipleRidges && !structureAnalysis.ridgeTopology.hasMultipleRidgeDirections) {
+    structureAnalysis.ridgeTopology.hasMultipleRidgeDirections = true;
+    structureAnalysis.ridgeTopology.primaryRidgeCount = Math.max(2, structureAnalysis.ridgeTopology.primaryRidgeCount);
+  }
+  return structureAnalysis;
+}
+
+// Inlined isFloridaAddress
+function isFloridaAddress(address: string): boolean {
+  if (!address) return false;
+  const normalized = address.toUpperCase();
+  return normalized.includes(', FL') || normalized.includes(' FL ') || normalized.includes('FLORIDA');
+}
 
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!
 const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY')!

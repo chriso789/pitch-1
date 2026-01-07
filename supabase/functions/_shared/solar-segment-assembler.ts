@@ -15,7 +15,39 @@
  * and screen enclosure exclusion.
  */
 
-import type { StructureAnalysis } from './structure-analyzer.ts'
+// StructureAnalysis type inlined to avoid import bundle issues
+interface StructureAnalysis {
+  houseOrientation: {
+    frontFacing: 'N' | 'S' | 'E' | 'W' | 'NE' | 'NW' | 'SE' | 'SW' | 'unknown';
+    drivewayPosition: 'N' | 'S' | 'E' | 'W' | 'NE' | 'NW' | 'SE' | 'SW' | 'unknown';
+    garagePosition: string;
+    confidence: number;
+  };
+  footprintShape: 'rectangular' | 'L-shaped' | 'T-shaped' | 'U-shaped' | 'H-shaped' | 'complex';
+  mainStructure: {
+    bounds: { minX: number; minY: number; maxX: number; maxY: number };
+    ridgeDirection: 'east-west' | 'north-south';
+    estimatedWidthFt: number;
+    estimatedDepthFt: number;
+  };
+  extensions: Array<{
+    type: string;
+    bounds: { minX: number; minY: number; maxX: number; maxY: number };
+    attachmentSide: 'N' | 'S' | 'E' | 'W';
+    ridgeDirection: 'east-west' | 'north-south';
+  }>;
+  exclusions: Array<{
+    type: string;
+    bounds: { minX: number; minY: number; maxX: number; maxY: number };
+    estimatedAreaSqft: number;
+  }>;
+  ridgeTopology: {
+    primaryRidgeCount: number;
+    hasMultipleRidgeDirections: boolean;
+    junctionPoints: number;
+  };
+  overallConfidence: 'high' | 'medium' | 'low';
+}
 
 type XY = [number, number]; // [lng, lat]
 
