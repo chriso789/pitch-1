@@ -1,4 +1,5 @@
-import { createClient, SupabaseClient } from 'https://esm.sh/@supabase/supabase-js@2';
+// NOTE: Use npm: specifiers to avoid Supabase bundle timeouts
+import { createClient, SupabaseClient } from 'npm:@supabase/supabase-js@2.57.4';
 import { AuditEventPayload, ApiResponse } from './types.ts';
 
 // ============================================================================
