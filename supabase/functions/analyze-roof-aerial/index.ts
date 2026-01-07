@@ -38,10 +38,24 @@ const SUPABASE_SERVICE_ROLE_KEY = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
 
 const IMAGE_ZOOM = 20
 const IMAGE_SIZE = 640
+const AI_CALL_TIMEOUT_MS = 45000 // 45 second timeout per AI call
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+// Helper: Fetch with timeout for AI calls
+async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = AI_CALL_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  
+  try {
+    const response = await fetch(url, { ...options, signal: controller.signal })
+    return response
+  } finally {
+    clearTimeout(timeoutId)
+  }
 }
 
 interface Vertex {
@@ -269,20 +283,22 @@ serve(async (req) => {
       perimeterResult.vertices = cleanupResult.cleaned;
     }
     
-// Pass 3: Detect interior junction vertices (where ridges/hips/valleys meet)
-    const interiorVertices = await detectInteriorJunctions(selectedImage.url, perimeterResult.vertices, buildingIsolation.bounds)
-    console.log(`⏱️ Pass 3 (interior junctions) complete: ${Date.now() - startTime}ms`)
-    
-    // NEW Pass 3.5: AI Vision Ridge Detection - detect ACTUAL ridge positions from satellite image
-    const aiRidgeDetection = await detectRidgeLinesFromImage(
-      selectedImage.url,
-      perimeterResult.vertices,
-      buildingIsolation.bounds,
-      coordinates,
-      logicalImageSize,
-      IMAGE_ZOOM
-    )
-    console.log(`⏱️ Pass 3.5 (AI ridge detection) complete: ${Date.now() - startTime}ms`)
+// Pass 3 & 3.5: Run in PARALLEL for speed optimization
+    console.log(`⏱️ Starting Pass 3 & 3.5 in parallel...`)
+    const [interiorVertices, aiRidgeDetection] = await Promise.all([
+      // Pass 3: Detect interior junction vertices (where ridges/hips/valleys meet)
+      detectInteriorJunctions(selectedImage.url, perimeterResult.vertices, buildingIsolation.bounds),
+      // Pass 3.5: AI Vision Ridge Detection - detect ACTUAL ridge positions from satellite image
+      detectRidgeLinesFromImage(
+        selectedImage.url,
+        perimeterResult.vertices,
+        buildingIsolation.bounds,
+        coordinates,
+        logicalImageSize,
+        IMAGE_ZOOM
+      )
+    ])
+    console.log(`⏱️ Pass 3 & 3.5 (parallel) complete: ${Date.now() - startTime}ms`)
     console.log(`📏 AI Ridge Detection: ${aiRidgeDetection.ridgeLines.length} ridges, confidence=${aiRidgeDetection.averageConfidence.toFixed(0)}%, source=${aiRidgeDetection.source}`)
     
     // Derive lines from vertices using STRAIGHT SKELETON for mathematically correct topology
@@ -1077,7 +1093,7 @@ SIZING RULES:
   console.log('🏠 Pass 1: Isolating target building with expanded bounds...')
   
   try {
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const response = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${LOVABLE_API_KEY}` },
       body: JSON.stringify({
@@ -1389,7 +1405,7 @@ Return ONLY valid JSON, no explanation.`
   console.log('📐 Pass 2: Full-image Planimeter-quality vertex detection...')
   
   try {
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const response = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${LOVABLE_API_KEY}` },
       body: JSON.stringify({
@@ -1559,7 +1575,7 @@ Return ONLY valid JSON.`
   console.log('🔄 Corner completion pass: Looking for ${longSegments.length} missing corners...')
   
   try {
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const response = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${LOVABLE_API_KEY}` },
       body: JSON.stringify({
@@ -1661,7 +1677,7 @@ RESPONSE FORMAT:
 Return ONLY valid JSON.`
 
   try {
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const response = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${LOVABLE_API_KEY}` },
       body: JSON.stringify({
@@ -1787,7 +1803,7 @@ Return JSON:
 Return ONLY valid JSON.`;
 
   try {
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const response = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${LOVABLE_API_KEY}` },
       body: JSON.stringify({
