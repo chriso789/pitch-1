@@ -9,3 +9,5 @@ export { MapboxRoofViewer } from './MapboxRoofViewer';
 export { MeasurementWorkflow } from './MeasurementWorkflow';
 export { AIRoofSkeletonViewer } from './AIRoofSkeletonViewer';
 export { PostPerimeterDialog } from './PostPerimeterDialog';
+export { RoofrStyleDiagram } from './RoofrStyleDiagram';
+export { MeasurementComparisonPanel } from './MeasurementComparisonPanel';
