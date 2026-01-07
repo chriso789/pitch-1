@@ -3888,135 +3888,16 @@ async function processSolarFastPath(
   const totalAdjustedArea = totalFlatArea * pitchMultiplier
   const totalSquares = totalAdjustedArea / 100
   
-  // ════════════════════════════════════════════════════════════════════════════
-  // 🔍 SEGMENT TOPOLOGY ANALYSIS - Extract ridges/hips/valleys from Solar segments
-  // ════════════════════════════════════════════════════════════════════════════
-  const segments = solarData.roofSegments
-  const segmentCount = segments.length
-  console.log(`🔍 Analyzing ${segmentCount} roof segments for topology...`)
+  // Get segment count for facet_count field (use Solar API data directly)
+  const segmentCount = solarData.roofSegments.length
   
-  // Group segments by cardinal direction (based on azimuth)
-  const getCardinalDirection = (azimuth: number): string => {
-    const normalized = ((azimuth % 360) + 360) % 360
-    if (normalized >= 337.5 || normalized < 22.5) return 'N'
-    if (normalized >= 22.5 && normalized < 67.5) return 'NE'
-    if (normalized >= 67.5 && normalized < 112.5) return 'E'
-    if (normalized >= 112.5 && normalized < 157.5) return 'SE'
-    if (normalized >= 157.5 && normalized < 202.5) return 'S'
-    if (normalized >= 202.5 && normalized < 247.5) return 'SW'
-    if (normalized >= 247.5 && normalized < 292.5) return 'W'
-    if (normalized >= 292.5 && normalized < 337.5) return 'NW'
-    return 'N'
-  }
-  
-  // Check if two azimuths are opposing (ridge between them)
-  const areOpposing = (az1: number, az2: number): boolean => {
-    const diff = Math.abs(((az1 - az2 + 180) % 360) - 180)
-    return diff >= 150 && diff <= 210 // Within ~30° of opposing
-  }
-  
-  // Check if two azimuths are perpendicular (hip between them)
-  const arePerpendicular = (az1: number, az2: number): boolean => {
-    const diff = Math.abs(((az1 - az2 + 180) % 360) - 180)
-    return (diff >= 60 && diff <= 120)
-  }
-  
-  // Get centroid of segment from its bounding box
-  const getSegmentCentroid = (seg: any): { lat: number; lng: number } | null => {
-    if (!seg.boundingBox?.sw || !seg.boundingBox?.ne) return null
-    return {
-      lat: (seg.boundingBox.sw.latitude + seg.boundingBox.ne.latitude) / 2,
-      lng: (seg.boundingBox.sw.longitude + seg.boundingBox.ne.longitude) / 2
-    }
-  }
-  
-  // Haversine distance in feet
-  const distanceFt = (a: { lat: number; lng: number }, b: { lat: number; lng: number }): number => {
-    const R = 20902231 // Earth radius in feet
-    const dLat = (b.lat - a.lat) * Math.PI / 180
-    const dLng = (b.lng - a.lng) * Math.PI / 180
-    const lat1 = a.lat * Math.PI / 180
-    const lat2 = b.lat * Math.PI / 180
-    const sinDlat = Math.sin(dLat / 2)
-    const sinDlng = Math.sin(dLng / 2)
-    const x = sinDlat * sinDlat + Math.cos(lat1) * Math.cos(lat2) * sinDlng * sinDlng
-    return 2 * R * Math.asin(Math.sqrt(x))
-  }
-  
-  // Analyze segment pairs for topology
-  const ridgePairs: { seg1: number; seg2: number; lengthFt: number; midpoint: { lat: number; lng: number } }[] = []
-  const hipPairs: { seg1: number; seg2: number; lengthFt: number; midpoint: { lat: number; lng: number } }[] = []
-  const valleyPairs: { seg1: number; seg2: number; lengthFt: number; midpoint: { lat: number; lng: number } }[] = []
-  
-  for (let i = 0; i < segments.length; i++) {
-    const segA = segments[i]
-    const azA = segA.azimuthDegrees ?? 0
-    const centA = getSegmentCentroid(segA)
-    if (!centA) continue
-    
-    for (let j = i + 1; j < segments.length; j++) {
-      const segB = segments[j]
-      const azB = segB.azimuthDegrees ?? 0
-      const centB = getSegmentCentroid(segB)
-      if (!centB) continue
-      
-      const dist = distanceFt(centA, centB)
-      const midpoint = { lat: (centA.lat + centB.lat) / 2, lng: (centA.lng + centB.lng) / 2 }
-      
-      // Adjacent segments should be close (within ~60ft of each other)
-      if (dist > 80) continue
-      
-      // Estimate shared edge length from segment sizes
-      const areaA = segA.stats?.areaMeters2 ?? 0
-      const areaB = segB.stats?.areaMeters2 ?? 0
-      const avgWidthFt = Math.sqrt((areaA + areaB) / 2 * 10.764) // sqm to sqft, then sqrt
-      const estimatedEdgeFt = Math.min(avgWidthFt, 40) // Cap at reasonable length
-      
-      if (areOpposing(azA, azB)) {
-        // Opposing azimuths = RIDGE between them
-        ridgePairs.push({ seg1: i, seg2: j, lengthFt: estimatedEdgeFt, midpoint })
-        console.log(`   Ridge: seg${i}(${getCardinalDirection(azA)}) ↔ seg${j}(${getCardinalDirection(azB)}) ~${estimatedEdgeFt.toFixed(0)}ft`)
-      } else if (arePerpendicular(azA, azB)) {
-        // Perpendicular azimuths = could be HIP or VALLEY
-        // HIP: when going around outside of roof (convex)
-        // VALLEY: when going into inside corner of roof (concave)
-        // Heuristic: if centroids are on same side of building center, likely valley
-        const buildingCenter = { lat: coordinates.lat, lng: coordinates.lng }
-        const aDistToCenter = distanceFt(centA, buildingCenter)
-        const bDistToCenter = distanceFt(centB, buildingCenter)
-        const midDistToCenter = distanceFt(midpoint, buildingCenter)
-        
-        // If midpoint is CLOSER to center than both segments, likely a valley (going inward)
-        if (midDistToCenter < aDistToCenter && midDistToCenter < bDistToCenter) {
-          valleyPairs.push({ seg1: i, seg2: j, lengthFt: estimatedEdgeFt * 1.1, midpoint })
-          console.log(`   Valley: seg${i}(${getCardinalDirection(azA)}) ↔ seg${j}(${getCardinalDirection(azB)}) ~${estimatedEdgeFt.toFixed(0)}ft`)
-        } else {
-          hipPairs.push({ seg1: i, seg2: j, lengthFt: estimatedEdgeFt * 1.1, midpoint })
-          console.log(`   Hip: seg${i}(${getCardinalDirection(azA)}) ↔ seg${j}(${getCardinalDirection(azB)}) ~${estimatedEdgeFt.toFixed(0)}ft`)
-        }
-      }
-    }
-  }
-  
-  // Calculate totals from detected topology
-  const totalRidgeFromTopology = ridgePairs.reduce((sum, p) => sum + p.lengthFt, 0)
-  const totalHipFromTopology = hipPairs.reduce((sum, p) => sum + p.lengthFt, 0)
-  const totalValleyFromTopology = valleyPairs.reduce((sum, p) => sum + p.lengthFt, 0)
-  
-  // Fallback estimates if topology detection is incomplete
+  // Estimate linear measurements from area/perimeter (heuristic approach until topology analysis is improved)
   const estimatedPerimeterFt = solarData.estimatedPerimeterFt || 4 * Math.sqrt(totalFlatArea)
-  const fallbackRidge = Math.sqrt(totalFlatArea) * 0.6
-  const fallbackHip = segmentCount >= 4 ? fallbackRidge * 0.4 : 0
-  
-  // Use topology values if we found meaningful data, else fallback
-  const ridgeLength = totalRidgeFromTopology > 10 ? totalRidgeFromTopology : fallbackRidge
-  const hipLength = totalHipFromTopology > 10 ? totalHipFromTopology : fallbackHip
-  const valleyLength = totalValleyFromTopology // No fallback - valleys should be 0 for simple roofs
-  
+  const ridgeLength = Math.sqrt(totalFlatArea) * 0.6
+  const hipLength = segmentCount >= 4 ? ridgeLength * 0.4 : 0
+  const valleyLength = 0 // Conservative: valleys detected by AI passes, not fast path
   const eaveLength = estimatedPerimeterFt * 0.35
   const rakeLength = estimatedPerimeterFt * 0.15
-  
-  console.log(`📊 Topology results: ${ridgePairs.length} ridges (${totalRidgeFromTopology.toFixed(0)}ft), ${hipPairs.length} hips (${totalHipFromTopology.toFixed(0)}ft), ${valleyPairs.length} valleys (${totalValleyFromTopology.toFixed(0)}ft)`)
   
   const linearMeasurements = {
     eave: Math.round(eaveLength),
@@ -4026,15 +3907,13 @@ async function processSolarFastPath(
     ridge: Math.round(ridgeLength)
   }
   
-  // Determine roof type from topology
-  const roofTypeFromTopology = valleyPairs.length > 0 ? 'cross-gable' :
-                                ridgePairs.length >= 2 ? 'cross-hip' :
-                                hipPairs.length >= 4 ? 'hip' :
+  // Determine roof type from segment count
+  const roofTypeFromTopology = segmentCount >= 6 ? 'complex' :
                                 segmentCount >= 4 ? 'hip' : 'gable'
   
   // Calculate complexity and waste factor
-  const complexity = solarData.roofSegments.length >= 6 ? 'complex' : 
-                     solarData.roofSegments.length >= 4 ? 'moderate' : 'simple'
+  const complexity = segmentCount >= 6 ? 'complex' : 
+                     segmentCount >= 4 ? 'moderate' : 'simple'
   const wasteFactor = complexity === 'complex' ? 1.15 : complexity === 'moderate' ? 1.12 : 1.10
   const totalSquaresWithWaste = totalSquares * wasteFactor
   
@@ -4051,78 +3930,76 @@ async function processSolarFastPath(
   // Build perimeter WKT
   const perimeterWkt = `POLYGON((${perimeterXY.map(p => `${p[0]} ${p[1]}`).join(', ')}, ${perimeterXY[0][0]} ${perimeterXY[0][1]}))`
   
-  // Build linear features WKT from TOPOLOGY ANALYSIS (not assembler - more accurate)
+  // Build linear features from assembler output (stable, clean rendering)
   const linearFeatures: any[] = []
   
-  // Add ridges from topology analysis
-  ridgePairs.forEach((pair, i) => {
-    // Create a small line segment at the midpoint perpendicular to the ridge direction
-    const offset = 0.0001 // ~10m offset for visualization
-    linearFeatures.push({
-      type: 'ridge',
-      wkt: `LINESTRING(${pair.midpoint.lng - offset} ${pair.midpoint.lat}, ${pair.midpoint.lng + offset} ${pair.midpoint.lat})`,
-      length_ft: pair.lengthFt,
-      plan_length_ft: pair.lengthFt,
-      surface_length_ft: pair.lengthFt * pitchMultiplier,
-      source: 'segment_topology'
-    })
-  })
-  
-  // Add hips from topology analysis
-  hipPairs.forEach((pair, i) => {
-    const offset = 0.00008
-    linearFeatures.push({
-      type: 'hip',
-      wkt: `LINESTRING(${pair.midpoint.lng - offset} ${pair.midpoint.lat - offset}, ${pair.midpoint.lng + offset} ${pair.midpoint.lat + offset})`,
-      length_ft: pair.lengthFt,
-      plan_length_ft: pair.lengthFt,
-      surface_length_ft: pair.lengthFt * pitchMultiplier,
-      source: 'segment_topology'
-    })
-  })
-  
-  // Add valleys from topology analysis
-  valleyPairs.forEach((pair, i) => {
-    const offset = 0.00008
-    linearFeatures.push({
-      type: 'valley',
-      wkt: `LINESTRING(${pair.midpoint.lng - offset} ${pair.midpoint.lat + offset}, ${pair.midpoint.lng + offset} ${pair.midpoint.lat - offset})`,
-      length_ft: pair.lengthFt,
-      plan_length_ft: pair.lengthFt,
-      surface_length_ft: pair.lengthFt * pitchMultiplier,
-      source: 'segment_topology'
-    })
-  })
-  
-  // Fallback: if no topology features found, use assembler output
-  if (linearFeatures.length === 0) {
-    if (assembledGeometry.ridges) {
-      assembledGeometry.ridges.forEach((r: any) => {
-        linearFeatures.push({
-          type: 'ridge',
-          wkt: `LINESTRING(${r.start[0]} ${r.start[1]}, ${r.end[0]} ${r.end[1]})`,
-          length_ft: r.lengthFt,
-          plan_length_ft: r.lengthFt,
-          surface_length_ft: r.lengthFt * pitchMultiplier,
-          source: 'assembler_fallback'
-        })
+  if (assembledGeometry.ridges) {
+    assembledGeometry.ridges.forEach((r: any) => {
+      linearFeatures.push({
+        type: 'ridge',
+        wkt: `LINESTRING(${r.start[0]} ${r.start[1]}, ${r.end[0]} ${r.end[1]})`,
+        length_ft: r.lengthFt,
+        plan_length_ft: r.lengthFt,
+        surface_length_ft: r.lengthFt * pitchMultiplier,
+        source: 'solar_assembler'
       })
-    }
-    if (assembledGeometry.hips) {
-      assembledGeometry.hips.forEach((h: any) => {
-        linearFeatures.push({
-          type: 'hip',
-          wkt: `LINESTRING(${h.start[0]} ${h.start[1]}, ${h.end[0]} ${h.end[1]})`,
-          length_ft: h.lengthFt,
-          plan_length_ft: h.lengthFt,
-          surface_length_ft: h.lengthFt * pitchMultiplier,
-          source: 'assembler_fallback'
-        })
-      })
-    }
+    })
   }
   
-  console.log(`📐 Linear features: ${linearFeatures.length} total (${linearFeatures.filter(f => f.type === 'ridge').length} ridges, ${linearFeatures.filter(f => f.type === 'hip').length} hips, ${linearFeatures.filter(f => f.type === 'valley').length} valleys)`)
+  if (assembledGeometry.hips) {
+    assembledGeometry.hips.forEach((h: any) => {
+      linearFeatures.push({
+        type: 'hip',
+        wkt: `LINESTRING(${h.start[0]} ${h.start[1]}, ${h.end[0]} ${h.end[1]})`,
+        length_ft: h.lengthFt,
+        plan_length_ft: h.lengthFt,
+        surface_length_ft: h.lengthFt * pitchMultiplier,
+        source: 'solar_assembler'
+      })
+    })
+  }
+  
+  if (assembledGeometry.valleys) {
+    assembledGeometry.valleys.forEach((v: any) => {
+      linearFeatures.push({
+        type: 'valley',
+        wkt: `LINESTRING(${v.start[0]} ${v.start[1]}, ${v.end[0]} ${v.end[1]})`,
+        length_ft: v.lengthFt,
+        plan_length_ft: v.lengthFt,
+        surface_length_ft: v.lengthFt * pitchMultiplier,
+        source: 'solar_assembler'
+      })
+    })
+  }
+  
+  // Add eaves and rakes from perimeter edges
+  if (assembledGeometry.eaves) {
+    assembledGeometry.eaves.forEach((e: any) => {
+      linearFeatures.push({
+        type: 'eave',
+        wkt: `LINESTRING(${e.start[0]} ${e.start[1]}, ${e.end[0]} ${e.end[1]})`,
+        length_ft: e.lengthFt,
+        plan_length_ft: e.lengthFt,
+        surface_length_ft: e.lengthFt,
+        source: 'solar_assembler'
+      })
+    })
+  }
+  
+  if (assembledGeometry.rakes) {
+    assembledGeometry.rakes.forEach((r: any) => {
+      linearFeatures.push({
+        type: 'rake',
+        wkt: `LINESTRING(${r.start[0]} ${r.start[1]}, ${r.end[0]} ${r.end[1]})`,
+        length_ft: r.lengthFt,
+        plan_length_ft: r.lengthFt,
+        surface_length_ft: r.lengthFt,
+        source: 'solar_assembler'
+      })
+    })
+  }
+  
+  console.log(`📐 Linear features from assembler: ${linearFeatures.length} (${linearFeatures.filter(f => f.type === 'ridge').length} ridges, ${linearFeatures.filter(f => f.type === 'hip').length} hips, ${linearFeatures.filter(f => f.type === 'valley').length} valleys)`)
   
   // Build facet polygons for database
   const facetPolygons = assembledGeometry.facets.map((facet: any, index: number) => ({
@@ -4142,6 +4019,10 @@ async function processSolarFastPath(
   const imageYear = new Date().getFullYear()
   
   // Build AI analysis structure (for compatibility)
+  const ridgeCount = linearFeatures.filter(f => f.type === 'ridge').length
+  const hipCount = linearFeatures.filter(f => f.type === 'hip').length
+  const valleyCount = linearFeatures.filter(f => f.type === 'valley').length
+  
   const aiAnalysis = {
     roofType: roofTypeFromTopology,
     facets: [{ facetNumber: 1, estimatedAreaSqft: totalFlatArea }],
@@ -4150,10 +4031,10 @@ async function processSolarFastPath(
     overallComplexity: complexity,
     derivedFacetCount: segmentCount, // Use actual Solar segment count, not assembler facets
     facetCount: segmentCount,
-    topologyAnalysis: {
-      ridgeCount: ridgePairs.length,
-      hipCount: hipPairs.length,
-      valleyCount: valleyPairs.length
+    linearFeatureCounts: {
+      ridges: ridgeCount,
+      hips: hipCount,
+      valleys: valleyCount
     }
   }
   
@@ -4243,11 +4124,11 @@ async function processSolarFastPath(
         complexity: complexity,
         pitch: predominantPitch,
         boundingBox: aiAnalysis.boundingBox,
-        source: 'solar_fast_path_with_topology',
-        topologyAnalysis: {
-          ridges: ridgePairs.length,
-          hips: hipPairs.length,
-          valleys: valleyPairs.length
+        source: 'solar_fast_path',
+        linearFeatureCounts: {
+          ridges: ridgeCount,
+          hips: hipCount,
+          valleys: valleyCount
         }
       },
       measurements: {
