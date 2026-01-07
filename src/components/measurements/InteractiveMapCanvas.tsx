@@ -154,12 +154,21 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
   useEffect(() => {
     if (!canvasRef.current || !isMapLoaded) return;
 
+    // Clear the raw canvas context first to ensure transparency
+    const ctx = canvasRef.current.getContext('2d');
+    if (ctx) {
+      ctx.clearRect(0, 0, canvasSize.width, canvasSize.height);
+    }
+
     const canvas = new FabricCanvas(canvasRef.current, {
       width: canvasSize.width,
       height: canvasSize.height,
-      backgroundColor: 'transparent',
       selection: false,
     });
+
+    // Force transparency - Fabric.js v6 needs explicit undefined background
+    canvas.backgroundColor = undefined;
+    canvas.renderAll();
 
     fabricCanvasRef.current = canvas;
 
@@ -425,7 +434,11 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
         <canvas
           ref={canvasRef}
           className="absolute inset-0 pointer-events-auto"
-          style={{ zIndex: 10 }}
+          style={{ 
+            zIndex: 10,
+            background: 'transparent',
+            backgroundColor: 'transparent',
+          }}
         />
       )}
 
