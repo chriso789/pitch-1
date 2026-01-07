@@ -5,14 +5,13 @@ import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { 
   Loader2, Download, AlertCircle, CheckCircle, 
-  MapPin, Ruler, Home, TrendingUp, Layers, FileUp, GitCompare
+  MapPin, Ruler, Home, TrendingUp, Layers, Eye, FileImage
 } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AIRoofSkeletonViewer } from './AIRoofSkeletonViewer'
-import { RoofrStyleDiagram } from './RoofrStyleDiagram'
-import { MeasurementComparisonPanel } from './MeasurementComparisonPanel'
+import { CleanRoofDiagram } from './CleanRoofDiagram'
 import { toast } from 'sonner'
 
 export interface RoofMeasurements {
@@ -79,8 +78,7 @@ export function RoofMeasurementTool({
   const [address, setAddress] = useState(effectiveAddress)
   const [loading, setLoading] = useState(false)
   const [measurementData, setMeasurementData] = useState<any>(null)
-  const [pdfMeasurements, setPdfMeasurements] = useState<any>(null)
-  const [importingPdf, setImportingPdf] = useState(false)
+  const [diagramView, setDiagramView] = useState<'satellite' | 'schematic'>('satellite')
   const [error, setError] = useState<string | null>(null)
 
   const analyzeRoof = async () => {
@@ -362,14 +360,10 @@ export function RoofMeasurementTool({
           </Card>
 
           <Tabs defaultValue="diagram" className="w-full">
-            <TabsList className="grid w-full grid-cols-7">
+            <TabsList className="grid w-full grid-cols-6">
               <TabsTrigger value="diagram" className="flex items-center gap-1">
                 <Layers className="h-3.5 w-3.5" />
                 Diagram
-              </TabsTrigger>
-              <TabsTrigger value="compare" className="flex items-center gap-1">
-                <GitCompare className="h-3.5 w-3.5" />
-                Compare
               </TabsTrigger>
               <TabsTrigger value="summary">Summary</TabsTrigger>
               <TabsTrigger value="facets">Facets</TabsTrigger>
@@ -378,32 +372,69 @@ export function RoofMeasurementTool({
               <TabsTrigger value="images">Images</TabsTrigger>
             </TabsList>
 
-            {/* Roof Diagram Tab - AI Skeleton on Satellite */}
+            {/* Roof Diagram Tab - AI Analysis with View Toggle */}
             <TabsContent value="diagram" className="space-y-4">
               <Card className="p-6">
                 <div className="flex items-center justify-between mb-4">
                   <div>
-                    <h3 className="text-lg font-semibold">AI Roof Skeleton</h3>
+                    <h3 className="text-lg font-semibold">AI Roof Analysis</h3>
                     <p className="text-sm text-muted-foreground">
-                      Ridge, hip, valley, and perimeter lines detected by AI
+                      Professional measurements powered by Gemini 2.5 Pro
                     </p>
                   </div>
-                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
-                    <CheckCircle className="h-3 w-3 mr-1" />
-                    AI Analyzed
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <div className="flex border rounded-lg overflow-hidden">
+                      <Button
+                        variant={diagramView === 'satellite' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setDiagramView('satellite')}
+                        className="rounded-none"
+                      >
+                        <FileImage className="h-4 w-4 mr-1" />
+                        Satellite
+                      </Button>
+                      <Button
+                        variant={diagramView === 'schematic' ? 'default' : 'ghost'}
+                        size="sm"
+                        onClick={() => setDiagramView('schematic')}
+                        className="rounded-none"
+                      >
+                        <Eye className="h-4 w-4 mr-1" />
+                        Schematic
+                      </Button>
+                    </div>
+                    <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+                      <CheckCircle className="h-3 w-3 mr-1" />
+                      AI Analyzed
+                    </Badge>
+                  </div>
                 </div>
                 
-                <AIRoofSkeletonViewer
-                  satelliteImageUrl={measurementData.images?.google?.url || measurementData.images?.mapbox?.url}
-                  linearFeatures={measurementData.linearFeatures || []}
-                  perimeterWkt={measurementData.perimeterWkt}
-                  coordinates={{
-                    lat: effectiveLat || 0,
-                    lng: effectiveLng || 0
-                  }}
-                  imageSize={640}
-                />
+                {diagramView === 'satellite' ? (
+                  <AIRoofSkeletonViewer
+                    satelliteImageUrl={measurementData.images?.google?.url || measurementData.images?.mapbox?.url}
+                    linearFeatures={measurementData.linearFeatures || []}
+                    perimeterWkt={measurementData.perimeterWkt}
+                    coordinates={{
+                      lat: effectiveLat || 0,
+                      lng: effectiveLng || 0
+                    }}
+                    imageSize={640}
+                  />
+                ) : (
+                  <CleanRoofDiagram
+                    facets={measurementData.facets || []}
+                    linearFeatures={measurementData.linearFeatures || []}
+                    perimeterWkt={measurementData.perimeterWkt}
+                    coordinates={{
+                      lat: effectiveLat || 0,
+                      lng: effectiveLng || 0
+                    }}
+                    totalArea={measurementData.measurements?.totalAreaSqft}
+                    pitch={measurementData.aiAnalysis?.pitch}
+                    facetCount={measurementData.aiAnalysis?.facetCount}
+                  />
+                )}
 
                 {/* Linear measurements summary below diagram */}
                 <div className="mt-4 pt-4 border-t">
@@ -441,135 +472,6 @@ export function RoofMeasurementTool({
                   </div>
                 </div>
               </Card>
-            </TabsContent>
-
-            {/* Compare Tab - AI vs PDF */}
-            <TabsContent value="compare" className="space-y-4">
-              <Card className="p-6">
-                {/* PDF Import Section */}
-                <div className="mb-6">
-                  <div className="flex items-center justify-between mb-4">
-                    <div>
-                      <h3 className="text-lg font-semibold">Import Professional Report</h3>
-                      <p className="text-sm text-muted-foreground">
-                        Upload a Roofr, EagleView, or other measurement report to validate AI accuracy
-                      </p>
-                    </div>
-                    <label className="cursor-pointer">
-                      <input
-                        type="file"
-                        accept=".pdf,.txt"
-                        className="hidden"
-                        onChange={async (e) => {
-                          const file = e.target.files?.[0];
-                          if (!file) return;
-                          
-                          setImportingPdf(true);
-                          try {
-                            // Read file as text (simplified - in production use proper PDF parsing)
-                            const text = await file.text();
-                            
-                            const { data, error } = await supabase.functions.invoke('parse-roof-report-geometry', {
-                              body: { reportText: text }
-                            });
-                            
-                            if (error) throw error;
-                            if (data?.success && data?.measurements) {
-                              setPdfMeasurements({
-                                totalArea: data.measurements.totalArea,
-                                facetCount: data.measurements.facetCount,
-                                pitch: data.measurements.pitch,
-                                linear: {
-                                  ridges: data.measurements.linear.ridges,
-                                  hips: data.measurements.linear.hips,
-                                  valleys: data.measurements.linear.valleys,
-                                  eaves: data.measurements.linear.eaves,
-                                  rakes: data.measurements.linear.rakes,
-                                }
-                              });
-                              toast.success('Report imported successfully');
-                            }
-                          } catch (err) {
-                            console.error('PDF import error:', err);
-                            toast.error('Failed to import report');
-                          } finally {
-                            setImportingPdf(false);
-                          }
-                        }}
-                      />
-                      <Button variant="outline" disabled={importingPdf} asChild>
-                        <span>
-                          {importingPdf ? (
-                            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                          ) : (
-                            <FileUp className="h-4 w-4 mr-2" />
-                          )}
-                          Import PDF
-                        </span>
-                      </Button>
-                    </label>
-                  </div>
-                </div>
-
-                {/* Comparison Panel */}
-                <MeasurementComparisonPanel
-                  aiMeasurements={{
-                    totalArea: measurementData?.measurements?.totalAreaSqft || 0,
-                    facetCount: measurementData?.aiAnalysis?.facetCount || 0,
-                    pitch: measurementData?.aiAnalysis?.pitch || '6/12',
-                    linear: {
-                      ridges: measurementData?.measurements?.linear?.ridge || 0,
-                      hips: measurementData?.measurements?.linear?.hip || 0,
-                      valleys: measurementData?.measurements?.linear?.valley || 0,
-                      eaves: measurementData?.measurements?.linear?.eave || 0,
-                      rakes: measurementData?.measurements?.linear?.rake || 0,
-                    }
-                  }}
-                  pdfMeasurements={pdfMeasurements}
-                  onAcceptPdf={() => {
-                    if (pdfMeasurements) {
-                      // Update measurement data with PDF truth
-                      setMeasurementData((prev: any) => ({
-                        ...prev,
-                        measurements: {
-                          ...prev.measurements,
-                          totalAreaSqft: pdfMeasurements.totalArea,
-                          totalSquares: pdfMeasurements.totalArea / 100,
-                          linear: {
-                            ridge: pdfMeasurements.linear.ridges,
-                            hip: pdfMeasurements.linear.hips,
-                            valley: pdfMeasurements.linear.valleys,
-                            eave: pdfMeasurements.linear.eaves,
-                            rake: pdfMeasurements.linear.rakes,
-                          }
-                        },
-                        aiAnalysis: {
-                          ...prev.aiAnalysis,
-                          facetCount: pdfMeasurements.facetCount,
-                          pitch: pdfMeasurements.pitch,
-                        },
-                        source: 'pdf_verified'
-                      }));
-                      toast.success('PDF measurements accepted as truth');
-                    }
-                  }}
-                  onAcceptAi={() => {
-                    toast.info('Keeping AI measurements');
-                  }}
-                />
-              </Card>
-
-              {/* Roofr-Style Diagram with PDF data if available */}
-              {pdfMeasurements && (
-                <RoofrStyleDiagram
-                  totalArea={pdfMeasurements.totalArea}
-                  facetCount={pdfMeasurements.facetCount}
-                  pitch={pdfMeasurements.pitch}
-                  linear={pdfMeasurements.linear}
-                  address={measurementData?.address}
-                  source="pdf"
-                />
-              )}
             </TabsContent>
 
             {/* Summary Tab */}
