@@ -222,7 +222,7 @@ export function PullMeasurementsButton({
 
     // 📊 Performance Monitoring: Start timing
     const pullStartTime = Date.now();
-    const REQUEST_TIMEOUT_MS = 120000; // 2 minute frontend timeout
+    const REQUEST_TIMEOUT_MS = 90000; // 90 second frontend timeout (matches backend budget)
     console.log('⏱️ AI Measurement analysis started:', { 
       propertyId, 
       pullLat, 
@@ -246,7 +246,7 @@ export function PullMeasurementsButton({
 
       toast({
         title: "Measuring Roof",
-        description: "Analyzing satellite imagery (this may take up to 90 seconds)...",
+        description: "Analyzing with Solar data...",
       });
 
       // 🚀 Call the analyze-roof-aerial edge function with abort signal
