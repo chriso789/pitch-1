@@ -1,6 +1,8 @@
-import React, { useMemo } from 'react';
+import React, { useMemo, useState } from 'react';
 import { Stage, Layer, Line, Circle, Text, Group, Rect, Arrow } from 'react-konva';
 import { Badge } from '@/components/ui/badge';
+import { Toggle } from '@/components/ui/toggle';
+import { Layers, Grid3X3 } from 'lucide-react';
 
 interface Facet {
   facetNumber: number;
@@ -28,26 +30,24 @@ interface CleanRoofDiagramProps {
   className?: string;
 }
 
-// Professional color palette
-const FACET_COLORS = [
-  '#60a5fa', // Blue
-  '#4ade80', // Green
-  '#fbbf24', // Yellow
-  '#f87171', // Red
-  '#a78bfa', // Purple
-  '#fb923c', // Orange
-  '#2dd4bf', // Teal
-  '#f472b6', // Pink
-];
-
+// Roofr-style color palette - matches professional reports
 const EDGE_COLORS: Record<string, string> = {
-  ridge: '#16a34a',  // Green
+  ridge: '#16a34a',  // Green (same as eaves in Roofr)
   hip: '#7c3aed',    // Purple
   valley: '#dc2626', // Red
-  eave: '#0891b2',   // Cyan
-  rake: '#ea580c',   // Orange
-  perimeter: '#1e40af', // Blue
+  eave: '#16a34a',   // Green
+  rake: '#f97316',   // Orange
+  perimeter: '#16a34a', // Green default
 };
+
+const FACET_COLORS = [
+  'rgba(59, 130, 246, 0.25)',   // Blue
+  'rgba(34, 197, 94, 0.25)',    // Green
+  'rgba(251, 191, 36, 0.25)',   // Yellow
+  'rgba(239, 68, 68, 0.25)',    // Red
+  'rgba(139, 92, 246, 0.25)',   // Purple
+  'rgba(236, 72, 153, 0.25)',   // Pink
+];
 
 export function CleanRoofDiagram({
   facets = [],
@@ -59,15 +59,15 @@ export function CleanRoofDiagram({
   facetCount,
   className = '',
 }: CleanRoofDiagramProps) {
+  const [showFacets, setShowFacets] = useState(false); // Default to edge-only view like Roofr
   const canvasSize = 500;
-  const padding = 40;
+  const padding = 50;
   const drawableSize = canvasSize - padding * 2;
 
   // Convert facets to pixel coordinates
   const { pixelFacets, bounds } = useMemo(() => {
     if (facets.length === 0) return { pixelFacets: [], bounds: null };
 
-    // Find bounding box of all facets
     let minLng = Infinity, maxLng = -Infinity;
     let minLat = Infinity, maxLat = -Infinity;
 
@@ -82,8 +82,6 @@ export function CleanRoofDiagram({
 
     const lngRange = maxLng - minLng || 0.001;
     const latRange = maxLat - minLat || 0.001;
-    
-    // Scale to fit canvas with padding
     const scale = drawableSize / Math.max(lngRange, latRange);
 
     const pixelFacets = facets.map((facet, idx) => {
@@ -92,7 +90,6 @@ export function CleanRoofDiagram({
         y: padding + (maxLat - p.lat) * scale * (drawableSize / (latRange * scale)),
       }));
 
-      // Calculate centroid
       const centroidX = pixelPoints.reduce((sum, p) => sum + p.x, 0) / pixelPoints.length;
       const centroidY = pixelPoints.reduce((sum, p) => sum + p.y, 0) / pixelPoints.length;
 
@@ -110,7 +107,7 @@ export function CleanRoofDiagram({
     };
   }, [facets, drawableSize, padding]);
 
-  // Parse linear features to pixel coordinates
+  // Parse linear features to pixel coordinates with per-segment data
   const parsedFeatures = useMemo(() => {
     if (!bounds) return [];
 
@@ -120,57 +117,102 @@ export function CleanRoofDiagram({
         x: padding + (c.lng - bounds.minLng) / bounds.lngRange * drawableSize,
         y: padding + (bounds.maxLat - c.lat) / bounds.latRange * drawableSize,
       }));
-      return { ...feature, pixelCoords };
+      
+      // Calculate midpoint for label placement
+      let midX = 0, midY = 0;
+      if (pixelCoords.length >= 2) {
+        midX = (pixelCoords[0].x + pixelCoords[pixelCoords.length - 1].x) / 2;
+        midY = (pixelCoords[0].y + pixelCoords[pixelCoords.length - 1].y) / 2;
+      }
+      
+      // Calculate angle for label rotation
+      let angle = 0;
+      if (pixelCoords.length >= 2) {
+        const dx = pixelCoords[1].x - pixelCoords[0].x;
+        const dy = pixelCoords[1].y - pixelCoords[0].y;
+        angle = Math.atan2(dy, dx) * 180 / Math.PI;
+        // Keep text readable (not upside down)
+        if (angle > 90) angle -= 180;
+        if (angle < -90) angle += 180;
+      }
+      
+      return { ...feature, pixelCoords, midX, midY, angle };
     });
   }, [linearFeatures, bounds, drawableSize, padding]);
 
-  // Calculate linear totals for legend
+  // Calculate linear totals by type for summary
   const linearTotals = useMemo(() => {
-    const totals: Record<string, number> = {};
+    const totals: Record<string, { count: number; totalFt: number }> = {};
     linearFeatures.forEach(f => {
-      totals[f.type] = (totals[f.type] || 0) + f.lengthFt;
+      if (!totals[f.type]) totals[f.type] = { count: 0, totalFt: 0 };
+      totals[f.type].count++;
+      totals[f.type].totalFt += f.lengthFt;
     });
     return totals;
   }, [linearFeatures]);
 
-  // Compass rose position
-  const compassPos = { x: canvasSize - 50, y: 50 };
+  // Format length as feet and inches like Roofr
+  const formatLength = (ft: number): string => {
+    if (ft < 10) return `${ft.toFixed(0)}'`;
+    const wholeFeet = Math.floor(ft);
+    const inches = Math.round((ft - wholeFeet) * 12);
+    if (inches === 0 || inches === 12) return `${wholeFeet}'`;
+    return `${wholeFeet}'`;
+  };
+
+  // Format total length as feet and inches like Roofr (195' 2")
+  const formatTotalLength = (ft: number): string => {
+    const wholeFeet = Math.floor(ft);
+    const inches = Math.round((ft - wholeFeet) * 12);
+    if (inches === 0 || inches === 12) return `${wholeFeet}'`;
+    return `${wholeFeet}' ${inches}"`;
+  };
+
+  const compassPos = { x: canvasSize - 40, y: 40 };
 
   return (
     <div className={`space-y-4 ${className}`}>
-      {/* Header */}
+      {/* Header with view toggle */}
       <div className="flex items-center justify-between">
         <div>
-          <h3 className="text-lg font-semibold">Professional Roof Diagram</h3>
+          <h3 className="text-lg font-semibold">Roof Measurement Diagram</h3>
           <p className="text-sm text-muted-foreground">
-            {pixelFacets.length} facets detected • AI-generated schematic
+            {facets.length > 0 ? `${facets.length} facets` : 'Edge measurements'} • AI-analyzed
           </p>
         </div>
-        <Badge variant="outline" className="bg-blue-50 text-blue-700 border-blue-200">
-          Clean View
-        </Badge>
+        <div className="flex items-center gap-2">
+          <Toggle
+            size="sm"
+            pressed={showFacets}
+            onPressedChange={setShowFacets}
+            className="gap-1"
+          >
+            {showFacets ? <Layers className="h-4 w-4" /> : <Grid3X3 className="h-4 w-4" />}
+            {showFacets ? 'Facets' : 'Edges'}
+          </Toggle>
+          <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200">
+            Professional View
+          </Badge>
+        </div>
       </div>
 
-      {/* Canvas */}
-      <div className="border rounded-lg overflow-hidden bg-slate-50">
+      {/* Canvas - Roofr-style edge diagram */}
+      <div className="border-2 border-muted rounded-lg overflow-hidden bg-white">
         <Stage width={canvasSize} height={canvasSize}>
           <Layer>
-            {/* Background */}
-            <Rect x={0} y={0} width={canvasSize} height={canvasSize} fill="#f8fafc" />
+            {/* White background */}
+            <Rect x={0} y={0} width={canvasSize} height={canvasSize} fill="#ffffff" />
 
-            {/* Facets as filled polygons */}
-            {pixelFacets.map((facet, idx) => (
+            {/* Optional: Facet polygons (toggled off by default for Roofr style) */}
+            {showFacets && pixelFacets.map((facet, idx) => (
               <Group key={`facet-${idx}`}>
-                {/* Filled facet */}
                 <Line
                   points={facet.pixelPoints.flatMap(p => [p.x, p.y])}
                   closed
                   fill={facet.color}
-                  stroke="#1e40af"
+                  stroke={EDGE_COLORS.perimeter}
                   strokeWidth={2}
-                  opacity={0.7}
                 />
-                
                 {/* Facet number */}
                 <Circle
                   x={facet.centroid.x}
@@ -188,86 +230,84 @@ export function CleanRoofDiagram({
                   fontStyle="bold"
                   fill="#1e40af"
                 />
+              </Group>
+            ))}
 
-                {/* Area label below number */}
-                {facet.areaEstimate && facet.areaEstimate > 50 && (
-                  <Text
-                    x={facet.centroid.x - 25}
-                    y={facet.centroid.y + 16}
-                    text={`${facet.areaEstimate.toFixed(0)} sf`}
-                    fontSize={10}
-                    fill="#475569"
+            {/* LINEAR FEATURES - Roofr style with per-segment measurements */}
+            {parsedFeatures.map((feature, idx) => {
+              const color = EDGE_COLORS[feature.type] || '#888';
+              const strokeWidth = feature.type === 'ridge' ? 4 : feature.type === 'hip' || feature.type === 'valley' ? 3 : 2;
+              
+              return (
+                <Group key={`feature-${feature.type}-${idx}`}>
+                  {/* The line itself */}
+                  <Line
+                    points={feature.pixelCoords.flatMap(p => [p.x, p.y])}
+                    stroke={color}
+                    strokeWidth={strokeWidth}
+                    lineCap="round"
+                    lineJoin="round"
                   />
-                )}
-              </Group>
-            ))}
-
-            {/* Linear features (ridges, hips, valleys) */}
-            {parsedFeatures.map((feature, idx) => (
-              <Group key={`feature-${feature.type}-${idx}`}>
-                <Line
-                  points={feature.pixelCoords.flatMap(p => [p.x, p.y])}
-                  stroke={EDGE_COLORS[feature.type] || '#888'}
-                  strokeWidth={feature.type === 'ridge' ? 4 : 3}
-                  lineCap="round"
-                  lineJoin="round"
-                />
-                
-                {/* Measurement label at midpoint */}
-                {feature.pixelCoords.length >= 2 && feature.lengthFt > 8 && (
-                  <Group
-                    x={(feature.pixelCoords[0].x + feature.pixelCoords[1].x) / 2}
-                    y={(feature.pixelCoords[0].y + feature.pixelCoords[1].y) / 2 - 10}
-                  >
-                    <Rect
-                      x={-18}
-                      y={-8}
-                      width={36}
-                      height={16}
-                      fill="white"
-                      cornerRadius={3}
-                      opacity={0.9}
-                    />
-                    <Text
-                      x={-15}
-                      y={-5}
-                      text={`${feature.lengthFt.toFixed(0)}'`}
-                      fontSize={10}
-                      fontStyle="bold"
-                      fill={EDGE_COLORS[feature.type] || '#333'}
-                    />
-                  </Group>
-                )}
-              </Group>
-            ))}
+                  
+                  {/* Per-segment measurement label */}
+                  {feature.lengthFt >= 5 && feature.pixelCoords.length >= 2 && (
+                    <Group x={feature.midX} y={feature.midY}>
+                      {/* White background for readability */}
+                      <Rect
+                        x={-22}
+                        y={-12}
+                        width={44}
+                        height={18}
+                        fill="white"
+                        cornerRadius={3}
+                        stroke={color}
+                        strokeWidth={1}
+                        opacity={0.95}
+                      />
+                      {/* Measurement text */}
+                      <Text
+                        x={-19}
+                        y={-8}
+                        text={formatLength(feature.lengthFt)}
+                        fontSize={11}
+                        fontStyle="bold"
+                        fill={color}
+                        align="center"
+                        width={38}
+                      />
+                    </Group>
+                  )}
+                </Group>
+              );
+            })}
 
             {/* Compass Rose */}
             <Group x={compassPos.x} y={compassPos.y}>
-              <Circle radius={20} fill="white" stroke="#94a3b8" strokeWidth={1} />
+              <Circle radius={18} fill="white" stroke="#94a3b8" strokeWidth={1} />
               <Arrow
-                points={[0, 8, 0, -15]}
+                points={[0, 6, 0, -12]}
                 fill="#1e40af"
                 stroke="#1e40af"
                 strokeWidth={2}
               />
-              <Text x={-4} y={-28} text="N" fontSize={12} fontStyle="bold" fill="#1e40af" />
+              <Text x={-4} y={-26} text="N" fontSize={11} fontStyle="bold" fill="#1e40af" />
             </Group>
 
-            {/* Total Area Box */}
+            {/* Total Area Box - Bottom left */}
             {totalArea && (
-              <Group x={padding} y={canvasSize - padding + 10}>
+              <Group x={padding} y={canvasSize - 30}>
                 <Rect
                   x={0}
                   y={0}
-                  width={120}
-                  height={24}
+                  width={130}
+                  height={22}
                   fill="#1e40af"
                   cornerRadius={4}
                 />
                 <Text
                   x={8}
-                  y={6}
-                  text={`Total: ${totalArea.toFixed(0)} sq ft`}
+                  y={5}
+                  text={`Total: ${totalArea.toLocaleString()} sq ft`}
                   fontSize={11}
                   fontStyle="bold"
                   fill="white"
@@ -275,20 +315,20 @@ export function CleanRoofDiagram({
               </Group>
             )}
 
-            {/* Pitch indicator */}
+            {/* Pitch indicator - Next to total */}
             {pitch && (
-              <Group x={padding + 130} y={canvasSize - padding + 10}>
+              <Group x={padding + 140} y={canvasSize - 30}>
                 <Rect
                   x={0}
                   y={0}
-                  width={70}
-                  height={24}
+                  width={80}
+                  height={22}
                   fill="#16a34a"
                   cornerRadius={4}
                 />
                 <Text
                   x={8}
-                  y={6}
+                  y={5}
                   text={`Pitch: ${pitch}`}
                   fontSize={11}
                   fontStyle="bold"
@@ -300,44 +340,66 @@ export function CleanRoofDiagram({
         </Stage>
       </div>
 
-      {/* Legend */}
-      <div className="p-3 bg-muted/50 rounded-lg">
-        <h4 className="text-sm font-semibold mb-2">Roof Components</h4>
-        <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs">
-          {Object.entries(linearTotals).map(([type, total]) => (
-            <div key={type} className="flex items-center gap-2">
+      {/* Linear Measurements Summary - Roofr style */}
+      <div className="p-4 bg-muted/30 rounded-lg border">
+        <h4 className="text-sm font-semibold mb-3">Linear Measurements</h4>
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
+          {Object.entries(linearTotals).map(([type, data]) => (
+            <div key={type} className="flex items-center gap-2 p-2 bg-background rounded-md">
               <div
-                className="w-4 h-1 rounded"
+                className="w-5 h-1.5 rounded-full"
                 style={{ backgroundColor: EDGE_COLORS[type] || '#888' }}
               />
-              <span className="capitalize">
-                {type}: {total.toFixed(0)} ft
-              </span>
+              <div className="text-sm">
+                <span className="capitalize font-medium">{type}</span>
+                <span className="text-muted-foreground ml-1">
+                  {formatTotalLength(data.totalFt)}
+                </span>
+              </div>
             </div>
           ))}
         </div>
       </div>
 
-      {/* Facet Summary Table */}
-      {pixelFacets.length > 0 && (
-        <div className="p-3 bg-muted/50 rounded-lg">
-          <h4 className="text-sm font-semibold mb-2">Facet Details</h4>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs">
+      {/* Facet Details - Only show when facets toggle is on */}
+      {showFacets && pixelFacets.length > 0 && (
+        <div className="p-4 bg-muted/30 rounded-lg border">
+          <h4 className="text-sm font-semibold mb-3">Facet Details</h4>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {pixelFacets.map((facet, idx) => (
-              <div key={idx} className="flex items-center gap-2 p-2 bg-background rounded">
+              <div key={idx} className="flex items-center gap-2 p-2 bg-background rounded-md text-sm">
                 <div
                   className="w-4 h-4 rounded"
-                  style={{ backgroundColor: facet.color }}
+                  style={{ backgroundColor: facet.color.replace('0.25', '0.6') }}
                 />
                 <span>
-                  #{facet.facetNumber}: {facet.areaEstimate?.toFixed(0) || '?'} sf
-                  {facet.primaryDirection && ` (${facet.primaryDirection})`}
+                  #{facet.facetNumber}: {facet.areaEstimate?.toLocaleString() || '?'} sf
                 </span>
               </div>
             ))}
           </div>
         </div>
       )}
+
+      {/* Legend - Matches Roofr report style */}
+      <div className="flex flex-wrap gap-4 text-xs text-muted-foreground px-1">
+        <div className="flex items-center gap-1">
+          <div className="w-4 h-1 rounded" style={{ backgroundColor: EDGE_COLORS.eave }} />
+          <span>Eaves/Ridges</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-4 h-1 rounded" style={{ backgroundColor: EDGE_COLORS.hip }} />
+          <span>Hips</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-4 h-1 rounded" style={{ backgroundColor: EDGE_COLORS.valley }} />
+          <span>Valleys</span>
+        </div>
+        <div className="flex items-center gap-1">
+          <div className="w-4 h-1 rounded" style={{ backgroundColor: EDGE_COLORS.rake }} />
+          <span>Rakes</span>
+        </div>
+      </div>
     </div>
   );
 }

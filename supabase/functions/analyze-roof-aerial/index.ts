@@ -217,11 +217,24 @@ serve(async (req) => {
       perimeterResult.vertices = cleanupResult.cleaned;
     }
     
-    // Pass 3: Detect interior junction vertices (where ridges/hips/valleys meet)
+// Pass 3: Detect interior junction vertices (where ridges/hips/valleys meet)
     const interiorVertices = await detectInteriorJunctions(selectedImage.url, perimeterResult.vertices, buildingIsolation.bounds)
     console.log(`⏱️ Pass 3 (interior junctions) complete: ${Date.now() - startTime}ms`)
     
+    // NEW Pass 3.5: AI Vision Ridge Detection - detect ACTUAL ridge positions from satellite image
+    const aiRidgeDetection = await detectRidgeLinesFromImage(
+      selectedImage.url,
+      perimeterResult.vertices,
+      buildingIsolation.bounds,
+      coordinates,
+      logicalImageSize,
+      IMAGE_ZOOM
+    )
+    console.log(`⏱️ Pass 3.5 (AI ridge detection) complete: ${Date.now() - startTime}ms`)
+    console.log(`📏 AI Ridge Detection: ${aiRidgeDetection.ridgeLines.length} ridges, confidence=${aiRidgeDetection.averageConfidence.toFixed(0)}%, source=${aiRidgeDetection.source}`)
+    
     // Derive lines from vertices using STRAIGHT SKELETON for mathematically correct topology
+    // NOW with AI-detected ridge positions for accurate placement
     const derivedLines = deriveLinesToPerimeter(
       perimeterResult.vertices, 
       interiorVertices.junctions,
@@ -229,7 +242,8 @@ serve(async (req) => {
       buildingIsolation.bounds,
       coordinates,       // Pass coordinates for skeleton geo-conversion
       logicalImageSize,  // Image size for coordinate conversion
-      IMAGE_ZOOM         // Zoom level for coordinate conversion
+      IMAGE_ZOOM,        // Zoom level for coordinate conversion
+      aiRidgeDetection   // NEW: Pass AI-detected ridge positions
     )
     console.log(`⏱️ Line derivation complete: ${derivedLines.length} lines from vertices`)
     
@@ -1662,7 +1676,169 @@ Return ONLY valid JSON.`
   }
 }
 
+// NEW: AI Vision Ridge Detection - detect ACTUAL ridge line positions from satellite image
+interface AIRidgeLine {
+  startX: number; // % of image
+  startY: number;
+  endX: number;
+  endY: number;
+  confidence: number;
+  lengthFt?: number;
+}
+
+interface AIRidgeDetectionResult {
+  ridgeLines: AIRidgeLine[];
+  roofType: string;
+  ridgeDirection: 'horizontal' | 'vertical' | 'diagonal' | 'multiple';
+  averageConfidence: number;
+  source: 'ai_vision' | 'geometric_fallback';
+}
+
+async function detectRidgeLinesFromImage(
+  imageUrl: string,
+  perimeterVertices: any[],
+  bounds: any,
+  coordinates: { lat: number; lng: number },
+  imageSize: number,
+  zoom: number
+): Promise<AIRidgeDetectionResult> {
+  const fallbackResult: AIRidgeDetectionResult = {
+    ridgeLines: [],
+    roofType: 'unknown',
+    ridgeDirection: 'horizontal',
+    averageConfidence: 0,
+    source: 'geometric_fallback'
+  };
+  
+  if (!imageUrl || perimeterVertices.length < 4) {
+    return fallbackResult;
+  }
+
+  // Build perimeter context for AI
+  const perimeterInfo = perimeterVertices.slice(0, 8).map((v: any, i: number) => 
+    `${i}: (${v.x.toFixed(1)}%, ${v.y.toFixed(1)}%) ${v.cornerType || ''}`
+  ).join('\n');
+
+  const prompt = `You are a professional roof measurement expert. Your task is to TRACE THE EXACT RIDGE LINE(s) visible on this roof.
+
+WHAT IS A RIDGE?
+- The HIGHEST horizontal line where two sloped roof planes meet at the peak
+- Appears as a distinct shadow line or color change running along the roof top
+- Shadows fall AWAY from ridges on BOTH sides
+- On hip roofs, the ridge is SHORTER than the building width (hips connect corners to ridge ends)
+
+PERIMETER CONTEXT (${perimeterVertices.length} vertices):
+${perimeterInfo}
+${perimeterVertices.length > 8 ? `...and ${perimeterVertices.length - 8} more vertices` : ''}
+
+Bounds: (${bounds.topLeftX.toFixed(1)}%, ${bounds.topLeftY.toFixed(1)}%) to (${bounds.bottomRightX.toFixed(1)}%, ${bounds.bottomRightY.toFixed(1)}%)
+
+CRITICAL INSTRUCTIONS:
+1. Look at the SHADOW PATTERNS to identify where the ridge actually is
+2. The ridge should be INSIDE the perimeter, NOT at the edges
+3. For hip roofs, ridge endpoints should be where HIPS would connect (not at building corners)
+4. Ridge line should be roughly parallel to the longest dimension of the building
+5. Measure from where you SEE the ridge, not where geometry suggests
+
+Return JSON:
+{
+  "ridgeLines": [
+    {
+      "startX": 35.5,
+      "startY": 48.0,
+      "endX": 65.2,
+      "endY": 48.5,
+      "confidence": 92,
+      "notes": "Main ridge running east-west, visible shadow line"
+    }
+  ],
+  "roofType": "hip" | "gable" | "cross-hip" | "L-shaped" | "complex",
+  "ridgeDirection": "horizontal" | "vertical" | "diagonal" | "multiple",
+  "ridgeCount": 1,
+  "qualityNotes": "Clear shadow pattern, high confidence ridge detection"
+}
+
+Return ONLY valid JSON.`;
+
+  try {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${LOVABLE_API_KEY}` },
+      body: JSON.stringify({
+        model: 'google/gemini-2.5-pro',
+        messages: [{ role: 'user', content: [{ type: 'text', text: prompt }, { type: 'image_url', image_url: { url: imageUrl } }] }],
+        max_completion_tokens: 2000
+      })
+    });
+
+    const data = await response.json();
+    if (!response.ok || !data.choices?.[0]) {
+      console.error('AI ridge detection failed:', data);
+      return fallbackResult;
+    }
+    
+    let content = data.choices[0].message?.content || '';
+    content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
+    
+    // Fix incomplete JSON
+    if (!content.endsWith('}')) {
+      const openBraces = (content.match(/{/g) || []).length;
+      const closeBraces = (content.match(/}/g) || []).length;
+      for (let i = 0; i < openBraces - closeBraces; i++) content += '}';
+    }
+    
+    const result = JSON.parse(content);
+    const ridgeLines = (result.ridgeLines || []).filter((r: any) =>
+      r.startX >= 5 && r.startX <= 95 && r.startY >= 5 && r.startY <= 95 &&
+      r.endX >= 5 && r.endX <= 95 && r.endY >= 5 && r.endY <= 95 &&
+      r.confidence >= 60
+    );
+    
+    // Calculate average confidence
+    const avgConfidence = ridgeLines.length > 0
+      ? ridgeLines.reduce((sum: number, r: any) => sum + r.confidence, 0) / ridgeLines.length
+      : 0;
+    
+    // Calculate ridge lengths in feet
+    const ridgeLinesWithLength = ridgeLines.map((ridge: any) => {
+      const startGeo = pixelToGeoInternal(ridge.startX, ridge.startY, coordinates, imageSize, zoom);
+      const endGeo = pixelToGeoInternal(ridge.endX, ridge.endY, coordinates, imageSize, zoom);
+      const lengthFt = calculateDistanceFt(startGeo.lat, startGeo.lng, endGeo.lat, endGeo.lng);
+      return { ...ridge, lengthFt };
+    });
+    
+    console.log(`🎯 AI Ridge Detection: Found ${ridgeLinesWithLength.length} ridge(s), avg confidence ${avgConfidence.toFixed(0)}%`);
+    ridgeLinesWithLength.forEach((r: any, i: number) => {
+      console.log(`   Ridge ${i + 1}: (${r.startX.toFixed(1)}%, ${r.startY.toFixed(1)}%) to (${r.endX.toFixed(1)}%, ${r.endY.toFixed(1)}%) = ${r.lengthFt?.toFixed(0) || '?'}ft, conf=${r.confidence}%`);
+    });
+    
+    return {
+      ridgeLines: ridgeLinesWithLength,
+      roofType: result.roofType || 'unknown',
+      ridgeDirection: result.ridgeDirection || 'horizontal',
+      averageConfidence: avgConfidence,
+      source: 'ai_vision'
+    };
+  } catch (err) {
+    console.error('AI ridge detection error:', err);
+    return fallbackResult;
+  }
+}
+
+// Calculate distance in feet between two geo coordinates
+function calculateDistanceFt(lat1: number, lng1: number, lat2: number, lng2: number): number {
+  const R = 20902231; // Earth radius in feet
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
 // Derive lines from vertices - PRIMARY: Use new roof geometry reconstructor for clean topology
+// NOW accepts AI-detected ridge positions for accurate placement
 function deriveLinesToPerimeter(
   perimeterVertices: any[],
   junctions: any[],
@@ -1670,8 +1846,88 @@ function deriveLinesToPerimeter(
   bounds: any,
   coordinates?: { lat: number; lng: number },
   imageSize: number = 640,
-  zoom: number = 20
+  zoom: number = 20,
+  aiRidgeDetection?: AIRidgeDetectionResult
 ): DerivedLine[] {
+  const lines: DerivedLine[] = []
+  
+  if (!perimeterVertices || perimeterVertices.length < 3) {
+    return lines
+  }
+  
+  // PRIORITY 1: Use AI-detected ridge lines if confidence is high enough
+  if (aiRidgeDetection && aiRidgeDetection.ridgeLines.length > 0 && aiRidgeDetection.averageConfidence >= 75) {
+    console.log(`🎯 Using AI-detected ridge positions (confidence: ${aiRidgeDetection.averageConfidence.toFixed(0)}%)`);
+    
+    // Add AI-detected ridge lines
+    aiRidgeDetection.ridgeLines.forEach((ridge, i) => {
+      lines.push({
+        type: 'ridge',
+        startX: ridge.startX,
+        startY: ridge.startY,
+        endX: ridge.endX,
+        endY: ridge.endY,
+        source: 'ai_vision_detected'
+      });
+    });
+    
+    // Connect hip corners to NEAREST AI-detected ridge endpoint
+    const ridgePoints: { x: number; y: number }[] = [];
+    aiRidgeDetection.ridgeLines.forEach(ridge => {
+      ridgePoints.push({ x: ridge.startX, y: ridge.startY });
+      ridgePoints.push({ x: ridge.endX, y: ridge.endY });
+    });
+    
+    const hipCorners = perimeterVertices.filter((v: any) => 
+      v.cornerType === 'hip-corner' || v.type === 'hip-corner'
+    );
+    
+    // If no hip corners detected, use the 4 farthest corners from center
+    const cornersToConnect = hipCorners.length >= 3 ? hipCorners : findFourMainCorners(perimeterVertices);
+    
+    cornersToConnect.forEach((corner: any) => {
+      const nearestRidge = findNearestPoint(corner, ridgePoints);
+      if (nearestRidge) {
+        const hipLength = distance(corner, nearestRidge);
+        if (hipLength > 3 && hipLength < 50) {
+          lines.push({
+            type: 'hip',
+            startX: corner.x,
+            startY: corner.y,
+            endX: nearestRidge.x,
+            endY: nearestRidge.y,
+            source: 'ai_ridge_connected'
+          });
+        }
+      }
+    });
+    
+    // Add valleys from valley-entry vertices to ridge
+    const valleyEntries = perimeterVertices.filter((v: any) => 
+      v.cornerType === 'valley-entry' || v.type === 'valley-entry'
+    );
+    
+    valleyEntries.forEach((entry: any) => {
+      const nearestRidge = findNearestPoint(entry, ridgePoints);
+      if (nearestRidge) {
+        lines.push({
+          type: 'valley',
+          startX: entry.x,
+          startY: entry.y,
+          endX: nearestRidge.x,
+          endY: nearestRidge.y,
+          source: 'ai_ridge_connected'
+        });
+      }
+    });
+    
+    // Add perimeter edges as eaves/rakes
+    addPerimeterEdges(lines, perimeterVertices);
+    
+    const dedupedLines = removeDuplicateLines(lines);
+    console.log(`📐 AI Ridge mode: ${dedupedLines.filter(l => l.type === 'ridge').length} ridges, ${dedupedLines.filter(l => l.type === 'hip').length} hips`);
+    return dedupedLines;
+  }
   const lines: DerivedLine[] = []
   
   if (!perimeterVertices || perimeterVertices.length < 3) {
@@ -2239,6 +2495,76 @@ function findNearestPoint(target: any, points: any[]): any | null {
   }
   
   return nearest
+}
+
+// Find the 4 main corners (farthest from center) when hip-corners aren't detected
+function findFourMainCorners(vertices: any[]): any[] {
+  if (vertices.length <= 4) return vertices;
+  
+  // Find centroid
+  const cx = vertices.reduce((s: number, v: any) => s + v.x, 0) / vertices.length;
+  const cy = vertices.reduce((s: number, v: any) => s + v.y, 0) / vertices.length;
+  
+  // Sort by distance from center
+  const sorted = [...vertices].sort((a, b) => {
+    const distA = Math.sqrt((a.x - cx) ** 2 + (a.y - cy) ** 2);
+    const distB = Math.sqrt((b.x - cx) ** 2 + (b.y - cy) ** 2);
+    return distB - distA;
+  });
+  
+  // Take 4 farthest, but ensure they're spread around (not all on one side)
+  const selected: any[] = [sorted[0]];
+  for (const v of sorted.slice(1)) {
+    if (selected.length >= 4) break;
+    // Ensure minimum angular separation
+    const isSpread = selected.every(s => {
+      const angle1 = Math.atan2(s.y - cy, s.x - cx);
+      const angle2 = Math.atan2(v.y - cy, v.x - cx);
+      const diff = Math.abs(angle1 - angle2);
+      return diff > 0.5 || diff < Math.PI * 2 - 0.5;
+    });
+    if (isSpread || selected.length < 2) {
+      selected.push(v);
+    }
+  }
+  
+  return selected.length >= 4 ? selected : sorted.slice(0, 4);
+}
+
+// Add perimeter edges as eaves/rakes
+function addPerimeterEdges(lines: DerivedLine[], perimeterVertices: any[]): void {
+  const ridgeLines = lines.filter(l => l.type === 'ridge');
+  const hipLines = lines.filter(l => l.type === 'hip');
+  
+  const pointNearLineEndpoint = (p: {x: number, y: number}, line: DerivedLine, threshold = 5): boolean => {
+    const distToStart = distance(p, { x: line.startX, y: line.startY });
+    const distToEnd = distance(p, { x: line.endX, y: line.endY });
+    return distToStart < threshold || distToEnd < threshold;
+  };
+  
+  for (let i = 0; i < perimeterVertices.length; i++) {
+    const v1 = perimeterVertices[i];
+    const v2 = perimeterVertices[(i + 1) % perimeterVertices.length];
+    
+    const ridgeTerminatesAtEdge = ridgeLines.some(ridge => 
+      pointNearLineEndpoint(v1, ridge) || pointNearLineEndpoint(v2, ridge)
+    );
+    
+    const hipTerminatesAtEdge = hipLines.some(hip => 
+      pointNearLineEndpoint(v1, hip) || pointNearLineEndpoint(v2, hip)
+    );
+    
+    const isRakeEdge = ridgeTerminatesAtEdge && !hipTerminatesAtEdge;
+    
+    lines.push({
+      type: isRakeEdge ? 'rake' : 'eave',
+      startX: v1.x,
+      startY: v1.y,
+      endX: v2.x,
+      endY: v2.y,
+      source: 'perimeter_edge'
+    });
+  }
 }
 
 function distance(p1: any, p2: any): number {
