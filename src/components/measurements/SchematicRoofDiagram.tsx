@@ -28,15 +28,17 @@ const FACET_COLORS = [
   'rgba(249, 115, 22, 0.3)',   // Orange
 ];
 
-// Plausibility thresholds for linear features - AGGRESSIVE starburst detection
+// Plausibility thresholds for linear features - RELAXED for valid hip roofs
+// A standard hip roof has 1 ridge + 4 hips = 5 lines, with ridge endpoints each having 3 lines converging
+// This is NORMAL topology, not a starburst pattern
 const LINE_PLAUSIBILITY = {
-  MAX_LINES_PER_TYPE: 15,      // Reduced from 20 - fewer lines per type
-  MAX_STARBURST_RATIO: 0.20,   // Reduced from 0.30 - more aggressive starburst detection
-  MIN_LINE_LENGTH_FT: 2,       // Ignore very short lines
-  MAX_LINE_LENGTH_FT: 150,     // Reduced from 200 - flag unusually long lines
-  MAX_CONVERGENCE_POINTS: 2,   // Reduced from 3 - fewer convergence points allowed
-  MIN_LINES_FOR_STARBURST: 4,  // Reduced from 5 - catch starburst patterns earlier
-  ABSOLUTE_MAX_CONVERGENCE: 4, // Reduced from 5 - stricter convergence limit
+  MAX_LINES_PER_TYPE: 20,       // Reasonable limit per type
+  MAX_STARBURST_RATIO: 0.50,    // RELAXED - only flag extreme convergence (>50% at one point)
+  MIN_LINE_LENGTH_FT: 2,        // Ignore very short lines
+  MAX_LINE_LENGTH_FT: 200,      // Allow longer features for large roofs
+  MAX_CONVERGENCE_POINTS: 4,    // Allow more convergence points (valleys, complex roofs)
+  MIN_LINES_FOR_STARBURST: 8,   // Only check for starburst with many lines (8+)
+  ABSOLUTE_MAX_CONVERGENCE: 6,  // Only flag if 6+ lines meet at single point (extreme)
 };
 
 interface LinearFeature {
@@ -147,31 +149,33 @@ function filterPlausibleLines(
   let plausibleInterior = interiorLines;
   let starburstDetected = false;
   
-  // STARBURST DETECTION CRITERIA:
-  // 1. More than X% of lines share endpoints at just 1-2 points
-  // 2. We have enough lines to make this judgment (at least 5)
-  // 3. ANY single point has 5+ lines converging (absolute check)
+// STARBURST DETECTION CRITERIA - RELAXED for valid hip roof topology:
+  // A standard hip roof has 2 ridge endpoints, each with 3 lines converging (ridge + 2 hips)
+  // This is NORMAL and should NOT be flagged as a starburst
+  // Only flag TRUE starbursts: 1 central point with 5+ lines radiating outward
   const hasEnoughLines = interiorLines.length >= LINE_PLAUSIBILITY.MIN_LINES_FOR_STARBURST;
-  const tooFewConvergencePoints = highConvergencePoints.length <= 2 && maxAtSinglePoint >= 4;
-  const highStarburstRatio = starburstRatio > LINE_PLAUSIBILITY.MAX_STARBURST_RATIO;
-  const absoluteConvergenceExceeded = maxAtSinglePoint >= LINE_PLAUSIBILITY.ABSOLUTE_MAX_CONVERGENCE;
+  
+  // Only consider it a starburst if:
+  // - There is exactly 1 high-convergence point (true radial pattern), AND
+  // - That point has 6+ lines converging (extreme), AND
+  // - The ratio is very high (>50% of endpoints at one point)
+  const isTrueStarburst = highConvergencePoints.length === 1 && 
+                          maxAtSinglePoint >= LINE_PLAUSIBILITY.ABSOLUTE_MAX_CONVERGENCE &&
+                          starburstRatio > LINE_PLAUSIBILITY.MAX_STARBURST_RATIO;
   
   // Debug logging for starburst detection
   console.log(`🔍 Starburst check: ${interiorLines.length} interior lines`);
-  console.log(`   - Max at single point: ${maxAtSinglePoint}`);
-  console.log(`   - High convergence points: ${highConvergencePoints.length}`);
+  console.log(`   - Max at single point: ${maxAtSinglePoint} (threshold: ${LINE_PLAUSIBILITY.ABSOLUTE_MAX_CONVERGENCE})`);
+  console.log(`   - High convergence points: ${highConvergencePoints.length} (needs exactly 1 for starburst)`);
   console.log(`   - Starburst ratio: ${(starburstRatio * 100).toFixed(1)}% (threshold: ${LINE_PLAUSIBILITY.MAX_STARBURST_RATIO * 100}%)`);
+  console.log(`   - Is true starburst: ${isTrueStarburst}`);
   
-  if (hasEnoughLines && (tooFewConvergencePoints || highStarburstRatio || absoluteConvergenceExceeded)) {
-    console.warn(`🚨 STARBURST DETECTED:`);
-    console.warn(`   - ${maxAtSinglePoint} lines converge to single point (max allowed: ${LINE_PLAUSIBILITY.ABSOLUTE_MAX_CONVERGENCE})`);
-    console.warn(`   - Only ${highConvergencePoints.length} convergence point(s)`);
-    console.warn(`   - Starburst ratio: ${(starburstRatio * 100).toFixed(1)}%`);
-    console.warn(`   - Triggered by: ${absoluteConvergenceExceeded ? 'ABSOLUTE_MAX' : highStarburstRatio ? 'RATIO' : 'FEW_POINTS'}`);
-    console.warn(`   - Hiding interior lines, keeping only eaves/rakes`);
+  if (hasEnoughLines && isTrueStarburst) {
+    console.warn(`🚨 TRUE STARBURST DETECTED - hiding interior lines`);
     plausibleInterior = [];
     starburstDetected = true;
   } else {
+    console.log(`✅ Valid roof topology - showing ${interiorLines.length} interior lines`);
     // Filter individual interior lines only
     plausibleInterior = interiorLines.filter(f => {
       if (f.length < LINE_PLAUSIBILITY.MIN_LINE_LENGTH_FT) return false;
@@ -796,14 +800,15 @@ export function SchematicRoofDiagram({
         ))}
         
         {/* Perimeter outline (thin guide line - behind everything) */}
+        {/* Perimeter outline - rendered prominently as "perimeter first" */}
         {perimeterPath && (
           <path
             d={perimeterPath}
             fill="none"
             stroke={localShowOverlay ? '#FFFFFF' : FEATURE_COLORS.perimeter}
-            strokeWidth={localShowOverlay ? 2 : 1}
+            strokeWidth={localShowOverlay ? 3 : 2.5}
             strokeLinejoin="miter"
-            opacity={localShowOverlay ? 0.8 : 0.3}
+            opacity={localShowOverlay ? 0.9 : 0.85}
           />
         )}
         
