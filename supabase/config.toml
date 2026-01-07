@@ -650,3 +650,6 @@ verify_jwt = true
 
 [functions.ai-error-fixer]
 verify_jwt = false
+
+[functions.parse-roof-report-geometry]
+verify_jwt = true
