@@ -1,5 +1,8 @@
 project_id = "alxelfrbjzkmtnsulcei"
 
+[functions.regrid-footprint]
+verify_jwt = true
+
 [functions.send-account-deactivation]
 verify_jwt = true
 

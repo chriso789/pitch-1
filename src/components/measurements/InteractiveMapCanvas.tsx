@@ -5,6 +5,7 @@ import { Canvas as FabricCanvas, Circle, Line, Polygon as FabricPolygon, Text } 
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 import { 
   Pencil, 
   Undo2, 
@@ -21,7 +22,8 @@ import {
   Triangle,
   ArrowDownUp,
   Square,
-  RefreshCw
+  RefreshCw,
+  Download
 } from 'lucide-react';
 import { useMeasurementDrawing } from '@/hooks/useMeasurementDrawing';
 import { calculatePolygonArea, calculatePolygonPerimeter } from '@/utils/measurementGeometry';
@@ -90,6 +92,9 @@ export function InteractiveMapCanvas({
   const [tracedLines, setTracedLines] = useState<TracedLine[]>([]);
   const [currentLinePoints, setCurrentLinePoints] = useState<{ x: number; y: number }[]>([]);
   const [isDrawingLine, setIsDrawingLine] = useState(false);
+  
+  // Regrid fetch state
+  const [isFetchingRegrid, setIsFetchingRegrid] = useState(false);
 
   // Calculate pixels per foot based on zoom and latitude
   const calculatePixelsPerFoot = useCallback((zoom: number, lat: number) => {
@@ -719,6 +724,66 @@ export function InteractiveMapCanvas({
     toast.info('Redrawing footprint. Click corners of the building.');
   };
 
+  // Fetch footprint from Regrid API
+  const handleFetchRegridFootprint = async () => {
+    if (!centerLat || !centerLng) {
+      toast.error('No coordinates available');
+      return;
+    }
+
+    setIsFetchingRegrid(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('regrid-footprint', {
+        body: { lat: centerLat, lng: centerLng, address },
+      });
+
+      if (error) throw error;
+
+      if (!data.success) {
+        toast.error(data.error || 'No footprint found');
+        return;
+      }
+
+      // Convert GeoJSON coordinates to canvas points
+      const geojson = data.footprint.geojson;
+      if (!geojson?.coordinates || !mapRef.current) {
+        toast.error('Invalid geometry data');
+        return;
+      }
+
+      const map = mapRef.current;
+      const coordinates = geojson.type === 'MultiPolygon' 
+        ? geojson.coordinates[0][0] // First polygon, outer ring
+        : geojson.coordinates[0]; // Outer ring of polygon
+
+      // Convert GPS to canvas pixels
+      const canvasPoints = coordinates.slice(0, -1).map((coord: number[]) => {
+        const point = map.project([coord[0], coord[1]]);
+        return { x: point.x, y: point.y };
+      });
+
+      if (canvasPoints.length < 3) {
+        toast.error('Invalid footprint geometry');
+        return;
+      }
+
+      setFootprintPoints(canvasPoints);
+      setIsFootprintComplete(true);
+      setWorkflowStep('linear_features');
+      setMode('select');
+      
+      toast.success(`Regrid footprint loaded: ${canvasPoints.length} vertices (${data.parcel.apn || 'N/A'})`);
+      
+      // Update measurements
+      setTimeout(() => updateMeasurements(), 100);
+    } catch (err) {
+      console.error('Regrid fetch error:', err);
+      toast.error('Failed to fetch Regrid footprint');
+    } finally {
+      setIsFetchingRegrid(false);
+    }
+  };
+
   const handleStartDrawing = () => {
     // Lock pixelsPerFoot at drawing start to prevent mid-draw scale changes
     setLockedPixelsPerFoot(pixelsPerFoot);
@@ -844,9 +909,21 @@ export function InteractiveMapCanvas({
             Step {workflowStep === 'footprint' ? '1' : '2'}: {workflowStep === 'footprint' ? 'Draw Footprint' : 'Draw Lines'}
           </div>
           
-          {/* Footprint Tool - FIRST */}
+          {/* Fetch from Regrid - AUTO OPTION */}
           <Button
-            variant={mode === 'footprint' ? 'default' : isFootprintComplete ? 'outline' : 'secondary'}
+            variant="secondary"
+            size="sm"
+            onClick={handleFetchRegridFootprint}
+            disabled={isFetchingRegrid}
+            className="justify-start w-full mb-1 text-primary"
+          >
+            {isFetchingRegrid ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Download className="h-4 w-4 mr-2" />}
+            {isFetchingRegrid ? 'Fetching...' : 'Fetch Regrid'}
+          </Button>
+          
+          {/* Footprint Tool - MANUAL OPTION */}
+          <Button
+            variant={mode === 'footprint' ? 'default' : isFootprintComplete ? 'outline' : 'ghost'}
             size="sm"
             onClick={isFootprintComplete ? handleRedrawFootprint : handleStartFootprint}
             className="justify-start w-full mb-1"
