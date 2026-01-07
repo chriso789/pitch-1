@@ -29,6 +29,17 @@ import { reconstructRoofGeometry, roofToLinearFeaturesWKT } from '../_shared/roo
 // Import solar segment assembler for accurate facet positioning from Google Solar data
 import { assembleFacetsFromSolarSegments, type AssembledGeometry, type SolarSegment } from '../_shared/solar-segment-assembler.ts'
 
+// Import structure analyzer for orientation detection, L/T-shape recognition, and screen enclosure exclusion
+import { 
+  analyzeSegmentOrientation, 
+  createStructureAnalysisPrompt, 
+  parseStructureAnalysisResponse,
+  mergeOrientationData,
+  createDefaultStructureAnalysis,
+  type StructureAnalysis,
+  type SolarSegmentOrientation
+} from '../_shared/structure-analyzer.ts'
+
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!
 const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY')!
 const GOOGLE_SOLAR_API_KEY = Deno.env.get('GOOGLE_SOLAR_API_KEY')!
