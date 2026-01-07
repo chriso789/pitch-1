@@ -1,6 +1,5 @@
-import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.57.4'
-import { encode as base64Encode } from 'https://deno.land/std@0.168.0/encoding/base64.ts'
+// NOTE: Avoid remote std/esm.sh imports where possible to prevent Supabase bundle timeouts.
+import { createClient } from 'npm:@supabase/supabase-js@2.57.4'
 
 // Import worksheet engine - single source of truth for calculations
 import {
@@ -66,6 +65,18 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 }
 
+// Base64 encode without importing std modules (keeps bundle graph smaller).
+function base64FromBytes(bytes: Uint8Array): string {
+  // Chunked conversion prevents call stack / memory spikes.
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
 // Helper: Fetch with timeout for AI calls
 async function fetchWithTimeout(url: string, options: RequestInit, timeoutMs = AI_CALL_TIMEOUT_MS): Promise<Response> {
   const controller = new AbortController()
@@ -96,7 +107,7 @@ interface DerivedLine {
 
 // PLANIMETER_THRESHOLDS and safeParseJSON are now imported from roof-analysis-helpers.ts
 
-serve(async (req) => {
+Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
   }
@@ -610,7 +621,7 @@ async function fetchGoogleStaticMap(coords: any) {
       return { url: null, source: 'google_maps', resolution: '640x640', quality: 0 }
     }
     const buffer = await response.arrayBuffer()
-    const base64 = base64Encode(new Uint8Array(buffer))
+    const base64 = base64FromBytes(new Uint8Array(buffer))
     return { url: `data:image/png;base64,${base64}`, source: 'google_maps', resolution: '640x640', quality: 8 }
   } catch (err) {
     console.error('Google Maps error:', err)
@@ -681,7 +692,7 @@ async function fetchMapboxSatellite(coords: any) {
       return { url: null, source: 'mapbox', resolution: '1280x1280', quality: 0 }
     }
     const buffer = await response.arrayBuffer()
-    const base64 = base64Encode(new Uint8Array(buffer))
+    const base64 = base64FromBytes(new Uint8Array(buffer))
     return { url: `data:image/png;base64,${base64}`, source: 'mapbox', resolution: '1280x1280', quality: 9 }
   } catch (err) {
     console.error('Mapbox error:', err)
