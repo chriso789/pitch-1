@@ -29,144 +29,25 @@ import { reconstructRoofGeometry, roofToLinearFeaturesWKT } from '../_shared/roo
 // Import solar segment assembler for accurate facet positioning from Google Solar data
 import { assembleFacetsFromSolarSegments, type AssembledGeometry, type SolarSegment } from '../_shared/solar-segment-assembler.ts'
 
-// Inline structure analyzer functions to avoid bundle timeout issues
-// Types
-interface StructureAnalysis {
-  houseOrientation: {
-    frontFacing: 'N' | 'S' | 'E' | 'W' | 'NE' | 'NW' | 'SE' | 'SW' | 'unknown';
-    drivewayPosition: 'N' | 'S' | 'E' | 'W' | 'NE' | 'NW' | 'SE' | 'SW' | 'unknown';
-    garagePosition: string;
-    confidence: number;
-  };
-  footprintShape: 'rectangular' | 'L-shaped' | 'T-shaped' | 'U-shaped' | 'H-shaped' | 'complex';
-  mainStructure: {
-    bounds: { minX: number; minY: number; maxX: number; maxY: number };
-    ridgeDirection: 'east-west' | 'north-south';
-    estimatedWidthFt: number;
-    estimatedDepthFt: number;
-  };
-  extensions: Array<{
-    type: string;
-    bounds: { minX: number; minY: number; maxX: number; maxY: number };
-    attachmentSide: 'N' | 'S' | 'E' | 'W';
-    ridgeDirection: 'east-west' | 'north-south';
-  }>;
-  exclusions: Array<{
-    type: string;
-    bounds: { minX: number; minY: number; maxX: number; maxY: number };
-    estimatedAreaSqft: number;
-  }>;
-  ridgeTopology: {
-    primaryRidgeCount: number;
-    hasMultipleRidgeDirections: boolean;
-    junctionPoints: number;
-  };
-  overallConfidence: 'high' | 'medium' | 'low';
-}
-
-interface SolarSegmentOrientation {
-  primaryRidgeDirection: 'east-west' | 'north-south';
-  hasMultipleRidges: boolean;
-  segmentGroups: {
-    north: { count: number; totalArea: number };
-    south: { count: number; totalArea: number };
-    east: { count: number; totalArea: number };
-    west: { count: number; totalArea: number };
-  };
-  suggestedShape: 'rectangular' | 'L-shaped' | 'T-shaped' | 'complex';
-  confidence: number;
-}
-
-// Inlined analyzeSegmentOrientation function
-function analyzeSegmentOrientation(
-  segments: Array<{ azimuthDegrees: number; areaMeters2?: number }>
-): SolarSegmentOrientation {
-  if (!segments || segments.length === 0) {
-    return {
-      primaryRidgeDirection: 'east-west',
-      hasMultipleRidges: false,
-      segmentGroups: { north: { count: 0, totalArea: 0 }, south: { count: 0, totalArea: 0 }, east: { count: 0, totalArea: 0 }, west: { count: 0, totalArea: 0 } },
-      suggestedShape: 'rectangular',
-      confidence: 0
-    };
-  }
-  
-  const groups = { north: { count: 0, totalArea: 0 }, south: { count: 0, totalArea: 0 }, east: { count: 0, totalArea: 0 }, west: { count: 0, totalArea: 0 } };
-  
-  segments.forEach(segment => {
-    const azimuth = ((segment.azimuthDegrees % 360) + 360) % 360;
-    const area = (segment.areaMeters2 || 0) * 10.764;
-    
-    if (azimuth >= 315 || azimuth < 45) { groups.north.count++; groups.north.totalArea += area; }
-    else if (azimuth >= 45 && azimuth < 135) { groups.east.count++; groups.east.totalArea += area; }
-    else if (azimuth >= 135 && azimuth < 225) { groups.south.count++; groups.south.totalArea += area; }
-    else { groups.west.count++; groups.west.totalArea += area; }
-  });
-  
-  const nsTotal = groups.north.count + groups.south.count;
-  const ewTotal = groups.east.count + groups.west.count;
-  const primaryRidgeDirection = nsTotal >= ewTotal ? 'east-west' : 'north-south';
-  
-  const hasNS = groups.north.count >= 1 && groups.south.count >= 1;
-  const hasEW = groups.east.count >= 1 && groups.west.count >= 1;
-  const hasMultipleRidges = hasNS && hasEW && segments.length >= 4;
-  
-  let suggestedShape: 'rectangular' | 'L-shaped' | 'T-shaped' | 'complex' = 'rectangular';
-  if (hasMultipleRidges) {
-    const nsArea = groups.north.totalArea + groups.south.totalArea;
-    const ewArea = groups.east.totalArea + groups.west.totalArea;
-    const areaRatio = Math.max(nsArea, ewArea) / Math.min(nsArea, ewArea);
-    if (areaRatio > 1.5 && areaRatio < 3) suggestedShape = 'L-shaped';
-    else if (areaRatio >= 3) suggestedShape = 'T-shaped';
-    else suggestedShape = 'complex';
-  }
-  
-  console.log(`🧭 Segment orientation: ${primaryRidgeDirection} ridge, ${suggestedShape} shape`);
-  return { primaryRidgeDirection, hasMultipleRidges, segmentGroups: groups, suggestedShape, confidence: Math.min(0.95, 0.5 + (segments.length * 0.1)) };
-}
-
-// Inlined createDefaultStructureAnalysis
-function createDefaultStructureAnalysis(): StructureAnalysis {
-  return {
-    houseOrientation: { frontFacing: 'unknown', drivewayPosition: 'unknown', garagePosition: 'unknown', confidence: 0 },
-    footprintShape: 'rectangular',
-    mainStructure: { bounds: { minX: 25, minY: 25, maxX: 75, maxY: 75 }, ridgeDirection: 'east-west', estimatedWidthFt: 50, estimatedDepthFt: 40 },
-    extensions: [],
-    exclusions: [],
-    ridgeTopology: { primaryRidgeCount: 1, hasMultipleRidgeDirections: false, junctionPoints: 0 },
-    overallConfidence: 'low'
-  };
-}
-
-// Inlined mergeOrientationData
-function mergeOrientationData(structureAnalysis: StructureAnalysis | null, segmentOrientation: SolarSegmentOrientation): StructureAnalysis {
-  if (!structureAnalysis) {
-    return {
-      houseOrientation: { frontFacing: 'unknown', drivewayPosition: 'unknown', garagePosition: 'unknown', confidence: segmentOrientation.confidence * 0.7 },
-      footprintShape: segmentOrientation.suggestedShape,
-      mainStructure: { bounds: { minX: 25, minY: 25, maxX: 75, maxY: 75 }, ridgeDirection: segmentOrientation.primaryRidgeDirection, estimatedWidthFt: 50, estimatedDepthFt: 40 },
-      extensions: [],
-      exclusions: [],
-      ridgeTopology: { primaryRidgeCount: segmentOrientation.hasMultipleRidges ? 2 : 1, hasMultipleRidgeDirections: segmentOrientation.hasMultipleRidges, junctionPoints: segmentOrientation.hasMultipleRidges ? 1 : 0 },
-      overallConfidence: segmentOrientation.confidence > 0.7 ? 'medium' : 'low'
-    };
-  }
-  if (segmentOrientation.confidence > 0.8 && structureAnalysis.mainStructure.ridgeDirection !== segmentOrientation.primaryRidgeDirection) {
-    structureAnalysis.mainStructure.ridgeDirection = segmentOrientation.primaryRidgeDirection;
-  }
-  if (segmentOrientation.hasMultipleRidges && !structureAnalysis.ridgeTopology.hasMultipleRidgeDirections) {
-    structureAnalysis.ridgeTopology.hasMultipleRidgeDirections = true;
-    structureAnalysis.ridgeTopology.primaryRidgeCount = Math.max(2, structureAnalysis.ridgeTopology.primaryRidgeCount);
-  }
-  return structureAnalysis;
-}
-
-// Inlined isFloridaAddress
-function isFloridaAddress(address: string): boolean {
-  if (!address) return false;
-  const normalized = address.toUpperCase();
-  return normalized.includes(', FL') || normalized.includes(' FL ') || normalized.includes('FLORIDA');
-}
+// Import shared helper functions
+import {
+  type StructureAnalysis,
+  type SolarSegmentOrientation,
+  analyzeSegmentOrientation,
+  createDefaultStructureAnalysis,
+  mergeOrientationData,
+  isFloridaAddress,
+  safeParseJSON,
+  distance,
+  findNearestPoint,
+  findFourMainCorners,
+  calculateDistanceFt,
+  pixelToGeo,
+  geoToPixel,
+  isValidPixelCoord,
+  getDirectionFromAngle,
+  PLANIMETER_THRESHOLDS,
+} from '../_shared/roof-analysis-helpers.ts'
 
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!
 const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY')!
@@ -213,66 +94,7 @@ interface DerivedLine {
   source: string;
 }
 
-// PLANIMETER ACCURACY THRESHOLDS
-const PLANIMETER_THRESHOLDS = {
-  MIN_SPAN_PCT: 15,           // Minimum span (x or y) as % of image - was causing under-detection
-  MAX_SEGMENT_LENGTH_FT: 55,  // Flag segments longer than this
-  MIN_VERTICES_PER_100FT: 4,  // Expect ~4 vertices per 100ft perimeter
-  RE_DETECT_THRESHOLD: 0.70,  // Re-detect if perimeter < 70% expected
-  AREA_TOLERANCE: 0.05,       // Target 5% accuracy vs Planimeter
-}
-
-// Robust JSON parser that handles truncated/malformed AI responses
-function safeParseJSON<T>(content: string, defaultValue: T, context: string): T {
-  try {
-    // Clean markdown code blocks
-    let cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-    
-    // Try parsing as-is first
-    try {
-      return JSON.parse(cleaned) as T
-    } catch {
-      // Try to fix common issues
-    }
-    
-    // Fix unterminated strings by removing incomplete string literals
-    const unterminatedStringMatch = cleaned.match(/"[^"]*$/)
-    if (unterminatedStringMatch) {
-      cleaned = cleaned.slice(0, unterminatedStringMatch.index) + '""'
-    }
-    
-    // Fix unbalanced braces/brackets
-    const openBraces = (cleaned.match(/{/g) || []).length
-    const closeBraces = (cleaned.match(/}/g) || []).length
-    const openBrackets = (cleaned.match(/\[/g) || []).length
-    const closeBrackets = (cleaned.match(/]/g) || []).length
-    
-    // Add missing closing brackets first, then braces
-    for (let i = 0; i < openBrackets - closeBrackets; i++) cleaned += ']'
-    for (let i = 0; i < openBraces - closeBraces; i++) cleaned += '}'
-    
-    // Try parsing again after fixes
-    try {
-      return JSON.parse(cleaned) as T
-    } catch {
-      // Last resort: try to extract a valid JSON object
-      const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
-      if (jsonMatch) {
-        try {
-          return JSON.parse(jsonMatch[0]) as T
-        } catch {
-          // Give up
-        }
-      }
-    }
-    
-    console.error(`⚠️ ${context}: Failed to parse JSON, using default`)
-    return defaultValue
-  } catch (e) {
-    console.error(`⚠️ ${context}: JSON parse error:`, e)
-    return defaultValue
-  }
-}
+// PLANIMETER_THRESHOLDS and safeParseJSON are now imported from roof-analysis-helpers.ts
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -2033,17 +1855,7 @@ Return ONLY valid JSON.`;
   }
 }
 
-// Calculate distance in feet between two geo coordinates
-function calculateDistanceFt(lat1: number, lng1: number, lat2: number, lng2: number): number {
-  const R = 20902231; // Earth radius in feet
-  const dLat = (lat2 - lat1) * Math.PI / 180;
-  const dLng = (lng2 - lng1) * Math.PI / 180;
-  const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
-    Math.sin(dLng / 2) * Math.sin(dLng / 2);
-  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-  return R * c;
-}
+// calculateDistanceFt is now imported from roof-analysis-helpers.ts
 
 // Derive lines from vertices - PRIMARY: Use new roof geometry reconstructor for clean topology
 // NOW accepts AI-detected ridge positions for accurate placement
@@ -2482,37 +2294,7 @@ function pixelToGeoInternal(
   }
 }
 
-// Convert geographic coordinates to pixel coordinates (%)
-function geoToPixel(
-  lat: number,
-  lng: number,
-  center: { lat: number; lng: number },
-  imageSize: number,
-  zoom: number
-): { x: number; y: number } {
-  const metersPerPixel = (156543.03392 * Math.cos(center.lat * Math.PI / 180)) / Math.pow(2, zoom)
-  const metersPerDegLat = 111320
-  const metersPerDegLng = 111320 * Math.cos(center.lat * Math.PI / 180)
-  
-  // Convert to meters offset from center
-  const metersX = (lng - center.lng) * metersPerDegLng
-  const metersY = (lat - center.lat) * metersPerDegLat
-  
-  // Convert to pixel offset
-  const pxOffsetX = metersX / metersPerPixel
-  const pxOffsetY = -metersY / metersPerPixel // Negative because Y increases downward
-  
-  // Convert to percentage
-  return {
-    x: ((pxOffsetX / imageSize) + 0.5) * 100,
-    y: ((pxOffsetY / imageSize) + 0.5) * 100
-  }
-}
-
-// Validate pixel coordinates are within reasonable bounds
-function isValidPixelCoord(coord: { x: number; y: number }): boolean {
-  return coord.x >= -10 && coord.x <= 110 && coord.y >= -10 && coord.y <= 110
-}
+// geoToPixel and isValidPixelCoord are now imported from roof-analysis-helpers.ts
 
 // Find concave (valley-like) vertices in polygon
 function findConcaveVertices(vertices: any[]): any[] {
@@ -2684,56 +2466,7 @@ function removeDuplicateLines(lines: DerivedLine[]): DerivedLine[] {
   return result
 }
 
-function findNearestPoint(target: any, points: any[]): any | null {
-  if (!points || points.length === 0) return null
-  
-  let nearest = points[0]
-  let minDist = distance(target, nearest)
-  
-  for (const p of points) {
-    const d = distance(target, p)
-    if (d < minDist) {
-      minDist = d
-      nearest = p
-    }
-  }
-  
-  return nearest
-}
-
-// Find the 4 main corners (farthest from center) when hip-corners aren't detected
-function findFourMainCorners(vertices: any[]): any[] {
-  if (vertices.length <= 4) return vertices;
-  
-  // Find centroid
-  const cx = vertices.reduce((s: number, v: any) => s + v.x, 0) / vertices.length;
-  const cy = vertices.reduce((s: number, v: any) => s + v.y, 0) / vertices.length;
-  
-  // Sort by distance from center
-  const sorted = [...vertices].sort((a, b) => {
-    const distA = Math.sqrt((a.x - cx) ** 2 + (a.y - cy) ** 2);
-    const distB = Math.sqrt((b.x - cx) ** 2 + (b.y - cy) ** 2);
-    return distB - distA;
-  });
-  
-  // Take 4 farthest, but ensure they're spread around (not all on one side)
-  const selected: any[] = [sorted[0]];
-  for (const v of sorted.slice(1)) {
-    if (selected.length >= 4) break;
-    // Ensure minimum angular separation
-    const isSpread = selected.every(s => {
-      const angle1 = Math.atan2(s.y - cy, s.x - cx);
-      const angle2 = Math.atan2(v.y - cy, v.x - cx);
-      const diff = Math.abs(angle1 - angle2);
-      return diff > 0.5 || diff < Math.PI * 2 - 0.5;
-    });
-    if (isSpread || selected.length < 2) {
-      selected.push(v);
-    }
-  }
-  
-  return selected.length >= 4 ? selected : sorted.slice(0, 4);
-}
+// findNearestPoint and findFourMainCorners are now imported from roof-analysis-helpers.ts
 
 // Add perimeter edges as eaves/rakes
 function addPerimeterEdges(lines: DerivedLine[], perimeterVertices: any[]): void {
@@ -2771,9 +2504,7 @@ function addPerimeterEdges(lines: DerivedLine[], perimeterVertices: any[]): void
   }
 }
 
-function distance(p1: any, p2: any): number {
-  return Math.sqrt(Math.pow(p1.x - p2.x, 2) + Math.pow(p1.y - p2.y, 2))
-}
+// distance is now imported from roof-analysis-helpers.ts
 
 // Convert derived lines to WKT format with plan/surface length calculations
 function convertDerivedLinesToWKT(
@@ -3158,14 +2889,7 @@ const ROOF_AREA_CAPS = {
   AI_SOLAR_MAX_VARIANCE: 0.20  // If AI > 20% over Solar, use Solar
 }
 
-// Check if Florida address
-function isFloridaAddress(address: string): boolean {
-  const floridaIndicators = [
-    ', FL', ', Florida', 'FL ', 'Florida ',
-    '32', '33', '34' // Florida ZIP code prefixes
-  ]
-  return floridaIndicators.some(ind => address.includes(ind))
-}
+// isFloridaAddress is now imported from roof-analysis-helpers.ts
 
 // Calculate rough polygon area from pixel-percent vertices (for shrinkage decision)
 function calculatePolygonAreaFromPixelVertices(vertices: any[], bounds: any): number {
@@ -3888,17 +3612,7 @@ function calculatePolygonAreaFromPercentVertices(
   return Math.abs(area / 2)
 }
 
-function getDirectionFromAngle(angleDegrees: number): string {
-  const normalized = (angleDegrees + 360) % 360
-  if (normalized >= 337.5 || normalized < 22.5) return 'east'
-  if (normalized >= 22.5 && normalized < 67.5) return 'southeast'
-  if (normalized >= 67.5 && normalized < 112.5) return 'south'
-  if (normalized >= 112.5 && normalized < 157.5) return 'southwest'
-  if (normalized >= 157.5 && normalized < 202.5) return 'west'
-  if (normalized >= 202.5 && normalized < 247.5) return 'northwest'
-  if (normalized >= 247.5 && normalized < 292.5) return 'north'
-  return 'northeast'
-}
+// getDirectionFromAngle is now imported from roof-analysis-helpers.ts
 
 async function saveFacetsToDatabase(
   supabase: any,
