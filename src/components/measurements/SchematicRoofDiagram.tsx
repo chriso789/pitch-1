@@ -1098,8 +1098,19 @@ export function SchematicRoofDiagram({
         </div>
       )}
       
+      {/* Rectangular Approximation Warning */}
+      {perimeterCoords.length > 0 && perimeterCoords.length <= 4 && (
+        <div className="absolute top-3 right-16 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 shadow-sm flex items-center gap-2">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <div className="text-xs text-amber-800">
+            <div className="font-semibold">Rectangular Approximation</div>
+            <div className="text-amber-600">{perimeterCoords.length} vertices - Draw footprint for accuracy</div>
+          </div>
+        </div>
+      )}
+      
       {/* Perimeter Only Warning */}
-      {showPerimeterOnlyWarning && (
+      {showPerimeterOnlyWarning && perimeterCoords.length > 4 && (
         <div className="absolute top-3 right-16 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 shadow-sm flex items-center gap-2">
           <AlertTriangle className="h-4 w-4 text-amber-600" />
           <div className="text-xs text-amber-800">
