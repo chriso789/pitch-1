@@ -16,7 +16,10 @@ import {
   Layers,
   Home,
   CheckCircle2,
-  X
+  X,
+  Mountain,
+  Triangle,
+  ArrowDownUp
 } from 'lucide-react';
 import { useMeasurementDrawing } from '@/hooks/useMeasurementDrawing';
 import { calculatePolygonArea, calculatePolygonPerimeter } from '@/utils/measurementGeometry';
@@ -25,6 +28,20 @@ const POLYGON_COLORS = [
   '#3b82f6', '#10b981', '#f59e0b', '#ef4444', 
   '#8b5cf6', '#ec4899', '#14b8a6', '#f97316',
 ];
+
+// Line type colors
+const LINE_COLORS = {
+  ridge: '#22c55e',   // Green
+  hip: '#3b82f6',     // Blue
+  valley: '#ef4444',  // Red
+};
+
+interface TracedLine {
+  id: string;
+  type: 'ridge' | 'hip' | 'valley';
+  points: { x: number; y: number }[];
+  lengthFt: number;
+}
 
 interface InteractiveMapCanvasProps {
   mapboxToken: string;
@@ -49,13 +66,18 @@ export function InteractiveMapCanvas({
   const fabricCanvasRef = useRef<FabricCanvas | null>(null);
   
   const [isMapLoaded, setIsMapLoaded] = useState(false);
-  const [mode, setMode] = useState<'select' | 'draw'>('draw');
+  const [mode, setMode] = useState<'select' | 'draw' | 'ridge' | 'hip' | 'valley'>('draw');
   const [mapStyle, setMapStyle] = useState<'satellite' | 'satellite-streets'>('satellite-streets');
-const [currentZoom, setCurrentZoom] = useState(initialZoom);
+  const [currentZoom, setCurrentZoom] = useState(initialZoom);
   const [pixelsPerFoot, setPixelsPerFoot] = useState(1);
   const [lockedPixelsPerFoot, setLockedPixelsPerFoot] = useState<number | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
   const [showZoomWarning, setShowZoomWarning] = useState(false);
+  
+  // Linear features state
+  const [tracedLines, setTracedLines] = useState<TracedLine[]>([]);
+  const [currentLinePoints, setCurrentLinePoints] = useState<{ x: number; y: number }[]>([]);
+  const [isDrawingLine, setIsDrawingLine] = useState(false);
 
   // Calculate pixels per foot based on zoom and latitude
   const calculatePixelsPerFoot = useCallback((zoom: number, lat: number) => {
@@ -178,33 +200,9 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
     };
   }, [isMapLoaded, canvasSize.width, canvasSize.height]);
 
-  // Handle canvas clicks for drawing
-  useEffect(() => {
-    const canvas = fabricCanvasRef.current;
-    if (!canvas) return;
+  // Click handler useEffect moved below function definitions
 
-    const handleCanvasClick = (e: any) => {
-      if (mode !== 'draw') return;
-      const pointer = canvas.getPointer(e.e);
-      addPoint({ x: pointer.x, y: pointer.y });
-    };
-
-    const handleDoubleClick = () => {
-      if (mode === 'draw' && isDrawing && currentPoints.length >= 3) {
-        completePolygon();
-      }
-    };
-
-    canvas.on('mouse:down', handleCanvasClick);
-    canvas.on('mouse:dblclick', handleDoubleClick);
-
-    return () => {
-      canvas.off('mouse:down', handleCanvasClick);
-      canvas.off('mouse:dblclick', handleDoubleClick);
-    };
-  }, [mode, isDrawing, currentPoints, addPoint, completePolygon]);
-
-  // Render polygons on canvas
+  // Render polygons and lines on canvas
   useEffect(() => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
@@ -261,7 +259,60 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
       }
     });
 
-    // Render current drawing
+    // Render completed traced lines
+    tracedLines.forEach((tracedLine) => {
+      const color = LINE_COLORS[tracedLine.type];
+      for (let i = 0; i < tracedLine.points.length - 1; i++) {
+        const line = new Line([
+          tracedLine.points[i].x, tracedLine.points[i].y,
+          tracedLine.points[i + 1].x, tracedLine.points[i + 1].y,
+        ], {
+          stroke: color,
+          strokeWidth: 3,
+          selectable: false,
+          evented: false,
+        });
+        canvas.add(line);
+      }
+      
+      // Add endpoints
+      tracedLine.points.forEach((point) => {
+        const circle = new Circle({
+          left: point.x,
+          top: point.y,
+          radius: 5,
+          fill: color,
+          stroke: '#ffffff',
+          strokeWidth: 2,
+          originX: 'center',
+          originY: 'center',
+          selectable: false,
+          evented: false,
+        });
+        canvas.add(circle);
+      });
+
+      // Add length label at midpoint
+      if (tracedLine.points.length >= 2) {
+        const midIndex = Math.floor(tracedLine.points.length / 2);
+        const midPoint = tracedLine.points[midIndex];
+        const label = new Text(`${tracedLine.lengthFt.toFixed(1)} ft`, {
+          left: midPoint.x,
+          top: midPoint.y - 15,
+          fontSize: 12,
+          fill: '#ffffff',
+          backgroundColor: `${color}dd`,
+          padding: 4,
+          originX: 'center',
+          originY: 'center',
+          selectable: false,
+          evented: false,
+        });
+        canvas.add(label);
+      }
+    });
+
+    // Render current polygon drawing
     if (currentPoints.length > 0) {
       for (let i = 0; i < currentPoints.length - 1; i++) {
         const line = new Line([
@@ -314,8 +365,97 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
       }
     }
 
+    // Render current line drawing
+    if (currentLinePoints.length > 0 && (mode === 'ridge' || mode === 'hip' || mode === 'valley')) {
+      const lineColor = LINE_COLORS[mode as 'ridge' | 'hip' | 'valley'];
+      
+      for (let i = 0; i < currentLinePoints.length - 1; i++) {
+        const line = new Line([
+          currentLinePoints[i].x, currentLinePoints[i].y,
+          currentLinePoints[i + 1].x, currentLinePoints[i + 1].y,
+        ], {
+          stroke: lineColor,
+          strokeWidth: 3,
+          strokeDashArray: [5, 5],
+          selectable: false,
+          evented: false,
+        });
+        canvas.add(line);
+      }
+
+      currentLinePoints.forEach((point, i) => {
+        const circle = new Circle({
+          left: point.x,
+          top: point.y,
+          radius: i === 0 ? 8 : 6,
+          fill: lineColor,
+          stroke: '#ffffff',
+          strokeWidth: 2,
+          originX: 'center',
+          originY: 'center',
+          selectable: false,
+          evented: false,
+        });
+        canvas.add(circle);
+      });
+    }
+
     canvas.renderAll();
-  }, [polygons, currentPoints, pixelsPerFoot, getCurrentArea]);
+  }, [polygons, currentPoints, pixelsPerFoot, getCurrentArea, tracedLines, currentLinePoints, mode]);
+
+  // Calculate line length in feet
+  const calculateLineLengthFt = useCallback((points: { x: number; y: number }[]) => {
+    if (points.length < 2) return 0;
+    let totalLength = 0;
+    for (let i = 0; i < points.length - 1; i++) {
+      const dx = points[i + 1].x - points[i].x;
+      const dy = points[i + 1].y - points[i].y;
+      totalLength += Math.sqrt(dx * dx + dy * dy);
+    }
+    return totalLength / effectivePixelsPerFoot;
+  }, [effectivePixelsPerFoot]);
+
+  // Convert pixel coordinates to GPS
+  const pixelToGeo = useCallback((x: number, y: number) => {
+    const map = mapRef.current;
+    if (!map) return { lat: centerLat, lng: centerLng };
+    
+    const center = map.getCenter();
+    const zoom = map.getZoom();
+    const metersPerPixel = (156543.03392 * Math.cos(center.lat * Math.PI / 180)) / Math.pow(2, zoom);
+    
+    const centerX = canvasSize.width / 2;
+    const centerY = canvasSize.height / 2;
+    
+    const deltaX = x - centerX;
+    const deltaY = centerY - y; // Invert Y
+    
+    const metersX = deltaX * metersPerPixel;
+    const metersY = deltaY * metersPerPixel;
+    
+    const lat = center.lat + (metersY / 111320);
+    const lng = center.lng + (metersX / (111320 * Math.cos(center.lat * Math.PI / 180)));
+    
+    return { lat, lng };
+  }, [canvasSize, centerLat, centerLng]);
+
+  // Generate WKT for polygon
+  const generatePolygonWKT = useCallback((points: { x: number; y: number }[]) => {
+    if (points.length < 3) return '';
+    const geoPoints = points.map(p => pixelToGeo(p.x, p.y));
+    // Close the polygon
+    geoPoints.push(geoPoints[0]);
+    const coordString = geoPoints.map(g => `${g.lng} ${g.lat}`).join(', ');
+    return `POLYGON((${coordString}))`;
+  }, [pixelToGeo]);
+
+  // Generate WKT for linestring
+  const generateLineWKT = useCallback((points: { x: number; y: number }[]) => {
+    if (points.length < 2) return '';
+    const geoPoints = points.map(p => pixelToGeo(p.x, p.y));
+    const coordString = geoPoints.map(g => `${g.lng} ${g.lat}`).join(', ');
+    return `LINESTRING(${coordString})`;
+  }, [pixelToGeo]);
 
   const updateMeasurements = useCallback(() => {
     const map = mapRef.current;
@@ -327,15 +467,36 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
       ? `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${center.lng},${center.lat},${zoom},0/${canvasSize.width}x${canvasSize.height}@2x?access_token=${mapboxToken}`
       : '';
 
+    // Convert polygons to faces with WKT
     const faces = polygons.map((p, index) => ({
       id: p.id,
       label: p.label || `Facet ${index + 1}`,
       boundary: p.points.map(pt => [pt.x / canvasSize.width, pt.y / canvasSize.height]),
+      wkt: generatePolygonWKT(p.points),
       area_sqft: calculatePolygonArea(p.points, pixelsPerFoot),
       perimeter_ft: calculatePolygonPerimeter(p.points, pixelsPerFoot),
       pitch: '6/12',
       color: p.color || POLYGON_COLORS[index % POLYGON_COLORS.length],
     }));
+
+    // Convert traced lines to tags format
+    const ridgeLines = tracedLines.filter(l => l.type === 'ridge').map(l => ({
+      wkt: generateLineWKT(l.points),
+      length_ft: l.lengthFt,
+    }));
+    const hipLines = tracedLines.filter(l => l.type === 'hip').map(l => ({
+      wkt: generateLineWKT(l.points),
+      length_ft: l.lengthFt,
+    }));
+    const valleyLines = tracedLines.filter(l => l.type === 'valley').map(l => ({
+      wkt: generateLineWKT(l.points),
+      length_ft: l.lengthFt,
+    }));
+
+    // Calculate totals
+    const totalRidgeLength = ridgeLines.reduce((sum, l) => sum + l.length_ft, 0);
+    const totalHipLength = hipLines.reduce((sum, l) => sum + l.length_ft, 0);
+    const totalValleyLength = valleyLines.reduce((sum, l) => sum + l.length_ft, 0);
 
     onMeasurementsChange?.({
       faces,
@@ -343,6 +504,14 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
         total_area_sqft: getTotalArea(),
         total_squares: getTotalArea() / 100,
         facet_count: polygons.length,
+        ridge_length_ft: totalRidgeLength,
+        hip_length_ft: totalHipLength,
+        valley_length_ft: totalValleyLength,
+      },
+      tags: {
+        ridge_lines: ridgeLines,
+        hip_lines: hipLines,
+        valley_lines: valleyLines,
       },
       canvasWidth: canvasSize.width,
       canvasHeight: canvasSize.height,
@@ -352,8 +521,62 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
         lng: center?.lng || centerLng,
       },
       analysis_zoom: zoom,
+      analysis_image_size: { width: canvasSize.width, height: canvasSize.height },
     });
-  }, [polygons, pixelsPerFoot, getTotalArea, canvasSize, onMeasurementsChange, mapboxToken, centerLat, centerLng, initialZoom]);
+  }, [polygons, tracedLines, pixelsPerFoot, getTotalArea, canvasSize, onMeasurementsChange, mapboxToken, centerLat, centerLng, initialZoom, generatePolygonWKT, generateLineWKT]);
+
+  // Handle canvas clicks for drawing (placed after function definitions)
+  useEffect(() => {
+    const canvas = fabricCanvasRef.current;
+    if (!canvas) return;
+
+    const handleCanvasClick = (e: any) => {
+      const pointer = canvas.getPointer(e.e);
+      const point = { x: pointer.x, y: pointer.y };
+      
+      if (mode === 'draw') {
+        addPoint(point);
+      } else if (mode === 'ridge' || mode === 'hip' || mode === 'valley') {
+        // Add point to current line
+        setCurrentLinePoints(prev => [...prev, point]);
+        if (!isDrawingLine) {
+          setIsDrawingLine(true);
+          setLockedPixelsPerFoot(pixelsPerFoot);
+        }
+      }
+    };
+
+    const handleDoubleClick = () => {
+      if (mode === 'draw' && isDrawing && currentPoints.length >= 3) {
+        completePolygon();
+      } else if ((mode === 'ridge' || mode === 'hip' || mode === 'valley') && currentLinePoints.length >= 2) {
+        // Complete the line
+        const lineType = mode as 'ridge' | 'hip' | 'valley';
+        const lengthFt = calculateLineLengthFt(currentLinePoints);
+        const newLine: TracedLine = {
+          id: `${lineType}-${Date.now()}`,
+          type: lineType,
+          points: [...currentLinePoints],
+          lengthFt,
+        };
+        setTracedLines(prev => [...prev, newLine]);
+        setCurrentLinePoints([]);
+        setIsDrawingLine(false);
+        setLockedPixelsPerFoot(null);
+        toast.success(`${lineType.charAt(0).toUpperCase() + lineType.slice(1)} line: ${lengthFt.toFixed(1)} ft`);
+        // Trigger update after a short delay to allow state to settle
+        setTimeout(() => updateMeasurements(), 100);
+      }
+    };
+
+    canvas.on('mouse:down', handleCanvasClick);
+    canvas.on('mouse:dblclick', handleDoubleClick);
+
+    return () => {
+      canvas.off('mouse:down', handleCanvasClick);
+      canvas.off('mouse:dblclick', handleDoubleClick);
+    };
+  }, [mode, isDrawing, currentPoints, addPoint, completePolygon, currentLinePoints, isDrawingLine, pixelsPerFoot, calculateLineLengthFt, updateMeasurements]);
 
   const handleStartDrawing = () => {
     // Lock pixelsPerFoot at drawing start to prevent mid-draw scale changes
@@ -371,6 +594,28 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
       toast.warning(`Zoom level ${currentZoom.toFixed(1)} is below recommended (19+). Increase zoom for better accuracy.`);
     } else {
       toast.info('Click to add corners. Double-click to close polygon.');
+    }
+  };
+
+  const handleStartLineDraw = (lineType: 'ridge' | 'hip' | 'valley') => {
+    setLockedPixelsPerFoot(pixelsPerFoot);
+    setMode(lineType);
+    setCurrentLinePoints([]);
+    setIsDrawingLine(false);
+    // Disable map drag when drawing
+    if (mapRef.current) {
+      mapRef.current.dragPan.disable();
+    }
+    toast.info(`Click to trace ${lineType} line. Double-click to complete.`);
+  };
+
+  const cancelLineDrawing = () => {
+    setCurrentLinePoints([]);
+    setIsDrawingLine(false);
+    setLockedPixelsPerFoot(null);
+    setMode('select');
+    if (mapRef.current) {
+      mapRef.current.dragPan.enable();
     }
   };
 
@@ -470,7 +715,42 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
             className="justify-start"
           >
             <Pencil className="h-4 w-4 mr-2" />
-            Draw
+            Facet
+          </Button>
+        </div>
+        
+        {/* Linear Feature Tools */}
+        <div className="p-2 border-b flex flex-col gap-1">
+          <div className="text-xs text-muted-foreground px-2 py-1">Lines</div>
+          <Button
+            variant={mode === 'ridge' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => handleStartLineDraw('ridge')}
+            className="justify-start"
+            style={{ color: mode === 'ridge' ? undefined : LINE_COLORS.ridge }}
+          >
+            <Mountain className="h-4 w-4 mr-2" />
+            Ridge
+          </Button>
+          <Button
+            variant={mode === 'hip' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => handleStartLineDraw('hip')}
+            className="justify-start"
+            style={{ color: mode === 'hip' ? undefined : LINE_COLORS.hip }}
+          >
+            <Triangle className="h-4 w-4 mr-2" />
+            Hip
+          </Button>
+          <Button
+            variant={mode === 'valley' ? 'default' : 'ghost'}
+            size="sm"
+            onClick={() => handleStartLineDraw('valley')}
+            className="justify-start"
+            style={{ color: mode === 'valley' ? undefined : LINE_COLORS.valley }}
+          >
+            <ArrowDownUp className="h-4 w-4 mr-2" />
+            Valley
           </Button>
         </div>
         
@@ -504,8 +784,11 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
           <Button 
             variant="ghost" 
             size="icon" 
-            onClick={clear} 
-            disabled={polygons.length === 0 && currentPoints.length === 0}
+            onClick={() => {
+              clear();
+              setTracedLines([]);
+            }} 
+            disabled={polygons.length === 0 && currentPoints.length === 0 && tracedLines.length === 0}
             title="Clear All"
           >
             <Trash2 className="h-4 w-4" />
@@ -533,10 +816,10 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
       )}
 
       {/* Stats Panel */}
-      <div className="absolute top-4 right-16 z-20 bg-background/95 backdrop-blur rounded-lg p-3 shadow-lg border">
+      <div className="absolute top-4 right-16 z-20 bg-background/95 backdrop-blur rounded-lg p-3 shadow-lg border max-w-xs">
         <div className="text-xs text-muted-foreground mb-1">Property</div>
         <div className="text-sm font-medium truncate max-w-[200px]">{address || 'Unknown'}</div>
-        <div className="mt-2 flex items-center gap-4">
+        <div className="mt-2 grid grid-cols-2 gap-3">
           <div>
             <div className="text-xs text-muted-foreground">Total Area</div>
             <div className="text-lg font-bold text-primary">{getTotalArea().toFixed(0)} sq ft</div>
@@ -546,7 +829,32 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
             <div className="text-lg font-bold">{polygons.length}</div>
           </div>
         </div>
-        <div className="mt-2 flex items-center gap-2">
+        
+        {/* Linear feature stats */}
+        {tracedLines.length > 0 && (
+          <div className="mt-2 pt-2 border-t grid grid-cols-3 gap-2 text-center">
+            <div>
+              <div className="text-xs text-muted-foreground">Ridge</div>
+              <div className="text-sm font-bold" style={{ color: LINE_COLORS.ridge }}>
+                {tracedLines.filter(l => l.type === 'ridge').reduce((sum, l) => sum + l.lengthFt, 0).toFixed(0)} ft
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Hip</div>
+              <div className="text-sm font-bold" style={{ color: LINE_COLORS.hip }}>
+                {tracedLines.filter(l => l.type === 'hip').reduce((sum, l) => sum + l.lengthFt, 0).toFixed(0)} ft
+              </div>
+            </div>
+            <div>
+              <div className="text-xs text-muted-foreground">Valley</div>
+              <div className="text-sm font-bold" style={{ color: LINE_COLORS.valley }}>
+                {tracedLines.filter(l => l.type === 'valley').reduce((sum, l) => sum + l.lengthFt, 0).toFixed(0)} ft
+              </div>
+            </div>
+          </div>
+        )}
+        
+        <div className="mt-2 flex items-center gap-2 flex-wrap">
           <Badge 
             variant={currentZoom < 19 ? "destructive" : "outline"} 
             className="text-xs"
@@ -565,12 +873,20 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
       {isMapLoaded && mode === 'draw' && !isDrawing && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-background/95 backdrop-blur rounded-lg px-4 py-2 shadow-lg border">
           <p className="text-sm text-muted-foreground">
-            Click <strong>Draw</strong> then click on the map to trace roof edges. Double-click to complete.
+            Click <strong>Facet</strong> then click on the map to trace roof edges. Double-click to complete.
           </p>
         </div>
       )}
 
-      {/* Drawing Controls - shown during active drawing */}
+      {isMapLoaded && (mode === 'ridge' || mode === 'hip' || mode === 'valley') && !isDrawingLine && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-background/95 backdrop-blur rounded-lg px-4 py-2 shadow-lg border">
+          <p className="text-sm text-muted-foreground">
+            Click to trace <strong>{mode}</strong> line. Double-click to complete.
+          </p>
+        </div>
+      )}
+
+      {/* Drawing Controls - shown during active polygon drawing */}
       {isDrawing && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-background/95 backdrop-blur rounded-lg shadow-lg border p-2 flex items-center gap-2">
           <span className="text-sm text-muted-foreground px-2">
@@ -602,6 +918,57 @@ const [currentZoom, setCurrentZoom] = useState(initialZoom);
               variant="default" 
               size="sm" 
               onClick={completePolygon}
+            >
+              <CheckCircle2 className="h-4 w-4 mr-2" /> Complete
+            </Button>
+          )}
+        </div>
+      )}
+
+      {/* Line Drawing Controls - shown during active line drawing */}
+      {isDrawingLine && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-20 bg-background/95 backdrop-blur rounded-lg shadow-lg border p-2 flex items-center gap-2">
+          <Badge style={{ backgroundColor: LINE_COLORS[mode as 'ridge' | 'hip' | 'valley'] }}>
+            {mode.charAt(0).toUpperCase() + mode.slice(1)}
+          </Badge>
+          <span className="text-sm text-muted-foreground px-2">
+            {currentLinePoints.length} points | {calculateLineLengthFt(currentLinePoints).toFixed(1)} ft
+          </span>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setCurrentLinePoints(prev => prev.slice(0, -1))}
+            disabled={currentLinePoints.length === 0}
+          >
+            <Undo2 className="h-4 w-4 mr-2" /> Undo Point
+          </Button>
+          <Button 
+            variant="destructive" 
+            size="sm" 
+            onClick={cancelLineDrawing}
+          >
+            <X className="h-4 w-4 mr-2" /> Cancel
+          </Button>
+          {currentLinePoints.length >= 2 && (
+            <Button 
+              variant="default" 
+              size="sm" 
+              onClick={() => {
+                const lineType = mode as 'ridge' | 'hip' | 'valley';
+                const lengthFt = calculateLineLengthFt(currentLinePoints);
+                const newLine: TracedLine = {
+                  id: `${lineType}-${Date.now()}`,
+                  type: lineType,
+                  points: [...currentLinePoints],
+                  lengthFt,
+                };
+                setTracedLines(prev => [...prev, newLine]);
+                setCurrentLinePoints([]);
+                setIsDrawingLine(false);
+                setLockedPixelsPerFoot(null);
+                toast.success(`${lineType.charAt(0).toUpperCase() + lineType.slice(1)} line: ${lengthFt.toFixed(1)} ft`);
+                setTimeout(() => updateMeasurements(), 100);
+              }}
             >
               <CheckCircle2 className="h-4 w-4 mr-2" /> Complete
             </Button>
