@@ -10,7 +10,12 @@
  * - stats.areaMeters2 (segment area)
  * 
  * This allows us to POSITION each facet correctly instead of guessing.
+ * 
+ * NEW: Supports structure analysis for proper L/T-shaped roof handling
+ * and screen enclosure exclusion.
  */
+
+import type { StructureAnalysis } from './structure-analyzer.ts'
 
 type XY = [number, number]; // [lng, lat]
 
@@ -45,6 +50,7 @@ export interface AssembledGeometry {
   valleys: AssembledLine[];
   quality: 'excellent' | 'good' | 'fair';
   warnings: string[];
+  structureAnalysis?: StructureAnalysis;
 }
 
 export interface AssembledLine {
@@ -69,17 +75,23 @@ const FACET_COLORS = [
 /**
  * Main function: Assemble facets from Solar API segment data
  * This uses segment center/boundingBox to position facets accurately
+ * 
+ * @param perimeter - Array of [lng, lat] coordinates defining the roof perimeter
+ * @param solarSegments - Array of Solar API segments with azimuth and area data
+ * @param predominantPitch - Default pitch to use (e.g., "6/12")
+ * @param structureAnalysis - Optional structure analysis for L/T-shape handling
  */
 export function assembleFacetsFromSolarSegments(
   perimeter: XY[],
   solarSegments: SolarSegment[],
-  predominantPitch: string = '6/12'
+  predominantPitch: string = '6/12',
+  structureAnalysis?: StructureAnalysis
 ): AssembledGeometry {
   const warnings: string[] = [];
   
   if (!solarSegments || solarSegments.length === 0) {
     warnings.push('No Solar segments available');
-    return createFallbackGeometry(perimeter, predominantPitch, warnings);
+    return createFallbackGeometry(perimeter, predominantPitch, warnings, structureAnalysis);
   }
   
   // Check if segments have positioning data
@@ -88,23 +100,28 @@ export function assembleFacetsFromSolarSegments(
   
   console.log(`🛰️ Solar Segment Assembler: ${solarSegments.length} segments, ${segmentsWithBounds.length} with bounds, ${segmentsWithCenter.length} with center`);
   
+  // Log structure analysis if available
+  if (structureAnalysis) {
+    console.log(`📐 Structure analysis: ${structureAnalysis.footprintShape}, front facing ${structureAnalysis.houseOrientation.frontFacing}, ${structureAnalysis.extensions.length} extensions, ${structureAnalysis.exclusions.length} exclusions`);
+  }
+  
   // Use center positions if available (more accurate than bounding box)
   if (segmentsWithCenter.length >= 2) {
-    return assembleFromCenters(perimeter, solarSegments, predominantPitch, warnings);
+    return assembleFromCenters(perimeter, solarSegments, predominantPitch, warnings, structureAnalysis);
   }
   
   // Fall back to bounding box positioning
   if (segmentsWithBounds.length >= 2) {
-    return assembleFromBoundingBoxes(perimeter, solarSegments, predominantPitch, warnings);
+    return assembleFromBoundingBoxes(perimeter, solarSegments, predominantPitch, warnings, structureAnalysis);
   }
   
   // Use azimuth clustering as last resort
   if (solarSegments.length >= 2) {
-    return assembleFromAzimuths(perimeter, solarSegments, predominantPitch, warnings);
+    return assembleFromAzimuths(perimeter, solarSegments, predominantPitch, warnings, structureAnalysis);
   }
   
   warnings.push('Insufficient segment positioning data');
-  return createFallbackGeometry(perimeter, predominantPitch, warnings);
+  return createFallbackGeometry(perimeter, predominantPitch, warnings, structureAnalysis);
 }
 
 /**
@@ -115,7 +132,8 @@ function assembleFromCenters(
   perimeter: XY[],
   segments: SolarSegment[],
   pitch: string,
-  warnings: string[]
+  warnings: string[],
+  structureAnalysis?: StructureAnalysis
 ): AssembledGeometry {
   const centroid = getCentroid(perimeter);
   const bounds = getBounds(perimeter);
@@ -156,12 +174,12 @@ function assembleFromCenters(
   });
   
   // Derive linear features from facet adjacencies
-  const { ridges, hips, valleys } = deriveLinearFeaturesFromFacets(facets, perimeter, centroid);
+  const { ridges, hips, valleys } = deriveLinearFeaturesFromFacets(facets, perimeter, centroid, structureAnalysis);
   
   // If facet generation failed, use azimuth-based fallback
   if (facets.length < 2 && segments.length >= 2) {
     console.log('⚠️ Center-based assembly produced few facets, falling back to azimuth clustering');
-    return assembleFromAzimuths(perimeter, segments, pitch, warnings);
+    return assembleFromAzimuths(perimeter, segments, pitch, warnings, structureAnalysis);
   }
   
   return {
@@ -170,7 +188,8 @@ function assembleFromCenters(
     hips,
     valleys,
     quality: facets.length >= segments.length * 0.7 ? 'excellent' : 'good',
-    warnings
+    warnings,
+    structureAnalysis
   };
 }
 
@@ -181,7 +200,8 @@ function assembleFromBoundingBoxes(
   perimeter: XY[],
   segments: SolarSegment[],
   pitch: string,
-  warnings: string[]
+  warnings: string[],
+  structureAnalysis?: StructureAnalysis
 ): AssembledGeometry {
   // Convert bounding boxes to center points and proceed with center-based assembly
   const segmentsWithCenters = segments.map(s => {
@@ -198,18 +218,21 @@ function assembleFromBoundingBoxes(
     return s;
   });
   
-  return assembleFromCenters(perimeter, segmentsWithCenters, pitch, warnings);
+  return assembleFromCenters(perimeter, segmentsWithCenters, pitch, warnings, structureAnalysis);
 }
 
 /**
  * Assemble geometry using azimuth clustering (no position data)
  * Groups segments by their facing direction and assigns perimeter edges accordingly
+ * 
+ * Now uses structure analysis for proper L/T-shaped roof handling
  */
 function assembleFromAzimuths(
   perimeter: XY[],
   segments: SolarSegment[],
   pitch: string,
-  warnings: string[]
+  warnings: string[],
+  structureAnalysis?: StructureAnalysis
 ): AssembledGeometry {
   const centroid = getCentroid(perimeter);
   const bounds = getBounds(perimeter);
@@ -231,14 +254,24 @@ function assembleFromAzimuths(
   const facets: AssembledFacet[] = [];
   let facetIndex = 0;
   
-  // Calculate ridge position (center line of roof)
-  const isWider = (bounds.maxX - bounds.minX) > (bounds.maxY - bounds.minY);
+  // Determine ridge direction - prefer structure analysis if available
+  let isWider = (bounds.maxX - bounds.minX) > (bounds.maxY - bounds.minY);
+  if (structureAnalysis?.mainStructure?.ridgeDirection) {
+    // Structure analysis overrides auto-detection
+    isWider = structureAnalysis.mainStructure.ridgeDirection === 'east-west';
+    console.log(`📐 Using structure analysis ridge direction: ${structureAnalysis.mainStructure.ridgeDirection}`);
+  }
+  
+  // Calculate ridge inset based on building proportions
+  const shortSide = isWider ? (bounds.maxY - bounds.minY) : (bounds.maxX - bounds.minX);
+  const insetFactor = 0.4; // Ridge endpoints inset 40% from short side
+  
   const ridgeStart: XY = isWider 
-    ? [bounds.minX + (bounds.maxX - bounds.minX) * 0.2, (bounds.minY + bounds.maxY) / 2]
-    : [(bounds.minX + bounds.maxX) / 2, bounds.minY + (bounds.maxY - bounds.minY) * 0.2];
+    ? [bounds.minX + shortSide * insetFactor, (bounds.minY + bounds.maxY) / 2]
+    : [(bounds.minX + bounds.maxX) / 2, bounds.minY + shortSide * insetFactor];
   const ridgeEnd: XY = isWider
-    ? [bounds.maxX - (bounds.maxX - bounds.minX) * 0.2, (bounds.minY + bounds.maxY) / 2]
-    : [(bounds.minX + bounds.maxX) / 2, bounds.maxY - (bounds.maxY - bounds.minY) * 0.2];
+    ? [bounds.maxX - shortSide * insetFactor, (bounds.minY + bounds.maxY) / 2]
+    : [(bounds.minX + bounds.maxX) / 2, bounds.maxY - shortSide * insetFactor];
   
   groupedByDirection.forEach((dirSegments, direction) => {
     // Find perimeter edges that face this direction
@@ -324,7 +357,8 @@ function assembleFromAzimuths(
     hips,
     valleys: [],
     quality: facets.length >= 2 ? 'good' : 'fair',
-    warnings: [...warnings, 'Used azimuth clustering - positions may be approximate']
+    warnings: [...warnings, 'Used azimuth clustering - positions may be approximate'],
+    structureAnalysis
   };
 }
 
@@ -334,11 +368,17 @@ function assembleFromAzimuths(
 function createFallbackGeometry(
   perimeter: XY[],
   pitch: string,
-  warnings: string[]
+  warnings: string[],
+  structureAnalysis?: StructureAnalysis
 ): AssembledGeometry {
   const centroid = getCentroid(perimeter);
   const bounds = getBounds(perimeter);
-  const isWider = (bounds.maxX - bounds.minX) > (bounds.maxY - bounds.minY);
+  
+  // Use structure analysis for ridge direction if available
+  let isWider = (bounds.maxX - bounds.minX) > (bounds.maxY - bounds.minY);
+  if (structureAnalysis?.mainStructure?.ridgeDirection) {
+    isWider = structureAnalysis.mainStructure.ridgeDirection === 'east-west';
+  }
   
   // Single ridge through center
   const ridgeStart: XY = isWider 
@@ -367,7 +407,8 @@ function createFallbackGeometry(
     hips: [],
     valleys: [],
     quality: 'fair',
-    warnings: [...warnings, 'Using perimeter-only fallback']
+    warnings: [...warnings, 'Using perimeter-only fallback'],
+    structureAnalysis
   };
 }
 
@@ -526,7 +567,8 @@ function createFacetPolygonWithRidge(vertices: XY[], ridgePoint: XY): XY[] {
 function deriveLinearFeaturesFromFacets(
   facets: AssembledFacet[],
   perimeter: XY[],
-  centroid: XY
+  centroid: XY,
+  structureAnalysis?: StructureAnalysis
 ): { ridges: AssembledLine[]; hips: AssembledLine[]; valleys: AssembledLine[] } {
   const ridges: AssembledLine[] = [];
   const hips: AssembledLine[] = [];
@@ -534,7 +576,13 @@ function deriveLinearFeaturesFromFacets(
   
   if (facets.length >= 2) {
     const bounds = getBounds(perimeter);
-    const isWider = (bounds.maxX - bounds.minX) > (bounds.maxY - bounds.minY);
+    
+    // Use structure analysis for ridge direction if available
+    let isWider = (bounds.maxX - bounds.minX) > (bounds.maxY - bounds.minY);
+    if (structureAnalysis?.mainStructure?.ridgeDirection) {
+      isWider = structureAnalysis.mainStructure.ridgeDirection === 'east-west';
+    }
+    
     const inset = isWider 
       ? (bounds.maxY - bounds.minY) * 0.4
       : (bounds.maxX - bounds.minX) * 0.4;
