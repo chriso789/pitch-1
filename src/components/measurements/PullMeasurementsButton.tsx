@@ -222,12 +222,20 @@ export function PullMeasurementsButton({
 
     // 📊 Performance Monitoring: Start timing
     const pullStartTime = Date.now();
+    const REQUEST_TIMEOUT_MS = 120000; // 2 minute frontend timeout
     console.log('⏱️ AI Measurement analysis started:', { 
       propertyId, 
       pullLat, 
       pullLng, 
       timestamp: new Date().toISOString() 
     });
+
+    // Create abort controller for timeout
+    const abortController = new AbortController();
+    const timeoutId = setTimeout(() => {
+      console.warn('⏱️ Frontend timeout triggered after', REQUEST_TIMEOUT_MS, 'ms');
+      abortController.abort();
+    }, REQUEST_TIMEOUT_MS);
 
     try {
       // Get current user for the request
@@ -238,11 +246,11 @@ export function PullMeasurementsButton({
 
       toast({
         title: "Measuring Roof",
-        description: "Analyzing satellite imagery...",
+        description: "Analyzing satellite imagery (this may take up to 90 seconds)...",
       });
 
-      // 🚀 Call the NEW analyze-roof-aerial edge function
-      const { data, error } = await supabase.functions.invoke('analyze-roof-aerial', {
+      // 🚀 Call the analyze-roof-aerial edge function with abort signal
+      const invokePromise = supabase.functions.invoke('analyze-roof-aerial', {
         body: {
           address: address || 'Unknown Address',
           coordinates: { lat: pullLat, lng: pullLng },
@@ -250,6 +258,16 @@ export function PullMeasurementsButton({
           userId: user?.id
         }
       });
+      
+      // Race against timeout
+      const { data, error } = await Promise.race([
+        invokePromise,
+        new Promise<never>((_, reject) => {
+          abortController.signal.addEventListener('abort', () => {
+            reject(new Error('Request timeout - AI analysis took too long'));
+          });
+        })
+      ]);
 
       if (error) {
         console.error('Edge function error:', error);
@@ -406,6 +424,7 @@ export function PullMeasurementsButton({
         variant: "destructive",
       });
     } finally {
+      clearTimeout(timeoutId);
       setLoading(false);
     }
   }
