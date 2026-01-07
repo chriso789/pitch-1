@@ -290,18 +290,33 @@ function assembleFromAzimuths(
     lengthFt: distanceFt(ridgeStart, ridgeEnd)
   }];
   
-  // Create hip lines from corners to ridge endpoints
+  // Create hip lines from corners to ridge endpoints based on orientation (not distance)
   const hips: AssembledLine[] = [];
-  const corners = findCorners(perimeter);
-  corners.forEach((corner, i) => {
-    const nearestRidge = distanceXY(corner, ridgeStart) < distanceXY(corner, ridgeEnd) ? ridgeStart : ridgeEnd;
-    hips.push({
-      id: `hip_${i}`,
-      start: corner,
-      end: nearestRidge,
-      lengthFt: distanceFt(corner, nearestRidge)
-    });
-  });
+  
+  // Find corners by position (SW, SE, NE, NW)
+  const sw = perimeter.reduce((best, v) => 
+    (v[1] + v[0] < best[1] + best[0]) ? v : best, perimeter[0]);
+  const ne = perimeter.reduce((best, v) => 
+    (v[1] + v[0] > best[1] + best[0]) ? v : best, perimeter[0]);
+  const se = perimeter.reduce((best, v) => 
+    (v[0] - v[1] > best[0] - best[1]) ? v : best, perimeter[0]);
+  const nw = perimeter.reduce((best, v) => 
+    (v[1] - v[0] > best[1] - best[0]) ? v : best, perimeter[0]);
+  
+  // Connect corners to ridge endpoints based on orientation
+  if (isWider) {
+    // Horizontal ridge: west corners → ridgeStart, east corners → ridgeEnd
+    hips.push({ id: 'hip_0', start: sw, end: ridgeStart, lengthFt: distanceFt(sw, ridgeStart) });
+    hips.push({ id: 'hip_1', start: nw, end: ridgeStart, lengthFt: distanceFt(nw, ridgeStart) });
+    hips.push({ id: 'hip_2', start: se, end: ridgeEnd, lengthFt: distanceFt(se, ridgeEnd) });
+    hips.push({ id: 'hip_3', start: ne, end: ridgeEnd, lengthFt: distanceFt(ne, ridgeEnd) });
+  } else {
+    // Vertical ridge: south corners → ridgeStart, north corners → ridgeEnd
+    hips.push({ id: 'hip_0', start: sw, end: ridgeStart, lengthFt: distanceFt(sw, ridgeStart) });
+    hips.push({ id: 'hip_1', start: se, end: ridgeStart, lengthFt: distanceFt(se, ridgeStart) });
+    hips.push({ id: 'hip_2', start: nw, end: ridgeEnd, lengthFt: distanceFt(nw, ridgeEnd) });
+    hips.push({ id: 'hip_3', start: ne, end: ridgeEnd, lengthFt: distanceFt(ne, ridgeEnd) });
+  }
   
   return {
     facets,
@@ -500,6 +515,14 @@ function createFacetPolygonWithRidge(vertices: XY[], ridgePoint: XY): XY[] {
   return [...sorted, ridgePoint, sorted[0]];
 }
 
+/**
+ * Derive linear features (ridges, hips, valleys) from facets.
+ * 
+ * Proper geometry: 
+ * - Ridge runs through center as a spine
+ * - Hips connect perimeter corners to ridge endpoints based on orientation
+ *   (not just distance-based)
+ */
 function deriveLinearFeaturesFromFacets(
   facets: AssembledFacet[],
   perimeter: XY[],
@@ -509,18 +532,23 @@ function deriveLinearFeaturesFromFacets(
   const hips: AssembledLine[] = [];
   const valleys: AssembledLine[] = [];
   
-  // Find shared edges between facets (these are ridges/valleys)
-  // For now, use simple ridge estimation
   if (facets.length >= 2) {
     const bounds = getBounds(perimeter);
     const isWider = (bounds.maxX - bounds.minX) > (bounds.maxY - bounds.minY);
+    const inset = isWider 
+      ? (bounds.maxY - bounds.minY) * 0.4
+      : (bounds.maxX - bounds.minX) * 0.4;
     
-    const ridgeStart: XY = isWider 
-      ? [bounds.minX + (bounds.maxX - bounds.minX) * 0.2, (bounds.minY + bounds.maxY) / 2]
-      : [(bounds.minX + bounds.maxX) / 2, bounds.minY + (bounds.maxY - bounds.minY) * 0.2];
-    const ridgeEnd: XY = isWider
-      ? [bounds.maxX - (bounds.maxX - bounds.minX) * 0.2, (bounds.minY + bounds.maxY) / 2]
-      : [(bounds.minX + bounds.maxX) / 2, bounds.maxY - (bounds.maxY - bounds.minY) * 0.2];
+    let ridgeStart: XY, ridgeEnd: XY;
+    if (isWider) {
+      // Horizontal ridge: ridgeStart is west, ridgeEnd is east
+      ridgeStart = [bounds.minX + inset, (bounds.minY + bounds.maxY) / 2];
+      ridgeEnd = [bounds.maxX - inset, (bounds.minY + bounds.maxY) / 2];
+    } else {
+      // Vertical ridge: ridgeStart is south, ridgeEnd is north
+      ridgeStart = [(bounds.minX + bounds.maxX) / 2, bounds.minY + inset];
+      ridgeEnd = [(bounds.minX + bounds.maxX) / 2, bounds.maxY - inset];
+    }
     
     ridges.push({
       id: 'ridge_0',
@@ -529,17 +557,30 @@ function deriveLinearFeaturesFromFacets(
       lengthFt: distanceFt(ridgeStart, ridgeEnd)
     });
     
-    // Create hips from corners to ridge
-    const corners = findCorners(perimeter);
-    corners.forEach((corner, i) => {
-      const nearest = distanceXY(corner, ridgeStart) < distanceXY(corner, ridgeEnd) ? ridgeStart : ridgeEnd;
-      hips.push({
-        id: `hip_${i}`,
-        start: corner,
-        end: nearest,
-        lengthFt: distanceFt(corner, nearest)
-      });
-    });
+    // Find corners by position (SW, SE, NE, NW)
+    const sw = perimeter.reduce((best, v) => 
+      (v[1] + v[0] < best[1] + best[0]) ? v : best, perimeter[0]);
+    const ne = perimeter.reduce((best, v) => 
+      (v[1] + v[0] > best[1] + best[0]) ? v : best, perimeter[0]);
+    const se = perimeter.reduce((best, v) => 
+      (v[0] - v[1] > best[0] - best[1]) ? v : best, perimeter[0]);
+    const nw = perimeter.reduce((best, v) => 
+      (v[1] - v[0] > best[1] - best[0]) ? v : best, perimeter[0]);
+    
+    // Connect corners to ridge endpoints based on orientation
+    if (isWider) {
+      // Horizontal ridge: west corners → ridgeStart, east corners → ridgeEnd
+      hips.push({ id: 'hip_0', start: sw, end: ridgeStart, lengthFt: distanceFt(sw, ridgeStart) });
+      hips.push({ id: 'hip_1', start: nw, end: ridgeStart, lengthFt: distanceFt(nw, ridgeStart) });
+      hips.push({ id: 'hip_2', start: se, end: ridgeEnd, lengthFt: distanceFt(se, ridgeEnd) });
+      hips.push({ id: 'hip_3', start: ne, end: ridgeEnd, lengthFt: distanceFt(ne, ridgeEnd) });
+    } else {
+      // Vertical ridge: south corners → ridgeStart, north corners → ridgeEnd
+      hips.push({ id: 'hip_0', start: sw, end: ridgeStart, lengthFt: distanceFt(sw, ridgeStart) });
+      hips.push({ id: 'hip_1', start: se, end: ridgeStart, lengthFt: distanceFt(se, ridgeStart) });
+      hips.push({ id: 'hip_2', start: nw, end: ridgeEnd, lengthFt: distanceFt(nw, ridgeEnd) });
+      hips.push({ id: 'hip_3', start: ne, end: ridgeEnd, lengthFt: distanceFt(ne, ridgeEnd) });
+    }
   }
   
   return { ridges, hips, valleys };

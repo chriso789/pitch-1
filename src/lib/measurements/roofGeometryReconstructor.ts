@@ -105,6 +105,14 @@ function createEmptyResult(warnings: string[]): ReconstructedRoof {
 
 /**
  * Reconstruct a rectangular (hip) roof
+ * 
+ * Proper geometry: perimeter first, then ridge as spine, hips connect corners to ridge endpoints.
+ * For a horizontal ridge (wider building):
+ *   - Ridge runs E-W through center
+ *   - SW & NW corners connect to ridgeStart (west endpoint)
+ *   - SE & NE corners connect to ridgeEnd (east endpoint)
+ *   - West & East facets are triangular gables
+ *   - North & South facets are trapezoidal slopes
  */
 function reconstructRectangularRoof(vertices: GPSCoord[], pitch: string): ReconstructedRoof {
   const bounds = getBounds(vertices);
@@ -112,22 +120,28 @@ function reconstructRectangularRoof(vertices: GPSCoord[], pitch: string): Recons
   const height = bounds.maxLat - bounds.minLat;
   const isWider = width >= height;
   
-  // Sort to find corners
-  const corners = [...vertices].sort((a, b) => {
-    const latDiff = a.lat - b.lat;
-    return latDiff !== 0 ? latDiff : a.lng - b.lng;
-  });
+  // Identify corners by their actual position (SW, SE, NE, NW)
+  const sw = vertices.reduce((best, v) => 
+    (v.lat + v.lng < best.lat + best.lng) ? v : best, vertices[0]);
+  const ne = vertices.reduce((best, v) => 
+    (v.lat + v.lng > best.lat + best.lng) ? v : best, vertices[0]);
+  const se = vertices.reduce((best, v) => 
+    (v.lng - v.lat > best.lng - best.lat) ? v : best, vertices[0]);
+  const nw = vertices.reduce((best, v) => 
+    (v.lat - v.lng > best.lat - best.lng) ? v : best, vertices[0]);
   
-  // Calculate ridge endpoints (inset from edges)
+  // Calculate ridge endpoints (inset from short sides)
   const inset = (isWider ? height : width) * 0.4;
   const centerLat = (bounds.minLat + bounds.maxLat) / 2;
   const centerLng = (bounds.minLng + bounds.maxLng) / 2;
   
   let ridgeStart: GPSCoord, ridgeEnd: GPSCoord;
   if (isWider) {
+    // Horizontal ridge (E-W): ridgeStart is west, ridgeEnd is east
     ridgeStart = { lat: centerLat, lng: bounds.minLng + inset };
     ridgeEnd = { lat: centerLat, lng: bounds.maxLng - inset };
   } else {
+    // Vertical ridge (N-S): ridgeStart is south, ridgeEnd is north
     ridgeStart = { lat: bounds.minLat + inset, lng: centerLng };
     ridgeEnd = { lat: bounds.maxLat - inset, lng: centerLng };
   }
@@ -141,31 +155,81 @@ function reconstructRectangularRoof(vertices: GPSCoord[], pitch: string): Recons
     connectedTo: ['hip_0', 'hip_1', 'hip_2', 'hip_3']
   };
   
-  // Create 4 hips from corners to ridge endpoints
+  // Create 4 hips: connect corners to CORRECT ridge endpoints based on orientation
   const hips: RoofLine[] = [];
   
-  // SW, SE, NE, NW corners
-  const orderedCorners = [
-    corners[0], // SW
-    corners[1], // SE (or second lowest)
-    corners[3], // NE (highest)
-    corners[2], // NW
-  ];
-  
-  orderedCorners.forEach((corner, i) => {
-    // First two corners connect to ridge start, last two to ridge end
-    const targetEndpoint = i < 2 ? ridgeStart : ridgeEnd;
+  if (isWider) {
+    // Horizontal ridge: west corners → ridgeStart, east corners → ridgeEnd
+    // Hip 0: SW → ridgeStart (west)
     hips.push({
-      id: `hip_${i}`,
-      start: corner,
-      end: targetEndpoint,
-      lengthFt: distanceFt(corner, targetEndpoint),
+      id: 'hip_0',
+      start: sw,
+      end: ridgeStart,
+      lengthFt: distanceFt(sw, ridgeStart),
       connectedTo: ['ridge_0']
     });
-  });
+    // Hip 1: NW → ridgeStart (west)
+    hips.push({
+      id: 'hip_1',
+      start: nw,
+      end: ridgeStart,
+      lengthFt: distanceFt(nw, ridgeStart),
+      connectedTo: ['ridge_0']
+    });
+    // Hip 2: SE → ridgeEnd (east)
+    hips.push({
+      id: 'hip_2',
+      start: se,
+      end: ridgeEnd,
+      lengthFt: distanceFt(se, ridgeEnd),
+      connectedTo: ['ridge_0']
+    });
+    // Hip 3: NE → ridgeEnd (east)
+    hips.push({
+      id: 'hip_3',
+      start: ne,
+      end: ridgeEnd,
+      lengthFt: distanceFt(ne, ridgeEnd),
+      connectedTo: ['ridge_0']
+    });
+  } else {
+    // Vertical ridge: south corners → ridgeStart, north corners → ridgeEnd
+    // Hip 0: SW → ridgeStart (south)
+    hips.push({
+      id: 'hip_0',
+      start: sw,
+      end: ridgeStart,
+      lengthFt: distanceFt(sw, ridgeStart),
+      connectedTo: ['ridge_0']
+    });
+    // Hip 1: SE → ridgeStart (south)
+    hips.push({
+      id: 'hip_1',
+      start: se,
+      end: ridgeStart,
+      lengthFt: distanceFt(se, ridgeStart),
+      connectedTo: ['ridge_0']
+    });
+    // Hip 2: NW → ridgeEnd (north)
+    hips.push({
+      id: 'hip_2',
+      start: nw,
+      end: ridgeEnd,
+      lengthFt: distanceFt(nw, ridgeEnd),
+      connectedTo: ['ridge_0']
+    });
+    // Hip 3: NE → ridgeEnd (north)
+    hips.push({
+      id: 'hip_3',
+      start: ne,
+      end: ridgeEnd,
+      lengthFt: distanceFt(ne, ridgeEnd),
+      connectedTo: ['ridge_0']
+    });
+  }
   
-  // Create 4 facets
-  const facets = createRectangularFacets(orderedCorners, ridgeStart, ridgeEnd, pitch);
+  // Create 4 facets with proper polygon shapes
+  const facets = createRectangularFacets(sw, se, ne, nw, ridgeStart, ridgeEnd, pitch, isWider);
   
   return {
     ridges: [ridge],
@@ -537,20 +601,37 @@ function detectWings(vertices: GPSCoord[], reflexIndices: Set<number>): GPSCoord
   return wings;
 }
 
+/**
+ * Create 4 facets for a rectangular hip roof:
+ * - 2 triangular gable-end facets (on the short sides)
+ * - 2 trapezoidal slope facets (on the long sides)
+ * 
+ * For horizontal ridge (isWider=true):
+ *   - West facet (triangle): SW → NW → ridgeStart
+ *   - East facet (triangle): SE → ridgeEnd → NE
+ *   - South facet (trapezoid): SW → ridgeStart → ridgeEnd → SE
+ *   - North facet (trapezoid): NW → NE → ridgeEnd → ridgeStart
+ */
 function createRectangularFacets(
-  corners: GPSCoord[],
+  sw: GPSCoord,
+  se: GPSCoord,
+  ne: GPSCoord,
+  nw: GPSCoord,
   ridgeStart: GPSCoord,
   ridgeEnd: GPSCoord,
-  pitch: string
+  pitch: string,
+  isWider: boolean
 ): ReconstructedFacet[] {
   const facets: ReconstructedFacet[] = [];
   
-  if (corners.length >= 4) {
-    // Facet 0: Front
+  if (isWider) {
+    // Horizontal ridge (E-W)
+    
+    // West gable (triangle): SW → NW → ridgeStart → SW
     facets.push({
       id: 'facet_0',
       index: 0,
-      polygon: [corners[0], corners[3], ridgeStart, corners[0]],
+      polygon: [sw, nw, ridgeStart, sw],
       areaSqft: 0,
       pitch,
       azimuthDegrees: 270,
@@ -558,11 +639,11 @@ function createRectangularFacets(
       color: FACET_COLORS[0]
     });
     
-    // Facet 1: Back
+    // East gable (triangle): SE → ridgeEnd → NE → SE
     facets.push({
       id: 'facet_1',
       index: 1,
-      polygon: [corners[1], ridgeEnd, corners[2], corners[1]],
+      polygon: [se, ridgeEnd, ne, se],
       areaSqft: 0,
       pitch,
       azimuthDegrees: 90,
@@ -570,11 +651,11 @@ function createRectangularFacets(
       color: FACET_COLORS[1]
     });
     
-    // Facet 2: South
+    // South slope (trapezoid): SW → ridgeStart → ridgeEnd → SE → SW
     facets.push({
       id: 'facet_2',
       index: 2,
-      polygon: [corners[0], ridgeStart, ridgeEnd, corners[1], corners[0]],
+      polygon: [sw, ridgeStart, ridgeEnd, se, sw],
       areaSqft: 0,
       pitch,
       azimuthDegrees: 180,
@@ -582,15 +663,65 @@ function createRectangularFacets(
       color: FACET_COLORS[2]
     });
     
-    // Facet 3: North
+    // North slope (trapezoid): NW → NE → ridgeEnd → ridgeStart → NW
     facets.push({
       id: 'facet_3',
       index: 3,
-      polygon: [corners[3], corners[2], ridgeEnd, ridgeStart, corners[3]],
+      polygon: [nw, ne, ridgeEnd, ridgeStart, nw],
       areaSqft: 0,
       pitch,
       azimuthDegrees: 0,
       direction: 'N',
+      color: FACET_COLORS[3]
+    });
+  } else {
+    // Vertical ridge (N-S)
+    
+    // South gable (triangle): SW → SE → ridgeStart → SW
+    facets.push({
+      id: 'facet_0',
+      index: 0,
+      polygon: [sw, se, ridgeStart, sw],
+      areaSqft: 0,
+      pitch,
+      azimuthDegrees: 180,
+      direction: 'S',
+      color: FACET_COLORS[0]
+    });
+    
+    // North gable (triangle): NW → ridgeEnd → NE → NW
+    facets.push({
+      id: 'facet_1',
+      index: 1,
+      polygon: [nw, ridgeEnd, ne, nw],
+      areaSqft: 0,
+      pitch,
+      azimuthDegrees: 0,
+      direction: 'N',
+      color: FACET_COLORS[1]
+    });
+    
+    // West slope (trapezoid): SW → ridgeStart → ridgeEnd → NW → SW
+    facets.push({
+      id: 'facet_2',
+      index: 2,
+      polygon: [sw, ridgeStart, ridgeEnd, nw, sw],
+      areaSqft: 0,
+      pitch,
+      azimuthDegrees: 270,
+      direction: 'W',
+      color: FACET_COLORS[2]
+    });
+    
+    // East slope (trapezoid): SE → NE → ridgeEnd → ridgeStart → SE
+    facets.push({
+      id: 'facet_3',
+      index: 3,
+      polygon: [se, ne, ridgeEnd, ridgeStart, se],
+      areaSqft: 0,
+      pitch,
+      azimuthDegrees: 90,
+      direction: 'E',
       color: FACET_COLORS[3]
     });
   }
