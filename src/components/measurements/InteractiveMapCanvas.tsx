@@ -19,7 +19,9 @@ import {
   X,
   Mountain,
   Triangle,
-  ArrowDownUp
+  ArrowDownUp,
+  Square,
+  RefreshCw
 } from 'lucide-react';
 import { useMeasurementDrawing } from '@/hooks/useMeasurementDrawing';
 import { calculatePolygonArea, calculatePolygonPerimeter } from '@/utils/measurementGeometry';
@@ -42,6 +44,9 @@ interface TracedLine {
   points: { x: number; y: number }[];
   lengthFt: number;
 }
+
+// Workflow steps: footprint first, then linear features
+type WorkflowStep = 'footprint' | 'linear_features';
 
 interface InteractiveMapCanvasProps {
   mapboxToken: string;
@@ -66,13 +71,20 @@ export function InteractiveMapCanvas({
   const fabricCanvasRef = useRef<FabricCanvas | null>(null);
   
   const [isMapLoaded, setIsMapLoaded] = useState(false);
-  const [mode, setMode] = useState<'select' | 'draw' | 'ridge' | 'hip' | 'valley'>('draw');
+  const [mode, setMode] = useState<'select' | 'draw' | 'footprint' | 'ridge' | 'hip' | 'valley'>('footprint');
   const [mapStyle, setMapStyle] = useState<'satellite' | 'satellite-streets'>('satellite-streets');
   const [currentZoom, setCurrentZoom] = useState(initialZoom);
   const [pixelsPerFoot, setPixelsPerFoot] = useState(1);
   const [lockedPixelsPerFoot, setLockedPixelsPerFoot] = useState<number | null>(null);
   const [canvasSize, setCanvasSize] = useState({ width: 800, height: 600 });
   const [showZoomWarning, setShowZoomWarning] = useState(false);
+  
+  // Workflow step state
+  const [workflowStep, setWorkflowStep] = useState<WorkflowStep>('footprint');
+  
+  // Building footprint state (drawn perimeter)
+  const [footprintPoints, setFootprintPoints] = useState<{ x: number; y: number }[]>([]);
+  const [isFootprintComplete, setIsFootprintComplete] = useState(false);
   
   // Linear features state
   const [tracedLines, setTracedLines] = useState<TracedLine[]>([]);
@@ -200,16 +212,96 @@ export function InteractiveMapCanvas({
     };
   }, [isMapLoaded, canvasSize.width, canvasSize.height]);
 
-  // Click handler useEffect moved below function definitions
-
-  // Render polygons and lines on canvas
+  // Render polygons, footprint and lines on canvas
   useEffect(() => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
 
     canvas.getObjects().forEach(obj => canvas.remove(obj));
 
-    // Render completed polygons
+    // Render building footprint (if complete or in progress)
+    if (footprintPoints.length > 0) {
+      const footprintColor = '#f97316'; // Orange for footprint
+      
+      // Draw completed footprint polygon
+      if (isFootprintComplete && footprintPoints.length >= 3) {
+        const fabricPolygon = new FabricPolygon(footprintPoints, {
+          fill: `${footprintColor}20`,
+          stroke: footprintColor,
+          strokeWidth: 4,
+          selectable: false,
+          evented: false,
+        });
+        canvas.add(fabricPolygon);
+      }
+      
+      // Draw footprint edges (including in-progress)
+      for (let i = 0; i < footprintPoints.length - 1; i++) {
+        const line = new Line([
+          footprintPoints[i].x, footprintPoints[i].y,
+          footprintPoints[i + 1].x, footprintPoints[i + 1].y,
+        ], {
+          stroke: footprintColor,
+          strokeWidth: isFootprintComplete ? 4 : 3,
+          selectable: false,
+          evented: false,
+        });
+        canvas.add(line);
+      }
+      
+      // Close the polygon if complete
+      if (isFootprintComplete && footprintPoints.length >= 3) {
+        const line = new Line([
+          footprintPoints[footprintPoints.length - 1].x, footprintPoints[footprintPoints.length - 1].y,
+          footprintPoints[0].x, footprintPoints[0].y,
+        ], {
+          stroke: footprintColor,
+          strokeWidth: 4,
+          selectable: false,
+          evented: false,
+        });
+        canvas.add(line);
+      }
+      
+      // Draw footprint vertices
+      footprintPoints.forEach((point, i) => {
+        const circle = new Circle({
+          left: point.x,
+          top: point.y,
+          radius: i === 0 ? 10 : 7,
+          fill: i === 0 ? '#22c55e' : footprintColor,
+          stroke: '#ffffff',
+          strokeWidth: 3,
+          originX: 'center',
+          originY: 'center',
+          selectable: false,
+          evented: false,
+        });
+        canvas.add(circle);
+      });
+      
+      // Add vertex count label
+      if (footprintPoints.length >= 3) {
+        const centerX = footprintPoints.reduce((sum, p) => sum + p.x, 0) / footprintPoints.length;
+        const centerY = footprintPoints.reduce((sum, p) => sum + p.y, 0) / footprintPoints.length;
+        
+        const label = new Text(`Building Footprint\n${footprintPoints.length} vertices`, {
+          left: centerX,
+          top: centerY,
+          fontSize: 14,
+          fill: '#ffffff',
+          backgroundColor: `${footprintColor}dd`,
+          padding: 8,
+          originX: 'center',
+          originY: 'center',
+          selectable: false,
+          evented: false,
+        });
+        canvas.add(label);
+      }
+    }
+
+    // Render completed facet polygons
     polygons.forEach((polygon, index) => {
       const fabricPolygon = new FabricPolygon(polygon.points, {
         fill: `${polygon.color}40`,
@@ -312,7 +404,7 @@ export function InteractiveMapCanvas({
       }
     });
 
-    // Render current polygon drawing
+    // Render current polygon drawing (for facets)
     if (currentPoints.length > 0) {
       for (let i = 0; i < currentPoints.length - 1; i++) {
         const line = new Line([
@@ -365,7 +457,7 @@ export function InteractiveMapCanvas({
       }
     }
 
-    // Render current line drawing
+    // Render current line drawing (for ridges, hips, valleys)
     if (currentLinePoints.length > 0 && (mode === 'ridge' || mode === 'hip' || mode === 'valley')) {
       const lineColor = LINE_COLORS[mode as 'ridge' | 'hip' | 'valley'];
       
@@ -401,7 +493,7 @@ export function InteractiveMapCanvas({
     }
 
     canvas.renderAll();
-  }, [polygons, currentPoints, pixelsPerFoot, getCurrentArea, tracedLines, currentLinePoints, mode]);
+  }, [polygons, currentPoints, pixelsPerFoot, getCurrentArea, tracedLines, currentLinePoints, mode, footprintPoints, isFootprintComplete]);
 
   // Calculate line length in feet
   const calculateLineLengthFt = useCallback((points: { x: number; y: number }[]) => {
@@ -467,6 +559,12 @@ export function InteractiveMapCanvas({
       ? `https://api.mapbox.com/styles/v1/mapbox/satellite-v9/static/${center.lng},${center.lat},${zoom},0/${canvasSize.width}x${canvasSize.height}@2x?access_token=${mapboxToken}`
       : '';
 
+    // Generate footprint perimeter WKT if complete
+    const perimeterWkt = isFootprintComplete && footprintPoints.length >= 3 
+      ? generatePolygonWKT(footprintPoints)
+      : '';
+    const perimeterVertexCount = isFootprintComplete ? footprintPoints.length : 0;
+
     // Convert polygons to faces with WKT
     const faces = polygons.map((p, index) => ({
       id: p.id,
@@ -500,6 +598,9 @@ export function InteractiveMapCanvas({
 
     onMeasurementsChange?.({
       faces,
+      // NEW: Include footprint perimeter data
+      perimeter_wkt: perimeterWkt,
+      perimeter_vertex_count: perimeterVertexCount,
       summary: {
         total_area_sqft: getTotalArea(),
         total_squares: getTotalArea() / 100,
@@ -523,7 +624,7 @@ export function InteractiveMapCanvas({
       analysis_zoom: zoom,
       analysis_image_size: { width: canvasSize.width, height: canvasSize.height },
     });
-  }, [polygons, tracedLines, pixelsPerFoot, getTotalArea, canvasSize, onMeasurementsChange, mapboxToken, centerLat, centerLng, initialZoom, generatePolygonWKT, generateLineWKT]);
+  }, [polygons, tracedLines, pixelsPerFoot, getTotalArea, canvasSize, onMeasurementsChange, mapboxToken, centerLat, centerLng, initialZoom, generatePolygonWKT, generateLineWKT, footprintPoints, isFootprintComplete]);
 
   // Handle canvas clicks for drawing (placed after function definitions)
   useEffect(() => {
@@ -534,7 +635,13 @@ export function InteractiveMapCanvas({
       const pointer = canvas.getPointer(e.e);
       const point = { x: pointer.x, y: pointer.y };
       
-      if (mode === 'draw') {
+      if (mode === 'footprint' && !isFootprintComplete) {
+        // Add point to footprint
+        setFootprintPoints(prev => [...prev, point]);
+        if (mapRef.current) {
+          mapRef.current.dragPan.disable();
+        }
+      } else if (mode === 'draw') {
         addPoint(point);
       } else if (mode === 'ridge' || mode === 'hip' || mode === 'valley') {
         // Add point to current line
@@ -547,7 +654,18 @@ export function InteractiveMapCanvas({
     };
 
     const handleDoubleClick = () => {
-      if (mode === 'draw' && isDrawing && currentPoints.length >= 3) {
+      if (mode === 'footprint' && footprintPoints.length >= 3) {
+        // Complete the footprint
+        setIsFootprintComplete(true);
+        setMode('select');
+        if (mapRef.current) {
+          mapRef.current.dragPan.enable();
+        }
+        toast.success(`Building footprint complete: ${footprintPoints.length} vertices`);
+        setWorkflowStep('linear_features');
+        // Trigger update after a short delay
+        setTimeout(() => updateMeasurements(), 100);
+      } else if (mode === 'draw' && isDrawing && currentPoints.length >= 3) {
         completePolygon();
       } else if ((mode === 'ridge' || mode === 'hip' || mode === 'valley') && currentLinePoints.length >= 2) {
         // Complete the line
@@ -576,7 +694,30 @@ export function InteractiveMapCanvas({
       canvas.off('mouse:down', handleCanvasClick);
       canvas.off('mouse:dblclick', handleDoubleClick);
     };
-  }, [mode, isDrawing, currentPoints, addPoint, completePolygon, currentLinePoints, isDrawingLine, pixelsPerFoot, calculateLineLengthFt, updateMeasurements]);
+  }, [mode, isDrawing, currentPoints, addPoint, completePolygon, currentLinePoints, isDrawingLine, pixelsPerFoot, calculateLineLengthFt, updateMeasurements, footprintPoints, isFootprintComplete]);
+
+  // Start footprint drawing mode
+  const handleStartFootprint = () => {
+    setMode('footprint');
+    setFootprintPoints([]);
+    setIsFootprintComplete(false);
+    if (mapRef.current) {
+      mapRef.current.dragPan.disable();
+    }
+    toast.info('Click to trace building footprint corners. Double-click to complete.');
+  };
+
+  // Clear and redraw footprint
+  const handleRedrawFootprint = () => {
+    setFootprintPoints([]);
+    setIsFootprintComplete(false);
+    setWorkflowStep('footprint');
+    setMode('footprint');
+    if (mapRef.current) {
+      mapRef.current.dragPan.disable();
+    }
+    toast.info('Redrawing footprint. Click corners of the building.');
+  };
 
   const handleStartDrawing = () => {
     // Lock pixelsPerFoot at drawing start to prevent mid-draw scale changes
@@ -697,8 +838,35 @@ export function InteractiveMapCanvas({
 
       {/* Unified Toolbar */}
       <div className="absolute top-4 left-4 z-20 bg-background/95 backdrop-blur rounded-lg shadow-lg border overflow-hidden">
-        {/* Mode Selection */}
+      {/* Workflow Step Indicator */}
+        <div className="p-2 border-b">
+          <div className="text-xs font-medium px-2 py-1 rounded bg-muted mb-2">
+            Step {workflowStep === 'footprint' ? '1' : '2'}: {workflowStep === 'footprint' ? 'Draw Footprint' : 'Draw Lines'}
+          </div>
+          
+          {/* Footprint Tool - FIRST */}
+          <Button
+            variant={mode === 'footprint' ? 'default' : isFootprintComplete ? 'outline' : 'secondary'}
+            size="sm"
+            onClick={isFootprintComplete ? handleRedrawFootprint : handleStartFootprint}
+            className="justify-start w-full mb-1"
+            style={{ color: mode === 'footprint' ? undefined : '#f97316' }}
+          >
+            {isFootprintComplete ? <RefreshCw className="h-4 w-4 mr-2" /> : <Square className="h-4 w-4 mr-2" />}
+            {isFootprintComplete ? `Redraw (${footprintPoints.length} pts)` : 'Draw Footprint'}
+          </Button>
+          
+          {isFootprintComplete && (
+            <Badge variant="outline" className="text-green-600 border-green-300 w-full justify-center mb-1">
+              <CheckCircle2 className="h-3 w-3 mr-1" />
+              Footprint: {footprintPoints.length} vertices
+            </Badge>
+          )}
+        </div>
+        
+        {/* Mode Selection - Facets (optional) */}
         <div className="p-2 border-b flex flex-col gap-1">
+          <div className="text-xs text-muted-foreground px-2 py-1">Facets (optional)</div>
           <Button
             variant={mode === 'select' ? 'default' : 'ghost'}
             size="sm"
@@ -715,13 +883,13 @@ export function InteractiveMapCanvas({
             className="justify-start"
           >
             <Pencil className="h-4 w-4 mr-2" />
-            Facet
+            Draw Facet
           </Button>
         </div>
         
         {/* Linear Feature Tools */}
         <div className="p-2 border-b flex flex-col gap-1">
-          <div className="text-xs text-muted-foreground px-2 py-1">Lines</div>
+          <div className="text-xs text-muted-foreground px-2 py-1">Linear Features</div>
           <Button
             variant={mode === 'ridge' ? 'default' : 'ghost'}
             size="sm"
