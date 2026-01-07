@@ -500,10 +500,11 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       const selected = metadata?.selected_template_ids?.[0] || metadata?.selected_template_id || '';
       setSelectedTemplateId(selected);
       
-      // Check if there's an existing estimate linked via metadata
-      if (metadata?.enhanced_estimate_id) {
-        setExistingEstimateId(metadata?.enhanced_estimate_id);
-      }
+      // NOTE: We intentionally do NOT auto-enable editing mode here.
+      // Editing mode should ONLY be activated by:
+      // 1. URL param ?editEstimate=... (from clicking Edit on a saved estimate)
+      // 2. User explicitly clicking an "Edit" button
+      // The linked estimate ID is stored in metadata but doesn't trigger edit mode.
     } catch (error) {
       console.error('Error loading selected template:', error);
     }
