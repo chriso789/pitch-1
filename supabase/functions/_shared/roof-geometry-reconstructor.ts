@@ -112,14 +112,176 @@ export function reconstructRoofGeometry(
 }
 
 /**
+ * Check if Solar segments indicate a cross-hip roof (4 cardinal directions)
+ */
+function detectCrossHipFromSegments(solarSegments: SolarSegmentInfo[]): boolean {
+  if (!solarSegments || solarSegments.length < 4) return false;
+  
+  // Group segments by cardinal direction
+  const cardinalCounts = { N: 0, S: 0, E: 0, W: 0 };
+  
+  solarSegments.forEach(seg => {
+    const azimuth = seg.azimuthDegrees ?? 0;
+    const normalized = ((azimuth % 360) + 360) % 360;
+    
+    if (normalized >= 315 || normalized < 45) cardinalCounts.N++;
+    else if (normalized >= 45 && normalized < 135) cardinalCounts.E++;
+    else if (normalized >= 135 && normalized < 225) cardinalCounts.S++;
+    else cardinalCounts.W++;
+  });
+  
+  // Cross-hip = at least one segment facing each cardinal direction
+  const hasFourDirections = cardinalCounts.N > 0 && cardinalCounts.S > 0 && 
+                            cardinalCounts.E > 0 && cardinalCounts.W > 0;
+  
+  console.log(`🔍 Cross-hip detection: N=${cardinalCounts.N} S=${cardinalCounts.S} E=${cardinalCounts.E} W=${cardinalCounts.W} → ${hasFourDirections ? 'CROSS-HIP' : 'standard'}`);
+  
+  return hasFourDirections;
+}
+
+/**
+ * Reconstruct a cross-hip roof (TWO perpendicular ridges meeting at center)
+ * Creates: 2 ridges (E-W and N-S), 4 hips from corners to center junction, 4 triangular facets
+ */
+function reconstructCrossHipRoof(
+  vertices: XY[],
+  solarSegments: SolarSegmentInfo[],
+  pitch: string
+): ReconstructedRoof {
+  const bounds = getBounds(vertices);
+  const width = bounds.maxX - bounds.minX;
+  const height = bounds.maxY - bounds.minY;
+  const centerX = (bounds.minX + bounds.maxX) / 2;
+  const centerY = (bounds.minY + bounds.maxY) / 2;
+  const center: XY = [centerX, centerY];
+  
+  // Calculate ridge insets (40% of respective dimension)
+  const insetX = width * 0.4;
+  const insetY = height * 0.4;
+  
+  // E-W ridge (horizontal)
+  const ridgeEW_start: XY = [bounds.minX + insetX, centerY];
+  const ridgeEW_end: XY = [bounds.maxX - insetX, centerY];
+  
+  // N-S ridge (vertical)
+  const ridgeNS_start: XY = [centerX, bounds.minY + insetY];
+  const ridgeNS_end: XY = [centerX, bounds.maxY - insetY];
+  
+  console.log(`🏠 Cross-hip roof: center junction at [${centerX.toFixed(6)}, ${centerY.toFixed(6)}]`);
+  
+  // Create two ridges
+  const ridges: RoofLine[] = [
+    {
+      id: 'ridge_ew',
+      start: ridgeEW_start,
+      end: ridgeEW_end,
+      lengthFt: distanceFt(ridgeEW_start, ridgeEW_end),
+      connectedTo: ['ridge_ns', 'hip_0', 'hip_1', 'hip_2', 'hip_3']
+    },
+    {
+      id: 'ridge_ns',
+      start: ridgeNS_start,
+      end: ridgeNS_end,
+      lengthFt: distanceFt(ridgeNS_start, ridgeNS_end),
+      connectedTo: ['ridge_ew', 'hip_0', 'hip_1', 'hip_2', 'hip_3']
+    }
+  ];
+  
+  // Find corner vertices (SW, SE, NE, NW)
+  const corners = identifyCorners(vertices);
+  const sw = corners.reduce((best, v) => (v[1] + v[0] < best[1] + best[0]) ? v : best, corners[0]);
+  const ne = corners.reduce((best, v) => (v[1] + v[0] > best[1] + best[0]) ? v : best, corners[0]);
+  const se = corners.reduce((best, v) => (v[0] - v[1] > best[0] - best[1]) ? v : best, corners[0]);
+  const nw = corners.reduce((best, v) => (v[1] - v[0] > best[1] - best[0]) ? v : best, corners[0]);
+  
+  // Create 4 hips from corners to CENTER (where ridges intersect)
+  const hips: RoofLine[] = [
+    { id: 'hip_sw', start: sw, end: center, lengthFt: distanceFt(sw, center), connectedTo: ['ridge_ew', 'ridge_ns'] },
+    { id: 'hip_se', start: se, end: center, lengthFt: distanceFt(se, center), connectedTo: ['ridge_ew', 'ridge_ns'] },
+    { id: 'hip_ne', start: ne, end: center, lengthFt: distanceFt(ne, center), connectedTo: ['ridge_ew', 'ridge_ns'] },
+    { id: 'hip_nw', start: nw, end: center, lengthFt: distanceFt(nw, center), connectedTo: ['ridge_ew', 'ridge_ns'] }
+  ];
+  
+  // Create 4 triangular facets (one per cardinal direction)
+  const facets: ReconstructedFacet[] = [
+    {
+      id: 'facet_south',
+      index: 0,
+      polygon: [sw, se, center, sw],
+      areaSqft: calculateTriangleArea(sw, se, center),
+      pitch,
+      azimuthDegrees: 180,
+      direction: 'S',
+      color: FACET_COLORS[0]
+    },
+    {
+      id: 'facet_east',
+      index: 1,
+      polygon: [se, ne, center, se],
+      areaSqft: calculateTriangleArea(se, ne, center),
+      pitch,
+      azimuthDegrees: 90,
+      direction: 'E',
+      color: FACET_COLORS[1]
+    },
+    {
+      id: 'facet_north',
+      index: 2,
+      polygon: [ne, nw, center, ne],
+      areaSqft: calculateTriangleArea(ne, nw, center),
+      pitch,
+      azimuthDegrees: 0,
+      direction: 'N',
+      color: FACET_COLORS[2]
+    },
+    {
+      id: 'facet_west',
+      index: 3,
+      polygon: [nw, sw, center, nw],
+      areaSqft: calculateTriangleArea(nw, sw, center),
+      pitch,
+      azimuthDegrees: 270,
+      direction: 'W',
+      color: FACET_COLORS[3]
+    }
+  ];
+  
+  return {
+    ridges,
+    hips,
+    valleys: [],
+    facets,
+    diagramQuality: 'excellent',
+    warnings: []
+  };
+}
+
+// Helper to calculate triangle area
+function calculateTriangleArea(a: XY, b: XY, c: XY): number {
+  const dx1 = b[0] - a[0], dy1 = b[1] - a[1];
+  const dx2 = c[0] - a[0], dy2 = c[1] - a[1];
+  const crossProduct = Math.abs(dx1 * dy2 - dx2 * dy1) / 2;
+  // Rough conversion: 1 degree ≈ 364,000 ft at equator, adjust for latitude
+  const ftPerDeg = 364000;
+  return crossProduct * ftPerDeg * ftPerDeg;
+}
+
+/**
  * Reconstruct a simple rectangular roof (hip roof)
  * Creates: 1 ridge, 4 hips, 4 facets
+ * 
+ * NOW: Detects cross-hip roofs (4 cardinal-facing segments) and generates two perpendicular ridges
  */
 function reconstructRectangularRoof(
   vertices: XY[],
   solarSegments: SolarSegmentInfo[],
   pitch: string
 ): ReconstructedRoof {
+  // Check for cross-hip roof (two perpendicular ridges meeting at center)
+  if (detectCrossHipFromSegments(solarSegments)) {
+    return reconstructCrossHipRoof(vertices, solarSegments, pitch);
+  }
+  
   const bounds = getBounds(vertices);
   const width = bounds.maxX - bounds.minX;
   const height = bounds.maxY - bounds.minY;
