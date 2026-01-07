@@ -1,7 +1,7 @@
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
-import puppeteer from "https://deno.land/x/puppeteer@16.2.0/mod.ts";
-import chromium from "https://esm.sh/@sparticuz/chromium@123.0.1";
+// NOTE: Prefer npm: specifiers + Deno.serve to keep Supabase bundle generation fast.
+import { createClient } from "npm:@supabase/supabase-js@2.57.4";
+import puppeteer from "npm:puppeteer-core@23.8.0";
+import chromium from "npm:@sparticuz/chromium@123.0.1";
 import { Resend } from "npm:resend@4.0.0";
 import { corsHeaders } from "../_shared/cors.ts";
 
@@ -257,4 +257,4 @@ const handler = async (req: Request): Promise<Response> => {
   }
 };
 
-serve(handler);
+Deno.serve(handler);
