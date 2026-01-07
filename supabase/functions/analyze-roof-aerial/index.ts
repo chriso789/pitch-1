@@ -68,6 +68,58 @@ const PLANIMETER_THRESHOLDS = {
   AREA_TOLERANCE: 0.05,       // Target 5% accuracy vs Planimeter
 }
 
+// Robust JSON parser that handles truncated/malformed AI responses
+function safeParseJSON<T>(content: string, defaultValue: T, context: string): T {
+  try {
+    // Clean markdown code blocks
+    let cleaned = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+    
+    // Try parsing as-is first
+    try {
+      return JSON.parse(cleaned) as T
+    } catch {
+      // Try to fix common issues
+    }
+    
+    // Fix unterminated strings by removing incomplete string literals
+    const unterminatedStringMatch = cleaned.match(/"[^"]*$/)
+    if (unterminatedStringMatch) {
+      cleaned = cleaned.slice(0, unterminatedStringMatch.index) + '""'
+    }
+    
+    // Fix unbalanced braces/brackets
+    const openBraces = (cleaned.match(/{/g) || []).length
+    const closeBraces = (cleaned.match(/}/g) || []).length
+    const openBrackets = (cleaned.match(/\[/g) || []).length
+    const closeBrackets = (cleaned.match(/]/g) || []).length
+    
+    // Add missing closing brackets first, then braces
+    for (let i = 0; i < openBrackets - closeBrackets; i++) cleaned += ']'
+    for (let i = 0; i < openBraces - closeBraces; i++) cleaned += '}'
+    
+    // Try parsing again after fixes
+    try {
+      return JSON.parse(cleaned) as T
+    } catch {
+      // Last resort: try to extract a valid JSON object
+      const jsonMatch = cleaned.match(/\{[\s\S]*\}/)
+      if (jsonMatch) {
+        try {
+          return JSON.parse(jsonMatch[0]) as T
+        } catch {
+          // Give up
+        }
+      }
+    }
+    
+    console.error(`⚠️ ${context}: Failed to parse JSON, using default`)
+    return defaultValue
+  } catch (e) {
+    console.error(`⚠️ ${context}: JSON parse error:`, e)
+    return defaultValue
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders })
@@ -1041,11 +1093,10 @@ SIZING RULES:
       return { bounds: { topLeftX: 30, topLeftY: 30, bottomRightX: 70, bottomRightY: 70 }, confidence: 'low' }
     }
     
-    let content = data.choices[0].message?.content || ''
-    content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-    
-    const result = JSON.parse(content)
-    let bounds = result.targetBuildingBounds || { topLeftX: 30, topLeftY: 30, bottomRightX: 70, bottomRightY: 70 }
+    const content = data.choices[0].message?.content || ''
+    const defaultBounds = { topLeftX: 30, topLeftY: 30, bottomRightX: 70, bottomRightY: 70 }
+    const result = safeParseJSON(content, { targetBuildingBounds: defaultBounds }, 'Building isolation')
+    let bounds = result.targetBuildingBounds || defaultBounds
     
     // VALIDATION: More permissive for larger roofs
     const width = bounds.bottomRightX - bounds.topLeftX
@@ -1354,17 +1405,8 @@ Return ONLY valid JSON, no explanation.`
       return { vertices: createFallbackPerimeter(bounds), roofType: 'unknown', complexity: 'moderate', vertexStats: {}, perimeterValidation: null }
     }
     
-    let content = data.choices[0].message?.content || ''
-    content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-    
-    // Fix truncated JSON
-    if (!content.endsWith('}')) {
-      const openBraces = (content.match(/{/g) || []).length
-      const closeBraces = (content.match(/}/g) || []).length
-      for (let i = 0; i < openBraces - closeBraces; i++) content += '}'
-    }
-    
-    const result = JSON.parse(content)
+    const content = data.choices[0].message?.content || ''
+    const result = safeParseJSON(content, { vertices: [] }, 'Perimeter detection')
     const vertices = result.vertices || []
     
     // Validate vertices are within reasonable bounds (expanded tolerance)
@@ -1533,16 +1575,8 @@ Return ONLY valid JSON.`
       return { vertices: previousVertices, roofType: 'unknown', complexity: 'moderate', vertexStats: {}, perimeterValidation: null }
     }
     
-    let content = data.choices[0].message?.content || ''
-    content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-    
-    if (!content.endsWith('}')) {
-      const openBraces = (content.match(/{/g) || []).length
-      const closeBraces = (content.match(/}/g) || []).length
-      for (let i = 0; i < openBraces - closeBraces; i++) content += '}'
-    }
-    
-    const result = JSON.parse(content)
+    const content = data.choices[0].message?.content || ''
+    const result = safeParseJSON(content, { vertices: previousVertices }, 'Corner completion')
     const vertices = result.vertices || []
     
     const validVertices = vertices.filter((v: any) => 
@@ -1643,16 +1677,8 @@ Return ONLY valid JSON.`
       return { junctions: [], ridgeEndpoints: [], valleyJunctions: [] }
     }
     
-    let content = data.choices[0].message?.content || ''
-    content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-    
-    if (!content.endsWith('}')) {
-      const openBraces = (content.match(/{/g) || []).length
-      const closeBraces = (content.match(/}/g) || []).length
-      for (let i = 0; i < openBraces - closeBraces; i++) content += '}'
-    }
-    
-    const result = JSON.parse(content)
+    const content = data.choices[0].message?.content || ''
+    const result = safeParseJSON(content, { junctions: [], ridgeEndpoints: [], valleyJunctions: [] }, 'Interior junctions')
     
     // Validate junctions are within bounds
     const validJunctions = (result.junctions || []).filter((j: any) =>
@@ -1777,17 +1803,8 @@ Return ONLY valid JSON.`;
       return fallbackResult;
     }
     
-    let content = data.choices[0].message?.content || '';
-    content = content.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim();
-    
-    // Fix incomplete JSON
-    if (!content.endsWith('}')) {
-      const openBraces = (content.match(/{/g) || []).length;
-      const closeBraces = (content.match(/}/g) || []).length;
-      for (let i = 0; i < openBraces - closeBraces; i++) content += '}';
-    }
-    
-    const result = JSON.parse(content);
+    const content = data.choices[0].message?.content || '';
+    const result = safeParseJSON(content, { ridgeLines: [] }, 'AI Ridge detection');
     const ridgeLines = (result.ridgeLines || []).filter((r: any) =>
       r.startX >= 5 && r.startX <= 95 && r.startY >= 5 && r.startY <= 95 &&
       r.endX >= 5 && r.endX <= 95 && r.endY >= 5 && r.endY <= 95 &&
