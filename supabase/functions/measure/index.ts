@@ -12,6 +12,7 @@ import { analyzeDSM, fetchDSMFromGoogleSolar } from "./dsm-analyzer.ts";
 import { splitFootprintIntoFacets } from "./facet-splitter.ts";
 import { validateMeasurements } from "./qa-validator.ts";
 import { transformToOutputSchema, type MeasurementOutputSchema } from "./output-schema.ts";
+import { analyzeSegmentTopology, topologyToLinearFeatures, topologyToTotals } from "./segment-topology-analyzer.ts";
 
 // Environment
 const GOOGLE_PLACES_API_KEY = Deno.env.get("GOOGLE_PLACES_API_KEY") || "";
@@ -896,12 +897,44 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
   const plan_sqft = polygonAreaSqftFromLngLat(coords);
   const midLat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
   
-  // Extract roof topology (ridge, hip, valley, eave, rake)
-  const topology = buildLinearFeaturesFromTopology(coords, midLat);
-  
-  // Process roof segments
-  const faces: RoofFace[] = [];
+  // Get roof segments from Google Solar
   const roofSegments = json.solarPotential?.roofSegmentStats || [];
+  
+  // NEW: Use segment topology analyzer for accurate ridge/hip/valley detection
+  // This extracts topology from actual segment azimuths instead of straight skeleton
+  let topologyFeatures: LinearFeature[] = [];
+  let topologyTotals: Record<string, number> = {};
+  let derivedFacetCount = roofSegments.length || 4;
+  let roofType = 'hip';
+  
+  if (roofSegments.length > 0) {
+    console.log(`🔍 Analyzing ${roofSegments.length} roof segments for topology`);
+    const segmentTopology = analyzeSegmentTopology(roofSegments, { lat, lng });
+    topologyFeatures = topologyToLinearFeatures(segmentTopology);
+    topologyTotals = topologyToTotals(segmentTopology);
+    derivedFacetCount = segmentTopology.facetCount;
+    roofType = segmentTopology.roofType;
+    console.log(`   → ${segmentTopology.ridges.length} ridges, ${segmentTopology.hips.length} hips, ${segmentTopology.valleys.length} valleys (${roofType})`);
+  }
+  
+  // ALSO run straight skeleton for eave/rake edges from the footprint
+  const skeletonTopology = buildLinearFeaturesFromTopology(coords, midLat);
+  
+  // Merge: use segment-derived ridges/hips/valleys + skeleton-derived eaves/rakes
+  const eaveRakeFeatures = skeletonTopology.features.filter(f => f.type === 'eave' || f.type === 'rake');
+  const mergedFeatures = [...topologyFeatures, ...eaveRakeFeatures];
+  
+  // Merge totals
+  const mergedTotals = {
+    ...skeletonTopology.totals,
+    ...topologyTotals,
+    eave_ft: skeletonTopology.totals.eave_ft,
+    rake_ft: skeletonTopology.totals.rake_ft,
+    perimeter_ft: skeletonTopology.totals.perimeter_ft,
+  };
+  
+  // Process roof segments into faces
+  const faces: RoofFace[] = [];
   
   if (roofSegments.length > 0) {
     roofSegments.forEach((segment: any, idx: number) => {
@@ -943,29 +976,33 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     transformConfig?: any;
     footprintSource?: string;
     footprintConfidence?: number;
+    roofType?: string;
+    derivedFacetCount?: number;
   } = {
     property_id: "",
     source: 'google_solar',
     faces,
-    linear_features: topology.features,
+    linear_features: mergedFeatures,
     summary: {
       total_area_sqft: totalArea,
       total_squares: totalArea / 100,
       waste_pct: wastePct,
       pitch_method: roofSegments.length > 0 ? 'vendor' : 'assumed',
-      ...topology.totals,
+      ...mergedTotals,
       roof_age_years: null,
       roof_age_source: 'unknown'
     },
     geom_wkt: unionFacesWKT(faces),
-    // NEW: Include actual footprint coordinates for frontend rendering
+    // Include actual footprint coordinates for frontend rendering
     buildingFootprint: {
       type: 'Polygon',
       coordinates: [coords.map(c => ({ lng: c[0], lat: c[1] }))],
     },
     footprintSource,
     footprintConfidence,
-    // NEW: Include transformation config for accurate geo-to-pixel conversion
+    roofType,
+    derivedFacetCount,
+    // Include transformation config for accurate geo-to-pixel conversion
     transformConfig: {
       centerLng: lng,
       centerLat: lat,
