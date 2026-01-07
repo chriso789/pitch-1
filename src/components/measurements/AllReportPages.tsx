@@ -154,7 +154,7 @@ export const AllReportPages = forwardRef<HTMLDivElement, AllReportPagesProps>(({
         </ReportPage>
       </div>
 
-      {/* Page 2: Diagram */}
+      {/* Page 2: Diagram with Satellite Overlay */}
       <div data-report-page="2">
         <ReportPage pageNumber={2} companyInfo={companyInfo} title="Roof Diagram">
           <div className="aspect-square bg-white rounded-lg border overflow-hidden">
@@ -169,6 +169,8 @@ export const AllReportPages = forwardRef<HTMLDivElement, AllReportPagesProps>(({
               showCompass={true}
               showTotals={true}
               satelliteImageUrl={satelliteImageUrl}
+              showSatelliteOverlay={true}
+              satelliteOpacity={0.55}
             />
           </div>
         </ReportPage>

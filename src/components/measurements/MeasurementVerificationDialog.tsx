@@ -1602,6 +1602,143 @@ export function MeasurementVerificationDialog({
                     </TooltipContent>
                   </Tooltip>
                   
+                  {/* AI Detect Roof from Photo Button */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs border-purple-300 text-purple-700 hover:bg-purple-50"
+                        onClick={async () => {
+                          if (!satelliteImageUrl && !cleanSatelliteImageUrl) {
+                            toast({ title: 'No satellite image available', variant: 'destructive' });
+                            return;
+                          }
+                          
+                          try {
+                            toast({ 
+                              title: 'AI Detecting Roof Structure...', 
+                              description: 'Analyzing satellite image with AI vision' 
+                            });
+                            
+                            // Fetch satellite image and convert to base64
+                            const imgUrl = cleanSatelliteImageUrl || satelliteImageUrl;
+                            const response = await fetch(imgUrl!);
+                            const blob = await response.blob();
+                            const base64 = await new Promise<string>((resolve) => {
+                              const reader = new FileReader();
+                              reader.onloadend = () => resolve(reader.result as string);
+                              reader.readAsDataURL(blob);
+                            });
+                            
+                            // Calculate image bounds for GPS conversion
+                            const zoom = satelliteZoom;
+                            const { width, height } = RESOLUTION_CONFIG[resolution];
+                            const lat = overlayCoordinates.lat || centerLat;
+                            const lng = overlayCoordinates.lng || centerLng;
+                            
+                            // Calculate meters per pixel at this zoom
+                            const metersPerPixel = (156543.03392 * Math.cos(lat * Math.PI / 180)) / Math.pow(2, zoom);
+                            const degreesPerPixelLat = metersPerPixel / 111111;
+                            const degreesPerPixelLng = metersPerPixel / (111111 * Math.cos(lat * Math.PI / 180));
+                            
+                            const halfWidth = (width / 2) * degreesPerPixelLng;
+                            const halfHeight = (height / 2) * degreesPerPixelLat;
+                            
+                            const imageBounds = {
+                              topLeft: { lat: lat + halfHeight, lng: lng - halfWidth },
+                              bottomRight: { lat: lat - halfHeight, lng: lng + halfWidth },
+                            };
+                            
+                            // Call AI detection edge function
+                            const { data: aiResult, error: aiError } = await supabase.functions.invoke('detect-building-structure', {
+                              body: {
+                                imageBase64: base64,
+                                imageBounds,
+                                dimensions: { width, height },
+                              },
+                            });
+                            
+                            if (aiError) throw aiError;
+                            if (!aiResult?.success) throw new Error(aiResult?.error || 'AI detection failed');
+                            
+                            console.log('🏠 AI Detection result:', aiResult);
+                            
+                            // Convert AI result to WKT format
+                            const { convertAIAnalysisToDBFormat, mergeAIGeometryWithMeasurement } = await import('@/utils/aiGeometryConverter');
+                            const gpsAnalysis = aiResult.gpsAnalysis || aiResult.aiAnalysis;
+                            const convertedData = convertAIAnalysisToDBFormat(gpsAnalysis);
+                            
+                            // Save to database
+                            if (pipelineEntryId) {
+                              // Cast to JSON-compatible format for Supabase
+                              const linearFeaturesJson = convertedData.linear_features_wkt as unknown as Record<string, any>[];
+                              
+                              const { error: updateError } = await supabase
+                                .from('roof_measurements')
+                                .update({
+                                  linear_features_wkt: linearFeaturesJson,
+                                  linear_features: linearFeaturesJson,
+                                  perimeter_wkt: convertedData.perimeter_wkt,
+                                  total_ridge_length: convertedData.summary.ridge_ft,
+                                  total_hip_length: convertedData.summary.hip_ft,
+                                  total_valley_length: convertedData.summary.valley_ft,
+                                  total_eave_length: convertedData.summary.eave_ft,
+                                  total_rake_length: convertedData.summary.rake_ft,
+                                  facet_count: convertedData.summary.facet_count,
+                                  predominant_pitch: convertedData.summary.predominant_pitch,
+                                  summary: {
+                                    ...measurement?.summary,
+                                    ...convertedData.summary,
+                                  },
+                                  updated_at: new Date().toISOString(),
+                                })
+                                .eq('customer_id', pipelineEntryId);
+                              
+                              if (updateError) throw updateError;
+                              
+                              // Reload from database
+                              const { data: freshDb } = await supabase
+                                .from('roof_measurements')
+                                .select('*')
+                                .eq('customer_id', pipelineEntryId)
+                                .order('created_at', { ascending: false })
+                                .limit(1)
+                                .single();
+                              
+                              if (freshDb) {
+                                setDbMeasurement(freshDb);
+                              }
+                            }
+                            
+                            toast({ 
+                              title: '✅ AI Detection Complete!', 
+                              description: `Detected ${convertedData.summary.facet_count} facets, ${gpsAnalysis.roofType || 'unknown'} roof type`,
+                            });
+                            
+                            // Switch to schematic view to see results
+                            setViewMode('schematic');
+                            
+                          } catch (err: any) {
+                            console.error('AI Detection failed:', err);
+                            toast({ 
+                              title: 'AI Detection Failed', 
+                              description: err.message, 
+                              variant: 'destructive' 
+                            });
+                          }
+                        }}
+                        disabled={isRepulling || (!satelliteImageUrl && !cleanSatelliteImageUrl)}
+                      >
+                        <Sparkles className="h-3.5 w-3.5 mr-1.5 text-purple-500" />
+                        AI Detect
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Use AI vision to detect roof ridges, hips, valleys from satellite photo</p>
+                    </TooltipContent>
+                  </Tooltip>
+                  
                   {/* Satellite-specific controls */}
                   {viewMode === 'satellite' && (
                     <>

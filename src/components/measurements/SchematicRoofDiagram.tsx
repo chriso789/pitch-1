@@ -284,6 +284,7 @@ export function SchematicRoofDiagram({
   
   // Parse and transform coordinates to SVG space
   // PRIORITY: Use Solar API segment bounding boxes if available for accurate geometry
+  // When satellite overlay is enabled, use image-based coordinate transformation
   const { 
     perimeterPath, 
     perimeterCoords,
@@ -297,7 +298,7 @@ export function SchematicRoofDiagram({
     debugInfo,
     solarSegmentPolygons
   } = useMemo(() => {
-    const padding = 60;
+    const padding = localShowOverlay ? 0 : 60; // No padding when using satellite overlay
     const segments: Array<{ type: string; points: { x: number; y: number }[]; length: number; color: string }> = [];
     let allLatLngs: { lat: number; lng: number }[] = [];
     
@@ -499,8 +500,16 @@ export function SchematicRoofDiagram({
     const boundsWidthMeters = (maxLng - minLng) * metersPerDegreeLng;
     const boundsHeightMeters = (maxLat - minLat) * metersPerDegreeLat;
     
-    // Coordinate transformation function (meters-based for correct proportions)
+    // Coordinate transformation function
+    // When satellite overlay is enabled, use image-based GPS-to-pixel transformation
+    // Otherwise use bounds-fit transformation for schematic view
     const toSvg = (coord: { lat: number; lng: number }) => {
+      // SATELLITE OVERLAY MODE: Use imageBounds for accurate alignment
+      if (localShowOverlay && imageBounds) {
+        return gpsToPixel(coord, imageBounds, { width, height });
+      }
+      
+      // SCHEMATIC MODE: Use bounds-fit transformation (meters-based for correct proportions)
       // Convert to meters from origin (minLng, minLat)
       const xMeters = (coord.lng - minLng) * metersPerDegreeLng;
       const yMeters = (coord.lat - minLat) * metersPerDegreeLat;
@@ -653,7 +662,7 @@ export function SchematicRoofDiagram({
       solarSegmentPolygons: [], // No longer using Solar API for geometry
       qaData,
     };
-  }, [measurement, width, height, facets]);
+  }, [measurement, width, height, facets, localShowOverlay, imageBounds]);
 
   // Update geometry QA when data changes
   useEffect(() => {
