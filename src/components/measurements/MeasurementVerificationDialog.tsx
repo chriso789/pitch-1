@@ -10,7 +10,7 @@ import { Slider } from '@/components/ui/slider';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
-import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Split, Info, MapPin, ZoomIn, Maximize2, Minimize2, ImageIcon, History, FileText, Trash2, AlertTriangle } from 'lucide-react';
+import { CheckCircle2, Edit3, X, Satellite, AlertCircle, RefreshCw, Home, ArrowRight as ArrowRightIcon, ChevronDown, ChevronRight, Split, Info, MapPin, ZoomIn, Maximize2, Minimize2, ImageIcon, History, FileText, Trash2, AlertTriangle, Sparkles, Loader2 } from 'lucide-react';
 import { useState, useEffect, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PolygonEditor } from './PolygonEditor';
@@ -25,7 +25,7 @@ import { HistoricalImageryComparison } from './HistoricalImageryComparison';
 import { MeasurementValidationReport } from './MeasurementValidationReport';
 import { ObstructionDetectionWarning } from './ObstructionDetectionWarning';
 import { parseWKTPolygon, calculatePolygonAreaSqft, calculatePerimeterFt } from '@/utils/geoCoordinates';
-import { useManualVerification } from '@/hooks/useMeasurement';
+import { useManualVerification, useRepullMeasurement } from '@/hooks/useMeasurement';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { detectRoofType } from '@/utils/measurementGeometry';
@@ -332,6 +332,7 @@ export function MeasurementVerificationDialog({
   const [showDebugOverlay, setShowDebugOverlay] = useState(false); // Show AI detection boundaries
   
   const manualVerify = useManualVerification();
+  const { repull, isRepulling } = useRepullMeasurement();
   
   // Database measurement fallback - loads from DB when AI returns empty values
   const [dbMeasurement, setDbMeasurement] = useState<any>(null);
@@ -1541,6 +1542,55 @@ export function MeasurementVerificationDialog({
                       Satellite
                     </Button>
                   </div>
+                  
+                  {/* Re-analyze Roof Button */}
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="h-7 text-xs"
+                        onClick={async () => {
+                          if (!pipelineEntryId) {
+                            toast({ title: 'Missing property ID', variant: 'destructive' });
+                            return;
+                          }
+                          try {
+                            toast({ title: 'Re-analyzing roof topology...', description: 'Fetching fresh data from Google Solar' });
+                            const result = await repull(pipelineEntryId, centerLat, centerLng);
+                            // Reload dbMeasurement from database
+                            setIsLoadingDbMeasurement(true);
+                            const { data: freshDb } = await supabase
+                              .from('roof_measurements')
+                              .select('*')
+                              .eq('customer_id', pipelineEntryId)
+                              .order('created_at', { ascending: false })
+                              .limit(1)
+                              .single();
+                            if (freshDb) {
+                              setDbMeasurement(freshDb);
+                            }
+                            setIsLoadingDbMeasurement(false);
+                            toast({ title: 'Roof re-analyzed!', description: `Found ${freshDb?.facet_count || 0} facets with updated topology` });
+                          } catch (err: any) {
+                            console.error('Re-analyze failed:', err);
+                            toast({ title: 'Re-analysis failed', description: err.message, variant: 'destructive' });
+                          }
+                        }}
+                        disabled={isRepulling || !pipelineEntryId}
+                      >
+                        {isRepulling ? (
+                          <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-3.5 w-3.5 mr-1.5" />
+                        )}
+                        Re-analyze
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent>
+                      <p>Re-fetch measurement from Google Solar API with improved ridge/hip/valley detection</p>
+                    </TooltipContent>
+                  </Tooltip>
                   
                   {/* Satellite-specific controls */}
                   {viewMode === 'satellite' && (

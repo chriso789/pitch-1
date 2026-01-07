@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 
@@ -84,6 +85,39 @@ export function usePullMeasurement() {
 
     return data.data as MeasurementData;
   };
+}
+
+/**
+ * Hook to re-pull measurement with fresh segment topology analysis
+ * Use this to force a new Google Solar API call and apply the latest
+ * segment topology analyzer for accurate ridge/hip/valley detection
+ */
+export function useRepullMeasurement() {
+  const [isRepulling, setIsRepulling] = useState(false);
+  
+  const repull = async (propertyId: string, lat: number, lng: number): Promise<MeasurementData> => {
+    setIsRepulling(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('measure', {
+        body: { 
+          action: 'pull',
+          propertyId,
+          lat,
+          lng,
+          forceRefresh: true // Signal to bypass cache
+        }
+      });
+
+      if (error) throw error;
+      if (!data?.ok) throw new Error(data?.error || 'Failed to re-pull measurement');
+
+      return data.data as MeasurementData;
+    } finally {
+      setIsRepulling(false);
+    }
+  };
+
+  return { repull, isRepulling };
 }
 
 export function useManualVerification() {

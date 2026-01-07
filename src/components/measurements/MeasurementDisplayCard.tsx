@@ -1,22 +1,53 @@
+import { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Satellite, Edit3, RefreshCw } from 'lucide-react';
+import { Satellite, Edit3, RefreshCw, Loader2, Sparkles } from 'lucide-react';
 import { format } from 'date-fns';
+import { useRepullMeasurement } from '@/hooks/useMeasurement';
+import { toast } from 'sonner';
 
 interface MeasurementDisplayCardProps {
   measurement: any;
   tags: Record<string, any>;
+  propertyId?: string;
+  lat?: number;
+  lng?: number;
   onRefresh?: () => void;
   onEdit?: () => void;
+  onRepullComplete?: (data: any) => void;
 }
 
 export function MeasurementDisplayCard({
   measurement,
   tags,
+  propertyId,
+  lat,
+  lng,
   onRefresh,
-  onEdit
+  onEdit,
+  onRepullComplete
 }: MeasurementDisplayCardProps) {
+  const { repull, isRepulling } = useRepullMeasurement();
+  
+  const handleReanalyze = async () => {
+    if (!propertyId || !lat || !lng) {
+      toast.error('Missing property coordinates');
+      return;
+    }
+    
+    try {
+      toast.info('Re-analyzing roof with AI segment topology...');
+      const result = await repull(propertyId, lat, lng);
+      toast.success('Roof re-analyzed with updated topology!');
+      onRepullComplete?.(result);
+      onRefresh?.();
+    } catch (error: any) {
+      console.error('Re-analysis failed:', error);
+      toast.error(error.message || 'Failed to re-analyze roof');
+    }
+  };
+  
   if (!measurement || !tags) {
     return null;
   }
@@ -47,6 +78,22 @@ export function MeasurementDisplayCard({
           </div>
         </div>
         <div className="flex gap-2">
+          {propertyId && lat && lng && (
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={handleReanalyze}
+              disabled={isRepulling}
+              className="text-xs"
+            >
+              {isRepulling ? (
+                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+              ) : (
+                <Sparkles className="h-4 w-4 mr-1" />
+              )}
+              Re-analyze
+            </Button>
+          )}
           {onEdit && (
             <Button variant="ghost" size="sm" onClick={onEdit}>
               <Edit3 className="h-4 w-4" />
