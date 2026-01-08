@@ -190,14 +190,14 @@ export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotal
     </Card>
   );
 
-  // Fetch AI measurement data if available
+  // Fetch AI measurement data if available - query measurements table (not roof_measurements)
   const { data: aiMeasurement } = useQuery({
     queryKey: ['ai-measurement', effectiveAiMeasurementId],
     queryFn: async () => {
       if (!effectiveAiMeasurementId) return null;
       
       const { data, error } = await supabase
-        .from('roof_measurements')
+        .from('measurements')
         .select('*')
         .eq('id', effectiveAiMeasurementId)
         .maybeSingle();
@@ -208,14 +208,15 @@ export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotal
     enabled: !!effectiveAiMeasurementId,
   });
 
-  // Calculate comparison data - use correct column names from schema
+  // Calculate comparison data - extract from summary JSONB in measurements table
+  const summary = (aiMeasurement as any)?.summary || {};
   const aiTotals = {
-    ridge: (aiMeasurement as any)?.ridge_length_ft || 0,
-    hip: (aiMeasurement as any)?.hip_length_ft || 0,
-    valley: (aiMeasurement as any)?.valley_length_ft || 0,
-    eave: (aiMeasurement as any)?.eave_length_ft || 0,
-    rake: (aiMeasurement as any)?.rake_length_ft || 0,
-    perimeter: (aiMeasurement as any)?.perimeter_ft || 0,
+    ridge: summary?.ridge_ft || 0,
+    hip: summary?.hip_ft || 0,
+    valley: summary?.valley_ft || 0,
+    eave: summary?.eave_ft || 0,
+    rake: summary?.rake_ft || 0,
+    perimeter: summary?.perimeter_ft || 0,
   };
 
   const calculateVariance = (manual: number, ai: number): { variance: number; variancePct: number } => {
