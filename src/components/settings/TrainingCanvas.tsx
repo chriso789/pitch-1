@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Canvas as FabricCanvas, Line, Circle, FabricImage, FabricText } from 'fabric';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -67,12 +67,24 @@ export function TrainingCanvas({
   const [activePanMode, setActivePanMode] = useState(false);
   const lastPanPosition = useRef<{ x: number; y: number } | null>(null);
 
+  // Convert existing traces from database format to TracedLine format
+  const initialLines = useMemo((): TracedLine[] => {
+    if (!existingTraces || existingTraces.length === 0) return [];
+    return existingTraces.map((trace) => ({
+      id: trace.id,
+      type: trace.trace_type as TracerTool,
+      points: trace.canvas_points || [],
+      lengthFt: trace.length_ft,
+    }));
+  }, [existingTraces]);
+
   const tracer = useRoofTracer({
     centerLat,
     centerLng,
     canvasWidth: CANVAS_WIDTH,
     canvasHeight: CANVAS_HEIGHT,
     zoom,
+    initialLines,
   });
 
   // Initialize Fabric.js canvas
