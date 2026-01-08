@@ -1,4 +1,5 @@
-import { Edit, Copy, Trash2, Eye, Play, Share2 } from "lucide-react";
+import { useState } from "react";
+import { Edit, Copy, Trash2, Eye, Play, Share2, RefreshCw } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Card, CardContent, CardFooter } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,9 +30,64 @@ export const PresentationCard = ({
 }: PresentationCardProps) => {
   const navigate = useNavigate();
   const { toast } = useToast();
+  const [isRegenerating, setIsRegenerating] = useState(false);
 
   const handleEdit = () => {
     navigate(`/presentations/${presentation.id}/edit`);
+  };
+
+  const handleRegenerate = async () => {
+    if (!presentation.source_template_id || !presentation.pipeline_entry_id) {
+      toast({
+        title: "Cannot regenerate",
+        description: "This presentation is missing required template or project information.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setIsRegenerating(true);
+    try {
+      // Delete existing slides
+      await supabase
+        .from("presentation_slides")
+        .delete()
+        .eq("presentation_id", presentation.id);
+
+      // Reset presentation status
+      await supabase
+        .from("presentations")
+        .update({ generation_status: "pending" })
+        .eq("id", presentation.id);
+
+      // Call generate-presentation edge function
+      const { error } = await supabase.functions.invoke("generate-presentation", {
+        body: {
+          pipeline_entry_id: presentation.pipeline_entry_id,
+          template_id: presentation.source_template_id,
+          mode: presentation.generation_mode || "auto",
+          presentation_name: presentation.name,
+        },
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Regenerating presentation",
+        description: "Slides are being regenerated. Please wait...",
+      });
+
+      onRefetch();
+    } catch (error: any) {
+      console.error("Error regenerating presentation:", error);
+      toast({
+        title: "Failed to regenerate",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsRegenerating(false);
+    }
   };
 
   const handleDuplicate = async () => {
@@ -167,7 +223,7 @@ export const PresentationCard = ({
           </div>
         </div>
       </CardContent>
-      <CardFooter className="p-4 pt-0 flex gap-2">
+      <CardFooter className="p-4 pt-0 flex gap-2 flex-wrap">
         <Button
           variant="default"
           size="sm"
@@ -181,6 +237,16 @@ export const PresentationCard = ({
           <Play className="h-3 w-3" />
         </Button>
         <SharePresentationDialog presentationId={presentation.id} />
+        {presentation.source_template_id && presentation.pipeline_entry_id && (
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleRegenerate}
+            disabled={isRegenerating}
+          >
+            <RefreshCw className={`h-3 w-3 ${isRegenerating ? 'animate-spin' : ''}`} />
+          </Button>
+        )}
         <Button variant="outline" size="sm" onClick={handleDuplicate}>
           <Copy className="h-3 w-3" />
         </Button>

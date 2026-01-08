@@ -310,31 +310,50 @@ serve(async (req) => {
         }
       });
       
-      // Create slide
+      // Create slide with correct column names matching presentation_slides table
       const slideData = {
         presentation_id: presentation.id,
         slide_type: templateSlide.slide_type,
-        title: replaceAllTags(templateSlide.title || '', context, tagDefs),
-        content: content,
-        order_index: templateSlide.slide_order,
-        settings: {
+        slide_order: templateSlide.slide_order,
+        content: {
+          ...content,
+          title: replaceAllTags(templateSlide.title || '', context, tagDefs),
           media_type: templateSlide.media_type,
           media_source: templateSlide.media_source,
           is_required: templateSlide.is_required
-        }
+        },
+        transition_effect: 'fade'
       };
       
       generatedSlides.push(slideData);
     }
     
     // Insert all slides
-    const { error: slidesError } = await supabase
+    const { data: insertedSlides, error: slidesError } = await supabase
       .from('presentation_slides')
-      .insert(generatedSlides);
+      .insert(generatedSlides)
+      .select();
     
     if (slidesError) {
       console.error('Error creating slides:', slidesError);
+      // Update presentation with error status
+      await supabase
+        .from('presentations')
+        .update({ 
+          generation_status: 'error',
+          missing_data: [`Slide creation failed: ${slidesError.message}`]
+        })
+        .eq('id', presentation.id);
+        
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: `Failed to create slides: ${slidesError.message}` 
+      }), { 
+        status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+      });
     }
+    
+    console.log(`Successfully inserted ${insertedSlides?.length || 0} slides for presentation ${presentation.id}`);
     
     // Update presentation status
     await supabase
