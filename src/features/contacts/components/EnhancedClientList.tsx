@@ -87,6 +87,12 @@ interface Contact {
   lead_score: number;
   qualification_status: string;
   location_id: string;
+  assigned_to?: string;
+  assigned_rep?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+  } | null;
 }
 
 interface Job {
@@ -353,7 +359,14 @@ export const EnhancedClientList = () => {
         batchNumber++;
         let batchQuery = supabase
           .from("contacts")
-          .select("*")
+          .select(`
+            *,
+            assigned_rep:profiles!contacts_assigned_to_fkey (
+              id,
+              first_name,
+              last_name
+            )
+          `)
           .eq('is_deleted', false)
           .eq('tenant_id', effectiveTenantId)
           .order("created_at", { ascending: false })
@@ -1443,8 +1456,8 @@ export const EnhancedClientList = () => {
                               <span className={item.assigned_to ? '' : 'text-muted-foreground italic'}>
                                 {item.assigned_to 
                                   ? (() => {
-                                      // Use joined assigned_rep profile if available, fallback to locationReps lookup
-                                      const rep = (item as any).assigned_rep || locationReps.find(r => r.id === item.assigned_to);
+                                      // Use joined assigned_rep profile
+                                      const rep = item.assigned_rep || locationReps.find(r => r.id === item.assigned_to);
                                       return rep ? `${rep.first_name} ${rep.last_name}`.trim() : 'Unknown';
                                     })()
                                   : 'Unassigned'}
