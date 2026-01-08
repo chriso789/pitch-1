@@ -18,7 +18,7 @@ import {
   ChevronRight,
   Loader2
 } from "lucide-react";
-import { loadPDF, renderPageToDataUrl, isPDF, clearPageCache, type PDFDocumentProxy } from "@/lib/pdfRenderer";
+import { loadPDFFromArrayBuffer, renderPageToDataUrl, isPDF, clearPageCache, type PDFDocumentProxy } from "@/lib/pdfRenderer";
 
 interface TagPlacement {
   id?: string;
@@ -122,22 +122,38 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
     loadTenantId();
   }, []);
 
-  // Load document URL and existing placements
+  // PDF ArrayBuffer state for blob-based loading
+  const [pdfArrayBuffer, setPdfArrayBuffer] = useState<ArrayBuffer | null>(null);
+
+  // Load document and existing placements
   useEffect(() => {
     const loadDocumentData = async () => {
       setLoading(true);
       try {
-        // Get signed URL for the document
-        const { data: urlData, error: urlError } = await supabase.storage
-          .from("smartdoc-assets")
-          .createSignedUrl(document.file_path, 3600);
-
-        if (urlError) throw urlError;
-        setDocumentUrl(urlData.signedUrl);
-        
         // Check if it's a PDF
         const isPdfDoc = isPDF(document.mime_type, document.filename);
         setIsDocumentPdf(isPdfDoc);
+
+        if (isPdfDoc) {
+          // Download PDF as blob to bypass CORS issues
+          const { data: blobData, error: downloadError } = await supabase.storage
+            .from("smartdoc-assets")
+            .download(document.file_path);
+
+          if (downloadError) throw downloadError;
+
+          // Convert blob to ArrayBuffer
+          const arrayBuffer = await blobData.arrayBuffer();
+          setPdfArrayBuffer(arrayBuffer);
+        } else {
+          // For images, use signed URL
+          const { data: urlData, error: urlError } = await supabase.storage
+            .from("smartdoc-assets")
+            .createSignedUrl(document.file_path, 3600);
+
+          if (urlError) throw urlError;
+          setDocumentUrl(urlData.signedUrl);
+        }
 
         // Load existing tag placements
         const { data: existingPlacements, error: placementsError } = await supabase
@@ -207,36 +223,51 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
     };
   }, []);
 
-  // Load PDF or Image when URL is available
+  // Load PDF from ArrayBuffer when available
   useEffect(() => {
-    if (!documentUrl || !fabricCanvas) return;
+    if (!pdfArrayBuffer || !fabricCanvas || !isDocumentPdf) return;
 
-    const loadContent = async () => {
+    const loadPdfContent = async () => {
       setPageRendering(true);
       
       try {
-        if (isDocumentPdf) {
-          // Load PDF
-          const pdf = await loadPDF(documentUrl);
-          setPdfDocument(pdf);
-          setTotalPages(pdf.numPages);
-          setCurrentPage(1);
-          
-          // Render first page
-          await renderPdfPage(pdf, 1);
-        } else {
-          // Load image
-          await loadImage(documentUrl);
-        }
+        // Load PDF from ArrayBuffer (bypasses CORS)
+        const pdf = await loadPDFFromArrayBuffer(pdfArrayBuffer);
+        setPdfDocument(pdf);
+        setTotalPages(pdf.numPages);
+        setCurrentPage(1);
+        
+        // Render first page
+        await renderPdfPage(pdf, 1);
       } catch (error) {
-        console.error("Error loading document content:", error);
-        toast.error("Failed to load document. Please try again.");
+        console.error("Error loading PDF:", error);
+        toast.error("Failed to load PDF. Please try again.");
       } finally {
         setPageRendering(false);
       }
     };
 
-    loadContent();
+    loadPdfContent();
+  }, [pdfArrayBuffer, fabricCanvas, isDocumentPdf]);
+
+  // Load image when URL is available
+  useEffect(() => {
+    if (!documentUrl || !fabricCanvas || isDocumentPdf) return;
+
+    const loadImageContent = async () => {
+      setPageRendering(true);
+      
+      try {
+        await loadImage(documentUrl);
+      } catch (error) {
+        console.error("Error loading image:", error);
+        toast.error("Failed to load image. Please try again.");
+      } finally {
+        setPageRendering(false);
+      }
+    };
+
+    loadImageContent();
   }, [documentUrl, fabricCanvas, isDocumentPdf]);
 
   // Render PDF page to canvas
