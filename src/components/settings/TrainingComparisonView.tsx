@@ -41,7 +41,7 @@ export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotal
     queryFn: async () => {
       const { data, error } = await supabase
         .from('roof_training_sessions')
-        .select('id, lat, lng, property_address, ai_measurement_id')
+        .select('id, lat, lng, property_address, ai_measurement_id, pipeline_entry_id')
         .eq('id', sessionId)
         .single();
       
@@ -59,15 +59,22 @@ export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotal
       return;
     }
 
+    // Use pipeline_entry_id as propertyId - this is what the measure function expects
+    const propertyId = session.pipeline_entry_id;
+    if (!propertyId) {
+      toast.error('No linked property found for this training session');
+      return;
+    }
+
     setIsRunningAIMeasure(true);
     try {
       toast.info('Running AI measurement analysis...');
 
-      // Call the measure edge function with required action and propertyId
+      // Call the measure edge function with the pipeline_entry_id
       const { data, error } = await supabase.functions.invoke('measure', {
         body: {
           action: 'pull',
-          propertyId: sessionId, // Use sessionId as property identifier for training
+          propertyId,
           lat: session.lat,
           lng: session.lng,
           address: session.property_address || undefined,
