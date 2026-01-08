@@ -38,8 +38,8 @@ export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotal
       
       if (error) throw error;
       
-      const sessionsAnalyzed = data?.sessionsAnalyzed || 0;
-      const factorsUpdated = data?.factorsUpdated || 0;
+      const sessionsAnalyzed = data?.sessions_analyzed || 0;
+      const factorsUpdated = data?.corrections?.length || 0;
       
       toast.success(`AI Retrained! Analyzed ${sessionsAnalyzed} sessions, updated ${factorsUpdated} correction factors.`);
     } catch (err: any) {
@@ -49,6 +49,30 @@ export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotal
       setIsRetraining(false);
     }
   };
+
+  // Retrain AI button component - rendered in all states
+  const RetrainAICard = () => (
+    <Card className="border-primary/20 bg-primary/5">
+      <CardContent className="py-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <p className="font-medium">Retrain AI with Your Traces</p>
+            <p className="text-sm text-muted-foreground">
+              Apply your manual corrections to improve future AI measurements
+            </p>
+          </div>
+          <Button onClick={handleRetrainAI} disabled={isRetraining}>
+            {isRetraining ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <RefreshCw className="h-4 w-4 mr-2" />
+            )}
+            {isRetraining ? 'Retraining...' : 'Retrain AI'}
+          </Button>
+        </div>
+      </CardContent>
+    </Card>
+  );
   // Fetch AI measurement data if available
   const { data: aiMeasurement } = useQuery({
     queryKey: ['ai-measurement', aiMeasurementId],
@@ -150,56 +174,43 @@ export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotal
 
   if (!aiMeasurementId) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-12">
-          <BarChart2 className="h-12 w-12 text-muted-foreground mb-4" />
-          <p className="text-lg font-medium mb-2">No AI Measurement Available</p>
-          <p className="text-muted-foreground text-center max-w-md">
-            This lead doesn't have an AI measurement to compare against. 
-            Run the AI measurement first to enable comparison.
-          </p>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        <RetrainAICard />
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <BarChart2 className="h-12 w-12 text-muted-foreground mb-4" />
+            <p className="text-lg font-medium mb-2">No AI Measurement Available</p>
+            <p className="text-muted-foreground text-center max-w-md">
+              This lead doesn't have an AI measurement to compare against. 
+              Run the AI measurement first to enable comparison.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   if (activeRows.length === 0) {
     return (
-      <Card>
-        <CardContent className="flex flex-col items-center justify-center py-12">
-          <BarChart2 className="h-12 w-12 text-muted-foreground mb-4" />
-          <p className="text-lg font-medium mb-2">No Data to Compare</p>
-          <p className="text-muted-foreground text-center max-w-md">
-            Trace roof features first, then return here to compare against the AI measurement.
-          </p>
-        </CardContent>
-      </Card>
+      <div className="space-y-6">
+        <RetrainAICard />
+        <Card>
+          <CardContent className="flex flex-col items-center justify-center py-12">
+            <BarChart2 className="h-12 w-12 text-muted-foreground mb-4" />
+            <p className="text-lg font-medium mb-2">No Data to Compare</p>
+            <p className="text-muted-foreground text-center max-w-md">
+              Trace roof features first, then return here to compare against the AI measurement.
+            </p>
+          </CardContent>
+        </Card>
+      </div>
     );
   }
 
   return (
     <div className="space-y-6">
       {/* Retrain AI Button */}
-      <Card className="border-primary/20 bg-primary/5">
-        <CardContent className="py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <p className="font-medium">Retrain AI with Your Traces</p>
-              <p className="text-sm text-muted-foreground">
-                Apply your manual corrections to improve future AI measurements
-              </p>
-            </div>
-            <Button onClick={handleRetrainAI} disabled={isRetraining}>
-              {isRetraining ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4 mr-2" />
-              )}
-              {isRetraining ? 'Retraining...' : 'Retrain AI'}
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
+      <RetrainAICard />
 
       {/* Overall Accuracy Card */}
       <Card>
