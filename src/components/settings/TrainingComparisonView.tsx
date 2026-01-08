@@ -63,9 +63,11 @@ export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotal
     try {
       toast.info('Running AI measurement analysis...');
 
-      // Call the measure edge function
+      // Call the measure edge function with required action and propertyId
       const { data, error } = await supabase.functions.invoke('measure', {
         body: {
+          action: 'pull',
+          propertyId: sessionId, // Use sessionId as property identifier for training
           lat: session.lat,
           lng: session.lng,
           address: session.property_address || undefined,
@@ -74,21 +76,30 @@ export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotal
 
       if (error) throw error;
 
-      if (!data?.id) {
+      if (!data?.ok) {
+        throw new Error(data?.error || 'AI measurement failed');
+      }
+
+      const measurementId = data?.data?.id;
+      if (!measurementId) {
         throw new Error('AI measurement did not return an ID');
       }
+
+      // Extract measurement data from response
+      const measurement = data?.data;
+      const summary = measurement?.summary || {};
 
       // Update the training session with the AI measurement ID
       const { error: updateError } = await supabase
         .from('roof_training_sessions')
         .update({ 
-          ai_measurement_id: data.id,
+          ai_measurement_id: measurementId,
           ai_totals: {
-            ridge: data.summary?.ridge_ft || 0,
-            hip: data.summary?.hip_ft || 0,
-            valley: data.summary?.valley_ft || 0,
-            eave: data.summary?.eave_ft || 0,
-            rake: data.summary?.rake_ft || 0,
+            ridge: summary?.ridge_ft || 0,
+            hip: summary?.hip_ft || 0,
+            valley: summary?.valley_ft || 0,
+            eave: summary?.eave_ft || 0,
+            rake: summary?.rake_ft || 0,
           }
         } as any)
         .eq('id', sessionId);
@@ -96,13 +107,15 @@ export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotal
       if (updateError) throw updateError;
 
       // Update local state to trigger comparison
-      setCurrentAiMeasurementId(data.id);
+      setCurrentAiMeasurementId(measurementId);
 
       // Invalidate queries to refetch data
       queryClient.invalidateQueries({ queryKey: ['ai-measurement'] });
       queryClient.invalidateQueries({ queryKey: ['training-session-for-measure', sessionId] });
 
-      toast.success(`AI Measurement complete! Found ${data.faces?.length || 0} facets, ${Math.round(data.summary?.total_area_sqft || 0)} sqft`);
+      const facetCount = measurement?.faces?.length || 0;
+      const totalArea = Math.round(summary?.total_area_sqft || 0);
+      toast.success(`AI Measurement complete! Found ${facetCount} facets, ${totalArea} sqft`);
     } catch (err: any) {
       console.error('Failed to run AI measurement:', err);
       toast.error(err.message || 'Failed to run AI measurement');
