@@ -9,6 +9,7 @@ import { GraduationCap, Plus, PlayCircle, CheckCircle, Clock, FileText } from 'l
 import { TrainingSessionList } from './TrainingSessionList';
 import { TrainingSessionDetail } from './TrainingSessionDetail';
 import { TrainingLeadSelector } from './TrainingLeadSelector';
+import { TrainingAnalyticsDashboard } from './TrainingAnalyticsDashboard';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
 import { toast } from 'sonner';
 
@@ -206,19 +207,7 @@ export function RoofTrainingLab() {
           />
         </TabsContent>
         <TabsContent value="analytics" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle>Training Analytics</CardTitle>
-              <CardDescription>
-                Track AI accuracy improvement over time (coming soon)
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex items-center justify-center h-48 text-muted-foreground">
-                Complete more training sessions to see analytics
-              </div>
-            </CardContent>
-          </Card>
+          <TrainingAnalyticsDashboard />
         </TabsContent>
       </Tabs>
 
