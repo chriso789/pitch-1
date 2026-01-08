@@ -1,7 +1,7 @@
-// Use legacy build to avoid top-level await issues with Vite
-import * as pdfjsLib from "pdfjs-dist/legacy/build/pdf.mjs";
+// Use v3.x which doesn't have top-level await issues
+import * as pdfjsLib from "pdfjs-dist";
 
-// Configure the worker using legacy version
+// Configure the worker
 pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 export interface PDFDocumentProxy {
