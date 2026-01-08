@@ -468,8 +468,8 @@ const CompanyGrid = ({ companies, loading, onToggleStatus, onViewDetails }: Comp
       {companies.map(company => (
         <Card key={company.id} className="hover:shadow-md transition-shadow overflow-hidden">
           <CardHeader className="pb-2">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex items-center gap-3 min-w-0 flex-1">
+            <div className="flex items-start justify-between gap-2 w-full">
+              <div className="flex items-center gap-3 min-w-0 flex-1 overflow-hidden">
                 {company.logo_url ? (
                   <img src={company.logo_url} alt="" className="h-10 w-10 rounded object-cover shrink-0" />
                 ) : (
@@ -480,27 +480,27 @@ const CompanyGrid = ({ companies, loading, onToggleStatus, onViewDetails }: Comp
                     {company.name.charAt(0)}
                   </div>
                 )}
-                <div className="min-w-0 flex-1">
-                  <CardTitle className="text-lg truncate" title={company.name}>{company.name}</CardTitle>
+                <div className="min-w-0 flex-1 overflow-hidden">
+                  <CardTitle className="text-lg truncate block" title={company.name}>{company.name}</CardTitle>
                   {company.owner_email && (
-                    <p className="text-xs text-muted-foreground truncate" title={company.owner_email}>{company.owner_email}</p>
+                    <p className="text-xs text-muted-foreground truncate block" title={company.owner_email}>{company.owner_email}</p>
                   )}
                 </div>
               </div>
-              <Badge variant={company.is_active !== false ? "default" : "secondary"} className="shrink-0">
+              <Badge variant={company.is_active !== false ? "default" : "secondary"} className="shrink-0 ml-auto">
                 {company.is_active !== false ? "Active" : "Inactive"}
               </Badge>
             </div>
           </CardHeader>
           <CardContent className="space-y-3">
-            <div className="flex items-center gap-4 text-sm">
-              <div className="flex items-center gap-1 text-muted-foreground">
-                <Users className="h-4 w-4" />
-                {company.user_count} users
+            <div className="flex items-center gap-4 text-sm flex-wrap">
+              <div className="flex items-center gap-1 text-muted-foreground whitespace-nowrap">
+                <Users className="h-4 w-4 shrink-0" />
+                <span>{company.user_count} users</span>
               </div>
-              <div className="flex items-center gap-1 text-muted-foreground">
-                <MapPin className="h-4 w-4" />
-                {company.location_count} locations
+              <div className="flex items-center gap-1 text-muted-foreground whitespace-nowrap">
+                <MapPin className="h-4 w-4 shrink-0" />
+                <span>{company.location_count} locations</span>
               </div>
             </div>
             
@@ -510,15 +510,15 @@ const CompanyGrid = ({ companies, loading, onToggleStatus, onViewDetails }: Comp
               </p>
             )}
 
-            <div className="flex flex-wrap gap-2 pt-2">
+            <div className="flex gap-2 pt-2">
               <Button 
                 variant="outline" 
                 size="sm" 
-                className="flex-1"
+                className="flex-1 min-w-0"
                 onClick={() => onViewDetails(company)}
               >
-                <Eye className="h-4 w-4 mr-1" />
-                Details
+                <Eye className="h-4 w-4 mr-1 shrink-0" />
+                <span className="truncate">Details</span>
               </Button>
               {company.owner_email && (
                 <Button
