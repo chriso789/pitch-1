@@ -1,8 +1,8 @@
 // Use v3.x which doesn't have top-level await issues
 import * as pdfjsLib from "pdfjs-dist";
 
-// Configure the worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// Configure the worker with a fixed version for reliability
+pdfjsLib.GlobalWorkerOptions.workerSrc = "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
 
 export interface PDFDocumentProxy {
   numPages: number;
@@ -30,7 +30,21 @@ const pageCache = new Map<string, RenderedPage>();
 export async function loadPDF(url: string): Promise<PDFDocumentProxy> {
   const loadingTask = pdfjsLib.getDocument({
     url,
-    cMapUrl: `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/cmaps/`,
+    cMapUrl: `//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/`,
+    cMapPacked: true,
+  });
+  
+  const pdf = await loadingTask.promise;
+  return pdf as unknown as PDFDocumentProxy;
+}
+
+/**
+ * Load a PDF document from an ArrayBuffer (bypasses CORS issues)
+ */
+export async function loadPDFFromArrayBuffer(arrayBuffer: ArrayBuffer): Promise<PDFDocumentProxy> {
+  const loadingTask = pdfjsLib.getDocument({
+    data: arrayBuffer,
+    cMapUrl: `//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/`,
     cMapPacked: true,
   });
   
