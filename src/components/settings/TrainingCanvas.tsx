@@ -5,7 +5,7 @@ import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
   MousePointer, Mountain, Triangle, ArrowDownUp, Square, 
-  Undo2, Trash2, Save, Minus, Slash, ZoomIn, ZoomOut 
+  Undo2, Trash2, Save, Minus, Slash, ZoomIn, ZoomOut, RefreshCw, AlertCircle
 } from 'lucide-react';
 import { useRoofTracer, TracerTool, TracedLine } from '@/hooks/useRoofTracer';
 import { toast } from 'sonner';
@@ -48,6 +48,8 @@ export function TrainingCanvas({
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
+  const [imageError, setImageError] = useState<string | null>(null);
+  const [reloadKey, setReloadKey] = useState(0);
   const [previewPoint, setPreviewPoint] = useState<{ x: number; y: number } | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
 
@@ -82,10 +84,14 @@ export function TrainingCanvas({
     if (!fabricCanvas || !satelliteImageUrl) return;
 
     setImageLoaded(false);
+    setImageError(null);
 
     FabricImage.fromURL(satelliteImageUrl, { crossOrigin: 'anonymous' })
       .then((img) => {
-        if (!img) return;
+        if (!img) {
+          setImageError('Failed to load image');
+          return;
+        }
 
         const scaleX = CANVAS_WIDTH / (img.width || CANVAS_WIDTH);
         const scaleY = CANVAS_HEIGHT / (img.height || CANVAS_HEIGHT);
@@ -102,12 +108,17 @@ export function TrainingCanvas({
         fabricCanvas.backgroundImage = img;
         fabricCanvas.renderAll();
         setImageLoaded(true);
+        setImageError(null);
       })
       .catch((err) => {
         console.error('Failed to load satellite image:', err);
-        toast.error('Failed to load satellite image');
+        setImageError('Failed to load satellite image. The URL may be invalid or blocked.');
       });
-  }, [fabricCanvas, satelliteImageUrl]);
+  }, [fabricCanvas, satelliteImageUrl, reloadKey]);
+
+  const handleRetryImage = () => {
+    setReloadKey((k) => k + 1);
+  };
 
   // Render traced lines on canvas
   const renderLines = useCallback(() => {
@@ -361,9 +372,20 @@ export function TrainingCanvas({
       <div className="relative border rounded-lg overflow-hidden bg-black">
         <canvas ref={canvasRef} className="block" />
 
-        {!imageLoaded && (
+        {!imageLoaded && !imageError && (
           <div className="absolute inset-0 flex items-center justify-center bg-muted/80">
             <div className="text-sm text-muted-foreground">Loading satellite image...</div>
+          </div>
+        )}
+
+        {imageError && (
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-muted/90 gap-3">
+            <AlertCircle className="h-8 w-8 text-destructive" />
+            <div className="text-sm text-destructive font-medium">Failed to load satellite image</div>
+            <Button variant="outline" size="sm" onClick={handleRetryImage}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Retry
+            </Button>
           </div>
         )}
 
