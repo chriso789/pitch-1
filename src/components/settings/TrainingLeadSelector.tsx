@@ -32,7 +32,14 @@ interface LeadOption {
   contact_id?: string;
   contact?: any;
   metadata?: any;
-  roof_measurement?: any;
+  measurementData?: { id: string; mapboxUrl?: string; googleUrl?: string };
+}
+
+interface MeasurementRecord {
+  id: string;
+  customer_id: string;
+  mapbox_image_url?: string;
+  google_maps_image_url?: string;
 }
 
 // Robust coordinate extraction supporting multiple formats
@@ -112,16 +119,17 @@ export function TrainingLeadSelector({ open, onClose, onSelect }: TrainingLeadSe
   const [selectedLead, setSelectedLead] = useState<LeadOption | null>(null);
   const [sessionName, setSessionName] = useState('');
 
-  // Fetch leads with verified addresses
+  // Fetch leads with verified addresses (no embedded roof_measurements - no FK exists)
   const { data: leads = [], isLoading, error, isError, refetch } = useQuery({
-    queryKey: ['training-leads', effectiveTenantId, searchQuery],
+    queryKey: ['training-leads', effectiveTenantId],
     queryFn: async () => {
       if (!effectiveTenantId) {
         console.warn('[TrainingLeadSelector] No tenant ID available');
         return [];
       }
 
-      let query = supabase
+      // Step 1: Fetch pipeline entries with contacts (valid FK relationship)
+      const { data: pipelineData, error: pipelineError } = await supabase
         .from('pipeline_entries')
         .select(`
           id,
@@ -131,32 +139,70 @@ export function TrainingLeadSelector({ open, onClose, onSelect }: TrainingLeadSe
             first_name, last_name, latitude, longitude,
             address_street, address_city, address_state, address_zip,
             verified_address
-          ),
-          roof_measurement:roof_measurements(id, satellite_image_url)
+          )
         `)
         .eq('tenant_id', effectiveTenantId)
         .order('created_at', { ascending: false })
         .limit(100);
 
-      if (searchQuery) {
-        query = query.or(`contact.first_name.ilike.%${searchQuery}%,contact.last_name.ilike.%${searchQuery}%`);
+      if (pipelineError) {
+        console.error('[TrainingLeadSelector] Pipeline query error:', pipelineError);
+        throw pipelineError;
       }
 
-      const { data, error } = await query;
-      if (error) {
-        console.error('[TrainingLeadSelector] Query error:', error);
-        throw error;
+      // Filter to only leads with valid coordinates
+      const leadsWithCoords = (pipelineData || []).filter(
+        (lead) => extractCoordinates(lead as LeadOption) !== null
+      );
+
+      if (leadsWithCoords.length === 0) {
+        return [] as LeadOption[];
       }
 
-      // Filter to only leads with valid coordinates using robust extraction
-      const rawCount = data?.length || 0;
-      const filtered = (data || []).filter((lead) => extractCoordinates(lead as LeadOption) !== null);
-      
-      console.log(`[TrainingLeadSelector] Tenant: ${effectiveTenantId}, Raw: ${rawCount}, With coords: ${filtered.length}`);
-      
-      return filtered as unknown as LeadOption[];
+      // Step 2: Fetch measurements separately (no FK, so we query by customer_id)
+      const leadIds = leadsWithCoords.map((l) => l.id);
+      const { data: measurementsData } = await supabase
+        .from('roof_measurements')
+        .select('id, customer_id, mapbox_image_url, google_maps_image_url')
+        .in('customer_id', leadIds);
+
+      // Build lookup map
+      const measurementMap = new Map<string, MeasurementRecord>();
+      (measurementsData || []).forEach((m: any) => {
+        measurementMap.set(m.customer_id, m);
+      });
+
+      // Merge measurement data into leads
+      const enrichedLeads: LeadOption[] = leadsWithCoords.map((lead) => {
+        const measurement = measurementMap.get(lead.id);
+        return {
+          ...lead,
+          measurementData: measurement
+            ? {
+                id: measurement.id,
+                mapboxUrl: measurement.mapbox_image_url || undefined,
+                googleUrl: measurement.google_maps_image_url || undefined,
+              }
+            : undefined,
+        } as LeadOption;
+      });
+
+      console.log(
+        `[TrainingLeadSelector] Tenant: ${effectiveTenantId}, Leads: ${enrichedLeads.length}, With measurements: ${measurementMap.size}`
+      );
+
+      return enrichedLeads;
     },
     enabled: open && !!effectiveTenantId,
+  });
+
+  // Client-side search filtering
+  const filteredLeads = leads.filter((lead) => {
+    if (!searchQuery.trim()) return true;
+    const name = lead.contact
+      ? `${lead.contact.first_name || ''} ${lead.contact.last_name || ''}`.toLowerCase()
+      : '';
+    return name.includes(searchQuery.toLowerCase());
   });
 
   // Use the shared extraction function
@@ -179,8 +225,8 @@ export function TrainingLeadSelector({ open, onClose, onSelect }: TrainingLeadSe
       lat: coords.lat,
       lng: coords.lng,
       name: sessionName || `Training: ${contactName}`,
-      satelliteImageUrl: (selectedLead.roof_measurement as any)?.[0]?.satellite_image_url,
-      aiMeasurementId: (selectedLead.roof_measurement as any)?.[0]?.id,
+      satelliteImageUrl: selectedLead.measurementData?.mapboxUrl || selectedLead.measurementData?.googleUrl,
+      aiMeasurementId: selectedLead.measurementData?.id,
     });
   };
 
@@ -233,12 +279,12 @@ export function TrainingLeadSelector({ open, onClose, onSelect }: TrainingLeadSe
               </div>
             ) : (
               <div className="space-y-2">
-                {leads.map((lead) => {
+                {filteredLeads.map((lead) => {
                   const coords = getLeadCoordinates(lead);
                   const contactName = lead.contact 
                     ? `${lead.contact.first_name} ${lead.contact.last_name}`.trim()
                     : 'Unknown Contact';
-                  const hasAIMeasurement = !!(lead.roof_measurement as any)?.[0];
+                  const hasAIMeasurement = !!lead.measurementData;
                   const isSelected = selectedLead?.id === lead.id;
 
                   return (
