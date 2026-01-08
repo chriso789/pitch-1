@@ -1,4 +1,4 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -17,17 +17,19 @@ import { toast } from '@/components/ui/use-toast';
 
 interface LeadPhotoUploaderProps {
   pipelineEntryId: string;
+  contactId?: string;
   onUploadComplete?: () => void;
 }
 
-type PhotoCategory = 'before' | 'after' | 'damage' | 'materials' | 'inspection';
+type PhotoCategory = 'before' | 'after' | 'damage' | 'materials' | 'inspection' | 'general';
 
 const CATEGORY_COLORS: Record<PhotoCategory, string> = {
   before: 'bg-blue-500/10 text-blue-600 border-blue-500/20',
   after: 'bg-green-500/10 text-green-600 border-green-500/20',
   damage: 'bg-red-500/10 text-red-600 border-red-500/20',
   materials: 'bg-orange-500/10 text-orange-600 border-orange-500/20',
-  inspection: 'bg-purple-500/10 text-purple-600 border-purple-500/20'
+  inspection: 'bg-purple-500/10 text-purple-600 border-purple-500/20',
+  general: 'bg-gray-500/10 text-gray-600 border-gray-500/20'
 };
 
 const CATEGORY_LABELS: Record<PhotoCategory, string> = {
@@ -35,7 +37,8 @@ const CATEGORY_LABELS: Record<PhotoCategory, string> = {
   after: 'After',
   damage: 'Damage',
   materials: 'Materials',
-  inspection: 'Inspection'
+  inspection: 'Inspection',
+  general: 'General'
 };
 
 interface PendingUpload {
@@ -46,11 +49,13 @@ interface PendingUpload {
 
 export const LeadPhotoUploader: React.FC<LeadPhotoUploaderProps> = ({
   pipelineEntryId,
+  contactId,
   onUploadComplete
 }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [pendingUploads, setPendingUploads] = useState<PendingUpload[]>([]);
   const [isUploading, setIsUploading] = useState(false);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   // Auto-detect category based on filename
   const detectCategory = (filename: string): PhotoCategory => {
@@ -68,7 +73,10 @@ export const LeadPhotoUploader: React.FC<LeadPhotoUploaderProps> = ({
     if (lowerName.includes('material') || lowerName.includes('delivery') || lowerName.includes('supply')) {
       return 'materials';
     }
-    return 'inspection';
+    if (lowerName.includes('inspect')) {
+      return 'inspection';
+    }
+    return 'general';
   };
 
   const handleFiles = useCallback((files: FileList | File[]) => {
@@ -115,6 +123,10 @@ export const LeadPhotoUploader: React.FC<LeadPhotoUploaderProps> = ({
     }
   }, [handleFiles]);
 
+  const handleCameraCapture = () => {
+    cameraInputRef.current?.click();
+  };
+
   const removeUpload = (index: number) => {
     setPendingUploads(prev => {
       const newUploads = [...prev];
@@ -144,44 +156,59 @@ export const LeadPhotoUploader: React.FC<LeadPhotoUploaderProps> = ({
 
       const { data: profile } = await supabase
         .from('profiles')
-        .select('tenant_id')
+        .select('tenant_id, active_tenant_id')
         .eq('id', user.id)
         .single();
 
-      if (!profile?.tenant_id) throw new Error("No tenant found");
+      const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+      if (!tenantId) throw new Error("No tenant found");
 
       for (const upload of pendingUploads) {
         try {
           const fileExt = upload.file.name.split('.').pop();
-          const fileName = `${pipelineEntryId}/${upload.category}/${Date.now()}_${Math.random().toString(36).substring(7)}.${fileExt}`;
+          const timestamp = Date.now();
+          const randomId = Math.random().toString(36).substring(7);
+          const fileName = `${tenantId}/leads/${pipelineEntryId}/${timestamp}_${randomId}.${fileExt}`;
           
-          // Upload to storage
+          // Upload to customer-photos storage bucket
           const { error: uploadError } = await supabase.storage
-            .from('documents')
+            .from('customer-photos')
             .upload(fileName, upload.file);
 
           if (uploadError) {
             console.error('Upload error:', uploadError);
-            continue;
+            // Fallback to documents bucket if customer-photos doesn't exist
+            const { error: fallbackError } = await supabase.storage
+              .from('documents')
+              .upload(fileName, upload.file);
+            
+            if (fallbackError) {
+              console.error('Fallback upload error:', fallbackError);
+              continue;
+            }
           }
 
           // Get public URL
           const { data: { publicUrl } } = supabase.storage
-            .from('documents')
+            .from('customer-photos')
             .getPublicUrl(fileName);
 
-          // Save to documents table (photos are stored here)
+          // Save to customer_photos table with proper relationships
           const { error: dbError } = await supabase
-            .from('documents')
+            .from('customer_photos')
             .insert({
-              tenant_id: profile.tenant_id,
-              pipeline_entry_id: pipelineEntryId,
+              tenant_id: tenantId,
+              contact_id: contactId || null,
+              lead_id: pipelineEntryId,
+              file_url: publicUrl,
               file_path: fileName,
-              filename: upload.file.name,
-              document_type: `photo_${upload.category}`,
+              description: upload.file.name,
+              category: upload.category,
               mime_type: upload.file.type,
               file_size: upload.file.size,
-              uploaded_by: user.id
+              uploaded_by: user.id,
+              include_in_estimate: false,
+              display_order: 0
             });
 
           if (dbError) {
@@ -220,12 +247,33 @@ export const LeadPhotoUploader: React.FC<LeadPhotoUploaderProps> = ({
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Camera className="h-4 w-4" />
-          Upload Photos
+        <CardTitle className="flex items-center justify-between text-base">
+          <div className="flex items-center gap-2">
+            <Camera className="h-4 w-4" />
+            Upload Photos
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleCameraCapture}
+            className="gap-1"
+          >
+            <Camera className="h-3 w-3" />
+            Take Photo
+          </Button>
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Hidden camera input for mobile capture */}
+        <input
+          ref={cameraInputRef}
+          type="file"
+          accept="image/*"
+          capture="environment"
+          className="hidden"
+          onChange={handleFileInput}
+        />
+        
         {/* Drop Zone */}
         <div
           onDragOver={handleDragOver}

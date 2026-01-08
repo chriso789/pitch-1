@@ -66,24 +66,47 @@ Deno.serve(async (req: Request) => {
           );
         }
 
-        // Get photos for the project
-        let photoQuery = supabaseAdmin
+        // Get photos from both project_photos and customer_photos tables
+        let projectPhotoQuery = supabaseAdmin
           .from('project_photos')
           .select('*')
           .eq('project_id', job_id)
           .order('created_at', { ascending: true });
 
+        let customerPhotoQuery = supabaseAdmin
+          .from('customer_photos')
+          .select('*')
+          .or(`lead_id.eq.${job_id},project_id.eq.${job_id}`)
+          .order('display_order', { ascending: true });
+
         if (options?.include_categories?.length) {
-          photoQuery = photoQuery.in('category', options.include_categories);
+          projectPhotoQuery = projectPhotoQuery.in('category', options.include_categories);
+          customerPhotoQuery = customerPhotoQuery.in('category', options.include_categories);
         }
 
         if (options?.date_range?.start && options?.date_range?.end) {
-          photoQuery = photoQuery
+          projectPhotoQuery = projectPhotoQuery
+            .gte('created_at', options.date_range.start)
+            .lte('created_at', options.date_range.end);
+          customerPhotoQuery = customerPhotoQuery
             .gte('created_at', options.date_range.start)
             .lte('created_at', options.date_range.end);
         }
 
-        const { data: photos } = await photoQuery;
+        const [{ data: projectPhotos }, { data: customerPhotos }] = await Promise.all([
+          projectPhotoQuery,
+          customerPhotoQuery
+        ]);
+
+        // Combine photos from both tables
+        const photos = [
+          ...(projectPhotos || []),
+          ...(customerPhotos || []).map(p => ({
+            ...p,
+            file_url: p.file_url,
+            caption: p.description
+          }))
+        ];
 
         // Get tenant branding
         const { data: tenant } = await supabaseAdmin
@@ -145,13 +168,21 @@ Deno.serve(async (req: Request) => {
           );
         }
 
-        // Get photo count and categories for preview
-        const { data: photos } = await supabaseAdmin
-          .from('project_photos')
-          .select('id, category, file_url')
-          .eq('project_id', job_id)
-          .limit(10);
+        // Get photo count and categories for preview from both tables
+        const [{ data: projectPhotos }, { data: customerPhotos }] = await Promise.all([
+          supabaseAdmin
+            .from('project_photos')
+            .select('id, category, file_url')
+            .eq('project_id', job_id)
+            .limit(10),
+          supabaseAdmin
+            .from('customer_photos')
+            .select('id, category, file_url')
+            .or(`lead_id.eq.${job_id},project_id.eq.${job_id}`)
+            .limit(10)
+        ]);
 
+        const photos = [...(projectPhotos || []), ...(customerPhotos || [])];
         const categories = [...new Set(photos?.map(p => p.category || 'uncategorized'))];
         
         return new Response(
