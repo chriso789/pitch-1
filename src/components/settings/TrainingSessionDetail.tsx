@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { 
   ArrowLeft, MapPin, Save, CheckCircle, PlayCircle, 
-  Pencil, BarChart2, FileText, Trash2, AlertCircle
+  Pencil, BarChart2, FileText, Trash2, AlertCircle, Loader2, RefreshCw
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { TrainingSession } from './RoofTrainingLab';
@@ -45,6 +45,63 @@ export function TrainingSessionDetail({ session, onBack, onUpdate }: TrainingSes
   const queryClient = useQueryClient();
   const [activeTab, setActiveTab] = useState<'trace' | 'compare' | 'notes'>('trace');
   const [notes, setNotes] = useState(session.description || '');
+  const [satelliteUrl, setSatelliteUrl] = useState<string | null>(session.satellite_image_url || null);
+  const [isLoadingSatellite, setIsLoadingSatellite] = useState(false);
+  const [satelliteError, setSatelliteError] = useState<string | null>(null);
+
+  // Fetch satellite image via google-maps-proxy edge function
+  useEffect(() => {
+    async function fetchSatelliteImage() {
+      // Skip if we already have a URL or no coordinates
+      if (satelliteUrl || !session.lat || !session.lng) return;
+
+      setIsLoadingSatellite(true);
+      setSatelliteError(null);
+
+      try {
+        const { data, error } = await supabase.functions.invoke('google-maps-proxy', {
+          body: {
+            endpoint: 'satellite',
+            params: {
+              center: `${session.lat},${session.lng}`,
+              zoom: '20',
+              size: '640x640',
+              scale: '2',
+              maptype: 'satellite',
+            },
+          },
+        });
+
+        if (error) throw error;
+
+        if (data?.image_url) {
+          setSatelliteUrl(data.image_url);
+          // Persist to session so we don't have to fetch again
+          await supabase
+            .from('roof_training_sessions')
+            .update({ satellite_image_url: data.image_url })
+            .eq('id', session.id);
+        } else if (data?.image) {
+          // Base64 fallback
+          setSatelliteUrl(`data:image/png;base64,${data.image}`);
+        } else {
+          throw new Error('No image returned from proxy');
+        }
+      } catch (err: any) {
+        console.error('Failed to fetch satellite image:', err);
+        setSatelliteError(err.message || 'Failed to load satellite image');
+      } finally {
+        setIsLoadingSatellite(false);
+      }
+    }
+
+    fetchSatelliteImage();
+  }, [session.id, session.lat, session.lng, satelliteUrl]);
+
+  const handleRetrySatellite = () => {
+    setSatelliteUrl(null);
+    setSatelliteError(null);
+  };
 
   // Fetch traces for this session
   const { data: traces = [], refetch: refetchTraces } = useQuery({
@@ -183,14 +240,6 @@ export function TrainingSessionDetail({ session, onBack, onUpdate }: TrainingSes
   });
 
   const status = statusConfig[session.status];
-
-  // Build satellite URL if we have coordinates
-  const satelliteImageUrl = session.satellite_image_url || (
-    session.lat && session.lng
-      ? `https://maps.googleapis.com/maps/api/staticmap?center=${session.lat},${session.lng}&zoom=20&size=800x600&maptype=satellite&key=${import.meta.env.VITE_GOOGLE_MAPS_API_KEY || ''}`
-      : null
-  );
-
   return (
     <div className="space-y-6">
       {/* Header */}
@@ -281,15 +330,39 @@ export function TrainingSessionDetail({ session, onBack, onUpdate }: TrainingSes
         </TabsList>
 
         <TabsContent value="trace" className="mt-4">
-          {satelliteImageUrl && session.lat && session.lng ? (
+          {isLoadingSatellite ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <Loader2 className="h-12 w-12 text-primary animate-spin mb-4" />
+                <p className="text-lg font-medium mb-2">Loading Satellite Imagery</p>
+                <p className="text-muted-foreground text-center max-w-md">
+                  Fetching high-resolution satellite image for this property...
+                </p>
+              </CardContent>
+            </Card>
+          ) : satelliteError ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <AlertCircle className="h-12 w-12 text-destructive mb-4" />
+                <p className="text-lg font-medium mb-2">Failed to Load Satellite Image</p>
+                <p className="text-muted-foreground text-center max-w-md mb-4">
+                  {satelliteError}
+                </p>
+                <Button onClick={handleRetrySatellite} variant="outline">
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Retry
+                </Button>
+              </CardContent>
+            </Card>
+          ) : satelliteUrl && session.lat && session.lng ? (
             <TrainingCanvas
-              satelliteImageUrl={satelliteImageUrl}
+              satelliteImageUrl={satelliteUrl}
               centerLat={session.lat}
               centerLng={session.lng}
               existingTraces={traces}
               onSave={handleSaveTraces}
             />
-          ) : (
+          ) : !session.lat || !session.lng ? (
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <AlertCircle className="h-12 w-12 text-muted-foreground mb-4" />
@@ -299,7 +372,7 @@ export function TrainingSessionDetail({ session, onBack, onUpdate }: TrainingSes
                 </p>
               </CardContent>
             </Card>
-          )}
+          ) : null}
         </TabsContent>
 
         <TabsContent value="compare" className="mt-4">
