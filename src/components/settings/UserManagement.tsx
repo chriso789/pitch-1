@@ -660,31 +660,38 @@ export const UserManagement = () => {
 
   return (
     <>
-    <Tabs defaultValue="users" className="space-y-6">
-      <TabsList>
-        <TabsTrigger value="users" className="flex items-center gap-2">
-          <Users className="h-4 w-4" />
-          User Management
-        </TabsTrigger>
-        {['master', 'corporate', 'owner', 'office_admin'].includes(currentUser?.role) && (
-          <TabsTrigger value="activity" className="flex items-center gap-2">
-            <Activity className="h-4 w-4" />
-            User Activity
+    <Tabs defaultValue="users" className="space-y-4 md:space-y-6">
+      <div className="overflow-x-auto -mx-2 px-2">
+        <TabsList className="w-full md:w-auto flex-wrap h-auto gap-1 p-1">
+          <TabsTrigger value="users" className="flex items-center gap-2 text-xs md:text-sm">
+            <Users className="h-4 w-4" />
+            <span className="hidden sm:inline">User Management</span>
+            <span className="sm:hidden">Users</span>
           </TabsTrigger>
-        )}
-        <TabsTrigger value="locations" className="flex items-center gap-2">
-          <MapPin className="h-4 w-4" />
-          Location Access
-        </TabsTrigger>
-        <TabsTrigger value="permissions" className="flex items-center gap-2">
-          <Settings className="h-4 w-4" />
-          Feature Permissions
-        </TabsTrigger>
-        <TabsTrigger value="email" className="flex items-center gap-2">
-          <Mail className="h-4 w-4" />
-          Email Health
-        </TabsTrigger>
-      </TabsList>
+          {['master', 'corporate', 'owner', 'office_admin'].includes(currentUser?.role) && (
+            <TabsTrigger value="activity" className="flex items-center gap-2 text-xs md:text-sm">
+              <Activity className="h-4 w-4" />
+              <span className="hidden sm:inline">User Activity</span>
+              <span className="sm:hidden">Activity</span>
+            </TabsTrigger>
+          )}
+          <TabsTrigger value="locations" className="flex items-center gap-2 text-xs md:text-sm">
+            <MapPin className="h-4 w-4" />
+            <span className="hidden sm:inline">Location Access</span>
+            <span className="sm:hidden">Locations</span>
+          </TabsTrigger>
+          <TabsTrigger value="permissions" className="flex items-center gap-2 text-xs md:text-sm">
+            <Settings className="h-4 w-4" />
+            <span className="hidden sm:inline">Feature Permissions</span>
+            <span className="sm:hidden">Perms</span>
+          </TabsTrigger>
+          <TabsTrigger value="email" className="flex items-center gap-2 text-xs md:text-sm">
+            <Mail className="h-4 w-4" />
+            <span className="hidden sm:inline">Email Health</span>
+            <span className="sm:hidden">Email</span>
+          </TabsTrigger>
+        </TabsList>
+      </div>
 
       <TabsContent value="users">
         
@@ -707,7 +714,7 @@ export const UserManagement = () => {
                     <DialogTitle>Add New User</DialogTitle>
                   </DialogHeader>
                   <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="first_name">First Name *</Label>
                         <Input
@@ -756,7 +763,7 @@ export const UserManagement = () => {
                       />
                     </div>
 
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="role">Role *</Label>
                         <Select value={newUser.role} onValueChange={(value) => setNewUser({ ...newUser, role: value })}>
@@ -925,67 +932,116 @@ export const UserManagement = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Name</TableHead>
-                  <TableHead>Email</TableHead>
-                  <TableHead>Role</TableHead>
-                  <TableHead>Company</TableHead>
-                  <TableHead>Last Login</TableHead>
-                  <TableHead>Status</TableHead>
-                  <TableHead>Actions</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {users.map((user) => (
-                  <TableRow key={user.id}>
-                    <TableCell className="font-medium">
-                      <div className="flex items-center gap-2">
-                        {user.first_name} {user.last_name}
+            {/* Mobile Card Layout */}
+            <div className="md:hidden space-y-3">
+              {users.map((user) => (
+                <Card key={user.id} className="p-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <span className="font-medium truncate">
+                          {user.first_name} {user.last_name}
+                        </span>
                         {user.is_hidden && (
-                          <Badge variant="outline" className="text-xs bg-muted/50 text-muted-foreground">
+                          <Badge variant="outline" className="text-xs bg-muted/50 text-muted-foreground shrink-0">
                             <EyeOff className="h-3 w-3 mr-1" />
                             Hidden
                           </Badge>
                         )}
+                        <Badge variant={user.is_active ? "default" : "secondary"} className="shrink-0">
+                          {user.is_active ? "Active" : "Inactive"}
+                        </Badge>
                       </div>
-                    </TableCell>
-                    <TableCell>{user.email}</TableCell>
-                    <TableCell>
-                      <Badge variant={getRoleBadgeVariant(user.role)}>
-                        {user.role?.replace('_', ' ')}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      {user.resolved_company_name ? (
-                        <div className="flex items-center gap-1.5">
-                          <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
-                          <span>{user.resolved_company_name}</span>
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground">—</span>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      <UserLoginStatusBadge 
-                        lastLogin={user.last_login || null} 
-                        isActivated={user.is_activated || false}
-                        passwordSetAt={user.password_set_at || null}
-                      />
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={user.is_active ? "default" : "secondary"}>
-                        {user.is_active ? "Active" : "Inactive"}
-                      </Badge>
-                    </TableCell>
-                    <TableCell>
-                      <ActionsSelector actions={getActionsForUser(user)} />
-                    </TableCell>
+                      <p className="text-sm text-muted-foreground truncate mt-1">{user.email}</p>
+                      <div className="flex items-center gap-2 mt-2 flex-wrap">
+                        <Badge variant={getRoleBadgeVariant(user.role)} className="text-xs">
+                          {user.role?.replace('_', ' ')}
+                        </Badge>
+                        {user.resolved_company_name && (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Building2 className="h-3 w-3" />
+                            {user.resolved_company_name}
+                          </span>
+                        )}
+                      </div>
+                      <div className="mt-2">
+                        <UserLoginStatusBadge 
+                          lastLogin={user.last_login || null} 
+                          isActivated={user.is_activated || false}
+                          passwordSetAt={user.password_set_at || null}
+                        />
+                      </div>
+                    </div>
+                    <ActionsSelector actions={getActionsForUser(user)} />
+                  </div>
+                </Card>
+              ))}
+            </div>
+
+            {/* Desktop Table Layout */}
+            <div className="hidden md:block overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Name</TableHead>
+                    <TableHead>Email</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead className="hidden lg:table-cell">Company</TableHead>
+                    <TableHead className="hidden xl:table-cell">Last Login</TableHead>
+                    <TableHead>Status</TableHead>
+                    <TableHead>Actions</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {users.map((user) => (
+                    <TableRow key={user.id}>
+                      <TableCell className="font-medium">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate max-w-[150px]">{user.first_name} {user.last_name}</span>
+                          {user.is_hidden && (
+                            <Badge variant="outline" className="text-xs bg-muted/50 text-muted-foreground shrink-0">
+                              <EyeOff className="h-3 w-3 mr-1" />
+                              Hidden
+                            </Badge>
+                          )}
+                        </div>
+                      </TableCell>
+                      <TableCell className="max-w-[200px] truncate">{user.email}</TableCell>
+                      <TableCell>
+                        <Badge variant={getRoleBadgeVariant(user.role)}>
+                          {user.role?.replace('_', ' ')}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="hidden lg:table-cell">
+                        {user.resolved_company_name ? (
+                          <div className="flex items-center gap-1.5">
+                            <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
+                            <span className="truncate max-w-[150px]">{user.resolved_company_name}</span>
+                          </div>
+                        ) : (
+                          <span className="text-muted-foreground">—</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="hidden xl:table-cell">
+                        <UserLoginStatusBadge 
+                          lastLogin={user.last_login || null} 
+                          isActivated={user.is_activated || false}
+                          passwordSetAt={user.password_set_at || null}
+                        />
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={user.is_active ? "default" : "secondary"}>
+                          {user.is_active ? "Active" : "Inactive"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <ActionsSelector actions={getActionsForUser(user)} />
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </CardContent>
         </Card>
       </TabsContent>

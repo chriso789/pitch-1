@@ -8,7 +8,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
 import { AutomationManager } from "@/components/AutomationManager";
 import { SmartDocumentEditor } from "@/components/SmartDocumentEditor";
@@ -115,8 +117,10 @@ export const Settings = () => {
   const [tabConfig, setTabConfig] = useState<SettingsTab[]>([]);
   const [activeTab, setActiveTab] = useState<string>("general");
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { toast } = useToast();
   const { activeCompany, activeCompanyId } = useCompanySwitcher();
+  const isMobile = useIsMobile();
 
   useEffect(() => {
     if (currentUser?.profileLoaded === true && currentUser?.role) {
@@ -385,23 +389,74 @@ export const Settings = () => {
     }
   };
 
-  return (
+  // Sidebar content component to avoid duplication
+  const SidebarContent = () => (
     <div className="space-y-6">
+      {groupedTabs.map((category) => {
+        const CategoryIcon = LucideIcons[category.icon] as React.ComponentType<{ className?: string }>;
+        
+        return (
+          <div key={category.key}>
+            <div className="flex items-center gap-2 px-2 mb-2">
+              <CategoryIcon className="h-4 w-4 text-muted-foreground" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                {category.name}
+              </span>
+            </div>
+            <div className="space-y-1">
+              {category.tabs.map((tab) => {
+                const TabIcon = (LucideIcons[tab.icon_name as keyof typeof LucideIcons] || LucideIcons.Settings) as React.ComponentType<{ className?: string }>;
+                const isActive = activeTab === tab.tab_key;
+                
+                return (
+                  <button
+                    key={tab.tab_key}
+                    onClick={() => {
+                      setActiveTab(tab.tab_key);
+                      setMobileMenuOpen(false);
+                    }}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors text-left",
+                      isActive 
+                        ? "bg-primary text-primary-foreground" 
+                        : "hover:bg-muted text-foreground"
+                    )}
+                  >
+                    <TabIcon className="h-4 w-4 shrink-0" />
+                    <span className="truncate">{tab.label}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+
+  // Get current tab info for mobile header
+  const currentTabInfo = tabConfig.find(t => t.tab_key === activeTab);
+  const CurrentTabIcon = currentTabInfo 
+    ? (LucideIcons[currentTabInfo.icon_name as keyof typeof LucideIcons] || LucideIcons.Settings) as React.ComponentType<{ className?: string }>
+    : LucideIcons.Settings;
+
+  return (
+    <div className="space-y-4 md:space-y-6">
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-3xl font-bold gradient-primary bg-clip-text text-transparent">
+          <h1 className="text-2xl md:text-3xl font-bold gradient-primary bg-clip-text text-transparent">
             Settings
           </h1>
-          <p className="text-muted-foreground">
+          <p className="text-sm md:text-base text-muted-foreground">
             Configure your system preferences and templates
           </p>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex items-center gap-2 md:gap-4">
           {currentUser?.role === 'master' && (
             <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
               <DialogTrigger asChild>
-                <Button variant="outline" size="sm">
+                <Button variant="outline" size="sm" className="hidden md:flex">
                   <LucideIcons.Settings className="h-4 w-4 mr-2" />
                   Configure Tabs
                 </Button>
@@ -423,51 +478,41 @@ export const Settings = () => {
         </div>
       </div>
 
+      {/* Mobile Tab Selector */}
+      {isMobile && (
+        <Sheet open={mobileMenuOpen} onOpenChange={setMobileMenuOpen}>
+          <SheetTrigger asChild>
+            <Button variant="outline" className="w-full justify-between">
+              <div className="flex items-center gap-2">
+                <CurrentTabIcon className="h-4 w-4" />
+                <span>{currentTabInfo?.label || 'Select Setting'}</span>
+              </div>
+              <LucideIcons.ChevronDown className="h-4 w-4" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="bottom" className="h-[70vh]">
+            <SheetHeader>
+              <SheetTitle>Settings</SheetTitle>
+            </SheetHeader>
+            <ScrollArea className="h-full mt-4">
+              <SidebarContent />
+            </ScrollArea>
+          </SheetContent>
+        </Sheet>
+      )}
+
       {/* Main Content - Sidebar + Content Layout */}
       <div className="flex gap-6 min-h-[600px]">
-        {/* Sidebar */}
-        <Card className="w-64 shrink-0">
-          <ScrollArea className="h-[calc(100vh-240px)]">
-            <div className="p-4 space-y-6">
-              {groupedTabs.map((category) => {
-                const CategoryIcon = LucideIcons[category.icon] as React.ComponentType<{ className?: string }>;
-                
-                return (
-                  <div key={category.key}>
-                    <div className="flex items-center gap-2 px-2 mb-2">
-                      <CategoryIcon className="h-4 w-4 text-muted-foreground" />
-                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                        {category.name}
-                      </span>
-                    </div>
-                    <div className="space-y-1">
-                      {category.tabs.map((tab) => {
-                        const TabIcon = (LucideIcons[tab.icon_name as keyof typeof LucideIcons] || LucideIcons.Settings) as React.ComponentType<{ className?: string }>;
-                        const isActive = activeTab === tab.tab_key;
-                        
-                        return (
-                          <button
-                            key={tab.tab_key}
-                            onClick={() => setActiveTab(tab.tab_key)}
-                            className={cn(
-                              "w-full flex items-center gap-3 px-3 py-2 rounded-md text-sm transition-colors text-left",
-                              isActive 
-                                ? "bg-primary text-primary-foreground" 
-                                : "hover:bg-muted text-foreground"
-                            )}
-                          >
-                            <TabIcon className="h-4 w-4 shrink-0" />
-                            <span className="truncate">{tab.label}</span>
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
-          </ScrollArea>
-        </Card>
+        {/* Desktop Sidebar */}
+        {!isMobile && (
+          <Card className="w-64 shrink-0">
+            <ScrollArea className="h-[calc(100vh-240px)]">
+              <div className="p-4">
+                <SidebarContent />
+              </div>
+            </ScrollArea>
+          </Card>
+        )}
 
         {/* Content Area */}
         <div className="flex-1 min-w-0">

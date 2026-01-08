@@ -57,14 +57,74 @@ function formatValue(value: any, formatType: string): string {
   }
 }
 
+// Get nested value from object using dot notation
+function getNestedValue(obj: any, path: string): any {
+  if (!obj || !path) return undefined;
+  const parts = path.split('.');
+  let value = obj;
+  for (const part of parts) {
+    if (value === null || value === undefined) return undefined;
+    value = value[part];
+  }
+  return value;
+}
+
 // Resolve tag value
 function resolveTagValue(tagKey: string, context: TagContext, tagDefs: SmartTagDefinition[]): string {
   if (tagKey === 'today') {
     return new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' });
   }
   
+  // Handle common direct mappings first (for templates using simple keys)
+  const directMappings: Record<string, () => string | undefined> = {
+    'company.name': () => context.tenant?.name || context.tenant?.tenant_name,
+    'company.phone': () => context.tenant?.phone,
+    'company.email': () => context.tenant?.email,
+    'company.website': () => context.tenant?.website,
+    'company.logo': () => context.tenant?.logo_url,
+    'company.logo_url': () => context.tenant?.logo_url,
+    'company.license': () => context.tenant?.license_number,
+    'company.about': () => context.tenant?.about_us,
+    'company.address': () => context.tenant?.full_address || context.tenant?.address_street,
+    'company.warranty': () => context.tenant?.warranty_terms,
+    'customer.name': () => `${context.contact?.first_name || ''} ${context.contact?.last_name || ''}`.trim(),
+    'customer.first_name': () => context.contact?.first_name,
+    'customer.last_name': () => context.contact?.last_name,
+    'customer.phone': () => context.contact?.phone,
+    'customer.email': () => context.contact?.email,
+    'customer.address': () => context.contact?.address_line1,
+    'customer.city': () => context.contact?.city,
+    'customer.state': () => context.contact?.state,
+    'customer.zip': () => context.contact?.zip_code,
+    'estimate.total': () => context.estimate?.selling_price || context.estimate?.total_amount,
+    'estimate.materials': () => context.estimate?.material_cost || context.estimate?.materials_total,
+    'estimate.labor': () => context.estimate?.labor_cost || context.estimate?.labor_total,
+    'estimate.subtotal': () => context.estimate?.subtotal,
+    'estimate.selling_price': () => context.estimate?.selling_price,
+    'roof.total_sqft': () => context.measurements?.summary?.total_area || context.measurements?.total_area_sqft,
+    'roof.squares': () => context.measurements?.summary?.total_squares || context.measurements?.total_squares,
+    'roof.pitch': () => context.measurements?.summary?.predominant_pitch,
+    'roof.stories': () => context.measurements?.stories,
+    'project.name': () => context.pipeline_entry?.name || `${context.contact?.first_name || ''} ${context.contact?.last_name || ''} Project`.trim(),
+  };
+  
+  // Check direct mappings first
+  if (directMappings[tagKey]) {
+    const value = directMappings[tagKey]();
+    if (value !== undefined && value !== null && value !== '') {
+      // Format currency values
+      if (tagKey.includes('estimate.') && typeof value === 'number') {
+        return formatValue(value, 'currency');
+      }
+      if (tagKey.includes('roof.') && tagKey !== 'roof.pitch' && typeof value === 'number') {
+        return formatValue(value, 'number');
+      }
+      return String(value);
+    }
+  }
+  
   const tagDef = tagDefs.find(t => t.tag_key === tagKey);
-  if (!tagDef) return `{{${tagKey}}}`;
+  if (!tagDef) return '';  // Return empty instead of keeping the tag
   
   const sourceMap: Record<string, keyof TagContext> = {
     'contacts': 'contact',
@@ -83,8 +143,11 @@ function resolveTagValue(tagKey: string, context: TagContext, tagDefs: SmartTagD
     const parts = tagDef.field_path.split('||').map(p => p.trim());
     value = parts.map(part => {
       if (part.startsWith("'") && part.endsWith("'")) return part.slice(1, -1);
-      return sourceData[part] || '';
+      return getNestedValue(sourceData, part) || sourceData[part] || '';
     }).join('');
+  } else if (tagDef.field_path.includes('.')) {
+    // Handle nested paths like "summary.total_area"
+    value = getNestedValue(sourceData, tagDef.field_path);
   } else {
     value = sourceData[tagDef.field_path];
   }
