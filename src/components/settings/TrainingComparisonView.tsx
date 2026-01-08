@@ -1,12 +1,13 @@
 import { useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, XCircle, AlertTriangle, BarChart2, RefreshCw, Loader2 } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, BarChart2, RefreshCw, Loader2, Zap } from 'lucide-react';
 import { toast } from 'sonner';
+
 interface TrainingComparisonViewProps {
   sessionId: string;
   aiMeasurementId?: string;
@@ -29,7 +30,86 @@ interface ComparisonRow {
 }
 
 export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotals }: TrainingComparisonViewProps) {
+  const queryClient = useQueryClient();
   const [isRetraining, setIsRetraining] = useState(false);
+  const [isRunningAIMeasure, setIsRunningAIMeasure] = useState(false);
+  const [currentAiMeasurementId, setCurrentAiMeasurementId] = useState<string | undefined>(aiMeasurementId);
+
+  // Fetch session data for lat/lng/address when running AI measure
+  const { data: session } = useQuery({
+    queryKey: ['training-session-for-measure', sessionId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('roof_training_sessions')
+        .select('id, lat, lng, property_address, ai_measurement_id')
+        .eq('id', sessionId)
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+  });
+
+  // Update currentAiMeasurementId when session data changes
+  const effectiveAiMeasurementId = currentAiMeasurementId || session?.ai_measurement_id;
+
+  const handleRunAIMeasure = async () => {
+    if (!session?.lat || !session?.lng) {
+      toast.error('No coordinates available for this property');
+      return;
+    }
+
+    setIsRunningAIMeasure(true);
+    try {
+      toast.info('Running AI measurement analysis...');
+
+      // Call the measure edge function
+      const { data, error } = await supabase.functions.invoke('measure', {
+        body: {
+          lat: session.lat,
+          lng: session.lng,
+          address: session.property_address || undefined,
+        },
+      });
+
+      if (error) throw error;
+
+      if (!data?.id) {
+        throw new Error('AI measurement did not return an ID');
+      }
+
+      // Update the training session with the AI measurement ID
+      const { error: updateError } = await supabase
+        .from('roof_training_sessions')
+        .update({ 
+          ai_measurement_id: data.id,
+          ai_totals: {
+            ridge: data.summary?.ridge_ft || 0,
+            hip: data.summary?.hip_ft || 0,
+            valley: data.summary?.valley_ft || 0,
+            eave: data.summary?.eave_ft || 0,
+            rake: data.summary?.rake_ft || 0,
+          }
+        } as any)
+        .eq('id', sessionId);
+
+      if (updateError) throw updateError;
+
+      // Update local state to trigger comparison
+      setCurrentAiMeasurementId(data.id);
+
+      // Invalidate queries to refetch data
+      queryClient.invalidateQueries({ queryKey: ['ai-measurement'] });
+      queryClient.invalidateQueries({ queryKey: ['training-session-for-measure', sessionId] });
+
+      toast.success(`AI Measurement complete! Found ${data.faces?.length || 0} facets, ${Math.round(data.summary?.total_area_sqft || 0)} sqft`);
+    } catch (err: any) {
+      console.error('Failed to run AI measurement:', err);
+      toast.error(err.message || 'Failed to run AI measurement');
+    } finally {
+      setIsRunningAIMeasure(false);
+    }
+  };
 
   const handleRetrainAI = async () => {
     setIsRetraining(true);
@@ -51,44 +131,61 @@ export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotal
   };
 
   // Retrain AI button component - rendered in all states
-  const RetrainAICard = () => (
+  const RetrainAICard = ({ showRunAI = false }: { showRunAI?: boolean }) => (
     <Card className="border-primary/20 bg-primary/5">
       <CardContent className="py-4">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <p className="font-medium">Retrain AI with Your Traces</p>
             <p className="text-sm text-muted-foreground">
               Apply your manual corrections to improve future AI measurements
             </p>
           </div>
-          <Button onClick={handleRetrainAI} disabled={isRetraining}>
-            {isRetraining ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-            ) : (
-              <RefreshCw className="h-4 w-4 mr-2" />
+          <div className="flex items-center gap-2">
+            {showRunAI && (
+              <Button 
+                onClick={handleRunAIMeasure} 
+                disabled={isRunningAIMeasure || !session?.lat}
+                variant="secondary"
+              >
+                {isRunningAIMeasure ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Zap className="h-4 w-4 mr-2" />
+                )}
+                {isRunningAIMeasure ? 'Analyzing...' : 'Run AI Measure'}
+              </Button>
             )}
-            {isRetraining ? 'Retraining...' : 'Retrain AI'}
-          </Button>
+            <Button onClick={handleRetrainAI} disabled={isRetraining}>
+              {isRetraining ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              {isRetraining ? 'Retraining...' : 'Retrain AI'}
+            </Button>
+          </div>
         </div>
       </CardContent>
     </Card>
   );
+
   // Fetch AI measurement data if available
   const { data: aiMeasurement } = useQuery({
-    queryKey: ['ai-measurement', aiMeasurementId],
+    queryKey: ['ai-measurement', effectiveAiMeasurementId],
     queryFn: async () => {
-      if (!aiMeasurementId) return null;
+      if (!effectiveAiMeasurementId) return null;
       
       const { data, error } = await supabase
         .from('roof_measurements')
         .select('*')
-        .eq('id', aiMeasurementId)
+        .eq('id', effectiveAiMeasurementId)
         .maybeSingle();
       
       if (error) throw error;
       return data;
     },
-    enabled: !!aiMeasurementId,
+    enabled: !!effectiveAiMeasurementId,
   });
 
   // Calculate comparison data - use correct column names from schema
@@ -172,18 +269,20 @@ export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotal
     return <XCircle className="h-4 w-4 text-red-500" />;
   };
 
-  if (!aiMeasurementId) {
+  if (!effectiveAiMeasurementId) {
     return (
       <div className="space-y-6">
-        <RetrainAICard />
+        <RetrainAICard showRunAI={true} />
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <BarChart2 className="h-12 w-12 text-muted-foreground mb-4" />
+            <Zap className="h-12 w-12 text-muted-foreground mb-4" />
             <p className="text-lg font-medium mb-2">No AI Measurement Available</p>
-            <p className="text-muted-foreground text-center max-w-md">
-              This lead doesn't have an AI measurement to compare against. 
-              Run the AI measurement first to enable comparison.
+            <p className="text-muted-foreground text-center max-w-md mb-4">
+              Click "Run AI Measure" above to analyze this property and generate AI measurements for comparison.
             </p>
+            {!session?.lat && (
+              <Badge variant="destructive">No coordinates available</Badge>
+            )}
           </CardContent>
         </Card>
       </div>
