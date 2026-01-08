@@ -70,8 +70,8 @@ export function TrainingLeadSelector({ open, onClose, onSelect }: TrainingLeadSe
       const { data, error } = await query;
       if (error) throw error;
 
-      // Filter to only leads with coordinates and cast properly
-      return (data || []).filter((lead) => {
+      // Filter to only leads with coordinates - cast through unknown to avoid type conflicts
+      const filtered = (data || []).filter((lead) => {
         const metadata = lead.metadata as any;
         const contact = lead.contact as any;
         const verifiedAddr = metadata?.verified_address?.geometry?.location;
@@ -79,7 +79,8 @@ export function TrainingLeadSelector({ open, onClose, onSelect }: TrainingLeadSe
         const contactLatLng = contact?.latitude && contact?.longitude;
         
         return verifiedAddr || contactVerified || contactLatLng;
-      }) as LeadOption[];
+      });
+      return filtered as unknown as LeadOption[];
     },
     enabled: open && !!activeCompanyId,
   });
