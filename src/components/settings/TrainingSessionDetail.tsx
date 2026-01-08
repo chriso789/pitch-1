@@ -401,6 +401,8 @@ export function TrainingSessionDetail({ session, onBack, onUpdate }: TrainingSes
           <TrainingComparisonView
             sessionId={session.id}
             aiMeasurementId={session.ai_measurement_id}
+            satelliteImageUrl={satelliteUrl || undefined}
+            manualTraces={traces}
             manualTotals={traceTotals}
           />
         </TabsContent>
