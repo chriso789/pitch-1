@@ -5,12 +5,20 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, XCircle, AlertTriangle, BarChart2, RefreshCw, Loader2, Zap } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, BarChart2, RefreshCw, Loader2, Zap, RotateCcw, Sparkles } from 'lucide-react';
 import { toast } from 'sonner';
+import { TrainingOverlayComparison } from './TrainingOverlayComparison';
 
 interface TrainingComparisonViewProps {
   sessionId: string;
   aiMeasurementId?: string;
+  satelliteImageUrl?: string;
+  manualTraces?: {
+    id: string;
+    trace_type: string;
+    length_ft: number;
+    canvas_points: { x: number; y: number }[];
+  }[];
   manualTotals: {
     ridge: number;
     hip: number;
@@ -29,11 +37,26 @@ interface ComparisonRow {
   variancePct: number;
 }
 
-export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotals }: TrainingComparisonViewProps) {
+interface CorrectionFactor {
+  feature_type: string;
+  multiplier: number;
+  sessions_count: number;
+}
+
+export function TrainingComparisonView({ 
+  sessionId, 
+  aiMeasurementId, 
+  satelliteImageUrl,
+  manualTraces = [],
+  manualTotals 
+}: TrainingComparisonViewProps) {
   const queryClient = useQueryClient();
   const [isRetraining, setIsRetraining] = useState(false);
   const [isRunningAIMeasure, setIsRunningAIMeasure] = useState(false);
+  const [isRemeasuring, setIsRemeasuring] = useState(false);
   const [currentAiMeasurementId, setCurrentAiMeasurementId] = useState<string | undefined>(aiMeasurementId);
+  const [learnedCorrections, setLearnedCorrections] = useState<CorrectionFactor[]>([]);
+  const [retrainComplete, setRetrainComplete] = useState(false);
 
   // Fetch session data for lat/lng/address when running AI measure
   const { data: session } = useQuery({
@@ -139,9 +162,12 @@ export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotal
       if (error) throw error;
       
       const sessionsAnalyzed = data?.sessions_analyzed || 0;
-      const factorsUpdated = data?.corrections?.length || 0;
+      const corrections = data?.corrections || [];
       
-      toast.success(`AI Retrained! Analyzed ${sessionsAnalyzed} sessions, updated ${factorsUpdated} correction factors.`);
+      setLearnedCorrections(corrections);
+      setRetrainComplete(true);
+      
+      toast.success(`AI Retrained! Analyzed ${sessionsAnalyzed} sessions, updated ${corrections.length} correction factors.`);
     } catch (err: any) {
       console.error('Failed to retrain AI:', err);
       toast.error(err.message || 'Failed to recalculate corrections');
@@ -150,45 +176,74 @@ export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotal
     }
   };
 
-  // Retrain AI button component - rendered in all states
-  const RetrainAICard = ({ showRunAI = false }: { showRunAI?: boolean }) => (
-    <Card className="border-primary/20 bg-primary/5">
-      <CardContent className="py-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <p className="font-medium">Retrain AI with Your Traces</p>
-            <p className="text-sm text-muted-foreground">
-              Apply your manual corrections to improve future AI measurements
-            </p>
-          </div>
-          <div className="flex items-center gap-2">
-            {showRunAI && (
-              <Button 
-                onClick={handleRunAIMeasure} 
-                disabled={isRunningAIMeasure || !session?.lat}
-                variant="secondary"
-              >
-                {isRunningAIMeasure ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <Zap className="h-4 w-4 mr-2" />
-                )}
-                {isRunningAIMeasure ? 'Analyzing...' : 'Run AI Measure'}
-              </Button>
-            )}
-            <Button onClick={handleRetrainAI} disabled={isRetraining}>
-              {isRetraining ? (
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-              ) : (
-                <RefreshCw className="h-4 w-4 mr-2" />
-              )}
-              {isRetraining ? 'Retraining...' : 'Retrain AI'}
-            </Button>
-          </div>
-        </div>
-      </CardContent>
-    </Card>
-  );
+  const handleRemeasure = async () => {
+    if (!session?.lat || !session?.lng) {
+      toast.error('No coordinates available for this property');
+      return;
+    }
+
+    const propertyId = session.pipeline_entry_id;
+    if (!propertyId) {
+      toast.error('No linked property found for this training session');
+      return;
+    }
+
+    setIsRemeasuring(true);
+    try {
+      toast.info('Remeasuring with learned corrections...');
+
+      // Call the measure edge function with apply_corrections flag
+      const { data, error } = await supabase.functions.invoke('measure', {
+        body: {
+          action: 'pull',
+          propertyId,
+          lat: session.lat,
+          lng: session.lng,
+          address: session.property_address || undefined,
+          apply_corrections: true,
+        },
+      });
+
+      if (error) throw error;
+
+      if (!data?.ok) {
+        throw new Error(data?.error || 'Remeasurement failed');
+      }
+
+      const measurement = data?.data?.measurement;
+      const measurementId = measurement?.id;
+      
+      if (measurementId) {
+        setCurrentAiMeasurementId(measurementId);
+        
+        // Update session
+        const summary = measurement?.summary || {};
+        await supabase
+          .from('roof_training_sessions')
+          .update({ 
+            ai_measurement_id: measurementId,
+            ai_totals: {
+              ridge: summary?.ridge_ft || 0,
+              hip: summary?.hip_ft || 0,
+              valley: summary?.valley_ft || 0,
+              eave: summary?.eave_ft || 0,
+              rake: summary?.rake_ft || 0,
+            }
+          } as any)
+          .eq('id', sessionId);
+      }
+
+      queryClient.invalidateQueries({ queryKey: ['ai-measurement'] });
+      queryClient.invalidateQueries({ queryKey: ['training-session-for-measure', sessionId] });
+
+      toast.success('Remeasurement complete with corrections applied!');
+    } catch (err: any) {
+      console.error('Failed to remeasure:', err);
+      toast.error(err.message || 'Failed to remeasure');
+    } finally {
+      setIsRemeasuring(false);
+    }
+  };
 
   // Fetch AI measurement data if available - query measurements table (not roof_measurements)
   const { data: aiMeasurement } = useQuery({
@@ -218,6 +273,9 @@ export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotal
     rake: summary?.rake_ft || 0,
     perimeter: summary?.perimeter_ft || 0,
   };
+
+  // Extract AI linear features for overlay
+  const aiLinearFeatures = (aiMeasurement as any)?.linear_features || [];
 
   const calculateVariance = (manual: number, ai: number): { variance: number; variancePct: number } => {
     if (manual === 0 && ai === 0) return { variance: 0, variancePct: 0 };
@@ -290,6 +348,101 @@ export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotal
     return <XCircle className="h-4 w-4 text-red-500" />;
   };
 
+  // Retrain AI button component - rendered in all states
+  const RetrainAICard = ({ showRunAI = false }: { showRunAI?: boolean }) => (
+    <Card className="border-primary/20 bg-primary/5">
+      <CardContent className="py-4">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+          <div>
+            <p className="font-medium">Train AI with Your Traces</p>
+            <p className="text-sm text-muted-foreground">
+              Apply your manual corrections to improve future AI measurements
+            </p>
+          </div>
+          <div className="flex items-center gap-2 flex-wrap">
+            {showRunAI && (
+              <Button 
+                onClick={handleRunAIMeasure} 
+                disabled={isRunningAIMeasure || !session?.lat}
+                variant="secondary"
+              >
+                {isRunningAIMeasure ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <Zap className="h-4 w-4 mr-2" />
+                )}
+                {isRunningAIMeasure ? 'Analyzing...' : 'Run AI Measure'}
+              </Button>
+            )}
+            <Button onClick={handleRetrainAI} disabled={isRetraining}>
+              {isRetraining ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              {isRetraining ? 'Retraining...' : 'Retrain AI'}
+            </Button>
+            {retrainComplete && (
+              <Button 
+                onClick={handleRemeasure} 
+                disabled={isRemeasuring || !session?.lat}
+                variant="outline"
+                className="border-green-500 text-green-600 hover:bg-green-50"
+              >
+                {isRemeasuring ? (
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-4 w-4 mr-2" />
+                )}
+                {isRemeasuring ? 'Remeasuring...' : 'Remeasure'}
+              </Button>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+
+  // Learned Corrections Summary
+  const LearnedCorrectionsCard = () => {
+    if (!retrainComplete || learnedCorrections.length === 0) return null;
+    
+    return (
+      <Card className="border-green-200 bg-green-50/50">
+        <CardHeader className="pb-2">
+          <CardTitle className="flex items-center gap-2 text-base text-green-700">
+            <Sparkles className="h-4 w-4" />
+            AI Retrained Successfully
+          </CardTitle>
+          <CardDescription>
+            The AI learned the following correction factors from your training sessions
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            {learnedCorrections.map((correction) => {
+              const pctChange = ((correction.multiplier - 1) * 100).toFixed(1);
+              const isIncrease = correction.multiplier > 1;
+              const isDecrease = correction.multiplier < 1;
+              
+              return (
+                <div key={correction.feature_type} className="p-2 bg-white rounded border">
+                  <div className="text-sm font-medium capitalize">{correction.feature_type}</div>
+                  <div className={`text-xs ${isIncrease ? 'text-blue-600' : isDecrease ? 'text-orange-600' : 'text-gray-500'}`}>
+                    {isIncrease ? `+${pctChange}%` : isDecrease ? `${pctChange}%` : 'No change'}
+                  </div>
+                  <div className="text-xs text-muted-foreground">
+                    {correction.sessions_count} session(s)
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </CardContent>
+      </Card>
+    );
+  };
+
   if (!effectiveAiMeasurementId) {
     return (
       <div className="space-y-6">
@@ -331,6 +484,21 @@ export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotal
     <div className="space-y-6">
       {/* Retrain AI Button */}
       <RetrainAICard />
+      
+      {/* Learned Corrections Summary */}
+      <LearnedCorrectionsCard />
+
+      {/* Visual Overlay Comparison */}
+      {satelliteImageUrl && session?.lat && session?.lng && (manualTraces.length > 0 || aiLinearFeatures.length > 0) && (
+        <TrainingOverlayComparison
+          satelliteImageUrl={satelliteImageUrl}
+          centerLat={session.lat}
+          centerLng={session.lng}
+          zoom={20}
+          manualTraces={manualTraces}
+          aiLinearFeatures={Array.isArray(aiLinearFeatures) ? aiLinearFeatures : []}
+        />
+      )}
 
       {/* Overall Accuracy Card */}
       <Card>

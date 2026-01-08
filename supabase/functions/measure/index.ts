@@ -1488,7 +1488,7 @@ serve(async (req) => {
 
       // Route: action=pull
       if (action === 'pull') {
-        const { propertyId, lat, lng, address } = body;
+        const { propertyId, lat, lng, address, apply_corrections } = body;
 
         if (!propertyId) {
           return json({ 
@@ -1506,11 +1506,28 @@ serve(async (req) => {
           }, corsHeaders, 400);
         }
 
-        console.log('Pull request:', { propertyId, lat, lng, address });
+        console.log('Pull request:', { propertyId, lat, lng, address, apply_corrections });
 
         // Get user ID
         const { data: { user } } = await supabase.auth.getUser();
         const userId = user?.id;
+
+        // Load correction factors if apply_corrections is true
+        let corrections: Record<string, number> = {};
+        if (apply_corrections) {
+          const { data: correctionRows } = await supabase
+            .from('measurement_corrections')
+            .select('feature_type, multiplier')
+            .order('created_at', { ascending: false });
+          
+          if (correctionRows && correctionRows.length > 0) {
+            corrections = correctionRows.reduce((acc: Record<string, number>, row: any) => {
+              acc[row.feature_type] = row.multiplier;
+              return acc;
+            }, {});
+            console.log('Applying corrections:', corrections);
+          }
+        }
 
         // Provider chain: Google Solar (primary) → Free Footprint (OSM + Open Buildings fallback)
         let meas: MeasureResult | null = null;
@@ -1535,6 +1552,25 @@ serve(async (req) => {
             ok: false, 
             error: 'No provider available. Please use manual measurements.' 
           }, corsHeaders, 404);
+        }
+
+        // Apply corrections to linear features and summary
+        if (apply_corrections && Object.keys(corrections).length > 0) {
+          if (meas.linear_features) {
+            meas.linear_features = meas.linear_features.map(lf => ({
+              ...lf,
+              length_ft: lf.length_ft * (corrections[lf.type] || 1)
+            }));
+          }
+          if (meas.summary) {
+            meas.summary.ridge_ft = (meas.summary.ridge_ft || 0) * (corrections['ridge'] || 1);
+            meas.summary.hip_ft = (meas.summary.hip_ft || 0) * (corrections['hip'] || 1);
+            meas.summary.valley_ft = (meas.summary.valley_ft || 0) * (corrections['valley'] || 1);
+            meas.summary.eave_ft = (meas.summary.eave_ft || 0) * (corrections['eave'] || 1);
+            meas.summary.rake_ft = (meas.summary.rake_ft || 0) * (corrections['rake'] || 1);
+          }
+          meas.source = `${meas.source}_corrected`;
+          console.log('Corrections applied to measurement');
         }
 
         // Save measurement with analysis coordinates for overlay alignment
