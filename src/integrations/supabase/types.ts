@@ -20311,14 +20311,7 @@ export type Database = {
             foreignKeyName: "roof_training_sessions_ai_measurement_id_fkey"
             columns: ["ai_measurement_id"]
             isOneToOne: false
-            referencedRelation: "roof_measurement_summary"
-            referencedColumns: ["id"]
-          },
-          {
-            foreignKeyName: "roof_training_sessions_ai_measurement_id_fkey"
-            columns: ["ai_measurement_id"]
-            isOneToOne: false
-            referencedRelation: "roof_measurements"
+            referencedRelation: "measurements"
             referencedColumns: ["id"]
           },
           {

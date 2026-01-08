@@ -59,14 +59,13 @@ serve(async (req) => {
 
     const tenantId = profile.tenant_id;
 
-    // Fetch all completed training sessions with AI and traced totals
-    const { data: sessions, error: sessionsError } = await supabase
+    // Fetch training sessions with AI totals - include in_progress and completed
+    const { data: rawSessions, error: sessionsError } = await supabase
       .from("roof_training_sessions")
-      .select("id, ai_totals, traced_totals")
+      .select("id, ai_totals, traced_totals, status")
       .eq("tenant_id", tenantId)
-      .eq("status", "completed")
-      .not("ai_totals", "is", null)
-      .not("traced_totals", "is", null);
+      .in("status", ["completed", "in_progress", "reviewed"])
+      .not("ai_totals", "is", null);
 
     if (sessionsError) {
       console.error("Error fetching sessions:", sessionsError);
@@ -76,9 +75,51 @@ serve(async (req) => {
       });
     }
 
-    if (!sessions || sessions.length === 0) {
+    if (!rawSessions || rawSessions.length === 0) {
       return new Response(JSON.stringify({ 
-        message: "No completed training sessions with comparison data",
+        message: "No training sessions with AI measurement data found",
+        sessions_analyzed: 0,
+        corrections: []
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, "Content-Type": "application/json" },
+      });
+    }
+
+    // For sessions missing traced_totals, compute from roof_training_traces
+    const sessions = [];
+    for (const session of rawSessions) {
+      let tracedTotals = session.traced_totals;
+      
+      if (!tracedTotals) {
+        // Fetch traces for this session and compute totals
+        const { data: traces } = await supabase
+          .from("roof_training_traces")
+          .select("trace_type, length_ft")
+          .eq("session_id", session.id);
+        
+        if (traces && traces.length > 0) {
+          tracedTotals = traces.reduce((acc: Record<string, number>, t: any) => {
+            const type = t.trace_type?.toLowerCase() || 'unknown';
+            acc[type] = (acc[type] || 0) + (parseFloat(t.length_ft) || 0);
+            return acc;
+          }, {} as Record<string, number>);
+          console.log(`Computed traced_totals for session ${session.id}:`, tracedTotals);
+        }
+      }
+      
+      // Only include if we have both AI and traced totals
+      if (session.ai_totals && tracedTotals) {
+        sessions.push({
+          ...session,
+          traced_totals: tracedTotals,
+        });
+      }
+    }
+
+    if (sessions.length === 0) {
+      return new Response(JSON.stringify({ 
+        message: "No training sessions with both AI and traced measurements found. Please trace roof features first.",
         sessions_analyzed: 0,
         corrections: []
       }), {
