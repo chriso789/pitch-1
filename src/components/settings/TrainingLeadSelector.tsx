@@ -21,8 +21,6 @@ interface TrainingLeadSelectorProps {
     lat: number;
     lng: number;
     name: string;
-    satelliteImageUrl?: string;
-    aiMeasurementId?: string;
   }) => void;
 }
 
@@ -32,14 +30,6 @@ interface LeadOption {
   contact_id?: string;
   contact?: any;
   metadata?: any;
-  measurementData?: { id: string; mapboxUrl?: string; googleUrl?: string };
-}
-
-interface MeasurementRecord {
-  id: string;
-  customer_id: string;
-  mapbox_image_url?: string;
-  google_maps_image_url?: string;
 }
 
 // Robust coordinate extraction supporting multiple formats
@@ -153,45 +143,11 @@ export function TrainingLeadSelector({ open, onClose, onSelect }: TrainingLeadSe
       // Filter to only leads with valid coordinates
       const leadsWithCoords = (pipelineData || []).filter(
         (lead) => extractCoordinates(lead as LeadOption) !== null
-      );
+      ) as LeadOption[];
 
-      if (leadsWithCoords.length === 0) {
-        return [] as LeadOption[];
-      }
+      console.log(`[TrainingLeadSelector] Tenant: ${effectiveTenantId}, Leads with coords: ${leadsWithCoords.length}`);
 
-      // Step 2: Fetch measurements separately (no FK, so we query by customer_id)
-      const leadIds = leadsWithCoords.map((l) => l.id);
-      const { data: measurementsData } = await supabase
-        .from('roof_measurements')
-        .select('id, customer_id, mapbox_image_url, google_maps_image_url')
-        .in('customer_id', leadIds);
-
-      // Build lookup map
-      const measurementMap = new Map<string, MeasurementRecord>();
-      (measurementsData || []).forEach((m: any) => {
-        measurementMap.set(m.customer_id, m);
-      });
-
-      // Merge measurement data into leads
-      const enrichedLeads: LeadOption[] = leadsWithCoords.map((lead) => {
-        const measurement = measurementMap.get(lead.id);
-        return {
-          ...lead,
-          measurementData: measurement
-            ? {
-                id: measurement.id,
-                mapboxUrl: measurement.mapbox_image_url || undefined,
-                googleUrl: measurement.google_maps_image_url || undefined,
-              }
-            : undefined,
-        } as LeadOption;
-      });
-
-      console.log(
-        `[TrainingLeadSelector] Tenant: ${effectiveTenantId}, Leads: ${enrichedLeads.length}, With measurements: ${measurementMap.size}`
-      );
-
-      return enrichedLeads;
+      return leadsWithCoords;
     },
     enabled: open && !!effectiveTenantId,
   });
@@ -225,8 +181,6 @@ export function TrainingLeadSelector({ open, onClose, onSelect }: TrainingLeadSe
       lat: coords.lat,
       lng: coords.lng,
       name: sessionName || `Training: ${contactName}`,
-      satelliteImageUrl: selectedLead.measurementData?.mapboxUrl || selectedLead.measurementData?.googleUrl,
-      aiMeasurementId: selectedLead.measurementData?.id,
     });
   };
 
@@ -284,7 +238,6 @@ export function TrainingLeadSelector({ open, onClose, onSelect }: TrainingLeadSe
                   const contactName = lead.contact 
                     ? `${lead.contact.first_name} ${lead.contact.last_name}`.trim()
                     : 'Unknown Contact';
-                  const hasAIMeasurement = !!lead.measurementData;
                   const isSelected = selectedLead?.id === lead.id;
 
                   return (
@@ -301,11 +254,6 @@ export function TrainingLeadSelector({ open, onClose, onSelect }: TrainingLeadSe
                             <div className="flex items-center gap-2">
                               <Home className="h-4 w-4 text-muted-foreground shrink-0" />
                               <span className="font-medium truncate">{contactName}</span>
-                              {hasAIMeasurement && (
-                                <Badge variant="outline" className="text-xs shrink-0">
-                                  Has AI Measurement
-                                </Badge>
-                              )}
                             </div>
                             <div className="flex items-center gap-1 mt-1 text-sm text-muted-foreground">
                               <MapPin className="h-3.5 w-3.5 shrink-0" />
