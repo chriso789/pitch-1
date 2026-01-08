@@ -212,11 +212,33 @@ export function TrainingSessionDetail({ session, onBack, onUpdate }: TrainingSes
   }, [session.status, clearAllTraces, saveTrace, updateSession]);
 
   const handleCompleteSession = async () => {
-    await updateSession.mutateAsync({ 
-      status: 'completed',
-      completed_at: new Date().toISOString(),
-      description: notes,
-    });
+    // Save traced totals for ML training comparison
+    const tracedTotalsData = {
+      ridge: traceTotals.ridge,
+      hip: traceTotals.hip,
+      valley: traceTotals.valley,
+      eave: traceTotals.eave,
+      rake: traceTotals.rake,
+    };
+
+    // Use raw update to avoid type issues with new columns
+    const { error } = await supabase
+      .from('roof_training_sessions')
+      .update({ 
+        status: 'completed',
+        completed_at: new Date().toISOString(),
+        description: notes,
+        traced_totals: tracedTotalsData,
+      } as any)
+      .eq('id', session.id);
+    
+    if (error) {
+      toast.error('Failed to complete session');
+      return;
+    }
+    
+    onUpdate();
+    toast.success('Session completed! Traced data saved for AI training.');
   };
 
   const handleSaveNotes = async () => {

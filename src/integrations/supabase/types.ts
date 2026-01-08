@@ -12942,6 +12942,56 @@ export type Database = {
           },
         ]
       }
+      measurement_correction_factors: {
+        Row: {
+          avg_variance_pct: number | null
+          confidence: number
+          correction_multiplier: number
+          created_at: string | null
+          feature_type: string
+          id: string
+          last_updated: string | null
+          sample_count: number
+          tenant_id: string | null
+          total_ai_ft: number | null
+          total_manual_ft: number | null
+        }
+        Insert: {
+          avg_variance_pct?: number | null
+          confidence?: number
+          correction_multiplier?: number
+          created_at?: string | null
+          feature_type: string
+          id?: string
+          last_updated?: string | null
+          sample_count?: number
+          tenant_id?: string | null
+          total_ai_ft?: number | null
+          total_manual_ft?: number | null
+        }
+        Update: {
+          avg_variance_pct?: number | null
+          confidence?: number
+          correction_multiplier?: number
+          created_at?: string | null
+          feature_type?: string
+          id?: string
+          last_updated?: string | null
+          sample_count?: number
+          tenant_id?: string | null
+          total_ai_ft?: number | null
+          total_manual_ft?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "measurement_correction_factors_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       measurement_remeasure_log: {
         Row: {
           created_at: string | null
@@ -20198,6 +20248,7 @@ export type Database = {
       roof_training_sessions: {
         Row: {
           ai_measurement_id: string | null
+          ai_totals: Json | null
           completed_at: string | null
           contact_id: string | null
           created_at: string | null
@@ -20212,10 +20263,12 @@ export type Database = {
           satellite_image_url: string | null
           status: string | null
           tenant_id: string
+          traced_totals: Json | null
           updated_at: string | null
         }
         Insert: {
           ai_measurement_id?: string | null
+          ai_totals?: Json | null
           completed_at?: string | null
           contact_id?: string | null
           created_at?: string | null
@@ -20230,10 +20283,12 @@ export type Database = {
           satellite_image_url?: string | null
           status?: string | null
           tenant_id: string
+          traced_totals?: Json | null
           updated_at?: string | null
         }
         Update: {
           ai_measurement_id?: string | null
+          ai_totals?: Json | null
           completed_at?: string | null
           contact_id?: string | null
           created_at?: string | null
@@ -20248,6 +20303,7 @@ export type Database = {
           satellite_image_url?: string | null
           status?: string | null
           tenant_id?: string
+          traced_totals?: Json | null
           updated_at?: string | null
         }
         Relationships: [
