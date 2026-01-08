@@ -5822,34 +5822,76 @@ export type Database = {
       }
       customer_photos: {
         Row: {
+          ai_analysis: Json | null
+          annotations_json: Json | null
+          category: string | null
           contact_id: string | null
           description: string | null
+          display_order: number | null
           file_name: string | null
+          file_size: number | null
           file_url: string
+          gps_latitude: number | null
+          gps_longitude: number | null
           id: string
+          include_in_estimate: boolean | null
+          is_primary: boolean | null
+          lead_id: string | null
+          mime_type: string | null
+          original_filename: string | null
           project_id: string | null
+          taken_at: string | null
           tenant_id: string | null
           uploaded_at: string | null
+          uploaded_by: string | null
         }
         Insert: {
+          ai_analysis?: Json | null
+          annotations_json?: Json | null
+          category?: string | null
           contact_id?: string | null
           description?: string | null
+          display_order?: number | null
           file_name?: string | null
+          file_size?: number | null
           file_url: string
+          gps_latitude?: number | null
+          gps_longitude?: number | null
           id?: string
+          include_in_estimate?: boolean | null
+          is_primary?: boolean | null
+          lead_id?: string | null
+          mime_type?: string | null
+          original_filename?: string | null
           project_id?: string | null
+          taken_at?: string | null
           tenant_id?: string | null
           uploaded_at?: string | null
+          uploaded_by?: string | null
         }
         Update: {
+          ai_analysis?: Json | null
+          annotations_json?: Json | null
+          category?: string | null
           contact_id?: string | null
           description?: string | null
+          display_order?: number | null
           file_name?: string | null
+          file_size?: number | null
           file_url?: string
+          gps_latitude?: number | null
+          gps_longitude?: number | null
           id?: string
+          include_in_estimate?: boolean | null
+          is_primary?: boolean | null
+          lead_id?: string | null
+          mime_type?: string | null
+          original_filename?: string | null
           project_id?: string | null
+          taken_at?: string | null
           tenant_id?: string | null
           uploaded_at?: string | null
+          uploaded_by?: string | null
         }
         Relationships: [
           {
@@ -5857,6 +5899,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_photos_lead_id_fkey"
+            columns: ["lead_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
             referencedColumns: ["id"]
           },
           {
@@ -5872,6 +5921,20 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "tenants"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_photos_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_photos_uploaded_by_fkey"
+            columns: ["uploaded_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
           },
         ]
       }
