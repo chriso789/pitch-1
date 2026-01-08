@@ -466,28 +466,28 @@ const CompanyGrid = ({ companies, loading, onToggleStatus, onViewDetails }: Comp
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
       {companies.map(company => (
-        <Card key={company.id} className="hover:shadow-md transition-shadow">
+        <Card key={company.id} className="hover:shadow-md transition-shadow overflow-hidden">
           <CardHeader className="pb-2">
-            <div className="flex items-start justify-between">
-              <div className="flex items-center gap-3">
+            <div className="flex items-start justify-between gap-2">
+              <div className="flex items-center gap-3 min-w-0 flex-1">
                 {company.logo_url ? (
-                  <img src={company.logo_url} alt="" className="h-10 w-10 rounded object-cover" />
+                  <img src={company.logo_url} alt="" className="h-10 w-10 rounded object-cover shrink-0" />
                 ) : (
                   <div 
-                    className="h-10 w-10 rounded flex items-center justify-center text-white font-bold"
+                    className="h-10 w-10 rounded flex items-center justify-center text-white font-bold shrink-0"
                     style={{ backgroundColor: company.primary_color || '#2563eb' }}
                   >
                     {company.name.charAt(0)}
                   </div>
                 )}
-                <div>
-                  <CardTitle className="text-lg">{company.name}</CardTitle>
+                <div className="min-w-0 flex-1">
+                  <CardTitle className="text-lg truncate" title={company.name}>{company.name}</CardTitle>
                   {company.owner_email && (
-                    <p className="text-xs text-muted-foreground">{company.owner_email}</p>
+                    <p className="text-xs text-muted-foreground truncate" title={company.owner_email}>{company.owner_email}</p>
                   )}
                 </div>
               </div>
-              <Badge variant={company.is_active !== false ? "default" : "secondary"}>
+              <Badge variant={company.is_active !== false ? "default" : "secondary"} className="shrink-0">
                 {company.is_active !== false ? "Active" : "Inactive"}
               </Badge>
             </div>
