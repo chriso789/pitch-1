@@ -9,6 +9,7 @@ interface ProfileStatusBadgeProps {
   hasPhoto: boolean;
   hasPhone: boolean;
   hasTitle: boolean;
+  passwordSetAt?: string | null;
   showCompletion?: boolean;
   className?: string;
 }
@@ -18,10 +19,12 @@ export const ProfileStatusBadge: React.FC<ProfileStatusBadgeProps> = ({
   hasPhoto,
   hasPhone,
   hasTitle,
+  passwordSetAt,
   showCompletion = true,
   className
 }) => {
-  const isActivated = loginCount > 0;
+  // User is activated if they have logged in OR set their password
+  const isActivated = loginCount > 0 || !!passwordSetAt;
   
   // Calculate profile completion (each field worth 25%)
   const completionItems = [
