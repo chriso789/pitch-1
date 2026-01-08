@@ -1431,7 +1431,21 @@ serve(async (req) => {
     // Handle body-based routing (for supabase.functions.invoke())
     if (req.method === 'POST') {
       const body = await req.json();
-      const { action } = body;
+      
+      // Infer action if not provided (backwards compatibility)
+      let action = body.action;
+      if (!action) {
+        if (body.measurement && body.tags) {
+          action = 'manual-verify';
+        } else if (body.lat && body.lng && body.propertyId) {
+          action = 'pull';
+        } else if (body.propertyId && !body.lat && !body.lng) {
+          action = 'latest';
+        }
+        if (action) {
+          console.log(`Action inferred as '${action}' from body fields`);
+        }
+      }
       
       console.log('Measure request:', { action, pathname, body: JSON.stringify(body).substring(0, 200) });
 
@@ -2026,7 +2040,7 @@ serve(async (req) => {
         }, corsHeaders);
       }
 
-      return json({ ok: false, error: 'Invalid action. Use: latest, pull, manual, or manual-verify' }, corsHeaders, 400);
+      return json({ ok: false, error: 'Invalid action. Use: latest, pull, manual, manual-verify, or generate-overlay' }, corsHeaders, 400);
     }
 
     // Fallback for GET requests (legacy path-based routing)
