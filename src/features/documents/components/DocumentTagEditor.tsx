@@ -1,10 +1,8 @@
 import React, { useEffect, useRef, useState, useCallback } from "react";
-import { Canvas as FabricCanvas, Rect, FabricText, FabricObject } from "fabric";
+import { Canvas as FabricCanvas, Rect, FabricText, FabricObject, FabricImage } from "fabric";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
-import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { 
@@ -15,8 +13,12 @@ import {
   Tag as TagIcon,
   ZoomIn,
   ZoomOut,
-  RotateCcw
+  RotateCcw,
+  ChevronLeft,
+  ChevronRight,
+  Loader2
 } from "lucide-react";
+import { loadPDF, renderPageToDataUrl, isPDF, clearPageCache, type PDFDocumentProxy } from "@/lib/pdfRenderer";
 
 interface TagPlacement {
   id?: string;
@@ -90,10 +92,17 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [placements, setPlacements] = useState<TagPlacement[]>([]);
+  const [allPlacements, setAllPlacements] = useState<TagPlacement[]>([]);
   const [selectedObject, setSelectedObject] = useState<FabricObject | null>(null);
   const [zoom, setZoom] = useState(1);
   const [tenantId, setTenantId] = useState<string | null>(null);
+  
+  // PDF-specific state
+  const [pdfDocument, setPdfDocument] = useState<PDFDocumentProxy | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const [pageRendering, setPageRendering] = useState(false);
+  const [isDocumentPdf, setIsDocumentPdf] = useState(false);
 
   // Load tenant ID
   useEffect(() => {
@@ -113,9 +122,9 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
     loadTenantId();
   }, []);
 
-  // Load document and existing placements
+  // Load document URL and existing placements
   useEffect(() => {
-    const loadDocument = async () => {
+    const loadDocumentData = async () => {
       setLoading(true);
       try {
         // Get signed URL for the document
@@ -125,6 +134,10 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
 
         if (urlError) throw urlError;
         setDocumentUrl(urlData.signedUrl);
+        
+        // Check if it's a PDF
+        const isPdfDoc = isPDF(document.mime_type, document.filename);
+        setIsDocumentPdf(isPdfDoc);
 
         // Load existing tag placements
         const { data: existingPlacements, error: placementsError } = await supabase
@@ -135,7 +148,7 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
         if (placementsError) throw placementsError;
 
         if (existingPlacements && existingPlacements.length > 0) {
-          setPlacements(existingPlacements.map(p => ({
+          setAllPlacements(existingPlacements.map(p => ({
             id: p.id,
             tag_key: p.tag_key,
             page_number: p.page_number || 1,
@@ -156,12 +169,17 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
       }
     };
 
-    loadDocument();
+    loadDocumentData();
+    
+    // Cleanup
+    return () => {
+      clearPageCache();
+    };
   }, [document]);
 
   // Initialize Fabric canvas
   useEffect(() => {
-    if (!canvasRef.current || !documentUrl) return;
+    if (!canvasRef.current) return;
 
     const canvas = new FabricCanvas(canvasRef.current, {
       width: 800,
@@ -170,25 +188,6 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
     });
 
     setFabricCanvas(canvas);
-
-    // Load document as background
-    const img = new Image();
-    img.crossOrigin = "anonymous";
-    img.onload = () => {
-      const scale = Math.min(800 / img.width, 1000 / img.height);
-      canvas.setWidth(img.width * scale);
-      canvas.setHeight(img.height * scale);
-      
-      // Set background using fabric Image
-      import("fabric").then(({ FabricImage }) => {
-        FabricImage.fromURL(img.src, { crossOrigin: "anonymous" }).then((fabricImg) => {
-          fabricImg.scaleToWidth(img.width * scale);
-          canvas.backgroundImage = fabricImg;
-          canvas.renderAll();
-        });
-      });
-    };
-    img.src = documentUrl;
 
     // Selection events
     canvas.on("selection:created", (e) => {
@@ -206,16 +205,168 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
     return () => {
       canvas.dispose();
     };
-  }, [documentUrl]);
+  }, []);
 
-  // Add existing placements to canvas
+  // Load PDF or Image when URL is available
   useEffect(() => {
-    if (!fabricCanvas || placements.length === 0) return;
+    if (!documentUrl || !fabricCanvas) return;
 
-    placements.forEach((placement) => {
-      addTagToCanvas(placement.tag_key, placement.x_position, placement.y_position, placement.width, placement.height);
+    const loadContent = async () => {
+      setPageRendering(true);
+      
+      try {
+        if (isDocumentPdf) {
+          // Load PDF
+          const pdf = await loadPDF(documentUrl);
+          setPdfDocument(pdf);
+          setTotalPages(pdf.numPages);
+          setCurrentPage(1);
+          
+          // Render first page
+          await renderPdfPage(pdf, 1);
+        } else {
+          // Load image
+          await loadImage(documentUrl);
+        }
+      } catch (error) {
+        console.error("Error loading document content:", error);
+        toast.error("Failed to load document. Please try again.");
+      } finally {
+        setPageRendering(false);
+      }
+    };
+
+    loadContent();
+  }, [documentUrl, fabricCanvas, isDocumentPdf]);
+
+  // Render PDF page to canvas
+  const renderPdfPage = async (pdf: PDFDocumentProxy, pageNum: number) => {
+    if (!fabricCanvas) return;
+    
+    setPageRendering(true);
+    
+    try {
+      // Clear existing objects (tags) temporarily
+      const existingTags = collectCurrentPageTags();
+      fabricCanvas.clear();
+      fabricCanvas.backgroundColor = "#f5f5f5";
+      
+      // Render PDF page
+      const rendered = await renderPageToDataUrl(pdf, pageNum, 1.5);
+      
+      // Set as background
+      const img = await FabricImage.fromURL(rendered.dataUrl);
+      fabricCanvas.setWidth(rendered.width);
+      fabricCanvas.setHeight(rendered.height);
+      fabricCanvas.backgroundImage = img;
+      fabricCanvas.renderAll();
+      
+      // Save current page tags before switching
+      if (existingTags.length > 0) {
+        updatePlacementsForPage(currentPage, existingTags);
+      }
+      
+      // Load tags for the new page
+      const pagePlacements = allPlacements.filter(p => p.page_number === pageNum);
+      pagePlacements.forEach((placement) => {
+        addTagToCanvas(
+          placement.tag_key,
+          placement.x_position,
+          placement.y_position,
+          placement.width,
+          placement.height
+        );
+      });
+      
+    } catch (error) {
+      console.error("Error rendering PDF page:", error);
+      toast.error("Failed to render page");
+    } finally {
+      setPageRendering(false);
+    }
+  };
+
+  // Load image as background
+  const loadImage = async (url: string) => {
+    if (!fabricCanvas) return;
+    
+    return new Promise<void>((resolve, reject) => {
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = async () => {
+        const scale = Math.min(800 / img.width, 1000 / img.height);
+        fabricCanvas.setWidth(img.width * scale);
+        fabricCanvas.setHeight(img.height * scale);
+        
+        try {
+          const fabricImg = await FabricImage.fromURL(url, { crossOrigin: "anonymous" });
+          fabricImg.scaleToWidth(img.width * scale);
+          fabricCanvas.backgroundImage = fabricImg;
+          fabricCanvas.renderAll();
+          
+          // Load tags for page 1
+          const pagePlacements = allPlacements.filter(p => p.page_number === 1);
+          pagePlacements.forEach((placement) => {
+            addTagToCanvas(
+              placement.tag_key,
+              placement.x_position,
+              placement.y_position,
+              placement.width,
+              placement.height
+            );
+          });
+          
+          resolve();
+        } catch (err) {
+          reject(err);
+        }
+      };
+      img.onerror = reject;
+      img.src = url;
     });
-  }, [fabricCanvas, placements]);
+  };
+
+  // Collect tags from current canvas
+  const collectCurrentPageTags = (): TagPlacement[] => {
+    if (!fabricCanvas) return [];
+    
+    const objects = fabricCanvas.getObjects();
+    const tagRects = objects.filter((obj: any) => obj.tagKey && !obj.isLabel);
+    
+    return tagRects.map((rect: any) => ({
+      tag_key: rect.tagKey,
+      page_number: currentPage,
+      x_position: rect.left || 0,
+      y_position: rect.top || 0,
+      width: (rect.width || 150) * (rect.scaleX || 1),
+      height: (rect.height || 24) * (rect.scaleY || 1),
+      font_size: 12,
+      font_family: "Arial",
+      text_align: "left",
+    }));
+  };
+
+  // Update placements for a specific page
+  const updatePlacementsForPage = (pageNum: number, newPagePlacements: TagPlacement[]) => {
+    setAllPlacements(prev => {
+      // Remove old placements for this page
+      const otherPages = prev.filter(p => p.page_number !== pageNum);
+      // Add new placements
+      return [...otherPages, ...newPagePlacements];
+    });
+  };
+
+  // Handle page navigation
+  const goToPage = async (pageNum: number) => {
+    if (!pdfDocument || pageNum < 1 || pageNum > totalPages || pageRendering) return;
+    
+    // Save current page tags first
+    const currentTags = collectCurrentPageTags();
+    updatePlacementsForPage(currentPage, currentTags);
+    
+    setCurrentPage(pageNum);
+    await renderPdfPage(pdfDocument, pageNum);
+  };
 
   const addTagToCanvas = useCallback((tagKey: string, x?: number, y?: number, w?: number, h?: number) => {
     if (!fabricCanvas) return;
@@ -225,26 +376,7 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
     const left = x ?? 100;
     const top = y ?? 100;
 
-    // Create a group with background rect and text
-    const rect = new Rect({
-      width,
-      height,
-      fill: "rgba(59, 130, 246, 0.2)",
-      stroke: "#3b82f6",
-      strokeWidth: 1,
-      rx: 4,
-      ry: 4,
-    });
-
-    const text = new FabricText(`{{${tagKey}}}`, {
-      fontSize: 11,
-      fill: "#1e40af",
-      fontFamily: "monospace",
-      left: 4,
-      top: 4,
-    });
-
-    // Create a simple rect with custom data
+    // Create tag rectangle
     const tagRect = new Rect({
       left,
       top,
@@ -289,8 +421,6 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
     });
 
     tagRect.on("scaling", () => {
-      const newWidth = (tagRect.width || 150) * (tagRect.scaleX || 1);
-      const newHeight = (tagRect.height || 24) * (tagRect.scaleY || 1);
       labelText.set({
         left: (tagRect.left || 0) + 4,
         top: (tagRect.top || 0) + 4,
@@ -331,21 +461,15 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
 
     setSaving(true);
     try {
-      // Get all tag rects from canvas
-      const objects = fabricCanvas.getObjects();
-      const tagRects = objects.filter((obj: any) => obj.tagKey && !obj.isLabel);
-
-      const newPlacements: TagPlacement[] = tagRects.map((rect: any) => ({
-        tag_key: rect.tagKey,
-        page_number: 1,
-        x_position: rect.left || 0,
-        y_position: rect.top || 0,
-        width: (rect.width || 150) * (rect.scaleX || 1),
-        height: (rect.height || 24) * (rect.scaleY || 1),
-        font_size: 12,
-        font_family: "Arial",
-        text_align: "left",
-      }));
+      // Collect current page tags
+      const currentTags = collectCurrentPageTags();
+      updatePlacementsForPage(currentPage, currentTags);
+      
+      // Get all placements including current page
+      const allCurrentPlacements = [
+        ...allPlacements.filter(p => p.page_number !== currentPage),
+        ...currentTags
+      ];
 
       // Delete existing placements
       await supabase
@@ -354,11 +478,11 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
         .eq("document_id", document.id);
 
       // Insert new placements
-      if (newPlacements.length > 0) {
+      if (allCurrentPlacements.length > 0) {
         const { error } = await supabase
           .from("document_tag_placements")
           .insert(
-            newPlacements.map((p) => ({
+            allCurrentPlacements.map((p) => ({
               tenant_id: tenantId,
               document_id: document.id,
               tag_key: p.tag_key,
@@ -376,7 +500,7 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
         if (error) throw error;
       }
 
-      toast.success(`Saved ${newPlacements.length} tag placements`);
+      toast.success(`Saved ${allCurrentPlacements.length} tag placements`);
       onSave();
     } catch (error) {
       console.error("Error saving placements:", error);
@@ -412,7 +536,10 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
   if (loading) {
     return (
       <div className="fixed inset-0 bg-background z-50 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary" />
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-sm text-muted-foreground">Loading document...</p>
+        </div>
       </div>
     );
   }
@@ -430,8 +557,37 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
             <p className="text-sm text-muted-foreground">{document.filename}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-1 mr-4">
+        
+        <div className="flex items-center gap-4">
+          {/* Page Navigation (PDF only) */}
+          {isDocumentPdf && totalPages > 1 && (
+            <div className="flex items-center gap-2 px-3 py-1.5 bg-muted rounded-lg">
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => goToPage(currentPage - 1)}
+                disabled={currentPage <= 1 || pageRendering}
+              >
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+              <span className="text-sm min-w-[80px] text-center">
+                Page {currentPage} of {totalPages}
+              </span>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7"
+                onClick={() => goToPage(currentPage + 1)}
+                disabled={currentPage >= totalPages || pageRendering}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          )}
+
+          {/* Zoom Controls */}
+          <div className="flex items-center gap-1">
             <Button variant="outline" size="icon" onClick={() => handleZoom("out")}>
               <ZoomOut className="h-4 w-4" />
             </Button>
@@ -443,6 +599,7 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
               <RotateCcw className="h-4 w-4" />
             </Button>
           </div>
+
           {selectedObject && (
             <Button variant="destructive" size="sm" onClick={handleDeleteSelected}>
               <Trash2 className="h-4 w-4 mr-2" />
@@ -512,7 +669,12 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
         </div>
 
         {/* Canvas area */}
-        <div className="flex-1 overflow-auto bg-muted/30 p-8">
+        <div className="flex-1 overflow-auto bg-muted/30 p-8 relative">
+          {pageRendering && (
+            <div className="absolute inset-0 bg-background/50 flex items-center justify-center z-10">
+              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            </div>
+          )}
           <div className="inline-block shadow-lg rounded-lg overflow-hidden">
             <canvas ref={canvasRef} />
           </div>
