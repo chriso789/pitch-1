@@ -51,15 +51,29 @@ Deno.serve(async (req: Request) => {
         }
 
         let imageUrl = photo_url;
+        let photoTable = 'project_photos';
         
-        // Get photo URL if only ID provided
+        // Get photo URL if only ID provided - check both tables
         if (photo_id && !imageUrl) {
-          const { data: photo } = await supabaseAdmin
-            .from('project_photos')
+          // First try customer_photos
+          const { data: customerPhoto } = await supabaseAdmin
+            .from('customer_photos')
             .select('file_url')
             .eq('id', photo_id)
             .single();
-          imageUrl = photo?.file_url;
+          
+          if (customerPhoto?.file_url) {
+            imageUrl = customerPhoto.file_url;
+            photoTable = 'customer_photos';
+          } else {
+            // Fallback to project_photos
+            const { data: projectPhoto } = await supabaseAdmin
+              .from('project_photos')
+              .select('file_url')
+              .eq('id', photo_id)
+              .single();
+            imageUrl = projectPhoto?.file_url;
+          }
         }
 
         if (!imageUrl) {
@@ -128,16 +142,28 @@ Deno.serve(async (req: Request) => {
         const aiData = await aiResponse.json();
         const analysis = JSON.parse(aiData.choices[0].message.content);
 
-        // Update photo record if photo_id provided
+        // Update photo record if photo_id provided - use correct table
         if (photo_id) {
-          await supabaseAdmin
-            .from('project_photos')
+          // Try customer_photos first
+          const { error: customerError } = await supabaseAdmin
+            .from('customer_photos')
             .update({
               category: analysis.category || 'other',
-              ai_analysis: analysis,
               updated_at: new Date().toISOString()
             })
             .eq('id', photo_id);
+          
+          // If not found in customer_photos, try project_photos
+          if (customerError) {
+            await supabaseAdmin
+              .from('project_photos')
+              .update({
+                category: analysis.category || 'other',
+                ai_analysis: analysis,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', photo_id);
+          }
         }
 
         console.log(`[photo-categorizer] Categorized photo: ${photo_id || 'new'} as ${analysis.category}`);
@@ -158,12 +184,23 @@ Deno.serve(async (req: Request) => {
         let photosToProcess = photo_ids || [];
         
         if (job_id && !photosToProcess.length) {
-          const { data: photos } = await supabaseAdmin
+          // Check both tables for photos
+          const { data: customerPhotos } = await supabaseAdmin
+            .from('customer_photos')
+            .select('id')
+            .eq('lead_id', job_id)
+            .is('category', null);
+          
+          const { data: projectPhotos } = await supabaseAdmin
             .from('project_photos')
             .select('id')
             .eq('project_id', job_id)
             .is('category', null);
-          photosToProcess = photos?.map(p => p.id) || [];
+          
+          photosToProcess = [
+            ...(customerPhotos?.map(p => p.id) || []),
+            ...(projectPhotos?.map(p => p.id) || [])
+          ];
         }
 
         // Process in batches to avoid timeout

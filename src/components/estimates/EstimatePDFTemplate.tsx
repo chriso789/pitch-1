@@ -32,6 +32,13 @@ interface MeasurementSummary {
   wastePercent: number;
 }
 
+interface JobPhoto {
+  id: string;
+  file_url: string;
+  description?: string | null;
+  category?: string | null;
+}
+
 interface EstimatePDFTemplateProps {
   estimateNumber: string;
   customerName: string;
@@ -63,6 +70,7 @@ interface EstimatePDFTemplateProps {
   finePrintContent?: string;
   options?: Partial<PDFComponentOptions>;
   measurementSummary?: MeasurementSummary;
+  jobPhotos?: JobPhoto[];
 }
 
 const formatCurrency = (amount: number) => {
@@ -102,6 +110,7 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
   finePrintContent,
   options: partialOptions,
   measurementSummary,
+  jobPhotos,
 }) => {
   // Merge with defaults (customer mode by default = hide internal info)
   const opts: PDFComponentOptions = { ...getDefaultOptions('customer'), ...partialOptions };
@@ -486,6 +495,37 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Job Photos Page */}
+      {opts.showJobPhotos && jobPhotos && jobPhotos.length > 0 && (
+        <div className="page-break-before pt-8">
+          <h3 className="text-lg font-semibold text-gray-900 mb-6 flex items-center gap-2">
+            <span className="w-2 h-2 bg-teal-500 rounded-full"></span>
+            Project Photos
+          </h3>
+          <div className="grid grid-cols-2 gap-4">
+            {jobPhotos.map((photo, index) => (
+              <div key={photo.id || index} className="bg-gray-50 rounded-lg overflow-hidden">
+                <img 
+                  src={photo.file_url} 
+                  alt={photo.description || `Photo ${index + 1}`}
+                  className="w-full h-48 object-cover"
+                />
+                <div className="p-2">
+                  <p className="text-xs text-gray-600 truncate">
+                    {photo.description || photo.category || `Photo ${index + 1}`}
+                  </p>
+                  {photo.category && (
+                    <span className="inline-block mt-1 px-2 py-0.5 text-[10px] bg-gray-200 text-gray-700 rounded">
+                      {photo.category}
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
           </div>
         </div>
       )}
