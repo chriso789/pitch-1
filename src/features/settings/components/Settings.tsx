@@ -49,6 +49,7 @@ import { MeasurementQualityDashboard } from "@/components/measurements/Measureme
 import { EdgeFunctionHealthDashboard } from "@/components/settings/EdgeFunctionHealthDashboard";
 import { SubscriptionManagement } from "@/components/settings/SubscriptionManagement";
 import { DemoRequestsPanel } from "@/components/settings/DemoRequestsPanel";
+import { RoofTrainingLab } from "@/components/settings/RoofTrainingLab";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
@@ -106,6 +107,7 @@ const TAB_TO_CATEGORY: Record<string, string> = {
   subscription: "platform",
   "quality-monitoring": "platform",
   "company-activity": "platform",
+  "roof-training": "platform",
   portals: "general",
   reports: "system",
   measurements: "products",
@@ -330,6 +332,8 @@ export const Settings = () => {
         return <DemoRequestsPanel />;
       case "email":
         return <EmailDomainSettings />;
+      case "roof-training":
+        return <RoofTrainingLab />;
       case "portals":
         return (
           <Card>
