@@ -91,10 +91,17 @@ async function fetchLeadDetails(id: string): Promise<LeadDetailsData | null> {
 }
 
 // Fetch dynamic approval requirements from tenant settings
-async function fetchDynamicRequirements(tenantId: string, pipelineEntryId: string): Promise<{
+async function fetchDynamicRequirements(tenantId: string | undefined, pipelineEntryId: string): Promise<{
   requirements: DynamicRequirement[];
   legacy: ApprovalRequirements;
 }> {
+  // Guard against undefined tenantId to prevent query errors
+  if (!tenantId) {
+    return {
+      requirements: [],
+      legacy: { hasContract: false, hasEstimate: false, hasMaterials: false, hasLabor: false, allComplete: false }
+    };
+  }
   // Fetch tenant's approval requirements configuration
   const { data: reqConfig, error: configError } = await supabase
     .from('tenant_approval_requirements')
