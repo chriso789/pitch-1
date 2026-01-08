@@ -25,8 +25,11 @@ interface TrainingCanvasProps {
   onSave: (linearFeatures: { type: string; wkt: string; length_ft: number; points: { x: number; y: number }[] }[]) => void;
 }
 
-const TOOL_CONFIG: { tool: TracerTool; label: string; icon: React.ReactNode; shortcut: string; color: string }[] = [
+type CanvasTool = TracerTool | 'pan';
+
+const TOOL_CONFIG: { tool: CanvasTool; label: string; icon: React.ReactNode; shortcut: string; color: string }[] = [
   { tool: 'select', label: 'Select', icon: <MousePointer className="h-4 w-4" />, shortcut: 'S', color: '#6b7280' },
+  { tool: 'pan', label: 'Pan', icon: <Move className="h-4 w-4" />, shortcut: 'M', color: '#64748b' },
   { tool: 'ridge', label: 'Ridge', icon: <Mountain className="h-4 w-4" />, shortcut: 'R', color: '#22c55e' },
   { tool: 'hip', label: 'Hip', icon: <Triangle className="h-4 w-4" />, shortcut: 'H', color: '#8b5cf6' },
   { tool: 'valley', label: 'Valley', icon: <ArrowDownUp className="h-4 w-4" />, shortcut: 'V', color: '#ef4444' },
@@ -61,6 +64,7 @@ export function TrainingCanvas({
   // Zoom and pan state
   const [canvasZoom, setCanvasZoom] = useState(1);
   const [isPanning, setIsPanning] = useState(false);
+  const [activePanMode, setActivePanMode] = useState(false);
   const lastPanPosition = useRef<{ x: number; y: number } | null>(null);
 
   const tracer = useRoofTracer({
@@ -330,8 +334,17 @@ export function TrainingCanvas({
     const handleMouseDown = (e: any) => {
       const evt = e.e as MouseEvent;
       
-      // Middle mouse or Space+click for panning
-      if (evt.button === 1 || (evt.button === 0 && spaceKeyPressed.current)) {
+      // Pan mode: left-click pans, OR middle mouse, OR Space+click
+      if (evt.button === 1 || (evt.button === 0 && spaceKeyPressed.current) || (evt.button === 0 && activePanMode)) {
+        setIsPanning(true);
+        lastPanPosition.current = { x: evt.clientX, y: evt.clientY };
+        fabricCanvas.defaultCursor = 'grabbing';
+        return;
+      }
+      
+      // Right-click drag pans (when not in pan mode)
+      if (evt.button === 2) {
+        evt.preventDefault();
         setIsPanning(true);
         lastPanPosition.current = { x: evt.clientX, y: evt.clientY };
         fabricCanvas.defaultCursor = 'grabbing';
@@ -383,6 +396,9 @@ export function TrainingCanvas({
       }
     };
 
+    // Prevent context menu on right-click
+    fabricCanvas.upperCanvasEl?.addEventListener('contextmenu', (e) => e.preventDefault());
+
     fabricCanvas.on('mouse:down', handleMouseDown);
     fabricCanvas.on('mouse:move', handleMouseMove);
     fabricCanvas.on('mouse:up', handleMouseUp);
@@ -391,8 +407,9 @@ export function TrainingCanvas({
       fabricCanvas.off('mouse:down', handleMouseDown);
       fabricCanvas.off('mouse:move', handleMouseMove);
       fabricCanvas.off('mouse:up', handleMouseUp);
+      fabricCanvas.upperCanvasEl?.removeEventListener('contextmenu', (e) => e.preventDefault());
     };
-  }, [fabricCanvas, tracer, isPanning]);
+  }, [fabricCanvas, tracer, isPanning, activePanMode]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -415,18 +432,27 @@ export function TrainingCanvas({
         handleZoomReset();
       } else if (e.key.toLowerCase() === 's' && !e.ctrlKey && !e.metaKey) {
         tracer.setActiveTool('select');
+        setActivePanMode(false);
       } else if (e.key.toLowerCase() === 'r') {
         tracer.setActiveTool('ridge');
+        setActivePanMode(false);
       } else if (e.key.toLowerCase() === 'h') {
         tracer.setActiveTool('hip');
+        setActivePanMode(false);
       } else if (e.key.toLowerCase() === 'v') {
         tracer.setActiveTool('valley');
+        setActivePanMode(false);
       } else if (e.key.toLowerCase() === 'e') {
         tracer.setActiveTool('eave');
+        setActivePanMode(false);
       } else if (e.key.toLowerCase() === 'k') {
         tracer.setActiveTool('rake');
+        setActivePanMode(false);
       } else if (e.key.toLowerCase() === 'p') {
         tracer.setActiveTool('perimeter');
+        setActivePanMode(false);
+      } else if (e.key.toLowerCase() === 'm') {
+        setActivePanMode(true);
       }
     };
 
@@ -457,25 +483,35 @@ export function TrainingCanvas({
       <div className="flex items-center justify-between gap-2 p-3 bg-muted/50 rounded-lg">
         <div className="flex items-center gap-1 flex-wrap">
           <TooltipProvider>
-            {TOOL_CONFIG.map(({ tool, label, icon, shortcut, color }) => (
-              <Tooltip key={tool}>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant={tracer.activeTool === tool ? 'default' : 'ghost'}
-                    size="sm"
-                    onClick={() => tracer.setActiveTool(tool)}
-                    className="gap-1.5"
-                    style={tracer.activeTool === tool ? { backgroundColor: color } : {}}
-                  >
-                    {icon}
-                    <span className="hidden md:inline">{label}</span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{label} ({shortcut})</p>
-                </TooltipContent>
-              </Tooltip>
-            ))}
+            {TOOL_CONFIG.map(({ tool, label, icon, shortcut, color }) => {
+              const isActive = tool === 'pan' ? activePanMode : (!activePanMode && tracer.activeTool === tool);
+              return (
+                <Tooltip key={tool}>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant={isActive ? 'default' : 'ghost'}
+                      size="sm"
+                      onClick={() => {
+                        if (tool === 'pan') {
+                          setActivePanMode(true);
+                        } else {
+                          setActivePanMode(false);
+                          tracer.setActiveTool(tool as TracerTool);
+                        }
+                      }}
+                      className="gap-1.5"
+                      style={isActive ? { backgroundColor: color } : {}}
+                    >
+                      {icon}
+                      <span className="hidden md:inline">{label}</span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p>{label} ({shortcut})</p>
+                  </TooltipContent>
+                </Tooltip>
+              );
+            })}
           </TooltipProvider>
         </div>
 
@@ -549,7 +585,7 @@ export function TrainingCanvas({
       <div 
         ref={containerRef}
         className="relative border rounded-lg overflow-hidden bg-black"
-        style={{ cursor: isPanning ? 'grabbing' : (canvasZoom > 1 ? 'grab' : 'crosshair') }}
+        style={{ cursor: isPanning ? 'grabbing' : activePanMode ? 'grab' : 'crosshair' }}
       >
         <canvas ref={canvasRef} className="block" />
 
@@ -578,7 +614,7 @@ export function TrainingCanvas({
               <span>{Math.round((tracer.feetPerPixel * 64) / canvasZoom)} ft</span>
             </div>
             <span className="text-[10px] opacity-70">
-              {canvasZoom > 1 ? `${Math.round(canvasZoom * 100)}% • ` : ''}Scroll to zoom • Drag to pan
+              {canvasZoom > 1 ? `${Math.round(canvasZoom * 100)}% • ` : ''}Scroll to zoom • {activePanMode ? 'Drag to pan' : 'Right-drag to pan'}
             </span>
           </div>
         )}
