@@ -8,8 +8,8 @@ import { Label } from '@/components/ui/label';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Search, MapPin, CheckCircle2, AlertCircle, Home } from 'lucide-react';
-import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
+import { Search, MapPin, CheckCircle2, AlertCircle, Home, RefreshCw } from 'lucide-react';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
 interface TrainingLeadSelectorProps {
   open: boolean;
@@ -35,16 +35,92 @@ interface LeadOption {
   roof_measurement?: any;
 }
 
+// Robust coordinate extraction supporting multiple formats
+function extractCoordinates(lead: LeadOption): { lat: number; lng: number; address: string } | null {
+  const metadata = lead.metadata as any;
+  const contact = lead.contact as any;
+
+  // Priority 1: Pipeline entry metadata.verified_address with geometry.location (Google format)
+  if (metadata?.verified_address?.geometry?.location) {
+    const loc = metadata.verified_address.geometry.location;
+    if (typeof loc.lat === 'number' && typeof loc.lng === 'number') {
+      return {
+        lat: loc.lat,
+        lng: loc.lng,
+        address: metadata.verified_address.formatted_address || 'Address verified',
+      };
+    }
+  }
+
+  // Priority 2: Pipeline entry metadata.verified_address with direct lat/lng
+  if (metadata?.verified_address?.lat != null && metadata?.verified_address?.lng != null) {
+    return {
+      lat: Number(metadata.verified_address.lat),
+      lng: Number(metadata.verified_address.lng),
+      address: metadata.verified_address.formatted_address || 
+        metadata.verified_address.street || 'Address verified',
+    };
+  }
+
+  // Priority 3: Contact verified_address with geometry.location (Google format)
+  if (contact?.verified_address?.geometry?.location) {
+    const loc = contact.verified_address.geometry.location;
+    if (typeof loc.lat === 'number' && typeof loc.lng === 'number') {
+      return {
+        lat: loc.lat,
+        lng: loc.lng,
+        address: contact.verified_address.formatted_address || buildContactAddress(contact),
+      };
+    }
+  }
+
+  // Priority 4: Contact verified_address with direct lat/lng
+  if (contact?.verified_address?.lat != null && contact?.verified_address?.lng != null) {
+    return {
+      lat: Number(contact.verified_address.lat),
+      lng: Number(contact.verified_address.lng),
+      address: contact.verified_address.formatted_address || buildContactAddress(contact),
+    };
+  }
+
+  // Priority 5: Contact latitude/longitude columns
+  if (contact?.latitude != null && contact?.longitude != null) {
+    return {
+      lat: Number(contact.latitude),
+      lng: Number(contact.longitude),
+      address: buildContactAddress(contact),
+    };
+  }
+
+  return null;
+}
+
+function buildContactAddress(contact: any): string {
+  if (!contact) return 'No address';
+  const parts = [
+    contact.address_street,
+    contact.address_city,
+    contact.address_state,
+    contact.address_zip
+  ].filter(Boolean);
+  return parts.length > 0 ? parts.join(', ') : 'No address';
+}
+
 export function TrainingLeadSelector({ open, onClose, onSelect }: TrainingLeadSelectorProps) {
-  const { activeCompanyId } = useCompanySwitcher();
+  const effectiveTenantId = useEffectiveTenantId();
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedLead, setSelectedLead] = useState<LeadOption | null>(null);
   const [sessionName, setSessionName] = useState('');
 
   // Fetch leads with verified addresses
-  const { data: leads = [], isLoading } = useQuery({
-    queryKey: ['training-leads', activeCompanyId, searchQuery],
+  const { data: leads = [], isLoading, error, isError, refetch } = useQuery({
+    queryKey: ['training-leads', effectiveTenantId, searchQuery],
     queryFn: async () => {
+      if (!effectiveTenantId) {
+        console.warn('[TrainingLeadSelector] No tenant ID available');
+        return [];
+      }
+
       let query = supabase
         .from('pipeline_entries')
         .select(`
@@ -58,71 +134,33 @@ export function TrainingLeadSelector({ open, onClose, onSelect }: TrainingLeadSe
           ),
           roof_measurement:roof_measurements(id, satellite_image_url)
         `)
+        .eq('tenant_id', effectiveTenantId)
         .order('created_at', { ascending: false })
         .limit(100);
 
-      // Only filter by tenant if activeCompanyId exists
-      if (activeCompanyId) {
-        query = query.eq('tenant_id', activeCompanyId);
-      }
-
       if (searchQuery) {
-        // Search in contact names or addresses
         query = query.or(`contact.first_name.ilike.%${searchQuery}%,contact.last_name.ilike.%${searchQuery}%`);
       }
 
       const { data, error } = await query;
-      if (error) throw error;
+      if (error) {
+        console.error('[TrainingLeadSelector] Query error:', error);
+        throw error;
+      }
 
-      // Filter to only leads with coordinates - cast through unknown to avoid type conflicts
-      const filtered = (data || []).filter((lead) => {
-        const metadata = lead.metadata as any;
-        const contact = lead.contact as any;
-        const verifiedAddr = metadata?.verified_address?.geometry?.location;
-        const contactVerified = contact?.verified_address;
-        const contactLatLng = contact?.latitude && contact?.longitude;
-        
-        return verifiedAddr || contactVerified || contactLatLng;
-      });
+      // Filter to only leads with valid coordinates using robust extraction
+      const rawCount = data?.length || 0;
+      const filtered = (data || []).filter((lead) => extractCoordinates(lead as LeadOption) !== null);
+      
+      console.log(`[TrainingLeadSelector] Tenant: ${effectiveTenantId}, Raw: ${rawCount}, With coords: ${filtered.length}`);
+      
       return filtered as unknown as LeadOption[];
     },
-    enabled: open,
+    enabled: open && !!effectiveTenantId,
   });
 
-  const getLeadCoordinates = (lead: LeadOption): { lat: number; lng: number; address: string } | null => {
-    const metadata = lead.metadata as any;
-    const contact = lead.contact;
-
-    // Priority 1: Pipeline entry verified address
-    if (metadata?.verified_address?.geometry?.location) {
-      return {
-        lat: metadata.verified_address.geometry.location.lat,
-        lng: metadata.verified_address.geometry.location.lng,
-        address: metadata.verified_address.formatted_address || 'Address verified',
-      };
-    }
-
-    // Priority 2: Contact verified address
-    if (contact?.verified_address?.lat && contact?.verified_address?.lng) {
-      return {
-        lat: contact.verified_address.lat,
-        lng: contact.verified_address.lng,
-        address: contact.verified_address.formatted_address || 
-          `${contact.address_street}, ${contact.address_city}, ${contact.address_state} ${contact.address_zip}`,
-      };
-    }
-
-    // Priority 3: Contact lat/lng
-    if (contact?.latitude && contact?.longitude) {
-      return {
-        lat: contact.latitude,
-        lng: contact.longitude,
-        address: `${contact.address_street}, ${contact.address_city}, ${contact.address_state} ${contact.address_zip}`,
-      };
-    }
-
-    return null;
-  };
+  // Use the shared extraction function
+  const getLeadCoordinates = extractCoordinates;
 
   const handleSubmit = () => {
     if (!selectedLead) return;
@@ -174,12 +212,21 @@ export function TrainingLeadSelector({ open, onClose, onSelect }: TrainingLeadSe
               <div className="flex items-center justify-center h-full text-muted-foreground">
                 Loading leads...
               </div>
+            ) : isError ? (
+              <div className="flex flex-col items-center justify-center h-full text-destructive text-center px-4">
+                <AlertCircle className="h-8 w-8 mb-2" />
+                <p className="font-medium">Error loading leads</p>
+                <p className="text-sm mt-1">{(error as Error)?.message || 'Unknown error'}</p>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => refetch()}>
+                  <RefreshCw className="h-4 w-4 mr-1" /> Retry
+                </Button>
+              </div>
             ) : leads.length === 0 ? (
               <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-center px-4">
                 <AlertCircle className="h-8 w-8 mb-2" />
                 <p className="font-medium">No leads with verified addresses found</p>
                 <p className="text-sm mt-1">
-                  {activeCompanyId 
+                  {effectiveTenantId 
                     ? 'Add leads with addresses or verify existing lead addresses in this company.'
                     : 'Select a company from the sidebar to view leads.'}
                 </p>
