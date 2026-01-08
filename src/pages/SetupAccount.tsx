@@ -135,7 +135,7 @@ export default function SetupAccount() {
           .eq('id', user.id);
 
         // Log successful login/account activation for activity tracking
-        supabase.functions.invoke('log-auth-activity', {
+        const { error: logError } = await supabase.functions.invoke('log-auth-activity', {
           body: {
             user_id: user.id,
             email: user.email,
@@ -146,7 +146,13 @@ export default function SetupAccount() {
               first_login: true
             }
           }
-        }).catch((err: any) => console.warn('[SetupAccount] Failed to log activity:', err));
+        });
+        
+        if (logError) {
+          console.error('[SetupAccount] Failed to log activity:', logError);
+        } else {
+          console.log('[SetupAccount] Activity logged successfully');
+        }
         
         // Call initialize-user-context to set up full tenant/company context
         console.log('[SetupAccount] Calling initialize-user-context...');

@@ -45,6 +45,7 @@ interface UserActivitySummary {
   title: string | null;
   is_active: boolean;
   created_at: string;
+  password_set_at: string | null;
   company_name: string | null;
   has_photo: boolean;
   has_phone: boolean;
@@ -60,6 +61,7 @@ interface UserActivitySummary {
   unique_ip_count: number;
   ip_addresses: string[] | null;
   device_types: string[] | null;
+  is_activated: boolean;
 }
 
 interface UserActivityDashboardProps {
@@ -100,11 +102,10 @@ export const UserActivityDashboard: React.FC<UserActivityDashboardProps> = ({
       `${user.first_name} ${user.last_name}`.toLowerCase().includes(searchQuery.toLowerCase()) ||
       user.email?.toLowerCase().includes(searchQuery.toLowerCase());
     
-    // Status filter
-    const isActivated = user.login_count > 0;
+    // Status filter - use computed is_activated from database view
     const matchesStatus = statusFilter === "all" || 
-      (statusFilter === "activated" && isActivated) ||
-      (statusFilter === "pending" && !isActivated);
+      (statusFilter === "activated" && user.is_activated) ||
+      (statusFilter === "pending" && !user.is_activated);
 
     return matchesSearch && matchesStatus;
   }) || [];
@@ -293,6 +294,7 @@ export const UserActivityDashboard: React.FC<UserActivityDashboardProps> = ({
                           hasPhoto={user.has_photo}
                           hasPhone={user.has_phone}
                           hasTitle={user.has_title}
+                          passwordSetAt={user.password_set_at}
                           showCompletion={true}
                         />
                       </TableCell>
@@ -345,7 +347,7 @@ export const UserActivityDashboard: React.FC<UserActivityDashboardProps> = ({
                 <span className="text-sm">Activated</span>
               </div>
               <p className="text-2xl font-bold mt-1">
-                {activityData?.filter(u => u.login_count > 0).length || 0}
+                {activityData?.filter(u => u.is_activated).length || 0}
               </p>
             </div>
             <div className="p-4 rounded-lg bg-muted/50">
@@ -354,7 +356,7 @@ export const UserActivityDashboard: React.FC<UserActivityDashboardProps> = ({
                 <span className="text-sm">Pending</span>
               </div>
               <p className="text-2xl font-bold mt-1">
-                {activityData?.filter(u => u.login_count === 0).length || 0}
+                {activityData?.filter(u => !u.is_activated).length || 0}
               </p>
             </div>
             <div className="p-4 rounded-lg bg-muted/50">
@@ -416,6 +418,7 @@ export const UserActivityDashboard: React.FC<UserActivityDashboardProps> = ({
                         hasPhoto={user.has_photo}
                         hasPhone={user.has_phone}
                         hasTitle={user.has_title}
+                        passwordSetAt={user.password_set_at}
                       />
                     </div>
 

@@ -27197,12 +27197,14 @@ export type Database = {
           has_photo: boolean | null
           has_title: boolean | null
           ip_addresses: string[] | null
+          is_activated: boolean | null
           is_active: boolean | null
           keystroke_count: number | null
           last_name: string | null
           last_session_activity: string | null
           login_count: number | null
           page_view_count: number | null
+          password_set_at: string | null
           phone: string | null
           photo_url: string | null
           tenant_id: string | null
