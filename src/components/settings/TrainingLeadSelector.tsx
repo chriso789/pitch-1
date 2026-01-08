@@ -26,39 +26,13 @@ interface TrainingLeadSelectorProps {
   }) => void;
 }
 
+// Use loose typing to avoid Supabase Json type conflicts
 interface LeadOption {
   id: string;
   contact_id?: string;
-  contact?: {
-    first_name: string;
-    last_name: string;
-    latitude?: number;
-    longitude?: number;
-    address_street?: string;
-    address_city?: string;
-    address_state?: string;
-    address_zip?: string;
-    verified_address?: {
-      lat: number;
-      lng: number;
-      formatted_address?: string;
-    };
-  };
-  metadata?: {
-    verified_address?: {
-      formatted_address?: string;
-      geometry?: {
-        location?: {
-          lat: number;
-          lng: number;
-        };
-      };
-    };
-  };
-  roof_measurement?: {
-    id: string;
-    satellite_image_url?: string;
-  };
+  contact?: any;
+  metadata?: any;
+  roof_measurement?: any;
 }
 
 export function TrainingLeadSelector({ open, onClose, onSelect }: TrainingLeadSelectorProps) {
