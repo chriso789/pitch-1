@@ -5,7 +5,8 @@ import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { 
   MousePointer, Mountain, Triangle, ArrowDownUp, Square, 
-  Undo2, Trash2, Save, Minus, Slash, ZoomIn, ZoomOut, RefreshCw, AlertCircle
+  Undo2, Trash2, Save, Minus, Slash, ZoomIn, ZoomOut, RefreshCw, AlertCircle,
+  Move, Maximize
 } from 'lucide-react';
 import { useRoofTracer, TracerTool, TracedLine } from '@/hooks/useRoofTracer';
 import { toast } from 'sonner';
@@ -36,6 +37,9 @@ const TOOL_CONFIG: { tool: TracerTool; label: string; icon: React.ReactNode; sho
 
 const CANVAS_WIDTH = 900;
 const CANVAS_HEIGHT = 700;
+const MIN_ZOOM = 0.5;
+const MAX_ZOOM = 4.0;
+const ZOOM_STEP = 0.15;
 
 export function TrainingCanvas({
   satelliteImageUrl,
@@ -46,12 +50,18 @@ export function TrainingCanvas({
   onSave,
 }: TrainingCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [previewPoint, setPreviewPoint] = useState<{ x: number; y: number } | null>(null);
   const [hasChanges, setHasChanges] = useState(false);
+  
+  // Zoom and pan state
+  const [canvasZoom, setCanvasZoom] = useState(1);
+  const [isPanning, setIsPanning] = useState(false);
+  const lastPanPosition = useRef<{ x: number; y: number } | null>(null);
 
   const tracer = useRoofTracer({
     centerLat,
@@ -233,12 +243,102 @@ export function TrainingCanvas({
     renderLines();
   }, [renderLines]);
 
-  // Handle mouse events
+  // Zoom functions
+  const handleZoomIn = useCallback(() => {
+    if (!fabricCanvas) return;
+    const newZoom = Math.min(canvasZoom + ZOOM_STEP, MAX_ZOOM);
+    setCanvasZoom(newZoom);
+    fabricCanvas.setZoom(newZoom);
+    fabricCanvas.renderAll();
+  }, [fabricCanvas, canvasZoom]);
+
+  const handleZoomOut = useCallback(() => {
+    if (!fabricCanvas) return;
+    const newZoom = Math.max(canvasZoom - ZOOM_STEP, MIN_ZOOM);
+    setCanvasZoom(newZoom);
+    fabricCanvas.setZoom(newZoom);
+    fabricCanvas.renderAll();
+  }, [fabricCanvas, canvasZoom]);
+
+  const handleZoomReset = useCallback(() => {
+    if (!fabricCanvas) return;
+    setCanvasZoom(1);
+    fabricCanvas.setZoom(1);
+    fabricCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    fabricCanvas.renderAll();
+  }, [fabricCanvas]);
+
+  const handleZoomFit = useCallback(() => {
+    if (!fabricCanvas) return;
+    setCanvasZoom(1);
+    fabricCanvas.setZoom(1);
+    fabricCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+    fabricCanvas.renderAll();
+  }, [fabricCanvas]);
+
+  // Mouse wheel zoom
+  useEffect(() => {
+    if (!fabricCanvas) return;
+
+    const handleWheel = (opt: any) => {
+      const e = opt.e as WheelEvent;
+      e.preventDefault();
+      e.stopPropagation();
+
+      const delta = e.deltaY;
+      let newZoom = canvasZoom * (delta > 0 ? 0.9 : 1.1);
+      newZoom = Math.min(Math.max(newZoom, MIN_ZOOM), MAX_ZOOM);
+
+      // Zoom toward mouse position
+      const pointer = fabricCanvas.getScenePoint(e);
+      fabricCanvas.zoomToPoint(pointer, newZoom);
+      setCanvasZoom(newZoom);
+    };
+
+    fabricCanvas.on('mouse:wheel', handleWheel);
+    return () => {
+      fabricCanvas.off('mouse:wheel', handleWheel);
+    };
+  }, [fabricCanvas, canvasZoom]);
+
+  // Track space key for panning
+  const spaceKeyPressed = useRef(false);
+  
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.code === 'Space' && !spaceKeyPressed.current) {
+        spaceKeyPressed.current = true;
+      }
+    };
+    const handleKeyUp = (e: KeyboardEvent) => {
+      if (e.code === 'Space') {
+        spaceKeyPressed.current = false;
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keyup', handleKeyUp);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keyup', handleKeyUp);
+    };
+  }, []);
+
+  // Handle mouse events for drawing and panning
   useEffect(() => {
     if (!fabricCanvas) return;
 
     const handleMouseDown = (e: any) => {
-      const pointer = fabricCanvas.getScenePoint(e.e);
+      const evt = e.e as MouseEvent;
+      
+      // Middle mouse or Space+click for panning
+      if (evt.button === 1 || (evt.button === 0 && spaceKeyPressed.current)) {
+        setIsPanning(true);
+        lastPanPosition.current = { x: evt.clientX, y: evt.clientY };
+        fabricCanvas.defaultCursor = 'grabbing';
+        return;
+      }
+
+      const pointer = fabricCanvas.getScenePoint(evt);
 
       if (tracer.activeTool === 'select') return;
 
@@ -252,19 +352,47 @@ export function TrainingCanvas({
     };
 
     const handleMouseMove = (e: any) => {
+      const evt = e.e as MouseEvent;
+      
+      // Handle panning
+      if (isPanning && lastPanPosition.current) {
+        const deltaX = evt.clientX - lastPanPosition.current.x;
+        const deltaY = evt.clientY - lastPanPosition.current.y;
+        
+        const vpt = fabricCanvas.viewportTransform;
+        if (vpt) {
+          vpt[4] += deltaX;
+          vpt[5] += deltaY;
+          fabricCanvas.setViewportTransform(vpt);
+        }
+        
+        lastPanPosition.current = { x: evt.clientX, y: evt.clientY };
+        return;
+      }
+
       if (!tracer.isDrawing) return;
-      const pointer = fabricCanvas.getScenePoint(e.e);
+      const pointer = fabricCanvas.getScenePoint(evt);
       setPreviewPoint(pointer);
+    };
+
+    const handleMouseUp = () => {
+      if (isPanning) {
+        setIsPanning(false);
+        lastPanPosition.current = null;
+        fabricCanvas.defaultCursor = 'default';
+      }
     };
 
     fabricCanvas.on('mouse:down', handleMouseDown);
     fabricCanvas.on('mouse:move', handleMouseMove);
+    fabricCanvas.on('mouse:up', handleMouseUp);
 
     return () => {
       fabricCanvas.off('mouse:down', handleMouseDown);
       fabricCanvas.off('mouse:move', handleMouseMove);
+      fabricCanvas.off('mouse:up', handleMouseUp);
     };
-  }, [fabricCanvas, tracer]);
+  }, [fabricCanvas, tracer, isPanning]);
 
   // Keyboard shortcuts
   useEffect(() => {
@@ -276,6 +404,15 @@ export function TrainingCanvas({
         e.preventDefault();
         tracer.undoLast();
         setHasChanges(true);
+      } else if (e.key === '+' || e.key === '=') {
+        e.preventDefault();
+        handleZoomIn();
+      } else if (e.key === '-') {
+        e.preventDefault();
+        handleZoomOut();
+      } else if (e.key === '0') {
+        e.preventDefault();
+        handleZoomReset();
       } else if (e.key.toLowerCase() === 's' && !e.ctrlKey && !e.metaKey) {
         tracer.setActiveTool('select');
       } else if (e.key.toLowerCase() === 'r') {
@@ -295,7 +432,7 @@ export function TrainingCanvas({
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [tracer]);
+  }, [tracer, handleZoomIn, handleZoomOut, handleZoomReset]);
 
   const handleSave = () => {
     const linearFeatures = tracer.tracedLines.map((line) => ({
@@ -343,6 +480,46 @@ export function TrainingCanvas({
         </div>
 
         <div className="flex items-center gap-1">
+          {/* Zoom Controls */}
+          <div className="flex items-center gap-0.5 mr-2 border-r pr-2">
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={handleZoomOut} disabled={canvasZoom <= MIN_ZOOM}>
+                    <ZoomOut className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent><p>Zoom Out (-)</p></TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            
+            <Badge variant="secondary" className="min-w-[50px] justify-center text-xs">
+              {Math.round(canvasZoom * 100)}%
+            </Badge>
+            
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={handleZoomIn} disabled={canvasZoom >= MAX_ZOOM}>
+                    <ZoomIn className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent><p>Zoom In (+)</p></TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="ghost" size="sm" onClick={handleZoomFit}>
+                    <Maximize className="h-4 w-4" />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent><p>Fit to View (0)</p></TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          </div>
+
           <Button
             variant="ghost"
             size="sm"
@@ -369,7 +546,11 @@ export function TrainingCanvas({
       </div>
 
       {/* Canvas */}
-      <div className="relative border rounded-lg overflow-hidden bg-black">
+      <div 
+        ref={containerRef}
+        className="relative border rounded-lg overflow-hidden bg-black"
+        style={{ cursor: isPanning ? 'grabbing' : (canvasZoom > 1 ? 'grab' : 'crosshair') }}
+      >
         <canvas ref={canvasRef} className="block" />
 
         {!imageLoaded && !imageError && (
@@ -394,9 +575,11 @@ export function TrainingCanvas({
           <div className="absolute bottom-3 right-3 flex flex-col items-end gap-1 bg-black/70 p-2 rounded text-white text-xs">
             <div className="flex items-center gap-1">
               <div className="w-16 h-1 bg-white border border-black" />
-              <span>{Math.round(tracer.feetPerPixel * 64)} ft</span>
+              <span>{Math.round((tracer.feetPerPixel * 64) / canvasZoom)} ft</span>
             </div>
-            <span className="text-[10px] opacity-70">Zoom {zoom}</span>
+            <span className="text-[10px] opacity-70">
+              {canvasZoom > 1 ? `${Math.round(canvasZoom * 100)}% • ` : ''}Scroll to zoom • Drag to pan
+            </span>
           </div>
         )}
 
