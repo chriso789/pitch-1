@@ -15,16 +15,17 @@ interface UseRoofTracerOptions {
   canvasWidth: number;
   canvasHeight: number;
   zoom?: number;
+  initialLines?: TracedLine[];
 }
 
 /**
  * Hook for managing roof tracing state and coordinate conversions
  */
 export function useRoofTracer(options: UseRoofTracerOptions) {
-  const { centerLat, centerLng, canvasWidth, canvasHeight, zoom = 20 } = options;
+  const { centerLat, centerLng, canvasWidth, canvasHeight, zoom = 20, initialLines = [] } = options;
   
   const [activeTool, setActiveTool] = useState<TracerTool>('ridge');
-  const [tracedLines, setTracedLines] = useState<TracedLine[]>([]);
+  const [tracedLines, setTracedLines] = useState<TracedLine[]>(initialLines);
   const [currentPoints, setCurrentPoints] = useState<{ x: number; y: number }[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   
@@ -204,6 +205,7 @@ export function useRoofTracer(options: UseRoofTracerOptions) {
     
     // Actions
     setActiveTool,
+    setTracedLines,
     startLine,
     completeLine,
     cancelLine,
