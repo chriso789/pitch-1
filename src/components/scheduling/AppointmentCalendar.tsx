@@ -3,12 +3,14 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Calendar as CalendarIcon, Clock, User, MapPin, CheckCircle, XCircle, AlertCircle, Plus } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Calendar as CalendarIcon, Clock, User, MapPin, CheckCircle, XCircle, AlertCircle, Plus, Cloud } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { format, startOfWeek, endOfWeek, eachDayOfInterval, isSameDay, parseISO, addDays } from 'date-fns';
 import { cn } from '@/lib/utils';
-
+import { CalendarWeatherOverlay } from './CalendarWeatherOverlay';
 interface Appointment {
   id: string;
   title: string;
@@ -45,6 +47,10 @@ export const AppointmentCalendar: React.FC<AppointmentCalendarProps> = ({
   const [loading, setLoading] = useState(true);
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [view, setView] = useState<'day' | 'week'>('week');
+  const [showWeather, setShowWeather] = useState(true);
+  
+  // Default location (company HQ or fallback to Texas)
+  const [weatherLocation] = useState({ latitude: 32.7767, longitude: -96.7970 });
 
   const effectiveTenantId = tenantId || profile?.tenant_id;
   const weekStart = startOfWeek(selectedDate, { weekStartsOn: 1 });
@@ -132,22 +138,35 @@ export const AppointmentCalendar: React.FC<AppointmentCalendarProps> = ({
               {format(weekStart, 'MMMM d')} - {format(weekEnd, 'MMMM d, yyyy')}
             </CardDescription>
           </div>
-          <div className="flex items-center gap-2">
-            <Button variant="outline" size="sm" onClick={() => setSelectedDate(addDays(selectedDate, -7))}>
-              Previous
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setSelectedDate(new Date())}>
-              Today
-            </Button>
-            <Button variant="outline" size="sm" onClick={() => setSelectedDate(addDays(selectedDate, 7))}>
-              Next
-            </Button>
-            {onCreateNew && (
-              <Button size="sm" onClick={onCreateNew}>
-                <Plus className="h-4 w-4 mr-1" />
-                New
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-2">
+              <Switch
+                id="show-weather"
+                checked={showWeather}
+                onCheckedChange={setShowWeather}
+              />
+              <Label htmlFor="show-weather" className="text-sm flex items-center gap-1 cursor-pointer">
+                <Cloud className="h-4 w-4" />
+                Weather
+              </Label>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setSelectedDate(addDays(selectedDate, -7))}>
+                Previous
               </Button>
-            )}
+              <Button variant="outline" size="sm" onClick={() => setSelectedDate(new Date())}>
+                Today
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => setSelectedDate(addDays(selectedDate, 7))}>
+                Next
+              </Button>
+              {onCreateNew && (
+                <Button size="sm" onClick={onCreateNew}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  New
+                </Button>
+              )}
+            </div>
           </div>
         </div>
       </CardHeader>
@@ -183,6 +202,16 @@ export const AppointmentCalendar: React.FC<AppointmentCalendarProps> = ({
                       )}>
                         <div className="text-xs text-muted-foreground">{format(day, 'EEE')}</div>
                         <div className="text-lg">{format(day, 'd')}</div>
+                        {showWeather && (
+                          <div className="mt-1">
+                            <CalendarWeatherOverlay
+                              latitude={weatherLocation.latitude}
+                              longitude={weatherLocation.longitude}
+                              date={day}
+                              compact
+                            />
+                          </div>
+                        )}
                       </div>
                       
                       <div className="space-y-1">
