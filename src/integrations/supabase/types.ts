@@ -20030,6 +20030,308 @@ export type Database = {
         }
         Relationships: []
       }
+      roof_training_annotations: {
+        Row: {
+          annotation_type: string | null
+          annotations: Json | null
+          created_at: string | null
+          id: string
+          notes: string | null
+          pdf_storage_path: string | null
+          pdf_url: string | null
+          session_id: string
+        }
+        Insert: {
+          annotation_type?: string | null
+          annotations?: Json | null
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          pdf_storage_path?: string | null
+          pdf_url?: string | null
+          session_id: string
+        }
+        Update: {
+          annotation_type?: string | null
+          annotations?: Json | null
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          pdf_storage_path?: string | null
+          pdf_url?: string | null
+          session_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_training_annotations_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "roof_training_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      roof_training_comparisons: {
+        Row: {
+          ai_eave_ft: number | null
+          ai_hip_ft: number | null
+          ai_perimeter_ft: number | null
+          ai_rake_ft: number | null
+          ai_ridge_ft: number | null
+          ai_total_area_sqft: number | null
+          ai_valley_ft: number | null
+          created_at: string | null
+          error_notes: Json | null
+          hip_variance_pct: number | null
+          id: string
+          manual_eave_ft: number | null
+          manual_hip_ft: number | null
+          manual_perimeter_ft: number | null
+          manual_rake_ft: number | null
+          manual_ridge_ft: number | null
+          manual_total_area_sqft: number | null
+          manual_valley_ft: number | null
+          overall_accuracy_score: number | null
+          ridge_variance_pct: number | null
+          session_id: string
+          valley_variance_pct: number | null
+        }
+        Insert: {
+          ai_eave_ft?: number | null
+          ai_hip_ft?: number | null
+          ai_perimeter_ft?: number | null
+          ai_rake_ft?: number | null
+          ai_ridge_ft?: number | null
+          ai_total_area_sqft?: number | null
+          ai_valley_ft?: number | null
+          created_at?: string | null
+          error_notes?: Json | null
+          hip_variance_pct?: number | null
+          id?: string
+          manual_eave_ft?: number | null
+          manual_hip_ft?: number | null
+          manual_perimeter_ft?: number | null
+          manual_rake_ft?: number | null
+          manual_ridge_ft?: number | null
+          manual_total_area_sqft?: number | null
+          manual_valley_ft?: number | null
+          overall_accuracy_score?: number | null
+          ridge_variance_pct?: number | null
+          session_id: string
+          valley_variance_pct?: number | null
+        }
+        Update: {
+          ai_eave_ft?: number | null
+          ai_hip_ft?: number | null
+          ai_perimeter_ft?: number | null
+          ai_rake_ft?: number | null
+          ai_ridge_ft?: number | null
+          ai_total_area_sqft?: number | null
+          ai_valley_ft?: number | null
+          created_at?: string | null
+          error_notes?: Json | null
+          hip_variance_pct?: number | null
+          id?: string
+          manual_eave_ft?: number | null
+          manual_hip_ft?: number | null
+          manual_perimeter_ft?: number | null
+          manual_rake_ft?: number | null
+          manual_ridge_ft?: number | null
+          manual_total_area_sqft?: number | null
+          manual_valley_ft?: number | null
+          overall_accuracy_score?: number | null
+          ridge_variance_pct?: number | null
+          session_id?: string
+          valley_variance_pct?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_training_comparisons_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "roof_training_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      roof_training_recordings: {
+        Row: {
+          created_at: string | null
+          duration_seconds: number | null
+          file_size_bytes: number | null
+          id: string
+          recording_type: string | null
+          session_id: string
+          video_storage_path: string
+          video_url: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          duration_seconds?: number | null
+          file_size_bytes?: number | null
+          id?: string
+          recording_type?: string | null
+          session_id: string
+          video_storage_path: string
+          video_url?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          duration_seconds?: number | null
+          file_size_bytes?: number | null
+          id?: string
+          recording_type?: string | null
+          session_id?: string
+          video_storage_path?: string
+          video_url?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_training_recordings_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "roof_training_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      roof_training_sessions: {
+        Row: {
+          ai_measurement_id: string | null
+          completed_at: string | null
+          contact_id: string | null
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          lat: number | null
+          lng: number | null
+          name: string
+          pipeline_entry_id: string | null
+          property_address: string | null
+          satellite_image_url: string | null
+          status: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          ai_measurement_id?: string | null
+          completed_at?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          name: string
+          pipeline_entry_id?: string | null
+          property_address?: string | null
+          satellite_image_url?: string | null
+          status?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          ai_measurement_id?: string | null
+          completed_at?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          name?: string
+          pipeline_entry_id?: string | null
+          property_address?: string | null
+          satellite_image_url?: string | null
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_training_sessions_ai_measurement_id_fkey"
+            columns: ["ai_measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roof_training_sessions_ai_measurement_id_fkey"
+            columns: ["ai_measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roof_training_sessions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roof_training_sessions_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roof_training_sessions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      roof_training_traces: {
+        Row: {
+          canvas_points: Json | null
+          created_at: string | null
+          id: string
+          length_ft: number
+          notes: string | null
+          session_id: string
+          trace_order: number | null
+          trace_type: string
+          wkt_geometry: string
+        }
+        Insert: {
+          canvas_points?: Json | null
+          created_at?: string | null
+          id?: string
+          length_ft: number
+          notes?: string | null
+          session_id: string
+          trace_order?: number | null
+          trace_type: string
+          wkt_geometry: string
+        }
+        Update: {
+          canvas_points?: Json | null
+          created_at?: string | null
+          id?: string
+          length_ft?: number
+          notes?: string | null
+          session_id?: string
+          trace_order?: number | null
+          trace_type?: string
+          wkt_geometry?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_training_traces_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "roof_training_sessions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       roof_vendor_reports: {
         Row: {
           address: string | null
