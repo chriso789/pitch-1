@@ -1,10 +1,12 @@
+import { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { CheckCircle, XCircle, AlertTriangle, BarChart2 } from 'lucide-react';
-
+import { Button } from '@/components/ui/button';
+import { CheckCircle, XCircle, AlertTriangle, BarChart2, RefreshCw, Loader2 } from 'lucide-react';
+import { toast } from 'sonner';
 interface TrainingComparisonViewProps {
   sessionId: string;
   aiMeasurementId?: string;
@@ -27,6 +29,26 @@ interface ComparisonRow {
 }
 
 export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotals }: TrainingComparisonViewProps) {
+  const [isRetraining, setIsRetraining] = useState(false);
+
+  const handleRetrainAI = async () => {
+    setIsRetraining(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('calculate-measurement-corrections');
+      
+      if (error) throw error;
+      
+      const sessionsAnalyzed = data?.sessionsAnalyzed || 0;
+      const factorsUpdated = data?.factorsUpdated || 0;
+      
+      toast.success(`AI Retrained! Analyzed ${sessionsAnalyzed} sessions, updated ${factorsUpdated} correction factors.`);
+    } catch (err: any) {
+      console.error('Failed to retrain AI:', err);
+      toast.error(err.message || 'Failed to recalculate corrections');
+    } finally {
+      setIsRetraining(false);
+    }
+  };
   // Fetch AI measurement data if available
   const { data: aiMeasurement } = useQuery({
     queryKey: ['ai-measurement', aiMeasurementId],
@@ -157,6 +179,28 @@ export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotal
 
   return (
     <div className="space-y-6">
+      {/* Retrain AI Button */}
+      <Card className="border-primary/20 bg-primary/5">
+        <CardContent className="py-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <p className="font-medium">Retrain AI with Your Traces</p>
+              <p className="text-sm text-muted-foreground">
+                Apply your manual corrections to improve future AI measurements
+              </p>
+            </div>
+            <Button onClick={handleRetrainAI} disabled={isRetraining}>
+              {isRetraining ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <RefreshCw className="h-4 w-4 mr-2" />
+              )}
+              {isRetraining ? 'Retraining...' : 'Retrain AI'}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Overall Accuracy Card */}
       <Card>
         <CardHeader>
