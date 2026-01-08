@@ -222,7 +222,7 @@ export function ApprovalRequirementsSettings() {
     })
   );
 
-  const tenantId = user?.tenant_id;
+  const tenantId = user?.active_tenant_id ?? user?.tenant_id;
 
   // Fetch requirements
   const { data: requirements = [], isLoading } = useQuery({
