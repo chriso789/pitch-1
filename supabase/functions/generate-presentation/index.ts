@@ -28,6 +28,9 @@ interface TagContext {
   pipeline_entry?: Record<string, any>;
   estimate?: Record<string, any>;
   measurements?: Record<string, any>;
+  line_items?: Record<string, any>[];
+  photos?: Record<string, any>[];
+  roofing?: Record<string, any>;
 }
 
 // Format value based on type
@@ -111,33 +114,82 @@ function replaceTagsInObject(obj: any, context: TagContext, tagDefs: SmartTagDef
   return obj;
 }
 
-// Call AI to generate content
+// Build roofing-specific system prompt
+function buildRoofingSystemPrompt(context: TagContext): string {
+  const tenant = context.tenant || {};
+  const contact = context.contact || {};
+  const measurements = context.measurements || {};
+  const estimate = context.estimate || {};
+  
+  return `You are a professional roofing sales presentation writer for ${tenant.name || 'our company'}.
+
+Company Details:
+- Name: ${tenant.name || 'Roofing Company'}
+- License: ${tenant.license_number || 'Licensed & Insured'}
+- Phone: ${tenant.phone || ''}
+- Email: ${tenant.email || ''}
+- Website: ${tenant.website || ''}
+- About: ${tenant.about_us || ''}
+
+Project Details:
+- Customer: ${contact.first_name || ''} ${contact.last_name || ''}
+- Property: ${contact.address_line1 || ''}, ${contact.city || ''}, ${contact.state || ''}
+- Roof Area: ${measurements.summary?.total_area || 'TBD'} sq ft
+- Roof Pitch: ${measurements.summary?.predominant_pitch || 'TBD'}
+- Estimate Total: ${estimate.selling_price ? '$' + Number(estimate.selling_price).toLocaleString() : 'TBD'}
+
+Write compelling, professional content that:
+1. Emphasizes quality workmanship and materials
+2. Highlights the company's experience and licensing
+3. Builds trust with clear warranty information
+4. Uses specific project details when available
+5. Maintains a professional but friendly tone
+6. Is concise and to the point`;
+}
+
+// Format material list from line items
+function formatMaterialList(lineItems: Record<string, any>[] | undefined): string {
+  if (!lineItems || lineItems.length === 0) return 'Materials to be determined';
+  
+  return lineItems
+    .filter(item => item.item_type === 'material' || item.category === 'Materials')
+    .map(item => `• ${item.name || item.description}: ${item.quantity || 1} ${item.unit || 'units'}`)
+    .join('\n');
+}
+
+// Call AI to generate content using Lovable AI Gateway
 async function generateAIContent(prompt: string, context: TagContext, tagDefs: SmartTagDefinition[]): Promise<string> {
   const filledPrompt = replaceAllTags(prompt, context, tagDefs);
+  const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
+  
+  if (!LOVABLE_API_KEY) {
+    console.error('LOVABLE_API_KEY not configured');
+    return '';
+  }
   
   try {
-    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${Deno.env.get('OPENAI_API_KEY')}`,
+        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'google/gemini-2.5-flash',
         messages: [
           {
             role: 'system',
-            content: 'You are a professional sales proposal writer for contractors. Write compelling, clear, and professional content. Be concise but persuasive.'
+            content: buildRoofingSystemPrompt(context)
           },
           { role: 'user', content: filledPrompt }
         ],
-        max_tokens: 500,
-        temperature: 0.7,
+        max_tokens: 800,
       }),
     });
     
     if (!response.ok) {
-      console.error('OpenAI API error:', await response.text());
+      const errorText = await response.text();
+      console.error('Lovable AI Gateway error:', response.status, errorText);
       return '';
     }
     
@@ -232,13 +284,55 @@ serve(async (req) => {
       .limit(1)
       .single();
     
-    // Build context for tag replacement
+    // Get estimate line items if estimate exists
+    let lineItems: any[] = [];
+    if (estimate?.id) {
+      const { data: items } = await supabase
+        .from('estimate_line_items')
+        .select('*')
+        .eq('estimate_id', estimate.id)
+        .order('sort_order');
+      lineItems = items || [];
+    }
+    
+    // Get project photos
+    let projectPhotos: any[] = [];
+    if (pipelineEntry.project_id) {
+      const { data: photos } = await supabase
+        .from('project_photos')
+        .select('*')
+        .eq('project_id', pipelineEntry.project_id)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      projectPhotos = photos || [];
+    }
+    
+    // Build full company address
+    const fullAddress = [
+      tenant?.address_street,
+      tenant?.address_city,
+      tenant?.address_state,
+      tenant?.address_zip
+    ].filter(Boolean).join(', ');
+    
+    // Build context for tag replacement with enhanced data
     const context: TagContext = {
       contact: pipelineEntry.contacts,
-      tenant: tenant,
+      tenant: {
+        ...tenant,
+        full_address: fullAddress,
+      },
       pipeline_entry: pipelineEntry,
       estimate: estimate || undefined,
-      measurements: measurements || undefined
+      measurements: measurements || undefined,
+      line_items: lineItems,
+      photos: projectPhotos,
+      roofing: {
+        total_area: measurements?.summary?.total_area,
+        primary_pitch: measurements?.summary?.predominant_pitch,
+        material_list: formatMaterialList(lineItems),
+        warranty_years: estimate?.parameters?.warranty_years || '25',
+      },
     };
     
     const tagDefs = tagDefinitions as SmartTagDefinition[] || [];

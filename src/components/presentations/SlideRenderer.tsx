@@ -33,26 +33,156 @@ export const SlideRenderer = ({ slide, sessionId }: SlideRendererProps) => {
     }
   };
 
+  // Get photo URL from storage path
+  const getPhotoUrl = (storagePath: string) => {
+    if (!storagePath) return '';
+    if (storagePath.startsWith('http')) return storagePath;
+    const { data } = supabase.storage.from('project-photos').getPublicUrl(storagePath);
+    return data?.publicUrl || '';
+  };
+
   const renderSlideContent = () => {
+    const content = slide.content || {};
+    const slideTitle = content.title || '';
+    
     switch (slide.slide_type) {
       case "title":
         return (
           <div className="text-center space-y-6">
-            <h1 className="text-6xl font-bold">{slide.content.title || "Title"}</h1>
-            {slide.content.subtitle && (
-              <p className="text-3xl text-muted-foreground">{slide.content.subtitle}</p>
+            {content.logo && (
+              <img 
+                src={content.logo} 
+                alt="Company logo" 
+                className="h-24 mx-auto mb-8 object-contain"
+              />
             )}
+            <h1 className="text-6xl font-bold">{slideTitle || content.heading || "Title"}</h1>
+            {content.subtitle && (
+              <p className="text-3xl text-muted-foreground">{content.subtitle}</p>
+            )}
+            {content.address && (
+              <p className="text-xl text-muted-foreground mt-4">{content.address}</p>
+            )}
+          </div>
+        );
+
+      case "about":
+      case "about_us":
+        return (
+          <div className="space-y-6">
+            <h2 className="text-4xl font-bold text-center">{slideTitle || "About Us"}</h2>
+            {content.logo && (
+              <img 
+                src={content.logo} 
+                alt="Company logo" 
+                className="h-20 mx-auto mb-6 object-contain"
+              />
+            )}
+            {content.body && (
+              <p className="text-2xl leading-relaxed whitespace-pre-wrap">{content.body}</p>
+            )}
+            {content.ai_content && (
+              <p className="text-2xl leading-relaxed whitespace-pre-wrap">{content.ai_content}</p>
+            )}
+            <div className="grid grid-cols-2 gap-4 mt-8 text-lg">
+              {content.license && (
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold">License:</span> {content.license}
+                </div>
+              )}
+              {content.phone && (
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold">Phone:</span> {content.phone}
+                </div>
+              )}
+              {content.website && (
+                <div className="flex items-center gap-2">
+                  <span className="font-semibold">Website:</span> {content.website}
+                </div>
+              )}
+            </div>
           </div>
         );
 
       case "text":
         return (
           <div className="space-y-6">
-            {slide.content.heading && (
-              <h2 className="text-4xl font-bold">{slide.content.heading}</h2>
+            {(content.heading || slideTitle) && (
+              <h2 className="text-4xl font-bold">{content.heading || slideTitle}</h2>
             )}
-            {slide.content.body && (
-              <p className="text-2xl leading-relaxed whitespace-pre-wrap">{slide.content.body}</p>
+            {content.body && (
+              <p className="text-2xl leading-relaxed whitespace-pre-wrap">{content.body}</p>
+            )}
+            {content.ai_content && (
+              <p className="text-2xl leading-relaxed whitespace-pre-wrap">{content.ai_content}</p>
+            )}
+          </div>
+        );
+
+      case "photo_gallery":
+      case "property_photos":
+        const photos = content.photos || [];
+        return (
+          <div className="space-y-6">
+            <h2 className="text-4xl font-bold text-center">{slideTitle || "Property Overview"}</h2>
+            {photos.length > 0 ? (
+              <div className="grid grid-cols-2 gap-4">
+                {photos.slice(0, 4).map((photo: any, index: number) => (
+                  <img
+                    key={photo.id || index}
+                    src={getPhotoUrl(photo.storage_path)}
+                    alt={photo.ai_description || `Property photo ${index + 1}`}
+                    className="rounded-lg object-cover aspect-video w-full"
+                  />
+                ))}
+              </div>
+            ) : (
+              <div className="text-center text-muted-foreground py-12">
+                <p className="text-xl">No property photos available</p>
+              </div>
+            )}
+            {content.description && (
+              <p className="text-xl text-center text-muted-foreground">{content.description}</p>
+            )}
+          </div>
+        );
+
+      case "scope":
+      case "scope_of_work":
+        return (
+          <div className="space-y-6">
+            <h2 className="text-4xl font-bold text-center">{slideTitle || "Scope of Work"}</h2>
+            {content.body && (
+              <p className="text-2xl leading-relaxed whitespace-pre-wrap">{content.body}</p>
+            )}
+            {content.ai_content && (
+              <p className="text-2xl leading-relaxed whitespace-pre-wrap">{content.ai_content}</p>
+            )}
+            {content.items && Array.isArray(content.items) && (
+              <ul className="space-y-3 text-xl">
+                {content.items.map((item: string, i: number) => (
+                  <li key={i} className="flex items-start gap-3">
+                    <span className="text-primary">✓</span>
+                    <span>{item}</span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        );
+
+      case "materials":
+        return (
+          <div className="space-y-6">
+            <h2 className="text-4xl font-bold text-center">{slideTitle || "Premium Materials"}</h2>
+            {content.material_list && (
+              <pre className="text-xl leading-relaxed whitespace-pre-wrap font-sans">{content.material_list}</pre>
+            )}
+            {content.ai_content && (
+              <p className="text-2xl leading-relaxed whitespace-pre-wrap">{content.ai_content}</p>
+            )}
+            {content.body && (
+              <p className="text-2xl leading-relaxed whitespace-pre-wrap">{content.body}</p>
             )}
           </div>
         );
@@ -60,15 +190,15 @@ export const SlideRenderer = ({ slide, sessionId }: SlideRendererProps) => {
       case "image":
         return (
           <div className="space-y-6 text-center">
-            {slide.content.imageUrl && (
+            {content.imageUrl && (
               <img
-                src={slide.content.imageUrl}
-                alt={slide.content.caption || "Slide image"}
+                src={content.imageUrl}
+                alt={content.caption || "Slide image"}
                 className="max-h-[70vh] mx-auto rounded-lg"
               />
             )}
-            {slide.content.caption && (
-              <p className="text-2xl text-muted-foreground">{slide.content.caption}</p>
+            {content.caption && (
+              <p className="text-2xl text-muted-foreground">{content.caption}</p>
             )}
           </div>
         );
@@ -76,43 +206,120 @@ export const SlideRenderer = ({ slide, sessionId }: SlideRendererProps) => {
       case "video":
         return (
           <div className="space-y-6">
-            {slide.content.videoUrl && (
+            {content.videoUrl && (
               <iframe
-                src={slide.content.videoUrl}
+                src={content.videoUrl}
                 className="w-full aspect-video rounded-lg"
                 allowFullScreen
               />
             )}
-            {slide.content.caption && (
-              <p className="text-2xl text-center text-muted-foreground">{slide.content.caption}</p>
+            {content.caption && (
+              <p className="text-2xl text-center text-muted-foreground">{content.caption}</p>
             )}
           </div>
         );
 
       case "estimate_summary":
+      case "pricing":
         return (
           <div className="space-y-6">
-            <h2 className="text-4xl font-bold text-center">Estimate Summary</h2>
+            <h2 className="text-4xl font-bold text-center">{slideTitle || "Your Investment"}</h2>
             <Card className="p-8">
               <div className="space-y-4 text-2xl">
-                <div className="flex justify-between">
-                  <span>Project Scope:</span>
-                  <span className="font-semibold">{slide.content.scope || "Full Roof Replacement"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Materials:</span>
-                  <span className="font-semibold">${slide.content.materials || "0.00"}</span>
-                </div>
-                <div className="flex justify-between">
-                  <span>Labor:</span>
-                  <span className="font-semibold">${slide.content.labor || "0.00"}</span>
-                </div>
+                {content.scope && (
+                  <div className="flex justify-between">
+                    <span>Project Scope:</span>
+                    <span className="font-semibold">{content.scope}</span>
+                  </div>
+                )}
+                {content.materials && (
+                  <div className="flex justify-between">
+                    <span>Materials:</span>
+                    <span className="font-semibold">{content.materials}</span>
+                  </div>
+                )}
+                {content.labor && (
+                  <div className="flex justify-between">
+                    <span>Labor:</span>
+                    <span className="font-semibold">{content.labor}</span>
+                  </div>
+                )}
                 <div className="border-t pt-4 flex justify-between text-3xl font-bold">
                   <span>Total Investment:</span>
-                  <span className="text-primary">${slide.content.total || "0.00"}</span>
+                  <span className="text-primary">{content.total || content.selling_price || "$0.00"}</span>
                 </div>
               </div>
             </Card>
+            {content.payment_terms && (
+              <p className="text-lg text-center text-muted-foreground">{content.payment_terms}</p>
+            )}
+          </div>
+        );
+
+      case "warranty":
+        return (
+          <div className="space-y-6">
+            <h2 className="text-4xl font-bold text-center">{slideTitle || "Our Warranty"}</h2>
+            {content.body && (
+              <p className="text-2xl leading-relaxed whitespace-pre-wrap">{content.body}</p>
+            )}
+            {content.ai_content && (
+              <p className="text-2xl leading-relaxed whitespace-pre-wrap">{content.ai_content}</p>
+            )}
+            {content.warranty_years && (
+              <div className="text-center mt-8">
+                <span className="text-6xl font-bold text-primary">{content.warranty_years}</span>
+                <span className="text-2xl ml-2">Year Warranty</span>
+              </div>
+            )}
+          </div>
+        );
+
+      case "timeline":
+        return (
+          <div className="space-y-6">
+            <h2 className="text-4xl font-bold text-center">{slideTitle || "Project Timeline"}</h2>
+            {content.body && (
+              <p className="text-2xl leading-relaxed whitespace-pre-wrap">{content.body}</p>
+            )}
+            {content.ai_content && (
+              <p className="text-2xl leading-relaxed whitespace-pre-wrap">{content.ai_content}</p>
+            )}
+          </div>
+        );
+
+      case "financing":
+        return (
+          <div className="space-y-6">
+            <h2 className="text-4xl font-bold text-center">{slideTitle || "Financing Options"}</h2>
+            {content.body && (
+              <p className="text-2xl leading-relaxed whitespace-pre-wrap">{content.body}</p>
+            )}
+            {content.ai_content && (
+              <p className="text-2xl leading-relaxed whitespace-pre-wrap">{content.ai_content}</p>
+            )}
+          </div>
+        );
+
+      case "next_steps":
+      case "cta":
+        return (
+          <div className="space-y-8 text-center">
+            <h2 className="text-4xl font-bold">{slideTitle || "Ready to Get Started?"}</h2>
+            {content.body && (
+              <p className="text-2xl leading-relaxed">{content.body}</p>
+            )}
+            {content.ai_content && (
+              <p className="text-2xl leading-relaxed">{content.ai_content}</p>
+            )}
+            <div className="mt-8 space-y-4">
+              {content.phone && (
+                <p className="text-xl">📞 Call us: {content.phone}</p>
+              )}
+              {content.email && (
+                <p className="text-xl">✉️ Email: {content.email}</p>
+              )}
+            </div>
           </div>
         );
 
@@ -120,10 +327,10 @@ export const SlideRenderer = ({ slide, sessionId }: SlideRendererProps) => {
         return (
           <div className="space-y-8 text-center max-w-4xl mx-auto">
             <div className="text-6xl text-primary mb-4">"</div>
-            <p className="text-3xl italic leading-relaxed">{slide.content.quote || "Customer testimonial..."}</p>
+            <p className="text-3xl italic leading-relaxed">{content.quote || "Customer testimonial..."}</p>
             <div className="space-y-2">
-              <p className="text-2xl font-semibold">{slide.content.author || "Customer Name"}</p>
-              <p className="text-xl text-muted-foreground">{slide.content.role || "Homeowner"}</p>
+              <p className="text-2xl font-semibold">{content.author || "Customer Name"}</p>
+              <p className="text-xl text-muted-foreground">{content.role || "Homeowner"}</p>
             </div>
           </div>
         );
@@ -131,8 +338,8 @@ export const SlideRenderer = ({ slide, sessionId }: SlideRendererProps) => {
       case "signature":
         return (
           <div className="flex flex-col items-center justify-center h-full p-8">
-            <h2 className="text-3xl font-bold mb-4">{slide.content?.title || "Signature Required"}</h2>
-            <p className="text-muted-foreground mb-8">{slide.content?.description}</p>
+            <h2 className="text-3xl font-bold mb-4">{slideTitle || "Signature Required"}</h2>
+            <p className="text-muted-foreground mb-8">{content.description}</p>
             <div className="w-full max-w-2xl">
               <SignatureCapture onSave={handleSignatureSave} />
             </div>
@@ -141,8 +348,17 @@ export const SlideRenderer = ({ slide, sessionId }: SlideRendererProps) => {
 
       default:
         return (
-          <div className="text-center">
-            <p className="text-muted-foreground">Unknown slide type: {slide.slide_type}</p>
+          <div className="space-y-6">
+            {slideTitle && <h2 className="text-4xl font-bold text-center">{slideTitle}</h2>}
+            {content.body && (
+              <p className="text-2xl leading-relaxed whitespace-pre-wrap">{content.body}</p>
+            )}
+            {content.ai_content && (
+              <p className="text-2xl leading-relaxed whitespace-pre-wrap">{content.ai_content}</p>
+            )}
+            {!slideTitle && !content.body && !content.ai_content && (
+              <p className="text-muted-foreground text-center">Slide type: {slide.slide_type}</p>
+            )}
           </div>
         );
     }
