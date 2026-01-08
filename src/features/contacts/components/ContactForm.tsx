@@ -11,6 +11,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { default as AddressVerification } from "@/shared/components/forms/AddressVerification";
 import { auditService } from "@/services/auditService";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
+import { useEffectiveTenantId } from "@/hooks/useEffectiveTenantId";
 import { TEST_IDS } from "../../../../tests/utils/test-ids";
 import { useContactDraftPersistence } from "@/hooks/useContactDraftPersistence";
 import { useNavigate } from "react-router-dom";
@@ -44,6 +45,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
   isGhostAccount = false,
 }) => {
   const { user: currentUser } = useCurrentUser();
+  const effectiveTenantId = useEffectiveTenantId();
   const { toast } = useToast();
   const navigate = useNavigate();
   const { 
@@ -116,16 +118,17 @@ const ContactForm: React.FC<ContactFormProps> = ({
     }
   }, [formData, addressData, assignedTo, saveDraft, draftLoaded]);
 
-  // Fetch tenant users (sales reps) for assignment dropdown - always fetch for all users
+  // Fetch tenant users (sales reps) for assignment dropdown - use effective tenant
   useEffect(() => {
     const fetchTenantUsers = async () => {
-      if (!currentUser?.tenant_id) return;
+      const tenantToUse = effectiveTenantId || currentUser?.tenant_id;
+      if (!tenantToUse) return;
 
       try {
         const { data, error } = await supabase
           .from('profiles')
           .select('id, first_name, last_name, email')
-          .eq('tenant_id', currentUser.tenant_id)
+          .eq('tenant_id', tenantToUse)
           .order('first_name');
 
         if (error) throw error;
@@ -143,7 +146,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
     };
 
     fetchTenantUsers();
-  }, [currentUser?.tenant_id]);
+  }, [effectiveTenantId, currentUser?.tenant_id]);
 
 
   const handleInputChange = (field: keyof ContactFormData, value: string | string[]) => {
@@ -208,21 +211,26 @@ const ContactForm: React.FC<ContactFormProps> = ({
       // Capture audit context before creating contact
       await auditService.captureAuditContext();
 
-      // Get current user and their profile to get tenant_id
+      // Use effective tenant ID (supports company switching)
       const { data: { user }, error: userError } = await supabase.auth.getUser();
       if (userError) throw userError;
       if (!user) throw new Error("User not authenticated");
 
-      // Get user profile to fetch tenant_id
-      const { data: profile, error: profileError } = await supabase
-        .from("profiles")
-        .select("tenant_id")
-        .eq("id", user.id)
-        .maybeSingle();
+      // Use effective tenant ID, falling back to profile lookup only if needed
+      let tenantIdToUse = effectiveTenantId;
+      if (!tenantIdToUse) {
+        const { data: profile, error: profileError } = await supabase
+          .from("profiles")
+          .select("tenant_id, active_tenant_id")
+          .eq("id", user.id)
+          .maybeSingle();
 
-      if (profileError) throw profileError;
-      if (!profile?.tenant_id) {
-        throw new Error("User profile not found. Please contact support.");
+        if (profileError) throw profileError;
+        tenantIdToUse = profile?.active_tenant_id || profile?.tenant_id;
+      }
+
+      if (!tenantIdToUse) {
+        throw new Error("No active company found. Please select a company.");
       }
 
       const contactData = {
@@ -242,8 +250,8 @@ const ContactForm: React.FC<ContactFormProps> = ({
         lead_source: formData.lead_source || null,
         qualification_status: formData.qualification_status || null,
         
-        // System fields
-        tenant_id: profile.tenant_id,
+        // System fields - use effective tenant ID
+        tenant_id: tenantIdToUse,
         assigned_to: assignedTo || null,
         created_by_ghost: isGhostAccount ? user.id : null,
         
