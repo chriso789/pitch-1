@@ -58,9 +58,13 @@ export function TrainingLeadSelector({ open, onClose, onSelect }: TrainingLeadSe
           ),
           roof_measurement:roof_measurements(id, satellite_image_url)
         `)
-        .eq('tenant_id', activeCompanyId!)
         .order('created_at', { ascending: false })
-        .limit(50);
+        .limit(100);
+
+      // Only filter by tenant if activeCompanyId exists
+      if (activeCompanyId) {
+        query = query.eq('tenant_id', activeCompanyId);
+      }
 
       if (searchQuery) {
         // Search in contact names or addresses
@@ -82,7 +86,7 @@ export function TrainingLeadSelector({ open, onClose, onSelect }: TrainingLeadSe
       });
       return filtered as unknown as LeadOption[];
     },
-    enabled: open && !!activeCompanyId,
+    enabled: open,
   });
 
   const getLeadCoordinates = (lead: LeadOption): { lat: number; lng: number; address: string } | null => {
@@ -171,9 +175,14 @@ export function TrainingLeadSelector({ open, onClose, onSelect }: TrainingLeadSe
                 Loading leads...
               </div>
             ) : leads.length === 0 ? (
-              <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
+              <div className="flex flex-col items-center justify-center h-full text-muted-foreground text-center px-4">
                 <AlertCircle className="h-8 w-8 mb-2" />
-                <p>No leads with verified addresses found</p>
+                <p className="font-medium">No leads with verified addresses found</p>
+                <p className="text-sm mt-1">
+                  {activeCompanyId 
+                    ? 'Add leads with addresses or verify existing lead addresses in this company.'
+                    : 'Select a company from the sidebar to view leads.'}
+                </p>
               </div>
             ) : (
               <div className="space-y-2">
