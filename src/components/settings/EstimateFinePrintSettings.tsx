@@ -46,7 +46,7 @@ export function EstimateFinePrintSettings() {
   const { user } = useCurrentUser();
   const { toast } = useToast();
   const queryClient = useQueryClient();
-  const tenantId = user?.tenant_id;
+  const tenantId = user?.active_tenant_id ?? user?.tenant_id;
   
   const [finePrintContent, setFinePrintContent] = useState('');
   const [includeFineByDefault, setIncludeFineByDefault] = useState(true);
