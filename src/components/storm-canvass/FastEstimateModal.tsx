@@ -53,13 +53,20 @@ export default function FastEstimateModal({
       return;
     }
 
+    if (!property?.id) {
+      toast.error('Property ID not available');
+      return;
+    }
+
     setLoading(true);
     setResult(null);
 
     try {
-      // Call the measure edge function
+      // Call the measure edge function with required action and propertyId
       const { data, error } = await supabase.functions.invoke('measure', {
         body: {
+          action: 'pull',
+          propertyId: property.id,
           lat: property.lat,
           lng: property.lng,
           address: property.address,
@@ -68,12 +75,17 @@ export default function FastEstimateModal({
 
       if (error) throw error;
 
-      // Parse the measurement result
-      const summary = data?.summary || {};
-      const totalArea = summary.total_area_sqft || data?.total_area_sqft || 0;
+      if (!data?.ok) {
+        throw new Error(data?.error || 'Measurement failed');
+      }
+
+      // Parse the measurement result from nested response
+      const measurement = data?.data?.measurement;
+      const summary = measurement?.summary || {};
+      const totalArea = summary.total_area_sqft || 0;
       const squares = summary.total_squares || Math.ceil(totalArea / 100);
-      const pitch = summary.pitch || data?.faces?.[0]?.pitch || '6/12';
-      const faceCount = data?.faces?.length || 4;
+      const pitch = summary.pitch || measurement?.faces?.[0]?.pitch || '6/12';
+      const faceCount = measurement?.faces?.length || summary.face_count || 4;
       const perimeter = summary.perimeter_ft || 0;
       const ridge = summary.ridge_ft || 0;
 

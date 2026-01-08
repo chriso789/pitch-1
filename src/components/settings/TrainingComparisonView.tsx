@@ -87,13 +87,13 @@ export function TrainingComparisonView({ sessionId, aiMeasurementId, manualTotal
         throw new Error(data?.error || 'AI measurement failed');
       }
 
-      const measurementId = data?.data?.id;
+      // Extract measurement from nested response: data.data.measurement
+      const measurement = data?.data?.measurement;
+      const measurementId = measurement?.id;
       if (!measurementId) {
         throw new Error('AI measurement did not return an ID');
       }
 
-      // Extract measurement data from response
-      const measurement = data?.data;
       const summary = measurement?.summary || {};
 
       // Update the training session with the AI measurement ID
