@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
-import { useCurrentUser } from '@/hooks/useCurrentUser';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
@@ -194,7 +194,7 @@ function SortableItem({ requirement, onEdit, onToggleActive, onToggleRequired, o
 }
 
 export function ApprovalRequirementsSettings() {
-  const { user } = useCurrentUser();
+  const tenantId = useEffectiveTenantId();
   const { toast } = useToast();
   const queryClient = useQueryClient();
   
@@ -221,8 +221,6 @@ export function ApprovalRequirementsSettings() {
       coordinateGetter: sortableKeyboardCoordinates,
     })
   );
-
-  const tenantId = user?.active_tenant_id ?? user?.tenant_id;
 
   // Fetch requirements
   const { data: requirements = [], isLoading } = useQuery({
