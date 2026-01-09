@@ -135,11 +135,13 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
   }, []);
 
   // Fetch full profile from database (parallel queries)
-  const fetchFullProfile = useCallback(async (userId: string) => {
+  const fetchFullProfile = useCallback(async (userId: string, retryCount = 0) => {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
 
     try {
+      console.log('[UserProfile] Fetching full profile for:', userId);
+      
       // Parallel fetch: profiles + user_roles
       const [profileResult, roleResult] = await Promise.all([
         supabase
@@ -157,45 +159,75 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
       ]);
 
       if (profileResult.error) {
-        console.warn('Profile fetch error:', profileResult.error);
+        console.warn('[UserProfile] Profile fetch error:', profileResult.error.message);
       }
 
       const dbProfile = profileResult.data;
-      const dbRole = roleResult.data?.role || dbProfile?.role || 'user';
+      const dbRole = roleResult.data?.role || '';
 
-      if (dbProfile) {
-        // Store role and title in session storage as backup
-        if (dbRole) {
-          setSessionRole(dbRole);
-        }
-        if (dbProfile.title) {
-          setSessionTitle(dbProfile.title);
+      // CRITICAL: We must have both profile AND role from user_roles
+      if (!dbProfile || !dbRole) {
+        console.warn('[UserProfile] Missing data - profile:', !!dbProfile, 'role:', dbRole);
+        
+        // Retry up to 3 times with backoff
+        if (retryCount < 3) {
+          isFetchingRef.current = false;
+          const delay = Math.pow(2, retryCount) * 500; // 500ms, 1s, 2s
+          console.log(`[UserProfile] Retrying in ${delay}ms (attempt ${retryCount + 1}/3)`);
+          setTimeout(() => fetchFullProfile(userId, retryCount + 1), delay);
+          return;
         }
         
-        setProfile({
-          id: userId,
-          email: dbProfile.email || '',
-          first_name: dbProfile.first_name || '',
-          last_name: dbProfile.last_name || '',
-          company_name: dbProfile.company_name,
-          role: dbRole,
-          tenant_id: dbProfile.tenant_id,
-          active_tenant_id: dbProfile.active_tenant_id || dbProfile.tenant_id,
-          phone: dbProfile.phone,
-          title: dbProfile.title,
-          is_developer: dbProfile.is_developer,
-          profileLoaded: true,
-        });
-        
-        // Only clear cache after we have valid profile with role
-        if (dbRole) {
-          clearCachedUserProfile();
+        // After retries, set what we have but mark as incomplete
+        if (dbProfile) {
+          setProfile({
+            id: userId,
+            email: dbProfile.email || '',
+            first_name: dbProfile.first_name || '',
+            last_name: dbProfile.last_name || '',
+            company_name: dbProfile.company_name,
+            role: dbRole || 'user', // Fallback only after all retries
+            tenant_id: dbProfile.tenant_id || '',
+            active_tenant_id: dbProfile.active_tenant_id || dbProfile.tenant_id || '',
+            phone: dbProfile.phone,
+            title: dbProfile.title,
+            is_developer: dbProfile.is_developer,
+            profileLoaded: !!(dbProfile.tenant_id && dbRole),
+          });
         }
+        setLoading(false);
+        isFetchingRef.current = false;
+        return;
       }
 
+      // Store role and title in session storage as backup
+      setSessionRole(dbRole);
+      if (dbProfile.title) {
+        setSessionTitle(dbProfile.title);
+      }
+      
+      console.log('[UserProfile] Profile loaded successfully - role:', dbRole, 'tenant:', dbProfile.tenant_id);
+      
+      setProfile({
+        id: userId,
+        email: dbProfile.email || '',
+        first_name: dbProfile.first_name || '',
+        last_name: dbProfile.last_name || '',
+        company_name: dbProfile.company_name,
+        role: dbRole,
+        tenant_id: dbProfile.tenant_id,
+        active_tenant_id: dbProfile.active_tenant_id || dbProfile.tenant_id,
+        phone: dbProfile.phone,
+        title: dbProfile.title,
+        is_developer: dbProfile.is_developer,
+        profileLoaded: true,
+      });
+      
+      // Only clear cache after we have valid profile with role
+      clearCachedUserProfile();
       fetchedUserIdRef.current = userId;
     } catch (err) {
-      console.error('Error fetching profile:', err);
+      console.error('[UserProfile] Error fetching profile:', err);
       setError(err as Error);
     } finally {
       isFetchingRef.current = false;
