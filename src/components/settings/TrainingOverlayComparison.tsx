@@ -27,6 +27,9 @@ interface TrainingOverlayComparisonProps {
 const CANVAS_WIDTH = 900;
 const CANVAS_HEIGHT = 700;
 
+// Original satellite image size (Google Static Maps returns 640x640)
+const ORIGINAL_IMAGE_SIZE = 640;
+
 // Color schemes for different trace types
 const TRACE_COLORS: Record<string, string> = {
   ridge: '#22c55e',
@@ -37,7 +40,7 @@ const TRACE_COLORS: Record<string, string> = {
   perimeter: '#f97316',
 };
 
-// Parse WKT LINESTRING to canvas points using same formula as TrainingCanvas
+// Parse WKT LINESTRING to canvas points with aspect ratio correction
 function parseWKTLineString(
   wkt: string,
   centerLat: number,
@@ -54,8 +57,17 @@ function parseWKTLineString(
     return { lat, lng };
   });
 
-  // Same projection formula as TrainingCanvas
-  const metersPerPixel = 156543.03392 * Math.cos(centerLat * Math.PI / 180) / Math.pow(2, zoom);
+  // Base meters per pixel for the ORIGINAL 640x640 square image
+  const baseMetersPerPixel = 156543.03392 * Math.cos(centerLat * Math.PI / 180) / Math.pow(2, zoom);
+  
+  // Scale factors for aspect ratio correction (canvas is stretched from 640x640 to 900x700)
+  const scaleX = canvasWidth / ORIGINAL_IMAGE_SIZE;   // 900/640 = 1.406
+  const scaleY = canvasHeight / ORIGINAL_IMAGE_SIZE;  // 700/640 = 1.094
+  
+  // Effective meters-per-pixel on the stretched canvas (different for X and Y)
+  const metersPerPixelX = baseMetersPerPixel / scaleX;
+  const metersPerPixelY = baseMetersPerPixel / scaleY;
+  
   const metersPerDegLat = 111320;
   const metersPerDegLng = 111320 * Math.cos(centerLat * Math.PI / 180);
 
@@ -63,8 +75,9 @@ function parseWKTLineString(
     const dLat = coord.lat - centerLat;
     const dLng = coord.lng - centerLng;
     
-    const dY = dLat * metersPerDegLat / metersPerPixel;
-    const dX = dLng * metersPerDegLng / metersPerPixel;
+    // Use separate meters-per-pixel for X and Y axes
+    const dY = dLat * metersPerDegLat / metersPerPixelY;
+    const dX = dLng * metersPerDegLng / metersPerPixelX;
 
     return {
       x: canvasWidth / 2 + dX,
