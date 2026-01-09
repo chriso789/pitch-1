@@ -192,11 +192,11 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
       setEditingLocation(null);
       setFormData(initialFormData);
       fetchLocations();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving location:', error);
       toast({
         title: "Error",
-        description: "Failed to save location",
+        description: error?.message || "Failed to save location",
         variant: "destructive",
       });
     }

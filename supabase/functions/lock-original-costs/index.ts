@@ -29,24 +29,46 @@ serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    const { pipeline_entry_id, section } = await req.json();
+    const { pipeline_entry_id, estimate_id, section } = await req.json();
 
-    if (!pipeline_entry_id) {
-      throw new Error('pipeline_entry_id is required');
+    if (!pipeline_entry_id && !estimate_id) {
+      throw new Error('pipeline_entry_id or estimate_id is required');
     }
 
     if (!section || !['material', 'labor', 'both'].includes(section)) {
       throw new Error('section must be "material", "labor", or "both"');
     }
 
-    console.log(`[lock-original-costs] Locking ${section} costs for pipeline entry: ${pipeline_entry_id}`);
+    let targetEstimateId = estimate_id;
 
-    // Get existing enhanced estimate
+    // If no direct estimate_id, look up from pipeline metadata
+    if (!targetEstimateId && pipeline_entry_id) {
+      const { data: pipelineEntry, error: pipelineError } = await supabase
+        .from('pipeline_entries')
+        .select('metadata')
+        .eq('id', pipeline_entry_id)
+        .single();
+      
+      if (pipelineError) {
+        console.error('[lock-original-costs] Error fetching pipeline:', pipelineError);
+        throw new Error('Failed to fetch pipeline entry');
+      }
+
+      targetEstimateId = (pipelineEntry?.metadata as any)?.selected_estimate_id;
+      
+      if (!targetEstimateId) {
+        throw new Error('No estimate selected for this pipeline entry');
+      }
+    }
+
+    console.log(`[lock-original-costs] Locking ${section} costs for estimate: ${targetEstimateId}`);
+
+    // Get existing enhanced estimate by ID
     const { data: estimate, error: fetchError } = await supabase
       .from('enhanced_estimates')
       .select('*')
-      .eq('pipeline_entry_id', pipeline_entry_id)
-      .maybeSingle();
+      .eq('id', targetEstimateId)
+      .single();
 
     if (fetchError) {
       console.error('[lock-original-costs] Error fetching estimate:', fetchError);
@@ -54,7 +76,7 @@ serve(async (req) => {
     }
 
     if (!estimate) {
-      throw new Error('No estimate found for this pipeline entry. Please add materials/labor first.');
+      throw new Error('Estimate not found. Please add materials/labor first.');
     }
 
     // Build update object based on section

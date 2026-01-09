@@ -49,16 +49,35 @@ import { TemplateSectionSelector } from '@/components/estimates/TemplateSectionS
 import { useQuery as useTanstackQuery, useQueryClient } from '@tanstack/react-query';
 import { format } from 'date-fns';
 
-// Materials Section with locking
+// Hook to get selected estimate id from pipeline metadata
+const useSelectedEstimateId = (pipelineEntryId: string) => {
+  return useTanstackQuery({
+    queryKey: ['pipeline-selected-estimate', pipelineEntryId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('pipeline_entries')
+        .select('metadata')
+        .eq('id', pipelineEntryId)
+        .single();
+      if (error) throw error;
+      return (data?.metadata as any)?.selected_estimate_id as string | null;
+    }
+  });
+};
+
+// Materials Section with locking - uses selected estimate
 const MaterialsSection = ({ pipelineEntryId }: { pipelineEntryId: string }) => {
   const queryClient = useQueryClient();
+  const { data: selectedEstimateId } = useSelectedEstimateId(pipelineEntryId);
   
   const { data: lockStatus } = useTanstackQuery({
-    queryKey: ['cost-lock-status', pipelineEntryId],
+    queryKey: ['cost-lock-status', pipelineEntryId, selectedEstimateId],
     queryFn: async () => {
+      if (!selectedEstimateId) return null;
       const { data, error } = await supabase
         .from('enhanced_estimates')
         .select(`
+          id,
           material_cost_locked_at,
           material_cost_locked_by,
           labor_cost_locked_at,
@@ -66,11 +85,12 @@ const MaterialsSection = ({ pipelineEntryId }: { pipelineEntryId: string }) => {
           material_locked_by_profile:profiles!enhanced_estimates_material_cost_locked_by_fkey(full_name),
           labor_locked_by_profile:profiles!enhanced_estimates_labor_cost_locked_by_fkey(full_name)
         `)
-        .eq('pipeline_entry_id', pipelineEntryId)
-        .maybeSingle();
+        .eq('id', selectedEstimateId)
+        .single();
       if (error) throw error;
       return data;
-    }
+    },
+    enabled: !!selectedEstimateId
   });
 
   const isLocked = !!lockStatus?.material_cost_locked_at;
@@ -92,34 +112,44 @@ const MaterialsSection = ({ pipelineEntryId }: { pipelineEntryId: string }) => {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <TemplateSectionSelector
-          pipelineEntryId={pipelineEntryId}
-          sectionType="material"
-          isLocked={isLocked}
-          lockedAt={lockedAt}
-          lockedByName={lockedByName}
-          onTotalChange={(total) => {
-            console.log('Materials total updated:', total);
-          }}
-          onLockSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: ['cost-lock-status', pipelineEntryId] });
-          }}
-        />
+        {!selectedEstimateId ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <Package className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p>Select an estimate in the Estimate tab to view materials</p>
+          </div>
+        ) : (
+          <TemplateSectionSelector
+            pipelineEntryId={pipelineEntryId}
+            sectionType="material"
+            isLocked={isLocked}
+            lockedAt={lockedAt}
+            lockedByName={lockedByName}
+            onTotalChange={(total) => {
+              console.log('Materials total updated:', total);
+            }}
+            onLockSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ['cost-lock-status', pipelineEntryId, selectedEstimateId] });
+            }}
+          />
+        )}
       </CardContent>
     </Card>
   );
 };
 
-// Labor Section with locking
+// Labor Section with locking - uses selected estimate
 const LaborSection = ({ pipelineEntryId }: { pipelineEntryId: string }) => {
   const queryClient = useQueryClient();
+  const { data: selectedEstimateId } = useSelectedEstimateId(pipelineEntryId);
   
   const { data: lockStatus } = useTanstackQuery({
-    queryKey: ['cost-lock-status', pipelineEntryId],
+    queryKey: ['cost-lock-status', pipelineEntryId, selectedEstimateId],
     queryFn: async () => {
+      if (!selectedEstimateId) return null;
       const { data, error } = await supabase
         .from('enhanced_estimates')
         .select(`
+          id,
           material_cost_locked_at,
           material_cost_locked_by,
           labor_cost_locked_at,
@@ -127,11 +157,12 @@ const LaborSection = ({ pipelineEntryId }: { pipelineEntryId: string }) => {
           material_locked_by_profile:profiles!enhanced_estimates_material_cost_locked_by_fkey(full_name),
           labor_locked_by_profile:profiles!enhanced_estimates_labor_cost_locked_by_fkey(full_name)
         `)
-        .eq('pipeline_entry_id', pipelineEntryId)
-        .maybeSingle();
+        .eq('id', selectedEstimateId)
+        .single();
       if (error) throw error;
       return data;
-    }
+    },
+    enabled: !!selectedEstimateId
   });
 
   const isLocked = !!lockStatus?.labor_cost_locked_at;
@@ -153,19 +184,26 @@ const LaborSection = ({ pipelineEntryId }: { pipelineEntryId: string }) => {
         </CardTitle>
       </CardHeader>
       <CardContent>
-        <TemplateSectionSelector
-          pipelineEntryId={pipelineEntryId}
-          sectionType="labor"
-          isLocked={isLocked}
-          lockedAt={lockedAt}
-          lockedByName={lockedByName}
-          onTotalChange={(total) => {
-            console.log('Labor total updated:', total);
-          }}
-          onLockSuccess={() => {
-            queryClient.invalidateQueries({ queryKey: ['cost-lock-status', pipelineEntryId] });
-          }}
-        />
+        {!selectedEstimateId ? (
+          <div className="text-center py-8 text-muted-foreground">
+            <Hammer className="h-12 w-12 mx-auto mb-4 opacity-50" />
+            <p>Select an estimate in the Estimate tab to view labor</p>
+          </div>
+        ) : (
+          <TemplateSectionSelector
+            pipelineEntryId={pipelineEntryId}
+            sectionType="labor"
+            isLocked={isLocked}
+            lockedAt={lockedAt}
+            lockedByName={lockedByName}
+            onTotalChange={(total) => {
+              console.log('Labor total updated:', total);
+            }}
+            onLockSuccess={() => {
+              queryClient.invalidateQueries({ queryKey: ['cost-lock-status', pipelineEntryId, selectedEstimateId] });
+            }}
+          />
+        )}
       </CardContent>
     </Card>
   );
