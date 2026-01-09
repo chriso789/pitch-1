@@ -21,6 +21,8 @@ interface TrainingOverlayComparisonProps {
     wkt: string;
     length_ft: number;
   }[];
+  // The AI measurement's own center for proper WKT alignment
+  aiMeasurementCenter?: { lat: number; lng: number };
 }
 
 // Match TrainingCanvas dimensions exactly
@@ -112,7 +114,12 @@ export function TrainingOverlayComparison({
   zoom = 20,
   manualTraces,
   aiLinearFeatures,
+  aiMeasurementCenter,
 }: TrainingOverlayComparisonProps) {
+  // Use the AI measurement's center for WKT conversion if provided
+  // This ensures AI features align correctly with the satellite image
+  const aiCenterLat = aiMeasurementCenter?.lat ?? centerLat;
+  const aiCenterLng = aiMeasurementCenter?.lng ?? centerLng;
   const manualCanvasRef = useRef<HTMLCanvasElement>(null);
   const aiCanvasRef = useRef<HTMLCanvasElement>(null);
   const [manualFabricCanvas, setManualFabricCanvas] = useState<FabricCanvas | null>(null);
@@ -223,13 +230,14 @@ export function TrainingOverlayComparison({
     manualFabricCanvas.renderAll();
   }, [manualFabricCanvas, manualImageLoaded, manualTraces]);
 
-  // Render AI lines
+  // Render AI lines - use aiCenterLat/aiCenterLng for proper alignment
   const renderAILines = useCallback(() => {
     if (!aiFabricCanvas || !aiImageLoaded) return;
     aiFabricCanvas.getObjects().forEach((obj) => aiFabricCanvas.remove(obj));
 
     aiLinearFeatures.forEach((feature) => {
-      const points = parseWKTLineString(feature.wkt, centerLat, centerLng, CANVAS_WIDTH, CANVAS_HEIGHT, zoom);
+      // Use the AI measurement's center for WKT-to-canvas conversion
+      const points = parseWKTLineString(feature.wkt, aiCenterLat, aiCenterLng, CANVAS_WIDTH, CANVAS_HEIGHT, zoom);
       if (points.length < 2) return;
       const color = TRACE_COLORS[feature.type] || '#6b7280';
 
@@ -263,7 +271,7 @@ export function TrainingOverlayComparison({
     });
 
     aiFabricCanvas.renderAll();
-  }, [aiFabricCanvas, aiImageLoaded, aiLinearFeatures, centerLat, centerLng, zoom]);
+  }, [aiFabricCanvas, aiImageLoaded, aiLinearFeatures, aiCenterLat, aiCenterLng, zoom]);
 
   useEffect(() => { renderManualTraces(); }, [renderManualTraces]);
   useEffect(() => { renderAILines(); }, [renderAILines]);

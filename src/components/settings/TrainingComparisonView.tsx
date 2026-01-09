@@ -497,6 +497,7 @@ export function TrainingComparisonView({
           zoom={20}
           manualTraces={manualTraces}
           aiLinearFeatures={Array.isArray(aiLinearFeatures) ? aiLinearFeatures : []}
+          aiMeasurementCenter={(aiMeasurement as any)?.gps_coordinates}
         />
       )}
 
