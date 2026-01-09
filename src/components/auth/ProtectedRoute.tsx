@@ -100,8 +100,10 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     );
   }
 
-  // Wait for profile to fully load with tenant_id and role
-  if (profileLoading || !profile?.profileLoaded || !profile?.tenant_id || !profile?.role) {
+  // Wait for minimum workspace identity (tenant + role). DB can hydrate in background.
+  const hasWorkspaceIdentity = !!(profile?.tenant_id && profile?.role);
+
+  if (profileLoading || !hasWorkspaceIdentity) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
         <div className="flex flex-col items-center gap-4">
