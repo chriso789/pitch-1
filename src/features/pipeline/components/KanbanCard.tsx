@@ -72,7 +72,8 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
 
   const fetchLastCommunication = async () => {
     try {
-      const { data } = await supabase
+      // Get last communication history entry
+      const { data: commData } = await supabase
         .from('communication_history')
         .select('created_at')
         .eq('contact_id', entry.contact_id)
@@ -80,14 +81,27 @@ export const KanbanCard: React.FC<KanbanCardProps> = ({
         .limit(1)
         .maybeSingle();
 
-      if (data?.created_at) {
-        const lastComm = new Date(data.created_at);
+      // Get pipeline entry updated_at (last edit)
+      const { data: entryData } = await supabase
+        .from('pipeline_entries')
+        .select('updated_at')
+        .eq('id', entry.id)
+        .single();
+
+      // Use the most recent date from all sources
+      const dates = [
+        commData?.created_at,
+        entryData?.updated_at
+      ].filter(Boolean).map(d => new Date(d as string));
+
+      if (dates.length > 0) {
+        const mostRecent = new Date(Math.max(...dates.map(d => d.getTime())));
         const now = new Date();
-        const diffTime = Math.abs(now.getTime() - lastComm.getTime());
+        const diffTime = Math.abs(now.getTime() - mostRecent.getTime());
         const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
         setDaysSinceLastComm(diffDays);
       } else {
-        setDaysSinceLastComm(99); // Show 99+ if no communication found
+        setDaysSinceLastComm(99); // Show 99+ if no data found
       }
     } catch (error) {
       console.error('Error fetching last communication:', error);
