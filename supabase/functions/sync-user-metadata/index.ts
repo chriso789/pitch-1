@@ -41,39 +41,69 @@ Deno.serve(async (req) => {
       );
     }
 
-    console.log(`[sync-user-metadata] Syncing metadata for user: ${user.id}`);
+    console.log(`[sync-user-metadata] Syncing metadata for user: ${user.id}, email: ${user.email}`);
 
     // Use service role client to bypass RLS and update auth metadata
     const supabaseAdmin = createClient(supabaseUrl, supabaseServiceKey, {
       auth: { autoRefreshToken: false, persistSession: false }
     });
 
-    // Use admin client to fetch profile and role to bypass RLS
-    const [profileResult, roleResult] = await Promise.all([
-      supabaseAdmin
-        .from('profiles')
-        .select('first_name, last_name, company_name, title, tenant_id, active_tenant_id')
-        .eq('id', user.id)
-        .single(),
-      supabaseAdmin
-        .from('user_roles')
-        .select('role')
-        .eq('user_id', user.id)
-        .maybeSingle()
-    ]);
+    // PRIMARY: Try to fetch profile by auth user id
+    let profileResult = await supabaseAdmin
+      .from('profiles')
+      .select('id, first_name, last_name, company_name, title, tenant_id, active_tenant_id, company_email')
+      .eq('id', user.id)
+      .maybeSingle();
 
-    const profile = profileResult.data;
+    let profile = profileResult.data;
+    let profileIdMismatch = false;
+
+    // FALLBACK: If no profile by id, try by email (handles id mismatch cases)
+    if (!profile && user.email) {
+      console.warn(`[sync-user-metadata] No profile found by id=${user.id}, trying email fallback...`);
+      
+      const emailFallback = await supabaseAdmin
+        .from('profiles')
+        .select('id, first_name, last_name, company_name, title, tenant_id, active_tenant_id, company_email')
+        .or(`company_email.ilike.${user.email},id.eq.${user.id}`)
+        .maybeSingle();
+      
+      if (emailFallback.data) {
+        profile = emailFallback.data;
+        profileIdMismatch = true;
+        console.warn(`[sync-user-metadata] PROFILE ID MISMATCH DETECTED: auth.uid=${user.id} but profiles.id=${profile.id} (matched by email=${user.email})`);
+      }
+    }
+
     if (!profile) {
+      console.error(`[sync-user-metadata] Profile not found for user ${user.id} (email: ${user.email})`);
       return new Response(
-        JSON.stringify({ error: 'Profile not found' }),
+        JSON.stringify({ error: 'Profile not found', user_id: user.id, email: user.email }),
         { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    // Fetch role - try by auth user id first, then by profile id if mismatch
+    let roleResult = await supabaseAdmin
+      .from('user_roles')
+      .select('role')
+      .eq('user_id', user.id)
+      .maybeSingle();
+
+    // If no role found and we have a profile id mismatch, try the profile's id
+    if (!roleResult.data && profileIdMismatch) {
+      console.warn(`[sync-user-metadata] No role by auth.uid, trying profile.id=${profile.id}...`);
+      roleResult = await supabaseAdmin
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', profile.id)
+        .maybeSingle();
     }
 
     // CRITICAL: roles MUST come only from user_roles (no profile fallback)
     const userRole = roleResult.data?.role || '';
     if (!userRole) {
-      console.warn(`[sync-user-metadata] No role found in user_roles for user: ${user.id}`);
+      console.warn(`[sync-user-metadata] No role found in user_roles for user: ${user.id} or profile: ${profile.id}`);
     }
 
     // Determine active_tenant_id (use profile's active_tenant_id or fallback to tenant_id)
@@ -90,7 +120,7 @@ Deno.serve(async (req) => {
       tenantName = tenant?.name || tenantName;
     }
 
-    console.log(`[sync-user-metadata] User ${user.id} - active_tenant: ${activeTenantId}, company: ${tenantName}`);
+    console.log(`[sync-user-metadata] User ${user.id} - active_tenant: ${activeTenantId}, company: ${tenantName}, id_mismatch: ${profileIdMismatch}`);
 
     const { data: updatedUser, error: updateError } = await supabaseAdmin.auth.admin.updateUserById(
       user.id,
@@ -121,6 +151,7 @@ Deno.serve(async (req) => {
       JSON.stringify({ 
         success: true, 
         message: 'User metadata synced successfully',
+        id_mismatch: profileIdMismatch,
         user_metadata: {
           first_name: profile.first_name,
           last_name: profile.last_name,
