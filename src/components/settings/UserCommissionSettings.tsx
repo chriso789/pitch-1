@@ -4,9 +4,11 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
-import { Calculator, Save, Users } from "lucide-react";
+import { Calculator, Save, Users, AlertTriangle } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { ManagerOverrideCalculator } from "./ManagerOverrideCalculator";
 
@@ -33,6 +35,14 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
   const [reportsToManagerId, setReportsToManagerId] = useState<string | null>(null);
   const [existingPlanId, setExistingPlanId] = useState<string | null>(null);
   const [tenantId, setTenantId] = useState<string | null>(null);
+  
+  // New manager override configuration state
+  const [overrideAppliesTo, setOverrideAppliesTo] = useState<string>('assigned_reps');
+  const [overrideBasis, setOverrideBasis] = useState<string>('contract_value');
+  const [overrideMinProfitPercent, setOverrideMinProfitPercent] = useState<number>(0);
+  const [overrideSelectedReps, setOverrideSelectedReps] = useState<string[]>([]);
+  const [overrideLocationId, setOverrideLocationId] = useState<string | null>(null);
+  
   const { toast } = useToast();
 
   // Check if user is a manager role
@@ -56,6 +66,41 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
     enabled: !!tenantId && !isManager
   });
 
+  // Fetch all reps for selection (when override applies to selected_reps)
+  const { data: allReps } = useQuery({
+    queryKey: ['all-reps-list', tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, role')
+        .eq('tenant_id', tenantId)
+        .not('role', 'in', `(${MANAGER_ROLES.join(',')})`)
+        .neq('id', userId);
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!tenantId && isManager && managerOverrideRate > 0
+  });
+
+  // Fetch locations for location-based override
+  const { data: locations } = useQuery({
+    queryKey: ['locations-list', tenantId],
+    queryFn: async () => {
+      if (!tenantId) return [];
+      const { data, error } = await (supabase as any)
+        .from('locations')
+        .select('id, name')
+        .eq('tenant_id', tenantId)
+        .eq('active', true);
+      
+      if (error) throw error;
+      return (data || []) as { id: string; name: string }[];
+    },
+    enabled: !!tenantId && isManager && managerOverrideRate > 0
+  });
+
   useEffect(() => {
     loadUserCommission();
   }, [userId]);
@@ -68,10 +113,10 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
       const userTenantId = authUser.user?.user_metadata?.tenant_id;
       setTenantId(userTenantId);
 
-      // Load rep's profile data including manager override and reports_to
+      // Load rep's profile data including manager override settings
       const { data: profile } = await supabase
         .from('profiles')
-        .select('personal_overhead_rate, manager_override_rate, reports_to_manager_id')
+        .select('personal_overhead_rate, manager_override_rate, reports_to_manager_id, manager_override_applies_to, manager_override_basis, manager_override_min_profit_percent, manager_override_selected_reps, manager_override_location_id')
         .eq('id', userId)
         .single();
       
@@ -84,6 +129,22 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
         }
         if (profile.reports_to_manager_id) {
           setReportsToManagerId(profile.reports_to_manager_id);
+        }
+        // Load new override configuration fields
+        if (profile.manager_override_applies_to) {
+          setOverrideAppliesTo(profile.manager_override_applies_to);
+        }
+        if (profile.manager_override_basis) {
+          setOverrideBasis(profile.manager_override_basis);
+        }
+        if (profile.manager_override_min_profit_percent !== null) {
+          setOverrideMinProfitPercent(Number(profile.manager_override_min_profit_percent));
+        }
+        if (profile.manager_override_selected_reps) {
+          setOverrideSelectedReps(profile.manager_override_selected_reps as string[]);
+        }
+        if (profile.manager_override_location_id) {
+          setOverrideLocationId(profile.manager_override_location_id);
         }
       }
       
@@ -143,7 +204,13 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
           rep_overhead_rate: repOverheadRate,
           manager_override_rate: isManager ? managerOverrideRate : undefined,
           reports_to_manager_id: !isManager ? reportsToManagerId : undefined,
-          is_manager: isManager
+          is_manager: isManager,
+          // New manager override configuration fields
+          manager_override_applies_to: isManager ? overrideAppliesTo : undefined,
+          manager_override_basis: isManager ? overrideBasis : undefined,
+          manager_override_min_profit_percent: isManager ? overrideMinProfitPercent : undefined,
+          manager_override_selected_reps: isManager && overrideAppliesTo === 'selected_reps' ? overrideSelectedReps : undefined,
+          manager_override_location_id: isManager && overrideAppliesTo === 'location_reps' ? overrideLocationId : undefined,
         }
       });
 
@@ -166,6 +233,26 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
     } finally {
       setSaving(false);
     }
+  };
+
+  // Toggle rep selection
+  const handleRepToggle = (repId: string, checked: boolean) => {
+    if (checked) {
+      setOverrideSelectedReps(prev => [...prev, repId]);
+    } else {
+      setOverrideSelectedReps(prev => prev.filter(id => id !== repId));
+    }
+  };
+
+  // Select/deselect all reps
+  const handleSelectAllReps = () => {
+    if (allReps) {
+      setOverrideSelectedReps(allReps.map(rep => rep.id));
+    }
+  };
+
+  const handleClearAllReps = () => {
+    setOverrideSelectedReps([]);
   };
 
   // Calculate example commission with full breakdown
@@ -299,6 +386,181 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
               Percentage earned from jobs closed by your assigned reps
             </p>
           </div>
+        )}
+
+        {/* Manager Override Configuration - only shown when override rate > 0 */}
+        {isManager && managerOverrideRate > 0 && (
+          <Card className="border-primary/20 bg-primary/5">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-sm flex items-center gap-2">
+                <Users className="h-4 w-4" />
+                Manager Override Configuration
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {/* Override Applies To */}
+              <div className="space-y-3">
+                <Label>Override Applies To</Label>
+                <RadioGroup
+                  value={overrideAppliesTo}
+                  onValueChange={setOverrideAppliesTo}
+                  disabled={!canEdit}
+                  className="space-y-2"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="all_reps" id="all_reps" />
+                    <Label htmlFor="all_reps" className="font-normal cursor-pointer">
+                      All Reps in Company
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="assigned_reps" id="assigned_reps" />
+                    <Label htmlFor="assigned_reps" className="font-normal cursor-pointer">
+                      Assigned Reps (reports to me)
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="location_reps" id="location_reps" />
+                    <Label htmlFor="location_reps" className="font-normal cursor-pointer">
+                      Reps in Location
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="selected_reps" id="selected_reps" />
+                    <Label htmlFor="selected_reps" className="font-normal cursor-pointer">
+                      Selected Reps
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
+
+              {/* Location Selector - when override applies to location_reps */}
+              {overrideAppliesTo === 'location_reps' && (
+                <div className="space-y-2 pl-4 border-l-2 border-primary/20">
+                  <Label>Select Location</Label>
+                  <Select
+                    value={overrideLocationId || "none"}
+                    onValueChange={(val) => setOverrideLocationId(val === "none" ? null : val)}
+                    disabled={!canEdit}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Choose a location" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Select a location...</SelectItem>
+                      {locations?.map((location) => (
+                        <SelectItem key={location.id} value={location.id}>
+                          {location.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Rep Multi-Select - when override applies to selected_reps */}
+              {overrideAppliesTo === 'selected_reps' && (
+                <div className="space-y-2 pl-4 border-l-2 border-primary/20">
+                  <div className="flex items-center justify-between">
+                    <Label>Select Reps ({overrideSelectedReps.length} selected)</Label>
+                    <div className="flex gap-2">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleSelectAllReps}
+                        disabled={!canEdit}
+                      >
+                        Select All
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleClearAllReps}
+                        disabled={!canEdit}
+                      >
+                        Clear All
+                      </Button>
+                    </div>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto border rounded-md p-2 space-y-1">
+                    {allReps && allReps.length > 0 ? (
+                      allReps.map((rep) => (
+                        <div key={rep.id} className="flex items-center space-x-2 py-1">
+                          <Checkbox
+                            id={`rep-${rep.id}`}
+                            checked={overrideSelectedReps.includes(rep.id)}
+                            onCheckedChange={(checked) => handleRepToggle(rep.id, !!checked)}
+                            disabled={!canEdit}
+                          />
+                          <Label htmlFor={`rep-${rep.id}`} className="font-normal cursor-pointer text-sm">
+                            {rep.first_name} {rep.last_name}
+                          </Label>
+                        </div>
+                      ))
+                    ) : (
+                      <p className="text-sm text-muted-foreground py-2 text-center">
+                        No reps found
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {/* Override Calculation Basis */}
+              <div className="space-y-3 pt-2">
+                <Label>Override Calculated On</Label>
+                <RadioGroup
+                  value={overrideBasis}
+                  onValueChange={setOverrideBasis}
+                  disabled={!canEdit}
+                  className="space-y-2"
+                >
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="contract_value" id="basis_contract" />
+                    <Label htmlFor="basis_contract" className="font-normal cursor-pointer">
+                      Contract/Selling Price
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="gross_profit" id="basis_gross" />
+                    <Label htmlFor="basis_gross" className="font-normal cursor-pointer">
+                      Gross Profit (Selling - Costs)
+                    </Label>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <RadioGroupItem value="net_profit" id="basis_net" />
+                    <Label htmlFor="basis_net" className="font-normal cursor-pointer">
+                      Net Profit (Gross - Overhead)
+                    </Label>
+                  </div>
+                </RadioGroup>
+              </div>
+
+              {/* Minimum Profit Margin Requirement */}
+              <div className="space-y-2 pt-2">
+                <Label htmlFor="min-profit">Minimum Profit Margin Required (%)</Label>
+                <Input
+                  id="min-profit"
+                  type="number"
+                  step="1"
+                  min="0"
+                  max="100"
+                  value={overrideMinProfitPercent}
+                  onChange={(e) => setOverrideMinProfitPercent(parseFloat(e.target.value) || 0)}
+                  disabled={!canEdit}
+                  className="max-w-[120px]"
+                />
+                {overrideMinProfitPercent > 0 && (
+                  <div className="flex items-center gap-2 text-sm text-amber-600 dark:text-amber-400">
+                    <AlertTriangle className="h-4 w-4" />
+                    <span>Override not earned on jobs under {overrideMinProfitPercent}% profit margin</span>
+                  </div>
+                )}
+              </div>
+            </CardContent>
+          </Card>
         )}
 
         {/* Reports To Manager - only for non-manager roles */}

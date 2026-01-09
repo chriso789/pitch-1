@@ -14,6 +14,12 @@ interface SaveCommissionRequest {
   manager_override_rate?: number;
   reports_to_manager_id?: string | null;
   is_manager: boolean;
+  // New manager override configuration fields
+  manager_override_applies_to?: string;
+  manager_override_basis?: string;
+  manager_override_min_profit_percent?: number;
+  manager_override_selected_reps?: string[];
+  manager_override_location_id?: string | null;
 }
 
 serve(async (req) => {
@@ -81,7 +87,12 @@ serve(async (req) => {
       rep_overhead_rate,
       manager_override_rate,
       reports_to_manager_id,
-      is_manager
+      is_manager,
+      manager_override_applies_to,
+      manager_override_basis,
+      manager_override_min_profit_percent,
+      manager_override_selected_reps,
+      manager_override_location_id,
     } = body;
 
     console.log(`[save-commission-settings] Target user: ${target_user_id}, Commission type: ${commission_type}, Rate: ${commission_rate}%`);
@@ -131,6 +142,11 @@ serve(async (req) => {
 
     if (is_manager) {
       profileUpdate.manager_override_rate = manager_override_rate || 0;
+      profileUpdate.manager_override_applies_to = manager_override_applies_to || 'assigned_reps';
+      profileUpdate.manager_override_basis = manager_override_basis || 'contract_value';
+      profileUpdate.manager_override_min_profit_percent = manager_override_min_profit_percent || 0;
+      profileUpdate.manager_override_selected_reps = manager_override_selected_reps || [];
+      profileUpdate.manager_override_location_id = manager_override_location_id || null;
     } else {
       profileUpdate.reports_to_manager_id = reports_to_manager_id || null;
     }

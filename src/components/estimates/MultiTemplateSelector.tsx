@@ -17,6 +17,7 @@ import { EstimateBreakdownCard } from './EstimateBreakdownCard';
 import { EstimatePDFTemplate } from './EstimatePDFTemplate';
 import { PDFExportDialog } from './PDFExportDialog';
 import { EstimatePreviewPanel } from './EstimatePreviewPanel';
+import { EstimateAddonsPanel } from './EstimateAddonsPanel';
 import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptions';
 import { useEstimatePricing, type LineItem } from '@/hooks/useEstimatePricing';
 import { usePDFGeneration } from '@/hooks/usePDFGeneration';
@@ -1292,6 +1293,16 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             </Button>
           </CardContent>
         </Card>
+      )}
+
+      {/* Estimate Add-ons Panel - for fine print, photos, etc. */}
+      {lineItems.length > 0 && (
+        <EstimateAddonsPanel
+          pipelineEntryId={pipelineEntryId}
+          pdfOptions={pdfOptions}
+          onOptionsChange={(changes) => setPdfOptions(prev => ({ ...prev, ...changes }))}
+          className="mb-4"
+        />
       )}
 
       {/* Estimate Breakdown Card */}
