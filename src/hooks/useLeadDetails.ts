@@ -43,6 +43,13 @@ export interface LeadDetailsData {
     first_name: string;
     last_name: string;
   };
+  secondary_assigned_rep?: {
+    id: string;
+    first_name: string;
+    last_name: string;
+  };
+  secondary_assigned_to?: string;
+  primary_rep_split_percent?: number;
   created_at: string;
   updated_at: string;
 }
@@ -75,7 +82,8 @@ async function fetchLeadDetails(id: string): Promise<LeadDetailsData | null> {
     .select(`
       *,
       contact:contacts(*),
-      assigned_rep:profiles!pipeline_entries_assigned_to_fkey(id, first_name, last_name)
+      assigned_rep:profiles!pipeline_entries_assigned_to_fkey(id, first_name, last_name),
+      secondary_assigned_rep:profiles!pipeline_entries_secondary_assigned_to_fkey(id, first_name, last_name)
     `)
     .eq('id', id)
     .maybeSingle();

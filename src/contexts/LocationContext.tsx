@@ -7,6 +7,7 @@ interface Location {
   name: string;
   address_city?: string;
   address_state?: string;
+  logo_url?: string;
 }
 
 interface LocationContextType {
@@ -53,7 +54,7 @@ export const LocationProvider = ({ children }: { children: ReactNode }) => {
 
       let locationsQuery = supabase
         .from('locations')
-        .select('id, name, address_city, address_state')
+        .select('id, name, address_city, address_state, logo_url')
         .eq('tenant_id', activeTenantId);
 
       // If user is not admin/manager, only show locations they're assigned to
