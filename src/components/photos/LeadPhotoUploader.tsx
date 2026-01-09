@@ -149,19 +149,35 @@ export const LeadPhotoUploader: React.FC<LeadPhotoUploaderProps> = ({
 
     setIsUploading(true);
     let successCount = 0;
+    const totalCount = pendingUploads.length;
+
+    console.log('[LeadPhotoUploader] Starting upload of', totalCount, 'photos for lead:', pipelineEntryId);
 
     try {
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
+      if (!user) {
+        console.error('[LeadPhotoUploader] User not authenticated');
+        throw new Error("Not authenticated");
+      }
+      console.log('[LeadPhotoUploader] User authenticated:', user.id);
 
-      const { data: profile } = await supabase
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
         .select('tenant_id, active_tenant_id')
         .eq('id', user.id)
         .single();
 
+      if (profileError) {
+        console.error('[LeadPhotoUploader] Profile fetch error:', profileError);
+        throw profileError;
+      }
+
       const tenantId = profile?.active_tenant_id || profile?.tenant_id;
-      if (!tenantId) throw new Error("No tenant found");
+      if (!tenantId) {
+        console.error('[LeadPhotoUploader] No tenant found in profile:', profile);
+        throw new Error("No tenant found");
+      }
+      console.log('[LeadPhotoUploader] Using tenant:', tenantId);
 
       for (const upload of pendingUploads) {
         try {
@@ -170,55 +186,73 @@ export const LeadPhotoUploader: React.FC<LeadPhotoUploaderProps> = ({
           const randomId = Math.random().toString(36).substring(7);
           const fileName = `${tenantId}/leads/${pipelineEntryId}/${timestamp}_${randomId}.${fileExt}`;
           
+          console.log('[LeadPhotoUploader] Uploading file:', fileName, 'Size:', upload.file.size);
+          
           // Upload to customer-photos storage bucket
-          const { error: uploadError } = await supabase.storage
+          const { data: uploadData, error: uploadError } = await supabase.storage
             .from('customer-photos')
-            .upload(fileName, upload.file);
+            .upload(fileName, upload.file, {
+              cacheControl: '3600',
+              upsert: false
+            });
 
           if (uploadError) {
-            console.error('Upload error:', uploadError);
-            // Fallback to documents bucket if customer-photos doesn't exist
-            const { error: fallbackError } = await supabase.storage
-              .from('documents')
-              .upload(fileName, upload.file);
-            
-            if (fallbackError) {
-              console.error('Fallback upload error:', fallbackError);
-              continue;
-            }
+            console.error('[LeadPhotoUploader] Storage upload error:', uploadError);
+            toast({
+              title: "Storage Error",
+              description: `Failed to upload ${upload.file.name}: ${uploadError.message}`,
+              variant: "destructive"
+            });
+            continue;
           }
+          console.log('[LeadPhotoUploader] Storage upload success:', uploadData?.path);
 
           // Get public URL
           const { data: { publicUrl } } = supabase.storage
             .from('customer-photos')
             .getPublicUrl(fileName);
+          console.log('[LeadPhotoUploader] Public URL:', publicUrl);
 
           // Save to customer_photos table with proper relationships
-          const { error: dbError } = await supabase
+          const insertPayload = {
+            tenant_id: tenantId,
+            contact_id: contactId || null,
+            lead_id: pipelineEntryId,
+            file_url: publicUrl,
+            file_path: fileName,
+            original_filename: upload.file.name,
+            description: upload.file.name,
+            category: upload.category,
+            mime_type: upload.file.type,
+            file_size: upload.file.size,
+            uploaded_by: user.id,
+            include_in_estimate: false,
+            display_order: successCount
+          };
+          console.log('[LeadPhotoUploader] Inserting to DB:', insertPayload);
+
+          const { data: photoData, error: dbError } = await supabase
             .from('customer_photos')
-            .insert({
-              tenant_id: tenantId,
-              contact_id: contactId || null,
-              lead_id: pipelineEntryId,
-              file_url: publicUrl,
-              file_path: fileName,
-              description: upload.file.name,
-              category: upload.category,
-              mime_type: upload.file.type,
-              file_size: upload.file.size,
-              uploaded_by: user.id,
-              include_in_estimate: false,
-              display_order: 0
-            });
+            .insert(insertPayload)
+            .select()
+            .single();
 
           if (dbError) {
-            console.error('DB error:', dbError);
+            console.error('[LeadPhotoUploader] DB insert error:', dbError);
+            toast({
+              title: "Database Error",
+              description: `Failed to save ${upload.file.name}: ${dbError.message}`,
+              variant: "destructive"
+            });
+            // Clean up the uploaded file since DB insert failed
+            await supabase.storage.from('customer-photos').remove([fileName]);
             continue;
           }
+          console.log('[LeadPhotoUploader] DB insert success:', photoData?.id);
 
           successCount++;
         } catch (err) {
-          console.error('Error uploading file:', err);
+          console.error('[LeadPhotoUploader] Error uploading file:', err);
         }
       }
 
@@ -226,17 +260,27 @@ export const LeadPhotoUploader: React.FC<LeadPhotoUploaderProps> = ({
       pendingUploads.forEach(u => URL.revokeObjectURL(u.preview));
       setPendingUploads([]);
 
-      toast({
-        title: "Photos uploaded",
-        description: `Successfully uploaded ${successCount} of ${pendingUploads.length} photos`
-      });
-
-      onUploadComplete?.();
+      if (successCount > 0) {
+        toast({
+          title: "Photos uploaded",
+          description: `Successfully uploaded ${successCount} of ${totalCount} photos`
+        });
+        
+        // Immediately trigger refresh callback
+        console.log('[LeadPhotoUploader] Calling onUploadComplete callback');
+        onUploadComplete?.();
+      } else {
+        toast({
+          title: "Upload failed",
+          description: "No photos were saved. Check console for details.",
+          variant: "destructive"
+        });
+      }
     } catch (error) {
-      console.error('Upload error:', error);
+      console.error('[LeadPhotoUploader] Upload error:', error);
       toast({
         title: "Upload failed",
-        description: "An error occurred while uploading photos",
+        description: error instanceof Error ? error.message : "An error occurred while uploading photos",
         variant: "destructive"
       });
     } finally {

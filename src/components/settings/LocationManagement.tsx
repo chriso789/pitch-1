@@ -7,9 +7,10 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
-import { MapPin, Plus, Edit, Trash2, Building2, CheckCircle } from "lucide-react";
+import { MapPin, Plus, Edit, Trash2, Building2, CheckCircle, Image } from "lucide-react";
 import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
 import AddressVerification from "@/shared/components/forms/AddressVerification";
+import { LogoUploader } from "@/components/settings/LogoUploader";
 
 interface LocationManagementProps {
   tenantId?: string;
@@ -33,6 +34,7 @@ interface Location {
   formatted_address?: string;
   verified_address?: any;
   address_verified_at?: string;
+  logo_url?: string;
 }
 
 interface FormData {
@@ -49,6 +51,7 @@ interface FormData {
   formatted_address: string;
   verified_address: any;
   address_verified_at: string | null;
+  logo_url: string | null;
 }
 
 const initialFormData: FormData = {
@@ -64,7 +67,8 @@ const initialFormData: FormData = {
   place_id: '',
   formatted_address: '',
   verified_address: null,
-  address_verified_at: null
+  address_verified_at: null,
+  logo_url: null
 };
 
 export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) => {
@@ -153,7 +157,8 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
         place_id: formData.place_id,
         formatted_address: formData.formatted_address,
         verified_address: formData.verified_address,
-        address_verified_at: formData.address_verified_at
+        address_verified_at: formData.address_verified_at,
+        logo_url: formData.logo_url
       };
 
       if (editingLocation) {
@@ -212,7 +217,8 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
       place_id: location.place_id || '',
       formatted_address: location.formatted_address || '',
       verified_address: location.verified_address || null,
-      address_verified_at: location.address_verified_at || null
+      address_verified_at: location.address_verified_at || null,
+      logo_url: location.logo_url || null
     });
     setDialogOpen(true);
   };
@@ -325,6 +331,22 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
                       placeholder="location@company.com"
                     />
                   </div>
+                </div>
+
+                {/* Location Logo Upload */}
+                <div className="pt-4 border-t">
+                  <Label className="flex items-center gap-2 mb-2">
+                    <Image className="h-4 w-4" />
+                    Location Logo (Optional)
+                  </Label>
+                  <p className="text-xs text-muted-foreground mb-3">
+                    Override the company logo for this location on estimates and documents
+                  </p>
+                  <LogoUploader
+                    logoUrl={formData.logo_url || undefined}
+                    onLogoUploaded={(url) => setFormData(prev => ({ ...prev, logo_url: url }))}
+                    onLogoRemoved={() => setFormData(prev => ({ ...prev, logo_url: null }))}
+                  />
                 </div>
 
                 <div className="flex justify-end gap-2 pt-4">
