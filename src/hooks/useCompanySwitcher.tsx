@@ -91,6 +91,9 @@ export const useCompanySwitcher = () => {
         last_name: profile.last_name,
         email: profile.email,
         role: profile.role,
+        title: profile.title,
+        tenant_id: profile.tenant_id,
+        active_tenant_id: tenantId, // Use the target tenant we're switching to
       });
     }
     

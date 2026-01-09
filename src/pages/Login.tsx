@@ -117,11 +117,19 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
           // Initialize session with configured timeout
           initSession(rememberMe);
           
-          // Background tasks (non-blocking)
+          // CRITICAL: Sync user metadata BEFORE navigation to prevent empty dashboard
+          // This ensures tenant_id is in auth.users.raw_user_meta_data
+          try {
+            console.log('[Login] Syncing user metadata before redirect...');
+            await supabase.functions.invoke('sync-user-metadata');
+            console.log('[Login] Metadata synced successfully');
+          } catch (syncError) {
+            console.warn('[Login] Metadata sync failed, proceeding anyway:', syncError);
+          }
+          
+          // Background tasks (non-blocking) - these can happen after navigation
           setTimeout(async () => {
             ensureUserProfile(authUser).catch(console.warn);
-            // Sync user metadata from profiles to auth (fixes display name issues)
-            supabase.functions.invoke('sync-user-metadata').catch(console.warn);
             supabase.functions.invoke('log-auth-activity', {
               body: {
                 user_id: authUser.id,
