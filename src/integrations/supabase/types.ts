@@ -28172,6 +28172,13 @@ export type Database = {
       gettransactionid: { Args: never; Returns: unknown }
       has_high_level_role: { Args: { p_user_id: string }; Returns: boolean }
       has_manager_role: { Args: { p_user_id: string }; Returns: boolean }
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
       increment_campaign_answered: {
         Args: { p_campaign_id: string }
         Returns: undefined
