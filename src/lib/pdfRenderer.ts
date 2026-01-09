@@ -1,8 +1,14 @@
 // Use v3.x which doesn't have top-level await issues
 import * as pdfjsLib from "pdfjs-dist";
 
-// Configure the worker with a fixed version for reliability
-pdfjsLib.GlobalWorkerOptions.workerSrc = "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js";
+// Configure the worker - use multiple CDN fallbacks for reliability
+const workerUrls = [
+  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js",
+  "https://unpkg.com/pdfjs-dist@3.11.174/build/pdf.worker.min.js",
+];
+
+// Try the first CDN by default
+pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrls[0];
 
 export interface PDFDocumentProxy {
   numPages: number;

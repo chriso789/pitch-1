@@ -16,7 +16,9 @@ import {
   RotateCcw,
   ChevronLeft,
   ChevronRight,
-  Loader2
+  Loader2,
+  AlertCircle,
+  RefreshCw
 } from "lucide-react";
 import { loadPDFFromArrayBuffer, renderPageToDataUrl, isPDF, clearPageCache, type PDFDocumentProxy } from "@/lib/pdfRenderer";
 
@@ -103,6 +105,7 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
   const [totalPages, setTotalPages] = useState(1);
   const [pageRendering, setPageRendering] = useState(false);
   const [isDocumentPdf, setIsDocumentPdf] = useState(false);
+  const [pdfError, setPdfError] = useState<string | null>(null);
 
   // Load tenant ID
   useEffect(() => {
@@ -229,10 +232,13 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
 
     const loadPdfContent = async () => {
       setPageRendering(true);
+      setPdfError(null);
+      console.log("📄 Starting PDF load, ArrayBuffer size:", pdfArrayBuffer.byteLength);
       
       try {
         // Load PDF from ArrayBuffer (bypasses CORS)
         const pdf = await loadPDFFromArrayBuffer(pdfArrayBuffer);
+        console.log("✅ PDF loaded successfully, pages:", pdf.numPages);
         setPdfDocument(pdf);
         setTotalPages(pdf.numPages);
         setCurrentPage(1);
@@ -240,7 +246,9 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
         // Render first page
         await renderPdfPage(pdf, 1);
       } catch (error) {
-        console.error("Error loading PDF:", error);
+        console.error("❌ Error loading PDF:", error);
+        const errorMsg = error instanceof Error ? error.message : "Unknown error";
+        setPdfError(`Failed to load PDF: ${errorMsg}`);
         toast.error("Failed to load PDF. Please try again.");
       } finally {
         setPageRendering(false);
@@ -275,6 +283,8 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
     if (!fabricCanvas) return;
     
     setPageRendering(true);
+    setPdfError(null);
+    console.log(`📄 Rendering PDF page ${pageNum}...`);
     
     try {
       // Clear existing objects (tags) temporarily
@@ -282,15 +292,45 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
       fabricCanvas.clear();
       fabricCanvas.backgroundColor = "#f5f5f5";
       
-      // Render PDF page
-      const rendered = await renderPageToDataUrl(pdf, pageNum, 1.5);
+      // Render PDF page to data URL
+      let rendered;
+      try {
+        rendered = await renderPageToDataUrl(pdf, pageNum, 1.5);
+        console.log(`✅ Page ${pageNum} rendered to data URL, size: ${rendered.width}x${rendered.height}`);
+      } catch (renderErr) {
+        console.error("❌ PDF page render failed:", renderErr);
+        setPdfError("Failed to render PDF page. The file may be corrupted.");
+        setPageRendering(false);
+        return;
+      }
       
-      // Set as background
-      const img = await FabricImage.fromURL(rendered.dataUrl);
+      // Update canvas dimensions FIRST
       fabricCanvas.setWidth(rendered.width);
       fabricCanvas.setHeight(rendered.height);
+      
+      // Load image using native Image element first for reliability
+      const img = await new Promise<FabricImage>((resolve, reject) => {
+        const imgEl = new Image();
+        imgEl.onload = async () => {
+          try {
+            console.log("✅ Image element loaded, creating FabricImage...");
+            const fabricImg = new FabricImage(imgEl);
+            resolve(fabricImg);
+          } catch (e) {
+            reject(e);
+          }
+        };
+        imgEl.onerror = (e) => {
+          console.error("❌ Image element failed to load:", e);
+          reject(new Error("Failed to load rendered page image"));
+        };
+        imgEl.src = rendered.dataUrl;
+      });
+      
+      // Set as background
       fabricCanvas.backgroundImage = img;
       fabricCanvas.renderAll();
+      console.log(`✅ Page ${pageNum} displayed on canvas`);
       
       // Save current page tags before switching
       if (existingTags.length > 0) {
@@ -310,7 +350,9 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
       });
       
     } catch (error) {
-      console.error("Error rendering PDF page:", error);
+      console.error("❌ Error rendering PDF page:", error);
+      const errorMsg = error instanceof Error ? error.message : "Unknown error";
+      setPdfError(`Failed to render page ${pageNum}: ${errorMsg}`);
       toast.error("Failed to render page");
     } finally {
       setPageRendering(false);
@@ -706,6 +748,38 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
               <Loader2 className="h-8 w-8 animate-spin text-primary" />
             </div>
           )}
+          
+          {/* Error state with retry */}
+          {pdfError && !pageRendering && (
+            <div className="absolute inset-0 flex items-center justify-center z-10 bg-background/80">
+              <div className="bg-card border border-destructive/50 rounded-lg p-6 max-w-md text-center shadow-lg">
+                <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+                <h3 className="font-semibold text-lg mb-2">PDF Load Error</h3>
+                <p className="text-sm text-muted-foreground mb-4">{pdfError}</p>
+                <Button 
+                  variant="outline" 
+                  onClick={() => {
+                    setPdfError(null);
+                    if (pdfArrayBuffer && fabricCanvas) {
+                      setPageRendering(true);
+                      loadPDFFromArrayBuffer(pdfArrayBuffer).then(pdf => {
+                        setPdfDocument(pdf);
+                        setTotalPages(pdf.numPages);
+                        renderPdfPage(pdf, 1);
+                      }).catch(e => {
+                        setPdfError(`Retry failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+                        setPageRendering(false);
+                      });
+                    }
+                  }}
+                >
+                  <RefreshCw className="h-4 w-4 mr-2" />
+                  Retry Load
+                </Button>
+              </div>
+            </div>
+          )}
+          
           <div className="inline-block shadow-lg rounded-lg overflow-hidden">
             <canvas ref={canvasRef} />
           </div>
