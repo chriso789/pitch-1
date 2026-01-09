@@ -2,7 +2,9 @@ import { useEffect, useState } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { useUserProfile } from '@/contexts/UserProfileContext';
-import { Loader2, Building2 } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
+import { Loader2, Building2, AlertCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 
 interface ProtectedRouteProps {
   children: React.ReactNode;
@@ -10,16 +12,16 @@ interface ProtectedRouteProps {
 
 export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const { user, loading, validateSession } = useAuth();
-  const { profile, loading: profileLoading } = useUserProfile();
+  const { profile, loading: profileLoading, error: profileError, refetch } = useUserProfile();
   const location = useLocation();
   const [isValidating, setIsValidating] = useState(true);
   const [isValid, setIsValid] = useState(false);
+  const [isRetrying, setIsRetrying] = useState(false);
 
   useEffect(() => {
     const checkAuth = async () => {
       if (!loading) {
         if (user) {
-          // Validate the session is real
           const valid = await validateSession();
           setIsValid(valid);
         } else {
@@ -31,6 +33,20 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
 
     checkAuth();
   }, [user, loading, validateSession]);
+
+  const handleRetry = async () => {
+    setIsRetrying(true);
+    try {
+      await refetch();
+    } finally {
+      setIsRetrying(false);
+    }
+  };
+
+  const handleSignOut = async () => {
+    await supabase.auth.signOut();
+    window.location.href = '/login';
+  };
 
   // Show loading while checking auth
   if (loading || isValidating) {
@@ -50,8 +66,41 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     return <Navigate to="/login" state={{ from: location }} replace />;
   }
 
-  // CRITICAL: Wait for profile to fully load with tenant_id and role
-  // This prevents the "shell" dashboard with "User" role
+  // Show error state with retry/signout options
+  if (profileError && !profileLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="flex flex-col items-center gap-6 max-w-md text-center p-6">
+          <AlertCircle className="h-12 w-12 text-destructive" />
+          <div>
+            <h2 className="text-xl font-semibold text-foreground mb-2">
+              Couldn't load your workspace
+            </h2>
+            <p className="text-muted-foreground">
+              We had trouble loading your company data. Please try again or sign out and back in.
+            </p>
+          </div>
+          <div className="flex gap-3">
+            <Button onClick={handleRetry} disabled={isRetrying}>
+              {isRetrying ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Retrying...
+                </>
+              ) : (
+                'Try Again'
+              )}
+            </Button>
+            <Button variant="outline" onClick={handleSignOut}>
+              Sign Out
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Wait for profile to fully load with tenant_id and role
   if (profileLoading || !profile?.profileLoaded || !profile?.tenant_id || !profile?.role) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
