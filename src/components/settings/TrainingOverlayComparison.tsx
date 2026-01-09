@@ -311,8 +311,31 @@ export function TrainingOverlayComparison({
                 {Math.round(Object.values(manualTotals).reduce((a, b) => a + b, 0))} ft total
               </Badge>
             </div>
-            <div className="border rounded-lg overflow-hidden bg-muted/30">
-              <canvas ref={manualCanvasRef} style={{ width: '100%', height: 'auto', aspectRatio: `${CANVAS_WIDTH}/${CANVAS_HEIGHT}` }} />
+            <div 
+              className="border rounded-lg overflow-hidden bg-muted/30"
+              style={{ 
+                position: 'relative',
+                width: '100%',
+                paddingBottom: `${(CANVAS_HEIGHT / CANVAS_WIDTH) * 100}%`,
+              }}
+            >
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                overflow: 'hidden',
+              }}>
+                <canvas 
+                  ref={manualCanvasRef} 
+                  style={{ 
+                    display: 'block',
+                    width: '100%',
+                    height: '100%',
+                  }} 
+                />
+              </div>
             </div>
           </div>
 
@@ -324,8 +347,31 @@ export function TrainingOverlayComparison({
                 {Math.round(Object.values(aiTotals).reduce((a, b) => a + b, 0))} ft total
               </Badge>
             </div>
-            <div className="border rounded-lg overflow-hidden bg-muted/30">
-              <canvas ref={aiCanvasRef} style={{ width: '100%', height: 'auto', aspectRatio: `${CANVAS_WIDTH}/${CANVAS_HEIGHT}` }} />
+            <div 
+              className="border rounded-lg overflow-hidden bg-muted/30"
+              style={{ 
+                position: 'relative',
+                width: '100%',
+                paddingBottom: `${(CANVAS_HEIGHT / CANVAS_WIDTH) * 100}%`,
+              }}
+            >
+              <div style={{
+                position: 'absolute',
+                top: 0,
+                left: 0,
+                width: '100%',
+                height: '100%',
+                overflow: 'hidden',
+              }}>
+                <canvas 
+                  ref={aiCanvasRef} 
+                  style={{ 
+                    display: 'block',
+                    width: '100%',
+                    height: '100%',
+                  }} 
+                />
+              </div>
             </div>
           </div>
         </div>
