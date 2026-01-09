@@ -29,26 +29,43 @@ export function useRoofTracer(options: UseRoofTracerOptions) {
   const [currentPoints, setCurrentPoints] = useState<{ x: number; y: number }[]>([]);
   const [isDrawing, setIsDrawing] = useState(false);
   
-  // Meters per pixel at zoom level
-  const metersPerPixel = useMemo(() => {
+  // Original satellite image size (Google Static Maps returns 640x640)
+  const ORIGINAL_IMAGE_SIZE = 640;
+  
+  // Base meters per pixel at zoom level (for the original 640x640 image)
+  const baseMetersPerPixel = useMemo(() => {
     return (156543.03392 * Math.cos(centerLat * Math.PI / 180)) / Math.pow(2, zoom);
   }, [centerLat, zoom]);
   
-  // Convert canvas point to lat/lng
+  // Scale factors for aspect ratio correction (canvas is stretched from 640x640)
+  const scaleX = canvasWidth / ORIGINAL_IMAGE_SIZE;
+  const scaleY = canvasHeight / ORIGINAL_IMAGE_SIZE;
+  
+  // Effective meters per pixel on the stretched canvas (different for X and Y)
+  const metersPerPixelX = baseMetersPerPixel / scaleX;
+  const metersPerPixelY = baseMetersPerPixel / scaleY;
+  
+  // Legacy metersPerPixel for backward compatibility (use average)
+  const metersPerPixel = useMemo(() => {
+    return (metersPerPixelX + metersPerPixelY) / 2;
+  }, [metersPerPixelX, metersPerPixelY]);
+  
+  // Convert canvas point to lat/lng with aspect ratio correction
   const canvasToGeo = useCallback((x: number, y: number): { lat: number; lng: number } => {
     const offsetX = x - canvasWidth / 2;
     const offsetY = y - canvasHeight / 2;
     
-    const metersX = offsetX * metersPerPixel;
-    const metersY = -offsetY * metersPerPixel; // Invert Y
+    // Use separate meters-per-pixel for each axis
+    const metersX = offsetX * metersPerPixelX;
+    const metersY = -offsetY * metersPerPixelY; // Invert Y
     
     const lat = centerLat + (metersY / 111320);
     const lng = centerLng + (metersX / (111320 * Math.cos(centerLat * Math.PI / 180)));
     
     return { lat, lng };
-  }, [centerLat, centerLng, canvasWidth, canvasHeight, metersPerPixel]);
+  }, [centerLat, centerLng, canvasWidth, canvasHeight, metersPerPixelX, metersPerPixelY]);
   
-  // Calculate distance between two canvas points in feet
+  // Calculate distance between two canvas points in feet with aspect ratio correction
   const calculateLengthFt = useCallback((points: { x: number; y: number }[]): number => {
     if (points.length < 2) return 0;
     
@@ -56,13 +73,17 @@ export function useRoofTracer(options: UseRoofTracerOptions) {
     for (let i = 0; i < points.length - 1; i++) {
       const dx = points[i + 1].x - points[i].x;
       const dy = points[i + 1].y - points[i].y;
-      const distPixels = Math.sqrt(dx * dx + dy * dy);
-      const distMeters = distPixels * metersPerPixel;
+      
+      // Convert each axis separately with correct meters-per-pixel
+      const metersX = dx * metersPerPixelX;
+      const metersY = dy * metersPerPixelY;
+      const distMeters = Math.sqrt(metersX * metersX + metersY * metersY);
+      
       totalFt += distMeters * 3.28084; // meters to feet
     }
     
     return Math.round(totalFt * 10) / 10; // Round to 1 decimal
-  }, [metersPerPixel]);
+  }, [metersPerPixelX, metersPerPixelY]);
   
   // Generate WKT LINESTRING from canvas points
   const generateWKT = useCallback((points: { x: number; y: number }[]): string => {
