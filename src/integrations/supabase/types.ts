@@ -28096,33 +28096,106 @@ export type Database = {
           isSetofReturn: true
         }
       }
-      get_crew_dashboard_jobs: {
+      get_crew_company_user_for_company: {
+        Args: { p_company_id: string; p_user_id: string }
+        Returns: {
+          company_id: string
+          id: string
+          is_active: boolean
+          role: string
+          user_id: string
+        }[]
+      }
+      get_crew_dashboard_jobs:
+        | {
+            Args: never
+            Returns: {
+              arrival_window_end: string
+              arrival_window_start: string
+              blocked_reason: string
+              can_complete: boolean
+              checklist_checked_items: number
+              checklist_complete: boolean
+              checklist_required_items: number
+              company_id: string
+              created_at: string
+              docs_valid: boolean
+              id: string
+              is_locked: boolean
+              job_id: string
+              lock_reason: string
+              photo_required_buckets: number
+              photo_required_total: number
+              photo_uploaded_total: number
+              photos_complete: boolean
+              scheduled_date: string
+              scope_summary: string
+              special_instructions: string
+              status: string
+              status_updated_at: string
+              subcontractor_user_id: string
+            }[]
+          }
+        | {
+            Args: { p_company_id?: string }
+            Returns: {
+              arrival_window_end: string
+              arrival_window_start: string
+              blocked_reason: string
+              can_complete: boolean
+              checklist_checked_items: number
+              checklist_complete: boolean
+              checklist_required_items: number
+              company_id: string
+              created_at: string
+              docs_valid: boolean
+              id: string
+              is_locked: boolean
+              job_id: string
+              lock_reason: string
+              photo_required_buckets: number
+              photo_required_total: number
+              photo_uploaded_total: number
+              photos_complete: boolean
+              scheduled_date: string
+              scope_summary: string
+              special_instructions: string
+              status: string
+              status_updated_at: string
+              subcontractor_user_id: string
+            }[]
+          }
+      get_crew_subcontractor_profile_for_company: {
+        Args: { p_company_id: string; p_user_id: string }
+        Returns: {
+          address_line1: string
+          address_line2: string
+          city: string
+          company_id: string
+          dba: string
+          email: string
+          emergency_contact_alt_phone: string
+          emergency_contact_name: string
+          emergency_contact_phone: string
+          emergency_contact_relationship: string
+          id: string
+          legal_business_name: string
+          phone: string
+          postal_code: string
+          primary_contact_name: string
+          primary_trade: string
+          state: string
+          trade_tags: string[]
+          user_id: string
+        }[]
+      }
+      get_crew_user_companies: {
         Args: never
         Returns: {
-          arrival_window_end: string
-          arrival_window_start: string
-          blocked_reason: string
-          can_complete: boolean
-          checklist_checked_items: number
-          checklist_complete: boolean
-          checklist_required_items: number
           company_id: string
-          created_at: string
-          docs_valid: boolean
-          id: string
-          is_locked: boolean
-          job_id: string
-          lock_reason: string
-          photo_required_buckets: number
-          photo_required_total: number
-          photo_uploaded_total: number
-          photos_complete: boolean
-          scheduled_date: string
-          scope_summary: string
-          special_instructions: string
-          status: string
-          status_updated_at: string
-          subcontractor_user_id: string
+          company_name: string
+          is_active: boolean
+          role: string
         }[]
       }
       get_next_contact_number: {
