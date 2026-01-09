@@ -12,6 +12,44 @@ import { useAuth } from '@/contexts/AuthContext';
 import { Loader2, AlertCircle, Eye, EyeOff, Wifi, WifiOff, Shield, UserPlus, KeyRound, ArrowLeft, CheckCircle } from 'lucide-react';
 import { initSession, clearAllSessionData } from '@/services/sessionManager';
 import { getDeviceFingerprint, getDeviceName } from '@/services/deviceFingerprint';
+import { clearAllAppLocalStorage } from '@/components/layout/GlobalLoadingHandler';
+
+// Helper to clean up stale localStorage on Login mount
+const cleanupStaleLocalStorage = () => {
+  // Remove stale company-switching flag (older than 10 seconds)
+  const switchingData = localStorage.getItem('company-switching');
+  if (switchingData) {
+    try {
+      const data = JSON.parse(switchingData);
+      if (Date.now() - data.timestamp > 10000) {
+        localStorage.removeItem('company-switching');
+        console.log('[Login] Cleaned up stale company-switching flag');
+      }
+    } catch {
+      localStorage.removeItem('company-switching');
+    }
+  }
+  
+  // Remove stale user-profile-cache (older than 2 minutes or missing required fields)
+  const profileCache = localStorage.getItem('user-profile-cache');
+  if (profileCache) {
+    try {
+      const data = JSON.parse(profileCache);
+      const isMissingFields = !data.user_id || !data.timestamp;
+      const isExpired = data.timestamp && (Date.now() - data.timestamp > 2 * 60 * 1000);
+      if (isMissingFields || isExpired) {
+        localStorage.removeItem('user-profile-cache');
+        console.log('[Login] Cleaned up stale/invalid user-profile-cache');
+      }
+    } catch {
+      localStorage.removeItem('user-profile-cache');
+    }
+  }
+  
+  // Clear session storage role/title (they should not persist across fresh logins)
+  sessionStorage.removeItem('pitch-user-role');
+  sessionStorage.removeItem('pitch-user-title');
+};
 
 interface LoginProps {
   initialTab?: 'login' | 'signup' | 'forgot';
@@ -215,6 +253,11 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
     
     checkAndRedirect();
   }, [session, authUser, authLoading, loginAttempted, navigate]);
+
+  // Clean up stale localStorage on mount to prevent "works in incognito but not normal browser"
+  useEffect(() => {
+    cleanupStaleLocalStorage();
+  }, []);
 
   useEffect(() => {
     // Check URL params for password reset success message

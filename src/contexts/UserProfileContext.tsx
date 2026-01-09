@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from './AuthContext';
 import { supabase } from '@/integrations/supabase/client';
-import { getCachedUserProfile, clearCachedUserProfile } from '@/components/layout/GlobalLoadingHandler';
+import { getCachedUserProfile, clearCachedUserProfile, cacheWorkspaceIdentity, getCachedWorkspaceIdentity } from '@/components/layout/GlobalLoadingHandler';
 
 interface UserProfile {
   id: string;
@@ -98,22 +98,25 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
   // Create instant profile from auth user_metadata or cached profile (available immediately)
   const createInstantProfile = useCallback((user: any): UserProfile => {
     // Check for cached profile first (preserved during company switch)
-    const cached = getCachedUserProfile();
+    const cached = getCachedUserProfile(user.id);
+    
+    // Check for cached workspace identity (fast dashboard entry)
+    const cachedIdentity = getCachedWorkspaceIdentity(user.id);
     
     // Also check session storage as backup
     const sessionRole = getSessionRole();
     const sessionTitle = getSessionTitle();
     
-    // Use cached role, then session storage, then user_metadata, then empty string
-    const effectiveRole = cached?.role || sessionRole || user.user_metadata?.role || '';
+    // Use cached role, then cached identity, then session storage, then user_metadata, then empty string
+    const effectiveRole = cached?.role || cachedIdentity?.role || sessionRole || user.user_metadata?.role || '';
     // Use cached title, then session storage, then user_metadata, then empty string
     const effectiveTitle = cached?.title || sessionTitle || user.user_metadata?.title || '';
     
     // CRITICAL: Never use user.id as tenant fallback - it's not a valid tenant ID
     const metadataTenantId = user.user_metadata?.tenant_id;
     const metadataActiveTenantId = user.user_metadata?.active_tenant_id || metadataTenantId;
-    const effectiveTenantId = cached?.tenant_id || metadataTenantId || '';
-    const effectiveActiveTenantId = cached?.active_tenant_id || metadataActiveTenantId || '';
+    const effectiveTenantId = cached?.tenant_id || cachedIdentity?.tenant_id || metadataTenantId || '';
+    const effectiveActiveTenantId = cached?.active_tenant_id || cachedIdentity?.active_tenant_id || metadataActiveTenantId || '';
     
     // Must have both role AND valid tenant to be considered loaded
     // NOTE: Don't require first_name/last_name here (metadata may not include them on some accounts)
@@ -177,6 +180,14 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
         profileLoaded: true,
       });
       
+      // Cache workspace identity for instant future dashboard entry
+      cacheWorkspaceIdentity({
+        user_id: userId,
+        tenant_id: result.tenant_id,
+        active_tenant_id: result.active_tenant_id || result.tenant_id,
+        role: result.role,
+      });
+      
       clearCachedUserProfile();
       fetchedUserIdRef.current = userId;
       setLoading(false);
@@ -228,6 +239,14 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
       title: dbProfile.title,
       is_developer: dbProfile.is_developer,
       profileLoaded: true,
+    });
+    
+    // Cache workspace identity for instant future dashboard entry
+    cacheWorkspaceIdentity({
+      user_id: userId,
+      tenant_id: dbProfile.tenant_id,
+      active_tenant_id: dbProfile.active_tenant_id || dbProfile.tenant_id,
+      role: dbRole,
     });
     
     clearCachedUserProfile();

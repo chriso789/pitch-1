@@ -76,8 +76,9 @@ export const useCompanySwitcher = () => {
     const targetCompany = companies.find(c => c.tenant_id === tenantId);
     
     // Cache user profile before reload - only if fully loaded with valid role
-    if (profile && profile.profileLoaded && profile.role) {
+    if (profile && profile.profileLoaded && profile.role && profile.id) {
       cacheUserProfile({
+        user_id: profile.id,
         first_name: profile.first_name,
         last_name: profile.last_name,
         email: profile.email,

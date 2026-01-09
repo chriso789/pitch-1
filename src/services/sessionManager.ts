@@ -115,6 +115,17 @@ export function clearAllSessionData(): void {
   // Clear device fingerprint to prevent cross-user fingerprint reuse
   localStorage.removeItem('pitch_device_fingerprint');
 
+  // Clear app-specific non-prefixed keys that can cause stale state
+  const appSpecificKeys = [
+    'user-profile-cache',
+    'company-switching',
+    'pitch_workspace_identity_v1',
+  ];
+  appSpecificKeys.forEach(key => {
+    localStorage.removeItem(key);
+    console.log('[SessionManager] Removed app key:', key);
+  });
+
   // Clear all pitch_ prefixed items from localStorage
   const localStorageKeys = Object.keys(localStorage);
   localStorageKeys
