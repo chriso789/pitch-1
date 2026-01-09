@@ -19,9 +19,13 @@ export interface CrewJobAssignment {
   isLocked: boolean;
   lockReason: string | null;
   createdAt: string;
-  photoProgress?: { current: number; required: number };
-  checklistProgress?: { current: number; required: number };
-  address?: string;
+  photoProgress: { current: number; required: number };
+  checklistProgress: { current: number; required: number };
+  docsValid: boolean;
+  photosComplete: boolean;
+  checklistComplete: boolean;
+  canComplete: boolean;
+  blockedReason: string | null;
 }
 
 interface DashboardCounts {
@@ -57,18 +61,17 @@ export function useCrewDashboard() {
       const today = new Date().toISOString().split('T')[0];
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-      // Use RPC to fetch assignments from crew schema
-      const { data: assignmentsData, error: assignmentsError } = await supabase.rpc(
-        'get_crew_job_assignments' as any,
-        { p_user_id: user.id }
+      // Use RPC to fetch from dashboard view
+      const { data: dashboardData, error: dashboardError } = await supabase.rpc(
+        'get_crew_dashboard_jobs' as any
       );
 
-      if (assignmentsError) {
-        console.error('[useCrewDashboard] Error:', assignmentsError);
+      if (dashboardError) {
+        console.error('[useCrewDashboard] Error:', dashboardError);
         throw new Error('Failed to load job assignments');
       }
 
-      const assignments: CrewJobAssignment[] = ((assignmentsData as any[]) || []).map((a) => ({
+      const assignments: CrewJobAssignment[] = ((dashboardData as any[]) || []).map((a) => ({
         id: a.id,
         companyId: a.company_id,
         jobId: a.job_id,
@@ -83,6 +86,19 @@ export function useCrewDashboard() {
         isLocked: a.is_locked,
         lockReason: a.lock_reason,
         createdAt: a.created_at,
+        photoProgress: {
+          current: a.photo_uploaded_total || 0,
+          required: a.photo_required_total || 0,
+        },
+        checklistProgress: {
+          current: a.checklist_checked_items || 0,
+          required: a.checklist_required_items || 0,
+        },
+        docsValid: a.docs_valid ?? true,
+        photosComplete: a.photos_complete ?? false,
+        checklistComplete: a.checklist_complete ?? false,
+        canComplete: a.can_complete ?? false,
+        blockedReason: a.blocked_reason,
       }));
 
       // Calculate counts
@@ -92,7 +108,7 @@ export function useCrewDashboard() {
       const upcomingJobs = assignments.filter(
         a => a.scheduledDate && a.scheduledDate > today && a.status !== 'completed'
       );
-      const blockedJobs = assignments.filter(a => a.isLocked);
+      const blockedJobs = assignments.filter(a => a.isLocked || !a.docsValid);
       const completedThisWeek = assignments.filter(
         a => a.status === 'completed' && a.statusUpdatedAt >= weekAgo
       );
@@ -104,12 +120,15 @@ export function useCrewDashboard() {
         completedThisWeek: completedThisWeek.length,
       });
 
+      // Check docs status from any job
+      const hasInvalidDocs = assignments.some(a => !a.docsValid);
+      setDocsStatus(hasInvalidDocs ? 'expired' : 'valid');
+
       const visibleJobs = assignments.filter(
         a => a.status !== 'completed' || a.scheduledDate === today
       );
 
       setJobs(visibleJobs);
-      setDocsStatus('valid'); // Simplified for now
     } catch (err) {
       console.error('[useCrewDashboard] Error:', err);
       setError(err instanceof Error ? err.message : 'Failed to load dashboard');

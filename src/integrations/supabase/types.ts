@@ -28096,6 +28096,35 @@ export type Database = {
           isSetofReturn: true
         }
       }
+      get_crew_dashboard_jobs: {
+        Args: never
+        Returns: {
+          arrival_window_end: string
+          arrival_window_start: string
+          blocked_reason: string
+          can_complete: boolean
+          checklist_checked_items: number
+          checklist_complete: boolean
+          checklist_required_items: number
+          company_id: string
+          created_at: string
+          docs_valid: boolean
+          id: string
+          is_locked: boolean
+          job_id: string
+          lock_reason: string
+          photo_required_buckets: number
+          photo_required_total: number
+          photo_uploaded_total: number
+          photos_complete: boolean
+          scheduled_date: string
+          scope_summary: string
+          special_instructions: string
+          status: string
+          status_updated_at: string
+          subcontractor_user_id: string
+        }[]
+      }
       get_next_contact_number: {
         Args: { tenant_id_param: string }
         Returns: number

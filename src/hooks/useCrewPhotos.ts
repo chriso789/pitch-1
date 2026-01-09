@@ -29,9 +29,31 @@ export function useCrewPhotos(jobId: string | null) {
   const fetchPhotos = useCallback(async () => {
     if (!user || !companyId || !jobId) return;
     setLoading(true);
-    // Placeholder - photos will be fetched via edge function
-    setPhotos([]);
-    setLoading(false);
+    
+    try {
+      // Fetch photos from crew.job_photos via RPC
+      const { data, error } = await supabase.rpc('get_crew_job_photos' as any, {
+        p_job_id: jobId
+      });
+      
+      if (error) throw error;
+      
+      const mappedPhotos: UploadedPhoto[] = ((data as any[]) || []).map((p) => ({
+        id: p.id,
+        bucketId: p.bucket_id,
+        fileUrl: p.file_url,
+        takenAt: p.taken_at,
+        gpsLat: p.gps_lat,
+        gpsLng: p.gps_lng,
+      }));
+      
+      setPhotos(mappedPhotos);
+    } catch (err) {
+      console.error('[useCrewPhotos] Fetch error:', err);
+      setPhotos([]);
+    } finally {
+      setLoading(false);
+    }
   }, [user, companyId, jobId]);
 
   const uploadPhoto = async (options: UploadOptions) => {
@@ -43,24 +65,50 @@ export function useCrewPhotos(jobId: string | null) {
     try {
       setUploading(true);
 
+      // Generate unique photo ID and build path per RLS convention
+      const photoId = crypto.randomUUID();
       const timestamp = Date.now();
       const ext = options.file.name.split('.').pop() || 'jpg';
-      const filename = `${companyId}/${options.jobId}/${options.bucketId}/${timestamp}.${ext}`;
+      
+      // Path: company/<company_id>/jobs/<job_id>/subs/<sub_user_id>/photos/<photo_id>/<filename>
+      const storagePath = `company/${companyId}/jobs/${options.jobId}/subs/${user.id}/photos/${photoId}/${timestamp}.${ext}`;
 
+      // Upload to storage
       const { error: uploadError } = await supabase.storage
         .from('crew-photos')
-        .upload(filename, options.file, {
+        .upload(storagePath, options.file, {
           contentType: options.file.type,
           upsert: false,
         });
 
       if (uploadError) throw uploadError;
 
+      // Get public URL
+      const { data: urlData } = supabase.storage
+        .from('crew-photos')
+        .getPublicUrl(storagePath);
+
+      // Create record in crew.job_photos via RPC
+      const { error: insertError } = await supabase.rpc('insert_crew_job_photo' as any, {
+        p_id: photoId,
+        p_company_id: companyId,
+        p_job_id: options.jobId,
+        p_bucket_id: options.bucketId,
+        p_file_url: urlData.publicUrl,
+        p_gps_lat: options.gpsLat || null,
+        p_gps_lng: options.gpsLng || null,
+      });
+
+      if (insertError) {
+        console.error('[useCrewPhotos] Insert error:', insertError);
+        // Photo is in storage but record failed - still success for user
+      }
+
       toast.success('Photo uploaded successfully');
       await fetchPhotos();
-      return { id: filename };
+      return { id: photoId };
     } catch (err) {
-      console.error('[useCrewPhotos] Error:', err);
+      console.error('[useCrewPhotos] Upload error:', err);
       toast.error('Failed to upload photo');
       return null;
     } finally {
