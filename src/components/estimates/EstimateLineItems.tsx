@@ -2,8 +2,9 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, Package } from 'lucide-react';
+import { Loader2, Package, Trash2 } from 'lucide-react';
 import { MaterialOrderDialog } from '@/components/orders/MaterialOrderDialog';
+import { toast } from 'sonner';
 
 interface EstimateLineItem {
   template_item_id: string;
@@ -17,17 +18,22 @@ interface EstimateLineItemsProps {
   estimateId: string;
   className?: string;
   showOrderButton?: boolean;
+  editable?: boolean;
+  onItemDeleted?: () => void;
 }
 
 export const EstimateLineItems: React.FC<EstimateLineItemsProps> = ({
   estimateId,
   className = '',
-  showOrderButton = false
+  showOrderButton = false,
+  editable = false,
+  onItemDeleted
 }) => {
   const [loading, setLoading] = useState(true);
   const [lineItems, setLineItems] = useState<EstimateLineItem[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [showOrderDialog, setShowOrderDialog] = useState(false);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
     if (estimateId) {
@@ -51,6 +57,47 @@ export const EstimateLineItems: React.FC<EstimateLineItemsProps> = ({
       setError('Failed to load estimate line items');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleDeleteItem = async (templateItemId: string) => {
+    try {
+      setDeletingId(templateItemId);
+      
+      // Get current estimate data
+      const { data: estimate, error: fetchError } = await supabase
+        .from('enhanced_estimates')
+        .select('id, line_items')
+        .eq('id', estimateId)
+        .single();
+
+      if (fetchError) throw fetchError;
+
+      const currentLineItems = (estimate?.line_items as Record<string, any[]>) || { materials: [], labor: [] };
+      
+      // Remove item from both sections
+      const updatedLineItems = {
+        materials: (currentLineItems.materials || []).filter((item: any) => item.id !== templateItemId && item.template_item_id !== templateItemId),
+        labor: (currentLineItems.labor || []).filter((item: any) => item.id !== templateItemId && item.template_item_id !== templateItemId)
+      };
+
+      // Update estimate
+      const { error: updateError } = await supabase
+        .from('enhanced_estimates')
+        .update({ line_items: updatedLineItems })
+        .eq('id', estimateId);
+
+      if (updateError) throw updateError;
+
+      // Update local state
+      setLineItems(prev => prev.filter(item => item.template_item_id !== templateItemId));
+      toast.success('Line item deleted');
+      onItemDeleted?.();
+    } catch (err) {
+      console.error('Error deleting line item:', err);
+      toast.error('Failed to delete line item');
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -133,6 +180,7 @@ export const EstimateLineItems: React.FC<EstimateLineItemsProps> = ({
                   <th className="text-right py-2 px-3 font-medium text-muted-foreground">Qty</th>
                   <th className="text-right py-2 px-3 font-medium text-muted-foreground">Unit Cost</th>
                   <th className="text-right py-2 px-3 font-medium text-muted-foreground">Total</th>
+                  {editable && <th className="w-[50px]"></th>}
                 </tr>
               </thead>
               <tbody>
@@ -144,12 +192,29 @@ export const EstimateLineItems: React.FC<EstimateLineItemsProps> = ({
                     <td className="py-2 px-3 text-right tabular-nums font-medium">
                       {formatCurrency(item.line_total)}
                     </td>
+                    {editable && (
+                      <td className="py-2 px-3">
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-destructive hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => handleDeleteItem(item.template_item_id)}
+                          disabled={deletingId === item.template_item_id}
+                        >
+                          {deletingId === item.template_item_id ? (
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
               <tfoot>
                 <tr className="border-t-2 border-border">
-                  <td colSpan={3} className="py-2 px-3 font-semibold text-right">Total:</td>
+                  <td colSpan={editable ? 4 : 3} className="py-2 px-3 font-semibold text-right">Total:</td>
                   <td className="py-2 px-3 text-right tabular-nums font-semibold">
                     {formatCurrency(totalAmount)}
                   </td>

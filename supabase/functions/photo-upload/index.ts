@@ -6,7 +6,7 @@ const corsHeaders = {
 };
 
 interface PhotoUploadRequest {
-  action: 'upload' | 'update' | 'delete' | 'reorder' | 'set_primary' | 'toggle_estimate';
+  action: 'upload' | 'bulk_upload' | 'update' | 'delete' | 'reorder' | 'set_primary' | 'toggle_estimate';
   tenant_id: string;
   entity_type?: 'contact' | 'lead' | 'project';
   entity_id?: string;
@@ -27,6 +27,17 @@ interface PhotoUploadRequest {
   gps_latitude?: number;
   gps_longitude?: number;
   taken_at?: string;
+  // For bulk upload
+  files?: Array<{
+    file_data: string;
+    file_name: string;
+    mime_type?: string;
+    category?: string;
+    description?: string;
+    gps_latitude?: number;
+    gps_longitude?: number;
+    taken_at?: string;
+  }>;
 }
 
 const PHOTO_CATEGORIES = [
@@ -233,6 +244,159 @@ Deno.serve(async (req: Request) => {
         console.log(`[photo-upload] Photo uploaded successfully: ${photo.id} for tenant ${effectiveTenantId}`);
         return new Response(
           JSON.stringify({ success: true, data: photo }),
+          { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+
+      case 'bulk_upload': {
+        const { entity_type, entity_id, contact_id, lead_id, project_id, files } = body;
+
+        if (!files || files.length === 0) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'files array required' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        if (files.length > 20) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'Maximum 20 photos per upload' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        // Determine entity IDs
+        let finalContactId = contact_id;
+        let finalLeadId = lead_id;
+        let finalProjectId = project_id;
+
+        if (entity_type && entity_id) {
+          if (entity_type === 'contact') finalContactId = entity_id;
+          else if (entity_type === 'lead') finalLeadId = entity_id;
+          else if (entity_type === 'project') finalProjectId = entity_id;
+        }
+
+        if (!finalContactId && !finalLeadId && !finalProjectId) {
+          return new Response(
+            JSON.stringify({ success: false, error: 'At least one of contact_id, lead_id, or project_id required' }),
+            { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        }
+
+        const uploadedPhotos: any[] = [];
+        const errors: any[] = [];
+
+        // Get starting display order
+        const orderQuery = supabaseAdmin
+          .from('customer_photos')
+          .select('display_order')
+          .eq('tenant_id', effectiveTenantId);
+        
+        if (finalLeadId) orderQuery.eq('lead_id', finalLeadId);
+        else if (finalContactId) orderQuery.eq('contact_id', finalContactId);
+        
+        const { data: existingPhotos } = await orderQuery.order('display_order', { ascending: false }).limit(1);
+        let nextOrder = existingPhotos?.length ? (existingPhotos[0].display_order || 0) + 1 : 0;
+        const isFirstBatch = !existingPhotos?.length;
+
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          try {
+            const { file_data, file_name, mime_type, category = 'general', description, gps_latitude, gps_longitude, taken_at } = file;
+
+            if (!file_data || !file_name) {
+              errors.push({ file_name: file_name || 'unknown', error: 'Missing file_data or file_name' });
+              continue;
+            }
+
+            // Auto-detect category
+            let detectedCategory = category;
+            const lowerName = file_name.toLowerCase();
+            if (lowerName.includes('before') || lowerName.includes('initial')) detectedCategory = 'before';
+            else if (lowerName.includes('after') || lowerName.includes('final')) detectedCategory = 'after';
+            else if (lowerName.includes('damage') || lowerName.includes('broken')) detectedCategory = 'damage';
+            else if (lowerName.includes('material')) detectedCategory = 'materials';
+            else if (!PHOTO_CATEGORIES.includes(category)) detectedCategory = 'general';
+
+            // Decode and upload
+            const base64Data = file_data.includes(',') ? file_data.split(',')[1] : file_data;
+            const binaryData = Uint8Array.from(atob(base64Data), c => c.charCodeAt(0));
+
+            const ext = file_name.split('.').pop() || 'jpg';
+            const timestamp = Date.now();
+            const random = Math.random().toString(36).substring(2, 8);
+            const entityFolder = finalLeadId || finalContactId || finalProjectId;
+            const storagePath = `${effectiveTenantId}/${detectedCategory}/${entityFolder}/${timestamp}_${random}.${ext}`;
+
+            const { data: uploadData, error: uploadError } = await supabaseAdmin.storage
+              .from('customer-photos')
+              .upload(storagePath, binaryData, {
+                contentType: mime_type || 'image/jpeg',
+                cacheControl: '3600',
+                upsert: false
+              });
+
+            if (uploadError) {
+              errors.push({ file_name, error: uploadError.message });
+              continue;
+            }
+
+            const { data: { publicUrl } } = supabaseAdmin.storage
+              .from('customer-photos')
+              .getPublicUrl(storagePath);
+
+            const { data: photo, error: dbError } = await supabaseAdmin
+              .from('customer_photos')
+              .insert({
+                tenant_id: effectiveTenantId,
+                contact_id: finalContactId || null,
+                lead_id: finalLeadId || null,
+                project_id: finalProjectId || null,
+                file_url: publicUrl,
+                file_path: storagePath,
+                original_filename: file_name,
+                file_size: binaryData.length,
+                mime_type: mime_type || 'image/jpeg',
+                category: detectedCategory,
+                description: description || null,
+                display_order: nextOrder++,
+                uploaded_by: user.id,
+                gps_latitude: gps_latitude || null,
+                gps_longitude: gps_longitude || null,
+                taken_at: taken_at || null,
+                include_in_estimate: false,
+                is_primary: isFirstBatch && i === 0
+              })
+              .select()
+              .single();
+
+            if (dbError) {
+              await supabaseAdmin.storage.from('customer-photos').remove([storagePath]);
+              errors.push({ file_name, error: dbError.message });
+              continue;
+            }
+
+            uploadedPhotos.push(photo);
+          } catch (err: any) {
+            errors.push({ file_name: file.file_name, error: err.message || 'Unknown error' });
+          }
+        }
+
+        console.log(`[photo-upload] Bulk uploaded ${uploadedPhotos.length} photos, ${errors.length} errors`);
+        
+        return new Response(
+          JSON.stringify({ 
+            success: true, 
+            data: { 
+              uploaded: uploadedPhotos, 
+              errors,
+              summary: {
+                total: files.length,
+                successful: uploadedPhotos.length,
+                failed: errors.length
+              }
+            } 
+          }),
           { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
         );
       }

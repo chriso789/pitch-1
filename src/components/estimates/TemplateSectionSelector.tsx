@@ -5,10 +5,11 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { Plus, Trash2, Loader2, Lock, CheckCircle } from 'lucide-react';
+import { Plus, Trash2, Loader2, Lock, CheckCircle, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
+import { LaborOrderExport } from '@/components/orders/LaborOrderExport';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -421,6 +422,14 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
         <div className="flex items-center gap-2">
           {saveLineItemsMutation.isPending && (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+          )}
+          {/* Export buttons */}
+          {lineItems.length > 0 && sectionType === 'labor' && existingEstimate?.id && (
+            <LaborOrderExport
+              estimateId={existingEstimate.id}
+              laborItems={lineItems}
+              totalAmount={sectionTotal}
+            />
           )}
           <Badge variant="secondary" className="text-lg px-4 py-1">
             {formatCurrency(sectionTotal)}
