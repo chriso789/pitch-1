@@ -105,7 +105,7 @@ export const UserManagement = () => {
       ]);
 
       // If activeCompanyId is set, filter profiles to that tenant
-      let profilesQuery = supabase.from('profiles').select('*').neq('role', 'master').order('created_at', { ascending: false });
+      let profilesQuery = supabase.from('profiles').select('*').neq('role', 'master').eq('is_active', true).order('created_at', { ascending: false });
       if (activeCompanyId) {
         profilesQuery = profilesQuery.eq('tenant_id', activeCompanyId);
       }
