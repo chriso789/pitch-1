@@ -71,14 +71,18 @@ const Estimates = () => {
       setLoading(true);
       
       // Build query - enhanced_estimates has sales_rep_id directly
+      // Use active_tenant_id if available, otherwise tenant_id
+      const tenantId = user.active_tenant_id || user.tenant_id;
+      
       let query = supabase
         .from('enhanced_estimates')
         .select('*')
-        .eq('tenant_id', user.tenant_id);
+        .eq('tenant_id', tenantId);
 
       // Apply role-based filter - users below sales_manager can only see their own estimates
+      // Also include estimates where user is the creator (created_by field)
       if (!canSeeAllEstimates) {
-        query = query.eq('sales_rep_id', user.id);
+        query = query.or(`sales_rep_id.eq.${user.id},created_by.eq.${user.id}`);
       }
 
       // Apply date filters
