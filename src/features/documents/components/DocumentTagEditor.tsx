@@ -60,28 +60,84 @@ const SMART_TAG_CATEGORIES = {
     { key: "contact.city", label: "City" },
     { key: "contact.state", label: "State" },
     { key: "contact.zip", label: "ZIP Code" },
+    { key: "contact.county", label: "County" },
+    { key: "contact.company_name", label: "Company Name" },
+    { key: "contact.secondary_phone", label: "Secondary Phone" },
+    { key: "contact.lead_source", label: "Lead Source" },
+    { key: "contact.notes", label: "Notes" },
   ],
   Project: [
     { key: "project.name", label: "Project Name" },
     { key: "project.address", label: "Project Address" },
     { key: "project.status", label: "Status" },
     { key: "project.created_date", label: "Created Date" },
+    { key: "project.estimated_value", label: "Estimated Value" },
+    { key: "project.expected_close_date", label: "Expected Close" },
+    { key: "project.priority", label: "Priority" },
+    { key: "project.roof_type", label: "Roof Type" },
+    { key: "project.lead_number", label: "Lead Number" },
+    { key: "project.notes", label: "Project Notes" },
   ],
   Estimate: [
     { key: "estimate.total", label: "Total Amount" },
     { key: "estimate.subtotal", label: "Subtotal" },
     { key: "estimate.tax", label: "Tax" },
     { key: "estimate.number", label: "Estimate #" },
+    { key: "estimate.material_cost", label: "Material Cost" },
+    { key: "estimate.labor_cost", label: "Labor Cost" },
+    { key: "estimate.selling_price", label: "Selling Price" },
+    { key: "estimate.profit", label: "Profit" },
+    { key: "estimate.margin_percent", label: "Margin %" },
+    { key: "estimate.valid_until", label: "Valid Until" },
+    { key: "estimate.status", label: "Status" },
+    { key: "estimate.monthly_payment", label: "Monthly Payment" },
+  ],
+  Measurement: [
+    { key: "measurement.total_sqft", label: "Total Sq Ft" },
+    { key: "measurement.total_squares", label: "Total Squares" },
+    { key: "measurement.ridge_lf", label: "Ridge LF" },
+    { key: "measurement.hip_lf", label: "Hip LF" },
+    { key: "measurement.valley_lf", label: "Valley LF" },
+    { key: "measurement.eave_lf", label: "Eave LF" },
+    { key: "measurement.rake_lf", label: "Rake LF" },
+    { key: "measurement.predominant_pitch", label: "Predominant Pitch" },
+    { key: "measurement.total_facets", label: "Number of Faces" },
   ],
   Company: [
     { key: "company.name", label: "Company Name" },
     { key: "company.phone", label: "Company Phone" },
     { key: "company.email", label: "Company Email" },
     { key: "company.address", label: "Company Address" },
+    { key: "company.city", label: "City" },
+    { key: "company.state", label: "State" },
+    { key: "company.zip", label: "ZIP Code" },
+    { key: "company.website", label: "Website" },
+    { key: "company.license_number", label: "License Number" },
+    { key: "company.owner_name", label: "Owner Name" },
+  ],
+  "Sales Rep": [
+    { key: "rep.name", label: "Rep Full Name" },
+    { key: "rep.first_name", label: "Rep First Name" },
+    { key: "rep.last_name", label: "Rep Last Name" },
+    { key: "rep.email", label: "Rep Email" },
+    { key: "rep.phone", label: "Rep Phone" },
+    { key: "rep.title", label: "Rep Title" },
+  ],
+  Insurance: [
+    { key: "insurance.claim_number", label: "Claim Number" },
+    { key: "insurance.carrier", label: "Insurance Carrier" },
+    { key: "insurance.adjuster_name", label: "Adjuster Name" },
+    { key: "insurance.adjuster_phone", label: "Adjuster Phone" },
+    { key: "insurance.date_of_loss", label: "Date of Loss" },
+    { key: "insurance.deductible", label: "Deductible" },
   ],
   Date: [
     { key: "today.date", label: "Today's Date" },
     { key: "today.date_long", label: "Today (Long)" },
+    { key: "today.time", label: "Current Time" },
+    { key: "today.year", label: "Current Year" },
+    { key: "today.month", label: "Current Month" },
+    { key: "today.weekday", label: "Current Weekday" },
   ],
 };
 
@@ -569,8 +625,12 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
   };
 
   const handleSave = async () => {
-    if (!fabricCanvas || !tenantId) {
-      toast.error("Unable to save - missing required data");
+    if (!fabricCanvas) {
+      toast.error("Canvas not ready - please wait");
+      return;
+    }
+    if (!tenantId) {
+      toast.error("Loading tenant data - please wait a moment and try again");
       return;
     }
 
@@ -713,9 +773,13 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
               Delete Selected
             </Button>
           )}
-          <Button onClick={handleSave} disabled={saving}>
+          <Button 
+            onClick={handleSave} 
+            disabled={saving || !tenantId}
+            title={!tenantId ? "Loading tenant data..." : undefined}
+          >
             <Save className="h-4 w-4 mr-2" />
-            {saving ? "Saving..." : "Save Tags"}
+            {saving ? "Saving..." : !tenantId ? "Loading..." : "Save Tags"}
           </Button>
         </div>
       </div>

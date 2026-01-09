@@ -83,6 +83,9 @@ const SmartDocs = () => {
   const [showProfessionalTemplates, setShowProfessionalTemplates] = useState(false);
   const [showBulkUpload, setShowBulkUpload] = useState(false);
   
+  // Admin-only editing state
+  const [canEditSmartTags, setCanEditSmartTags] = useState(false);
+  
   // New state for document actions
   const [previewDoc, setPreviewDoc] = useState<CompanyDoc | null>(null);
   const [renameDoc, setRenameDoc] = useState<CompanyDoc | null>(null);
@@ -90,6 +93,25 @@ const SmartDocs = () => {
   const [applyToLeadDoc, setApplyToLeadDoc] = useState<CompanyDoc | null>(null);
   const [deleteDoc, setDeleteDoc] = useState<CompanyDoc | null>(null);
   const [deleting, setDeleting] = useState(false);
+
+  // Check if user has admin role (master or owner)
+  useEffect(() => {
+    const checkAdminRole = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+      
+      // Check user_roles table for master or owner role
+      const { data: roles } = await supabase
+        .from('user_roles')
+        .select('role')
+        .eq('user_id', user.id);
+      
+      const isAdmin = roles?.some(r => r.role === 'master' || r.role === 'owner') ?? false;
+      setCanEditSmartTags(isAdmin);
+    };
+    
+    checkAdminRole();
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -476,15 +498,17 @@ const SmartDocs = () => {
                       <Pencil className="h-4 w-4" />
                       Rename
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="secondary"
-                      onClick={() => setTagEditorDoc(doc)}
-                      className="gap-1 bg-primary/10 hover:bg-primary/20 text-primary"
-                    >
-                      <Sparkles className="h-4 w-4" />
-                      Configure Smart Tags
-                    </Button>
+                    {canEditSmartTags && (
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setTagEditorDoc(doc)}
+                        className="gap-1 bg-primary/10 hover:bg-primary/20 text-primary"
+                      >
+                        <Sparkles className="h-4 w-4" />
+                        Configure Smart Tags
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="destructive"
