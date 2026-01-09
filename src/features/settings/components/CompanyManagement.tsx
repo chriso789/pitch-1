@@ -7,9 +7,10 @@ import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Building2, MapPin, Users, Plus, Info, Settings as SettingsIcon, Globe, Loader2 } from 'lucide-react';
+import { Building2, MapPin, Users, Plus, Info, Settings as SettingsIcon, Globe, Loader2, Image } from 'lucide-react';
 import { LocationManagement } from '@/components/settings/LocationManagement';
 import { WebsitePreview } from '@/components/settings/WebsitePreview';
+import { LogoUploader } from '@/components/settings/LogoUploader';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
@@ -20,6 +21,7 @@ interface Company {
   subdomain: string;
   website?: string;
   website_verified?: boolean;
+  logo_url?: string;
   is_active: boolean;
   created_at: string;
   settings: any;
@@ -71,7 +73,7 @@ export const CompanyManagement = () => {
     try {
       const { data, error }: any = await supabase
         .from('tenants')
-        .select('id, name, subdomain, website, website_verified, is_active, created_at, settings')
+        .select('id, name, subdomain, website, website_verified, logo_url, is_active, created_at, settings')
         .eq('is_active', true)
         .order('name');
 
@@ -432,7 +434,68 @@ export const CompanyManagement = () => {
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="info" className="space-y-4">
+              <TabsContent value="info" className="space-y-6">
+                {/* Company Branding Section */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <Image className="h-4 w-4" />
+                      Company Branding
+                    </CardTitle>
+                    <CardDescription>
+                      Upload your company logo for estimates, proposals, and documents
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <LogoUploader
+                      logoUrl={selectedCompany.logo_url}
+                      onLogoUploaded={async (url) => {
+                        const { error } = await supabase
+                          .from('tenants')
+                          .update({ logo_url: url })
+                          .eq('id', selectedCompany.id);
+                        
+                        if (error) {
+                          toast({
+                            title: "Error",
+                            description: "Failed to save logo",
+                            variant: "destructive",
+                          });
+                        } else {
+                          toast({
+                            title: "Logo Updated",
+                            description: "Company logo has been saved",
+                          });
+                          fetchCompanies();
+                          setSelectedCompany({ ...selectedCompany, logo_url: url });
+                        }
+                      }}
+                      onLogoRemoved={async () => {
+                        const { error } = await supabase
+                          .from('tenants')
+                          .update({ logo_url: null })
+                          .eq('id', selectedCompany.id);
+                        
+                        if (error) {
+                          toast({
+                            title: "Error",
+                            description: "Failed to remove logo",
+                            variant: "destructive",
+                          });
+                        } else {
+                          toast({
+                            title: "Logo Removed",
+                            description: "Company logo has been removed",
+                          });
+                          fetchCompanies();
+                          setSelectedCompany({ ...selectedCompany, logo_url: undefined });
+                        }
+                      }}
+                    />
+                  </CardContent>
+                </Card>
+
+                {/* Company Details Section */}
                 <div className="grid gap-4">
                   <div>
                     <Label>Company Name</Label>

@@ -12109,6 +12109,7 @@ export type Database = {
           is_active: boolean
           is_primary: boolean | null
           latitude: number | null
+          logo_url: string | null
           longitude: number | null
           manager_id: string | null
           name: string
@@ -12138,6 +12139,7 @@ export type Database = {
           is_active?: boolean
           is_primary?: boolean | null
           latitude?: number | null
+          logo_url?: string | null
           longitude?: number | null
           manager_id?: string | null
           name: string
@@ -12167,6 +12169,7 @@ export type Database = {
           is_active?: boolean
           is_primary?: boolean | null
           latitude?: number | null
+          logo_url?: string | null
           longitude?: number | null
           manager_id?: string | null
           name?: string
