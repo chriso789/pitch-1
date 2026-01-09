@@ -17,7 +17,8 @@ import {
   Eye,
   Pencil,
   Tag,
-  UserPlus
+  UserPlus,
+  Trash2
 } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -29,6 +30,16 @@ import { DocumentPreviewModal } from "@/components/documents/DocumentPreviewModa
 import { DocumentRenameDialog } from "./DocumentRenameDialog";
 import { DocumentTagEditor } from "./DocumentTagEditor";
 import { ApplyDocumentToLeadDialog } from "./ApplyDocumentToLeadDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface SmartDocTemplate {
   id: string;
@@ -56,6 +67,7 @@ interface CompanyDoc {
   file_size: number;
   mime_type: string;
   description: string;
+  document_type: string;
   created_at: string;
 }
 
@@ -76,6 +88,8 @@ const SmartDocs = () => {
   const [renameDoc, setRenameDoc] = useState<CompanyDoc | null>(null);
   const [tagEditorDoc, setTagEditorDoc] = useState<CompanyDoc | null>(null);
   const [applyToLeadDoc, setApplyToLeadDoc] = useState<CompanyDoc | null>(null);
+  const [deleteDoc, setDeleteDoc] = useState<CompanyDoc | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -217,6 +231,34 @@ const SmartDocs = () => {
     } catch (error) {
       console.error('Error downloading file:', error);
       toast.error('Failed to download document');
+    }
+  };
+
+  const handleDeleteDoc = async () => {
+    if (!deleteDoc) return;
+    
+    setDeleting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('delete-documents', {
+        body: { document_ids: [deleteDoc.id], mode: 'delete_only' }
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast.success('Document deleted successfully');
+        loadData();
+      } else if (data?.blocked_ids?.length > 0) {
+        toast.error('Cannot delete - document is referenced elsewhere');
+      } else {
+        throw new Error(data?.errors?.[0] || 'Failed to delete document');
+      }
+    } catch (error) {
+      console.error('Error deleting document:', error);
+      toast.error('Failed to delete document');
+    } finally {
+      setDeleting(false);
+      setDeleteDoc(null);
     }
   };
 
@@ -428,6 +470,15 @@ const SmartDocs = () => {
                       <Sparkles className="h-4 w-4" />
                       Configure Smart Tags
                     </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => setDeleteDoc(doc)}
+                      className="gap-1"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                      Delete
+                    </Button>
                   </div>
                 </div>
               </Card>
@@ -483,7 +534,8 @@ const SmartDocs = () => {
           id: previewDoc.id,
           filename: previewDoc.filename,
           file_path: previewDoc.file_path,
-          mime_type: previewDoc.mime_type
+          mime_type: previewDoc.mime_type,
+          document_type: previewDoc.document_type
         } : null}
         onDownload={() => previewDoc && handleDownload(previewDoc)}
       />
@@ -505,6 +557,28 @@ const SmartDocs = () => {
         onOpenChange={(open) => !open && setApplyToLeadDoc(null)}
         document={applyToLeadDoc}
       />
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={!!deleteDoc} onOpenChange={(open) => !open && setDeleteDoc(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Document</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{deleteDoc?.filename}"? This action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction 
+              onClick={handleDeleteDoc} 
+              disabled={deleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleting ? "Deleting..." : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
