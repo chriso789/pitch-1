@@ -36,7 +36,7 @@ interface DashboardCounts {
 }
 
 export function useCrewDashboard() {
-  const { user, companyId, isCrewMember } = useCrewAuth();
+  const { user, activeCompanyId, isCrewMember } = useCrewAuth();
   const [jobs, setJobs] = useState<CrewJobAssignment[]>([]);
   const [counts, setCounts] = useState<DashboardCounts>({
     today: 0,
@@ -49,7 +49,7 @@ export function useCrewDashboard() {
   const [error, setError] = useState<string | null>(null);
 
   const fetchDashboard = useCallback(async () => {
-    if (!user || !companyId || !isCrewMember) {
+    if (!user || !activeCompanyId || !isCrewMember) {
       setLoading(false);
       return;
     }
@@ -61,9 +61,10 @@ export function useCrewDashboard() {
       const today = new Date().toISOString().split('T')[0];
       const weekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-      // Use RPC to fetch from dashboard view
+      // Use RPC to fetch from dashboard view with company filter
       const { data: dashboardData, error: dashboardError } = await supabase.rpc(
-        'get_crew_dashboard_jobs' as any
+        'get_crew_dashboard_jobs' as any,
+        { p_company_id: activeCompanyId }
       );
 
       if (dashboardError) {
@@ -135,7 +136,7 @@ export function useCrewDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [user, companyId, isCrewMember]);
+  }, [user, activeCompanyId, isCrewMember]);
 
   useEffect(() => {
     fetchDashboard();

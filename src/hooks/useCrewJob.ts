@@ -36,7 +36,7 @@ interface CompletionStatus {
 }
 
 export function useCrewJob(jobId: string | null) {
-  const { user, companyId, isCrewMember } = useCrewAuth();
+  const { user, activeCompanyId, isCrewMember } = useCrewAuth();
   const [job, setJob] = useState<CrewJobAssignment | null>(null);
   const [photoBuckets, setPhotoBuckets] = useState<PhotoBucket[]>([]);
   const [checklistItems, setChecklistItems] = useState<ChecklistItem[]>([]);
@@ -51,7 +51,7 @@ export function useCrewJob(jobId: string | null) {
   const [error, setError] = useState<string | null>(null);
 
   const fetchJob = useCallback(async () => {
-    if (!user || !companyId || !jobId || !isCrewMember) {
+    if (!user || !activeCompanyId || !jobId || !isCrewMember) {
       setLoading(false);
       return;
     }
@@ -60,10 +60,10 @@ export function useCrewJob(jobId: string | null) {
       setLoading(true);
       setError(null);
 
-      // Fetch job via RPC
+      // Fetch job via RPC with company filter
       const { data: assignmentData, error: assignmentError } = await supabase.rpc(
         'get_crew_job_detail' as any,
-        { p_job_id: jobId, p_user_id: user.id }
+        { p_job_id: jobId, p_company_id: activeCompanyId }
       );
 
       if (assignmentError || !assignmentData) {
@@ -117,15 +117,15 @@ export function useCrewJob(jobId: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [user, companyId, jobId, isCrewMember]);
+  }, [user, activeCompanyId, jobId, isCrewMember]);
 
   const updateStatus = async (newStatus: CrewJobStatus) => {
-    if (!job || !companyId) return;
+    if (!job || !activeCompanyId) return;
 
     try {
-      const { error: updateError } = await supabase.rpc(
+      const { data, error: updateError } = await supabase.rpc(
         'update_crew_job_status' as any,
-        { p_assignment_id: job.id, p_new_status: newStatus }
+        { p_assignment_id: job.id, p_new_status: newStatus, p_company_id: activeCompanyId }
       );
 
       if (updateError) throw updateError;

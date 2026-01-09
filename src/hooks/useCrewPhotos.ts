@@ -21,19 +21,20 @@ interface UploadOptions {
 }
 
 export function useCrewPhotos(jobId: string | null) {
-  const { user, companyId } = useCrewAuth();
+  const { user, activeCompanyId } = useCrewAuth();
   const [photos, setPhotos] = useState<UploadedPhoto[]>([]);
   const [uploading, setUploading] = useState(false);
   const [loading, setLoading] = useState(false);
 
   const fetchPhotos = useCallback(async () => {
-    if (!user || !companyId || !jobId) return;
+    if (!user || !activeCompanyId || !jobId) return;
     setLoading(true);
     
     try {
-      // Fetch photos from crew.job_photos via RPC
+      // Fetch photos from crew.job_photos via RPC with company filter
       const { data, error } = await supabase.rpc('get_crew_job_photos' as any, {
-        p_job_id: jobId
+        p_job_id: jobId,
+        p_company_id: activeCompanyId
       });
       
       if (error) throw error;
@@ -54,10 +55,10 @@ export function useCrewPhotos(jobId: string | null) {
     } finally {
       setLoading(false);
     }
-  }, [user, companyId, jobId]);
+  }, [user, activeCompanyId, jobId]);
 
   const uploadPhoto = async (options: UploadOptions) => {
-    if (!user || !companyId) {
+    if (!user || !activeCompanyId) {
       toast.error('Not authenticated');
       return null;
     }
@@ -71,7 +72,7 @@ export function useCrewPhotos(jobId: string | null) {
       const ext = options.file.name.split('.').pop() || 'jpg';
       
       // Path: company/<company_id>/jobs/<job_id>/subs/<sub_user_id>/photos/<photo_id>/<filename>
-      const storagePath = `company/${companyId}/jobs/${options.jobId}/subs/${user.id}/photos/${photoId}/${timestamp}.${ext}`;
+      const storagePath = `company/${activeCompanyId}/jobs/${options.jobId}/subs/${user.id}/photos/${photoId}/${timestamp}.${ext}`;
 
       // Upload to storage
       const { error: uploadError } = await supabase.storage
@@ -91,7 +92,7 @@ export function useCrewPhotos(jobId: string | null) {
       // Create record in crew.job_photos via RPC
       const { error: insertError } = await supabase.rpc('insert_crew_job_photo' as any, {
         p_id: photoId,
-        p_company_id: companyId,
+        p_company_id: activeCompanyId,
         p_job_id: options.jobId,
         p_bucket_id: options.bucketId,
         p_file_url: urlData.publicUrl,
