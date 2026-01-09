@@ -142,11 +142,11 @@ async function fetchDynamicRequirements(tenantId: string | undefined, pipelineEn
       .select('metadata')
       .eq('id', pipelineEntryId)
       .maybeSingle(),
+    // Use customer_photos table (canonical source for photos)
     supabase
-      .from('documents')
+      .from('customer_photos')
       .select('id')
-      .eq('pipeline_entry_id', pipelineEntryId)
-      .eq('document_type', 'inspection_photo')
+      .eq('lead_id', pipelineEntryId)
   ]);
 
   const documents = contractsResult.data || [];
@@ -223,13 +223,12 @@ async function fetchDynamicRequirements(tenantId: string | undefined, pipelineEn
   };
 }
 
-// Fetch photos
+// Fetch photos from customer_photos table (canonical source)
 async function fetchPhotos(id: string) {
   const { data, error } = await supabase
-    .from('documents')
+    .from('customer_photos')
     .select('*')
-    .eq('pipeline_entry_id', id)
-    .eq('document_type', 'inspection_photo')
+    .eq('lead_id', id)
     .order('created_at', { ascending: false });
 
   if (error) throw error;

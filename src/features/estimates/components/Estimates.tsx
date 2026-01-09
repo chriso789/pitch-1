@@ -212,105 +212,135 @@ const Estimates = () => {
     });
   };
 
-  const renderEstimateCard = (estimate) => {
+  // Navigate to the lead with estimate tab
+  const handleViewEstimate = (estimate: any) => {
+    if (estimate.pipeline_entry_id) {
+      window.location.href = `/lead/${estimate.pipeline_entry_id}?tab=estimate`;
+    } else {
+      toast({
+        title: "Cannot open estimate",
+        description: "This estimate is not linked to a lead.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Send estimate (update status)
+  const handleSendEstimate = async (estimate: any) => {
+    try {
+      const { error } = await supabase
+        .from('enhanced_estimates')
+        .update({
+          status: 'sent',
+          sent_at: new Date().toISOString()
+        })
+        .eq('id', estimate.id);
+
+      if (error) throw error;
+
+      toast({
+        title: "Estimate Sent",
+        description: `Estimate ${estimate.estimate_number || estimate.id.slice(-4)} has been marked as sent.`,
+      });
+      fetchEstimates();
+    } catch (error: any) {
+      toast({
+        title: "Error",
+        description: error.message || "Failed to send estimate",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Export estimate as PDF (placeholder - opens view)
+  const handleExportEstimate = (estimate: any) => {
+    if (estimate.pipeline_entry_id) {
+      window.location.href = `/lead/${estimate.pipeline_entry_id}?tab=estimate&export=true`;
+    } else {
+      toast({
+        title: "Cannot export estimate",
+        description: "This estimate is not linked to a lead.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // Render estimate as a table row
+  const renderEstimateRow = (estimate: any) => {
     const salesRep = estimate.sales_rep;
     const statusInfo = getStatusInfo(estimate.status);
     
     return (
-      <Card key={estimate.id} className="shadow-soft border-0 hover:shadow-medium transition-smooth">
-        <CardContent className="p-4">
-          <div className="flex items-start justify-between mb-3">
-            <div>
-              <span className="font-mono text-sm text-muted-foreground">
-                {estimate.estimate_number || `EST-${estimate.id.slice(-4)}`}
-              </span>
-              <h3 className="font-semibold">{estimate.customer_name || 'Unknown Customer'}</h3>
-              {salesRep && (
-                <p className="text-sm text-muted-foreground">
-                  Rep: {salesRep.first_name} {salesRep.last_name}
-                </p>
-              )}
-            </div>
-            <Badge className={statusInfo.color}>
-              <statusInfo.icon className="h-3 w-3 mr-1" />
-              {statusInfo.label}
-            </Badge>
-          </div>
-          
-          <div className="space-y-2 text-sm">
+      <tr key={estimate.id} className="border-b hover:bg-muted/50 transition-colors">
+        <td className="p-3">
+          <span className="font-mono text-sm">
+            {estimate.estimate_number || `EST-${estimate.id.slice(-4)}`}
+          </span>
+        </td>
+        <td className="p-3">
+          <div>
+            <div className="font-medium">{estimate.customer_name || 'Unknown'}</div>
             {estimate.customer_address && (
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <MapPin className="h-4 w-4" />
-                <span>{estimate.customer_address}</span>
+              <div className="text-xs text-muted-foreground truncate max-w-[200px]">
+                {estimate.customer_address}
               </div>
             )}
-            
-            <div className="flex items-center gap-2 text-primary font-medium">
-              <FileText className="h-4 w-4" />
-              <span>{estimate.roof_pitch ? `${estimate.roof_pitch} Pitch` : 'Roofing Project'}</span>
-              {estimate.roof_area_sq_ft && (
-                <span className="text-muted-foreground">• {estimate.roof_area_sq_ft.toLocaleString()} sq ft</span>
-              )}
-            </div>
-            
-            <div className="grid grid-cols-2 gap-4">
-              <div className="flex items-center gap-2 font-semibold">
-                <DollarSign className="h-4 w-4 text-success" />
-                <span>{formatCurrency(estimate.selling_price)}</span>
-              </div>
-              <div className="text-right text-sm text-muted-foreground">
-                Margin: {estimate.actual_profit_percent ? `${Number(estimate.actual_profit_percent).toFixed(1)}%` : 'TBD'}
-              </div>
-            </div>
-
-            {/* Cost Breakdown */}
-            <div className="mt-3 pt-3 border-t">
-              <div className="grid grid-cols-2 gap-2 text-xs text-muted-foreground">
-                <div>Material: {formatCurrency(estimate.material_cost)}</div>
-                <div>Labor: {formatCurrency(estimate.labor_cost)}</div>
-                <div>Overhead: {formatCurrency(estimate.overhead_amount)}</div>
-                <div>Profit: {formatCurrency(estimate.actual_profit_amount)}</div>
-              </div>
-            </div>
-
-            {/* Estimate Details */}
-            <div className="mt-3 pt-3 border-t">
-              <div className="flex justify-between text-xs text-muted-foreground">
-                <span>Created: {new Date(estimate.created_at).toLocaleDateString()}</span>
-                {estimate.expires_at && (
-                  <span>Expires: {new Date(estimate.expires_at).toLocaleDateString()}</span>
-                )}
-              </div>
-            </div>
           </div>
-
-          <div className="flex gap-2 mt-4">
-            <Button size="sm" variant="outline" className="flex-1">
-              <Eye className="h-4 w-4 mr-1" />
-              View
+        </td>
+        <td className="p-3">
+          {salesRep ? `${salesRep.first_name} ${salesRep.last_name}` : '-'}
+        </td>
+        <td className="p-3 font-semibold text-success">
+          {formatCurrency(estimate.selling_price)}
+        </td>
+        <td className="p-3">
+          <Badge className={statusInfo.color}>
+            <statusInfo.icon className="h-3 w-3 mr-1" />
+            {statusInfo.label}
+          </Badge>
+        </td>
+        <td className="p-3 text-sm text-muted-foreground">
+          {new Date(estimate.created_at).toLocaleDateString()}
+        </td>
+        <td className="p-3">
+          <div className="flex gap-1">
+            <Button 
+              size="sm" 
+              variant="ghost" 
+              onClick={() => handleViewEstimate(estimate)}
+              title="View Estimate"
+            >
+              <Eye className="h-4 w-4" />
             </Button>
             <Button 
               size="sm" 
-              variant="outline" 
-              className="flex-1"
+              variant="ghost"
               onClick={() => handleVersionHistory(estimate.id)}
+              title="Version History"
             >
-              <History className="h-4 w-4 mr-1" />
-              History
+              <History className="h-4 w-4" />
             </Button>
-            <Button size="sm" variant="outline" className="flex-1">
-              <Download className="h-4 w-4 mr-1" />
-              Export
+            <Button 
+              size="sm" 
+              variant="ghost"
+              onClick={() => handleExportEstimate(estimate)}
+              title="Export PDF"
+            >
+              <Download className="h-4 w-4" />
             </Button>
             {estimate.status === 'draft' && (
-              <Button size="sm" className="flex-1">
-                <Send className="h-4 w-4 mr-1" />
-                Send
+              <Button 
+                size="sm" 
+                variant="ghost"
+                onClick={() => handleSendEstimate(estimate)}
+                title="Send Estimate"
+              >
+                <Send className="h-4 w-4" />
               </Button>
             )}
           </div>
-        </CardContent>
-      </Card>
+        </td>
+      </tr>
     );
   };
 
@@ -440,29 +470,46 @@ const Estimates = () => {
           <Loader2 className="h-8 w-8 animate-spin" />
           <span className="ml-2">Loading estimates...</span>
         </div>
-      ) : (
-        /* Estimates Grid */
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {estimates.length > 0 ? (
-            estimates.map((estimate) => renderEstimateCard(estimate))
-          ) : (
-            <div className="col-span-full text-center py-12">
-              <FileText className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-              <h3 className="text-lg font-semibold mb-2">No estimates found</h3>
-              <p className="text-muted-foreground mb-4">
-                {!canSeeAllEstimates 
-                  ? "You don't have any assigned estimates yet. Create your first estimate or ask a manager to assign leads to you."
-                  : Object.values(filters).some(f => f !== 'all' && f !== '') 
-                    ? "Try adjusting your filters or create a new estimate"
-                    : "Create your first estimate to get started"
-                }
-              </p>
-              <Button className="gradient-primary">
-                <FileText className="h-4 w-4 mr-2" />
-                Create Estimate
-              </Button>
+      ) : estimates.length > 0 ? (
+        /* Estimates Table */
+        <Card className="shadow-soft border-0">
+          <CardContent className="p-0">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-muted/50">
+                  <tr className="border-b">
+                    <th className="p-3 text-left text-sm font-medium">Estimate #</th>
+                    <th className="p-3 text-left text-sm font-medium">Customer</th>
+                    <th className="p-3 text-left text-sm font-medium">Sales Rep</th>
+                    <th className="p-3 text-left text-sm font-medium">Total</th>
+                    <th className="p-3 text-left text-sm font-medium">Status</th>
+                    <th className="p-3 text-left text-sm font-medium">Created</th>
+                    <th className="p-3 text-left text-sm font-medium">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {estimates.map((estimate) => renderEstimateRow(estimate))}
+                </tbody>
+              </table>
             </div>
-          )}
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="text-center py-12">
+          <FileText className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+          <h3 className="text-lg font-semibold mb-2">No estimates found</h3>
+          <p className="text-muted-foreground mb-4">
+            {!canSeeAllEstimates 
+              ? "You don't have any assigned estimates yet. Create your first estimate or ask a manager to assign leads to you."
+              : Object.values(filters).some(f => f !== 'all' && f !== '') 
+                ? "Try adjusting your filters or create a new estimate"
+                : "Create your first estimate to get started"
+            }
+          </p>
+          <Button className="gradient-primary">
+            <FileText className="h-4 w-4 mr-2" />
+            Create Estimate
+          </Button>
         </div>
       )}
 

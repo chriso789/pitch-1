@@ -761,33 +761,50 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
             </div>
           )}
           
-          {/* Error state with retry */}
+          {/* Error state with retry and fallback options */}
           {pdfError && !pageRendering && (
             <div className="absolute inset-0 flex items-center justify-center z-10 bg-background/80">
               <div className="bg-card border border-destructive/50 rounded-lg p-6 max-w-md text-center shadow-lg">
                 <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
                 <h3 className="font-semibold text-lg mb-2">PDF Load Error</h3>
                 <p className="text-sm text-muted-foreground mb-4">{pdfError}</p>
-                <Button 
-                  variant="outline" 
-                  onClick={() => {
-                    setPdfError(null);
-                    if (pdfArrayBuffer && fabricCanvas) {
-                      setPageRendering(true);
-                      loadPDFFromArrayBuffer(pdfArrayBuffer).then(pdf => {
-                        setPdfDocument(pdf);
-                        setTotalPages(pdf.numPages);
-                        renderPdfPage(pdf, 1);
-                      }).catch(e => {
-                        setPdfError(`Retry failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
-                        setPageRendering(false);
-                      });
-                    }
-                  }}
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Retry Load
-                </Button>
+                <div className="flex gap-2 justify-center">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      setPdfError(null);
+                      if (pdfArrayBuffer && fabricCanvas) {
+                        setPageRendering(true);
+                        loadPDFFromArrayBuffer(pdfArrayBuffer).then(pdf => {
+                          setPdfDocument(pdf);
+                          setTotalPages(pdf.numPages);
+                          renderPdfPage(pdf, 1);
+                        }).catch(e => {
+                          setPdfError(`Retry failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
+                          setPageRendering(false);
+                        });
+                      }
+                    }}
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Retry
+                  </Button>
+                  <Button 
+                    variant="secondary"
+                    onClick={async () => {
+                      // Get signed URL and open in new tab
+                      const bucket = resolveStorageBucket(document.document_type, document.file_path);
+                      const { data } = await supabase.storage
+                        .from(bucket)
+                        .createSignedUrl(document.file_path, 3600);
+                      if (data?.signedUrl) {
+                        window.open(data.signedUrl, '_blank');
+                      }
+                    }}
+                  >
+                    Open PDF in Tab
+                  </Button>
+                </div>
               </div>
             </div>
           )}

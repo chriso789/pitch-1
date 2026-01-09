@@ -278,42 +278,79 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
         .eq('id', user?.id)
         .single();
 
-      const fileExt = file.name.split('.').pop();
-      const fileName = `${pipelineEntryId}/${Date.now()}_${documentType}.${fileExt}`;
-      
-      const { error: uploadError } = await supabase.storage
-        .from('documents')
-        .upload(fileName, file);
-
-      if (uploadError) throw uploadError;
-
-      const { error: dbError } = await supabase
-        .from('documents')
-        .insert({
-          tenant_id: profile?.tenant_id,
-          pipeline_entry_id: pipelineEntryId,
-          document_type: documentType,
-          filename: file.name,
-          file_path: fileName,
-          file_size: file.size,
-          mime_type: file.type,
-          uploaded_by: user?.id,
+      // For photo-type uploads, use the photo-upload edge function (canonical source)
+      if (documentType === 'required_photos' || documentType === 'inspection_photo' || documentType === 'photos') {
+        // Convert file to base64
+        const base64 = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => {
+            const result = reader.result as string;
+            const base64Data = result.split(',')[1];
+            resolve(base64Data);
+          };
+          reader.onerror = reject;
+          reader.readAsDataURL(file);
         });
 
-      if (dbError) throw dbError;
+        // Call the photo-upload edge function
+        const { data, error } = await supabase.functions.invoke('photo-upload', {
+          body: {
+            action: 'upload',
+            tenant_id: profile?.tenant_id,
+            lead_id: pipelineEntryId,
+            file_data: base64,
+            filename: file.name,
+            mime_type: file.type,
+            category: 'inspection',
+          }
+        });
 
-      toast({
-        title: "Upload Successful",
-        description: `${documentType.replace(/_/g, ' ')} uploaded via ${source}`,
-      });
+        if (error) throw error;
+        if (data?.error) throw new Error(data.error);
+
+        toast({
+          title: "Photo Uploaded",
+          description: `Photo uploaded successfully via ${source}`,
+        });
+      } else {
+        // For non-photo documents, use the documents bucket
+        const fileExt = file.name.split('.').pop();
+        const fileName = `${pipelineEntryId}/${Date.now()}_${documentType}.${fileExt}`;
+        
+        const { error: uploadError } = await supabase.storage
+          .from('documents')
+          .upload(fileName, file);
+
+        if (uploadError) throw uploadError;
+
+        const { error: dbError } = await supabase
+          .from('documents')
+          .insert({
+            tenant_id: profile?.tenant_id,
+            pipeline_entry_id: pipelineEntryId,
+            document_type: documentType,
+            filename: file.name,
+            file_path: fileName,
+            file_size: file.size,
+            mime_type: file.type,
+            uploaded_by: user?.id,
+          });
+
+        if (dbError) throw dbError;
+
+        toast({
+          title: "Upload Successful",
+          description: `${documentType.replace(/_/g, ' ')} uploaded via ${source}`,
+        });
+      }
       
       setOpenGenericPopover(null);
       onUploadComplete?.();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Generic upload error:', error);
       toast({
         title: "Upload Failed",
-        description: "Failed to upload file. Please try again.",
+        description: error.message || "Failed to upload file. Please try again.",
         variant: "destructive",
       });
     } finally {

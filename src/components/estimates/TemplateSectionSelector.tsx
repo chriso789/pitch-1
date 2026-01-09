@@ -128,12 +128,20 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
       const costKey = sectionType === 'material' ? 'material_cost' : 'labor_cost';
       const total = items.reduce((sum, item) => sum + item.line_total, 0);
 
-      // Get existing line items to preserve the other section
-      const { data: existing } = await supabase
+      // Use the selected estimate ID directly - this is the canonical source
+      if (!selectedEstimateId) {
+        throw new Error('No estimate selected. Please select an estimate first.');
+      }
+
+      // Get existing line items from the selected estimate to preserve the other section
+      const { data: existing, error: fetchError } = await supabase
         .from('enhanced_estimates')
         .select('id, line_items, material_cost, labor_cost')
-        .eq('pipeline_entry_id', pipelineEntryId)
-        .maybeSingle();
+        .eq('id', selectedEstimateId)
+        .single();
+
+      if (fetchError) throw fetchError;
+      if (!existing) throw new Error('Selected estimate not found');
 
       const existingLineItems = (existing?.line_items as unknown as Record<string, LineItem[]>) || {};
       const updatedLineItems = {
@@ -147,38 +155,17 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
       const costPreProfit = materialCost + laborCost;
       const sellingPrice = costPreProfit / 0.7; // 30% margin
 
-      if (existing) {
-        const { error } = await supabase
-          .from('enhanced_estimates')
-          .update({
-            line_items: updatedLineItems as any,
-            [costKey]: total,
-            selling_price: sellingPrice,
-            template_id: selectedTemplateId || null
-          })
-          .eq('id', existing.id);
-        if (error) throw error;
-      } else {
-        // For insert, we need to use a different approach since pipeline_entry_id may not be a column
-        const { data: pipelineEntry } = await supabase
-          .from('pipeline_entries')
-          .select('id')
-          .eq('id', pipelineEntryId)
-          .single();
-        
-        if (!pipelineEntry) throw new Error('Pipeline entry not found');
-        
-        const { error } = await supabase
-          .from('enhanced_estimates')
-          .insert({
-            pipeline_entry_id: pipelineEntryId,
-            line_items: updatedLineItems,
-            [costKey]: total,
-            selling_price: sellingPrice,
-            template_id: selectedTemplateId || null
-          } as any);
-        if (error) throw error;
-      }
+      // Always update the selected estimate by ID
+      const { error } = await supabase
+        .from('enhanced_estimates')
+        .update({
+          line_items: updatedLineItems as any,
+          [costKey]: total,
+          selling_price: sellingPrice,
+          template_id: selectedTemplateId || null
+        })
+        .eq('id', selectedEstimateId);
+      if (error) throw error;
 
       return total;
     },
