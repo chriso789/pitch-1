@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -48,7 +48,11 @@ const Estimates = () => {
   const [selectedEstimateId, setSelectedEstimateId] = useState<string | null>(null);
   const { toast } = useToast();
   
-  const canSeeAllEstimates = user && canViewAllEstimates(user.role);
+  // Extract stable primitive values to avoid infinite re-renders
+  const userId = user?.id;
+  const tenantId = user?.active_tenant_id || user?.tenant_id;
+  const userRole = user?.role;
+  const canSeeAllEstimates = userRole ? canViewAllEstimates(userRole) : false;
 
   const estimateStatuses = [
     { key: 'draft', label: 'Draft', color: 'bg-muted text-muted-foreground', icon: FileX },
@@ -58,22 +62,20 @@ const Estimates = () => {
     { key: 'rejected', label: 'Rejected', color: 'bg-destructive text-destructive-foreground', icon: AlertCircle }
   ];
 
+  // Use stable primitives as dependencies instead of user object
   useEffect(() => {
-    if (user) {
+    if (userId && tenantId) {
       fetchEstimates();
     }
-  }, [filters, user]);
+  }, [filters, userId, tenantId, userRole]);
 
   const fetchEstimates = async () => {
-    if (!user) return;
+    if (!userId || !tenantId) return;
     
     try {
       setLoading(true);
       
       // Build query - enhanced_estimates has sales_rep_id directly
-      // Use active_tenant_id if available, otherwise tenant_id
-      const tenantId = user.active_tenant_id || user.tenant_id;
-      
       let query = supabase
         .from('enhanced_estimates')
         .select('*')
@@ -82,7 +84,7 @@ const Estimates = () => {
       // Apply role-based filter - users below sales_manager can only see their own estimates
       // Also include estimates where user is the creator (created_by field)
       if (!canSeeAllEstimates) {
-        query = query.or(`sales_rep_id.eq.${user.id},created_by.eq.${user.id}`);
+        query = query.or(`sales_rep_id.eq.${userId},created_by.eq.${userId}`);
       }
 
       // Apply date filters
