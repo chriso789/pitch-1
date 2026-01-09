@@ -124,10 +124,12 @@ function calculateOverallCentroid(segments: SegmentData[]): XY {
 
 /**
  * Main analysis function - extracts topology from segment stats
+ * IMPROVED: Uses building footprint bounds for accurate ridge/hip length estimation
  */
 export function analyzeSegmentTopology(
   roofSegmentStats: SegmentData[],
-  buildingCenter?: { lat: number; lng: number }
+  buildingCenter?: { lat: number; lng: number },
+  footprintBounds?: { minX: number; maxX: number; minY: number; maxY: number }
 ): SegmentTopology {
   console.log(`📊 Analyzing ${roofSegmentStats.length} roof segments for topology`);
   
@@ -163,7 +165,32 @@ export function analyzeSegmentTopology(
     ? facets.reduce((s, f) => s + f.centroid[1], 0) / facets.length 
     : buildingCenter?.lat || 0;
   
-  // 2. Find ridges - where opposing facets meet
+  // Calculate building dimensions for realistic ridge/hip lengths
+  let buildingWidthFt = 40; // Default
+  let buildingLengthFt = 60; // Default
+  
+  if (footprintBounds) {
+    buildingWidthFt = distance(
+      [footprintBounds.minX, footprintBounds.minY],
+      [footprintBounds.maxX, footprintBounds.minY],
+      midLat
+    );
+    buildingLengthFt = distance(
+      [footprintBounds.minX, footprintBounds.minY],
+      [footprintBounds.minX, footprintBounds.maxY],
+      midLat
+    );
+    console.log(`   Building dimensions: ${buildingWidthFt.toFixed(0)}ft x ${buildingLengthFt.toFixed(0)}ft`);
+  } else {
+    // Estimate from total roof area
+    const totalAreaSqft = facets.reduce((s, f) => s + f.areaSqft, 0);
+    const estSide = Math.sqrt(totalAreaSqft);
+    buildingWidthFt = estSide * 0.8;
+    buildingLengthFt = estSide * 1.2;
+    console.log(`   Estimated dimensions from area: ${buildingWidthFt.toFixed(0)}ft x ${buildingLengthFt.toFixed(0)}ft`);
+  }
+  
+  // 2. Find ridges, hips, valleys based on facet relationships
   const ridges: TopologyLine[] = [];
   const hips: TopologyLine[] = [];
   const valleys: TopologyLine[] = [];
@@ -181,6 +208,8 @@ export function analyzeSegmentTopology(
   
   // 3. Identify ridge lines between opposing facet pairs
   const processedPairs = new Set<string>();
+  const longerDim = Math.max(buildingLengthFt, buildingWidthFt);
+  const shorterDim = Math.min(buildingLengthFt, buildingWidthFt);
   
   for (let i = 0; i < facets.length; i++) {
     for (let j = i + 1; j < facets.length; j++) {
@@ -190,88 +219,131 @@ export function analyzeSegmentTopology(
       if (processedPairs.has(pairKey)) continue;
       processedPairs.add(pairKey);
       
-      const azDiff = Math.abs(((f1.azimuthDegrees - f2.azimuthDegrees + 180) % 360) - 180);
-      
       if (areOpposingAzimuths(f1.azimuthDegrees, f2.azimuthDegrees)) {
         // RIDGE: Opposing facets (N/S or E/W facing)
         const ridgeMidpoint = midpoint(f1.centroid, f2.centroid);
         
+        // IMPROVED: Ridge length should be ~70-90% of the building's longer dimension
+        // For standard hip roofs, ridge is shorter than building length
+        const ridgeLengthFt = longerDim * 0.75; // 75% of longer dimension
+        
         // Ridge runs perpendicular to the facet facing directions
-        // For N/S facets, ridge runs E-W
-        // For E/W facets, ridge runs N-S
         const ridgeAzimuth = ((f1.azimuthDegrees + 90) % 180);
         const ridgeRad = ridgeAzimuth * Math.PI / 180;
-        const ridgeHalfLen = 0.00015; // ~15m each side
+        
+        // Convert length to degrees
+        const { metersPerDegLat, metersPerDegLng } = degToMeters(midLat);
+        const ridgeHalfLenDeg = (ridgeLengthFt * 0.3048 / 2) / metersPerDegLng;
         
         const ridgeStart: XY = [
-          ridgeMidpoint[0] - Math.sin(ridgeRad) * ridgeHalfLen,
-          ridgeMidpoint[1] - Math.cos(ridgeRad) * ridgeHalfLen
+          ridgeMidpoint[0] - Math.sin(ridgeRad) * ridgeHalfLenDeg,
+          ridgeMidpoint[1] - Math.cos(ridgeRad) * ridgeHalfLenDeg
         ];
         const ridgeEnd: XY = [
-          ridgeMidpoint[0] + Math.sin(ridgeRad) * ridgeHalfLen,
-          ridgeMidpoint[1] + Math.cos(ridgeRad) * ridgeHalfLen
+          ridgeMidpoint[0] + Math.sin(ridgeRad) * ridgeHalfLenDeg,
+          ridgeMidpoint[1] + Math.cos(ridgeRad) * ridgeHalfLenDeg
         ];
         
         ridges.push({
           type: 'ridge',
           start: ridgeStart,
           end: ridgeEnd,
-          lengthFt: distance(ridgeStart, ridgeEnd, midLat),
+          lengthFt: ridgeLengthFt,
           facetIds: [f1.id, f2.id]
         });
         
-        console.log(`   Ridge found: ${f1.id}(${f1.direction}) ↔ ${f2.id}(${f2.direction})`);
+        console.log(`   Ridge found: ${f1.id}(${f1.direction}) ↔ ${f2.id}(${f2.direction}) = ${ridgeLengthFt.toFixed(0)}ft`);
         
       } else if (arePerpendicular(f1.azimuthDegrees, f2.azimuthDegrees)) {
-        // Check if facets are adjacent (close centroids)
+        // Check if facets are adjacent
         const distBetween = distance(f1.centroid, f2.centroid, midLat);
-        if (distBetween < 100) { // Within 100ft
-          // Determine if hip or valley based on relative positions
-          // Hip: outside corner (facets face away from each other)
-          // Valley: inside corner (facets face toward each other)
-          
+        
+        // IMPROVED: Hip length estimation based on roof geometry
+        // Hip runs from ridge end to eave corner, typically at 45° angle
+        // Length ≈ √((width/2)² + (height_diff)²) ≈ width/2 * 1.4 for typical pitches
+        const hipLengthFt = (shorterDim / 2) * 1.4;
+        
+        if (distBetween < longerDim * 1.5) {
           const hipMidpoint = midpoint(f1.centroid, f2.centroid);
           const hipAzimuth = (f1.azimuthDegrees + f2.azimuthDegrees) / 2;
           const hipRad = hipAzimuth * Math.PI / 180;
-          const hipHalfLen = 0.00008; // ~8m each side
+          
+          const { metersPerDegLat, metersPerDegLng } = degToMeters(midLat);
+          const hipHalfLenDeg = (hipLengthFt * 0.3048 / 2) / metersPerDegLng;
           
           const hipStart: XY = [
-            hipMidpoint[0] - Math.sin(hipRad) * hipHalfLen,
-            hipMidpoint[1] - Math.cos(hipRad) * hipHalfLen
+            hipMidpoint[0] - Math.sin(hipRad) * hipHalfLenDeg,
+            hipMidpoint[1] - Math.cos(hipRad) * hipHalfLenDeg
           ];
           const hipEnd: XY = [
-            hipMidpoint[0] + Math.sin(hipRad) * hipHalfLen,
-            hipMidpoint[1] + Math.cos(hipRad) * hipHalfLen
+            hipMidpoint[0] + Math.sin(hipRad) * hipHalfLenDeg,
+            hipMidpoint[1] + Math.cos(hipRad) * hipHalfLenDeg
           ];
           
-          // Heuristic: if combined area is large relative to building, likely hip
-          // If segments are in inner part of L-shape, likely valley
+          // Heuristic: if combined area is large, likely hip; if small, likely valley
           const combinedArea = f1.areaSqft + f2.areaSqft;
           const avgArea = facets.reduce((s, f) => s + f.areaSqft, 0) / facets.length;
           
-          if (combinedArea > avgArea * 1.5) {
+          if (combinedArea > avgArea * 1.2) {
             hips.push({
               type: 'hip',
               start: hipStart,
               end: hipEnd,
-              lengthFt: distance(hipStart, hipEnd, midLat),
+              lengthFt: hipLengthFt,
               facetIds: [f1.id, f2.id]
             });
+            console.log(`   Hip found: ${f1.id} ↔ ${f2.id} = ${hipLengthFt.toFixed(0)}ft`);
           } else {
+            // Valley: typically similar length to hip
+            const valleyLengthFt = hipLengthFt * 0.9;
             valleys.push({
               type: 'valley',
               start: hipStart,
               end: hipEnd,
-              lengthFt: distance(hipStart, hipEnd, midLat),
+              lengthFt: valleyLengthFt,
               facetIds: [f1.id, f2.id]
             });
+            console.log(`   Valley found: ${f1.id} ↔ ${f2.id} = ${valleyLengthFt.toFixed(0)}ft`);
           }
         }
       }
     }
   }
   
-  // 4. Determine roof type
+  // 4. If no ridges found from facet analysis, estimate from roof type
+  if (ridges.length === 0 && facets.length >= 2) {
+    // Default: assume single ridge running along longer dimension
+    const ridgeLengthFt = longerDim * 0.7;
+    const center = buildingCenter ? [buildingCenter.lng, buildingCenter.lat] as XY : facets[0].centroid;
+    
+    ridges.push({
+      type: 'ridge',
+      start: center,
+      end: center,
+      lengthFt: ridgeLengthFt,
+      facetIds: facets.map(f => f.id)
+    });
+    console.log(`   Default ridge estimated: ${ridgeLengthFt.toFixed(0)}ft`);
+  }
+  
+  // 5. If no hips found for 4+ facet roof, estimate standard hip roof hips
+  if (hips.length === 0 && facets.length >= 4) {
+    // Standard hip roof has 4 hips, one from each corner
+    const hipLengthFt = (shorterDim / 2) * 1.4;
+    for (let i = 0; i < 4; i++) {
+      const center = buildingCenter ? [buildingCenter.lng, buildingCenter.lat] as XY : facets[0].centroid;
+      hips.push({
+        type: 'hip',
+        start: center,
+        end: center,
+        lengthFt: hipLengthFt,
+        facetIds: []
+      });
+    }
+    console.log(`   Default hips estimated: 4 × ${hipLengthFt.toFixed(0)}ft`);
+  }
+  
+  // 6. Determine roof type
   let roofType: SegmentTopology['roofType'] = 'complex';
   
   if (facets.length === 0 || facets.every(f => f.pitchDegrees < 5)) {
@@ -285,6 +357,7 @@ export function analyzeSegmentTopology(
   }
   
   console.log(`   Result: ${facets.length} facets, ${ridges.length} ridges, ${hips.length} hips, ${valleys.length} valleys → ${roofType}`);
+  console.log(`   Totals: ridge=${ridges.reduce((s,r)=>s+r.lengthFt,0).toFixed(0)}ft, hip=${hips.reduce((s,h)=>s+h.lengthFt,0).toFixed(0)}ft, valley=${valleys.reduce((s,v)=>s+v.lengthFt,0).toFixed(0)}ft`);
   
   return {
     facets,

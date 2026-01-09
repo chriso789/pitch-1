@@ -301,16 +301,32 @@ function getBoundsFromCoords(coords: [number, number][]): { minX: number; maxX: 
 }
 
 // Convert skeleton edges and boundary edges to LinearFeature array
-// IMPROVED: Better facet counting based on skeleton topology
+// IMPROVED: Only use straight-skeleton for simple rectangular buildings
+// For L/T/U-shapes, only extract eave/rake edges from skeleton, NOT ridge/hip/valley
 function buildLinearFeaturesFromTopology(
   coords: [number, number][],
-  midLat: number
-): { features: LinearFeature[]; totals: Record<string, number>; derivedFacetCount: number } {
+  midLat: number,
+  skipSkeletonForRidges: boolean = false
+): { features: LinearFeature[]; totals: Record<string, number>; derivedFacetCount: number; isComplexShape: boolean } {
   try {
-    // Compute straight skeleton
-    const skeleton = computeStraightSkeleton(coords);
+    // Detect building shape complexity
+    const vertexCount = coords.length;
+    const reflexCount = countReflexVertices(coords);
+    const isComplexShape = vertexCount > 6 || reflexCount > 0;
     
-    // Classify boundary edges
+    if (isComplexShape) {
+      console.log(`⚠️ Complex building shape detected: ${vertexCount} vertices, ${reflexCount} reflex corners`);
+      console.log(`   → Skipping straight-skeleton for ridge/hip/valley (will use segment topology instead)`);
+    }
+    
+    // For complex shapes OR when explicitly told to skip, only compute eave/rake
+    // Do NOT run straight skeleton for ridge/hip/valley - it produces garbage for L/T/U shapes
+    if (isComplexShape || skipSkeletonForRidges) {
+      return buildEaveRakeOnlyFromPerimeter(coords, midLat, isComplexShape);
+    }
+    
+    // Only run full straight skeleton for simple rectangular buildings
+    const skeleton = computeStraightSkeleton(coords);
     const boundaryClass = classifyBoundaryEdges(coords, skeleton);
     
     const features: LinearFeature[] = [];
@@ -376,30 +392,17 @@ function buildLinearFeaturesFromTopology(
       rake_ft: features.filter(f => f.type === 'rake').reduce((s, f) => s + f.length_ft, 0),
     };
     
-    // IMPROVED: Derive facet count from skeleton topology
-    // Facet count formula based on roof topology:
-    // - Simple hip: 4 facets (1 ridge, 4 hips, 0 valleys)
-    // - Cross-gable: 4-8 facets depending on valleys
-    // - L-shape with valleys: 6-10 facets
-    // General formula: facets = hipCount + valleyCount + 2 (for main roof planes)
-    let derivedFacetCount = 4; // Minimum for any pitched roof
-    
+    // Derive facet count from skeleton topology
+    let derivedFacetCount = 4;
     if (hipCount >= 4 && valleyCount === 0) {
-      // Standard hip roof: 4 facets
       derivedFacetCount = 4;
     } else if (hipCount >= 4 && valleyCount > 0) {
-      // Hip roof with valleys (cross-gable, L-shape)
-      // Each valley adds 2 more facets typically
       derivedFacetCount = 4 + (valleyCount * 2);
     } else if (ridgeCount >= 1 && hipCount === 0) {
-      // Gable roof: 2 facets
       derivedFacetCount = 2;
     } else if (ridgeCount >= 2) {
-      // Multiple ridges (complex cross-gable)
       derivedFacetCount = ridgeCount * 2 + valleyCount * 2;
     }
-    
-    // Clamp to reasonable range
     derivedFacetCount = Math.max(2, Math.min(20, derivedFacetCount));
     
     console.log('Topology extracted:', { 
@@ -409,42 +412,123 @@ function buildLinearFeaturesFromTopology(
       totals: Object.entries(totals).map(([k, v]) => `${k}=${Math.round(v)}`).join(', ')
     });
     
-    // RIDGE LENGTH VALIDATION: Compare ridge to footprint's longest dimension
+    // SANITY CHECK: Ridge should be reasonable relative to building dimensions
     const bounds = getBoundsFromCoords(coords);
     const longestDimFt = Math.max(
       calculateGeodesicLength([bounds.minX, bounds.minY], [bounds.maxX, bounds.minY], midLat),
       calculateGeodesicLength([bounds.minX, bounds.minY], [bounds.minX, bounds.maxY], midLat)
     );
-    const ridgeRatio = longestDimFt > 0 ? totals.ridge_ft / longestDimFt : 0;
     
-    if (ridgeRatio < 0.3 || ridgeRatio > 1.5) {
-      console.warn(`⚠️ Ridge length suspicious: ${totals.ridge_ft.toFixed(1)}ft vs longest dimension ${longestDimFt.toFixed(1)}ft (ratio: ${ridgeRatio.toFixed(2)})`);
-    } else {
-      console.log(`✓ Ridge length plausible: ${totals.ridge_ft.toFixed(1)}ft / ${longestDimFt.toFixed(1)}ft = ${ridgeRatio.toFixed(2)}`);
+    // If ridge exceeds 200% of longest dimension, something is wrong
+    if (totals.ridge_ft > longestDimFt * 2) {
+      console.warn(`⚠️ SANITY CHECK FAILED: Ridge ${totals.ridge_ft.toFixed(0)}ft >> longest dim ${longestDimFt.toFixed(0)}ft`);
+      console.warn(`   → Discarding skeleton ridge/hip/valley, keeping only eave/rake`);
+      
+      // Return only eave/rake, zero out ridge/hip/valley
+      const eaveRakeOnly = features.filter(f => f.type === 'eave' || f.type === 'rake');
+      return {
+        features: eaveRakeOnly,
+        totals: {
+          ...totals,
+          ridge_ft: 0,
+          hip_ft: 0,
+          valley_ft: 0,
+        },
+        derivedFacetCount: 4,
+        isComplexShape: true,
+      };
     }
     
-    return { features, totals, derivedFacetCount };
+    return { features, totals, derivedFacetCount, isComplexShape: false };
   } catch (error) {
-    console.warn('Skeleton extraction failed, falling back to simple perimeter:', error);
-    // Fallback to simple perimeter estimation
-    return {
-      features: estimateLinearFeatures([{
-        id: 'A',
-        wkt: toPolygonWKT(coords),
-        plan_area_sqft: 0,
-        area_sqft: 0
-      }]),
-      totals: {
-        perimeter_ft: 0,
-        ridge_ft: 0,
-        hip_ft: 0,
-        valley_ft: 0,
-        eave_ft: 0,
-        rake_ft: 0
-      },
-      derivedFacetCount: 4
-    };
+    console.warn('Skeleton extraction failed, falling back to perimeter-only:', error);
+    return buildEaveRakeOnlyFromPerimeter(coords, midLat, true);
   }
+}
+
+// Helper: Count reflex (concave) vertices in a polygon
+function countReflexVertices(coords: [number, number][]): number {
+  const n = coords.length;
+  let count = 0;
+  
+  for (let i = 0; i < n; i++) {
+    const prev = coords[(i - 1 + n) % n];
+    const curr = coords[i];
+    const next = coords[(i + 1) % n];
+    
+    // Cross product to determine convexity
+    const ax = prev[0] - curr[0];
+    const ay = prev[1] - curr[1];
+    const bx = next[0] - curr[0];
+    const by = next[1] - curr[1];
+    const cross = ax * by - ay * bx;
+    
+    if (cross < 0) count++; // Reflex in CCW orientation
+  }
+  
+  return count;
+}
+
+// Helper: Build only eave/rake features from perimeter (no ridge/hip/valley)
+function buildEaveRakeOnlyFromPerimeter(
+  coords: [number, number][],
+  midLat: number,
+  isComplexShape: boolean
+): { features: LinearFeature[]; totals: Record<string, number>; derivedFacetCount: number; isComplexShape: boolean } {
+  const features: LinearFeature[] = [];
+  let featureId = 1;
+  let totalPerimeter = 0;
+  
+  // Simple edge classification: all perimeter edges are either eave or rake
+  // Use orientation heuristic: longer edges tend to be eaves, shorter are rakes
+  const edges: { start: [number, number]; end: [number, number]; length: number }[] = [];
+  
+  for (let i = 0; i < coords.length - 1; i++) {
+    const start = coords[i];
+    const end = coords[i + 1];
+    const length = calculateGeodesicLength(start, end, midLat);
+    if (length > 2) edges.push({ start, end, length });
+  }
+  
+  // Calculate average edge length
+  const avgLength = edges.reduce((s, e) => s + e.length, 0) / edges.length;
+  
+  let eave_ft = 0;
+  let rake_ft = 0;
+  
+  for (const edge of edges) {
+    // Heuristic: edges longer than average are eaves, shorter are rakes
+    const type = edge.length >= avgLength * 0.7 ? 'eave' : 'rake';
+    
+    features.push({
+      id: `LF${featureId++}`,
+      wkt: `LINESTRING(${edge.start[0]} ${edge.start[1]}, ${edge.end[0]} ${edge.end[1]})`,
+      length_ft: edge.length,
+      type,
+      label: `${type.charAt(0).toUpperCase() + type.slice(1)} ${featureId - 1}`
+    });
+    
+    if (type === 'eave') eave_ft += edge.length;
+    else rake_ft += edge.length;
+    
+    totalPerimeter += edge.length;
+  }
+  
+  console.log(`   Perimeter-only extraction: ${features.length} edges, ${eave_ft.toFixed(0)}ft eave, ${rake_ft.toFixed(0)}ft rake`);
+  
+  return {
+    features,
+    totals: {
+      perimeter_ft: totalPerimeter,
+      ridge_ft: 0, // Will be filled by segment topology
+      hip_ft: 0,
+      valley_ft: 0,
+      eave_ft,
+      rake_ft,
+    },
+    derivedFacetCount: 4,
+    isComplexShape,
+  };
 }
 
 // Smart Tags builder - Expanded to 100+ tags
@@ -907,9 +991,12 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
   let derivedFacetCount = roofSegments.length || 4;
   let roofType = 'hip';
   
+  // Get footprint bounds for segment topology analyzer
+  const footprintBounds = getBoundsFromCoords(coords);
+  
   if (roofSegments.length > 0) {
     console.log(`🔍 Analyzing ${roofSegments.length} roof segments for topology`);
-    const segmentTopology = analyzeSegmentTopology(roofSegments, { lat, lng });
+    const segmentTopology = analyzeSegmentTopology(roofSegments, { lat, lng }, footprintBounds);
     topologyFeatures = topologyToLinearFeatures(segmentTopology);
     topologyTotals = topologyToTotals(segmentTopology);
     derivedFacetCount = segmentTopology.facetCount;
@@ -917,21 +1004,32 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     console.log(`   → ${segmentTopology.ridges.length} ridges, ${segmentTopology.hips.length} hips, ${segmentTopology.valleys.length} valleys (${roofType})`);
   }
   
-  // ALSO run straight skeleton for eave/rake edges from the footprint
-  const skeletonTopology = buildLinearFeaturesFromTopology(coords, midLat);
+  // Run skeleton ONLY for eave/rake edges - skip ridge/hip/valley for complex shapes
+  // Pass true to skip skeleton ridges since we have segment topology
+  const skeletonTopology = buildLinearFeaturesFromTopology(coords, midLat, roofSegments.length > 0);
   
-  // Merge: use segment-derived ridges/hips/valleys + skeleton-derived eaves/rakes
+  // Merge: PRIORITIZE segment-derived ridges/hips/valleys + use skeleton-derived eaves/rakes
   const eaveRakeFeatures = skeletonTopology.features.filter(f => f.type === 'eave' || f.type === 'rake');
-  const mergedFeatures = [...topologyFeatures, ...eaveRakeFeatures];
   
-  // Merge totals
+  // Only include segment topology features for ridge/hip/valley (NOT skeleton ones for complex shapes)
+  const ridgeHipValleyFeatures = topologyFeatures.filter(f => 
+    f.type === 'ridge' || f.type === 'hip' || f.type === 'valley'
+  );
+  
+  const mergedFeatures = [...ridgeHipValleyFeatures, ...eaveRakeFeatures];
+  
+  // Merge totals - prioritize segment topology for ridge/hip/valley
   const mergedTotals = {
-    ...skeletonTopology.totals,
-    ...topologyTotals,
+    perimeter_ft: skeletonTopology.totals.perimeter_ft,
     eave_ft: skeletonTopology.totals.eave_ft,
     rake_ft: skeletonTopology.totals.rake_ft,
-    perimeter_ft: skeletonTopology.totals.perimeter_ft,
+    // Use segment topology for ridge/hip/valley (more accurate for complex shapes)
+    ridge_ft: topologyTotals.ridge_ft || skeletonTopology.totals.ridge_ft || 0,
+    hip_ft: topologyTotals.hip_ft || skeletonTopology.totals.hip_ft || 0,
+    valley_ft: topologyTotals.valley_ft || skeletonTopology.totals.valley_ft || 0,
   };
+  
+  console.log(`📊 Final merged totals: ridge=${mergedTotals.ridge_ft?.toFixed(0)}ft, hip=${mergedTotals.hip_ft?.toFixed(0)}ft, valley=${mergedTotals.valley_ft?.toFixed(0)}ft, eave=${mergedTotals.eave_ft?.toFixed(0)}ft, rake=${mergedTotals.rake_ft?.toFixed(0)}ft`);
   
   // Process roof segments into faces
   const faces: RoofFace[] = [];
