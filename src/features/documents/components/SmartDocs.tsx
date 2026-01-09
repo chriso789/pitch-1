@@ -100,6 +100,10 @@ const SmartDocs = () => {
       setLoading(true);
       
       // Load templates, folders, and company docs in parallel
+      // Get user's tenant first for logging
+      const { data: { user } } = await supabase.auth.getUser();
+      console.log('[SmartDocs] Loading data for user:', user?.id);
+
       const [templatesResult, foldersResult, docsResult] = await Promise.all([
         supabase
           .from('smartdoc_templates')
@@ -129,7 +133,18 @@ const SmartDocs = () => {
 
       if (templatesResult.error) throw templatesResult.error;
       if (foldersResult.error) throw foldersResult.error;
-      if (docsResult.error) console.error('Error loading docs:', docsResult.error);
+      if (docsResult.error) {
+        console.error('[SmartDocs] Error loading company docs:', docsResult.error);
+      }
+
+      console.log('[SmartDocs] Loaded company docs:', docsResult.data?.length || 0, 'documents');
+      if (docsResult.data && docsResult.data.length > 0) {
+        console.log('[SmartDocs] First doc sample:', {
+          id: docsResult.data[0].id,
+          filename: docsResult.data[0].filename,
+          document_type: docsResult.data[0].document_type
+        });
+      }
 
       setTemplates(templatesResult.data || []);
       setFolders(foldersResult.data || []);

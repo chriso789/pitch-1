@@ -69,16 +69,20 @@ serve(async (req) => {
       .single();
 
     if (profileError || !profile) {
-      console.error("Profile error:", profileError);
+      console.error("[delete-documents] Profile error:", profileError);
       return new Response(
         JSON.stringify({ error: "Profile not found" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }
       );
     }
 
-    // Enforce role-based access (manager, admin, master can delete)
+    // Log user context for debugging
+    console.log(`[delete-documents] User context: id=${user.id}, role=${profile.role}, tenant_id=${profile.tenant_id}`);
+
+    // Enforce role-based access (manager, admin, master, owner can delete)
     const allowedRoles = ["manager", "admin", "master", "owner"];
     if (!allowedRoles.includes(profile.role)) {
+      console.log(`[delete-documents] Access denied: role '${profile.role}' not in allowed roles`);
       return new Response(
         JSON.stringify({ error: "Insufficient permissions" }),
         { status: 403, headers: { ...corsHeaders, "Content-Type": "application/json" } }

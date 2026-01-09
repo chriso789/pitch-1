@@ -10,6 +10,10 @@ const workerUrls = [
 // Try the first CDN by default
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrls[0];
 
+// Track worker loading state
+let workerVerified = false;
+let workerLoadingPromise: Promise<void> | null = null;
+
 export interface PDFDocumentProxy {
   numPages: number;
   getPage: (pageNum: number) => Promise<PDFPageProxy>;
@@ -31,9 +35,48 @@ export interface RenderedPage {
 const pageCache = new Map<string, RenderedPage>();
 
 /**
+ * Ensure PDF.js worker is loaded and accessible
+ * Tries multiple CDN sources with fallback to no-worker mode
+ */
+export async function ensureWorkerLoaded(): Promise<void> {
+  if (workerVerified) return;
+  
+  // Prevent multiple concurrent attempts
+  if (workerLoadingPromise) {
+    return workerLoadingPromise;
+  }
+  
+  workerLoadingPromise = (async () => {
+    for (const url of workerUrls) {
+      try {
+        console.log('[PDF] Trying worker from:', url);
+        const response = await fetch(url, { method: 'HEAD', mode: 'cors' });
+        if (response.ok) {
+          pdfjsLib.GlobalWorkerOptions.workerSrc = url;
+          workerVerified = true;
+          console.log('[PDF] ✅ Worker verified from:', url);
+          return;
+        }
+      } catch (e) {
+        console.warn('[PDF] Worker failed from:', url, e);
+      }
+    }
+    
+    // Fallback: disable worker (slower but works without CORS issues)
+    console.warn('[PDF] ⚠️ Running without worker (fallback mode - may be slower)');
+    pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+    workerVerified = true;
+  })();
+  
+  return workerLoadingPromise;
+}
+
+/**
  * Load a PDF document from a URL
  */
 export async function loadPDF(url: string): Promise<PDFDocumentProxy> {
+  await ensureWorkerLoaded();
+  
   const loadingTask = pdfjsLib.getDocument({
     url,
     cMapUrl: `//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/`,
@@ -48,6 +91,10 @@ export async function loadPDF(url: string): Promise<PDFDocumentProxy> {
  * Load a PDF document from an ArrayBuffer (bypasses CORS issues)
  */
 export async function loadPDFFromArrayBuffer(arrayBuffer: ArrayBuffer): Promise<PDFDocumentProxy> {
+  await ensureWorkerLoaded();
+  
+  console.log('[PDF] Loading from ArrayBuffer, size:', arrayBuffer.byteLength);
+  
   const loadingTask = pdfjsLib.getDocument({
     data: arrayBuffer,
     cMapUrl: `//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/`,
@@ -55,6 +102,7 @@ export async function loadPDFFromArrayBuffer(arrayBuffer: ArrayBuffer): Promise<
   });
   
   const pdf = await loadingTask.promise;
+  console.log('[PDF] ✅ PDF loaded, pages:', (pdf as any).numPages);
   return pdf as unknown as PDFDocumentProxy;
 }
 
@@ -70,9 +118,12 @@ export async function renderPageToDataUrl(
   
   // Check cache first
   if (pageCache.has(cacheKey)) {
+    console.log('[PDF] Page', pageNum, 'served from cache');
     return pageCache.get(cacheKey)!;
   }
 
+  console.log('[PDF] Rendering page', pageNum, 'at scale', scale);
+  
   const page = await pdf.getPage(pageNum);
   const viewport = page.getViewport({ scale });
 
@@ -103,6 +154,8 @@ export async function renderPageToDataUrl(
 
   // Cache the result
   pageCache.set(cacheKey, result);
+  
+  console.log('[PDF] ✅ Page', pageNum, 'rendered successfully:', result.width, 'x', result.height);
 
   return result;
 }
@@ -112,6 +165,7 @@ export async function renderPageToDataUrl(
  */
 export function clearPageCache(): void {
   pageCache.clear();
+  console.log('[PDF] Page cache cleared');
 }
 
 /**
