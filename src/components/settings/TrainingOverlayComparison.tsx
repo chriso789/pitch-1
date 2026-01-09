@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { Canvas as FabricCanvas, Line, FabricImage, FabricText, Circle } from 'fabric';
+import { Canvas as FabricCanvas, Line, FabricImage, FabricText, Circle, Point } from 'fabric';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
-import { Columns2, AlertCircle } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
+import { Columns2, AlertCircle, Hand, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 
 interface TrainingOverlayComparisonProps {
   satelliteImageUrl: string;
@@ -126,6 +128,13 @@ export function TrainingOverlayComparison({
   const [aiFabricCanvas, setAiFabricCanvas] = useState<FabricCanvas | null>(null);
   const [manualImageLoaded, setManualImageLoaded] = useState(false);
   const [aiImageLoaded, setAiImageLoaded] = useState(false);
+  
+  // Pan and zoom state
+  const [isPanMode, setIsPanMode] = useState(false);
+  const [syncCanvases, setSyncCanvases] = useState(true);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const isDraggingRef = useRef(false);
+  const lastPosRef = useRef({ x: 0, y: 0 });
 
   // Initialize manual traces canvas
   useEffect(() => {
@@ -276,6 +285,122 @@ export function TrainingOverlayComparison({
   useEffect(() => { renderManualTraces(); }, [renderManualTraces]);
   useEffect(() => { renderAILines(); }, [renderAILines]);
 
+  // Update cursor based on pan mode
+  useEffect(() => {
+    if (manualFabricCanvas) {
+      manualFabricCanvas.defaultCursor = isPanMode ? 'grab' : 'default';
+      manualFabricCanvas.hoverCursor = isPanMode ? 'grab' : 'default';
+    }
+    if (aiFabricCanvas) {
+      aiFabricCanvas.defaultCursor = isPanMode ? 'grab' : 'default';
+      aiFabricCanvas.hoverCursor = isPanMode ? 'grab' : 'default';
+    }
+  }, [isPanMode, manualFabricCanvas, aiFabricCanvas]);
+
+  // Setup pan and zoom handlers
+  useEffect(() => {
+    if (!manualFabricCanvas || !aiFabricCanvas) return;
+
+    const setupCanvasEvents = (canvas: FabricCanvas, otherCanvas: FabricCanvas) => {
+      // Mouse down - start drag
+      canvas.on('mouse:down', (opt) => {
+        if (isPanMode && opt.e) {
+          isDraggingRef.current = true;
+          canvas.defaultCursor = 'grabbing';
+          const e = opt.e as MouseEvent;
+          lastPosRef.current = { x: e.clientX, y: e.clientY };
+        }
+      });
+
+      // Mouse move - pan
+      canvas.on('mouse:move', (opt) => {
+        if (isDraggingRef.current && opt.e && canvas.viewportTransform) {
+          const e = opt.e as MouseEvent;
+          const vpt = [...canvas.viewportTransform];
+          vpt[4] += e.clientX - lastPosRef.current.x;
+          vpt[5] += e.clientY - lastPosRef.current.y;
+          canvas.viewportTransform = vpt as typeof canvas.viewportTransform;
+          lastPosRef.current = { x: e.clientX, y: e.clientY };
+          canvas.requestRenderAll();
+          
+          if (syncCanvases && otherCanvas.viewportTransform) {
+            otherCanvas.viewportTransform = [...vpt] as typeof otherCanvas.viewportTransform;
+            otherCanvas.requestRenderAll();
+          }
+        }
+      });
+
+      // Mouse up - stop drag
+      canvas.on('mouse:up', () => {
+        isDraggingRef.current = false;
+        canvas.defaultCursor = isPanMode ? 'grab' : 'default';
+      });
+
+      // Mouse wheel - zoom
+      canvas.on('mouse:wheel', (opt) => {
+        if (!opt.e) return;
+        const e = opt.e as WheelEvent;
+        const delta = e.deltaY;
+        let newZoom = canvas.getZoom() * (1 - delta / 500);
+        newZoom = Math.min(Math.max(0.5, newZoom), 5);
+        
+        const point = new Point(opt.e.offsetX, opt.e.offsetY);
+        canvas.zoomToPoint(point, newZoom);
+        setZoomLevel(newZoom);
+        
+        if (syncCanvases) {
+          otherCanvas.zoomToPoint(point, newZoom);
+        }
+        
+        opt.e.preventDefault();
+        opt.e.stopPropagation();
+      });
+    };
+
+    setupCanvasEvents(manualFabricCanvas, aiFabricCanvas);
+    setupCanvasEvents(aiFabricCanvas, manualFabricCanvas);
+
+    return () => {
+      manualFabricCanvas.off('mouse:down');
+      manualFabricCanvas.off('mouse:move');
+      manualFabricCanvas.off('mouse:up');
+      manualFabricCanvas.off('mouse:wheel');
+      aiFabricCanvas.off('mouse:down');
+      aiFabricCanvas.off('mouse:move');
+      aiFabricCanvas.off('mouse:up');
+      aiFabricCanvas.off('mouse:wheel');
+    };
+  }, [manualFabricCanvas, aiFabricCanvas, isPanMode, syncCanvases]);
+
+  // Zoom controls
+  const handleZoomIn = () => {
+    const newZoom = Math.min(zoomLevel * 1.25, 5);
+    setZoomLevel(newZoom);
+    const center = new Point(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+    manualFabricCanvas?.zoomToPoint(center, newZoom);
+    if (syncCanvases) aiFabricCanvas?.zoomToPoint(center, newZoom);
+  };
+
+  const handleZoomOut = () => {
+    const newZoom = Math.max(zoomLevel / 1.25, 0.5);
+    setZoomLevel(newZoom);
+    const center = new Point(CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2);
+    manualFabricCanvas?.zoomToPoint(center, newZoom);
+    if (syncCanvases) aiFabricCanvas?.zoomToPoint(center, newZoom);
+  };
+
+  const handleResetView = () => {
+    setZoomLevel(1);
+    if (manualFabricCanvas) {
+      manualFabricCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+      manualFabricCanvas.requestRenderAll();
+    }
+    if (aiFabricCanvas) {
+      aiFabricCanvas.setViewportTransform([1, 0, 0, 1, 0, 0]);
+      aiFabricCanvas.requestRenderAll();
+    }
+  };
+
   // Calculate totals for summary
   const manualTotals = calculateTotals(manualTraces);
   const aiTotals = calculateAITotals(aiLinearFeatures);
@@ -301,6 +426,38 @@ export function TrainingOverlayComparison({
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
+        {/* Pan/Zoom Controls */}
+        <div className="flex items-center gap-2 flex-wrap">
+          <Button
+            variant={isPanMode ? "default" : "outline"}
+            size="sm"
+            onClick={() => setIsPanMode(!isPanMode)}
+          >
+            <Hand className="h-4 w-4 mr-1" />
+            Pan
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleZoomIn}>
+            <ZoomIn className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleZoomOut}>
+            <ZoomOut className="h-4 w-4" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={handleResetView}>
+            <RotateCcw className="h-4 w-4" />
+          </Button>
+          <span className="text-xs text-muted-foreground ml-1">
+            {Math.round(zoomLevel * 100)}%
+          </span>
+          <div className="flex items-center gap-1.5 ml-auto">
+            <Checkbox 
+              id="sync-views"
+              checked={syncCanvases} 
+              onCheckedChange={(checked) => setSyncCanvases(checked === true)} 
+            />
+            <label htmlFor="sync-views" className="text-xs cursor-pointer">Sync views</label>
+          </div>
+        </div>
+
         {/* Side-by-side canvases */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
           {/* Manual Traces */}
