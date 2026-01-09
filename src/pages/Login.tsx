@@ -122,7 +122,9 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
           try {
             console.log('[Login] Syncing user metadata before redirect...');
             await supabase.functions.invoke('sync-user-metadata');
-            console.log('[Login] Metadata synced successfully');
+            // Refresh the session to get updated user_metadata
+            await supabase.auth.refreshSession();
+            console.log('[Login] Metadata synced and session refreshed');
           } catch (syncError) {
             console.warn('[Login] Metadata sync failed, proceeding anyway:', syncError);
           }
