@@ -540,6 +540,8 @@ export const LeadCreationDialog: React.FC<LeadCreationDialogProps> = ({
           priority: formData.priority,
           estimated_value: formData.estimatedValue ? parseFloat(formData.estimatedValue) : null,
           assigned_to: formData.assignedTo[0] || session.user.id, // Auto-assign to creator if no rep selected
+          secondary_assigned_to: formData.assignedTo[1] || null, // Secondary rep if selected
+          primary_rep_split_percent: formData.assignedTo.length > 1 ? 50 : 100, // Default 50/50 split if two reps
           notes: formData.notes || null,
           created_by: session.user.id,
           metadata: {

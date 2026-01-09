@@ -13,7 +13,8 @@ import {
   Ruler,
   Shield,
   ExternalLink,
-  Check
+  Check,
+  PenTool
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
@@ -226,6 +227,30 @@ export const EstimateAddonsPanel: React.FC<EstimateAddonsPanelProps> = ({
                 <p className="text-xs text-muted-foreground mt-0.5">
                   Include warranty terms and coverage details
                 </p>
+              </div>
+            </div>
+
+            {/* Smart Sign Toggle */}
+            <div className="flex items-start gap-3 p-3 rounded-lg border bg-primary/5 border-primary/20">
+              <Checkbox
+                id="smart-sign"
+                checked={pdfOptions.enableSmartSign || false}
+                onCheckedChange={(checked) => onOptionsChange({ enableSmartSign: !!checked })}
+              />
+              <div className="flex-1">
+                <Label htmlFor="smart-sign" className="text-sm font-medium cursor-pointer flex items-center gap-2">
+                  <PenTool className="h-4 w-4 text-primary" />
+                  Enable Smart Sign
+                </Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Add a compliant digital signature page for homeowner to sign electronically
+                </p>
+                {pdfOptions.enableSmartSign && (
+                  <div className="mt-2 p-2 bg-muted rounded text-xs">
+                    <p className="text-primary font-medium">✓ Signature page will be added to the estimate</p>
+                    <p className="text-muted-foreground mt-1">When exported, a unique signing link will be generated</p>
+                  </div>
+                )}
               </div>
             </div>
           </CardContent>

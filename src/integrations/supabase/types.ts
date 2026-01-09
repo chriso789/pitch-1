@@ -14673,11 +14673,13 @@ export type Database = {
           marketing_campaign: string | null
           metadata: Json | null
           notes: string | null
+          primary_rep_split_percent: number | null
           priority: string | null
           probability_percent: number | null
           qualification_notes: string | null
           requires_manager_approval: boolean | null
           roof_type: Database["public"]["Enums"]["roof_type"] | null
+          secondary_assigned_to: string | null
           source: Database["public"]["Enums"]["lead_source"] | null
           status: string | null
           status_entered_at: string | null
@@ -14710,11 +14712,13 @@ export type Database = {
           marketing_campaign?: string | null
           metadata?: Json | null
           notes?: string | null
+          primary_rep_split_percent?: number | null
           priority?: string | null
           probability_percent?: number | null
           qualification_notes?: string | null
           requires_manager_approval?: boolean | null
           roof_type?: Database["public"]["Enums"]["roof_type"] | null
+          secondary_assigned_to?: string | null
           source?: Database["public"]["Enums"]["lead_source"] | null
           status?: string | null
           status_entered_at?: string | null
@@ -14747,11 +14751,13 @@ export type Database = {
           marketing_campaign?: string | null
           metadata?: Json | null
           notes?: string | null
+          primary_rep_split_percent?: number | null
           priority?: string | null
           probability_percent?: number | null
           qualification_notes?: string | null
           requires_manager_approval?: boolean | null
           roof_type?: Database["public"]["Enums"]["roof_type"] | null
+          secondary_assigned_to?: string | null
           source?: Database["public"]["Enums"]["lead_source"] | null
           status?: string | null
           status_entered_at?: string | null
@@ -14798,6 +14804,20 @@ export type Database = {
           {
             foreignKeyName: "pipeline_entries_created_by_fkey"
             columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "pipeline_entries_secondary_assigned_to_fkey"
+            columns: ["secondary_assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipeline_entries_secondary_assigned_to_fkey"
+            columns: ["secondary_assigned_to"]
             isOneToOne: false
             referencedRelation: "user_activity_summary"
             referencedColumns: ["user_id"]

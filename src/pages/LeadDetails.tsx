@@ -212,6 +212,7 @@ const LeadDetails = () => {
   const [showDispositionDialog, setShowDispositionDialog] = useState(false);
   const [availablePhoneNumbers, setAvailablePhoneNumbers] = useState<any[]>([]);
   const [isEditingSalesRep, setIsEditingSalesRep] = useState(false);
+  const [isEditingSecondaryRep, setIsEditingSecondaryRep] = useState(false);
   
   // Communication states
   const [showEmailComposer, setShowEmailComposer] = useState(false);
@@ -652,6 +653,74 @@ const LeadDetails = () => {
                 >
                   <Plus className="h-3 w-3 mr-1" />
                   Assign
+                </Button>
+              )}
+            </div>
+
+            {/* Secondary Sales Rep */}
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-muted-foreground text-sm">Secondary Rep:</span>
+              {isEditingSecondaryRep ? (
+                <Select 
+                  value={lead.secondary_assigned_rep?.id || ''} 
+                  onValueChange={async (value) => {
+                    try {
+                      const { error } = await supabase
+                        .from('pipeline_entries')
+                        .update({ 
+                          secondary_assigned_to: value || null,
+                          primary_rep_split_percent: value ? 50 : 100
+                        })
+                        .eq('id', id);
+                      if (error) throw error;
+                      toast({ title: "Secondary rep updated" });
+                      refetchLead();
+                      setIsEditingSecondaryRep(false);
+                    } catch (error) {
+                      toast({ title: "Error updating secondary rep", variant: "destructive" });
+                    }
+                  }}
+                >
+                  <SelectTrigger className="h-7 w-[200px]">
+                    <SelectValue placeholder="Select secondary rep" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">None</SelectItem>
+                    {availableSalesReps
+                      .filter(rep => rep.id !== lead.assigned_rep?.id)
+                      .map((rep) => (
+                        <SelectItem key={rep.id} value={rep.id}>
+                          {rep.first_name} {rep.last_name}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              ) : lead.secondary_assigned_rep ? (
+                <div className="flex items-center gap-1">
+                  <span className="font-medium text-sm">
+                    {lead.secondary_assigned_rep.first_name} {lead.secondary_assigned_rep.last_name}
+                  </span>
+                  <Badge variant="outline" className="text-xs ml-1">
+                    {lead.primary_rep_split_percent || 50}/{100 - (lead.primary_rep_split_percent || 50)} split
+                  </Badge>
+                  <Button 
+                    variant="ghost" 
+                    size="sm" 
+                    className="h-5 w-5 p-0"
+                    onClick={() => setIsEditingSecondaryRep(true)}
+                  >
+                    <Edit2 className="h-3 w-3" />
+                  </Button>
+                </div>
+              ) : (
+                <Button 
+                  variant="ghost" 
+                  size="sm" 
+                  className="h-6 text-muted-foreground"
+                  onClick={() => setIsEditingSecondaryRep(true)}
+                >
+                  <Plus className="h-3 w-3 mr-1" />
+                  Add Split Rep
                 </Button>
               )}
             </div>

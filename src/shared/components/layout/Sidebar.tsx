@@ -2,6 +2,7 @@ import React from "react";
 import { Link, useLocation } from "react-router-dom";
 import { useCurrentUser } from "@/hooks/useCurrentUser";
 import { useAuth } from "@/contexts/AuthContext";
+import { useLocation as useLocationContext } from "@/contexts/LocationContext";
 import { 
   Home, 
   Users, 
@@ -25,7 +26,8 @@ import {
   CloudRain,
   Presentation,
   HardHat,
-  Activity
+  Activity,
+  Building2
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -59,6 +61,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
   const queryClient = useQueryClient();
   const { user: currentUser, loading: userLoading, refetch: refetchUser } = useCurrentUser();
   const { user: authUser } = useAuth();
+  const { currentLocation } = useLocationContext();
   
   // Instant display name from auth user_metadata (no loading state)
   const getInstantDisplayName = () => {
@@ -322,15 +325,26 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       {/* Logo & Header */}
       <div className={cn("border-b border-border", isCollapsed ? "p-2" : "p-4")}>
         <div className={cn("flex items-center", isCollapsed ? "justify-center" : "gap-3")}>
-          <div className="w-9 h-9 gradient-primary rounded-lg flex items-center justify-center">
-            <Home className="h-5 w-5 text-white" />
-          </div>
+          {/* Location/Company Logo */}
+          {currentLocation?.logo_url ? (
+            <img 
+              src={currentLocation.logo_url} 
+              alt={currentLocation.name}
+              className="w-9 h-9 rounded-lg object-cover"
+            />
+          ) : (
+            <div className="w-9 h-9 gradient-primary rounded-lg flex items-center justify-center">
+              <Building2 className="h-5 w-5 text-white" />
+            </div>
+          )}
           {!isCollapsed && (
             <div>
               <h1 className="text-lg font-bold gradient-primary bg-clip-text text-transparent">
-                PITCH
+                {currentLocation?.name || 'PITCH'}
               </h1>
-              <p className="text-xs text-muted-foreground">Roofing CRM</p>
+              <p className="text-xs text-muted-foreground">
+                {currentLocation ? 'Location' : 'Roofing CRM'}
+              </p>
             </div>
           )}
         </div>

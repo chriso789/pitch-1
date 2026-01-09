@@ -41,6 +41,11 @@ export interface PDFComponentOptions {
   // Header/Footer on every page
   showPageHeader: boolean;
   showPageFooter: boolean;
+  
+  // Smart Sign
+  enableSmartSign?: boolean;
+  signerName?: string;
+  signerEmail?: string;
 }
 
 export type PDFViewMode = 'customer' | 'internal';
