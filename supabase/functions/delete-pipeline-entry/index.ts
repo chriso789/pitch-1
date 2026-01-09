@@ -27,20 +27,23 @@ serve(async (req) => {
       });
     }
 
-    // Get user's profile and role
+    // Get user's profile and role - use active_tenant_id if set (for company switching)
     const { data: profile, error: profileError } = await supabase
       .from('profiles')
-      .select('tenant_id, role, first_name, last_name')
+      .select('tenant_id, active_tenant_id, role, first_name, last_name')
       .eq('id', user.id)
       .single();
 
-    if (profileError || !profile?.tenant_id) {
+    if (profileError || (!profile?.tenant_id && !profile?.active_tenant_id)) {
       console.error('Profile error:', profileError);
       return new Response(JSON.stringify({ error: 'No tenant found' }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    // Use active tenant if set (company switching), otherwise fall back to home tenant
+    const activeTenantId = profile.active_tenant_id || profile.tenant_id;
 
     // Check if user has manager permissions (manager, admin, or master)
     const isManager = ['manager', 'admin', 'master'].includes(profile.role);
@@ -67,12 +70,12 @@ serve(async (req) => {
 
     console.log(`Soft deleting pipeline entry: ${entryId} by user: ${user.id} (${profile.first_name} ${profile.last_name})`);
 
-    // Verify the entry exists and belongs to the same tenant
+    // Verify the entry exists and belongs to the active tenant
     const { data: existingEntry, error: checkError } = await supabase
       .from('pipeline_entries')
       .select('id, tenant_id, contact_id, status, clj_formatted_number')
       .eq('id', entryId)
-      .eq('tenant_id', profile.tenant_id)
+      .eq('tenant_id', activeTenantId)
       .single();
 
     if (checkError || !existingEntry) {
@@ -114,7 +117,7 @@ serve(async (req) => {
         activity_type: 'status_change',
         description: `Job deleted by ${profile.first_name} ${profile.last_name}`,
         performed_by: user.id,
-        tenant_id: profile.tenant_id,
+        tenant_id: activeTenantId,
         metadata: {
           action: 'soft_delete',
           previous_status: existingEntry.status,
