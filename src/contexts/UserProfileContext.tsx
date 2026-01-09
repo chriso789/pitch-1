@@ -109,8 +109,16 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
     // Use cached title, then session storage, then empty string
     const effectiveTitle = cached?.title || sessionTitle || '';
     
-    // If we have valid cached data with role, mark as loaded immediately
+    // CRITICAL: Never use user.id as tenant fallback - it's not a valid tenant ID
+    // Only use actual tenant_id from metadata or cache
+    const metadataTenantId = user.user_metadata?.tenant_id;
+    const metadataActiveTenantId = user.user_metadata?.active_tenant_id || metadataTenantId;
+    const effectiveTenantId = cached?.tenant_id || metadataTenantId || '';
+    const effectiveActiveTenantId = cached?.active_tenant_id || metadataActiveTenantId || '';
+    
+    // Must have both role AND valid tenant to be considered loaded
     const hasValidCache = !!(effectiveRole && (cached?.first_name || user.user_metadata?.first_name));
+    const hasValidTenant = !!effectiveTenantId;
     
     return {
       id: user.id,
@@ -118,11 +126,11 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
       first_name: cached?.first_name || user.user_metadata?.first_name || user.email?.split('@')[0] || 'User',
       last_name: cached?.last_name || user.user_metadata?.last_name || '',
       company_name: user.user_metadata?.company_name,
-      role: effectiveRole, // Use cached role or session storage, never fallback to 'user' - wait for DB
-      tenant_id: user.user_metadata?.tenant_id || user.id,
-      active_tenant_id: user.user_metadata?.active_tenant_id || user.user_metadata?.tenant_id || user.id,
-      title: effectiveTitle, // Use cached title from session storage
-      profileLoaded: hasValidCache, // Mark loaded if we have valid cached data
+      role: effectiveRole,
+      tenant_id: effectiveTenantId, // Never fallback to user.id
+      active_tenant_id: effectiveActiveTenantId, // Never fallback to user.id
+      title: effectiveTitle,
+      profileLoaded: hasValidCache && hasValidTenant, // Must have valid tenant too
     };
   }, []);
 
