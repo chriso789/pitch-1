@@ -21,6 +21,7 @@ import {
   RefreshCw
 } from "lucide-react";
 import { loadPDFFromArrayBuffer, renderPageToDataUrl, isPDF, clearPageCache, type PDFDocumentProxy } from "@/lib/pdfRenderer";
+import { resolveStorageBucket } from "@/lib/documents/resolveStorageBucket";
 
 interface TagPlacement {
   id?: string;
@@ -41,6 +42,7 @@ interface DocumentTagEditorProps {
     filename: string;
     file_path: string;
     mime_type?: string;
+    document_type?: string;
   };
   onClose: () => void;
   onSave: () => void;
@@ -132,6 +134,12 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
   useEffect(() => {
     const loadDocumentData = async () => {
       setLoading(true);
+      setPdfError(null);
+      
+      // Determine the correct storage bucket
+      const bucket = resolveStorageBucket(document.document_type, document.file_path);
+      console.log(`[TagEditor] Loading from bucket: ${bucket}, path: ${document.file_path}`);
+      
       try {
         // Check if it's a PDF
         const isPdfDoc = isPDF(document.mime_type, document.filename);
@@ -140,18 +148,22 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
         if (isPdfDoc) {
           // Download PDF as blob to bypass CORS issues
           const { data: blobData, error: downloadError } = await supabase.storage
-            .from("smartdoc-assets")
+            .from(bucket)
             .download(document.file_path);
 
-          if (downloadError) throw downloadError;
+          if (downloadError) {
+            console.error("❌ Failed to download PDF:", downloadError);
+            throw downloadError;
+          }
 
+          console.log("✅ PDF downloaded, size:", blobData.size);
           // Convert blob to ArrayBuffer
           const arrayBuffer = await blobData.arrayBuffer();
           setPdfArrayBuffer(arrayBuffer);
         } else {
           // For images, use signed URL
           const { data: urlData, error: urlError } = await supabase.storage
-            .from("smartdoc-assets")
+            .from(bucket)
             .createSignedUrl(document.file_path, 3600);
 
           if (urlError) throw urlError;

@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Download, X, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, FileText, Loader2 } from 'lucide-react';
+import { Download, X, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, FileText, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { resolveStorageBucket } from '@/lib/documents/resolveStorageBucket';
 
 interface Document {
   id: string;
   filename: string;
   file_path: string;
   mime_type: string | null;
+  document_type?: string | null;
 }
 
 interface DocumentPreviewModalProps {
@@ -29,6 +31,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [textContent, setTextContent] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
   const [currentIndex, setCurrentIndex] = useState(0);
 
@@ -45,12 +48,14 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     if (!currentDoc || !isOpen) {
       setPreviewUrl(null);
       setTextContent(null);
+      setLoadError(null);
       return;
     }
 
     const loadPreview = async () => {
       setLoading(true);
       setTextContent(null);
+      setLoadError(null);
       setZoom(1);
 
       const isExternal = currentDoc.file_path.startsWith('http') || currentDoc.file_path.startsWith('data:');
@@ -61,9 +66,13 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         return;
       }
 
+      // Determine the correct storage bucket
+      const bucket = resolveStorageBucket(currentDoc.document_type, currentDoc.file_path);
+      console.log(`[Preview] Loading from bucket: ${bucket}, path: ${currentDoc.file_path}`);
+
       try {
         const { data, error } = await supabase.storage
-          .from('documents')
+          .from(bucket)
           .download(currentDoc.file_path);
 
         if (error) throw error;
@@ -82,6 +91,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         }
       } catch (error) {
         console.error('Error loading preview:', error);
+        setLoadError(error instanceof Error ? error.message : 'Failed to load document');
         setPreviewUrl(null);
       } finally {
         setLoading(false);
@@ -96,6 +106,16 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
       }
     };
   }, [currentDoc, isOpen]);
+
+  // Open document in new tab using signed URL
+  const openInNewTab = async () => {
+    if (!currentDoc) return;
+    const bucket = resolveStorageBucket(currentDoc.document_type, currentDoc.file_path);
+    const { data } = await supabase.storage.from(bucket).createSignedUrl(currentDoc.file_path, 3600);
+    if (data?.signedUrl) {
+      window.open(data.signedUrl, '_blank');
+    }
+  };
 
   const getPreviewType = (): 'image' | 'pdf' | 'text' | 'unsupported' => {
     if (!currentDoc) return 'unsupported';
@@ -162,6 +182,15 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
           {loading ? (
             <div className="absolute inset-0 flex items-center justify-center">
               <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+            </div>
+          ) : loadError ? (
+            <div className="flex flex-col items-center justify-center min-h-[300px] gap-4">
+              <AlertCircle className="h-16 w-16 text-destructive" />
+              <p className="text-muted-foreground text-center max-w-md">{loadError}</p>
+              <Button onClick={openInNewTab} variant="outline">
+                <ExternalLink className="h-4 w-4 mr-2" />
+                Open in new tab
+              </Button>
             </div>
           ) : previewType === 'image' && previewUrl ? (
             <div className="flex items-center justify-center min-h-[400px] p-4 overflow-auto">

@@ -104,10 +104,17 @@ serve(async (req) => {
 
     console.log(`[delete-documents] User ${user.id} requesting to delete ${document_ids.length} docs, mode: ${mode}, dry_run: ${dry_run}`);
 
+    // Helper to resolve storage bucket based on document properties
+    function resolveStorageBucket(documentType?: string | null, filePath?: string | null): string {
+      if (documentType === 'company_resource') return 'smartdoc-assets';
+      if (filePath?.startsWith('company-docs/')) return 'smartdoc-assets';
+      return 'documents';
+    }
+
     // Step 1: Fetch documents and verify they belong to the caller's tenant
     const { data: documents, error: docsError } = await adminClient
       .from("documents")
-      .select("id, file_path, tenant_id, filename")
+      .select("id, file_path, tenant_id, filename, document_type")
       .in("id", document_ids);
 
     if (docsError) {
@@ -263,13 +270,13 @@ serve(async (req) => {
     // Step 5: Storage cleanup - only delete files that are no longer referenced
     // Get all file paths from deleted docs (excluding external URLs)
     const deletedFilePaths = docsToDelete
-      .map(d => d.file_path)
-      .filter(p => !p.startsWith("http://") && !p.startsWith("https://") && !p.startsWith("data:"));
+      .map(d => ({ path: d.file_path, documentType: d.document_type }))
+      .filter(d => !d.path.startsWith("http://") && !d.path.startsWith("https://") && !d.path.startsWith("data:"));
 
     // Check if any remaining documents reference the same file paths
-    const uniquePaths = [...new Set(deletedFilePaths)];
+    const uniquePaths = [...new Map(deletedFilePaths.map(d => [d.path, d])).values()];
     
-    for (const path of uniquePaths) {
+    for (const { path, documentType } of uniquePaths) {
       // Count remaining documents with this path
       const { count: remainingCount, error: countError } = await adminClient
         .from("documents")
@@ -283,9 +290,13 @@ serve(async (req) => {
       }
 
       if ((remainingCount || 0) === 0) {
+        // Determine which bucket to delete from
+        const bucket = resolveStorageBucket(documentType, path);
+        console.log(`[delete-documents] Deleting from bucket "${bucket}": ${path}`);
+        
         // Safe to delete from storage
         const { error: storageError } = await adminClient.storage
-          .from("documents")
+          .from(bucket)
           .remove([path]);
 
         if (storageError) {
