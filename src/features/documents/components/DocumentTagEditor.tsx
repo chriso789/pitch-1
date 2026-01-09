@@ -109,6 +109,17 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
   const [isDocumentPdf, setIsDocumentPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
   
+  // Helper to check if canvas is valid (not disposed)
+  const isCanvasValid = (canvas: FabricCanvas | null): boolean => {
+    if (!canvas) return false;
+    try {
+      // If lowerCanvasEl is missing, canvas was disposed
+      return !!(canvas as any).lowerCanvasEl;
+    } catch {
+      return false;
+    }
+  };
+  
   // Callback ref for canvas - ensures Fabric initializes when DOM is ready
   const canvasRef = useCallback((node: HTMLCanvasElement | null) => {
     if (node && !fabricCanvas) {
@@ -156,8 +167,8 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
     loadTenantId();
   }, []);
 
-  // PDF ArrayBuffer state for blob-based loading
-  const [pdfArrayBuffer, setPdfArrayBuffer] = useState<ArrayBuffer | null>(null);
+  // PDF Blob state - we store the blob and create fresh ArrayBuffer each time
+  const [pdfBlob, setPdfBlob] = useState<Blob | null>(null);
 
   // Load document and existing placements
   useEffect(() => {
@@ -186,9 +197,8 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
           }
 
           console.log("✅ PDF downloaded, size:", blobData.size);
-          // Convert blob to ArrayBuffer
-          const arrayBuffer = await blobData.arrayBuffer();
-          setPdfArrayBuffer(arrayBuffer);
+          // Store blob - we'll create fresh ArrayBuffer when loading
+          setPdfBlob(blobData);
         } else {
           // For images, use signed URL
           const { data: urlData, error: urlError } = await supabase.storage
@@ -241,23 +251,32 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
   useEffect(() => {
     return () => {
       if (fabricCanvas) {
+        setCanvasReady(false);
         fabricCanvas.dispose();
+        setFabricCanvas(null);
       }
     };
   }, [fabricCanvas]);
 
-  // Load PDF from ArrayBuffer when canvas is ready
+  // Load PDF from Blob when canvas is ready
   useEffect(() => {
-    if (!pdfArrayBuffer || !fabricCanvas || !isDocumentPdf || !canvasReady) return;
+    if (!pdfBlob || !fabricCanvas || !isDocumentPdf || !canvasReady) return;
+    if (!isCanvasValid(fabricCanvas)) {
+      console.warn("[TagEditor] Canvas not valid, skipping PDF load");
+      return;
+    }
 
     const loadPdfContent = async () => {
       setPageRendering(true);
       setPdfError(null);
-      console.log("📄 Starting PDF load, ArrayBuffer size:", pdfArrayBuffer.byteLength);
       
       try {
+        // Create fresh ArrayBuffer from blob each time (avoids detached buffer issue)
+        const arrayBuffer = await pdfBlob.arrayBuffer();
+        console.log("📄 Starting PDF load, ArrayBuffer size:", arrayBuffer.byteLength);
+        
         // Load PDF from ArrayBuffer (bypasses CORS)
-        const pdf = await loadPDFFromArrayBuffer(pdfArrayBuffer);
+        const pdf = await loadPDFFromArrayBuffer(arrayBuffer);
         console.log("✅ PDF loaded successfully, pages:", pdf.numPages);
         setPdfDocument(pdf);
         setTotalPages(pdf.numPages);
@@ -276,7 +295,7 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
     };
 
     loadPdfContent();
-  }, [pdfArrayBuffer, fabricCanvas, isDocumentPdf, canvasReady]);
+  }, [pdfBlob, fabricCanvas, isDocumentPdf, canvasReady]);
 
   // Load image when URL is available and canvas is ready
   useEffect(() => {
@@ -300,7 +319,10 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
 
   // Render PDF page to canvas
   const renderPdfPage = async (pdf: PDFDocumentProxy, pageNum: number) => {
-    if (!fabricCanvas) return;
+    if (!fabricCanvas || !isCanvasValid(fabricCanvas)) {
+      console.warn("[TagEditor] Canvas not valid, skipping page render");
+      return;
+    }
     
     setPageRendering(true);
     setPdfError(null);
@@ -777,18 +799,21 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
                 <div className="flex gap-2 justify-center">
                   <Button 
                     variant="outline" 
-                    onClick={() => {
+                    onClick={async () => {
                       setPdfError(null);
-                      if (pdfArrayBuffer && fabricCanvas) {
+                      if (pdfBlob && isCanvasValid(fabricCanvas)) {
                         setPageRendering(true);
-                        loadPDFFromArrayBuffer(pdfArrayBuffer).then(pdf => {
+                        try {
+                          // Create fresh ArrayBuffer from blob
+                          const freshBuffer = await pdfBlob.arrayBuffer();
+                          const pdf = await loadPDFFromArrayBuffer(freshBuffer);
                           setPdfDocument(pdf);
                           setTotalPages(pdf.numPages);
-                          renderPdfPage(pdf, 1);
-                        }).catch(e => {
+                          await renderPdfPage(pdf, 1);
+                        } catch (e) {
                           setPdfError(`Retry failed: ${e instanceof Error ? e.message : 'Unknown error'}`);
                           setPageRendering(false);
-                        });
+                        }
                       }
                     }}
                   >
