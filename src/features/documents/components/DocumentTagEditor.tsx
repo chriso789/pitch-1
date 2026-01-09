@@ -90,8 +90,8 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
   onClose,
   onSave,
 }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
+  const [canvasReady, setCanvasReady] = useState(false);
   const [documentUrl, setDocumentUrl] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -108,6 +108,35 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
   const [pageRendering, setPageRendering] = useState(false);
   const [isDocumentPdf, setIsDocumentPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  
+  // Callback ref for canvas - ensures Fabric initializes when DOM is ready
+  const canvasRef = useCallback((node: HTMLCanvasElement | null) => {
+    if (node && !fabricCanvas) {
+      console.log("[TagEditor] Canvas node mounted, initializing Fabric...");
+      const canvas = new FabricCanvas(node, {
+        width: 800,
+        height: 1000,
+        backgroundColor: "#f5f5f5",
+      });
+
+      // Selection events
+      canvas.on("selection:created", (e) => {
+        setSelectedObject(e.selected?.[0] || null);
+      });
+
+      canvas.on("selection:updated", (e) => {
+        setSelectedObject(e.selected?.[0] || null);
+      });
+
+      canvas.on("selection:cleared", () => {
+        setSelectedObject(null);
+      });
+
+      setFabricCanvas(canvas);
+      setCanvasReady(true);
+      console.log("[TagEditor] ✅ Fabric canvas initialized");
+    }
+  }, [fabricCanvas]);
 
   // Load tenant ID
   useEffect(() => {
@@ -208,39 +237,18 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
     };
   }, [document]);
 
-  // Initialize Fabric canvas
+  // Cleanup Fabric canvas on unmount
   useEffect(() => {
-    if (!canvasRef.current) return;
-
-    const canvas = new FabricCanvas(canvasRef.current, {
-      width: 800,
-      height: 1000,
-      backgroundColor: "#f5f5f5",
-    });
-
-    setFabricCanvas(canvas);
-
-    // Selection events
-    canvas.on("selection:created", (e) => {
-      setSelectedObject(e.selected?.[0] || null);
-    });
-
-    canvas.on("selection:updated", (e) => {
-      setSelectedObject(e.selected?.[0] || null);
-    });
-
-    canvas.on("selection:cleared", () => {
-      setSelectedObject(null);
-    });
-
     return () => {
-      canvas.dispose();
+      if (fabricCanvas) {
+        fabricCanvas.dispose();
+      }
     };
-  }, []);
+  }, [fabricCanvas]);
 
-  // Load PDF from ArrayBuffer when available
+  // Load PDF from ArrayBuffer when canvas is ready
   useEffect(() => {
-    if (!pdfArrayBuffer || !fabricCanvas || !isDocumentPdf) return;
+    if (!pdfArrayBuffer || !fabricCanvas || !isDocumentPdf || !canvasReady) return;
 
     const loadPdfContent = async () => {
       setPageRendering(true);
@@ -268,11 +276,11 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
     };
 
     loadPdfContent();
-  }, [pdfArrayBuffer, fabricCanvas, isDocumentPdf]);
+  }, [pdfArrayBuffer, fabricCanvas, isDocumentPdf, canvasReady]);
 
-  // Load image when URL is available
+  // Load image when URL is available and canvas is ready
   useEffect(() => {
-    if (!documentUrl || !fabricCanvas || isDocumentPdf) return;
+    if (!documentUrl || !fabricCanvas || isDocumentPdf || !canvasReady) return;
 
     const loadImageContent = async () => {
       setPageRendering(true);
@@ -288,7 +296,7 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
     };
 
     loadImageContent();
-  }, [documentUrl, fabricCanvas, isDocumentPdf]);
+  }, [documentUrl, fabricCanvas, isDocumentPdf, canvasReady]);
 
   // Render PDF page to canvas
   const renderPdfPage = async (pdf: PDFDocumentProxy, pageNum: number) => {
@@ -618,16 +626,8 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
     return acc;
   }, {} as Record<string, typeof SMART_TAG_CATEGORIES.Contact>);
 
-  if (loading) {
-    return (
-      <div className="fixed inset-0 bg-background z-50 flex items-center justify-center">
-        <div className="flex flex-col items-center gap-3">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Loading document...</p>
-        </div>
-      </div>
-    );
-  }
+  // Show loading overlay in the canvas area instead of early return
+  // This ensures the canvas element always mounts so Fabric can initialize
 
   return (
     <div className="fixed inset-0 bg-background z-50 flex flex-col">
@@ -755,9 +755,15 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
 
         {/* Canvas area */}
         <div className="flex-1 overflow-auto bg-muted/30 p-8 relative">
-          {pageRendering && (
+          {/* Loading overlay - shown while downloading document or rendering page */}
+          {(loading || pageRendering) && (
             <div className="absolute inset-0 bg-background/50 flex items-center justify-center z-10">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <div className="flex flex-col items-center gap-3">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+                <p className="text-sm text-muted-foreground">
+                  {loading ? "Loading document..." : "Rendering page..."}
+                </p>
+              </div>
             </div>
           )}
           
