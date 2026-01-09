@@ -86,6 +86,19 @@ export function useCrewJob(jobId: string | null) {
         isLocked: a.is_locked,
         lockReason: a.lock_reason,
         createdAt: a.created_at,
+        photoProgress: {
+          current: a.photo_uploaded_total || 0,
+          required: a.photo_required_total || 0,
+        },
+        checklistProgress: {
+          current: a.checklist_checked_items || 0,
+          required: a.checklist_required_items || 0,
+        },
+        docsValid: a.docs_valid ?? true,
+        photosComplete: a.photos_complete ?? false,
+        checklistComplete: a.checklist_complete ?? false,
+        canComplete: a.can_complete ?? false,
+        blockedReason: a.blocked_reason || null,
       };
 
       setJob(assignment);
