@@ -104,13 +104,12 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
     const sessionRole = getSessionRole();
     const sessionTitle = getSessionTitle();
     
-  // Use cached role, then session storage, then user_metadata, then empty string
-  const effectiveRole = cached?.role || sessionRole || user.user_metadata?.role || '';
-  // Use cached title, then session storage, then user_metadata, then empty string
-  const effectiveTitle = cached?.title || sessionTitle || user.user_metadata?.title || '';
+    // Use cached role, then session storage, then user_metadata, then empty string
+    const effectiveRole = cached?.role || sessionRole || user.user_metadata?.role || '';
+    // Use cached title, then session storage, then user_metadata, then empty string
+    const effectiveTitle = cached?.title || sessionTitle || user.user_metadata?.title || '';
     
     // CRITICAL: Never use user.id as tenant fallback - it's not a valid tenant ID
-    // Only use actual tenant_id from metadata or cache
     const metadataTenantId = user.user_metadata?.tenant_id;
     const metadataActiveTenantId = user.user_metadata?.active_tenant_id || metadataTenantId;
     const effectiveTenantId = cached?.tenant_id || metadataTenantId || '';
@@ -127,113 +126,136 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
       last_name: cached?.last_name || user.user_metadata?.last_name || '',
       company_name: user.user_metadata?.company_name,
       role: effectiveRole,
-      tenant_id: effectiveTenantId, // Never fallback to user.id
-      active_tenant_id: effectiveActiveTenantId, // Never fallback to user.id
+      tenant_id: effectiveTenantId,
+      active_tenant_id: effectiveActiveTenantId,
       title: effectiveTitle,
-      profileLoaded: hasValidCache && hasValidTenant, // Must have valid tenant too
+      profileLoaded: hasValidCache && hasValidTenant,
     };
   }, []);
 
-  // Fetch full profile from database (parallel queries)
-  const fetchFullProfile = useCallback(async (userId: string, retryCount = 0) => {
+  // FAST PATH: Single RPC call to get everything
+  const fetchWithBootstrap = useCallback(async (userId: string): Promise<boolean> => {
+    try {
+      console.log('[UserProfile] Trying fast bootstrap for:', userId);
+      
+      // @ts-ignore - RPC function not yet in generated types
+      const { data, error: rpcError } = await supabase.rpc('get_workspace_bootstrap');
+      
+      if (rpcError) {
+        console.warn('[UserProfile] Bootstrap RPC error:', rpcError.message);
+        return false;
+      }
+      
+      const result = data as any;
+      
+      if (!result?.success || !result?.tenant_id || !result?.role) {
+        console.warn('[UserProfile] Bootstrap returned incomplete data:', result?.error || 'missing fields');
+        return false;
+      }
+      
+      // Store role and title in session storage as backup
+      setSessionRole(result.role);
+      if (result.title) {
+        setSessionTitle(result.title);
+      }
+      
+      console.log('[UserProfile] Bootstrap success - role:', result.role, 'tenant:', result.tenant_id);
+      
+      setProfile({
+        id: result.id,
+        email: result.email || '',
+        first_name: result.first_name || '',
+        last_name: result.last_name || '',
+        company_name: result.company_name,
+        role: result.role,
+        tenant_id: result.tenant_id,
+        active_tenant_id: result.active_tenant_id || result.tenant_id,
+        phone: result.phone,
+        title: result.title,
+        is_developer: result.is_developer,
+        profileLoaded: true,
+      });
+      
+      clearCachedUserProfile();
+      fetchedUserIdRef.current = userId;
+      setLoading(false);
+      setError(null);
+      return true;
+    } catch (err) {
+      console.warn('[UserProfile] Bootstrap exception:', err);
+      return false;
+    }
+  }, []);
+
+  // FALLBACK: Parallel REST queries (only if bootstrap fails)
+  const fetchWithRest = useCallback(async (userId: string) => {
+    console.log('[UserProfile] Fallback to REST queries for:', userId);
+    
+    const [profileResult, roleResult] = await Promise.all([
+      supabase.from('profiles').select('*').eq('id', userId).single(),
+      supabase.from('user_roles').select('role').eq('user_id', userId).order('role', { ascending: true }).limit(1).maybeSingle()
+    ]);
+
+    const dbProfile = profileResult.data;
+    const dbRole = roleResult.data?.role || '';
+
+    if (!dbProfile || !dbRole || !dbProfile.tenant_id) {
+      console.error('[UserProfile] REST fallback failed - profile:', !!dbProfile, 'role:', dbRole, 'tenant:', dbProfile?.tenant_id);
+      setError(new Error('Could not load workspace data'));
+      setLoading(false);
+      return;
+    }
+
+    // Store role and title in session storage as backup
+    setSessionRole(dbRole);
+    if (dbProfile.title) {
+      setSessionTitle(dbProfile.title);
+    }
+    
+    console.log('[UserProfile] REST success - role:', dbRole, 'tenant:', dbProfile.tenant_id);
+    
+    setProfile({
+      id: userId,
+      email: dbProfile.email || '',
+      first_name: dbProfile.first_name || '',
+      last_name: dbProfile.last_name || '',
+      company_name: dbProfile.company_name,
+      role: dbRole,
+      tenant_id: dbProfile.tenant_id,
+      active_tenant_id: dbProfile.active_tenant_id || dbProfile.tenant_id,
+      phone: dbProfile.phone,
+      title: dbProfile.title,
+      is_developer: dbProfile.is_developer,
+      profileLoaded: true,
+    });
+    
+    clearCachedUserProfile();
+    fetchedUserIdRef.current = userId;
+    setLoading(false);
+    setError(null);
+  }, []);
+
+  // Main fetch function - tries bootstrap first, then REST fallback
+  const fetchFullProfile = useCallback(async (userId: string) => {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
 
     try {
-      console.log('[UserProfile] Fetching full profile for:', userId);
+      // Try fast path first
+      const bootstrapSuccess = await fetchWithBootstrap(userId);
       
-      // Parallel fetch: profiles + user_roles
-      const [profileResult, roleResult] = await Promise.all([
-        supabase
-          .from('profiles')
-          .select('*')
-          .eq('id', userId)
-          .single(),
-        supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', userId)
-          .order('role', { ascending: true })
-          .limit(1)
-          .maybeSingle()
-      ]);
-
-      if (profileResult.error) {
-        console.warn('[UserProfile] Profile fetch error:', profileResult.error.message);
+      if (!bootstrapSuccess) {
+        // Fall back to REST queries
+        await fetchWithRest(userId);
       }
-
-      const dbProfile = profileResult.data;
-      const dbRole = roleResult.data?.role || '';
-
-      // CRITICAL: We must have both profile AND role from user_roles
-      if (!dbProfile || !dbRole) {
-        console.warn('[UserProfile] Missing data - profile:', !!dbProfile, 'role:', dbRole);
-        
-        // Retry up to 3 times with backoff
-        if (retryCount < 3) {
-          isFetchingRef.current = false;
-          const delay = Math.pow(2, retryCount) * 500; // 500ms, 1s, 2s
-          console.log(`[UserProfile] Retrying in ${delay}ms (attempt ${retryCount + 1}/3)`);
-          setTimeout(() => fetchFullProfile(userId, retryCount + 1), delay);
-          return;
-        }
-        
-        // After retries, set what we have but mark as incomplete
-        if (dbProfile) {
-          setProfile({
-            id: userId,
-            email: dbProfile.email || '',
-            first_name: dbProfile.first_name || '',
-            last_name: dbProfile.last_name || '',
-            company_name: dbProfile.company_name,
-            role: dbRole || 'user', // Fallback only after all retries
-            tenant_id: dbProfile.tenant_id || '',
-            active_tenant_id: dbProfile.active_tenant_id || dbProfile.tenant_id || '',
-            phone: dbProfile.phone,
-            title: dbProfile.title,
-            is_developer: dbProfile.is_developer,
-            profileLoaded: !!(dbProfile.tenant_id && dbRole),
-          });
-        }
-        setLoading(false);
-        isFetchingRef.current = false;
-        return;
-      }
-
-      // Store role and title in session storage as backup
-      setSessionRole(dbRole);
-      if (dbProfile.title) {
-        setSessionTitle(dbProfile.title);
-      }
-      
-      console.log('[UserProfile] Profile loaded successfully - role:', dbRole, 'tenant:', dbProfile.tenant_id);
-      
-      setProfile({
-        id: userId,
-        email: dbProfile.email || '',
-        first_name: dbProfile.first_name || '',
-        last_name: dbProfile.last_name || '',
-        company_name: dbProfile.company_name,
-        role: dbRole,
-        tenant_id: dbProfile.tenant_id,
-        active_tenant_id: dbProfile.active_tenant_id || dbProfile.tenant_id,
-        phone: dbProfile.phone,
-        title: dbProfile.title,
-        is_developer: dbProfile.is_developer,
-        profileLoaded: true,
-      });
-      
-      // Only clear cache after we have valid profile with role
-      clearCachedUserProfile();
-      fetchedUserIdRef.current = userId;
     } catch (err) {
       console.error('[UserProfile] Error fetching profile:', err);
       setError(err as Error);
+      setLoading(false);
     } finally {
       isFetchingRef.current = false;
-      setLoading(false);
     }
-  }, []);
+  }, [fetchWithBootstrap, fetchWithRest]);
 
   // Effect: Set instant profile immediately when auth user is available
   useEffect(() => {
@@ -251,12 +273,11 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
     setProfile(instantProfile);
     
     // Only mark as not loading if we have a valid cached role
-    // Otherwise, keep loading until full profile is fetched
     if (instantProfile.profileLoaded && instantProfile.role) {
       setLoading(false);
     }
 
-    // Fetch full profile in background (parallel)
+    // Fetch full profile (fast bootstrap first)
     if (fetchedUserIdRef.current !== authUser.id) {
       fetchFullProfile(authUser.id);
     }
@@ -265,6 +286,8 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
   const refetch = useCallback(async () => {
     if (authUser) {
       fetchedUserIdRef.current = null;
+      isFetchingRef.current = false;
+      setError(null);
       await fetchFullProfile(authUser.id);
     }
   }, [authUser, fetchFullProfile]);

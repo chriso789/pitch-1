@@ -25,16 +25,16 @@ export const useCompanySwitcher = () => {
   const { data: companiesData, isLoading: loading, refetch } = useQuery({
     queryKey: ['accessible-companies'],
     queryFn: async () => {
-      // Parallel execution of both calls
-      const [tenantsResult, userResult] = await Promise.all([
+      // Parallel fetch: accessible tenants + active tenant ID via RPC
+      const [tenantsResult, activeTenantResult] = await Promise.all([
         supabase.rpc('get_user_accessible_tenants'),
-        supabase.auth.getUser()
+        // @ts-ignore - RPC function not yet in generated types
+        supabase.rpc('get_user_active_tenant_id')
       ]);
       
       if (tenantsResult.error) throw tenantsResult.error;
       
       const baseCompanies = (tenantsResult.data as AccessibleCompany[]) || [];
-      const user = userResult.data?.user;
       
       // Fetch logo_url for each company from tenants table
       const companyIds = baseCompanies.map(c => c.tenant_id);
@@ -49,22 +49,13 @@ export const useCompanySwitcher = () => {
         logo_url: tenantsData?.find(t => t.id === c.tenant_id)?.logo_url || null
       }));
       
-      // Get active tenant from profile
-      let activeTenantId: string | null = null;
+      // Get active tenant from RPC (faster, no RLS overhead)
+      let activeTenantId: string | null = activeTenantResult.data as string | null;
       
-      if (user) {
-        // Get from profile's active_tenant_id (switched) or tenant_id (primary fallback)
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('active_tenant_id, tenant_id')
-          .eq('id', user.id)
-          .single();
-        activeTenantId = profile?.active_tenant_id || profile?.tenant_id || null;
-        
-        // If no tenant_id in profile and companies available, use first one
-        if (!activeTenantId && companies.length > 0) {
-          activeTenantId = companies[0]?.tenant_id || null;
-        }
+      // Fallback: if no active tenant, use primary or first company
+      if (!activeTenantId && companies.length > 0) {
+        const primary = companies.find(c => c.is_primary);
+        activeTenantId = primary?.tenant_id || companies[0]?.tenant_id || null;
       }
       
       return { companies, activeTenantId };

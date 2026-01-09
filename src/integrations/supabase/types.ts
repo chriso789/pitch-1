@@ -28169,6 +28169,7 @@ export type Database = {
           tid: string
         }[]
       }
+      get_workspace_bootstrap: { Args: never; Returns: Json }
       gettransactionid: { Args: never; Returns: unknown }
       has_high_level_role: { Args: { p_user_id: string }; Returns: boolean }
       has_manager_role: { Args: { p_user_id: string }; Returns: boolean }
