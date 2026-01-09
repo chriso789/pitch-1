@@ -258,13 +258,42 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
   // Cancel edit mode
   const handleCancelEdit = () => {
+    // Immediately clear URL parameter to prevent re-trigger
+    const newParams = new URLSearchParams(searchParams);
+    newParams.delete('editEstimate');
+    const newUrl = `${window.location.pathname}?${newParams.toString()}`;
+    window.history.replaceState({}, '', newUrl);
+    
+    // Reset all editing states
     setExistingEstimateId(null);
     setEditingEstimateNumber(null);
     setEditEstimateProcessed(false);
     setIsEditingLoadedEstimate(false);
     setSelectedTemplateId('');
     setLineItems([]);
-    resetToOriginal();
+    setPdfOptions(getDefaultOptions('customer'));
+    
+    // Reset pricing config to defaults
+    setConfig({
+      overheadPercent: 15,
+      profitMarginPercent: 30,
+      repCommissionPercent: 5,
+    });
+    
+    toast({
+      title: 'Edit Mode Cancelled',
+      description: 'All changes discarded. Ready to create a new estimate.'
+    });
+  };
+  
+  // Delete a line item from the estimate
+  const handleDeleteLineItem = (itemId: string) => {
+    const updatedItems = lineItems.filter(item => item.id !== itemId);
+    setLineItems(updatedItems);
+    toast({
+      title: 'Item Removed',
+      description: 'Line item deleted from estimate'
+    });
   };
 
   // Fetch company info and estimate settings
@@ -1269,6 +1298,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
               materialsTotal={breakdown.materialsTotal}
               laborTotal={breakdown.laborTotal}
               onUpdateItem={updateLineItem}
+              onDeleteItem={handleDeleteLineItem}
               onResetItem={handleResetItem}
               editable={true}
             />
