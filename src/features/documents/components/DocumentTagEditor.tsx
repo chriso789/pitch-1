@@ -339,10 +339,10 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
         imgEl.src = rendered.dataUrl;
       });
       
-      // Set as background
-      fabricCanvas.backgroundImage = img;
-      fabricCanvas.renderAll();
-      console.log(`✅ Page ${pageNum} displayed on canvas`);
+      // Set as background using proper Fabric.js 6.x method
+      await fabricCanvas.set('backgroundImage', img);
+      fabricCanvas.requestRenderAll();
+      console.log(`✅ Page ${pageNum} displayed on canvas, dimensions: ${fabricCanvas.width}x${fabricCanvas.height}`);
       
       // Save current page tags before switching
       if (existingTags.length > 0) {
@@ -386,8 +386,8 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
         try {
           const fabricImg = await FabricImage.fromURL(url, { crossOrigin: "anonymous" });
           fabricImg.scaleToWidth(img.width * scale);
-          fabricCanvas.backgroundImage = fabricImg;
-          fabricCanvas.renderAll();
+          await fabricCanvas.set('backgroundImage', fabricImg);
+          fabricCanvas.requestRenderAll();
           
           // Load tags for page 1
           const pagePlacements = allPlacements.filter(p => p.page_number === 1);
