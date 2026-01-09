@@ -175,6 +175,51 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams, editEstimateProcessed, existingEstimateId]);
 
+  // Auto-load line items when a selected estimate exists (view mode)
+  useEffect(() => {
+    const loadSelectedEstimateLineItems = async () => {
+      // Skip if already editing or line items exist
+      if (isEditingLoadedEstimate || existingEstimateId || lineItems.length > 0) return;
+      
+      try {
+        // Check if pipeline entry has a selected estimate
+        const { data: pipelineData } = await supabaseClient
+          .from('pipeline_entries')
+          .select('metadata')
+          .eq('id', pipelineEntryId)
+          .single();
+        
+        const metadata = pipelineData?.metadata as any;
+        const selectedEstimateId = metadata?.selected_estimate_id;
+        if (!selectedEstimateId) return;
+        
+        // Load the estimate's line items for view mode
+        const { data: estimate } = await supabaseClient
+          .from('enhanced_estimates')
+          .select('*')
+          .eq('id', selectedEstimateId)
+          .single();
+        
+        if (estimate?.line_items) {
+          const lineItemsData = estimate.line_items as any;
+          const materials = (lineItemsData.materials || []).map((item: any) => ({ ...item, item_type: 'material' as const }));
+          const labor = (lineItemsData.labor || []).map((item: any) => ({ ...item, item_type: 'labor' as const }));
+          
+          if (materials.length > 0 || labor.length > 0) {
+            setLineItems([...materials, ...labor]);
+            if (estimate.template_id) setSelectedTemplateId(estimate.template_id);
+            setIsEditingLoadedEstimate(true); // Prevent recalculation
+          }
+        }
+      } catch (err) {
+        console.error('Error loading selected estimate line items:', err);
+      }
+    };
+    
+    loadSelectedEstimateLineItems();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pipelineEntryId]);
+
   // Load an existing estimate for editing
   const loadEstimateForEditing = async (estimateId: string) => {
     setLoading(true);
