@@ -63,15 +63,24 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
         .maybeSingle();
 
       if (!existingProfile) {
+        const tenantId = user.user_metadata?.tenant_id as string | undefined;
+        const activeTenantId = (user.user_metadata?.active_tenant_id as string | undefined) || tenantId;
+
+        // CRITICAL: never fall back to user.id for tenant_id (not a tenant)
+        if (!tenantId) {
+          console.warn('[Login] Missing tenant_id in user_metadata; cannot auto-create profile safely:', user.id);
+          return;
+        }
+
         const profileData = {
           id: user.id,
           email: user.email,
           first_name: user.user_metadata?.first_name || user.email?.split('@')[0] || 'User',
           last_name: user.user_metadata?.last_name || '',
-          role: 'project_manager' as const,
           company_name: user.user_metadata?.company_name || '',
           title: user.user_metadata?.title || '',
-          tenant_id: user.user_metadata?.tenant_id || user.id,
+          tenant_id: tenantId,
+          active_tenant_id: activeTenantId,
         };
 
         const { error: profileError } = await supabase

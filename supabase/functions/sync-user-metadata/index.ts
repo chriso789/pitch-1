@@ -52,7 +52,7 @@ Deno.serve(async (req) => {
     const [profileResult, roleResult] = await Promise.all([
       supabaseAdmin
         .from('profiles')
-        .select('first_name, last_name, company_name, title, tenant_id, active_tenant_id, role')
+        .select('first_name, last_name, company_name, title, tenant_id, active_tenant_id')
         .eq('id', user.id)
         .single(),
       supabaseAdmin
@@ -70,8 +70,11 @@ Deno.serve(async (req) => {
       );
     }
 
-    // Use role from user_roles table, fallback to profiles table
-    const userRole = roleResult.data?.role || profile.role || '';
+    // CRITICAL: roles MUST come only from user_roles (no profile fallback)
+    const userRole = roleResult.data?.role || '';
+    if (!userRole) {
+      console.warn(`[sync-user-metadata] No role found in user_roles for user: ${user.id}`);
+    }
 
     // Determine active_tenant_id (use profile's active_tenant_id or fallback to tenant_id)
     const activeTenantId = profile.active_tenant_id || profile.tenant_id;
@@ -120,7 +123,10 @@ Deno.serve(async (req) => {
         message: 'User metadata synced successfully',
         user_metadata: {
           first_name: profile.first_name,
-          last_name: profile.last_name
+          last_name: profile.last_name,
+          tenant_id: profile.tenant_id,
+          active_tenant_id: activeTenantId,
+          role: userRole,
         }
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
