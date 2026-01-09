@@ -118,11 +118,21 @@ export const Settings = () => {
   const { user: currentUser, loading } = useCurrentUser();
   const [tabConfig, setTabConfig] = useState<SettingsTab[]>([]);
   const [activeTab, setActiveTab] = useState<string>("general");
+  const [activeSubTab, setActiveSubTab] = useState<string>("settings");
   const [configDialogOpen, setConfigDialogOpen] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { toast } = useToast();
   const { activeCompany, activeCompanyId } = useCompanySwitcher();
   const isMobile = useIsMobile();
+
+  // Reset sub-tab when main tab changes
+  useEffect(() => {
+    if (activeTab === "general") {
+      setActiveSubTab("settings");
+    } else if (activeTab === "automations") {
+      setActiveSubTab("automations");
+    }
+  }, [activeTab]);
 
   useEffect(() => {
     if (currentUser?.profileLoaded === true && currentUser?.role) {
@@ -203,7 +213,7 @@ export const Settings = () => {
     switch (activeTab) {
       case "general":
         return (
-          <Tabs defaultValue="settings" className="w-full">
+          <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="w-full">
             <TabsList>
               <TabsTrigger value="settings">General Settings</TabsTrigger>
               <TabsTrigger value="lead-sources">Lead Sources</TabsTrigger>
@@ -278,7 +288,7 @@ export const Settings = () => {
         return <EnhancedErrorReportsManager />;
       case "automations":
         return (
-          <Tabs defaultValue="automations" className="w-full">
+          <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="w-full">
             <TabsList>
               <TabsTrigger value="automations">Automations</TabsTrigger>
               <TabsTrigger value="templates">Smart Documents</TabsTrigger>
