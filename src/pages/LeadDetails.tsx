@@ -703,19 +703,26 @@ const LeadDetails = () => {
                   value={lead.secondary_assigned_rep?.id || ''} 
                   onValueChange={async (value) => {
                     try {
+                      // Use null for empty value to avoid FK constraint errors
+                      const secondaryRepId = value && value !== 'none' ? value : null;
                       const { error } = await supabase
                         .from('pipeline_entries')
                         .update({ 
-                          secondary_assigned_to: value || null,
-                          primary_rep_split_percent: value ? 50 : 100
+                          secondary_assigned_to: secondaryRepId,
+                          primary_rep_split_percent: secondaryRepId ? 50 : 100
                         })
                         .eq('id', id);
                       if (error) throw error;
                       toast({ title: "Secondary rep updated" });
                       refetchLead();
                       setIsEditingSecondaryRep(false);
-                    } catch (error) {
-                      toast({ title: "Error updating secondary rep", variant: "destructive" });
+                    } catch (error: any) {
+                      console.error('Error updating secondary rep:', error);
+                      toast({ 
+                        title: "Error updating secondary rep", 
+                        description: error.message || "Please try again",
+                        variant: "destructive" 
+                      });
                     }
                   }}
                 >
@@ -723,7 +730,7 @@ const LeadDetails = () => {
                     <SelectValue placeholder="Select secondary rep" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value="none">None</SelectItem>
                     {availableSalesReps
                       .filter(rep => rep.id !== lead.assigned_rep?.id)
                       .map((rep) => (
