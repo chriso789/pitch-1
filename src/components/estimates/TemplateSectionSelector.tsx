@@ -72,15 +72,34 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
     }
   });
 
-  // Fetch existing estimate to get saved line items
-  const { data: existingEstimate } = useQuery({
-    queryKey: ['enhanced-estimate-items', pipelineEntryId, sectionType],
+  // First fetch the selected_estimate_id from pipeline_entries metadata
+  const { data: pipelineData } = useQuery({
+    queryKey: ['pipeline-selected-estimate', pipelineEntryId],
     queryFn: async () => {
       const { data, error } = await supabase
+        .from('pipeline_entries')
+        .select('metadata')
+        .eq('id', pipelineEntryId)
+        .single();
+      
+      if (error) throw error;
+      return data;
+    }
+  });
+
+  const selectedEstimateId = (pipelineData?.metadata as any)?.selected_estimate_id;
+
+  // Fetch existing estimate to get saved line items - using selected_estimate_id
+  const { data: existingEstimate } = useQuery({
+    queryKey: ['enhanced-estimate-items', pipelineEntryId, selectedEstimateId, sectionType],
+    queryFn: async () => {
+      if (!selectedEstimateId) return null;
+      
+      const { data, error } = await supabase
         .from('enhanced_estimates')
-        .select('id, line_items, template_id')
-        .eq('pipeline_entry_id', pipelineEntryId)
-        .maybeSingle();
+        .select('id, line_items, template_id, material_cost_locked_at, labor_cost_locked_at')
+        .eq('id', selectedEstimateId)
+        .single();
       
       if (error) throw error;
       
@@ -98,7 +117,8 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
       }
       
       return data;
-    }
+    },
+    enabled: !!selectedEstimateId
   });
 
   // Save line items mutation
@@ -487,13 +507,19 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                   className="bg-green-600 hover:bg-green-700"
                   onClick={async () => {
                     try {
+                      // Use estimate_id directly if available, otherwise fall back to pipeline_entry_id
+                      const lockPayload = existingEstimate?.id 
+                        ? { estimate_id: existingEstimate.id, section: sectionType }
+                        : { pipeline_entry_id: pipelineEntryId, section: sectionType };
+                      
                       const { data, error } = await supabase.functions.invoke('lock-original-costs', {
-                        body: { pipeline_entry_id: pipelineEntryId, section: sectionType }
+                        body: lockPayload
                       });
                       if (error) throw error;
                       toast.success(data.message);
                       queryClient.invalidateQueries({ queryKey: ['enhanced-estimate-items', pipelineEntryId] });
                       queryClient.invalidateQueries({ queryKey: ['cost-lock-status', pipelineEntryId] });
+                      queryClient.invalidateQueries({ queryKey: ['pipeline-selected-estimate', pipelineEntryId] });
                       onLockSuccess?.();
                     } catch (error: any) {
                       toast.error(error.message || 'Failed to lock costs');
