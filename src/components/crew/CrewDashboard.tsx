@@ -4,6 +4,12 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { 
   HardHat, 
   Calendar, 
@@ -15,7 +21,10 @@ import {
   Shield,
   Loader2,
   ChevronRight,
-  FileWarning
+  FileWarning,
+  Building,
+  ChevronDown,
+  Check
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 
@@ -26,8 +35,13 @@ interface CrewDashboardProps {
 }
 
 export function CrewDashboard({ onJobSelect, onNavigate, isAdmin }: CrewDashboardProps) {
-  const { crewProfile } = useCrewAuth();
-  const { jobs, counts, docsStatus, loading, error } = useCrewDashboard();
+  const { crewProfile, companies, activeCompany, setActiveCompany, activeCompanyId } = useCrewAuth();
+  const { jobs, counts, docsStatus, loading, error, refetch } = useCrewDashboard();
+
+  const handleCompanySwitch = (companyId: string) => {
+    setActiveCompany(companyId);
+    // Refetch will happen automatically via useEffect dependency on activeCompanyId
+  };
 
   const getDocsStatusBadge = () => {
     switch (docsStatus) {
@@ -95,6 +109,34 @@ export function CrewDashboard({ onJobSelect, onNavigate, isAdmin }: CrewDashboar
             <span className="font-semibold text-lg">Crew Portal</span>
           </div>
           <div className="flex items-center gap-2">
+            {/* Company Switcher */}
+            {companies.length > 1 && (
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="sm" className="h-8 gap-1">
+                    <Building className="h-4 w-4" />
+                    <span className="max-w-[100px] truncate text-xs">
+                      {activeCompany?.companyName || 'Select'}
+                    </span>
+                    <ChevronDown className="h-3 w-3" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-48">
+                  {companies.map((company) => (
+                    <DropdownMenuItem
+                      key={company.companyId}
+                      onClick={() => handleCompanySwitch(company.companyId)}
+                      className="flex items-center justify-between"
+                    >
+                      <span className="truncate">{company.companyName}</span>
+                      {company.companyId === activeCompanyId && (
+                        <Check className="h-4 w-4 text-primary" />
+                      )}
+                    </DropdownMenuItem>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
             {getDocsStatusBadge()}
           </div>
         </div>

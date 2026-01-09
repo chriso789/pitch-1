@@ -28165,6 +28165,45 @@ export type Database = {
               subcontractor_user_id: string
             }[]
           }
+      get_crew_job_detail: {
+        Args: { p_company_id?: string; p_job_id: string }
+        Returns: {
+          arrival_window_end: string
+          arrival_window_start: string
+          blocked_reason: string
+          can_complete: boolean
+          checklist_checked_items: number
+          checklist_complete: boolean
+          checklist_required_items: number
+          company_id: string
+          created_at: string
+          docs_valid: boolean
+          id: string
+          is_locked: boolean
+          job_id: string
+          lock_reason: string
+          photo_required_total: number
+          photo_uploaded_total: number
+          photos_complete: boolean
+          scheduled_date: string
+          scope_summary: string
+          special_instructions: string
+          status: string
+          status_updated_at: string
+          subcontractor_user_id: string
+        }[]
+      }
+      get_crew_job_photos: {
+        Args: { p_company_id?: string; p_job_id: string }
+        Returns: {
+          bucket_id: string
+          file_url: string
+          gps_lat: number
+          gps_lng: number
+          id: string
+          taken_at: string
+        }[]
+      }
       get_crew_subcontractor_profile_for_company: {
         Args: { p_company_id: string; p_user_id: string }
         Returns: {
@@ -28297,6 +28336,18 @@ export type Database = {
       increment_estimate_views: {
         Args: { p_estimate_id: string }
         Returns: undefined
+      }
+      insert_crew_job_photo: {
+        Args: {
+          p_bucket_id: string
+          p_company_id: string
+          p_file_url: string
+          p_gps_lat?: number
+          p_gps_lng?: number
+          p_id: string
+          p_job_id: string
+        }
+        Returns: string
       }
       insert_measurement:
         | {
@@ -29151,6 +29202,14 @@ export type Database = {
       update_campaign_avg_talk_time: {
         Args: { p_campaign_id: string; p_duration: number }
         Returns: undefined
+      }
+      update_crew_job_status: {
+        Args: {
+          p_assignment_id: string
+          p_company_id?: string
+          p_new_status: string
+        }
+        Returns: Json
       }
       updategeometrysrid: {
         Args: {
