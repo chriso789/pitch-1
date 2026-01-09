@@ -881,11 +881,62 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     const plan_sqft = polygonAreaSqftFromLngLat(coords);
     const midLat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
     
-    // Extract roof topology
-    const topology = buildLinearFeaturesFromTopology(coords, midLat);
+    // Get footprint bounds for segment topology analysis
+    const footprintBounds = {
+      minLat: Math.min(...coords.map(c => c[1])),
+      maxLat: Math.max(...coords.map(c => c[1])),
+      minLng: Math.min(...coords.map(c => c[0])),
+      maxLng: Math.max(...coords.map(c => c[0]))
+    };
+    
+    // Use segment topology analyzer if roof_segments available for ridge/hip/valley
+    let topologyFeatures: LinearFeature[] = [];
+    let topologyTotals: Record<string, number> = {};
+    const hasRoofSegments = building.roof_segments && building.roof_segments.length > 0;
+    
+    if (hasRoofSegments) {
+      console.log(`🔍 Analyzing ${building.roof_segments.length} cached roof segments for topology`);
+      const segmentTopology = analyzeSegmentTopology(
+        building.roof_segments, 
+        { lat, lng }, 
+        footprintBounds
+      );
+      topologyFeatures = topologyToLinearFeatures(segmentTopology);
+      topologyTotals = topologyToTotals(segmentTopology);
+      console.log(`📊 Segment topology results: ridge=${topologyTotals.ridge_ft?.toFixed(0)}ft, hip=${topologyTotals.hip_ft?.toFixed(0)}ft, valley=${topologyTotals.valley_ft?.toFixed(0)}ft`);
+    }
+    
+    // Get eave/rake from perimeter (skip skeleton for ridge/hip/valley if we have segments)
+    const skeletonTopology = buildLinearFeaturesFromTopology(coords, midLat, hasRoofSegments);
+    
+    // Merge: segment topology for ridge/hip/valley + skeleton for eave/rake
+    const eaveRakeFeatures = skeletonTopology.features.filter(f => 
+      f.type === 'eave' || f.type === 'rake'
+    );
+    const ridgeHipValleyFeatures = topologyFeatures.filter(f => 
+      f.type === 'ridge' || f.type === 'hip' || f.type === 'valley'
+    );
+    
+    // If segment topology didn't produce ridge/hip/valley, fall back to skeleton
+    const skeletonRHV = skeletonTopology.features.filter(f => 
+      f.type === 'ridge' || f.type === 'hip' || f.type === 'valley'
+    );
+    const finalRHV = ridgeHipValleyFeatures.length > 0 ? ridgeHipValleyFeatures : skeletonRHV;
+    
+    const mergedFeatures = [...finalRHV, ...eaveRakeFeatures];
+    const mergedTotals = {
+      perimeter_ft: skeletonTopology.totals.perimeter_ft,
+      eave_ft: skeletonTopology.totals.eave_ft,
+      rake_ft: skeletonTopology.totals.rake_ft,
+      ridge_ft: topologyTotals.ridge_ft || skeletonTopology.totals.ridge_ft || 0,
+      hip_ft: topologyTotals.hip_ft || skeletonTopology.totals.hip_ft || 0,
+      valley_ft: topologyTotals.valley_ft || skeletonTopology.totals.valley_ft || 0,
+    };
+    
+    console.log(`📏 Final cached totals: ridge=${mergedTotals.ridge_ft?.toFixed(0)}ft, hip=${mergedTotals.hip_ft?.toFixed(0)}ft, valley=${mergedTotals.valley_ft?.toFixed(0)}ft, eave=${mergedTotals.eave_ft?.toFixed(0)}ft`);
     
     const faces: RoofFace[] = [];
-    if (building.roof_segments && building.roof_segments.length > 0) {
+    if (hasRoofSegments) {
       building.roof_segments.forEach((seg: any, idx: number) => {
         const pitch = degreesToRoofPitch(seg.pitchDegrees || 18.5);
         const pf = pitchFactor(pitch);
@@ -918,13 +969,13 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
       property_id: "",
       source: building.source,
       faces,
-      linear_features: topology.features,
+      linear_features: mergedFeatures,
       summary: {
         total_area_sqft: totalArea,
         total_squares: totalArea / 100,
         waste_pct: wastePct,
-        pitch_method: building.roof_segments ? 'vendor' : 'assumed',
-        ...topology.totals,
+        pitch_method: hasRoofSegments ? 'vendor' : 'assumed',
+        ...mergedTotals,
         roof_age_years: null,
         roof_age_source: 'unknown'
       },
