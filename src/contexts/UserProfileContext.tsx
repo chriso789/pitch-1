@@ -116,7 +116,8 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
     const effectiveActiveTenantId = cached?.active_tenant_id || metadataActiveTenantId || '';
     
     // Must have both role AND valid tenant to be considered loaded
-    const hasValidCache = !!(effectiveRole && (cached?.first_name || user.user_metadata?.first_name));
+    // NOTE: Don't require first_name/last_name here (metadata may not include them on some accounts)
+    const hasValidCache = !!effectiveRole;
     const hasValidTenant = !!effectiveTenantId;
     
     return {
