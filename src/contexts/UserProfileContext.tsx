@@ -104,10 +104,10 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
     const sessionRole = getSessionRole();
     const sessionTitle = getSessionTitle();
     
-    // Use cached role, then session storage, then empty string
-    const effectiveRole = cached?.role || sessionRole || '';
-    // Use cached title, then session storage, then empty string
-    const effectiveTitle = cached?.title || sessionTitle || '';
+  // Use cached role, then session storage, then user_metadata, then empty string
+  const effectiveRole = cached?.role || sessionRole || user.user_metadata?.role || '';
+  // Use cached title, then session storage, then user_metadata, then empty string
+  const effectiveTitle = cached?.title || sessionTitle || user.user_metadata?.title || '';
     
     // CRITICAL: Never use user.id as tenant fallback - it's not a valid tenant ID
     // Only use actual tenant_id from metadata or cache
