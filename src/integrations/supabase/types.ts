@@ -16173,7 +16173,12 @@ export type Database = {
           is_suspended: boolean | null
           last_name: string | null
           location_updated_at: string | null
+          manager_override_applies_to: string | null
+          manager_override_basis: string | null
+          manager_override_location_id: string | null
+          manager_override_min_profit_percent: number | null
           manager_override_rate: number | null
+          manager_override_selected_reps: string[] | null
           metadata: Json | null
           overhead_rate: number | null
           password_set_at: string | null
@@ -16218,7 +16223,12 @@ export type Database = {
           is_suspended?: boolean | null
           last_name?: string | null
           location_updated_at?: string | null
+          manager_override_applies_to?: string | null
+          manager_override_basis?: string | null
+          manager_override_location_id?: string | null
+          manager_override_min_profit_percent?: number | null
           manager_override_rate?: number | null
+          manager_override_selected_reps?: string[] | null
           metadata?: Json | null
           overhead_rate?: number | null
           password_set_at?: string | null
@@ -16263,7 +16273,12 @@ export type Database = {
           is_suspended?: boolean | null
           last_name?: string | null
           location_updated_at?: string | null
+          manager_override_applies_to?: string | null
+          manager_override_basis?: string | null
+          manager_override_location_id?: string | null
+          manager_override_min_profit_percent?: number | null
           manager_override_rate?: number | null
+          manager_override_selected_reps?: string[] | null
           metadata?: Json | null
           overhead_rate?: number | null
           password_set_at?: string | null
@@ -16311,6 +16326,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "user_activity_summary"
             referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "profiles_manager_override_location_id_fkey"
+            columns: ["manager_override_location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "profiles_reports_to_manager_id_fkey"
