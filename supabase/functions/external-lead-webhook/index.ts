@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-api-key',
 };
 
 interface LeadPayload {
@@ -19,6 +19,10 @@ interface LeadPayload {
   lead_source?: string;
   source_url?: string;
   appointment_requested?: string;
+  appointment_date?: string;
+  appointment_time?: string;
+  appointment_notes?: string;
+  service_type?: string;
   custom_fields?: Record<string, unknown>;
 }
 
@@ -48,6 +52,38 @@ function generateLeadNumber(): string {
   return `EXT-${timestamp}-${random}`;
 }
 
+// Parse appointment date and time into a Date object
+function parseAppointmentDateTime(date?: string, time?: string): Date {
+  if (!date) {
+    // Default to tomorrow at 10am
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    tomorrow.setHours(10, 0, 0, 0);
+    return tomorrow;
+  }
+  
+  const appointmentDate = new Date(date);
+  
+  if (time) {
+    // Try to parse time like "10:00 AM", "2:30 PM", "14:00", etc.
+    const timeMatch = time.match(/(\d{1,2}):?(\d{2})?\s*(am|pm)?/i);
+    if (timeMatch) {
+      let hours = parseInt(timeMatch[1], 10);
+      const minutes = parseInt(timeMatch[2] || "0", 10);
+      const ampm = timeMatch[3]?.toLowerCase();
+      
+      if (ampm === "pm" && hours < 12) hours += 12;
+      if (ampm === "am" && hours === 12) hours = 0;
+      
+      appointmentDate.setHours(hours, minutes, 0, 0);
+    }
+  } else {
+    appointmentDate.setHours(10, 0, 0, 0);
+  }
+  
+  return appointmentDate;
+}
+
 serve(async (req: Request) => {
   console.log('[external-lead-webhook] Request received');
   
@@ -56,7 +92,9 @@ serve(async (req: Request) => {
     return new Response(null, { headers: corsHeaders });
   }
 
-  const clientIp = req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'unknown';
+  // Handle comma-separated IPs from Cloudflare - take only the first one
+  const rawClientIp = req.headers.get('x-forwarded-for') || req.headers.get('cf-connecting-ip') || 'unknown';
+  const clientIp = rawClientIp.split(',')[0].trim();
   const userAgent = req.headers.get('user-agent') || 'unknown';
 
   try {
@@ -243,11 +281,12 @@ serve(async (req: Request) => {
       lead_number: leadNumber,
       status: 'lead',
       stage: 'new',
-      lead_source: lead.lead_source || 'website_form',
+      source: lead.lead_source || 'website_form',
       metadata: {
         source_url: lead.source_url,
         external_submission: true,
-        submitted_at: new Date().toISOString()
+        submitted_at: new Date().toISOString(),
+        service_type: lead.service_type
       }
     };
     
@@ -274,22 +313,42 @@ serve(async (req: Request) => {
       console.log('[external-lead-webhook] Created pipeline entry:', pipelineEntryId);
     }
 
-    // Create appointment if requested
-    if (lead.appointment_requested) {
+    // Create appointment if requested - support both appointment_requested and appointment_date/time
+    if (lead.appointment_requested || lead.appointment_date) {
       try {
-        const appointmentDate = new Date(lead.appointment_requested);
+        let appointmentDate: Date;
+        
+        if (lead.appointment_requested) {
+          // Direct datetime string
+          appointmentDate = new Date(lead.appointment_requested);
+        } else {
+          // Parse from date + time fields
+          appointmentDate = parseAppointmentDateTime(lead.appointment_date, lead.appointment_time);
+        }
+        
         const appointmentEnd = new Date(appointmentDate.getTime() + 60 * 60 * 1000); // 1 hour
+
+        // Build appointment title with service type if provided
+        const serviceType = lead.service_type || 'Consultation';
+        const contactName = `${lead.first_name} ${lead.last_name || ''}`.trim();
 
         const appointmentData: Record<string, unknown> = {
           tenant_id: tenantId,
           contact_id: contactId,
-          title: `Consultation - ${lead.first_name} ${lead.last_name || ''}`,
-          appointment_type: 'consultation',
+          title: `${serviceType} - ${contactName}`,
+          appointment_type: lead.service_type?.toLowerCase().replace(/\s+/g, '_') || 'consultation',
           scheduled_start: appointmentDate.toISOString(),
           scheduled_end: appointmentEnd.toISOString(),
-          notes: `Requested via website form. ${lead.message || ''}`,
           status: 'pending'
         };
+        
+        // Build notes from appointment_notes and message
+        const notesParts = [
+          lead.appointment_notes,
+          lead.message,
+          'Requested via website form.'
+        ].filter(Boolean);
+        appointmentData.notes = notesParts.join('\n\n');
         
         // Build address if provided
         const addressParts = [lead.address, lead.city, lead.state, lead.zip].filter(Boolean);
@@ -301,6 +360,8 @@ serve(async (req: Request) => {
         if (defaultAssigneeId) {
           appointmentData.assigned_to = defaultAssigneeId;
         }
+
+        console.log('[external-lead-webhook] Creating appointment:', JSON.stringify(appointmentData));
 
         const { data: appointment, error: apptError } = await supabase
           .from('appointments')
@@ -315,7 +376,7 @@ serve(async (req: Request) => {
           console.log('[external-lead-webhook] Created appointment:', appointmentId);
         }
       } catch (dateError) {
-        console.error('[external-lead-webhook] Invalid appointment date:', lead.appointment_requested);
+        console.error('[external-lead-webhook] Invalid appointment date:', lead.appointment_requested || lead.appointment_date, dateError);
       }
     }
 
