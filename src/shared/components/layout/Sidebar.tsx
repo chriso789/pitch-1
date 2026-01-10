@@ -27,7 +27,14 @@ import {
   Presentation,
   HardHat,
   Activity,
-  Building2
+  Building2,
+  ChevronDown,
+  ChevronRight,
+  Inbox,
+  MessageSquare,
+  Bot,
+  PhoneCall,
+  Mic
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";

@@ -29699,6 +29699,7 @@ export type Database = {
           role: string
         }[]
       }
+      get_default_brand_id: { Args: { _tenant_id: string }; Returns: string }
       get_next_contact_number: {
         Args: { tenant_id_param: string }
         Returns: number
