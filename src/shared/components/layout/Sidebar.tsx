@@ -287,9 +287,12 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
     {
       name: "Homeowner Portal",
       href: "homeowner",
-      path: "/homeowner",
+      // For CRM users, go to Settings > Portals; for actual homeowners, go to portal
+      path: "/settings",
       icon: Home,
-      description: "Customer project view"
+      description: "Customer project view",
+      // Navigate to settings with portals tab for admin users
+      isPortalSettings: true
     },
     {
       name: "System Monitor",
@@ -508,36 +511,74 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
           <nav className="space-y-0.5">
             {portalNavigation
               .filter(item => !item.masterOnly || currentUser?.role === 'master')
-              .map((item) => (
-                <Link
-                  key={item.href}
-                  to={item.path}
-                  onClick={onNavigate}
-                  className={cn(
-                    "w-full flex items-center rounded-md text-left transition-colors group",
-                    isCollapsed ? "px-2 py-2 justify-center" : "gap-3 px-3 py-2",
-                    activeSection === item.href
-                      ? "bg-primary/10 text-primary border-l-2 border-primary"
-                      : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-l-2 border-transparent"
-                  )}
-                  title={isCollapsed ? item.name : undefined}
-                >
-                  <item.icon className={cn(
-                    "h-4 w-4 flex-shrink-0",
-                    activeSection === item.href 
-                      ? "text-primary" 
-                      : "text-muted-foreground group-hover:text-accent-foreground"
-                  )} />
-                  {!isCollapsed && (
-                    <span className={cn(
-                      "text-sm font-medium truncate",
-                      activeSection === item.href ? "text-primary" : ""
-                    )}>
-                      {item.name}
-                    </span>
-                  )}
-                </Link>
-              ))}
+              .map((item) => {
+                // For Homeowner Portal settings link, use onClick instead of Link
+                if (item.isPortalSettings) {
+                  return (
+                    <button
+                      key={item.href}
+                      onClick={() => {
+                        navigate('/settings', { state: { activeTab: 'portals' } });
+                        onNavigate?.();
+                      }}
+                      className={cn(
+                        "w-full flex items-center rounded-md text-left transition-colors group",
+                        isCollapsed ? "px-2 py-2 justify-center" : "gap-3 px-3 py-2",
+                        activeSection === item.href
+                          ? "bg-primary/10 text-primary border-l-2 border-primary"
+                          : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-l-2 border-transparent"
+                      )}
+                      title={isCollapsed ? item.name : undefined}
+                    >
+                      <item.icon className={cn(
+                        "h-4 w-4 flex-shrink-0",
+                        activeSection === item.href 
+                          ? "text-primary" 
+                          : "text-muted-foreground group-hover:text-accent-foreground"
+                      )} />
+                      {!isCollapsed && (
+                        <span className={cn(
+                          "text-sm font-medium truncate",
+                          activeSection === item.href ? "text-primary" : ""
+                        )}>
+                          {item.name}
+                        </span>
+                      )}
+                    </button>
+                  );
+                }
+                
+                return (
+                  <Link
+                    key={item.href}
+                    to={item.path}
+                    onClick={onNavigate}
+                    className={cn(
+                      "w-full flex items-center rounded-md text-left transition-colors group",
+                      isCollapsed ? "px-2 py-2 justify-center" : "gap-3 px-3 py-2",
+                      activeSection === item.href
+                        ? "bg-primary/10 text-primary border-l-2 border-primary"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-l-2 border-transparent"
+                    )}
+                    title={isCollapsed ? item.name : undefined}
+                  >
+                    <item.icon className={cn(
+                      "h-4 w-4 flex-shrink-0",
+                      activeSection === item.href 
+                        ? "text-primary" 
+                        : "text-muted-foreground group-hover:text-accent-foreground"
+                    )} />
+                    {!isCollapsed && (
+                      <span className={cn(
+                        "text-sm font-medium truncate",
+                        activeSection === item.href ? "text-primary" : ""
+                      )}>
+                        {item.name}
+                      </span>
+                    )}
+                  </Link>
+                );
+              })}
           </nav>
         </div>
       </div>

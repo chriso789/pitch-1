@@ -124,6 +124,18 @@ export const Settings = () => {
   const { toast } = useToast();
   const { activeCompany, activeCompanyId } = useCompanySwitcher();
   const isMobile = useIsMobile();
+  
+  // Check for navigation state (e.g., from Sidebar "Homeowner Portal" click)
+  const locationState = window.history.state?.usr as { activeTab?: string } | undefined;
+  
+  // Set active tab from navigation state on mount
+  useEffect(() => {
+    if (locationState?.activeTab) {
+      setActiveTab(locationState.activeTab);
+      // Clear the state so it doesn't persist on refresh
+      window.history.replaceState({}, document.title);
+    }
+  }, [locationState?.activeTab]);
 
   // Reset sub-tab when main tab changes
   useEffect(() => {
@@ -467,12 +479,12 @@ export const Settings = () => {
           </p>
         </div>
         <div className="flex items-center gap-2 md:gap-4">
-          {currentUser?.role === 'master' && (
+          {currentUser?.profileLoaded && currentUser?.role === 'master' && (
             <Dialog open={configDialogOpen} onOpenChange={setConfigDialogOpen}>
               <DialogTrigger asChild>
-                <Button variant="outline" size="sm" className="hidden md:flex">
-                  <LucideIcons.Settings className="h-4 w-4 mr-2" />
-                  Configure Tabs
+                <Button variant="outline" size="sm">
+                  <LucideIcons.Settings className="h-4 w-4 md:mr-2" />
+                  <span className="hidden md:inline">Configure Tabs</span>
                 </Button>
               </DialogTrigger>
               <DialogContent className="max-w-4xl max-h-[80vh] overflow-y-auto">
