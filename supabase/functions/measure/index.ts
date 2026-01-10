@@ -300,13 +300,21 @@ function getBoundsFromCoords(coords: [number, number][]): { minX: number; maxX: 
   };
 }
 
+// Ridge override type for manual calibration from traced lines
+interface RidgeOverride {
+  start: [number, number]; // [lng, lat]
+  end: [number, number];   // [lng, lat]
+}
+
 // Convert skeleton edges and boundary edges to LinearFeature array
 // IMPROVED: Only use straight-skeleton for simple rectangular buildings
 // For L/T/U-shapes, only extract eave/rake edges from skeleton, NOT ridge/hip/valley
+// NEW: Accepts ridgeOverride for manual calibration from traced lines
 function buildLinearFeaturesFromTopology(
   coords: [number, number][],
   midLat: number,
-  skipSkeletonForRidges: boolean = false
+  skipSkeletonForRidges: boolean = false,
+  ridgeOverride?: RidgeOverride
 ): { features: LinearFeature[]; totals: Record<string, number>; derivedFacetCount: number; isComplexShape: boolean; confidenceWarning?: string } {
   try {
     // Detect building shape complexity
@@ -329,7 +337,13 @@ function buildLinearFeaturesFromTopology(
     
     // Only run full straight skeleton for simple rectangular buildings
     const skeleton = computeStraightSkeleton(coords);
-    const boundaryClass = classifyBoundaryEdges(coords, skeleton);
+    
+    // Pass ridge override to boundary classifier for correct eave/rake classification
+    const boundaryClass = classifyBoundaryEdges(coords, skeleton, ridgeOverride);
+    
+    if (ridgeOverride) {
+      console.log(`🎯 Using manual ridge override for topology calculation`);
+    }
     
     const features: LinearFeature[] = [];
     let featureId = 1;

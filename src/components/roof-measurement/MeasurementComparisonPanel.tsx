@@ -9,6 +9,7 @@ interface MeasurementSet {
   totalArea: number;
   facetCount: number;
   pitch: string;
+  perimeter?: number; // NEW: Perimeter = eave + rake
   linear: {
     ridges: number;
     hips: number;
@@ -56,6 +57,10 @@ export function MeasurementComparisonPanel({
     return 'fail';
   };
 
+  // Calculate perimeter from eave + rake
+  const aiPerimeter = (aiMeasurements.perimeter ?? (aiMeasurements.linear.eaves + aiMeasurements.linear.rakes));
+  const pdfPerimeter = pdfMeasurements ? (pdfMeasurements.perimeter ?? (pdfMeasurements.linear.eaves + pdfMeasurements.linear.rakes)) : null;
+
   const comparisons: ComparisonRow[] = [
     {
       label: 'Total Area',
@@ -77,6 +82,13 @@ export function MeasurementComparisonPanel({
       pdfValue: pdfMeasurements?.pitch ?? null,
       unit: '',
       tolerance: 0,
+    },
+    {
+      label: 'Perimeter',
+      aiValue: aiPerimeter,
+      pdfValue: pdfPerimeter,
+      unit: 'ft',
+      tolerance: 5,
     },
     {
       label: 'Ridges',

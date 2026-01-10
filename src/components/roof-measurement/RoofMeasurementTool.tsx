@@ -438,7 +438,7 @@ export function RoofMeasurementTool({
 
                 {/* Linear measurements summary below diagram */}
                 <div className="mt-4 pt-4 border-t">
-                  <div className="grid grid-cols-5 gap-4 text-center">
+                  <div className="grid grid-cols-6 gap-3 text-center">
                     <div>
                       <div className="text-xs text-muted-foreground">Ridge</div>
                       <div className="text-lg font-bold text-green-600">
@@ -467,6 +467,12 @@ export function RoofMeasurementTool({
                       <div className="text-xs text-muted-foreground">Rake</div>
                       <div className="text-lg font-bold text-orange-600">
                         {measurementData.measurements?.linear?.rake?.toFixed(0) || 0} ft
+                      </div>
+                    </div>
+                    <div className="bg-muted/50 rounded-lg p-1">
+                      <div className="text-xs text-muted-foreground">Perimeter</div>
+                      <div className="text-lg font-bold text-foreground">
+                        {((measurementData.measurements?.linear?.eave || 0) + (measurementData.measurements?.linear?.rake || 0)).toFixed(0)} ft
                       </div>
                     </div>
                   </div>

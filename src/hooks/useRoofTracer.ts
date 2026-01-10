@@ -197,6 +197,49 @@ export function useRoofTracer(options: UseRoofTracerOptions) {
     }));
   }, [tracedLines, generateWKT]);
   
+  // Generate calibration data for AI recalibration
+  // Exports traced ridge as override for correct eave/rake classification
+  const generateCalibrationData = useCallback((): { 
+    ridgeOverride?: { start: { lng: number; lat: number }; end: { lng: number; lat: number } };
+    tracedTotals: { ridge: number; hip: number; valley: number; eave: number; rake: number; perimeter: number };
+    hasRidgeTrace: boolean;
+    hasPerimeterTrace: boolean;
+  } => {
+    // Find first ridge trace (primary calibration source)
+    const ridgeLine = tracedLines.find(l => l.type === 'ridge');
+    
+    let ridgeOverride: { start: { lng: number; lat: number }; end: { lng: number; lat: number } } | undefined;
+    
+    if (ridgeLine && ridgeLine.points.length >= 2) {
+      const startGeo = canvasToGeo(ridgeLine.points[0].x, ridgeLine.points[0].y);
+      const endGeo = canvasToGeo(ridgeLine.points[ridgeLine.points.length - 1].x, ridgeLine.points[ridgeLine.points.length - 1].y);
+      
+      ridgeOverride = {
+        start: { lng: startGeo.lng, lat: startGeo.lat },
+        end: { lng: endGeo.lng, lat: endGeo.lat }
+      };
+    }
+    
+    // Check if perimeter was traced (eave or rake or perimeter type)
+    const hasPerimeterTrace = tracedLines.some(l => 
+      l.type === 'eave' || l.type === 'rake' || l.type === 'perimeter'
+    );
+    
+    return {
+      ridgeOverride,
+      tracedTotals: {
+        ridge: totals.ridge,
+        hip: totals.hip,
+        valley: totals.valley,
+        eave: totals.eave,
+        rake: totals.rake,
+        perimeter: totals.perimeter
+      },
+      hasRidgeTrace: !!ridgeLine,
+      hasPerimeterTrace
+    };
+  }, [tracedLines, canvasToGeo, totals]);
+  
   // Get color for a tool type
   const getToolColor = useCallback((tool: TracerTool): string => {
     switch (tool) {
@@ -238,6 +281,7 @@ export function useRoofTracer(options: UseRoofTracerOptions) {
     calculateLengthFt,
     generateWKT,
     generateLinearFeaturesWKT,
+    generateCalibrationData,
     getToolColor,
     canvasToGeo,
   };
