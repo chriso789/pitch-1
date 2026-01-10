@@ -11,9 +11,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
-import { Key, Plus, Copy, Trash2, RefreshCw, Eye, EyeOff, Clock, Shield, User } from 'lucide-react';
+import { Key, Plus, Copy, Trash2, RefreshCw, Eye, EyeOff, Clock, Shield, User, Send } from 'lucide-react';
 import { format } from 'date-fns';
-
+import { ApiKeyTestDialog } from './ApiKeyTestDialog';
+import { ApiIntegrationGuide } from './ApiIntegrationGuide';
 interface ApiKey {
   id: string;
   key_prefix: string;
@@ -68,6 +69,8 @@ export function ApiKeyManager() {
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
   const [creating, setCreating] = useState(false);
+  const [testDialogOpen, setTestDialogOpen] = useState(false);
+  const [selectedKeyForTest, setSelectedKeyForTest] = useState<ApiKey | null>(null);
 
   useEffect(() => {
     if (activeCompanyId) {
@@ -239,7 +242,7 @@ export function ApiKeyManager() {
     return `${member.first_name || ''} ${member.last_name || ''}`.trim() || member.email || 'Unknown';
   };
 
-  const webhookUrl = `${window.location.origin.replace('localhost:8080', 'alxelfrbjzkmtnsulcei.supabase.co')}/functions/v1/external-lead-webhook`;
+  const webhookUrl = `https://alxelfrbjzkmtnsulcei.supabase.co/functions/v1/external-lead-webhook`;
 
   const closeCreateDialog = () => {
     setCreateDialogOpen(false);
@@ -248,6 +251,11 @@ export function ApiKeyManager() {
     setNewKeyAssignee('');
     setGeneratedKey(null);
     setShowKey(false);
+  };
+
+  const openTestDialog = (key: ApiKey) => {
+    setSelectedKeyForTest(key);
+    setTestDialogOpen(true);
   };
 
   return (
@@ -485,33 +493,46 @@ export function ApiKeyManager() {
                       )}
                     </TableCell>
                     <TableCell className="text-right">
-                      {key.is_active && (
-                        <AlertDialog>
-                          <AlertDialogTrigger asChild>
-                            <Button variant="ghost" size="sm" className="text-destructive">
-                              <Trash2 className="h-4 w-4" />
+                      <div className="flex items-center justify-end gap-1">
+                        {key.is_active && (
+                          <>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={() => openTestDialog(key)}
+                              className="text-xs"
+                            >
+                              <Send className="h-3 w-3 mr-1" />
+                              Test
                             </Button>
-                          </AlertDialogTrigger>
-                          <AlertDialogContent>
-                            <AlertDialogHeader>
-                              <AlertDialogTitle>Revoke API Key?</AlertDialogTitle>
-                              <AlertDialogDescription>
-                                This will immediately revoke the API key "{key.name}". 
-                                Any integrations using this key will stop working.
-                              </AlertDialogDescription>
-                            </AlertDialogHeader>
-                            <AlertDialogFooter>
-                              <AlertDialogCancel>Cancel</AlertDialogCancel>
-                              <AlertDialogAction
-                                onClick={() => revokeApiKey(key.id)}
-                                className="bg-destructive text-destructive-foreground"
-                              >
-                                Revoke Key
-                              </AlertDialogAction>
-                            </AlertDialogFooter>
-                          </AlertDialogContent>
-                        </AlertDialog>
-                      )}
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button variant="ghost" size="sm" className="text-destructive">
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Revoke API Key?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    This will immediately revoke the API key "{key.name}". 
+                                    Any integrations using this key will stop working.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => revokeApiKey(key.id)}
+                                    className="bg-destructive text-destructive-foreground"
+                                  >
+                                    Revoke Key
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          </>
+                        )}
+                      </div>
                     </TableCell>
                   </TableRow>
                 ))}
@@ -519,6 +540,17 @@ export function ApiKeyManager() {
             </Table>
           </div>
         )}
+
+        {/* Integration Guide */}
+        <ApiIntegrationGuide webhookUrl={webhookUrl} />
+
+        {/* Test Dialog */}
+        <ApiKeyTestDialog
+          open={testDialogOpen}
+          onOpenChange={setTestDialogOpen}
+          keyName={selectedKeyForTest?.name || ''}
+          webhookUrl={webhookUrl}
+        />
       </CardContent>
     </Card>
   );
