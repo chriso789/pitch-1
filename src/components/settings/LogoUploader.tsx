@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
 import { toast } from '@/hooks/use-toast';
 import { cn } from '@/lib/utils';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 
 interface LogoUploaderProps {
   logoUrl: string | null;
@@ -15,6 +16,7 @@ interface LogoUploaderProps {
 export function LogoUploader({ logoUrl, onLogoUploaded, onLogoRemoved, className }: LogoUploaderProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
+  const tenantId = useEffectiveTenantId();
 
   const handleUpload = useCallback(async (file: File) => {
     // Validate file type
@@ -38,45 +40,39 @@ export function LogoUploader({ logoUrl, onLogoUploaded, onLogoRemoved, className
       return;
     }
 
+    if (!tenantId) {
+      toast({
+        title: 'Upload failed',
+        description: 'No active company selected. Please select a company first.',
+        variant: 'destructive'
+      });
+      return;
+    }
+
     setIsUploading(true);
 
     try {
       const fileExt = file.name.split('.').pop()?.toLowerCase() || 'png';
-      const fileName = `${crypto.randomUUID()}.${fileExt}`;
+      const fileName = `${tenantId}/${crypto.randomUUID()}.${fileExt}`;
 
       const { error: uploadError } = await supabase.storage
         .from('company-logos')
         .upload(fileName, file, {
           cacheControl: '3600',
-          upsert: false
+          upsert: true
         });
 
       if (uploadError) {
-        // If bucket doesn't exist, try company-data bucket as fallback
-        const fallbackPath = `logos/${fileName}`;
-        const { error: fallbackError } = await supabase.storage
-          .from('company-data')
-          .upload(fallbackPath, file, {
-            cacheControl: '3600',
-            upsert: false
-          });
-
-        if (fallbackError) {
-          throw fallbackError;
-        }
-
-        const { data: urlData } = supabase.storage
-          .from('company-data')
-          .getPublicUrl(fallbackPath);
-
-        onLogoUploaded(urlData.publicUrl);
-      } else {
-        const { data: urlData } = supabase.storage
-          .from('company-logos')
-          .getPublicUrl(fileName);
-
-        onLogoUploaded(urlData.publicUrl);
+        // Show the actual error - no fallback to non-existent bucket
+        console.error('Logo upload error:', uploadError);
+        throw new Error(uploadError.message || 'Storage upload failed');
       }
+
+      const { data: urlData } = supabase.storage
+        .from('company-logos')
+        .getPublicUrl(fileName);
+
+      onLogoUploaded(urlData.publicUrl);
 
       toast({
         title: 'Logo uploaded',
@@ -86,13 +82,13 @@ export function LogoUploader({ logoUrl, onLogoUploaded, onLogoRemoved, className
       console.error('Logo upload error:', error);
       toast({
         title: 'Upload failed',
-        description: error.message || 'Failed to upload logo',
+        description: error.message || 'Failed to upload logo. Please try again.',
         variant: 'destructive'
       });
     } finally {
       setIsUploading(false);
     }
-  }, [onLogoUploaded]);
+  }, [onLogoUploaded, tenantId]);
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();

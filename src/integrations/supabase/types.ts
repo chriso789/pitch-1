@@ -29560,12 +29560,14 @@ export type Database = {
       get_user_tenant_id:
         | { Args: never; Returns: string }
         | { Args: { _user_id: string }; Returns: string }
-      get_user_tenant_ids: {
-        Args: never
-        Returns: {
-          tid: string
-        }[]
-      }
+      get_user_tenant_ids:
+        | {
+            Args: never
+            Returns: {
+              tid: string
+            }[]
+          }
+        | { Args: { p_user_id: string }; Returns: string[] }
       get_workspace_bootstrap: { Args: never; Returns: Json }
       gettransactionid: { Args: never; Returns: unknown }
       has_high_level_role: { Args: { p_user_id: string }; Returns: boolean }
