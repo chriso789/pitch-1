@@ -7,10 +7,11 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
-import { Key, Plus, Copy, Trash2, RefreshCw, Eye, EyeOff, Clock, Shield } from 'lucide-react';
+import { Key, Plus, Copy, Trash2, RefreshCw, Eye, EyeOff, Clock, Shield, User } from 'lucide-react';
 import { format } from 'date-fns';
 
 interface ApiKey {
@@ -24,6 +25,14 @@ interface ApiKey {
   usage_count: number;
   last_used_at: string | null;
   created_at: string;
+  default_assignee_id: string | null;
+}
+
+interface TeamMember {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
 }
 
 // Generate a secure random API key
@@ -50,10 +59,12 @@ export function ApiKeyManager() {
   const { toast } = useToast();
   const { activeCompanyId } = useCompanySwitcher();
   const [apiKeys, setApiKeys] = useState<ApiKey[]>([]);
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [createDialogOpen, setCreateDialogOpen] = useState(false);
   const [newKeyName, setNewKeyName] = useState('');
   const [newKeyDescription, setNewKeyDescription] = useState('');
+  const [newKeyAssignee, setNewKeyAssignee] = useState<string>('');
   const [generatedKey, setGeneratedKey] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
   const [creating, setCreating] = useState(false);
@@ -61,15 +72,31 @@ export function ApiKeyManager() {
   useEffect(() => {
     if (activeCompanyId) {
       loadApiKeys();
+      loadTeamMembers();
     }
   }, [activeCompanyId]);
+
+  const loadTeamMembers = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, email')
+        .eq('tenant_id', activeCompanyId)
+        .order('first_name');
+
+      if (error) throw error;
+      setTeamMembers(data || []);
+    } catch (error) {
+      console.error('Error loading team members:', error);
+    }
+  };
 
   const loadApiKeys = async () => {
     setLoading(true);
     try {
       const { data, error } = await supabase
         .from('company_api_keys')
-        .select('id, key_prefix, name, description, permissions, is_active, rate_limit_per_hour, usage_count, last_used_at, created_at')
+        .select('id, key_prefix, name, description, permissions, is_active, rate_limit_per_hour, usage_count, last_used_at, created_at, default_assignee_id')
         .eq('tenant_id', activeCompanyId)
         .is('revoked_at', null)
         .order('created_at', { ascending: false });
@@ -115,7 +142,8 @@ export function ApiKeyManager() {
           name: newKeyName.trim(),
           description: newKeyDescription.trim() || null,
           permissions: ['lead_submission'],
-          created_by: user?.user?.id
+          created_by: user?.user?.id,
+          default_assignee_id: (newKeyAssignee && newKeyAssignee !== 'none') ? newKeyAssignee : null
         });
 
       if (error) throw error;
@@ -128,15 +156,40 @@ export function ApiKeyManager() {
       });
       
       loadApiKeys();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error creating API key:', error);
       toast({
         title: 'Error',
-        description: 'Failed to create API key',
+        description: error?.message || 'Failed to create API key',
         variant: 'destructive'
       });
     } finally {
       setCreating(false);
+    }
+  };
+
+  const updateDefaultAssignee = async (keyId: string, assigneeId: string | null) => {
+    try {
+      const { error } = await supabase
+        .from('company_api_keys')
+        .update({ default_assignee_id: assigneeId })
+        .eq('id', keyId);
+
+      if (error) throw error;
+
+      toast({
+        title: 'Updated',
+        description: 'Default assignee updated successfully',
+      });
+      
+      loadApiKeys();
+    } catch (error) {
+      console.error('Error updating assignee:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to update default assignee',
+        variant: 'destructive'
+      });
     }
   };
 
@@ -179,12 +232,20 @@ export function ApiKeyManager() {
     });
   };
 
+  const getAssigneeName = (assigneeId: string | null) => {
+    if (!assigneeId) return 'Unassigned';
+    const member = teamMembers.find(m => m.id === assigneeId);
+    if (!member) return 'Unknown';
+    return `${member.first_name || ''} ${member.last_name || ''}`.trim() || member.email || 'Unknown';
+  };
+
   const webhookUrl = `${window.location.origin.replace('localhost:8080', 'alxelfrbjzkmtnsulcei.supabase.co')}/functions/v1/external-lead-webhook`;
 
   const closeCreateDialog = () => {
     setCreateDialogOpen(false);
     setNewKeyName('');
     setNewKeyDescription('');
+    setNewKeyAssignee('');
     setGeneratedKey(null);
     setShowKey(false);
   };
@@ -231,6 +292,25 @@ export function ApiKeyManager() {
                       onChange={(e) => setNewKeyDescription(e.target.value)}
                       placeholder="e.g., Used for main website lead capture"
                     />
+                  </div>
+                  <div>
+                    <Label htmlFor="keyAssignee">Default Lead Assignee</Label>
+                    <Select value={newKeyAssignee} onValueChange={setNewKeyAssignee}>
+                      <SelectTrigger>
+                        <SelectValue placeholder="Select team member to auto-assign leads" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">No auto-assignment</SelectItem>
+                        {teamMembers.map((member) => (
+                          <SelectItem key={member.id} value={member.id}>
+                            {member.first_name} {member.last_name} {member.email && `(${member.email})`}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      All leads from this API key will be automatically assigned to this person.
+                    </p>
                   </div>
                 </div>
               ) : (
@@ -337,6 +417,7 @@ export function ApiKeyManager() {
                 <TableRow>
                   <TableHead>Name</TableHead>
                   <TableHead>Key</TableHead>
+                  <TableHead>Assigned To</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Usage</TableHead>
                   <TableHead>Last Used</TableHead>
@@ -358,6 +439,29 @@ export function ApiKeyManager() {
                       <code className="text-xs bg-muted px-2 py-1 rounded">
                         {key.key_prefix}...
                       </code>
+                    </TableCell>
+                    <TableCell>
+                      <Select
+                        value={key.default_assignee_id || 'none'}
+                        onValueChange={(value) => updateDefaultAssignee(key.id, value === 'none' ? null : value)}
+                      >
+                        <SelectTrigger className="w-[180px] h-8 text-xs">
+                          <SelectValue>
+                            <div className="flex items-center gap-1">
+                              <User className="h-3 w-3" />
+                              <span className="truncate">{getAssigneeName(key.default_assignee_id)}</span>
+                            </div>
+                          </SelectValue>
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="none">Unassigned</SelectItem>
+                          {teamMembers.map((member) => (
+                            <SelectItem key={member.id} value={member.id}>
+                              {member.first_name} {member.last_name}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </TableCell>
                     <TableCell>
                       <Badge variant={key.is_active ? 'default' : 'secondary'}>

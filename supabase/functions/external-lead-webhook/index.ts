@@ -8,7 +8,7 @@ const corsHeaders = {
 
 interface LeadPayload {
   first_name: string;
-  last_name: string;
+  last_name?: string;
   email?: string;
   phone: string;
   address?: string;
@@ -68,7 +68,7 @@ serve(async (req: Request) => {
     const body: ExternalLeadRequest = await req.json();
     const { api_key, lead } = body;
 
-    // Validate required fields
+    // Validate required fields - only first_name and phone are truly required
     if (!api_key) {
       return new Response(
         JSON.stringify({ success: false, error: 'API key is required' }),
@@ -91,7 +91,7 @@ serve(async (req: Request) => {
 
     const { data: apiKeyRecord, error: keyError } = await supabase
       .from('company_api_keys')
-      .select('id, tenant_id, permissions, rate_limit_per_hour, allowed_ips, usage_count')
+      .select('id, tenant_id, permissions, rate_limit_per_hour, allowed_ips, usage_count, default_assignee_id')
       .eq('api_key_hash', keyHash)
       .eq('is_active', true)
       .is('revoked_at', null)
@@ -133,7 +133,12 @@ serve(async (req: Request) => {
     }
 
     const tenantId = apiKeyRecord.tenant_id;
+    const defaultAssigneeId = apiKeyRecord.default_assignee_id;
+    
     console.log('[external-lead-webhook] Processing lead for tenant:', tenantId);
+    if (defaultAssigneeId) {
+      console.log('[external-lead-webhook] Will assign to:', defaultAssigneeId);
+    }
 
     // Check for duplicate contact (by phone or email)
     const normalizedPhone = normalizePhone(lead.phone);
@@ -142,9 +147,10 @@ serve(async (req: Request) => {
     // First try phone match
     const { data: phoneMatch } = await supabase
       .from('contacts')
-      .select('id, first_name, last_name, email, phone, assigned_rep')
+      .select('id, first_name, last_name, email, phone, assigned_to')
       .eq('tenant_id', tenantId)
-      .or(`phone.ilike.%${normalizedPhone},mobile_phone.ilike.%${normalizedPhone}`)
+      .eq('is_deleted', false)
+      .or(`phone.ilike.%${normalizedPhone}`)
       .limit(1)
       .maybeSingle();
 
@@ -154,8 +160,9 @@ serve(async (req: Request) => {
       // Try email match
       const { data: emailMatch } = await supabase
         .from('contacts')
-        .select('id, first_name, last_name, email, phone, assigned_rep')
+        .select('id, first_name, last_name, email, phone, assigned_to')
         .eq('tenant_id', tenantId)
+        .eq('is_deleted', false)
         .ilike('email', lead.email)
         .limit(1)
         .maybeSingle();
@@ -175,35 +182,52 @@ serve(async (req: Request) => {
       contactId = existingContact.id;
       isDuplicate = true;
       console.log('[external-lead-webhook] Found existing contact:', contactId);
+      
+      // Update assignment if not already assigned and we have a default assignee
+      if (!existingContact.assigned_to && defaultAssigneeId) {
+        await supabase
+          .from('contacts')
+          .update({ assigned_to: defaultAssigneeId })
+          .eq('id', contactId);
+        console.log('[external-lead-webhook] Updated contact assignment to:', defaultAssigneeId);
+      }
     } else {
-      // Create new contact
-      const fullAddress = [lead.address, lead.city, lead.state, lead.zip]
-        .filter(Boolean)
-        .join(', ');
+      // Create new contact with correct column names
+      // Only include fields that have values - dismiss missing optional fields
+      const contactData: Record<string, unknown> = {
+        tenant_id: tenantId,
+        first_name: lead.first_name,
+        last_name: lead.last_name || '',
+        phone: lead.phone,
+        lead_source: lead.lead_source || 'website_form',
+        lead_status: 'new',
+      };
+
+      // Add optional fields only if provided
+      if (lead.email) contactData.email = lead.email;
+      if (lead.address) contactData.address_street = lead.address;
+      if (lead.city) contactData.address_city = lead.city;
+      if (lead.state) contactData.address_state = lead.state;
+      if (lead.zip) contactData.address_zip = lead.zip;
+      if (lead.message) contactData.notes = lead.message;
+      if (lead.custom_fields) contactData.metadata = lead.custom_fields;
+      
+      // Auto-assign to default assignee if configured
+      if (defaultAssigneeId) {
+        contactData.assigned_to = defaultAssigneeId;
+      }
+
+      console.log('[external-lead-webhook] Creating contact with data:', JSON.stringify(contactData));
 
       const { data: newContact, error: contactError } = await supabase
         .from('contacts')
-        .insert({
-          tenant_id: tenantId,
-          first_name: lead.first_name,
-          last_name: lead.last_name || '',
-          email: lead.email,
-          phone: lead.phone,
-          address: fullAddress || null,
-          city: lead.city,
-          state: lead.state,
-          zip: lead.zip,
-          lead_source: lead.lead_source || 'website_form',
-          notes: lead.message,
-          status: 'new',
-          custom_fields: lead.custom_fields || {}
-        })
+        .insert(contactData)
         .select('id')
         .single();
 
       if (contactError) {
         console.error('[external-lead-webhook] Error creating contact:', contactError);
-        throw new Error('Failed to create contact');
+        throw new Error(`Failed to create contact: ${contactError.message}`);
       }
 
       contactId = newContact.id;
@@ -213,22 +237,33 @@ serve(async (req: Request) => {
     // Create pipeline entry (lead) for the contact
     const leadNumber = generateLeadNumber();
     
+    const pipelineData: Record<string, unknown> = {
+      tenant_id: tenantId,
+      contact_id: contactId,
+      lead_number: leadNumber,
+      status: 'lead',
+      stage: 'new',
+      lead_source: lead.lead_source || 'website_form',
+      metadata: {
+        source_url: lead.source_url,
+        external_submission: true,
+        submitted_at: new Date().toISOString()
+      }
+    };
+    
+    // Add notes if provided
+    if (lead.message) {
+      pipelineData.notes = lead.message;
+    }
+    
+    // Auto-assign pipeline entry to default assignee
+    if (defaultAssigneeId) {
+      pipelineData.assigned_to = defaultAssigneeId;
+    }
+    
     const { data: pipelineEntry, error: pipelineError } = await supabase
       .from('pipeline_entries')
-      .insert({
-        tenant_id: tenantId,
-        contact_id: contactId,
-        lead_number: leadNumber,
-        status: 'lead',
-        stage: 'new',
-        lead_source: lead.lead_source || 'website_form',
-        notes: lead.message,
-        metadata: {
-          source_url: lead.source_url,
-          external_submission: true,
-          submitted_at: new Date().toISOString()
-        }
-      })
+      .insert(pipelineData)
       .select('id')
       .single();
 
@@ -245,19 +280,31 @@ serve(async (req: Request) => {
         const appointmentDate = new Date(lead.appointment_requested);
         const appointmentEnd = new Date(appointmentDate.getTime() + 60 * 60 * 1000); // 1 hour
 
+        const appointmentData: Record<string, unknown> = {
+          tenant_id: tenantId,
+          contact_id: contactId,
+          title: `Consultation - ${lead.first_name} ${lead.last_name || ''}`,
+          appointment_type: 'consultation',
+          scheduled_start: appointmentDate.toISOString(),
+          scheduled_end: appointmentEnd.toISOString(),
+          notes: `Requested via website form. ${lead.message || ''}`,
+          status: 'pending'
+        };
+        
+        // Build address if provided
+        const addressParts = [lead.address, lead.city, lead.state, lead.zip].filter(Boolean);
+        if (addressParts.length > 0) {
+          appointmentData.address = addressParts.join(', ');
+        }
+        
+        // Assign appointment to default assignee
+        if (defaultAssigneeId) {
+          appointmentData.assigned_to = defaultAssigneeId;
+        }
+
         const { data: appointment, error: apptError } = await supabase
           .from('appointments')
-          .insert({
-            tenant_id: tenantId,
-            contact_id: contactId,
-            title: `Consultation - ${lead.first_name} ${lead.last_name || ''}`,
-            appointment_type: 'consultation',
-            scheduled_start: appointmentDate.toISOString(),
-            scheduled_end: appointmentEnd.toISOString(),
-            address: [lead.address, lead.city, lead.state, lead.zip].filter(Boolean).join(', '),
-            notes: `Requested via website form. ${lead.message || ''}`,
-            status: 'pending'
-          })
+          .insert(appointmentData)
           .select('id')
           .single();
 
@@ -303,18 +350,29 @@ serve(async (req: Request) => {
       })
       .eq('id', apiKeyRecord.id);
 
-    // Create notification for the company
-    const { data: adminUsers } = await supabase
-      .from('profiles')
-      .select('id')
-      .eq('tenant_id', tenantId)
-      .in('role', ['owner', 'office_admin', 'sales_manager'])
-      .limit(5);
+    // Create notification for assigned user or admins
+    const notifyUserIds: string[] = [];
+    
+    if (defaultAssigneeId) {
+      notifyUserIds.push(defaultAssigneeId);
+    } else {
+      // Fallback: notify admins if no default assignee
+      const { data: adminUsers } = await supabase
+        .from('profiles')
+        .select('id')
+        .eq('tenant_id', tenantId)
+        .in('role', ['owner', 'office_admin', 'sales_manager'])
+        .limit(5);
+      
+      if (adminUsers) {
+        notifyUserIds.push(...adminUsers.map(u => u.id));
+      }
+    }
 
-    if (adminUsers && adminUsers.length > 0) {
-      const notifications = adminUsers.map(user => ({
+    if (notifyUserIds.length > 0) {
+      const notifications = notifyUserIds.map(userId => ({
         tenant_id: tenantId,
-        user_id: user.id,
+        user_id: userId,
         type: 'new_lead',
         title: 'New Website Lead',
         message: `${lead.first_name} ${lead.last_name || ''} submitted a lead via your website form.`,
@@ -338,7 +396,8 @@ serve(async (req: Request) => {
           contact_id: contactId,
           appointment_id: appointmentId,
           is_duplicate: isDuplicate,
-          lead_number: leadNumber
+          lead_number: leadNumber,
+          assigned_to: defaultAssigneeId || null
         }
       }),
       { status: 200, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
