@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { buildDirectSetupLink } from "../_shared/email-config.ts";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -139,7 +140,9 @@ serve(async (req) => {
       // Don't fail - we can still return the user ID
     }
 
-    const resetLink = resetData?.properties?.action_link || null;
+    // Convert the raw Supabase action link to a direct setup link
+    const rawResetLink = resetData?.properties?.action_link;
+    const resetLink = rawResetLink ? buildDirectSetupLink(rawResetLink) : null;
     console.log("[create-company-user] Generated reset link for:", email);
 
     return new Response(
