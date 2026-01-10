@@ -27,15 +27,16 @@ interface SLAPolicy {
   id: string;
   tenant_id: string;
   name: string;
-  description: string | null;
   channel: string | null;
-  priority: string | null;
   first_response_minutes: number;
   resolution_minutes: number;
-  escalation_levels: EscalationLevel[];
+  escalation_levels: EscalationLevel[] | any;
   business_hours_only: boolean;
+  business_hours: any;
   is_active: boolean;
   created_at: string;
+  created_by: string | null;
+  updated_at: string;
 }
 
 const defaultEscalationLevel: EscalationLevel = {
@@ -73,11 +74,11 @@ export const SLAPolicyManager = () => {
       const { data, error } = await supabase
         .from("sla_policies")
         .select("*")
-        .eq("tenant_id", tenantId) as { data: SLAPolicy[] | null; error: any }
+        .eq("tenant_id", tenantId)
         .order("created_at", { ascending: false });
       
       if (error) throw error;
-      return data as SLAPolicy[];
+      return (data || []) as SLAPolicy[];
     },
     enabled: !!tenantId
   });
@@ -189,9 +190,9 @@ export const SLAPolicyManager = () => {
     setEditingPolicy(policy);
     setFormData({
       name: policy.name,
-      description: policy.description || "",
+      description: "",
       channel: policy.channel || "all",
-      priority: policy.priority || "all",
+      priority: "all",
       first_response_minutes: policy.first_response_minutes,
       resolution_minutes: policy.resolution_minutes,
       business_hours_only: policy.business_hours_only,
@@ -503,9 +504,6 @@ export const SLAPolicyManager = () => {
                     <TableCell>
                       <div>
                         <p className="font-medium">{policy.name}</p>
-                        {policy.description && (
-                          <p className="text-xs text-muted-foreground line-clamp-1">{policy.description}</p>
-                        )}
                       </div>
                     </TableCell>
                     <TableCell>

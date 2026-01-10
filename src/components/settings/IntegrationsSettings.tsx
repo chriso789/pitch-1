@@ -6,7 +6,9 @@ import { SessionActivityLog } from "./SessionActivityLog";
 import { MeasurementCorrectionsLog } from "./MeasurementCorrectionsLog";
 import { ApiKeyManager } from "./ApiKeyManager";
 import { WebsiteIntegration } from "./WebsiteIntegration";
-import { Github, BarChart3, Phone, Shield, Ruler, Key, Globe } from "lucide-react";
+import { SLAPolicyManager } from "./SLAPolicyManager";
+import { RoutingRulesManager } from "./RoutingRulesManager";
+import { Github, BarChart3, Phone, Shield, Ruler, Key, Globe, Clock, Route } from "lucide-react";
 
 export const IntegrationsSettings = () => {
   return (
@@ -27,6 +29,14 @@ export const IntegrationsSettings = () => {
           <TabsTrigger value="website" className="flex items-center gap-2">
             <Globe className="h-4 w-4" />
             Website Integration
+          </TabsTrigger>
+          <TabsTrigger value="sla-policies" className="flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            SLA Policies
+          </TabsTrigger>
+          <TabsTrigger value="routing-rules" className="flex items-center gap-2">
+            <Route className="h-4 w-4" />
+            Routing Rules
           </TabsTrigger>
           <TabsTrigger value="telnyx" className="flex items-center gap-2">
             <Phone className="h-4 w-4" />
@@ -56,6 +66,14 @@ export const IntegrationsSettings = () => {
 
         <TabsContent value="website" className="space-y-6">
           <WebsiteIntegration />
+        </TabsContent>
+
+        <TabsContent value="sla-policies" className="space-y-6">
+          <SLAPolicyManager />
+        </TabsContent>
+
+        <TabsContent value="routing-rules" className="space-y-6">
+          <RoutingRulesManager />
         </TabsContent>
 
         <TabsContent value="telnyx" className="space-y-6">

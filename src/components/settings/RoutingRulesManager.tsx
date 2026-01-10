@@ -408,7 +408,7 @@ export const RoutingRulesManager = () => {
                           onCheckedChange={() => toggleEligibleUser(member.id)}
                         />
                         <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">{member.full_name}</p>
+                          <p className="text-sm font-medium truncate">{member.first_name} {member.last_name}</p>
                           <p className="text-xs text-muted-foreground capitalize">{member.role}</p>
                         </div>
                       </label>
@@ -428,7 +428,7 @@ export const RoutingRulesManager = () => {
                         <SelectItem value="">None</SelectItem>
                         {teamMembers?.map((member) => (
                           <SelectItem key={member.id} value={member.id}>
-                            {member.full_name}
+                            {member.first_name} {member.last_name}
                           </SelectItem>
                         ))}
                       </SelectContent>
