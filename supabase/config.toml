@@ -672,3 +672,9 @@ verify_jwt = true
 
 [functions.sla-monitor]
 verify_jwt = false
+
+[functions.telnyx-dial]
+verify_jwt = true
+
+[functions.ai-followup-worker]
+verify_jwt = false

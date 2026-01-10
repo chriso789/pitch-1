@@ -331,6 +331,63 @@ export type Database = {
           },
         ]
       }
+      ai_agents: {
+        Row: {
+          created_at: string
+          enabled: boolean
+          escalation_rules: Json
+          id: string
+          location_id: string | null
+          name: string
+          persona_prompt: string
+          safety_prompt: string
+          tenant_id: string
+          updated_at: string
+          working_hours: Json
+        }
+        Insert: {
+          created_at?: string
+          enabled?: boolean
+          escalation_rules?: Json
+          id?: string
+          location_id?: string | null
+          name?: string
+          persona_prompt?: string
+          safety_prompt?: string
+          tenant_id: string
+          updated_at?: string
+          working_hours?: Json
+        }
+        Update: {
+          created_at?: string
+          enabled?: boolean
+          escalation_rules?: Json
+          id?: string
+          location_id?: string | null
+          name?: string
+          persona_prompt?: string
+          safety_prompt?: string
+          tenant_id?: string
+          updated_at?: string
+          working_hours?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_agents_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_agents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_answering_config: {
         Row: {
           after_hours_greeting: string | null
@@ -671,6 +728,70 @@ export type Database = {
           },
           {
             foreignKeyName: "ai_measurement_analysis_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_outreach_queue: {
+        Row: {
+          attempts: number
+          channel: string
+          contact_id: string
+          conversation_id: string | null
+          created_at: string
+          id: string
+          last_error: string | null
+          scheduled_for: string
+          state: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          attempts?: number
+          channel: string
+          contact_id: string
+          conversation_id?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          scheduled_for: string
+          state?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          attempts?: number
+          channel?: string
+          contact_id?: string
+          conversation_id?: string | null
+          created_at?: string
+          id?: string
+          last_error?: string | null
+          scheduled_for?: string
+          state?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_outreach_queue_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_outreach_queue_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_outreach_queue_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -2319,6 +2440,7 @@ export type Database = {
           answered_at: string | null
           campaign_id: string | null
           contact_id: string | null
+          conversation_id: string | null
           created_at: string
           created_by: string | null
           direction: string | null
@@ -2329,9 +2451,11 @@ export type Database = {
           handled_by: string | null
           id: string
           notes: string | null
+          raw_payload: Json | null
           recording_url: string | null
           status: string | null
           telnyx_call_control_id: string | null
+          telnyx_call_leg_id: string | null
           tenant_id: string
           to_number: string | null
           updated_at: string
@@ -2340,6 +2464,7 @@ export type Database = {
           answered_at?: string | null
           campaign_id?: string | null
           contact_id?: string | null
+          conversation_id?: string | null
           created_at?: string
           created_by?: string | null
           direction?: string | null
@@ -2350,9 +2475,11 @@ export type Database = {
           handled_by?: string | null
           id?: string
           notes?: string | null
+          raw_payload?: Json | null
           recording_url?: string | null
           status?: string | null
           telnyx_call_control_id?: string | null
+          telnyx_call_leg_id?: string | null
           tenant_id: string
           to_number?: string | null
           updated_at?: string
@@ -2361,6 +2488,7 @@ export type Database = {
           answered_at?: string | null
           campaign_id?: string | null
           contact_id?: string | null
+          conversation_id?: string | null
           created_at?: string
           created_by?: string | null
           direction?: string | null
@@ -2371,9 +2499,11 @@ export type Database = {
           handled_by?: string | null
           id?: string
           notes?: string | null
+          raw_payload?: Json | null
           recording_url?: string | null
           status?: string | null
           telnyx_call_control_id?: string | null
+          telnyx_call_leg_id?: string | null
           tenant_id?: string
           to_number?: string | null
           updated_at?: string
@@ -2391,6 +2521,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calls_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
             referencedColumns: ["id"]
           },
           {
@@ -5340,6 +5477,67 @@ export type Database = {
           },
           {
             foreignKeyName: "conversation_sla_status_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversations: {
+        Row: {
+          channel: string
+          contact_id: string
+          contact_phone_e164: string | null
+          created_at: string
+          id: string
+          last_activity_at: string
+          location_id: string | null
+          status: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          channel: string
+          contact_id: string
+          contact_phone_e164?: string | null
+          created_at?: string
+          id?: string
+          last_activity_at?: string
+          location_id?: string | null
+          status?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          channel?: string
+          contact_id?: string
+          contact_phone_e164?: string | null
+          created_at?: string
+          id?: string
+          last_activity_at?: string
+          location_id?: string | null
+          status?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversations_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -23212,6 +23410,7 @@ export type Database = {
         Row: {
           body: string
           contact_id: string | null
+          conversation_id: string | null
           created_at: string | null
           delivered_at: string | null
           direction: string
@@ -23232,6 +23431,7 @@ export type Database = {
         Insert: {
           body: string
           contact_id?: string | null
+          conversation_id?: string | null
           created_at?: string | null
           delivered_at?: string | null
           direction: string
@@ -23252,6 +23452,7 @@ export type Database = {
         Update: {
           body?: string
           contact_id?: string | null
+          conversation_id?: string | null
           created_at?: string | null
           delivered_at?: string | null
           direction?: string
@@ -23275,6 +23476,13 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
             referencedColumns: ["id"]
           },
           {
@@ -25078,6 +25286,47 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      telnyx_webhook_events: {
+        Row: {
+          event_type: string | null
+          id: string
+          kind: string
+          occurred_at: string | null
+          payload: Json
+          received_at: string
+          telnyx_event_id: string | null
+          tenant_id: string | null
+        }
+        Insert: {
+          event_type?: string | null
+          id?: string
+          kind: string
+          occurred_at?: string | null
+          payload: Json
+          received_at?: string
+          telnyx_event_id?: string | null
+          tenant_id?: string | null
+        }
+        Update: {
+          event_type?: string | null
+          id?: string
+          kind?: string
+          occurred_at?: string | null
+          payload?: Json
+          received_at?: string
+          telnyx_event_id?: string | null
+          tenant_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "telnyx_webhook_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
             referencedColumns: ["id"]
           },
         ]
@@ -29482,6 +29731,15 @@ export type Database = {
       rollback_estimate_to_version: {
         Args: { estimate_id_param: string; version_id_param: string }
         Returns: boolean
+      }
+      rpc_create_or_get_conversation: {
+        Args: {
+          _channel: string
+          _contact_id: string
+          _location_id: string
+          _tenant_id: string
+        }
+        Returns: string
       }
       seed_dynamic_tags: { Args: { p_tenant_id: string }; Returns: undefined }
       show_limit: { Args: never; Returns: number }
