@@ -892,6 +892,7 @@ const CompanyAdminPage = () => {
                     <CardContent>
                       <LogoUploader
                         logoUrl={formData.logo_url || null}
+                        tenantIdOverride={selectedCompany?.id}
                         onLogoUploaded={(url) => setFormData({ ...formData, logo_url: url })}
                         onLogoRemoved={() => setFormData({ ...formData, logo_url: '' })}
                       />
