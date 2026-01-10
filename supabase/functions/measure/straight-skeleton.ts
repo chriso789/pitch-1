@@ -1227,25 +1227,3 @@ function deduplicatePoints(points: XY[], threshold: number): XY[] {
   
   return unique
 }
-
-/**
- * Find intersection between two line segments
- */
-function lineLineIntersection(a1: XY, a2: XY, b1: XY, b2: XY): XY | null {
-  const denom = (b2[1] - b1[1]) * (a2[0] - a1[0]) - (b2[0] - b1[0]) * (a2[1] - a1[1])
-  
-  if (Math.abs(denom) < 0.0000001) return null
-  
-  const ua = ((b2[0] - b1[0]) * (a1[1] - b1[1]) - (b2[1] - b1[1]) * (a1[0] - b1[0])) / denom
-  const ub = ((a2[0] - a1[0]) * (a1[1] - b1[1]) - (a2[1] - a1[1]) * (a1[0] - b1[0])) / denom
-  
-  // Check if intersection is within both segments
-  if (ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1) {
-    return [
-      a1[0] + ua * (a2[0] - a1[0]),
-      a1[1] + ua * (a2[1] - a1[1])
-    ]
-  }
-  
-  return null
-}
