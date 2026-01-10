@@ -1,5 +1,5 @@
 // Quality Assurance Validator for Roof Measurements
-// Validates area consistency, perimeter matching, and segment connectivity
+// ENHANCED: Includes topological validation for constrained geometry
 
 type XY = [number, number];
 
@@ -10,6 +10,7 @@ export interface QualityChecks {
   perimeterErrorPercent: number;
   segmentConnectivity: boolean;
   facetsClosed: boolean;
+  topologyValid: boolean;
   issues: string[];
   warnings: string[];
 }
@@ -17,7 +18,7 @@ export interface QualityChecks {
 export interface ValidationResult {
   qualityChecks: QualityChecks;
   manualReviewRecommended: boolean;
-  overallScore: number; // 0-1
+  overallScore: number;
   criticalIssues: string[];
 }
 
@@ -46,7 +47,7 @@ interface MeasurementData {
     'lf.eave': number;
     'lf.rake': number;
   };
-  googleSolarTotalArea?: number; // Reference value from Google
+  googleSolarTotalArea?: number;
 }
 
 /**
@@ -73,18 +74,23 @@ export function validateMeasurements(data: MeasurementData): ValidationResult {
   const facetsClosed = checkFacetsClosed(data.facets, issues, warnings);
   if (!facetsClosed) score -= 0.1;
 
-  // 5. Check for requiresReview flags
+  // 5. NEW: Topological Validation
+  const topologyValid = checkTopologicalConstraints(data, issues, warnings);
+  if (!topologyValid) score -= 0.25;
+
+  // 6. Check for requiresReview flags
   const reviewFlagsCount = data.facets.filter(f => f.requiresReview).length;
   if (reviewFlagsCount > 0) {
     warnings.push(`${reviewFlagsCount} facet(s) flagged for review`);
     score -= 0.05 * Math.min(reviewFlagsCount, 4);
   }
 
-  // Determine if manual review is recommended
   const criticalIssues = issues.filter(i => 
     i.includes('exceeds') || 
     i.includes('not closed') || 
-    i.includes('disconnected')
+    i.includes('disconnected') ||
+    i.includes('outside footprint') ||
+    i.includes('crossing')
   );
   
   const manualReviewRecommended = 
@@ -100,6 +106,7 @@ export function validateMeasurements(data: MeasurementData): ValidationResult {
       perimeterErrorPercent,
       segmentConnectivity,
       facetsClosed,
+      topologyValid,
       issues,
       warnings
     },
@@ -110,8 +117,188 @@ export function validateMeasurements(data: MeasurementData): ValidationResult {
 }
 
 /**
+ * NEW: Check topological constraints for valid roof geometry
+ */
+function checkTopologicalConstraints(
+  data: MeasurementData,
+  issues: string[],
+  warnings: string[]
+): boolean {
+  let valid = true;
+
+  // 1. All internal edges must be inside footprint
+  const allInternalEdges = [
+    ...data.edges.ridges,
+    ...data.edges.hips,
+    ...data.edges.valleys
+  ];
+
+  let outsideCount = 0;
+  for (const edge of allInternalEdges) {
+    if (!isPointInsideOrNearPolygon(edge.start, data.footprint) ||
+        !isPointInsideOrNearPolygon(edge.end, data.footprint)) {
+      outsideCount++;
+    }
+  }
+
+  if (outsideCount > 0) {
+    issues.push(`${outsideCount} edge endpoint(s) outside footprint boundary`);
+    valid = false;
+  }
+
+  // 2. Check for hip crossing (geometrically impossible)
+  const hipCrossings = checkForEdgeCrossings(data.edges.hips);
+  if (hipCrossings > 0) {
+    issues.push(`${hipCrossings} hip crossing(s) detected (geometrically impossible)`);
+    valid = false;
+  }
+
+  // 3. Ridge length sanity check - should be < building longest dimension
+  const footprintBounds = getBoundsFromCoords(data.footprint);
+  const maxDimension = Math.max(
+    footprintBounds.maxX - footprintBounds.minX,
+    footprintBounds.maxY - footprintBounds.minY
+  ) * 111320 * 3.28084; // Convert to feet approximately
+
+  const ridgeTotal = data.totals['lf.ridge'];
+  if (ridgeTotal > maxDimension * 1.5) {
+    warnings.push(`Ridge length (${Math.round(ridgeTotal)}ft) exceeds 150% of building dimension`);
+  }
+  if (ridgeTotal > maxDimension * 2) {
+    issues.push(`Ridge length (${Math.round(ridgeTotal)}ft) exceeds 200% of building dimension - likely error`);
+    valid = false;
+  }
+
+  // 4. Hip total sanity check - should be reasonable relative to building size
+  const hipTotal = data.totals['lf.hip'];
+  const expectedHipMax = maxDimension * 4; // 4 hips roughly = 4x the diagonal
+  if (hipTotal > expectedHipMax) {
+    warnings.push(`Hip length (${Math.round(hipTotal)}ft) seems high for building size`);
+  }
+
+  // 5. Eave + rake should approximately equal perimeter
+  const perimeterFt = calculatePerimeter(data.footprint);
+  const eaveRakeTotal = data.totals['lf.eave'] + data.totals['lf.rake'];
+  const perimeterDiff = Math.abs(eaveRakeTotal - perimeterFt) / perimeterFt * 100;
+  
+  if (perimeterDiff > 20) {
+    warnings.push(`Eave+rake (${Math.round(eaveRakeTotal)}ft) differs from perimeter (${Math.round(perimeterFt)}ft) by ${perimeterDiff.toFixed(0)}%`);
+  }
+
+  return valid;
+}
+
+/**
+ * Check if a point is inside or very close to polygon
+ */
+function isPointInsideOrNearPolygon(point: XY, polygon: XY[], tolerance: number = 0.00005): boolean {
+  // First check if inside
+  if (pointInPolygon(point, polygon)) return true;
+  
+  // Then check if very close to any edge
+  for (let i = 0; i < polygon.length; i++) {
+    const p1 = polygon[i];
+    const p2 = polygon[(i + 1) % polygon.length];
+    
+    if (distanceToLineSegment(point, p1, p2) < tolerance) {
+      return true;
+    }
+  }
+  
+  return false;
+}
+
+/**
+ * Point in polygon test
+ */
+function pointInPolygon(point: XY, polygon: XY[]): boolean {
+  let inside = false;
+  const n = polygon.length;
+  
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = polygon[i][0], yi = polygon[i][1];
+    const xj = polygon[j][0], yj = polygon[j][1];
+    
+    if (((yi > point[1]) !== (yj > point[1])) &&
+        (point[0] < (xj - xi) * (point[1] - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  
+  return inside;
+}
+
+/**
+ * Distance from point to line segment
+ */
+function distanceToLineSegment(point: XY, p1: XY, p2: XY): number {
+  const dx = p2[0] - p1[0];
+  const dy = p2[1] - p1[1];
+  const lenSq = dx * dx + dy * dy;
+  
+  if (lenSq === 0) return distance(point, p1);
+  
+  let t = ((point[0] - p1[0]) * dx + (point[1] - p1[1]) * dy) / lenSq;
+  t = Math.max(0, Math.min(1, t));
+  
+  const closest: XY = [p1[0] + t * dx, p1[1] + t * dy];
+  return distance(point, closest);
+}
+
+/**
+ * Check for edge crossings (returns count)
+ */
+function checkForEdgeCrossings(edges: Array<{ start: XY; end: XY }>): number {
+  let crossings = 0;
+  
+  for (let i = 0; i < edges.length; i++) {
+    for (let j = i + 1; j < edges.length; j++) {
+      if (edgesIntersect(edges[i].start, edges[i].end, edges[j].start, edges[j].end)) {
+        crossings++;
+      }
+    }
+  }
+  
+  return crossings;
+}
+
+/**
+ * Check if two edges intersect (not at endpoints)
+ */
+function edgesIntersect(a1: XY, a2: XY, b1: XY, b2: XY): boolean {
+  const d1x = a2[0] - a1[0];
+  const d1y = a2[1] - a1[1];
+  const d2x = b2[0] - b1[0];
+  const d2y = b2[1] - b1[1];
+  
+  const cross = d1x * d2y - d1y * d2x;
+  if (Math.abs(cross) < 1e-12) return false;
+  
+  const t = ((b1[0] - a1[0]) * d2y - (b1[1] - a1[1]) * d2x) / cross;
+  const u = ((b1[0] - a1[0]) * d1y - (b1[1] - a1[1]) * d1x) / cross;
+  
+  // Intersection exists if both t and u are strictly between 0 and 1
+  // (not at endpoints)
+  const epsilon = 0.001;
+  return t > epsilon && t < (1 - epsilon) && u > epsilon && u < (1 - epsilon);
+}
+
+/**
+ * Get bounding box from coordinates
+ */
+function getBoundsFromCoords(coords: XY[]): { minX: number; maxX: number; minY: number; maxY: number } {
+  const xs = coords.map(c => c[0]);
+  const ys = coords.map(c => c[1]);
+  return {
+    minX: Math.min(...xs),
+    maxX: Math.max(...xs),
+    minY: Math.min(...ys),
+    maxY: Math.max(...ys)
+  };
+}
+
+/**
  * Check if sum of facet areas matches total area
- * Tolerance: ±3%
  */
 function checkAreaConsistency(
   data: MeasurementData,
@@ -137,7 +324,6 @@ function checkAreaConsistency(
     warnings.push(`Minor area discrepancy: ${errorPercent.toFixed(1)}%`);
   }
 
-  // Also check against Google Solar reference if available
   if (data.googleSolarTotalArea) {
     const googleError = Math.abs((reportedTotal - data.googleSolarTotalArea) / data.googleSolarTotalArea) * 100;
     if (googleError > 5) {
@@ -150,7 +336,6 @@ function checkAreaConsistency(
 
 /**
  * Check if eave + rake lengths match footprint perimeter
- * Tolerance: ±1%
  */
 function checkPerimeterConsistency(
   data: MeasurementData,
@@ -180,7 +365,7 @@ function checkPerimeterConsistency(
 }
 
 /**
- * Check that all segments connect properly (no dangling ends)
+ * Check that all segments connect properly
  */
 function checkSegmentConnectivity(
   edges: MeasurementData['edges'],
@@ -193,28 +378,22 @@ function checkSegmentConnectivity(
     ...edges.valleys
   ];
 
-  if (allEdges.length === 0) {
-    // No internal edges to check - might be a simple roof
-    return true;
-  }
+  if (allEdges.length === 0) return true;
 
-  // Collect all endpoints
   const endpoints: XY[] = [];
   for (const edge of allEdges) {
     endpoints.push(edge.start, edge.end);
   }
 
-  // Check that each endpoint connects to at least one other edge or boundary
   const boundaryPoints = [
     ...edges.eaves.flatMap(e => [e.start, e.end]),
     ...edges.rakes.flatMap(e => [e.start, e.end])
   ];
 
   let disconnectedCount = 0;
-  const tolerance = 0.00005; // ~5 meters
+  const tolerance = 0.00005;
 
   for (const point of endpoints) {
-    // Check if point connects to another endpoint or boundary
     const connectedToOther = endpoints.some(other => 
       other !== point && distance(point, other) < tolerance
     );
@@ -265,11 +444,7 @@ function checkFacetsClosed(
     }
   }
 
-  if (unclosedCount > 0) {
-    return false;
-  }
-
-  return true;
+  return unclosedCount === 0;
 }
 
 // ===== Utility Functions =====
@@ -289,7 +464,7 @@ function calculatePerimeter(coords: XY[]): number {
     perimeter += Math.sqrt(dx * dx + dy * dy);
   }
   
-  return perimeter * 3.28084; // Convert to feet
+  return perimeter * 3.28084;
 }
 
 function distance(a: XY, b: XY): number {
