@@ -25,6 +25,15 @@ export function HomeownerProtectedRoute({ children }: HomeownerProtectedRoutePro
 
   const validateSession = async () => {
     try {
+      // Check if user is logged in as staff first - allow admin access
+      const { data: { session: authSession } } = await supabase.auth.getSession();
+      if (authSession?.user) {
+        setIsValid(true);
+        setIsValidating(false);
+        return;
+      }
+
+      // Otherwise, check homeowner session token
       const sessionData = localStorage.getItem("homeowner_session");
       
       if (!sessionData) {
