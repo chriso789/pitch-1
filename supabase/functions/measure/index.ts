@@ -307,22 +307,24 @@ function buildLinearFeaturesFromTopology(
   coords: [number, number][],
   midLat: number,
   skipSkeletonForRidges: boolean = false
-): { features: LinearFeature[]; totals: Record<string, number>; derivedFacetCount: number; isComplexShape: boolean } {
+): { features: LinearFeature[]; totals: Record<string, number>; derivedFacetCount: number; isComplexShape: boolean; confidenceWarning?: string } {
   try {
     // Detect building shape complexity
+    // RELAXED: Only skip skeleton for VERY complex shapes (>10 vertices AND >2 reflex corners)
     const vertexCount = coords.length;
     const reflexCount = countReflexVertices(coords);
+    const isVeryComplex = vertexCount > 10 && reflexCount > 2;
     const isComplexShape = vertexCount > 6 || reflexCount > 0;
     
     if (isComplexShape) {
-      console.log(`⚠️ Complex building shape detected: ${vertexCount} vertices, ${reflexCount} reflex corners`);
-      console.log(`   → Skipping straight-skeleton for ridge/hip/valley (will use segment topology instead)`);
+      console.log(`ℹ️ Complex building shape detected: ${vertexCount} vertices, ${reflexCount} reflex corners`);
+      console.log(`   → Attempting skeleton anyway (only skip if >10 vertices AND >2 reflex corners)`);
     }
     
-    // For complex shapes OR when explicitly told to skip, only compute eave/rake
-    // Do NOT run straight skeleton for ridge/hip/valley - it produces garbage for L/T/U shapes
-    if (isComplexShape || skipSkeletonForRidges) {
-      return buildEaveRakeOnlyFromPerimeter(coords, midLat, isComplexShape);
+    // ONLY skip for VERY complex shapes - otherwise always try skeleton first
+    if (isVeryComplex && skipSkeletonForRidges) {
+      console.log(`⚠️ Very complex shape - falling back to perimeter-only`);
+      return buildEaveRakeOnlyFromPerimeter(coords, midLat, true);
     }
     
     // Only run full straight skeleton for simple rectangular buildings
@@ -419,27 +421,19 @@ function buildLinearFeaturesFromTopology(
       calculateGeodesicLength([bounds.minX, bounds.minY], [bounds.minX, bounds.maxY], midLat)
     );
     
-    // If ridge exceeds 200% of longest dimension, something is wrong
+    // FIXED: Don't discard valid skeleton data - just add a warning
+    // If ridge exceeds 200% of longest dimension, flag it but KEEP the features
+    let confidenceWarning: string | undefined;
     if (totals.ridge_ft > longestDimFt * 2) {
-      console.warn(`⚠️ SANITY CHECK FAILED: Ridge ${totals.ridge_ft.toFixed(0)}ft >> longest dim ${longestDimFt.toFixed(0)}ft`);
-      console.warn(`   → Discarding skeleton ridge/hip/valley, keeping only eave/rake`);
-      
-      // Return only eave/rake, zero out ridge/hip/valley
-      const eaveRakeOnly = features.filter(f => f.type === 'eave' || f.type === 'rake');
-      return {
-        features: eaveRakeOnly,
-        totals: {
-          ...totals,
-          ridge_ft: 0,
-          hip_ft: 0,
-          valley_ft: 0,
-        },
-        derivedFacetCount: 4,
-        isComplexShape: true,
-      };
+      console.warn(`⚠️ SANITY CHECK WARNING: Ridge ${totals.ridge_ft.toFixed(0)}ft >> longest dim ${longestDimFt.toFixed(0)}ft`);
+      console.warn(`   → Flagging with confidence warning but KEEPING skeleton features`);
+      confidenceWarning = `Ridge length (${Math.round(totals.ridge_ft)}ft) exceeds expected max (${Math.round(longestDimFt)}ft). Manual verification recommended.`;
     }
     
-    return { features, totals, derivedFacetCount, isComplexShape: false };
+    // Log final feature counts for debugging
+    console.log(`✓ Skeleton features preserved: ${features.filter(f => f.type === 'ridge').length} ridges, ${features.filter(f => f.type === 'hip').length} hips, ${features.filter(f => f.type === 'valley').length} valleys`);
+    
+    return { features, totals, derivedFacetCount, isComplexShape: false, confidenceWarning };
   } catch (error) {
     console.warn('Skeleton extraction failed, falling back to perimeter-only:', error);
     return buildEaveRakeOnlyFromPerimeter(coords, midLat, true);
@@ -1705,21 +1699,41 @@ serve(async (req) => {
 
         // Apply corrections to linear features and summary
         if (apply_corrections && Object.keys(corrections).length > 0) {
-          if (meas.linear_features) {
+          // Log pre-correction state for debugging
+          console.log('Pre-correction linear features:', {
+            ridge: meas.summary?.ridge_ft,
+            hip: meas.summary?.hip_ft,
+            valley: meas.summary?.valley_ft,
+            linear_features_count: meas.linear_features?.length || 0
+          });
+          
+          // FIXED: Only apply corrections if we have actual values to correct
+          if (meas.linear_features && meas.linear_features.length > 0) {
             meas.linear_features = meas.linear_features.map(lf => ({
               ...lf,
               length_ft: lf.length_ft * (corrections[lf.type] || 1)
             }));
           }
+          
           if (meas.summary) {
+            // FIXED: Warn if values are 0 - indicates upstream problem
+            if ((meas.summary.ridge_ft || 0) === 0 && (meas.summary.hip_ft || 0) === 0) {
+              console.warn('⚠️ CORRECTION WARNING: Ridge and hip are 0 - skeleton may have been discarded upstream');
+            }
+            
             meas.summary.ridge_ft = (meas.summary.ridge_ft || 0) * (corrections['ridge'] || 1);
             meas.summary.hip_ft = (meas.summary.hip_ft || 0) * (corrections['hip'] || 1);
             meas.summary.valley_ft = (meas.summary.valley_ft || 0) * (corrections['valley'] || 1);
             meas.summary.eave_ft = (meas.summary.eave_ft || 0) * (corrections['eave'] || 1);
             meas.summary.rake_ft = (meas.summary.rake_ft || 0) * (corrections['rake'] || 1);
           }
+          
           meas.source = `${meas.source}_corrected`;
-          console.log('Corrections applied to measurement');
+          console.log('Post-correction linear features:', {
+            ridge: meas.summary?.ridge_ft,
+            hip: meas.summary?.hip_ft,
+            valley: meas.summary?.valley_ft
+          });
         }
 
         // Save measurement with analysis coordinates for overlay alignment

@@ -10615,6 +10615,187 @@ export type Database = {
         }
         Relationships: []
       }
+      homeowner_conversations: {
+        Row: {
+          company_id: string
+          created_at: string | null
+          id: string
+          is_open: boolean | null
+          job_id: string
+          subject: string | null
+        }
+        Insert: {
+          company_id: string
+          created_at?: string | null
+          id?: string
+          is_open?: boolean | null
+          job_id: string
+          subject?: string | null
+        }
+        Update: {
+          company_id?: string
+          created_at?: string | null
+          id?: string
+          is_open?: boolean | null
+          job_id?: string
+          subject?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "homeowner_conversations_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "homeowner_conversations_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      homeowner_job_access: {
+        Row: {
+          access_level: string
+          company_id: string
+          created_at: string | null
+          id: string
+          job_id: string
+          portal_user_id: string
+        }
+        Insert: {
+          access_level?: string
+          company_id: string
+          created_at?: string | null
+          id?: string
+          job_id: string
+          portal_user_id: string
+        }
+        Update: {
+          access_level?: string
+          company_id?: string
+          created_at?: string | null
+          id?: string
+          job_id?: string
+          portal_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "homeowner_job_access_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "homeowner_job_access_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "homeowner_job_access_portal_user_id_fkey"
+            columns: ["portal_user_id"]
+            isOneToOne: false
+            referencedRelation: "homeowner_portal_users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      homeowner_job_public_state: {
+        Row: {
+          company_id: string
+          job_id: string
+          last_updated_at: string | null
+          public_notes: string | null
+          public_stage: string
+          public_status: string
+          scheduled_dates: Json | null
+        }
+        Insert: {
+          company_id: string
+          job_id: string
+          last_updated_at?: string | null
+          public_notes?: string | null
+          public_stage?: string
+          public_status?: string
+          scheduled_dates?: Json | null
+        }
+        Update: {
+          company_id?: string
+          job_id?: string
+          last_updated_at?: string | null
+          public_notes?: string | null
+          public_stage?: string
+          public_status?: string
+          scheduled_dates?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "homeowner_job_public_state_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "homeowner_job_public_state_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      homeowner_messages: {
+        Row: {
+          company_id: string
+          conversation_id: string
+          created_at: string | null
+          id: string
+          message_text: string
+          sender_id: string | null
+          sender_type: string
+        }
+        Insert: {
+          company_id: string
+          conversation_id: string
+          created_at?: string | null
+          id?: string
+          message_text: string
+          sender_id?: string | null
+          sender_type?: string
+        }
+        Update: {
+          company_id?: string
+          conversation_id?: string
+          created_at?: string | null
+          id?: string
+          message_text?: string
+          sender_id?: string | null
+          sender_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "homeowner_messages_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "homeowner_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "homeowner_conversations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       homeowner_portal_sessions: {
         Row: {
           auth_method: string | null
@@ -10672,6 +10853,222 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      homeowner_portal_users: {
+        Row: {
+          auth_user_id: string | null
+          company_id: string
+          created_at: string | null
+          email: string
+          first_name: string | null
+          id: string
+          is_active: boolean | null
+          last_name: string | null
+          phone: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          auth_user_id?: string | null
+          company_id: string
+          created_at?: string | null
+          email: string
+          first_name?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_name?: string | null
+          phone?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          auth_user_id?: string | null
+          company_id?: string
+          created_at?: string | null
+          email?: string
+          first_name?: string | null
+          id?: string
+          is_active?: boolean | null
+          last_name?: string | null
+          phone?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "homeowner_portal_users_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      homeowner_shared_files: {
+        Row: {
+          caption: string | null
+          category: string
+          company_id: string
+          created_at: string | null
+          file_type: string
+          id: string
+          is_visible: boolean | null
+          job_id: string
+          storage_bucket: string
+          storage_path: string
+          uploaded_by_staff_user_id: string | null
+        }
+        Insert: {
+          caption?: string | null
+          category?: string
+          company_id: string
+          created_at?: string | null
+          file_type?: string
+          id?: string
+          is_visible?: boolean | null
+          job_id: string
+          storage_bucket: string
+          storage_path: string
+          uploaded_by_staff_user_id?: string | null
+        }
+        Update: {
+          caption?: string | null
+          category?: string
+          company_id?: string
+          created_at?: string | null
+          file_type?: string
+          id?: string
+          is_visible?: boolean | null
+          job_id?: string
+          storage_bucket?: string
+          storage_path?: string
+          uploaded_by_staff_user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "homeowner_shared_files_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "homeowner_shared_files_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      homeowner_timeline_events: {
+        Row: {
+          company_id: string
+          created_at: string | null
+          created_by_type: string
+          event_type: string
+          id: string
+          is_visible: boolean | null
+          job_id: string
+          message: string | null
+          title: string
+        }
+        Insert: {
+          company_id: string
+          created_at?: string | null
+          created_by_type?: string
+          event_type: string
+          id?: string
+          is_visible?: boolean | null
+          job_id: string
+          message?: string | null
+          title: string
+        }
+        Update: {
+          company_id?: string
+          created_at?: string | null
+          created_by_type?: string
+          event_type?: string
+          id?: string
+          is_visible?: boolean | null
+          job_id?: string
+          message?: string | null
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "homeowner_timeline_events_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "homeowner_timeline_events_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      homeowner_uploads: {
+        Row: {
+          caption: string | null
+          category: string | null
+          company_id: string
+          created_at: string | null
+          file_type: string
+          id: string
+          job_id: string
+          portal_user_id: string
+          storage_bucket: string
+          storage_path: string
+        }
+        Insert: {
+          caption?: string | null
+          category?: string | null
+          company_id: string
+          created_at?: string | null
+          file_type?: string
+          id?: string
+          job_id: string
+          portal_user_id: string
+          storage_bucket: string
+          storage_path: string
+        }
+        Update: {
+          caption?: string | null
+          category?: string | null
+          company_id?: string
+          created_at?: string | null
+          file_type?: string
+          id?: string
+          job_id?: string
+          portal_user_id?: string
+          storage_bucket?: string
+          storage_path?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "homeowner_uploads_company_id_fkey"
+            columns: ["company_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "homeowner_uploads_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "homeowner_uploads_portal_user_id_fkey"
+            columns: ["portal_user_id"]
+            isOneToOne: false
+            referencedRelation: "homeowner_portal_users"
             referencedColumns: ["id"]
           },
         ]
