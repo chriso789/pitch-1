@@ -56,27 +56,42 @@ export function LogoUploader({ logoUrl, onLogoUploaded, onLogoRemoved, className
     setIsUploading(true);
 
     try {
+      // Read file as base64
+      const fileBase64 = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const result = reader.result as string;
+          // Remove data URL prefix (e.g., "data:image/png;base64,")
+          const base64 = result.split(',')[1];
+          resolve(base64);
+        };
+        reader.onerror = () => reject(new Error('Failed to read file'));
+        reader.readAsDataURL(file);
+      });
+
       const fileExt = file.name.split('.').pop()?.toLowerCase() || 'png';
-      const fileName = `${tenantId}/${crypto.randomUUID()}.${fileExt}`;
 
-      const { error: uploadError } = await supabase.storage
-        .from('company-logos')
-        .upload(fileName, file, {
-          cacheControl: '3600',
-          upsert: true
-        });
+      // Upload via Edge Function (bypasses Storage RLS)
+      const { data, error } = await supabase.functions.invoke('upload-company-logo', {
+        body: {
+          tenantId,
+          fileBase64,
+          contentType: file.type,
+          fileExt,
+        },
+      });
 
-      if (uploadError) {
-        // Show the actual error - no fallback to non-existent bucket
-        console.error('Logo upload error:', uploadError);
-        throw new Error(uploadError.message || 'Storage upload failed');
+      if (error) {
+        console.error('Logo upload edge function error:', error);
+        throw new Error(error.message || 'Upload failed');
       }
 
-      const { data: urlData } = supabase.storage
-        .from('company-logos')
-        .getPublicUrl(fileName);
+      if (!data?.success || !data?.publicUrl) {
+        console.error('Logo upload failed:', data);
+        throw new Error(data?.error || 'Upload failed - no URL returned');
+      }
 
-      onLogoUploaded(urlData.publicUrl);
+      onLogoUploaded(data.publicUrl);
 
       toast({
         title: 'Logo uploaded',
