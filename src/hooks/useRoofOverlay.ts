@@ -3,6 +3,7 @@ import { supabase } from '@/integrations/supabase/client'
 import { toast } from 'sonner'
 
 // Output format matching AI Overlay Objective specification
+// ENHANCED: Phase 5 - Added visualEvidence and snappedToTarget
 export interface RoofOverlayOutput {
   perimeter: [number, number][]; // [[lng, lat], ...]
   ridges: RoofOverlayLine[];
@@ -15,6 +16,7 @@ export interface RoofOverlayOutput {
     requiresManualReview: boolean;
     totalAreaSqft?: number;
     processedAt: string;
+    alignmentAttempts?: number; // Phase 4: How many iterations to reach alignment
   };
 }
 
@@ -24,6 +26,8 @@ export interface RoofOverlayLine {
   confidence: number;
   requiresReview: boolean;
   source?: string;
+  visualEvidence?: string; // Phase 5: What the AI saw (e.g., "bright ridge highlight")
+  snappedToTarget?: boolean; // Phase 3: Whether endpoint is properly snapped
 }
 
 interface UseRoofOverlayOptions {

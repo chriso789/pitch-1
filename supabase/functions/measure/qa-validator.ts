@@ -118,6 +118,7 @@ export function validateMeasurements(data: MeasurementData): ValidationResult {
 
 /**
  * NEW: Check topological constraints for valid roof geometry
+ * PHASE 3: Enhanced with no-floating-lines validation
  */
 function checkTopologicalConstraints(
   data: MeasurementData,
@@ -185,7 +186,59 @@ function checkTopologicalConstraints(
     warnings.push(`Eave+rake (${Math.round(eaveRakeTotal)}ft) differs from perimeter (${Math.round(perimeterFt)}ft) by ${perimeterDiff.toFixed(0)}%`);
   }
 
+  // 6. PHASE 3: No floating endpoints allowed
+  const { valid: noFloating, floatingEndpoints } = validateEndpointConnections(data.edges, data.footprint);
+  if (!noFloating) {
+    issues.push(`${floatingEndpoints.length} floating endpoint(s) - lines not properly connected to perimeter or other lines`);
+    valid = false;
+  }
+
   return valid;
+}
+
+/**
+ * PHASE 3: Validate all line endpoints connect to perimeter or other lines
+ */
+function validateEndpointConnections(
+  edges: MeasurementData['edges'],
+  footprint: XY[]
+): { valid: boolean; floatingEndpoints: XY[] } {
+  const floatingEndpoints: XY[] = [];
+  const tolerance = 0.00008; // ~3 feet in degrees
+
+  // Collect all valid connection targets
+  const perimeterCorners = footprint;
+  const ridgeEndpoints = edges.ridges.flatMap(e => [e.start, e.end]);
+  const hipEndpoints = edges.hips.flatMap(e => [e.start, e.end]);
+  const validTargets = [...perimeterCorners, ...ridgeEndpoints, ...hipEndpoints];
+
+  // Check hip endpoints - they MUST connect to ridge or perimeter
+  for (const hip of edges.hips) {
+    const startConnected = validTargets.some(target => 
+      distance(hip.start, target) < tolerance && target !== hip.start
+    );
+    const endConnected = validTargets.some(target => 
+      distance(hip.end, target) < tolerance && target !== hip.end
+    );
+    
+    if (!startConnected) floatingEndpoints.push(hip.start);
+    if (!endConnected) floatingEndpoints.push(hip.end);
+  }
+
+  // Check valley endpoints
+  for (const valley of edges.valleys) {
+    const startConnected = validTargets.some(target => 
+      distance(valley.start, target) < tolerance && target !== valley.start
+    );
+    const endConnected = validTargets.some(target => 
+      distance(valley.end, target) < tolerance && target !== valley.end
+    );
+    
+    if (!startConnected) floatingEndpoints.push(valley.start);
+    if (!endConnected) floatingEndpoints.push(valley.end);
+  }
+
+  return { valid: floatingEndpoints.length === 0, floatingEndpoints };
 }
 
 /**
