@@ -21,6 +21,23 @@ interface AccuracyTrackingData {
   tenant_id: string;
 }
 
+// NEW: Correction storage for learning
+interface CorrectionData {
+  measurement_id?: string;
+  tenant_id: string;
+  original_line_wkt: string;
+  original_line_type: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake';
+  corrected_line_wkt: string;
+  deviation_ft: number;
+  correction_source: 'user_trace' | 'manual_edit' | 'auto_correction' | 'qa_review';
+  building_shape: string;
+  roof_type: string;
+  vertex_count: number;
+  lat?: number;
+  lng?: number;
+  created_by?: string;
+}
+
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -178,6 +195,88 @@ Deno.serve(async (req) => {
           avg_linear_variance: avgLinearVariance,
           trend,
           recent_records: records.slice(0, 10)
+        }
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+
+    } else if (action === 'store-correction') {
+      // NEW: Store a line correction for learning
+      const correctionData = data as CorrectionData;
+      
+      // Calculate deviation percentage
+      const deviationPct = correctionData.deviation_ft > 0 ? 
+        Math.min(100, (correctionData.deviation_ft / 10) * 100) : 0;
+      
+      const { data: result, error } = await supabase
+        .from('measurement_corrections')
+        .insert({
+          measurement_id: correctionData.measurement_id,
+          tenant_id: correctionData.tenant_id,
+          original_line_wkt: correctionData.original_line_wkt,
+          original_line_type: correctionData.original_line_type,
+          corrected_line_wkt: correctionData.corrected_line_wkt,
+          deviation_ft: correctionData.deviation_ft,
+          deviation_pct: deviationPct,
+          correction_source: correctionData.correction_source,
+          building_shape: correctionData.building_shape,
+          roof_type: correctionData.roof_type,
+          vertex_count: correctionData.vertex_count,
+          lat: correctionData.lat,
+          lng: correctionData.lng,
+          created_by: correctionData.created_by
+        })
+        .select()
+        .single();
+      
+      if (error) throw error;
+      
+      console.log(`📝 Stored correction for ${correctionData.original_line_type}: ${correctionData.deviation_ft.toFixed(1)}ft deviation`);
+      
+      return new Response(JSON.stringify({
+        ok: true,
+        data: result
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+
+    } else if (action === 'get-patterns') {
+      // NEW: Retrieve learned patterns for a building type
+      const { tenant_id, building_shape, roof_type, limit = 100 } = data;
+      
+      const { data: corrections, error } = await supabase
+        .from('measurement_corrections')
+        .select('original_line_type, deviation_ft, building_shape, roof_type')
+        .eq('tenant_id', tenant_id)
+        .eq('building_shape', building_shape)
+        .eq('roof_type', roof_type)
+        .order('created_at', { ascending: false })
+        .limit(limit);
+      
+      if (error) throw error;
+      
+      // Aggregate patterns
+      const patterns = new Map<string, { deviations: number[]; count: number }>();
+      
+      for (const c of corrections || []) {
+        const key = c.original_line_type;
+        const existing = patterns.get(key) || { deviations: [], count: 0 };
+        existing.deviations.push(c.deviation_ft);
+        existing.count++;
+        patterns.set(key, existing);
+      }
+      
+      const patternList = Array.from(patterns.entries()).map(([lineType, { deviations, count }]) => ({
+        lineType,
+        avgDeviationFt: deviations.reduce((a, b) => a + b, 0) / deviations.length,
+        count
+      }));
+      
+      return new Response(JSON.stringify({
+        ok: true,
+        data: {
+          patterns: patternList,
+          totalCorrections: corrections?.length || 0
         }
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }

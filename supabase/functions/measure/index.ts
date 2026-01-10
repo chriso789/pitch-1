@@ -3,6 +3,8 @@
 // Handles: Regrid (sync), OSM (sync), EagleView/Nearmap/HOVER (async ready)
 // Generates vendor-agnostic Smart Tags for estimate templates
 // NEW: Full AI Measurement Agent pipeline with DSM refinement and QA validation
+// Phase 5: Self-evaluation with overlay-evaluator
+// Phase 6: Continuous learning with correction-tracker
 
 import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
@@ -13,6 +15,8 @@ import { splitFootprintIntoFacets } from "./facet-splitter.ts";
 import { validateMeasurements } from "./qa-validator.ts";
 import { transformToOutputSchema, type MeasurementOutputSchema } from "./output-schema.ts";
 import { analyzeSegmentTopology, topologyToLinearFeatures, topologyToTotals } from "./segment-topology-analyzer.ts";
+import { evaluateOverlay, applyCorrections, type EvaluationResult } from "./overlay-evaluator.ts";
+import { storeCorrection, getLearnedPatterns, applyLearnedAdjustments, type CorrectionRecord } from "./correction-tracker.ts";
 
 // Environment
 const GOOGLE_PLACES_API_KEY = Deno.env.get("GOOGLE_PLACES_API_KEY") || "";

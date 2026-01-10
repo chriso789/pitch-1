@@ -536,13 +536,18 @@ function pointInPolygon(point: XY, polygon: XY[]): boolean {
 
 /**
  * Validate and fix topology - ensure no criss-crossing hips
+ * ENHANCED: Additional validation for proper geometry constraints
  */
 function validateAndFixTopology(skeleton: SkeletonEdge[], footprint: XY[]): SkeletonEdge[] {
   const ridges = skeleton.filter(e => e.type === 'ridge');
-  const hips = skeleton.filter(e => e.type === 'hip');
-  const valleys = skeleton.filter(e => e.type === 'valley');
+  let hips = skeleton.filter(e => e.type === 'hip');
+  let valleys = skeleton.filter(e => e.type === 'valley');
   
-  // Check for crossing hips
+  const bounds = getBounds(footprint);
+  const maxDimension = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
+  const centroid = calculateCentroid(footprint);
+  
+  // PHASE 1: Check for crossing hips and remove offenders
   const crossingPairs: Array<[number, number]> = [];
   
   for (let i = 0; i < hips.length; i++) {
@@ -556,7 +561,6 @@ function validateAndFixTopology(skeleton: SkeletonEdge[], footprint: XY[]): Skel
   if (crossingPairs.length > 0) {
     console.warn(`  ⚠️ Found ${crossingPairs.length} crossing hip pairs - fixing...`);
     
-    // Remove crossing hips (simpler than trying to fix)
     const toRemove = new Set<number>();
     for (const [i, j] of crossingPairs) {
       // Remove the longer one (more likely to be incorrect)
@@ -565,27 +569,117 @@ function validateAndFixTopology(skeleton: SkeletonEdge[], footprint: XY[]): Skel
       toRemove.add(len_i > len_j ? i : j);
     }
     
-    const fixedHips = hips.filter((_, idx) => !toRemove.has(idx));
+    hips = hips.filter((_, idx) => !toRemove.has(idx));
     console.log(`  Removed ${toRemove.size} crossing hips`);
-    
-    return [...ridges, ...fixedHips, ...valleys];
   }
   
-  // Validate ridge length sanity
-  const bounds = getBounds(footprint);
-  const maxDimension = Math.max(bounds.maxX - bounds.minX, bounds.maxY - bounds.minY);
+  // PHASE 2: Validate hip endpoints are at footprint corners
+  hips = hips.filter(hip => {
+    const startOnFootprint = footprint.some(v => distance(hip.start, v) < 0.00001);
+    const endInside = pointInPolygon(hip.end, footprint) || 
+                      footprint.some(v => distance(hip.end, v) < 0.00005);
+    
+    if (!startOnFootprint) {
+      console.warn(`  Hip ${hip.id} start not on footprint corner - discarded`);
+      return false;
+    }
+    if (!endInside) {
+      console.warn(`  Hip ${hip.id} end outside footprint - discarded`);
+      return false;
+    }
+    return true;
+  });
   
+  // PHASE 3: Validate valleys originate from reflex vertices
+  valleys = valleys.filter(valley => {
+    const endInsideOrOnRidge = pointInPolygon(valley.end, footprint) || 
+                               ridges.some(r => pointNearSegment(valley.end, r.start, r.end, 0.00002));
+    
+    if (!endInsideOrOnRidge) {
+      console.warn(`  Valley ${valley.id} end not at ridge - discarded`);
+      return false;
+    }
+    return true;
+  });
+  
+  // PHASE 4: Validate ridge length sanity
   const saneRidges = ridges.filter(ridge => {
     const len = distance(ridge.start, ridge.end);
-    // Ridge should be less than 90% of max dimension
-    return len < maxDimension * 0.9;
+    // Ridge should be less than 80% of max dimension (more conservative)
+    if (len >= maxDimension * 0.8) {
+      console.warn(`  Ridge ${ridge.id} too long (${(len / maxDimension * 100).toFixed(0)}% of dimension) - discarded`);
+      return false;
+    }
+    // Ridge endpoints should be inside footprint
+    if (!pointInPolygon(ridge.start, footprint) || !pointInPolygon(ridge.end, footprint)) {
+      console.warn(`  Ridge ${ridge.id} endpoints outside footprint - discarded`);
+      return false;
+    }
+    return true;
   });
   
   if (saneRidges.length < ridges.length) {
-    console.warn(`  Removed ${ridges.length - saneRidges.length} overly long ridges`);
+    console.warn(`  Removed ${ridges.length - saneRidges.length} invalid ridges`);
   }
   
-  return [...saneRidges, ...hips, ...valleys];
+  // PHASE 5: Ensure hip-to-ridge connectivity
+  const validatedHips = hips.filter(hip => {
+    // Hip end should be close to a ridge endpoint
+    const nearRidge = saneRidges.some(r => 
+      distance(hip.end, r.start) < 0.00003 || 
+      distance(hip.end, r.end) < 0.00003
+    );
+    
+    if (!nearRidge && saneRidges.length > 0) {
+      // Snap hip end to nearest ridge endpoint
+      let nearestDist = Infinity;
+      let nearestPoint: XY | null = null;
+      
+      for (const r of saneRidges) {
+        if (distance(hip.end, r.start) < nearestDist) {
+          nearestDist = distance(hip.end, r.start);
+          nearestPoint = r.start;
+        }
+        if (distance(hip.end, r.end) < nearestDist) {
+          nearestDist = distance(hip.end, r.end);
+          nearestPoint = r.end;
+        }
+      }
+      
+      if (nearestPoint && nearestDist < 0.0001) {
+        hip.end = nearestPoint;
+        console.log(`  Snapped hip ${hip.id} end to ridge endpoint`);
+      }
+    }
+    return true;
+  });
+  
+  console.log(`  Final topology: ${saneRidges.length} ridges, ${validatedHips.length} hips, ${valleys.length} valleys`);
+  
+  return [...saneRidges, ...validatedHips, ...valleys];
+}
+
+/**
+ * Check if a point is near a line segment
+ */
+function pointNearSegment(point: XY, segStart: XY, segEnd: XY, threshold: number): boolean {
+  const dx = segEnd[0] - segStart[0];
+  const dy = segEnd[1] - segStart[1];
+  const segLenSq = dx * dx + dy * dy;
+  
+  if (segLenSq === 0) {
+    return distance(point, segStart) < threshold;
+  }
+  
+  let t = ((point[0] - segStart[0]) * dx + (point[1] - segStart[1]) * dy) / segLenSq;
+  t = Math.max(0, Math.min(1, t));
+  
+  const closestPoint: XY = [
+    segStart[0] + t * dx,
+    segStart[1] + t * dy
+  ];
+  
+  return distance(point, closestPoint) < threshold;
 }
 
 /**
