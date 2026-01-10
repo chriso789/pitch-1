@@ -75,37 +75,9 @@ const CallCenterPage = () => {
     enabled: !!tenantId,
   });
 
-  // Fetch call recordings for expanded call
-  const { data: callRecordings } = useQuery({
-    queryKey: ['call-recordings', expandedCallId],
-    queryFn: async () => {
-      if (!expandedCallId) return [];
-      const { data, error } = await supabase
-        .from('call_recordings')
-        .select('*')
-        .eq('call_id', expandedCallId)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!expandedCallId,
-  });
-
-  // Fetch call transcripts for expanded call
-  const { data: callTranscripts } = useQuery({
-    queryKey: ['call-transcripts', expandedCallId],
-    queryFn: async () => {
-      if (!expandedCallId) return [];
-      const { data, error } = await supabase
-        .from('call_transcripts')
-        .select('*')
-        .eq('call_id', expandedCallId)
-        .order('created_at', { ascending: false });
-      if (error) throw error;
-      return data;
-    },
-    enabled: !!expandedCallId,
-  });
+  // Note: call_recordings and call_transcripts queries removed until tables are typed
+  const callRecordings: any[] = [];
+  const callTranscripts: any[] = [];
 
   const getStatusBadge = (status: string) => {
     switch (status) {

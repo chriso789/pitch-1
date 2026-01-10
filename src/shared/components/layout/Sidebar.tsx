@@ -69,6 +69,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
   const { user: currentUser, loading: userLoading, refetch: refetchUser } = useCurrentUser();
   const { user: authUser } = useAuth();
   const { currentLocation } = useLocationContext();
+  const [communicationsExpanded, setCommunicationsExpanded] = React.useState(false);
   
   // Instant display name from auth user_metadata (no loading state)
   const getInstantDisplayName = () => {
@@ -258,13 +259,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       icon: CloudRain,
       description: "Lead generation & canvassing"
     },
-    {
-      name: "Communications",
-      href: "communications",
-      path: "/communications",
-      icon: Phone,
-      description: "Calls, SMS & messages"
-    },
+    // Communications is now an expandable section - see communicationsSubNav below
     {
       name: "Smart Docs",
       href: "smartdocs",
@@ -402,6 +397,101 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
                 )}
               </Link>
             ))}
+            
+            {/* Communications Expandable Section */}
+            <div className="space-y-0.5">
+              <button
+                onClick={() => setCommunicationsExpanded(!communicationsExpanded)}
+                className={cn(
+                  "w-full flex items-center rounded-md text-left transition-colors group",
+                  isCollapsed ? "px-2 py-2 justify-center" : "gap-3 px-3 py-2",
+                  activeSection === 'communications'
+                    ? "bg-primary/10 text-primary border-l-2 border-primary"
+                    : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-l-2 border-transparent"
+                )}
+                title={isCollapsed ? "Communications" : undefined}
+              >
+                <Phone className={cn(
+                  "h-4 w-4 flex-shrink-0",
+                  activeSection === 'communications' 
+                    ? "text-primary" 
+                    : "text-muted-foreground group-hover:text-accent-foreground"
+                )} />
+                {!isCollapsed && (
+                  <>
+                    <span className={cn(
+                      "text-sm font-medium truncate flex-1",
+                      activeSection === 'communications' ? "text-primary" : ""
+                    )}>
+                      Communications
+                    </span>
+                    {communicationsExpanded ? (
+                      <ChevronDown className="h-4 w-4" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4" />
+                    )}
+                  </>
+                )}
+              </button>
+              
+              {/* Communications Sub-items */}
+              {(communicationsExpanded || activeSection === 'communications') && !isCollapsed && (
+                <div className="ml-4 pl-3 border-l border-border space-y-0.5">
+                  <Link
+                    to="/communications"
+                    onClick={onNavigate}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-1.5 rounded-md text-left transition-colors group",
+                      location.pathname === '/communications'
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    )}
+                  >
+                    <Inbox className="h-3.5 w-3.5" />
+                    <span className="text-sm">Inbox</span>
+                  </Link>
+                  <Link
+                    to="/communications/unmatched"
+                    onClick={onNavigate}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-1.5 rounded-md text-left transition-colors group",
+                      location.pathname === '/communications/unmatched'
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    )}
+                  >
+                    <MessageSquare className="h-3.5 w-3.5" />
+                    <span className="text-sm">Unmatched</span>
+                  </Link>
+                  <Link
+                    to="/communications/ai-queue"
+                    onClick={onNavigate}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-1.5 rounded-md text-left transition-colors group",
+                      location.pathname === '/communications/ai-queue'
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    )}
+                  >
+                    <Bot className="h-3.5 w-3.5" />
+                    <span className="text-sm">AI Queue</span>
+                  </Link>
+                  <Link
+                    to="/communications/calls"
+                    onClick={onNavigate}
+                    className={cn(
+                      "w-full flex items-center gap-3 px-3 py-1.5 rounded-md text-left transition-colors group",
+                      location.pathname === '/communications/calls'
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                    )}
+                  >
+                    <PhoneCall className="h-3.5 w-3.5" />
+                    <span className="text-sm">Call Center</span>
+                  </Link>
+                </div>
+              )}
+            </div>
           </nav>
         </div>
 
