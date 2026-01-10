@@ -236,6 +236,7 @@ async function routeInboundMessage(supabase: any, toNumber: string): Promise<Rou
 async function processInboundSMS(supabase: any, messageData: any, routing: RoutingResult) {
   const { tenantId, locationId, assignedReps, locationName } = routing;
   const cleanedFromPhone = messageData.from?.replace(/[^\d+]/g, '') || '';
+  const telnyxMessageId = messageData.messageSid;
 
   console.log(`[SMS Routing] Processing inbound from ${cleanedFromPhone} to location: ${locationName || 'unknown'} (${locationId || 'no location'})`);
 
@@ -339,7 +340,48 @@ async function processInboundSMS(supabase: any, messageData: any, routing: Routi
     }
   }
 
-  // STEP 5: Find active pipeline entry for this contact at this location
+  // STEP 5: If STILL no contact found, store in unmatched_inbound instead of creating fake leads
+  if (!contactId) {
+    console.log(`[SMS Routing] ⚠️ No contact found for ${cleanedFromPhone}, storing in unmatched_inbound`);
+    
+    await supabase
+      .from('unmatched_inbound')
+      .insert({
+        tenant_id: tenantId,
+        location_id: locationId,
+        channel: 'sms',
+        from_e164: cleanedFromPhone,
+        to_e164: messageData.to,
+        telnyx_message_id: telnyxMessageId,
+        body: messageData.body,
+        raw_payload: {
+          provider: messageData.provider || 'telnyx',
+          original_from: messageData.from,
+          original_to: messageData.to,
+        },
+        occurred_at: new Date().toISOString(),
+        state: 'open',
+      });
+
+    // Still store in inbound_messages for audit trail
+    await supabase
+      .from('inbound_messages')
+      .insert({
+        tenant_id: tenantId,
+        contact_id: null,
+        message_type: 'sms',
+        from_address: messageData.from,
+        to_address: messageData.to,
+        body: messageData.body,
+        provider_message_id: messageData.messageSid,
+        received_at: new Date().toISOString(),
+      });
+
+    console.log('[SMS Routing] Unmatched inbound stored for later linking');
+    return; // Exit early - no contact to link to
+  }
+
+  // STEP 6: Find active pipeline entry for this contact at this location
   if (contactId && locationId) {
     const { data: pipeline } = await supabase
       .from('pipeline_entries')
@@ -410,11 +452,12 @@ async function processInboundSMS(supabase: any, messageData: any, routing: Routi
     console.log(`[SMS Routing] Created new thread: ${threadId}`);
   }
 
-  // Insert message into sms_messages with location
+  // Insert message into sms_messages with location and deduplication
   if (threadId) {
-    await supabase
+    // Use upsert with ON CONFLICT to prevent duplicate messages from webhook retries
+    const { error: smsInsertError } = await supabase
       .from('sms_messages')
-      .insert({
+      .upsert({
         tenant_id: tenantId,
         thread_id: threadId,
         contact_id: contactId,
@@ -427,8 +470,21 @@ async function processInboundSMS(supabase: any, messageData: any, routing: Routi
         status: 'received',
         provider: messageData.provider || 'telnyx',
         provider_message_id: messageData.messageSid,
+        telnyx_message_id: telnyxMessageId,
         sent_at: new Date().toISOString(),
+      }, {
+        onConflict: 'tenant_id,telnyx_message_id',
+        ignoreDuplicates: true
       });
+
+    if (smsInsertError) {
+      // Check if it's a duplicate key error (expected for retries)
+      if (smsInsertError.code === '23505') {
+        console.log(`[SMS Routing] Duplicate message ignored (webhook retry): ${telnyxMessageId}`);
+      } else {
+        console.error('[SMS Routing] Error inserting sms_message:', smsInsertError);
+      }
+    }
   }
 
   // Log to communication_history with location and pipeline entry
@@ -446,6 +502,7 @@ async function processInboundSMS(supabase: any, messageData: any, routing: Routi
       metadata: {
         provider: messageData.provider || 'telnyx',
         provider_message_id: messageData.messageSid,
+        telnyx_message_id: telnyxMessageId,
         thread_id: threadId,
         location_id: locationId,
         location_name: locationName,

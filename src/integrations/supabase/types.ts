@@ -23424,6 +23424,7 @@ export type Database = {
           provider_message_id: string | null
           sent_at: string | null
           status: string | null
+          telnyx_message_id: string | null
           tenant_id: string
           thread_id: string
           to_number: string
@@ -23445,6 +23446,7 @@ export type Database = {
           provider_message_id?: string | null
           sent_at?: string | null
           status?: string | null
+          telnyx_message_id?: string | null
           tenant_id: string
           thread_id: string
           to_number: string
@@ -23466,6 +23468,7 @@ export type Database = {
           provider_message_id?: string | null
           sent_at?: string | null
           status?: string | null
+          telnyx_message_id?: string | null
           tenant_id?: string
           thread_id?: string
           to_number?: string
@@ -26415,6 +26418,104 @@ export type Database = {
           },
           {
             foreignKeyName: "unified_inbox_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      unmatched_inbound: {
+        Row: {
+          body: string | null
+          channel: string
+          contact_id: string | null
+          conversation_id: string | null
+          event_type: string | null
+          from_e164: string
+          id: string
+          location_id: string | null
+          media: Json
+          notes: string | null
+          occurred_at: string | null
+          raw_payload: Json
+          received_at: string
+          state: string
+          telnyx_call_control_id: string | null
+          telnyx_call_leg_id: string | null
+          telnyx_event_id: string | null
+          telnyx_message_id: string | null
+          tenant_id: string
+          to_e164: string
+        }
+        Insert: {
+          body?: string | null
+          channel: string
+          contact_id?: string | null
+          conversation_id?: string | null
+          event_type?: string | null
+          from_e164: string
+          id?: string
+          location_id?: string | null
+          media?: Json
+          notes?: string | null
+          occurred_at?: string | null
+          raw_payload?: Json
+          received_at?: string
+          state?: string
+          telnyx_call_control_id?: string | null
+          telnyx_call_leg_id?: string | null
+          telnyx_event_id?: string | null
+          telnyx_message_id?: string | null
+          tenant_id: string
+          to_e164: string
+        }
+        Update: {
+          body?: string | null
+          channel?: string
+          contact_id?: string | null
+          conversation_id?: string | null
+          event_type?: string | null
+          from_e164?: string
+          id?: string
+          location_id?: string | null
+          media?: Json
+          notes?: string | null
+          occurred_at?: string | null
+          raw_payload?: Json
+          received_at?: string
+          state?: string
+          telnyx_call_control_id?: string | null
+          telnyx_call_leg_id?: string | null
+          telnyx_event_id?: string | null
+          telnyx_message_id?: string | null
+          tenant_id?: string
+          to_e164?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "unmatched_inbound_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unmatched_inbound_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unmatched_inbound_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unmatched_inbound_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
