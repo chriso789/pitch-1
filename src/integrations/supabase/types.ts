@@ -11514,6 +11514,152 @@ export type Database = {
           },
         ]
       }
+      homeowner_portal_activity: {
+        Row: {
+          action_details: Json | null
+          action_type: string
+          contact_id: string
+          created_at: string | null
+          device_type: string | null
+          id: string
+          ip_address: unknown
+          project_id: string | null
+          session_id: string | null
+          tenant_id: string
+          user_agent: string | null
+        }
+        Insert: {
+          action_details?: Json | null
+          action_type: string
+          contact_id: string
+          created_at?: string | null
+          device_type?: string | null
+          id?: string
+          ip_address?: unknown
+          project_id?: string | null
+          session_id?: string | null
+          tenant_id: string
+          user_agent?: string | null
+        }
+        Update: {
+          action_details?: Json | null
+          action_type?: string
+          contact_id?: string
+          created_at?: string | null
+          device_type?: string | null
+          id?: string
+          ip_address?: unknown
+          project_id?: string | null
+          session_id?: string | null
+          tenant_id?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "homeowner_portal_activity_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "homeowner_portal_activity_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "homeowner_portal_activity_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "homeowner_portal_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "homeowner_portal_activity_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      homeowner_portal_permissions: {
+        Row: {
+          can_approve_change_orders: boolean | null
+          can_download_documents: boolean | null
+          can_send_messages: boolean | null
+          can_use_ai_chat: boolean | null
+          can_view_documents: boolean | null
+          can_view_estimates: boolean | null
+          can_view_payments: boolean | null
+          can_view_photos: boolean | null
+          can_view_project_status: boolean | null
+          can_view_timeline: boolean | null
+          contact_id: string
+          created_at: string | null
+          id: string
+          tenant_id: string
+          updated_at: string | null
+          visible_document_categories: string[] | null
+          visible_photo_categories: string[] | null
+        }
+        Insert: {
+          can_approve_change_orders?: boolean | null
+          can_download_documents?: boolean | null
+          can_send_messages?: boolean | null
+          can_use_ai_chat?: boolean | null
+          can_view_documents?: boolean | null
+          can_view_estimates?: boolean | null
+          can_view_payments?: boolean | null
+          can_view_photos?: boolean | null
+          can_view_project_status?: boolean | null
+          can_view_timeline?: boolean | null
+          contact_id: string
+          created_at?: string | null
+          id?: string
+          tenant_id: string
+          updated_at?: string | null
+          visible_document_categories?: string[] | null
+          visible_photo_categories?: string[] | null
+        }
+        Update: {
+          can_approve_change_orders?: boolean | null
+          can_download_documents?: boolean | null
+          can_send_messages?: boolean | null
+          can_use_ai_chat?: boolean | null
+          can_view_documents?: boolean | null
+          can_view_estimates?: boolean | null
+          can_view_payments?: boolean | null
+          can_view_photos?: boolean | null
+          can_view_project_status?: boolean | null
+          can_view_timeline?: boolean | null
+          contact_id?: string
+          created_at?: string | null
+          id?: string
+          tenant_id?: string
+          updated_at?: string | null
+          visible_document_categories?: string[] | null
+          visible_photo_categories?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "homeowner_portal_permissions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: true
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "homeowner_portal_permissions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       homeowner_portal_sessions: {
         Row: {
           auth_method: string | null
