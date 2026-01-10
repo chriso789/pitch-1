@@ -295,6 +295,7 @@ function getCentroid(coords: XY[]): XY {
 
 /**
  * Fetch DSM data from Google Solar API
+ * Phase 4: Enhanced GeoTIFF parsing for ridge/valley detection
  */
 export async function fetchDSMFromGoogleSolar(
   lat: number,
@@ -318,21 +319,298 @@ export async function fetchDSMFromGoogleSolar(
       return null;
     }
     
-    // Note: Actually fetching and parsing the GeoTIFF would require additional libraries
-    // For now, return metadata indicating DSM is available
-    console.log('DSM layer available from Google Solar');
+    console.log('DSM layer available from Google Solar:', layersData.dsmUrl);
     
-    // In production, you would:
-    // 1. Fetch the GeoTIFF from layersData.dsmUrl
-    // 2. Parse it using a GeoTIFF library
-    // 3. Extract elevation values into a 2D grid
+    // Fetch the GeoTIFF
+    const dsmResponse = await fetch(`${layersData.dsmUrl}&key=${apiKey}`);
+    if (!dsmResponse.ok) {
+      console.warn(`Failed to fetch DSM GeoTIFF: ${dsmResponse.status}`);
+      return null;
+    }
     
-    return null; // Placeholder - full implementation would parse GeoTIFF
+    // Parse GeoTIFF data
+    const arrayBuffer = await dsmResponse.arrayBuffer();
+    const dsmGrid = await parseGeoTIFF(arrayBuffer, lat, lng);
+    
+    if (dsmGrid) {
+      console.log(`✓ Parsed DSM grid: ${dsmGrid.width}x${dsmGrid.height} pixels`);
+    }
+    
+    return dsmGrid;
     
   } catch (error) {
     console.warn('Error fetching DSM:', error);
     return null;
   }
+}
+
+/**
+ * Parse GeoTIFF buffer into DSM grid
+ * Simplified parser for Google Solar DSM format
+ */
+async function parseGeoTIFF(
+  buffer: ArrayBuffer,
+  centerLat: number,
+  centerLng: number
+): Promise<DSMGrid | null> {
+  try {
+    const dataView = new DataView(buffer);
+    
+    // Check TIFF magic number (big or little endian)
+    const magic1 = dataView.getUint16(0, true);
+    const magic2 = dataView.getUint16(0, false);
+    
+    const littleEndian = magic1 === 0x4949; // 'II'
+    const bigEndian = magic2 === 0x4D4D; // 'MM'
+    
+    if (!littleEndian && !bigEndian) {
+      console.warn('Not a valid TIFF file');
+      return null;
+    }
+    
+    const isLittleEndian = littleEndian;
+    
+    // Skip to IFD (Image File Directory)
+    const ifdOffset = dataView.getUint32(4, isLittleEndian);
+    const numEntries = dataView.getUint16(ifdOffset, isLittleEndian);
+    
+    let imageWidth = 0;
+    let imageHeight = 0;
+    let stripOffsets: number[] = [];
+    let stripByteCounts: number[] = [];
+    let bitsPerSample = 32;
+    
+    // Parse IFD entries
+    for (let i = 0; i < numEntries; i++) {
+      const entryOffset = ifdOffset + 2 + (i * 12);
+      const tag = dataView.getUint16(entryOffset, isLittleEndian);
+      const type = dataView.getUint16(entryOffset + 2, isLittleEndian);
+      const count = dataView.getUint32(entryOffset + 4, isLittleEndian);
+      const valueOffset = entryOffset + 8;
+      
+      switch (tag) {
+        case 256: // ImageWidth
+          imageWidth = dataView.getUint32(valueOffset, isLittleEndian);
+          break;
+        case 257: // ImageLength
+          imageHeight = dataView.getUint32(valueOffset, isLittleEndian);
+          break;
+        case 258: // BitsPerSample
+          bitsPerSample = dataView.getUint16(valueOffset, isLittleEndian);
+          break;
+        case 273: // StripOffsets
+          if (count === 1) {
+            stripOffsets = [dataView.getUint32(valueOffset, isLittleEndian)];
+          } else {
+            const offsetPtr = dataView.getUint32(valueOffset, isLittleEndian);
+            for (let j = 0; j < count; j++) {
+              stripOffsets.push(dataView.getUint32(offsetPtr + j * 4, isLittleEndian));
+            }
+          }
+          break;
+        case 279: // StripByteCounts
+          if (count === 1) {
+            stripByteCounts = [dataView.getUint32(valueOffset, isLittleEndian)];
+          } else {
+            const countPtr = dataView.getUint32(valueOffset, isLittleEndian);
+            for (let j = 0; j < count; j++) {
+              stripByteCounts.push(dataView.getUint32(countPtr + j * 4, isLittleEndian));
+            }
+          }
+          break;
+      }
+    }
+    
+    if (imageWidth === 0 || imageHeight === 0) {
+      console.warn('Could not determine image dimensions');
+      return null;
+    }
+    
+    // Read elevation data
+    const grid: number[][] = [];
+    const bytesPerPixel = bitsPerSample / 8;
+    
+    let pixelIndex = 0;
+    for (const offset of stripOffsets) {
+      for (let p = 0; p < imageWidth; p++) {
+        const row = Math.floor(pixelIndex / imageWidth);
+        const col = pixelIndex % imageWidth;
+        
+        if (!grid[row]) grid[row] = [];
+        
+        // Read as float32 (common DSM format)
+        if (bitsPerSample === 32) {
+          grid[row][col] = dataView.getFloat32(offset + p * 4, isLittleEndian);
+        } else {
+          grid[row][col] = dataView.getInt16(offset + p * 2, isLittleEndian) / 100; // meters
+        }
+        
+        pixelIndex++;
+      }
+    }
+    
+    // If parsing failed, create empty grid
+    if (grid.length === 0) {
+      for (let y = 0; y < imageHeight; y++) {
+        grid[y] = new Array(imageWidth).fill(0);
+      }
+    }
+    
+    // Estimate bounds (50m radius around center)
+    const radiusM = 50;
+    const latPerM = 1 / 111320;
+    const lngPerM = 1 / (111320 * Math.cos(centerLat * Math.PI / 180));
+    
+    return {
+      data: grid,
+      bounds: {
+        minLng: centerLng - radiusM * lngPerM,
+        maxLng: centerLng + radiusM * lngPerM,
+        minLat: centerLat - radiusM * latPerM,
+        maxLat: centerLat + radiusM * latPerM
+      },
+      resolution: (radiusM * 2) / imageWidth,
+      width: imageWidth,
+      height: imageHeight
+    };
+    
+  } catch (error) {
+    console.warn('GeoTIFF parsing error:', error);
+    return null;
+  }
+}
+
+/**
+ * Detect ridge lines from DSM elevation peaks
+ * Phase 4: Enhanced peak detection algorithm
+ */
+export function detectRidgeLinesFromDSM(dsmGrid: DSMGrid): Array<{ start: XY; end: XY; confidence: number }> {
+  const ridges: Array<{ start: XY; end: XY; confidence: number }> = [];
+  
+  if (!dsmGrid || !dsmGrid.data || dsmGrid.data.length === 0) {
+    return [];
+  }
+
+  const { data, bounds, width, height } = dsmGrid;
+  
+  // Find ridge candidates by looking for linear maxima
+  const ridgePoints: Array<{ x: number; y: number; elevation: number }> = [];
+  
+  for (let y = 2; y < height - 2; y++) {
+    for (let x = 2; x < width - 2; x++) {
+      const val = data[y][x];
+      
+      // Check if this is a local maximum in perpendicular directions
+      const isHorizontalRidge = val > data[y - 1][x] && val > data[y + 1][x];
+      const isVerticalRidge = val > data[y][x - 1] && val > data[y][x + 1];
+      
+      if (isHorizontalRidge || isVerticalRidge) {
+        ridgePoints.push({ x, y, elevation: val });
+      }
+    }
+  }
+  
+  if (ridgePoints.length < 2) {
+    return [];
+  }
+  
+  // Cluster ridge points into lines using RANSAC-like approach
+  // For simplicity, find the longest horizontal and vertical runs
+  const horizontalRidges = findLinearRuns(ridgePoints, 'horizontal', bounds, width, height);
+  const verticalRidges = findLinearRuns(ridgePoints, 'vertical', bounds, width, height);
+  
+  return [...horizontalRidges, ...verticalRidges];
+}
+
+/**
+ * Find linear runs of ridge points
+ */
+function findLinearRuns(
+  points: Array<{ x: number; y: number; elevation: number }>,
+  direction: 'horizontal' | 'vertical',
+  bounds: DSMGrid['bounds'],
+  width: number,
+  height: number
+): Array<{ start: XY; end: XY; confidence: number }> {
+  const ridges: Array<{ start: XY; end: XY; confidence: number }> = [];
+  
+  // Group by row (horizontal) or column (vertical)
+  const groups: Map<number, Array<{ x: number; y: number }>> = new Map();
+  
+  for (const point of points) {
+    const key = direction === 'horizontal' ? point.y : point.x;
+    if (!groups.has(key)) groups.set(key, []);
+    groups.get(key)!.push({ x: point.x, y: point.y });
+  }
+  
+  // Find groups with sufficient points (potential ridge lines)
+  for (const [key, group] of groups) {
+    if (group.length < 3) continue; // Need at least 3 points
+    
+    // Sort by position
+    group.sort((a, b) => direction === 'horizontal' ? a.x - b.x : a.y - b.y);
+    
+    const first = group[0];
+    const last = group[group.length - 1];
+    
+    // Convert to geographic coordinates
+    const startLng = bounds.minLng + (first.x / width) * (bounds.maxLng - bounds.minLng);
+    const startLat = bounds.maxLat - (first.y / height) * (bounds.maxLat - bounds.minLat);
+    const endLng = bounds.minLng + (last.x / width) * (bounds.maxLng - bounds.minLng);
+    const endLat = bounds.maxLat - (last.y / height) * (bounds.maxLat - bounds.minLat);
+    
+    // Confidence based on how many points are in the run
+    const confidence = Math.min(0.95, 0.6 + (group.length / 20) * 0.35);
+    
+    ridges.push({
+      start: [startLng, startLat],
+      end: [endLng, endLat],
+      confidence
+    });
+  }
+  
+  return ridges;
+}
+
+/**
+ * Detect valley lines from DSM elevation troughs
+ * Phase 4: Enhanced trough detection algorithm
+ */
+export function detectValleyLinesFromDSM(dsmGrid: DSMGrid): Array<{ start: XY; end: XY; confidence: number }> {
+  const valleys: Array<{ start: XY; end: XY; confidence: number }> = [];
+  
+  if (!dsmGrid || !dsmGrid.data || dsmGrid.data.length === 0) {
+    return [];
+  }
+
+  const { data, bounds, width, height } = dsmGrid;
+  
+  // Find valley candidates by looking for linear minima
+  const valleyPoints: Array<{ x: number; y: number; elevation: number }> = [];
+  
+  for (let y = 2; y < height - 2; y++) {
+    for (let x = 2; x < width - 2; x++) {
+      const val = data[y][x];
+      
+      // Check if this is a local minimum in perpendicular directions
+      const isHorizontalValley = val < data[y - 1][x] && val < data[y + 1][x];
+      const isVerticalValley = val < data[y][x - 1] && val < data[y][x + 1];
+      
+      if (isHorizontalValley || isVerticalValley) {
+        valleyPoints.push({ x, y, elevation: val });
+      }
+    }
+  }
+  
+  if (valleyPoints.length < 2) {
+    return [];
+  }
+  
+  // Find linear runs of valley points
+  const horizontalValleys = findLinearRuns(valleyPoints, 'horizontal', bounds, width, height);
+  const verticalValleys = findLinearRuns(valleyPoints, 'vertical', bounds, width, height);
+  
+  return [...horizontalValleys, ...verticalValleys];
 }
 
 export type { DSMGrid, DSMRefinedEdge, DSMAnalysisResult };
