@@ -5155,6 +5155,195 @@ export type Database = {
           },
         ]
       }
+      conversation_routing_rules: {
+        Row: {
+          conditions: Json | null
+          created_at: string | null
+          created_by: string | null
+          eligible_users: string[] | null
+          fallback_user_id: string | null
+          id: string
+          is_active: boolean | null
+          location_id: string | null
+          name: string
+          priority: number | null
+          routing_type: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          conditions?: Json | null
+          created_at?: string | null
+          created_by?: string | null
+          eligible_users?: string[] | null
+          fallback_user_id?: string | null
+          id?: string
+          is_active?: boolean | null
+          location_id?: string | null
+          name: string
+          priority?: number | null
+          routing_type: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          conditions?: Json | null
+          created_at?: string | null
+          created_by?: string | null
+          eligible_users?: string[] | null
+          fallback_user_id?: string | null
+          id?: string
+          is_active?: boolean | null
+          location_id?: string | null
+          name?: string
+          priority?: number | null
+          routing_type?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_routing_rules_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_routing_rules_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "conversation_routing_rules_fallback_user_id_fkey"
+            columns: ["fallback_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_routing_rules_fallback_user_id_fkey"
+            columns: ["fallback_user_id"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "conversation_routing_rules_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_routing_rules_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      conversation_sla_status: {
+        Row: {
+          assigned_to: string | null
+          conversation_id: string
+          conversation_type: string
+          created_at: string | null
+          current_escalation_level: number | null
+          escalation_history: Json | null
+          first_response_at: string | null
+          first_response_breached: boolean | null
+          first_response_due_at: string | null
+          id: string
+          last_escalation_at: string | null
+          metadata: Json | null
+          resolution_breached: boolean | null
+          resolution_due_at: string | null
+          resolved_at: string | null
+          sla_policy_id: string | null
+          started_at: string
+          status: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          assigned_to?: string | null
+          conversation_id: string
+          conversation_type: string
+          created_at?: string | null
+          current_escalation_level?: number | null
+          escalation_history?: Json | null
+          first_response_at?: string | null
+          first_response_breached?: boolean | null
+          first_response_due_at?: string | null
+          id?: string
+          last_escalation_at?: string | null
+          metadata?: Json | null
+          resolution_breached?: boolean | null
+          resolution_due_at?: string | null
+          resolved_at?: string | null
+          sla_policy_id?: string | null
+          started_at?: string
+          status?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          assigned_to?: string | null
+          conversation_id?: string
+          conversation_type?: string
+          created_at?: string | null
+          current_escalation_level?: number | null
+          escalation_history?: Json | null
+          first_response_at?: string | null
+          first_response_breached?: boolean | null
+          first_response_due_at?: string | null
+          id?: string
+          last_escalation_at?: string | null
+          metadata?: Json | null
+          resolution_breached?: boolean | null
+          resolution_due_at?: string | null
+          resolved_at?: string | null
+          sla_policy_id?: string | null
+          started_at?: string
+          status?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "conversation_sla_status_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_sla_status_assigned_to_fkey"
+            columns: ["assigned_to"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "conversation_sla_status_sla_policy_id_fkey"
+            columns: ["sla_policy_id"]
+            isOneToOne: false
+            referencedRelation: "sla_policies"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversation_sla_status_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       county_permit_forms: {
         Row: {
           county_id: string | null
@@ -22219,6 +22408,76 @@ export type Database = {
           },
         ]
       }
+      sla_policies: {
+        Row: {
+          business_hours: Json | null
+          business_hours_only: boolean | null
+          channel: string
+          created_at: string | null
+          created_by: string | null
+          escalation_levels: Json
+          first_response_minutes: number
+          id: string
+          is_active: boolean | null
+          name: string
+          resolution_minutes: number
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          business_hours?: Json | null
+          business_hours_only?: boolean | null
+          channel?: string
+          created_at?: string | null
+          created_by?: string | null
+          escalation_levels?: Json
+          first_response_minutes?: number
+          id?: string
+          is_active?: boolean | null
+          name: string
+          resolution_minutes?: number
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          business_hours?: Json | null
+          business_hours_only?: boolean | null
+          channel?: string
+          created_at?: string | null
+          created_by?: string | null
+          escalation_levels?: Json
+          first_response_minutes?: number
+          id?: string
+          is_active?: boolean | null
+          name?: string
+          resolution_minutes?: number
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "sla_policies_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sla_policies_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "sla_policies_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       smart_doc_instances: {
         Row: {
           created_at: string | null
@@ -23142,6 +23401,70 @@ export type Database = {
           srtext?: string | null
         }
         Relationships: []
+      }
+      staff_workload: {
+        Row: {
+          active_conversations: number | null
+          availability_status: string | null
+          id: string
+          is_available: boolean | null
+          last_assignment_at: string | null
+          last_round_robin_at: string | null
+          max_conversations: number | null
+          skills: string[] | null
+          tenant_id: string
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          active_conversations?: number | null
+          availability_status?: string | null
+          id?: string
+          is_available?: boolean | null
+          last_assignment_at?: string | null
+          last_round_robin_at?: string | null
+          max_conversations?: number | null
+          skills?: string[] | null
+          tenant_id: string
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          active_conversations?: number | null
+          availability_status?: string | null
+          id?: string
+          is_available?: boolean | null
+          last_assignment_at?: string | null
+          last_round_robin_at?: string | null
+          max_conversations?: number | null
+          skills?: string[] | null
+          tenant_id?: string
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "staff_workload_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_workload_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "staff_workload_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       status_transition_history: {
         Row: {
