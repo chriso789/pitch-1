@@ -4,7 +4,9 @@ import { AIUsageDashboard } from "./AIUsageDashboard";
 import { TelnyxIntegrationPanel } from "./TelnyxIntegrationPanel";
 import { SessionActivityLog } from "./SessionActivityLog";
 import { MeasurementCorrectionsLog } from "./MeasurementCorrectionsLog";
-import { Github, BarChart3, Phone, Shield, Ruler } from "lucide-react";
+import { ApiKeyManager } from "./ApiKeyManager";
+import { WebsiteIntegration } from "./WebsiteIntegration";
+import { Github, BarChart3, Phone, Shield, Ruler, Key, Globe } from "lucide-react";
 
 export const IntegrationsSettings = () => {
   return (
@@ -12,12 +14,20 @@ export const IntegrationsSettings = () => {
       <div>
         <h2 className="text-2xl font-bold">Integrations</h2>
         <p className="text-muted-foreground">
-          Connect external services and test AI integrations
+          Connect external services and manage API integrations
         </p>
       </div>
 
-      <Tabs defaultValue="telnyx" className="space-y-6">
+      <Tabs defaultValue="api-keys" className="space-y-6">
         <TabsList className="flex-wrap">
+          <TabsTrigger value="api-keys" className="flex items-center gap-2">
+            <Key className="h-4 w-4" />
+            API Keys
+          </TabsTrigger>
+          <TabsTrigger value="website" className="flex items-center gap-2">
+            <Globe className="h-4 w-4" />
+            Website Integration
+          </TabsTrigger>
           <TabsTrigger value="telnyx" className="flex items-center gap-2">
             <Phone className="h-4 w-4" />
             Telnyx
@@ -39,6 +49,14 @@ export const IntegrationsSettings = () => {
             AI Corrections
           </TabsTrigger>
         </TabsList>
+
+        <TabsContent value="api-keys" className="space-y-6">
+          <ApiKeyManager />
+        </TabsContent>
+
+        <TabsContent value="website" className="space-y-6">
+          <WebsiteIntegration />
+        </TabsContent>
 
         <TabsContent value="telnyx" className="space-y-6">
           <TelnyxIntegrationPanel />

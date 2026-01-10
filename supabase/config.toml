@@ -663,3 +663,6 @@ verify_jwt = true
 
 [functions.calculate-measurement-corrections]
 verify_jwt = true
+
+[functions.external-lead-webhook]
+verify_jwt = false
