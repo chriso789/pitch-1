@@ -666,3 +666,9 @@ verify_jwt = true
 
 [functions.external-lead-webhook]
 verify_jwt = false
+
+[functions.communication-inbox-manager]
+verify_jwt = true
+
+[functions.sla-monitor]
+verify_jwt = false
