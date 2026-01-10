@@ -43,14 +43,15 @@ export const BatchRegenerationPanel: React.FC = () => {
   const loadStats = async () => {
     setLoading(true);
     try {
-      // Query measurements with coordinate mismatches
+      // Query measurements with visualization data
       const { data, error } = await supabase
         .from('measurements')
         .select(`
           id,
           visualization_metadata,
           property_id,
-          pipeline_entries!inner(metadata)
+          lat,
+          lng
         `)
         .not('visualization_metadata', 'is', null)
         .not('mapbox_visualization_url', 'is', null);
@@ -62,8 +63,9 @@ export const BatchRegenerationPanel: React.FC = () => {
       let medium = 0;
 
       data?.forEach((m: any) => {
-        const verifiedLat = m.pipeline_entries?.metadata?.verified_address?.geometry?.location?.lat;
-        const verifiedLng = m.pipeline_entries?.metadata?.verified_address?.geometry?.location?.lng;
+        // Use measurement's own lat/lng as the verified coordinates
+        const verifiedLat = m.lat;
+        const verifiedLng = m.lng;
         const vizLat = m.visualization_metadata?.center?.lat;
         const vizLng = m.visualization_metadata?.center?.lng;
 
@@ -88,6 +90,13 @@ export const BatchRegenerationPanel: React.FC = () => {
       console.log('📊 Regeneration stats loaded:', { critical, high, medium });
     } catch (error: any) {
       console.error('Failed to load stats:', error);
+      // Set default stats to prevent button from being permanently disabled
+      setStats({
+        total_mismatched: 0,
+        critical_count: 0,
+        high_count: 0,
+        medium_count: 0,
+      });
       toast({
         title: 'Error Loading Statistics',
         description: error.message,
