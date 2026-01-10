@@ -5,10 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
-import { CheckCircle, XCircle, AlertTriangle, BarChart2, RefreshCw, Loader2, Zap, RotateCcw, Sparkles } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { CheckCircle, XCircle, AlertTriangle, BarChart2, RefreshCw, Loader2, Zap, RotateCcw, Sparkles, Brain } from 'lucide-react';
 import { toast } from 'sonner';
 import { TrainingOverlayComparison } from './TrainingOverlayComparison';
-
+import { DeviationAnalysisCard } from './training/DeviationAnalysisCard';
 interface TrainingComparisonViewProps {
   sessionId: string;
   aiMeasurementId?: string;
@@ -57,6 +59,8 @@ export function TrainingComparisonView({
   const [currentAiMeasurementId, setCurrentAiMeasurementId] = useState<string | undefined>(aiMeasurementId);
   const [learnedCorrections, setLearnedCorrections] = useState<CorrectionFactor[]>([]);
   const [retrainComplete, setRetrainComplete] = useState(false);
+  const [applyToFuture, setApplyToFuture] = useState(true);
+  const [correctionsStored, setCorrectionsStored] = useState(false);
 
   // Fetch session data for lat/lng/address when running AI measure
   const { data: session } = useQuery({
@@ -487,6 +491,48 @@ export function TrainingComparisonView({
       
       {/* Learned Corrections Summary */}
       <LearnedCorrectionsCard />
+
+      {/* Line-by-Line Deviation Analysis (Phase 1) */}
+      {effectiveAiMeasurementId && session?.lat && session?.lng && manualTraces.length > 0 && (
+        <DeviationAnalysisCard
+          sessionId={sessionId}
+          aiLinearFeatures={aiLinearFeatures}
+          manualTraces={manualTraces}
+          centerLat={session.lat}
+          centerLng={session.lng}
+          zoom={20}
+          onCorrectionsApplied={() => setCorrectionsStored(true)}
+        />
+      )}
+
+      {/* Apply to Future Toggle */}
+      {correctionsStored && (
+        <Card className="border-green-200 bg-green-50/50">
+          <CardContent className="py-4">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Brain className="h-4 w-4 text-green-600" />
+                <div>
+                  <p className="font-medium text-green-700">Corrections Saved</p>
+                  <p className="text-sm text-muted-foreground">
+                    AI will use these corrections for similar buildings
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="apply-future"
+                  checked={applyToFuture}
+                  onCheckedChange={setApplyToFuture}
+                />
+                <Label htmlFor="apply-future" className="text-sm">
+                  Apply to future measurements
+                </Label>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Visual Overlay Comparison */}
       {satelliteImageUrl && session?.lat && session?.lng && (manualTraces.length > 0 || aiLinearFeatures.length > 0) && (

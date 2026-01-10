@@ -5,8 +5,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Progress } from '@/components/ui/progress';
-import { Loader2, RefreshCw, TrendingUp, TrendingDown, Minus, Brain, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Loader2, RefreshCw, TrendingUp, TrendingDown, Minus, Brain, CheckCircle2, AlertTriangle, Target, Ruler } from 'lucide-react';
 import { toast } from 'sonner';
+import { PatternInsightsCard } from './training/PatternInsightsCard';
 
 interface CorrectionFactor {
   id: string;
@@ -33,7 +34,10 @@ interface TrainingStats {
   }[];
 }
 
+import { useCompanySwitcher } from '@/hooks/useCompanySwitcher';
+
 export function TrainingAnalyticsDashboard() {
+  const { activeCompanyId } = useCompanySwitcher();
   const queryClient = useQueryClient();
   const [isRecalculating, setIsRecalculating] = useState(false);
 

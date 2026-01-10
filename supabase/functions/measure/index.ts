@@ -2258,7 +2258,168 @@ serve(async (req) => {
         }, corsHeaders);
       }
 
-      return json({ ok: false, error: 'Invalid action. Use: latest, pull, manual, manual-verify, or generate-overlay' }, corsHeaders, 400);
+      // Route: action=evaluate-overlay (Phase 1: Compare AI features vs user traces)
+      if (action === 'evaluate-overlay') {
+        const { aiFeatures, userTraces, sessionId } = body;
+
+        if (!aiFeatures || !userTraces) {
+          return json({ ok: false, error: 'aiFeatures and userTraces required' }, corsHeaders, 400);
+        }
+
+        console.log('Evaluate overlay:', { aiCount: aiFeatures.length, traceCount: userTraces.length });
+
+        try {
+          const result = evaluateOverlay(aiFeatures, userTraces);
+          
+          return json({
+            ok: true,
+            data: {
+              overallScore: result.overallScore,
+              deviations: result.deviations,
+              unmatchedAiLines: result.unmatchedAiFeatures,
+              unmatchedTraces: result.unmatchedUserTraces,
+              autoCorrectionsAvailable: result.autoCorrections?.length || 0,
+            }
+          }, corsHeaders);
+        } catch (err) {
+          console.error('Evaluate overlay error:', err);
+          return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, corsHeaders, 500);
+        }
+      }
+
+      // Route: action=store-corrections (Phase 2: Store line-by-line corrections for learning)
+      if (action === 'store-corrections') {
+        const { sessionId, corrections } = body;
+
+        if (!corrections || !Array.isArray(corrections)) {
+          return json({ ok: false, error: 'corrections array required' }, corsHeaders, 400);
+        }
+
+        const { data: { user } } = await supabase.auth.getUser();
+        const userId = user?.id;
+
+        // Get session details for context
+        const { data: sessionData } = await supabase
+          .from('roof_training_sessions')
+          .select('tenant_id, property_address, lat, lng')
+          .eq('id', sessionId)
+          .single();
+
+        if (!sessionData) {
+          return json({ ok: false, error: 'Session not found' }, corsHeaders, 404);
+        }
+
+        console.log('Storing', corrections.length, 'corrections for session', sessionId);
+
+        const storedCount = { success: 0, failed: 0 };
+
+        for (const correction of corrections) {
+          try {
+            const result = await storeCorrection(supabase, {
+              tenantId: sessionData.tenant_id,
+              originalLineWkt: correction.original_line_wkt,
+              originalLineType: correction.original_line_type,
+              correctedLineWkt: correction.corrected_line_wkt,
+              deviationFt: correction.deviation_ft,
+              deviationPct: correction.deviation_pct,
+              source: correction.correction_source || 'user_trace',
+              buildingShape: correction.building_shape,
+              roofType: correction.roof_type,
+              propertyAddress: sessionData.property_address,
+              lat: sessionData.lat,
+              lng: sessionData.lng,
+              createdBy: userId,
+            });
+
+            if (result.success) {
+              storedCount.success++;
+            } else {
+              storedCount.failed++;
+              console.warn('Failed to store correction:', result.error);
+            }
+          } catch (err) {
+            storedCount.failed++;
+            console.error('Correction store error:', err);
+          }
+        }
+
+        console.log('Corrections stored:', storedCount);
+
+        return json({
+          ok: true,
+          data: {
+            stored: storedCount.success,
+            failed: storedCount.failed,
+            sessionId,
+          }
+        }, corsHeaders);
+      }
+
+      // Route: action=get-learned-patterns (Phase 3: Retrieve patterns for a building type)
+      if (action === 'get-learned-patterns') {
+        const { tenantId, buildingShape, roofType, limit = 10 } = body;
+
+        if (!tenantId) {
+          return json({ ok: false, error: 'tenantId required' }, corsHeaders, 400);
+        }
+
+        try {
+          const patterns = await getLearnedPatterns(
+            supabase,
+            tenantId,
+            buildingShape || 'any',
+            roofType || 'any',
+            limit
+          );
+
+          return json({
+            ok: true,
+            data: {
+              patterns,
+              count: patterns.length,
+            }
+          }, corsHeaders);
+        } catch (err) {
+          console.error('Get patterns error:', err);
+          return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, corsHeaders, 500);
+        }
+      }
+
+      // Route: action=apply-corrections (Phase 3: Apply learned corrections to features)
+      if (action === 'apply-corrections') {
+        const { tenantId, buildingShape, roofType, features } = body;
+
+        if (!tenantId || !features) {
+          return json({ ok: false, error: 'tenantId and features required' }, corsHeaders, 400);
+        }
+
+        try {
+          // Get learned patterns
+          const patterns = await getLearnedPatterns(
+            supabase,
+            tenantId,
+            buildingShape || 'any',
+            roofType || 'any',
+            20
+          );
+
+          // Apply adjustments to features
+          const adjustedFeatures = applyLearnedAdjustments(features, patterns);
+
+          return json({
+            ok: true,
+            data: {
+              features: adjustedFeatures,
+              patternsApplied: patterns.length,
+            }
+          }, corsHeaders);
+        } catch (err) {
+          console.error('Apply corrections error:', err);
+          return json({ ok: false, error: err instanceof Error ? err.message : String(err) }, corsHeaders, 500);
+        }
+      }
+
+      return json({ ok: false, error: 'Invalid action. Use: latest, pull, manual, manual-verify, generate-overlay, evaluate-overlay, store-corrections, get-learned-patterns, or apply-corrections' }, corsHeaders, 400);
     }
 
     // Fallback for GET requests (legacy path-based routing)
