@@ -349,7 +349,7 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
                   </p>
                   <LogoUploader
                     logoUrl={formData.logo_url || undefined}
-                    tenantIdOverride={tenantId || activeCompanyId || undefined}
+                    tenantIdOverride={editingLocation?.tenant_id || tenantId || activeCompanyId || undefined}
                     onLogoUploaded={(url) => setFormData(prev => ({ ...prev, logo_url: url }))}
                     onLogoRemoved={() => setFormData(prev => ({ ...prev, logo_url: null }))}
                   />

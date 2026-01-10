@@ -83,7 +83,12 @@ export function LogoUploader({ logoUrl, onLogoUploaded, onLogoRemoved, className
         description: 'Company logo has been uploaded successfully'
       });
     } catch (error: any) {
-      console.error('Logo upload error:', error);
+      console.error('Logo upload error:', {
+        tenantId,
+        tenantIdOverride,
+        effectiveTenantId: tenantId,
+        error
+      });
       toast({
         title: 'Upload failed',
         description: error.message || 'Failed to upload logo. Please try again.',
