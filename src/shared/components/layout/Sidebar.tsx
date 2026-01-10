@@ -286,10 +286,10 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
     },
     {
       name: "Homeowner Portal",
-      href: "homeowner",
-      path: "/homeowner",
+      href: "admin/portal-users",
+      path: "/admin/portal-users",
       icon: Home,
-      description: "Customer project view"
+      description: "Manage homeowner portal access"
     },
     {
       name: "System Monitor",
