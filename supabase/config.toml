@@ -678,3 +678,12 @@ verify_jwt = true
 
 [functions.ai-followup-worker]
 verify_jwt = false
+
+[functions.link-unmatched-to-contact]
+verify_jwt = true
+
+[functions.telnyx-start-ai-assistant]
+verify_jwt = true
+
+[functions.telnyx-start-recording]
+verify_jwt = true
