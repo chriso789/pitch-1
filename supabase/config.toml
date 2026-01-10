@@ -1,5 +1,8 @@
 project_id = "alxelfrbjzkmtnsulcei"
 
+[functions.upload-company-logo]
+verify_jwt = false
+
 [functions.regrid-footprint]
 verify_jwt = true
 
