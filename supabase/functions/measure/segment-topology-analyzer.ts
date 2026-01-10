@@ -314,33 +314,70 @@ export function analyzeSegmentTopology(
   if (ridges.length === 0 && facets.length >= 2) {
     // Default: assume single ridge running along longer dimension
     const ridgeLengthFt = longerDim * 0.7;
-    const center = buildingCenter ? [buildingCenter.lng, buildingCenter.lat] as XY : facets[0].centroid;
+    const center = buildingCenter 
+      ? [buildingCenter.lng, buildingCenter.lat] as XY 
+      : facets[0].centroid;
     
-    ridges.push({
-      type: 'ridge',
-      start: center,
-      end: center,
-      lengthFt: ridgeLengthFt,
-      facetIds: facets.map(f => f.id)
-    });
-    console.log(`   Default ridge estimated: ${ridgeLengthFt.toFixed(0)}ft`);
+    // Validate center coordinates before creating ridge
+    if (!isNaN(center[0]) && !isNaN(center[1]) && isFinite(center[0]) && isFinite(center[1])) {
+      // Calculate actual ridge endpoints (ridge runs E-W by default)
+      const { metersPerDegLng } = degToMeters(center[1]);
+      const ridgeHalfLenDeg = (ridgeLengthFt * 0.3048 / 2) / metersPerDegLng;
+      
+      const ridgeStart: XY = [center[0] - ridgeHalfLenDeg, center[1]];
+      const ridgeEnd: XY = [center[0] + ridgeHalfLenDeg, center[1]];
+      
+      ridges.push({
+        type: 'ridge',
+        start: ridgeStart,
+        end: ridgeEnd,
+        lengthFt: ridgeLengthFt,
+        facetIds: facets.map(f => f.id)
+      });
+      console.log(`   Default ridge estimated: ${ridgeLengthFt.toFixed(0)}ft`);
+    } else {
+      console.warn('⚠️ Cannot create default ridge: invalid center coordinates');
+    }
   }
   
   // 5. If no hips found for 4+ facet roof, estimate standard hip roof hips
   if (hips.length === 0 && facets.length >= 4) {
     // Standard hip roof has 4 hips, one from each corner
     const hipLengthFt = (shorterDim / 2) * 1.4;
-    for (let i = 0; i < 4; i++) {
-      const center = buildingCenter ? [buildingCenter.lng, buildingCenter.lat] as XY : facets[0].centroid;
-      hips.push({
-        type: 'hip',
-        start: center,
-        end: center,
-        lengthFt: hipLengthFt,
-        facetIds: []
-      });
+    const center = buildingCenter 
+      ? [buildingCenter.lng, buildingCenter.lat] as XY 
+      : facets[0].centroid;
+    
+    // Validate center coordinates before creating hips
+    if (!isNaN(center[0]) && !isNaN(center[1]) && isFinite(center[0]) && isFinite(center[1])) {
+      const { metersPerDegLng } = degToMeters(center[1]);
+      const hipHalfLenDeg = (hipLengthFt * 0.3048 / 2) / metersPerDegLng;
+      
+      // Create 4 hips at 45° angles from corners
+      const angles = [45, 135, 225, 315];
+      for (const angle of angles) {
+        const rad = angle * Math.PI / 180;
+        const hipStart: XY = [
+          center[0] - Math.sin(rad) * hipHalfLenDeg,
+          center[1] - Math.cos(rad) * hipHalfLenDeg
+        ];
+        const hipEnd: XY = [
+          center[0] + Math.sin(rad) * hipHalfLenDeg,
+          center[1] + Math.cos(rad) * hipHalfLenDeg
+        ];
+        
+        hips.push({
+          type: 'hip',
+          start: hipStart,
+          end: hipEnd,
+          lengthFt: hipLengthFt,
+          facetIds: []
+        });
+      }
+      console.log(`   Default hips estimated: 4 × ${hipLengthFt.toFixed(0)}ft`);
+    } else {
+      console.warn('⚠️ Cannot create default hips: invalid center coordinates');
     }
-    console.log(`   Default hips estimated: 4 × ${hipLengthFt.toFixed(0)}ft`);
   }
   
   // 6. Determine roof type
@@ -382,34 +419,48 @@ export function topologyToLinearFeatures(topology: SegmentTopology): Array<{
   const features: Array<{ id: string; wkt: string; length_ft: number; type: string; label: string }> = [];
   let id = 1;
   
+  // Helper to validate coordinates
+  const isValidCoord = (xy: XY): boolean => 
+    xy && !isNaN(xy[0]) && !isNaN(xy[1]) && isFinite(xy[0]) && isFinite(xy[1]);
+  
+  // Helper to check for non-zero length (distinct start/end points)
+  const isNonZeroLength = (start: XY, end: XY): boolean =>
+    start[0] !== end[0] || start[1] !== end[1];
+  
   topology.ridges.forEach((r, i) => {
-    features.push({
-      id: `LF${id++}`,
-      wkt: `LINESTRING(${r.start[0]} ${r.start[1]}, ${r.end[0]} ${r.end[1]})`,
-      length_ft: r.lengthFt,
-      type: 'ridge',
-      label: `Ridge ${i + 1}`
-    });
+    if (isValidCoord(r.start) && isValidCoord(r.end) && isNonZeroLength(r.start, r.end)) {
+      features.push({
+        id: `LF${id++}`,
+        wkt: `LINESTRING(${r.start[0]} ${r.start[1]}, ${r.end[0]} ${r.end[1]})`,
+        length_ft: r.lengthFt,
+        type: 'ridge',
+        label: `Ridge ${i + 1}`
+      });
+    }
   });
   
   topology.hips.forEach((h, i) => {
-    features.push({
-      id: `LF${id++}`,
-      wkt: `LINESTRING(${h.start[0]} ${h.start[1]}, ${h.end[0]} ${h.end[1]})`,
-      length_ft: h.lengthFt,
-      type: 'hip',
-      label: `Hip ${i + 1}`
-    });
+    if (isValidCoord(h.start) && isValidCoord(h.end) && isNonZeroLength(h.start, h.end)) {
+      features.push({
+        id: `LF${id++}`,
+        wkt: `LINESTRING(${h.start[0]} ${h.start[1]}, ${h.end[0]} ${h.end[1]})`,
+        length_ft: h.lengthFt,
+        type: 'hip',
+        label: `Hip ${i + 1}`
+      });
+    }
   });
   
   topology.valleys.forEach((v, i) => {
-    features.push({
-      id: `LF${id++}`,
-      wkt: `LINESTRING(${v.start[0]} ${v.start[1]}, ${v.end[0]} ${v.end[1]})`,
-      length_ft: v.lengthFt,
-      type: 'valley',
-      label: `Valley ${i + 1}`
-    });
+    if (isValidCoord(v.start) && isValidCoord(v.end) && isNonZeroLength(v.start, v.end)) {
+      features.push({
+        id: `LF${id++}`,
+        wkt: `LINESTRING(${v.start[0]} ${v.start[1]}, ${v.end[0]} ${v.end[1]})`,
+        length_ft: v.lengthFt,
+        type: 'valley',
+        label: `Valley ${i + 1}`
+      });
+    }
   });
   
   return features;
