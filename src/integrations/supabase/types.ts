@@ -1798,6 +1798,75 @@ export type Database = {
         }
         Relationships: []
       }
+      brands: {
+        Row: {
+          ai_persona_prompt: string | null
+          ai_safety_prompt: string | null
+          created_at: string
+          email_from_address: string | null
+          email_from_name: string | null
+          id: string
+          is_default: boolean
+          location_id: string | null
+          logo_url: string | null
+          name: string
+          primary_color: string | null
+          slug: string
+          tenant_id: string
+          updated_at: string
+          website: string | null
+        }
+        Insert: {
+          ai_persona_prompt?: string | null
+          ai_safety_prompt?: string | null
+          created_at?: string
+          email_from_address?: string | null
+          email_from_name?: string | null
+          id?: string
+          is_default?: boolean
+          location_id?: string | null
+          logo_url?: string | null
+          name: string
+          primary_color?: string | null
+          slug: string
+          tenant_id: string
+          updated_at?: string
+          website?: string | null
+        }
+        Update: {
+          ai_persona_prompt?: string | null
+          ai_safety_prompt?: string | null
+          created_at?: string
+          email_from_address?: string | null
+          email_from_name?: string | null
+          id?: string
+          is_default?: boolean
+          location_id?: string | null
+          logo_url?: string | null
+          name?: string
+          primary_color?: string | null
+          slug?: string
+          tenant_id?: string
+          updated_at?: string
+          website?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "brands_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "brands_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       building_footprints: {
         Row: {
           building_polygon: Json
@@ -2325,9 +2394,12 @@ export type Database = {
           id: string
           is_starred: boolean | null
           keywords: string[] | null
+          raw_payload: Json | null
           recording_sid: string | null
           recording_url: string
           sentiment: string | null
+          status: string | null
+          telnyx_recording_id: string | null
           tenant_id: string
           transcription: string | null
           transcription_status: string | null
@@ -2342,9 +2414,12 @@ export type Database = {
           id?: string
           is_starred?: boolean | null
           keywords?: string[] | null
+          raw_payload?: Json | null
           recording_sid?: string | null
           recording_url: string
           sentiment?: string | null
+          status?: string | null
+          telnyx_recording_id?: string | null
           tenant_id: string
           transcription?: string | null
           transcription_status?: string | null
@@ -2359,9 +2434,12 @@ export type Database = {
           id?: string
           is_starred?: boolean | null
           keywords?: string[] | null
+          raw_payload?: Json | null
           recording_sid?: string | null
           recording_url?: string
           sentiment?: string | null
+          status?: string | null
+          telnyx_recording_id?: string | null
           tenant_id?: string
           transcription?: string | null
           transcription_status?: string | null
@@ -2391,7 +2469,10 @@ export type Database = {
           created_at: string | null
           id: string
           is_partial: boolean | null
+          raw_payload: Json | null
           speaker: string | null
+          status: string | null
+          telnyx_transcription_id: string | null
           tenant_id: string
           timestamp_ms: number
           transcript_text: string
@@ -2402,7 +2483,10 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_partial?: boolean | null
+          raw_payload?: Json | null
           speaker?: string | null
+          status?: string | null
+          telnyx_transcription_id?: string | null
           tenant_id: string
           timestamp_ms: number
           transcript_text: string
@@ -2413,7 +2497,10 @@ export type Database = {
           created_at?: string | null
           id?: string
           is_partial?: boolean | null
+          raw_payload?: Json | null
           speaker?: string | null
+          status?: string | null
+          telnyx_transcription_id?: string | null
           tenant_id?: string
           timestamp_ms?: number
           transcript_text?: string
@@ -2437,7 +2524,13 @@ export type Database = {
       }
       calls: {
         Row: {
+          ai_enabled: boolean
+          ai_insights: Json
+          ai_outcome: string | null
+          ai_summary: string | null
           answered_at: string | null
+          brand_id: string | null
+          call_type: string | null
           campaign_id: string | null
           contact_id: string | null
           conversation_id: string | null
@@ -2450,6 +2543,7 @@ export type Database = {
           from_number: string | null
           handled_by: string | null
           id: string
+          location_id: string | null
           notes: string | null
           raw_payload: Json | null
           recording_url: string | null
@@ -2458,10 +2552,17 @@ export type Database = {
           telnyx_call_leg_id: string | null
           tenant_id: string
           to_number: string | null
+          transcript: string | null
           updated_at: string
         }
         Insert: {
+          ai_enabled?: boolean
+          ai_insights?: Json
+          ai_outcome?: string | null
+          ai_summary?: string | null
           answered_at?: string | null
+          brand_id?: string | null
+          call_type?: string | null
           campaign_id?: string | null
           contact_id?: string | null
           conversation_id?: string | null
@@ -2474,6 +2575,7 @@ export type Database = {
           from_number?: string | null
           handled_by?: string | null
           id?: string
+          location_id?: string | null
           notes?: string | null
           raw_payload?: Json | null
           recording_url?: string | null
@@ -2482,10 +2584,17 @@ export type Database = {
           telnyx_call_leg_id?: string | null
           tenant_id: string
           to_number?: string | null
+          transcript?: string | null
           updated_at?: string
         }
         Update: {
+          ai_enabled?: boolean
+          ai_insights?: Json
+          ai_outcome?: string | null
+          ai_summary?: string | null
           answered_at?: string | null
+          brand_id?: string | null
+          call_type?: string | null
           campaign_id?: string | null
           contact_id?: string | null
           conversation_id?: string | null
@@ -2498,6 +2607,7 @@ export type Database = {
           from_number?: string | null
           handled_by?: string | null
           id?: string
+          location_id?: string | null
           notes?: string | null
           raw_payload?: Json | null
           recording_url?: string | null
@@ -2506,9 +2616,17 @@ export type Database = {
           telnyx_call_leg_id?: string | null
           tenant_id?: string
           to_number?: string | null
+          transcript?: string | null
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "calls_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "calls_campaign_id_fkey"
             columns: ["campaign_id"]
@@ -2543,6 +2661,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "user_activity_summary"
             referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "calls_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
           },
         ]
       }
@@ -5074,6 +5199,7 @@ export type Database = {
           address_verification_data: Json | null
           address_zip: string | null
           assigned_to: string | null
+          brand_id: string | null
           clj_formatted_number: string | null
           clj_number: string | null
           company_name: string | null
@@ -5129,6 +5255,7 @@ export type Database = {
           address_verification_data?: Json | null
           address_zip?: string | null
           assigned_to?: string | null
+          brand_id?: string | null
           clj_formatted_number?: string | null
           clj_number?: string | null
           company_name?: string | null
@@ -5184,6 +5311,7 @@ export type Database = {
           address_verification_data?: Json | null
           address_zip?: string | null
           assigned_to?: string | null
+          brand_id?: string | null
           clj_formatted_number?: string | null
           clj_number?: string | null
           company_name?: string | null
@@ -5243,6 +5371,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "user_activity_summary"
             referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "contacts_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
           },
           {
             foreignKeyName: "contacts_created_by_fkey"
@@ -5486,6 +5621,7 @@ export type Database = {
       }
       conversations: {
         Row: {
+          brand_id: string | null
           channel: string
           contact_id: string
           contact_phone_e164: string | null
@@ -5498,6 +5634,7 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          brand_id?: string | null
           channel: string
           contact_id: string
           contact_phone_e164?: string | null
@@ -5510,6 +5647,7 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          brand_id?: string | null
           channel?: string
           contact_id?: string
           contact_phone_e164?: string | null
@@ -5522,6 +5660,13 @@ export type Database = {
           updated_at?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "conversations_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "conversations_contact_id_fkey"
             columns: ["contact_id"]
@@ -23409,6 +23554,7 @@ export type Database = {
       sms_messages: {
         Row: {
           body: string
+          brand_id: string | null
           contact_id: string | null
           conversation_id: string | null
           created_at: string | null
@@ -23431,6 +23577,7 @@ export type Database = {
         }
         Insert: {
           body: string
+          brand_id?: string | null
           contact_id?: string | null
           conversation_id?: string | null
           created_at?: string | null
@@ -23453,6 +23600,7 @@ export type Database = {
         }
         Update: {
           body?: string
+          brand_id?: string | null
           contact_id?: string | null
           conversation_id?: string | null
           created_at?: string | null
@@ -23474,6 +23622,13 @@ export type Database = {
           to_number?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "sms_messages_brand_id_fkey"
+            columns: ["brand_id"]
+            isOneToOne: false
+            referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "sms_messages_contact_id_fkey"
             columns: ["contact_id"]
@@ -28566,6 +28721,57 @@ export type Database = {
         Relationships: [
           {
             foreignKeyName: "profiles_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      v_unmatched_inbox: {
+        Row: {
+          body: string | null
+          channel: string | null
+          contact_id: string | null
+          conversation_id: string | null
+          event_type: string | null
+          from_e164: string | null
+          id: string | null
+          location_did: string | null
+          location_id: string | null
+          location_name: string | null
+          media: Json | null
+          notes: string | null
+          raw_payload: Json | null
+          received_at: string | null
+          state: string | null
+          tenant_id: string | null
+          to_e164: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "unmatched_inbound_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unmatched_inbound_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unmatched_inbound_location_id_fkey"
+            columns: ["location_id"]
+            isOneToOne: false
+            referencedRelation: "locations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unmatched_inbound_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"

@@ -119,6 +119,7 @@ import InsuranceClaimsDashboard from "./pages/InsuranceClaimsDashboard";
 import DispatchDashboard from "./pages/DispatchDashboard";
 import StormCanvassConfig from "./pages/StormCanvassConfig";
 import StormCanvassPhotos from "./pages/StormCanvassPhotos";
+import UnmatchedInboxPage from "./pages/UnmatchedInboxPage";
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -228,6 +229,7 @@ const AppContent = () => {
         <Route path="/storm-canvass/import" element={<ProtectedRoute><ImportContacts /></ProtectedRoute>} />
         <Route path="/storm-canvass/property/:propertyId" element={<ProtectedRoute><PropertyInteractionPage /></ProtectedRoute>} />
         <Route path="/communications" element={<ProtectedRoute><CommunicationsHub /></ProtectedRoute>} />
+        <Route path="/communications/unmatched" element={<ProtectedRoute><UnmatchedInboxPage /></ProtectedRoute>} />
         <Route path="/dialer" element={<ProtectedRoute><CommunicationsHub /></ProtectedRoute>} />
         <Route path="/campaigns" element={<ProtectedRoute><Campaigns /></ProtectedRoute>} />
         <Route path="/smartdocs" element={<ProtectedRoute><SmartDocs /></ProtectedRoute>} />
