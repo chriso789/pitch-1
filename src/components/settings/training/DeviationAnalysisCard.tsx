@@ -51,8 +51,8 @@ interface DeviationAnalysisCardProps {
 
 export function DeviationAnalysisCard({
   sessionId,
-  aiLinearFeatures,
-  manualTraces,
+  aiLinearFeatures = [],
+  manualTraces = [],
   centerLat,
   centerLng,
   zoom,
@@ -66,7 +66,7 @@ export function DeviationAnalysisCard({
     setIsAnalyzing(true);
     try {
       // Convert canvas points to WKT for comparison
-      const traceFeaturesWithWkt = manualTraces.map(trace => {
+      const traceFeaturesWithWkt = (manualTraces || []).map(trace => {
         const points = trace.canvas_points || [];
         if (points.length < 2) return null;
         
@@ -169,7 +169,7 @@ export function DeviationAnalysisCard({
         {!analysisResult ? (
           <Button
             onClick={handleAnalyze}
-            disabled={isAnalyzing || aiLinearFeatures.length === 0 || manualTraces.length === 0}
+            disabled={isAnalyzing || !aiLinearFeatures?.length || !manualTraces?.length}
             className="w-full"
           >
             {isAnalyzing ? (

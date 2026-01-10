@@ -493,7 +493,7 @@ export function TrainingComparisonView({
       <LearnedCorrectionsCard />
 
       {/* Line-by-Line Deviation Analysis (Phase 1) */}
-      {effectiveAiMeasurementId && session?.lat && session?.lng && manualTraces.length > 0 && (
+      {effectiveAiMeasurementId && session?.lat && session?.lng && manualTraces.length > 0 && Array.isArray(aiLinearFeatures) && aiLinearFeatures.length > 0 && (
         <DeviationAnalysisCard
           sessionId={sessionId}
           aiLinearFeatures={aiLinearFeatures}
