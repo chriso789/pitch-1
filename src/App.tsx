@@ -103,6 +103,7 @@ import HomeownerPortalPage from "./pages/HomeownerPortalPage";
 import PortalLoginPage from "./pages/PortalLoginPage";
 import { HomeownerProtectedRoute } from "./components/auth/HomeownerProtectedRoute";
 import MonitoringPage from "./pages/admin/MonitoringPage";
+import HomeownerPortalAdmin from "./pages/admin/HomeownerPortalAdmin";
 import HomeownerSetupAccount from "./pages/HomeownerSetupAccount";
 import CommissionReport from "./pages/CommissionReport";
 import RoofMeasurementTrainer from "./pages/RoofMeasurementTrainer";
@@ -292,6 +293,7 @@ const AppContent = () => {
         <Route path="/admin/monitoring" element={<ProtectedRoute><MonitoringPage /></ProtectedRoute>} />
         <Route path="/admin/phone-settings" element={<ProtectedRoute><PhoneSettings /></ProtectedRoute>} />
         <Route path="/admin/activity" element={<ProtectedRoute><ActivityDashboardPage /></ProtectedRoute>} />
+        <Route path="/admin/portal-users" element={<ProtectedRoute><HomeownerPortalAdmin /></ProtectedRoute>} />
         <Route path="/commission-report" element={<ProtectedRoute><CommissionReport /></ProtectedRoute>} />
         <Route path="/notifications" element={<ProtectedRoute><NotificationsPage /></ProtectedRoute>} />
         <Route path="/settings/ai-agent" element={<ProtectedRoute><AIAgentSettingsPage /></ProtectedRoute>} />
