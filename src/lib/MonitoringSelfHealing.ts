@@ -24,6 +24,15 @@ class MonitoringService {
   private healthCheckInterval: ReturnType<typeof setInterval> | null = null;
   private errorBuffer: CrashReport[] = [];
   private flushInterval: ReturnType<typeof setInterval> | null = null;
+  
+  // Deduplication and rate limiting
+  private recentCrashHashes = new Map<string, number>();
+  private crashCount = 0;
+  private lastCrashReset = Date.now();
+  private isCurrentlyLogging = false;
+  
+  private static readonly MAX_CRASHES_PER_MINUTE = 20;
+  private static readonly CRASH_DEDUP_WINDOW = 30000; // 30 seconds
 
   private constructor() {}
 
@@ -206,7 +215,57 @@ class MonitoringService {
     }
   }
 
+  private getCrashHash(crash: CrashReport): string {
+    return `${crash.error_type}:${crash.error_message?.substring(0, 100)}:${crash.component || 'unknown'}`;
+  }
+  
+  private shouldReportCrash(crash: CrashReport): boolean {
+    const now = Date.now();
+    
+    // Reset counter if window expired
+    if (now - this.lastCrashReset > 60000) {
+      this.crashCount = 0;
+      this.lastCrashReset = now;
+    }
+    
+    // Rate limit check
+    if (this.crashCount >= MonitoringService.MAX_CRASHES_PER_MINUTE) {
+      console.debug('[Monitoring] Crash rate limit exceeded, skipping');
+      return false;
+    }
+    
+    // Deduplication check
+    const hash = this.getCrashHash(crash);
+    const lastSeen = this.recentCrashHashes.get(hash);
+    if (lastSeen && now - lastSeen < MonitoringService.CRASH_DEDUP_WINDOW) {
+      console.debug('[Monitoring] Duplicate crash within window, skipping');
+      return false;
+    }
+    
+    // Clean old entries
+    for (const [h, ts] of this.recentCrashHashes.entries()) {
+      if (now - ts > MonitoringService.CRASH_DEDUP_WINDOW) {
+        this.recentCrashHashes.delete(h);
+      }
+    }
+    
+    this.recentCrashHashes.set(hash, now);
+    this.crashCount++;
+    return true;
+  }
+
   async reportCrash(crash: CrashReport): Promise<void> {
+    // Skip if already logging (prevent recursion)
+    if (this.isCurrentlyLogging) {
+      console.debug('[Monitoring] Already logging, skipping to prevent recursion');
+      return;
+    }
+    
+    // Check rate limit and deduplication
+    if (!this.shouldReportCrash(crash)) {
+      return;
+    }
+    
     // Add to buffer for batch processing
     this.errorBuffer.push(crash);
 
@@ -273,45 +332,48 @@ class MonitoringService {
 
   private async flushErrorBuffer(): Promise<void> {
     if (this.errorBuffer.length === 0) return;
+    
+    // Prevent recursive logging
+    if (this.isCurrentlyLogging) {
+      console.debug('[Monitoring] Already flushing, skipping');
+      return;
+    }
 
+    this.isCurrentlyLogging = true;
     const crashes = [...this.errorBuffer];
     this.errorBuffer = [];
 
     try {
-      // Use edge function to bypass RLS issues
+      // Use edge function to bypass RLS issues - batch all crashes
       for (const crash of crashes) {
-        const { error } = await supabase.functions.invoke('log-system-crash', {
-          body: {
-            error_type: crash.error_type,
-            error_message: crash.error_message,
-            stack_trace: crash.stack_trace,
-            component: crash.component,
-            route: crash.route || window.location.pathname,
-            severity: crash.severity,
-            metadata: crash.metadata || {},
-            auto_recovered: false
-          }
-        });
-
-        if (error) {
-          console.error("[Monitoring] Edge function failed for crash report:", error);
-          // Fallback to direct insert (will use new RLS policies)
-          await supabase.from("system_crashes").insert({
-            error_type: crash.error_type,
-            error_message: crash.error_message,
-            stack_trace: crash.stack_trace,
-            component: crash.component,
-            route: crash.route || window.location.pathname,
-            severity: crash.severity,
-            metadata: crash.metadata || {},
-            auto_recovered: false
+        try {
+          const { error } = await supabase.functions.invoke('log-system-crash', {
+            body: {
+              error_type: crash.error_type,
+              error_message: crash.error_message?.substring(0, 1000),
+              stack_trace: crash.stack_trace?.substring(0, 5000),
+              component: crash.component,
+              route: crash.route || window.location.pathname,
+              severity: crash.severity,
+              metadata: crash.metadata || {},
+              auto_recovered: false
+            }
           });
+
+          if (error) {
+            // Log locally but don't retry to prevent loops
+            console.debug("[Monitoring] Edge function failed:", error.message);
+          }
+        } catch (innerError) {
+          // Silently fail individual crashes to prevent loop
+          console.debug("[Monitoring] Failed to log crash:", innerError);
         }
       }
     } catch (error) {
-      console.error("[Monitoring] Failed to flush error buffer:", error);
-      // Re-add to buffer for retry
-      this.errorBuffer.push(...crashes);
+      // Don't re-add to buffer - prevents infinite retry loops
+      console.debug("[Monitoring] Failed to flush buffer:", error);
+    } finally {
+      this.isCurrentlyLogging = false;
     }
   }
 

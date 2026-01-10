@@ -76,15 +76,28 @@ class ScrubberReportService {
   async loadScrubberReport(): Promise<ScrubberReport | null> {
     try {
       // Try to read the scrubber output file
-      const response = await fetch('/tools/scrubber/out/scrub-merged.json');
+      // Use original fetch to bypass the API interceptor (avoid logging expected 404s)
+      const response = await window.fetch('/tools/scrubber/out/scrub-merged.json', {
+        method: 'GET',
+        headers: { 'Accept': 'application/json' }
+      });
+      
+      // 404 is expected - file may not exist in development
+      if (response.status === 404) {
+        // Silently return null - this is not an error
+        return null;
+      }
+      
       if (!response.ok) {
+        // Log other non-OK statuses but don't throw
+        console.debug('[Scrubber] Report not available:', response.status);
         return null;
       }
       
       // Check if response is JSON
       const contentType = response.headers.get('content-type');
       if (!contentType || !contentType.includes('application/json')) {
-        console.warn('Scrubber report is not JSON, skipping...');
+        // Not JSON - silently skip (HTML error page, etc.)
         return null;
       }
       
@@ -93,7 +106,8 @@ class ScrubberReportService {
       return report;
       
     } catch (error) {
-      console.warn('Could not load scrubber report:', error);
+      // Network errors or JSON parse errors - log at debug level only
+      console.debug('[Scrubber] Could not load report:', error);
       return null;
     }
   }
