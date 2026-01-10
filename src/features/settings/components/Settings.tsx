@@ -376,7 +376,7 @@ export const Settings = () => {
                 </Card>
                 <Card 
                   className="cursor-pointer hover:bg-accent/50 transition-colors"
-                  onClick={() => window.location.href = '/portal'}
+                  onClick={() => window.location.href = '/portal/login'}
                 >
                   <CardContent className="p-6 flex items-center gap-4">
                     <div className="h-12 w-12 rounded-lg bg-blue-500/10 flex items-center justify-center">

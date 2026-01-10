@@ -7,7 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/components/ui/use-toast";
-import { MapPin, Plus, Edit, Trash2, Building2, CheckCircle, Image } from "lucide-react";
+import { MapPin, Plus, Edit, Trash2, Building2, CheckCircle, Image, Phone } from "lucide-react";
+import { LocationPhoneSettings } from "@/components/settings/LocationPhoneSettings";
 import { useCompanySwitcher } from "@/hooks/useCompanySwitcher";
 import AddressVerification from "@/shared/components/forms/AddressVerification";
 import { LogoUploader } from "@/components/settings/LogoUploader";
@@ -19,6 +20,7 @@ interface LocationManagementProps {
 interface Location {
   id: string;
   name: string;
+  tenant_id: string;
   address_street?: string;
   address_city?: string;
   address_state?: string;
@@ -35,6 +37,9 @@ interface Location {
   verified_address?: any;
   address_verified_at?: string;
   logo_url?: string;
+  telnyx_phone_number?: string | null;
+  phone_porting_status?: string | null;
+  phone_setup_metadata?: any;
 }
 
 interface FormData {
@@ -95,7 +100,7 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
 
       const { data, error } = await supabase
         .from('locations')
-        .select('*')
+        .select('*, tenant_id, telnyx_phone_number, phone_porting_status, phone_setup_metadata')
         .eq('tenant_id', effectiveTenantId)
         .order('name');
 
@@ -438,6 +443,21 @@ export const LocationManagement = ({ tenantId }: LocationManagementProps = {}) =
                         Delete
                       </Button>
                     </div>
+                  </div>
+                  
+                  {/* Telnyx Phone Settings for this location */}
+                  <div className="mt-4 pt-4 border-t">
+                    <LocationPhoneSettings 
+                      location={{
+                        id: location.id,
+                        name: location.name,
+                        tenant_id: location.tenant_id,
+                        telnyx_phone_number: location.telnyx_phone_number,
+                        phone_porting_status: location.phone_porting_status,
+                        phone_setup_metadata: location.phone_setup_metadata
+                      }} 
+                      onUpdate={fetchLocations}
+                    />
                   </div>
                 </CardContent>
               </Card>
