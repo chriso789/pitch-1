@@ -85,6 +85,7 @@ export function evaluateOverlay(
       let bestMatch: { trace: UserTrace; deviation: number } | null = null;
       
       for (const trace of userOfType) {
+        if (!trace?.points || trace.points.length < 2) continue;
         const deviation = calculateLineDeviation(aiCoords, trace.points);
         if (!bestMatch || deviation < bestMatch.deviation) {
           bestMatch = { trace, deviation };
@@ -174,7 +175,7 @@ export function evaluateOverlay(
  * Uses Hausdorff-like distance calculation
  */
 function calculateLineDeviation(aiCoords: XY[], userCoords: XY[]): number {
-  if (aiCoords.length < 2 || userCoords.length < 2) {
+  if (!aiCoords || !userCoords || aiCoords.length < 2 || userCoords.length < 2) {
     return Infinity;
   }
   
