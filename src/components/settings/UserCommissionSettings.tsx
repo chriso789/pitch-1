@@ -84,6 +84,25 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
     enabled: !!tenantId && isManager && managerOverrideRate > 0
   });
 
+  // Fetch reps for a specific location (when override applies to location_reps)
+  const { data: locationReps } = useQuery({
+    queryKey: ['location-reps-list', tenantId, overrideLocationId],
+    queryFn: async () => {
+      if (!tenantId || !overrideLocationId) return [];
+      const { data, error } = await supabase
+        .from('profiles')
+        .select('id, first_name, last_name, role')
+        .eq('tenant_id', tenantId)
+        .eq('active_location_id', overrideLocationId)
+        .not('role', 'in', `(${MANAGER_ROLES.join(',')})`)
+        .neq('id', userId);
+      
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!tenantId && !!overrideLocationId && isManager && managerOverrideRate > 0 && overrideAppliesTo === 'location_reps'
+  });
+
   // Fetch locations for location-based override
   const { data: locations } = useQuery({
     queryKey: ['locations-list', tenantId],
@@ -436,7 +455,7 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
 
               {/* Location Selector - when override applies to location_reps */}
               {overrideAppliesTo === 'location_reps' && (
-                <div className="space-y-2 pl-4 border-l-2 border-primary/20">
+                <div className="space-y-3 pl-4 border-l-2 border-primary/20">
                   <Label>Select Location</Label>
                   <Select
                     value={overrideLocationId || "none"}
@@ -455,6 +474,27 @@ export const UserCommissionSettings: React.FC<UserCommissionSettingsProps> = ({
                       ))}
                     </SelectContent>
                   </Select>
+                  
+                  {/* Display reps in the selected location */}
+                  {overrideLocationId && (
+                    <div className="mt-3 p-3 bg-muted/30 rounded-lg">
+                      <p className="text-sm font-medium mb-2">Reps in this location:</p>
+                      {locationReps && locationReps.length > 0 ? (
+                        <div className="space-y-1 max-h-32 overflow-y-auto">
+                          {locationReps.map(rep => (
+                            <div key={rep.id} className="text-sm text-muted-foreground flex items-center gap-2">
+                              <span className="w-2 h-2 bg-primary/60 rounded-full"></span>
+                              {rep.first_name} {rep.last_name}
+                            </div>
+                          ))}
+                        </div>
+                      ) : (
+                        <p className="text-sm text-muted-foreground italic">
+                          No reps assigned to this location
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
