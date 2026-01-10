@@ -150,6 +150,16 @@ const AppContent = () => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setUserId(session?.user?.id || null);
       
+      // CRITICAL: Don't auto-redirect if on password setup pages
+      // This prevents bypassing password setup when session is established from token
+      const passwordSetupPaths = ['/reset-password', '/setup-account'];
+      const isOnPasswordSetupPage = passwordSetupPaths.some(p => window.location.pathname === p);
+      
+      if (isOnPasswordSetupPage) {
+        console.log('[App] On password setup page, skipping auto-redirect for event:', event);
+        return; // Let the password page handle all navigation
+      }
+      
       // Redirect to landing if signed out (except if already on public pages)
       if (event === 'SIGNED_OUT') {
         const publicPaths = ['/', '/login', '/signup', '/demo-request', '/reset-password', '/setup-account', '/auth/confirm-email', '/reports'];
