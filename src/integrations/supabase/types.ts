@@ -14110,6 +14110,91 @@ export type Database = {
           },
         ]
       }
+      measurement_corrections: {
+        Row: {
+          building_shape: string | null
+          corrected_line_wkt: string
+          correction_notes: string | null
+          correction_source: string | null
+          created_at: string | null
+          created_by: string | null
+          deviation_ft: number | null
+          deviation_pct: number | null
+          id: string
+          lat: number | null
+          lng: number | null
+          measurement_id: string | null
+          original_line_type: string
+          original_line_wkt: string
+          property_address: string | null
+          roof_type: string | null
+          tenant_id: string | null
+          vertex_count: number | null
+        }
+        Insert: {
+          building_shape?: string | null
+          corrected_line_wkt: string
+          correction_notes?: string | null
+          correction_source?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          deviation_ft?: number | null
+          deviation_pct?: number | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          measurement_id?: string | null
+          original_line_type: string
+          original_line_wkt: string
+          property_address?: string | null
+          roof_type?: string | null
+          tenant_id?: string | null
+          vertex_count?: number | null
+        }
+        Update: {
+          building_shape?: string | null
+          corrected_line_wkt?: string
+          correction_notes?: string | null
+          correction_source?: string | null
+          created_at?: string | null
+          created_by?: string | null
+          deviation_ft?: number | null
+          deviation_pct?: number | null
+          id?: string
+          lat?: number | null
+          lng?: number | null
+          measurement_id?: string | null
+          original_line_type?: string
+          original_line_wkt?: string
+          property_address?: string | null
+          roof_type?: string | null
+          tenant_id?: string | null
+          vertex_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "measurement_corrections_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurement_summary"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_corrections_measurement_id_fkey"
+            columns: ["measurement_id"]
+            isOneToOne: false
+            referencedRelation: "roof_measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_corrections_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       measurement_remeasure_log: {
         Row: {
           created_at: string | null
