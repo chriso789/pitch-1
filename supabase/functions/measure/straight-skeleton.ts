@@ -1118,3 +1118,134 @@ function isPointInsideBounds(
   return point[0] >= bounds.minX && point[0] <= bounds.maxX &&
          point[1] >= bounds.minY && point[1] <= bounds.maxY;
 }
+
+// ==================== CORNER SNAPPING ====================
+
+/**
+ * Snap all skeleton line endpoints to nearest corners or intersections
+ * Ensures every line starts/ends on a real vertex or intersection point
+ */
+export function snapLinesToCorners(
+  edges: SkeletonEdge[],
+  footprintVertices: XY[],
+  snapThresholdFt: number = 2.0
+): SkeletonEdge[] {
+  // Convert threshold from feet to approximate degrees at US latitudes
+  const FT_TO_DEG = 1 / 364000
+  const thresholdDeg = snapThresholdFt * FT_TO_DEG
+
+  // Build list of all potential snap targets
+  const snapTargets: XY[] = [...footprintVertices]
+  
+  // Add ridge endpoints as snap targets for hips/valleys
+  const ridgeEdges = edges.filter(e => e.type === 'ridge')
+  ridgeEdges.forEach(r => {
+    snapTargets.push(r.start)
+    snapTargets.push(r.end)
+  })
+  
+  // Add all intersection points between edges
+  for (let i = 0; i < edges.length; i++) {
+    for (let j = i + 1; j < edges.length; j++) {
+      const intersection = lineLineIntersection(
+        edges[i].start, edges[i].end,
+        edges[j].start, edges[j].end
+      )
+      if (intersection) {
+        snapTargets.push(intersection)
+      }
+    }
+  }
+
+  // Deduplicate snap targets
+  const uniqueTargets = deduplicatePoints(snapTargets, thresholdDeg / 2)
+
+  // Snap function
+  const snapPoint = (point: XY): XY => {
+    let nearest = point
+    let minDist = Infinity
+
+    for (const target of uniqueTargets) {
+      const d = distance(point, target)
+      if (d < minDist && d < thresholdDeg) {
+        minDist = d
+        nearest = target
+      }
+    }
+
+    return nearest
+  }
+
+  // Process edges by type priority: ridges first, then hips, then valleys
+  const snappedRidges = ridgeEdges.map(e => ({
+    ...e,
+    start: snapPoint(e.start),
+    end: snapPoint(e.end)
+  }))
+
+  // Update targets with snapped ridge endpoints
+  snappedRidges.forEach(r => {
+    if (!uniqueTargets.some(t => distance(t, r.start) < thresholdDeg / 2)) {
+      uniqueTargets.push(r.start)
+    }
+    if (!uniqueTargets.some(t => distance(t, r.end) < thresholdDeg / 2)) {
+      uniqueTargets.push(r.end)
+    }
+  })
+
+  const hipEdges = edges.filter(e => e.type === 'hip')
+  const snappedHips = hipEdges.map(e => ({
+    ...e,
+    start: snapPoint(e.start),
+    end: snapPoint(e.end)
+  }))
+
+  const valleyEdges = edges.filter(e => e.type === 'valley')
+  const snappedValleys = valleyEdges.map(e => ({
+    ...e,
+    start: snapPoint(e.start),
+    end: snapPoint(e.end)
+  }))
+
+  console.log(`  Snapped ${edges.length} edges to ${uniqueTargets.length} corner targets`)
+
+  return [...snappedRidges, ...snappedHips, ...snappedValleys]
+}
+
+/**
+ * Deduplicate points that are within threshold of each other
+ */
+function deduplicatePoints(points: XY[], threshold: number): XY[] {
+  const unique: XY[] = []
+  
+  for (const point of points) {
+    const isDupe = unique.some(u => distance(u, point) < threshold)
+    if (!isDupe) {
+      unique.push(point)
+    }
+  }
+  
+  return unique
+}
+
+/**
+ * Find intersection between two line segments
+ */
+function lineLineIntersection(a1: XY, a2: XY, b1: XY, b2: XY): XY | null {
+  const denom = (b2[1] - b1[1]) * (a2[0] - a1[0]) - (b2[0] - b1[0]) * (a2[1] - a1[1])
+  
+  if (Math.abs(denom) < 0.0000001) return null
+  
+  const ua = ((b2[0] - b1[0]) * (a1[1] - b1[1]) - (b2[1] - b1[1]) * (a1[0] - b1[0])) / denom
+  const ub = ((a2[0] - a1[0]) * (a1[1] - b1[1]) - (a2[1] - a1[1]) * (a1[0] - b1[0])) / denom
+  
+  // Check if intersection is within both segments
+  if (ua >= 0 && ua <= 1 && ub >= 0 && ub <= 1) {
+    return [
+      a1[0] + ua * (a2[0] - a1[0]),
+      a1[1] + ua * (a2[1] - a1[1])
+    ]
+  }
+  
+  return null
+}

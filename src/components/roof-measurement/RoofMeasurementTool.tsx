@@ -5,7 +5,7 @@ import { Input } from '@/components/ui/input'
 import { Card } from '@/components/ui/card'
 import { 
   Loader2, Download, AlertCircle, CheckCircle, 
-  MapPin, Ruler, Home, TrendingUp, Layers, Eye, FileImage
+  MapPin, Ruler, Home, TrendingUp, Layers, Eye, FileImage, Sparkles
 } from 'lucide-react'
 import { Alert, AlertDescription } from '@/components/ui/alert'
 import { Badge } from '@/components/ui/badge'
@@ -13,6 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { AIRoofSkeletonViewer } from './AIRoofSkeletonViewer'
 import { CleanRoofDiagram } from './CleanRoofDiagram'
 import { toast } from 'sonner'
+import { useRoofOverlay, overlayToLinearFeatures, perimeterToWKT } from '@/hooks/useRoofOverlay'
 
 export interface RoofMeasurements {
   // New API properties
@@ -80,6 +81,28 @@ export function RoofMeasurementTool({
   const [measurementData, setMeasurementData] = useState<any>(null)
   const [diagramView, setDiagramView] = useState<'satellite' | 'schematic'>('satellite')
   const [error, setError] = useState<string | null>(null)
+  
+  // AI Overlay hook for enhanced detection
+  const { 
+    loading: overlayLoading, 
+    overlayData, 
+    generateOverlay 
+  } = useRoofOverlay({
+    onSuccess: (data) => {
+      // Merge overlay data with existing measurement data if available
+      if (measurementData) {
+        const overlayFeatures = overlayToLinearFeatures(data)
+        const overlayPerimeterWkt = perimeterToWKT(data.perimeter)
+        
+        setMeasurementData((prev: any) => ({
+          ...prev,
+          linearFeatures: overlayFeatures.length > 0 ? overlayFeatures : prev.linearFeatures,
+          perimeterWkt: overlayPerimeterWkt || prev.perimeterWkt,
+          overlayMetadata: data.metadata
+        }))
+      }
+    }
+  })
 
   const analyzeRoof = async () => {
     if (!address.trim()) {
