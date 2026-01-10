@@ -487,12 +487,6 @@ export function EnhancedCompanyOnboarding({ open, onOpenChange, onComplete }: En
                 placeholder="Start typing billing address..."
                 onAddressSelected={(addr) => setCompany({ ...company, billing_address: addr })}
               />
-              {company.billing_address && (
-                <Badge variant="outline" className="text-green-600 border-green-600">
-                  <Check className="h-3 w-3 mr-1" />
-                  Address Verified
-                </Badge>
-              )}
             </div>
           </div>
         );
