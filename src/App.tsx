@@ -206,6 +206,7 @@ const AppContent = () => {
         <Route path="/quickbooks/callback" element={<QuickBooksCallback />} />
         <Route path="/google-calendar/callback" element={<GoogleCalendarCallback />} />
         <Route path="/reports/:token" element={<PublicReportViewer />} />
+        <Route path="/r/:token" element={<PublicReportViewer />} />
         <Route path="/onboarding/:token" element={<OnboardingWalkthrough />} />
         <Route path="/customer/:token" element={<CustomerPortalPublic />} />
         <Route path="/sign/:token" element={<PublicSignatureCapture />} />

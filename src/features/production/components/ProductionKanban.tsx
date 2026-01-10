@@ -260,16 +260,20 @@ const ProductionKanban = () => {
 
         if (!profile?.tenant_id) return;
 
+        // Use upsert with ON CONFLICT to prevent duplicate insert issues
         const { data: newStages, error: insertError } = await supabase
           .from('production_stages')
-          .insert(defaultStages.map(stage => ({
-            tenant_id: profile.tenant_id,
-            name: stage.name,
-            stage_key: stage.stage_key,
-            sort_order: stage.sort_order,
-            color: stage.color,
-            icon: stage.icon.name
-          })))
+          .upsert(
+            defaultStages.map(stage => ({
+              tenant_id: profile.tenant_id,
+              name: stage.name,
+              stage_key: stage.stage_key,
+              sort_order: stage.sort_order,
+              color: stage.color,
+              icon: stage.icon.name
+            })),
+            { onConflict: 'tenant_id,stage_key', ignoreDuplicates: true }
+          )
           .select();
 
         if (insertError) {
