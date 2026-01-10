@@ -46,6 +46,19 @@ const ResetPassword: React.FC = () => {
       timestamp: new Date().toISOString()
     });
 
+    // CRITICAL: Sign out any existing session FIRST to prevent bypass
+    // This ensures user must complete password setup even if they were already logged in
+    try {
+      const { data: existingSession } = await supabase.auth.getSession();
+      if (existingSession?.session) {
+        console.log('🔒 Found existing session, signing out to enforce password setup...');
+        await supabase.auth.signOut({ scope: 'local' });
+      }
+    } catch (signOutError) {
+      console.warn('⚠️ Error during pre-validation signout:', signOutError);
+      // Continue anyway - the main validation will handle it
+    }
+
     // Check if we have the required tokens
     if (!accessToken || tokenType !== 'recovery') {
       console.error('❌ Invalid token parameters:', {
