@@ -11,12 +11,16 @@ interface LogoUploaderProps {
   onLogoUploaded: (url: string) => void;
   onLogoRemoved: () => void;
   className?: string;
+  /** Override the tenant folder for uploads - use when editing a specific company */
+  tenantIdOverride?: string;
 }
 
-export function LogoUploader({ logoUrl, onLogoUploaded, onLogoRemoved, className }: LogoUploaderProps) {
+export function LogoUploader({ logoUrl, onLogoUploaded, onLogoRemoved, className, tenantIdOverride }: LogoUploaderProps) {
   const [isUploading, setIsUploading] = useState(false);
   const [isDragOver, setIsDragOver] = useState(false);
-  const tenantId = useEffectiveTenantId();
+  const effectiveTenantId = useEffectiveTenantId();
+  // Use override if provided, otherwise fall back to effective tenant
+  const tenantId = tenantIdOverride || effectiveTenantId;
 
   const handleUpload = useCallback(async (file: File) => {
     // Validate file type

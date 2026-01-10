@@ -449,6 +449,7 @@ export const CompanyManagement = () => {
                   <CardContent>
                     <LogoUploader
                       logoUrl={selectedCompany.logo_url}
+                      tenantIdOverride={selectedCompany.id}
                       onLogoUploaded={async (url) => {
                         const { error } = await supabase
                           .from('tenants')
