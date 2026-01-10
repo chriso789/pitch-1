@@ -20156,6 +20156,467 @@ export type Database = {
           },
         ]
       }
+      report_packet_events: {
+        Row: {
+          actor_type: Database["public"]["Enums"]["packet_actor_type"]
+          actor_user_id: string | null
+          created_at: string
+          event_ts: string
+          event_type: Database["public"]["Enums"]["packet_event_type"]
+          id: string
+          meta: Json | null
+          packet_id: string
+          tenant_id: string
+          viewer_id: string | null
+        }
+        Insert: {
+          actor_type: Database["public"]["Enums"]["packet_actor_type"]
+          actor_user_id?: string | null
+          created_at?: string
+          event_ts?: string
+          event_type: Database["public"]["Enums"]["packet_event_type"]
+          id?: string
+          meta?: Json | null
+          packet_id: string
+          tenant_id: string
+          viewer_id?: string | null
+        }
+        Update: {
+          actor_type?: Database["public"]["Enums"]["packet_actor_type"]
+          actor_user_id?: string | null
+          created_at?: string
+          event_ts?: string
+          event_type?: Database["public"]["Enums"]["packet_event_type"]
+          id?: string
+          meta?: Json | null
+          packet_id?: string
+          tenant_id?: string
+          viewer_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "report_packet_events_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "report_packet_events_actor_user_id_fkey"
+            columns: ["actor_user_id"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "report_packet_events_packet_id_fkey"
+            columns: ["packet_id"]
+            isOneToOne: false
+            referencedRelation: "report_packets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "report_packet_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "report_packet_events_viewer_id_fkey"
+            columns: ["viewer_id"]
+            isOneToOne: false
+            referencedRelation: "report_packet_viewers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      report_packet_files: {
+        Row: {
+          byte_size: number | null
+          content_type: string | null
+          created_at: string
+          display_name: string | null
+          filename: string
+          id: string
+          kind: Database["public"]["Enums"]["report_file_kind"]
+          packet_id: string
+          page_count: number | null
+          section_order: number | null
+          sha256: string | null
+          source_document_id: string | null
+          storage_bucket: string
+          storage_path: string
+          tenant_id: string
+        }
+        Insert: {
+          byte_size?: number | null
+          content_type?: string | null
+          created_at?: string
+          display_name?: string | null
+          filename: string
+          id?: string
+          kind: Database["public"]["Enums"]["report_file_kind"]
+          packet_id: string
+          page_count?: number | null
+          section_order?: number | null
+          sha256?: string | null
+          source_document_id?: string | null
+          storage_bucket?: string
+          storage_path: string
+          tenant_id: string
+        }
+        Update: {
+          byte_size?: number | null
+          content_type?: string | null
+          created_at?: string
+          display_name?: string | null
+          filename?: string
+          id?: string
+          kind?: Database["public"]["Enums"]["report_file_kind"]
+          packet_id?: string
+          page_count?: number | null
+          section_order?: number | null
+          sha256?: string | null
+          source_document_id?: string | null
+          storage_bucket?: string
+          storage_path?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "report_packet_files_packet_id_fkey"
+            columns: ["packet_id"]
+            isOneToOne: false
+            referencedRelation: "report_packets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "report_packet_files_source_document_id_fkey"
+            columns: ["source_document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "report_packet_files_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      report_packet_signatures: {
+        Row: {
+          audit_trail: Json
+          consent_checked: boolean
+          consent_text: string | null
+          created_at: string
+          id: string
+          ip: unknown
+          packet_hash_signed: string
+          packet_id: string
+          packet_render_version_signed: number
+          signature_image_path: string | null
+          signature_vector: Json | null
+          signed_at: string
+          signed_pdf_hash: string | null
+          signed_pdf_storage_path: string | null
+          signer_email: string
+          signer_name: string
+          tenant_id: string
+          user_agent: string
+          viewer_id: string | null
+        }
+        Insert: {
+          audit_trail: Json
+          consent_checked?: boolean
+          consent_text?: string | null
+          created_at?: string
+          id?: string
+          ip: unknown
+          packet_hash_signed: string
+          packet_id: string
+          packet_render_version_signed: number
+          signature_image_path?: string | null
+          signature_vector?: Json | null
+          signed_at?: string
+          signed_pdf_hash?: string | null
+          signed_pdf_storage_path?: string | null
+          signer_email: string
+          signer_name: string
+          tenant_id: string
+          user_agent: string
+          viewer_id?: string | null
+        }
+        Update: {
+          audit_trail?: Json
+          consent_checked?: boolean
+          consent_text?: string | null
+          created_at?: string
+          id?: string
+          ip?: unknown
+          packet_hash_signed?: string
+          packet_id?: string
+          packet_render_version_signed?: number
+          signature_image_path?: string | null
+          signature_vector?: Json | null
+          signed_at?: string
+          signed_pdf_hash?: string | null
+          signed_pdf_storage_path?: string | null
+          signer_email?: string
+          signer_name?: string
+          tenant_id?: string
+          user_agent?: string
+          viewer_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "report_packet_signatures_packet_id_fkey"
+            columns: ["packet_id"]
+            isOneToOne: false
+            referencedRelation: "report_packets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "report_packet_signatures_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "report_packet_signatures_viewer_id_fkey"
+            columns: ["viewer_id"]
+            isOneToOne: false
+            referencedRelation: "report_packet_viewers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      report_packet_viewers: {
+        Row: {
+          created_at: string
+          email: string | null
+          first_seen_at: string | null
+          id: string
+          ip_first: unknown
+          ip_last: unknown
+          is_revoked: boolean | null
+          last_seen_at: string | null
+          name: string | null
+          packet_id: string
+          revoked_at: string | null
+          tenant_id: string
+          ua_first: string | null
+          ua_last: string | null
+          view_count: number | null
+          viewer_token: string
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          first_seen_at?: string | null
+          id?: string
+          ip_first?: unknown
+          ip_last?: unknown
+          is_revoked?: boolean | null
+          last_seen_at?: string | null
+          name?: string | null
+          packet_id: string
+          revoked_at?: string | null
+          tenant_id: string
+          ua_first?: string | null
+          ua_last?: string | null
+          view_count?: number | null
+          viewer_token: string
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          first_seen_at?: string | null
+          id?: string
+          ip_first?: unknown
+          ip_last?: unknown
+          is_revoked?: boolean | null
+          last_seen_at?: string | null
+          name?: string | null
+          packet_id?: string
+          revoked_at?: string | null
+          tenant_id?: string
+          ua_first?: string | null
+          ua_last?: string | null
+          view_count?: number | null
+          viewer_token?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "report_packet_viewers_packet_id_fkey"
+            columns: ["packet_id"]
+            isOneToOne: false
+            referencedRelation: "report_packets"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "report_packet_viewers_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      report_packets: {
+        Row: {
+          branding_snapshot: Json
+          created_at: string
+          created_by: string | null
+          expires_at: string | null
+          final_pdf_hash: string | null
+          final_pdf_page_count: number | null
+          final_pdf_storage_path: string | null
+          id: string
+          message_to_client: string | null
+          render_version: number
+          section_manifest: Json
+          status: Database["public"]["Enums"]["report_packet_status"]
+          subject_id: string
+          subject_type: Database["public"]["Enums"]["report_subject_type"]
+          template_id: string | null
+          tenant_id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          branding_snapshot: Json
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          final_pdf_hash?: string | null
+          final_pdf_page_count?: number | null
+          final_pdf_storage_path?: string | null
+          id?: string
+          message_to_client?: string | null
+          render_version?: number
+          section_manifest?: Json
+          status?: Database["public"]["Enums"]["report_packet_status"]
+          subject_id: string
+          subject_type: Database["public"]["Enums"]["report_subject_type"]
+          template_id?: string | null
+          tenant_id: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          branding_snapshot?: Json
+          created_at?: string
+          created_by?: string | null
+          expires_at?: string | null
+          final_pdf_hash?: string | null
+          final_pdf_page_count?: number | null
+          final_pdf_storage_path?: string | null
+          id?: string
+          message_to_client?: string | null
+          render_version?: number
+          section_manifest?: Json
+          status?: Database["public"]["Enums"]["report_packet_status"]
+          subject_id?: string
+          subject_type?: Database["public"]["Enums"]["report_subject_type"]
+          template_id?: string | null
+          tenant_id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "report_packets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "report_packets_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "report_packets_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "report_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "report_packets_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      report_templates: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          description: string | null
+          id: string
+          is_default: boolean | null
+          name: string
+          template_json: Json
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          name: string
+          template_json?: Json
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_default?: boolean | null
+          name?: string
+          template_json?: Json
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "report_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "report_templates_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "report_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reward_redemptions: {
         Row: {
           contact_id: string | null
@@ -29345,6 +29806,10 @@ export type Database = {
       }
       can_view_all_tenants: { Args: never; Returns: boolean }
       can_view_hidden_users: { Args: never; Returns: boolean }
+      capture_branding_snapshot: {
+        Args: { p_tenant_id: string }
+        Returns: Json
+      }
       check_enrollment_eligibility: {
         Args: { campaign_conditions: Json; contact_data: Json }
         Returns: boolean
@@ -29494,6 +29959,7 @@ export type Database = {
       generate_simple_job_number:
         | { Args: never; Returns: number }
         | { Args: { p_tenant_id: string }; Returns: number }
+      generate_viewer_token: { Args: never; Returns: string }
       geometry: { Args: { "": string }; Returns: unknown }
       geometry_above: {
         Args: { geom1: unknown; geom2: unknown }
@@ -30850,6 +31316,20 @@ export type Database = {
         | "completed"
         | "failed"
         | "canceled"
+      packet_actor_type: "internal_user" | "external_viewer" | "system"
+      packet_event_type:
+        | "email_sent"
+        | "email_delivered"
+        | "email_bounced"
+        | "email_opened"
+        | "link_clicked"
+        | "packet_viewed"
+        | "page_viewed"
+        | "download_clicked"
+        | "signature_started"
+        | "signature_completed"
+        | "packet_regenerated"
+        | "packet_voided"
       payment_status:
         | "pending"
         | "processing"
@@ -30873,6 +31353,30 @@ export type Database = {
         | "ready_for_approval"
         | "production"
         | "final_payment"
+      report_file_kind:
+        | "measurement_pdf"
+        | "estimate_pdf"
+        | "cover_pdf"
+        | "photos_pdf"
+        | "marketing_pdf"
+        | "signed_pdf"
+        | "final_packet"
+        | "separator_pdf"
+        | "other"
+      report_packet_status:
+        | "draft"
+        | "generated"
+        | "sent"
+        | "viewed"
+        | "signed"
+        | "expired"
+        | "void"
+      report_subject_type:
+        | "lead"
+        | "job"
+        | "contact"
+        | "pipeline_entry"
+        | "project"
       reward_status:
         | "pending"
         | "processing"
@@ -31108,6 +31612,21 @@ export const Constants = {
         "failed",
         "canceled",
       ],
+      packet_actor_type: ["internal_user", "external_viewer", "system"],
+      packet_event_type: [
+        "email_sent",
+        "email_delivered",
+        "email_bounced",
+        "email_opened",
+        "link_clicked",
+        "packet_viewed",
+        "page_viewed",
+        "download_clicked",
+        "signature_started",
+        "signature_completed",
+        "packet_regenerated",
+        "packet_voided",
+      ],
       payment_status: [
         "pending",
         "processing",
@@ -31132,6 +31651,33 @@ export const Constants = {
         "ready_for_approval",
         "production",
         "final_payment",
+      ],
+      report_file_kind: [
+        "measurement_pdf",
+        "estimate_pdf",
+        "cover_pdf",
+        "photos_pdf",
+        "marketing_pdf",
+        "signed_pdf",
+        "final_packet",
+        "separator_pdf",
+        "other",
+      ],
+      report_packet_status: [
+        "draft",
+        "generated",
+        "sent",
+        "viewed",
+        "signed",
+        "expired",
+        "void",
+      ],
+      report_subject_type: [
+        "lead",
+        "job",
+        "contact",
+        "pipeline_entry",
+        "project",
       ],
       reward_status: [
         "pending",
