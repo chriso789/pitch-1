@@ -4128,6 +4128,99 @@ export type Database = {
           },
         ]
       }
+      company_api_keys: {
+        Row: {
+          allowed_ips: string[] | null
+          api_key_hash: string
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          id: string
+          is_active: boolean | null
+          key_prefix: string
+          last_used_at: string | null
+          name: string
+          permissions: string[] | null
+          rate_limit_per_hour: number | null
+          revoked_at: string | null
+          revoked_by: string | null
+          tenant_id: string
+          usage_count: number | null
+        }
+        Insert: {
+          allowed_ips?: string[] | null
+          api_key_hash: string
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          key_prefix: string
+          last_used_at?: string | null
+          name: string
+          permissions?: string[] | null
+          rate_limit_per_hour?: number | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          tenant_id: string
+          usage_count?: number | null
+        }
+        Update: {
+          allowed_ips?: string[] | null
+          api_key_hash?: string
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          id?: string
+          is_active?: boolean | null
+          key_prefix?: string
+          last_used_at?: string | null
+          name?: string
+          permissions?: string[] | null
+          rate_limit_per_hour?: number | null
+          revoked_at?: string | null
+          revoked_by?: string | null
+          tenant_id?: string
+          usage_count?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "company_api_keys_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_api_keys_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "company_api_keys_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "company_api_keys_revoked_by_fkey"
+            columns: ["revoked_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "company_api_keys_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       company_backups: {
         Row: {
           backup_size_bytes: number | null
@@ -9224,6 +9317,96 @@ export type Database = {
           },
           {
             foreignKeyName: "estimates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      external_lead_submissions: {
+        Row: {
+          api_key_id: string | null
+          appointment_id: string | null
+          contact_id: string | null
+          created_at: string | null
+          error_message: string | null
+          id: string
+          ip_address: unknown
+          lead_source: string | null
+          pipeline_entry_id: string | null
+          processed_at: string | null
+          processing_status: string | null
+          raw_payload: Json
+          source_url: string | null
+          tenant_id: string
+          user_agent: string | null
+        }
+        Insert: {
+          api_key_id?: string | null
+          appointment_id?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          ip_address?: unknown
+          lead_source?: string | null
+          pipeline_entry_id?: string | null
+          processed_at?: string | null
+          processing_status?: string | null
+          raw_payload: Json
+          source_url?: string | null
+          tenant_id: string
+          user_agent?: string | null
+        }
+        Update: {
+          api_key_id?: string | null
+          appointment_id?: string | null
+          contact_id?: string | null
+          created_at?: string | null
+          error_message?: string | null
+          id?: string
+          ip_address?: unknown
+          lead_source?: string | null
+          pipeline_entry_id?: string | null
+          processed_at?: string | null
+          processing_status?: string | null
+          raw_payload?: Json
+          source_url?: string | null
+          tenant_id?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "external_lead_submissions_api_key_id_fkey"
+            columns: ["api_key_id"]
+            isOneToOne: false
+            referencedRelation: "company_api_keys"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "external_lead_submissions_appointment_id_fkey"
+            columns: ["appointment_id"]
+            isOneToOne: false
+            referencedRelation: "appointments"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "external_lead_submissions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "external_lead_submissions_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "external_lead_submissions_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
