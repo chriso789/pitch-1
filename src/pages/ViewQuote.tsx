@@ -3,7 +3,9 @@ import { useParams } from "react-router-dom";
 import { supabase } from "@/integrations/supabase/client";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { FileText, Download, Phone, Mail, CheckCircle, Loader2 } from "lucide-react";
+import { FileText, Download, Phone, Mail, CheckCircle, Loader2, ExternalLink } from "lucide-react";
+import { MobilePDFViewer } from "@/components/ui/MobilePDFViewer";
+import { isMobileDevice } from "@/utils/mobileDetection";
 
 interface QuoteData {
   estimate_number: string;
@@ -174,13 +176,14 @@ export default function ViewQuote() {
               </div>
             )}
 
-            {/* PDF Viewer */}
+            {/* PDF Viewer - Mobile Optimized */}
             {quote?.pdf_url ? (
               <div className="mb-6">
-                <iframe
-                  src={quote.pdf_url}
-                  className="w-full h-[600px] rounded-lg border"
-                  title="Quote Document"
+                <MobilePDFViewer
+                  url={quote.pdf_url}
+                  title={`Quote #${quote.estimate_number}`}
+                  filename={`quote-${quote.estimate_number}.pdf`}
+                  className="rounded-lg border min-h-[50vh] md:min-h-[60vh]"
                 />
               </div>
             ) : (
