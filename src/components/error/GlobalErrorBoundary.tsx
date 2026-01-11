@@ -1,8 +1,9 @@
 import React, { Component, ErrorInfo, ReactNode } from 'react';
 import { reportCrash } from '@/lib/MonitoringSelfHealing';
-import { AlertTriangle, RefreshCw, Home } from 'lucide-react';
+import { AlertTriangle, RefreshCw, Home, Copy, Check, ChevronDown } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible';
 
 interface Props {
   children: ReactNode;
@@ -12,6 +13,8 @@ interface State {
   hasError: boolean;
   error: Error | null;
   errorId: string | null;
+  copied: boolean;
+  detailsOpen: boolean;
 }
 
 /**
@@ -24,16 +27,20 @@ class GlobalErrorBoundary extends Component<Props, State> {
     this.state = {
       hasError: false,
       error: null,
-      errorId: null
+      errorId: null,
+      copied: false,
+      detailsOpen: false
     };
   }
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): Partial<State> {
     const errorId = `ERR-${Date.now().toString(36).toUpperCase()}`;
     return {
       hasError: true,
       error,
-      errorId
+      errorId,
+      copied: false,
+      detailsOpen: false
     };
   }
 
@@ -67,6 +74,34 @@ class GlobalErrorBoundary extends Component<Props, State> {
     window.location.href = '/dashboard';
   };
 
+  getDiagnostics = (): string => {
+    const { error, errorId } = this.state;
+    const lines: string[] = [
+      `Error Reference: ${errorId || 'N/A'}`,
+      `URL: ${window.location.href}`,
+      `Route: ${window.location.pathname}`,
+      `Timestamp: ${new Date().toISOString()}`,
+      `User Agent: ${navigator.userAgent}`,
+      '',
+      `Error Name: ${error?.name || 'Unknown'}`,
+      `Error Message: ${error?.message || 'No message'}`,
+      '',
+      'Stack Trace:',
+      ...(error?.stack?.split('\n').slice(0, 30) || ['N/A']),
+    ];
+    return lines.join('\n');
+  };
+
+  handleCopyDiagnostics = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(this.getDiagnostics());
+      this.setState({ copied: true });
+      setTimeout(() => this.setState({ copied: false }), 2000);
+    } catch (err) {
+      console.error('Failed to copy diagnostics:', err);
+    }
+  };
+
   render(): ReactNode {
     if (this.state.hasError) {
       return (
@@ -89,17 +124,51 @@ class GlobalErrorBoundary extends Component<Props, State> {
                 </div>
               )}
               
-              {process.env.NODE_ENV === 'development' && this.state.error && (
-                <details className="bg-muted/50 p-3 rounded-md text-xs">
-                  <summary className="cursor-pointer text-muted-foreground">
+              {/* Show error summary in production too */}
+              {this.state.error && (
+                <Collapsible 
+                  open={this.state.detailsOpen} 
+                  onOpenChange={(open) => this.setState({ detailsOpen: open })}
+                >
+                  <CollapsibleTrigger className="flex items-center gap-2 w-full p-2 bg-muted/50 rounded-md text-xs text-muted-foreground hover:bg-muted transition-colors">
+                    <ChevronDown className={`h-3 w-3 transition-transform ${this.state.detailsOpen ? 'rotate-180' : ''}`} />
                     Technical Details
-                  </summary>
-                  <pre className="mt-2 whitespace-pre-wrap text-destructive overflow-auto max-h-40">
-                    {this.state.error.message}
-                    {'\n\n'}
-                    {this.state.error.stack}
-                  </pre>
-                </details>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent>
+                    <div className="mt-2 p-3 bg-muted/30 rounded-md space-y-2">
+                      <div className="text-xs">
+                        <span className="text-muted-foreground">Error: </span>
+                        <span className="text-destructive font-medium">{this.state.error.name}</span>
+                      </div>
+                      <p className="text-xs text-destructive break-words">
+                        {this.state.error.message}
+                      </p>
+                      {this.state.error.stack && (
+                        <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap overflow-auto max-h-24 mt-2 font-mono">
+                          {this.state.error.stack.split('\n').slice(1, 5).join('\n')}
+                        </pre>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="w-full mt-2 text-xs"
+                        onClick={this.handleCopyDiagnostics}
+                      >
+                        {this.state.copied ? (
+                          <>
+                            <Check className="h-3 w-3 mr-1" />
+                            Copied!
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="h-3 w-3 mr-1" />
+                            Copy Diagnostics
+                          </>
+                        )}
+                      </Button>
+                    </div>
+                  </CollapsibleContent>
+                </Collapsible>
               )}
 
               <div className="flex gap-3">

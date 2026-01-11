@@ -53,41 +53,62 @@ function parseWKTLineString(
   canvasHeight: number,
   zoom: number
 ): { x: number; y: number }[] {
-  const match = wkt.match(/LINESTRING\s*\(([^)]+)\)/i);
-  if (!match) return [];
+  // Guard: wkt must be a string
+  if (typeof wkt !== 'string') {
+    console.warn('[parseWKTLineString] wkt is not a string:', typeof wkt);
+    return [];
+  }
 
-  const coordPairs = match[1].split(',').map(pair => {
-    const [lng, lat] = pair.trim().split(/\s+/).map(Number);
-    return { lat, lng };
-  });
+  try {
+    const match = wkt.match(/LINESTRING\s*\(([^)]+)\)/i);
+    if (!match) return [];
 
-  // Base meters per pixel for the ORIGINAL 640x640 square image
-  const baseMetersPerPixel = 156543.03392 * Math.cos(centerLat * Math.PI / 180) / Math.pow(2, zoom);
-  
-  // Scale factors for aspect ratio correction (canvas is stretched from 640x640 to 900x700)
-  const scaleX = canvasWidth / ORIGINAL_IMAGE_SIZE;   // 900/640 = 1.406
-  const scaleY = canvasHeight / ORIGINAL_IMAGE_SIZE;  // 700/640 = 1.094
-  
-  // Effective meters-per-pixel on the stretched canvas (different for X and Y)
-  const metersPerPixelX = baseMetersPerPixel / scaleX;
-  const metersPerPixelY = baseMetersPerPixel / scaleY;
-  
-  const metersPerDegLat = 111320;
-  const metersPerDegLng = 111320 * Math.cos(centerLat * Math.PI / 180);
+    const coordPairs = match[1].split(',').map(pair => {
+      const [lng, lat] = pair.trim().split(/\s+/).map(Number);
+      return { lat, lng };
+    });
 
-  return coordPairs.map(coord => {
-    const dLat = coord.lat - centerLat;
-    const dLng = coord.lng - centerLng;
+    // Filter out any NaN coordinates
+    const validCoordPairs = coordPairs.filter(c => isFinite(c.lat) && isFinite(c.lng));
+    if (validCoordPairs.length < 2) {
+      console.warn('[parseWKTLineString] Not enough valid coordinates in WKT');
+      return [];
+    }
+
+    // Base meters per pixel for the ORIGINAL 640x640 square image
+    const baseMetersPerPixel = 156543.03392 * Math.cos(centerLat * Math.PI / 180) / Math.pow(2, zoom);
     
-    // Use separate meters-per-pixel for X and Y axes
-    const dY = dLat * metersPerDegLat / metersPerPixelY;
-    const dX = dLng * metersPerDegLng / metersPerPixelX;
+    // Scale factors for aspect ratio correction (canvas is stretched from 640x640 to 900x700)
+    const scaleX = canvasWidth / ORIGINAL_IMAGE_SIZE;   // 900/640 = 1.406
+    const scaleY = canvasHeight / ORIGINAL_IMAGE_SIZE;  // 700/640 = 1.094
+    
+    // Effective meters-per-pixel on the stretched canvas (different for X and Y)
+    const metersPerPixelX = baseMetersPerPixel / scaleX;
+    const metersPerPixelY = baseMetersPerPixel / scaleY;
+    
+    const metersPerDegLat = 111320;
+    const metersPerDegLng = 111320 * Math.cos(centerLat * Math.PI / 180);
 
-    return {
-      x: canvasWidth / 2 + dX,
-      y: canvasHeight / 2 - dY,
-    };
-  });
+    const points = validCoordPairs.map(coord => {
+      const dLat = coord.lat - centerLat;
+      const dLng = coord.lng - centerLng;
+      
+      // Use separate meters-per-pixel for X and Y axes
+      const dY = dLat * metersPerDegLat / metersPerPixelY;
+      const dX = dLng * metersPerDegLng / metersPerPixelX;
+
+      return {
+        x: canvasWidth / 2 + dX,
+        y: canvasHeight / 2 - dY,
+      };
+    });
+
+    // Filter out any NaN results
+    return points.filter(p => isFinite(p.x) && isFinite(p.y));
+  } catch (err) {
+    console.error('[parseWKTLineString] Failed to parse WKT:', err, wkt?.slice?.(0, 50));
+    return [];
+  }
 }
 
 // Calculate totals by type
@@ -205,7 +226,10 @@ export function TrainingOverlayComparison({
     if (!manualFabricCanvas || !manualImageLoaded) return;
     manualFabricCanvas.getObjects().forEach((obj) => manualFabricCanvas.remove(obj));
 
-    manualTraces.forEach((trace) => {
+    // Ensure manualTraces is always an array
+    const safeManualTraces = Array.isArray(manualTraces) ? manualTraces : [];
+
+    safeManualTraces.forEach((trace) => {
       if (!trace.canvas_points || trace.canvas_points.length < 2) return;
       const color = TRACE_COLORS[trace.trace_type] || '#6b7280';
 
@@ -248,7 +272,15 @@ export function TrainingOverlayComparison({
     if (!aiFabricCanvas || !aiImageLoaded) return;
     aiFabricCanvas.getObjects().forEach((obj) => aiFabricCanvas.remove(obj));
 
-    aiLinearFeatures.forEach((feature) => {
+    // Ensure aiLinearFeatures is an array
+    const safeAiFeatures = Array.isArray(aiLinearFeatures) ? aiLinearFeatures : [];
+
+    safeAiFeatures.forEach((feature) => {
+      // Guard: skip features without required properties
+      if (!feature || typeof feature.wkt !== 'string' || typeof feature.type !== 'string') {
+        return;
+      }
+      
       // Use the AI measurement's center for WKT-to-canvas conversion
       const points = parseWKTLineString(feature.wkt, aiCenterLat, aiCenterLng, CANVAS_WIDTH, CANVAS_HEIGHT, zoom);
       if (points.length < 2) return;
