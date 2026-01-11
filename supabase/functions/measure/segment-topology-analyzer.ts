@@ -170,17 +170,35 @@ export function analyzeSegmentTopology(
   let buildingLengthFt = 60; // Default
   
   if (footprintBounds) {
-    buildingWidthFt = distance(
-      [footprintBounds.minX, footprintBounds.minY],
-      [footprintBounds.maxX, footprintBounds.minY],
-      midLat
-    );
-    buildingLengthFt = distance(
-      [footprintBounds.minX, footprintBounds.minY],
-      [footprintBounds.minX, footprintBounds.maxY],
-      midLat
-    );
-    console.log(`   Building dimensions: ${buildingWidthFt.toFixed(0)}ft x ${buildingLengthFt.toFixed(0)}ft`);
+    // Support both naming conventions (minX/minY and minLng/minLat)
+    const minX = footprintBounds.minX ?? (footprintBounds as any).minLng;
+    const maxX = footprintBounds.maxX ?? (footprintBounds as any).maxLng;
+    const minY = footprintBounds.minY ?? (footprintBounds as any).minLat;
+    const maxY = footprintBounds.maxY ?? (footprintBounds as any).maxLat;
+    
+    // Validate bounds are valid numbers
+    if (minX != null && maxX != null && minY != null && maxY != null &&
+        !isNaN(minX) && !isNaN(maxX) && !isNaN(minY) && !isNaN(maxY)) {
+      buildingWidthFt = distance([minX, minY], [maxX, minY], midLat);
+      buildingLengthFt = distance([minX, minY], [minX, maxY], midLat);
+      
+      // Extra validation - ensure we got valid distances
+      if (isNaN(buildingWidthFt) || isNaN(buildingLengthFt) || buildingWidthFt <= 0 || buildingLengthFt <= 0) {
+        console.warn(`⚠️ Invalid building dimensions calculated: ${buildingWidthFt} x ${buildingLengthFt}, using area estimate`);
+        const totalAreaSqft = facets.reduce((s, f) => s + f.areaSqft, 0);
+        const estSide = Math.sqrt(totalAreaSqft);
+        buildingWidthFt = estSide * 0.8;
+        buildingLengthFt = estSide * 1.2;
+      } else {
+        console.log(`   Building dimensions: ${buildingWidthFt.toFixed(0)}ft x ${buildingLengthFt.toFixed(0)}ft`);
+      }
+    } else {
+      console.warn(`⚠️ Invalid footprintBounds values, using area estimate`);
+      const totalAreaSqft = facets.reduce((s, f) => s + f.areaSqft, 0);
+      const estSide = Math.sqrt(totalAreaSqft);
+      buildingWidthFt = estSide * 0.8;
+      buildingLengthFt = estSide * 1.2;
+    }
   } else {
     // Estimate from total roof area
     const totalAreaSqft = facets.reduce((s, f) => s + f.areaSqft, 0);
@@ -244,15 +262,19 @@ export function analyzeSegmentTopology(
           ridgeMidpoint[1] + Math.cos(ridgeRad) * ridgeHalfLenDeg
         ];
         
-        ridges.push({
-          type: 'ridge',
-          start: ridgeStart,
-          end: ridgeEnd,
-          lengthFt: ridgeLengthFt,
-          facetIds: [f1.id, f2.id]
-        });
-        
-        console.log(`   Ridge found: ${f1.id}(${f1.direction}) ↔ ${f2.id}(${f2.direction}) = ${ridgeLengthFt.toFixed(0)}ft`);
+        // Validate ridge length before adding
+        if (!isNaN(ridgeLengthFt) && ridgeLengthFt > 0) {
+          ridges.push({
+            type: 'ridge',
+            start: ridgeStart,
+            end: ridgeEnd,
+            lengthFt: ridgeLengthFt,
+            facetIds: [f1.id, f2.id]
+          });
+          console.log(`   Ridge found: ${f1.id}(${f1.direction}) ↔ ${f2.id}(${f2.direction}) = ${ridgeLengthFt.toFixed(0)}ft`);
+        } else {
+          console.warn(`   ⚠️ Invalid ridge length: ${ridgeLengthFt}, skipping`);
+        }
         
       } else if (arePerpendicular(f1.azimuthDegrees, f2.azimuthDegrees)) {
         // Check if facets are adjacent
@@ -284,26 +306,31 @@ export function analyzeSegmentTopology(
           const combinedArea = f1.areaSqft + f2.areaSqft;
           const avgArea = facets.reduce((s, f) => s + f.areaSqft, 0) / facets.length;
           
-          if (combinedArea > avgArea * 1.2) {
-            hips.push({
-              type: 'hip',
-              start: hipStart,
-              end: hipEnd,
-              lengthFt: hipLengthFt,
-              facetIds: [f1.id, f2.id]
-            });
-            console.log(`   Hip found: ${f1.id} ↔ ${f2.id} = ${hipLengthFt.toFixed(0)}ft`);
+          // Validate hip/valley length before adding
+          if (!isNaN(hipLengthFt) && hipLengthFt > 0) {
+            if (combinedArea > avgArea * 1.2) {
+              hips.push({
+                type: 'hip',
+                start: hipStart,
+                end: hipEnd,
+                lengthFt: hipLengthFt,
+                facetIds: [f1.id, f2.id]
+              });
+              console.log(`   Hip found: ${f1.id} ↔ ${f2.id} = ${hipLengthFt.toFixed(0)}ft`);
+            } else {
+              // Valley: typically similar length to hip
+              const valleyLengthFt = hipLengthFt * 0.9;
+              valleys.push({
+                type: 'valley',
+                start: hipStart,
+                end: hipEnd,
+                lengthFt: valleyLengthFt,
+                facetIds: [f1.id, f2.id]
+              });
+              console.log(`   Valley found: ${f1.id} ↔ ${f2.id} = ${valleyLengthFt.toFixed(0)}ft`);
+            }
           } else {
-            // Valley: typically similar length to hip
-            const valleyLengthFt = hipLengthFt * 0.9;
-            valleys.push({
-              type: 'valley',
-              start: hipStart,
-              end: hipEnd,
-              lengthFt: valleyLengthFt,
-              facetIds: [f1.id, f2.id]
-            });
-            console.log(`   Valley found: ${f1.id} ↔ ${f2.id} = ${valleyLengthFt.toFixed(0)}ft`);
+            console.warn(`   ⚠️ Invalid hip/valley length: ${hipLengthFt}, skipping`);
           }
         }
       }

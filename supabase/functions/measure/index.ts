@@ -894,12 +894,12 @@ async function providerGoogleSolar(supabase: any, lat: number, lng: number) {
     const plan_sqft = polygonAreaSqftFromLngLat(coords);
     const midLat = coords.reduce((s, c) => s + c[1], 0) / coords.length;
     
-    // Get footprint bounds for segment topology analysis
+    // Get footprint bounds for segment topology analysis (minX=lng, minY=lat)
     const footprintBounds = {
-      minLat: Math.min(...coords.map(c => c[1])),
-      maxLat: Math.max(...coords.map(c => c[1])),
-      minLng: Math.min(...coords.map(c => c[0])),
-      maxLng: Math.max(...coords.map(c => c[0]))
+      minY: Math.min(...coords.map(c => c[1])),
+      maxY: Math.max(...coords.map(c => c[1])),
+      minX: Math.min(...coords.map(c => c[0])),
+      maxX: Math.max(...coords.map(c => c[0]))
     };
     
     // Use segment topology analyzer if roof_segments available for ridge/hip/valley
