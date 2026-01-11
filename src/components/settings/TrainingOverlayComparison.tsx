@@ -91,20 +91,24 @@ function parseWKTLineString(
 }
 
 // Calculate totals by type
-function calculateTotals(traces: { trace_type: string; length_ft: number }[]): Record<string, number> {
+function calculateTotals(traces: { trace_type: string; length_ft: number }[] | undefined | null): Record<string, number> {
   const totals: Record<string, number> = {};
+  if (!Array.isArray(traces)) return totals;
   traces.forEach(t => {
+    if (!t?.trace_type) return;
     const type = t.trace_type.toLowerCase();
-    totals[type] = (totals[type] || 0) + t.length_ft;
+    totals[type] = (totals[type] || 0) + (t.length_ft || 0);
   });
   return totals;
 }
 
-function calculateAITotals(features: { type: string; length_ft: number }[]): Record<string, number> {
+function calculateAITotals(features: { type: string; length_ft: number }[] | undefined | null): Record<string, number> {
   const totals: Record<string, number> = {};
+  if (!Array.isArray(features)) return totals;
   features.forEach(f => {
+    if (!f?.type) return;
     const type = f.type.toLowerCase();
-    totals[type] = (totals[type] || 0) + f.length_ft;
+    totals[type] = (totals[type] || 0) + (f.length_ft || 0);
   });
   return totals;
 }
