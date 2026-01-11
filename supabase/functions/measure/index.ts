@@ -2269,15 +2269,91 @@ serve(async (req) => {
         console.log('Evaluate overlay:', { aiCount: aiFeatures.length, traceCount: userTraces.length });
 
         try {
-          const result = evaluateOverlay(aiFeatures, userTraces);
+          // Parse user traces - they come as WKT from the frontend, convert to points for evaluator
+          const parsedUserTraces = (userTraces as any[]).map((trace: any) => {
+            // If trace already has points, use them
+            if (trace.points && Array.isArray(trace.points)) {
+              return trace;
+            }
+            // If trace has WKT, parse it to points
+            if (trace.wkt && typeof trace.wkt === 'string') {
+              const match = trace.wkt.match(/LINESTRING\(([^)]+)\)/i);
+              if (match) {
+                const points = match[1].split(',').map((pair: string) => {
+                  const [lng, lat] = pair.trim().split(' ').map(Number);
+                  return [lng, lat] as [number, number];
+                });
+                return {
+                  type: trace.type || 'unknown',
+                  points,
+                  length_ft: trace.length_ft || 0,
+                  id: trace.id,
+                };
+              }
+            }
+            // Fallback - return trace as-is with empty points
+            return {
+              type: trace.type || 'unknown',
+              points: [],
+              length_ft: trace.length_ft || 0,
+              id: trace.id,
+            };
+          }).filter((t: any) => t.points && t.points.length >= 2);
+
+          // Use empty footprint since we don't have it for this evaluation
+          const result = evaluateOverlay(aiFeatures, parsedUserTraces, []);
+          
+          // Map missingFeatures/extraFeatures to unmatchedAiLines/unmatchedTraces for the UI
+          // missingFeatures = features user traced but AI missed → these are "unmatched traces"
+          // extraFeatures = features AI detected but user didn't trace → these are "unmatched AI lines"
+          const unmatchedAiLines: string[] = [];
+          const unmatchedTraces: string[] = [];
+
+          // Populate unmatched AI lines from extraFeatures
+          if (Array.isArray(result.extraFeatures)) {
+            for (const extra of result.extraFeatures) {
+              for (let i = 0; i < extra.count; i++) {
+                unmatchedAiLines.push(`${extra.type}-${i + 1}`);
+              }
+            }
+          }
+
+          // Populate unmatched traces from missingFeatures
+          if (Array.isArray(result.missingFeatures)) {
+            for (const missing of result.missingFeatures) {
+              for (let i = 0; i < missing.count; i++) {
+                unmatchedTraces.push(`${missing.type}-${i + 1}`);
+              }
+            }
+          }
+
+          // Map deviations to include both old and new field names for compatibility
+          const mappedDeviations = (result.deviations || []).map(dev => ({
+            // Old format fields (for backward compat)
+            aiLineId: dev.featureId,
+            traceLineId: dev.featureId,
+            lineType: dev.featureType,
+            aiWkt: '', // Original evaluator doesn't track this
+            traceWkt: dev.correctedWkt || '',
+            deviationFt: dev.avgDeviationFt,
+            deviationPct: dev.alignmentScore != null ? (1 - dev.alignmentScore) * 100 : 0,
+            // New format fields
+            featureId: dev.featureId,
+            featureType: dev.featureType,
+            avgDeviationFt: dev.avgDeviationFt,
+            maxDeviationFt: dev.maxDeviationFt,
+            alignmentScore: dev.alignmentScore,
+            needsCorrection: dev.needsCorrection,
+            correctedWkt: dev.correctedWkt,
+          }));
           
           return json({
             ok: true,
             data: {
-              overallScore: result.overallScore,
-              deviations: result.deviations,
-              unmatchedAiLines: result.unmatchedAiFeatures,
-              unmatchedTraces: result.unmatchedUserTraces,
+              overallScore: result.overallScore || 0,
+              deviations: mappedDeviations,
+              unmatchedAiLines,
+              unmatchedTraces,
               autoCorrectionsAvailable: result.autoCorrections?.length || 0,
             }
           }, corsHeaders);

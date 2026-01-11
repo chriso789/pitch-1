@@ -7,18 +7,28 @@ import { supabase } from '@/integrations/supabase/client';
 import { Loader2, Zap, AlertTriangle, CheckCircle, ArrowRight } from 'lucide-react';
 import { toast } from 'sonner';
 
+// Flexible interface to handle varying response shapes from the edge function
 interface LineDeviation {
-  aiLineId: string;
-  traceLineId: string;
-  lineType: string;
-  aiWkt: string;
-  traceWkt: string;
-  deviationFt: number;
-  deviationPct: number;
+  // Original expected fields
+  aiLineId?: string;
+  traceLineId?: string;
+  lineType?: string;
+  aiWkt?: string;
+  traceWkt?: string;
+  deviationFt?: number;
+  deviationPct?: number;
   autoCorrection?: {
     suggestedWkt: string;
     confidence: number;
   };
+  // Alternative fields from evaluator
+  featureId?: string;
+  featureType?: string;
+  avgDeviationFt?: number;
+  maxDeviationFt?: number;
+  alignmentScore?: number;
+  needsCorrection?: boolean;
+  correctedWkt?: string;
 }
 
 interface DeviationAnalysisResult {
@@ -66,6 +76,15 @@ export function DeviationAnalysisCard({
   const [analysisResult, setAnalysisResult] = useState<DeviationAnalysisResult | null>(null);
   const [isStoringCorrections, setIsStoringCorrections] = useState(false);
 
+  // Normalize analysis result to prevent .length crashes on undefined arrays
+  const safeResult: DeviationAnalysisResult | null = analysisResult ? {
+    overallScore: typeof analysisResult.overallScore === 'number' ? analysisResult.overallScore : 0,
+    deviations: Array.isArray(analysisResult.deviations) ? analysisResult.deviations : [],
+    unmatchedAiLines: Array.isArray(analysisResult.unmatchedAiLines) ? analysisResult.unmatchedAiLines : [],
+    unmatchedTraces: Array.isArray(analysisResult.unmatchedTraces) ? analysisResult.unmatchedTraces : [],
+    autoCorrectionsAvailable: typeof analysisResult.autoCorrectionsAvailable === 'number' ? analysisResult.autoCorrectionsAvailable : 0,
+  } : null;
+
   const handleAnalyze = async () => {
     setIsAnalyzing(true);
     try {
@@ -99,7 +118,15 @@ export function DeviationAnalysisCard({
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || 'Analysis failed');
 
-      setAnalysisResult(data.data);
+      // Safely set the result - normalize to expected shape
+      const rawData = data.data || {};
+      setAnalysisResult({
+        overallScore: typeof rawData.overallScore === 'number' ? rawData.overallScore : 0,
+        deviations: Array.isArray(rawData.deviations) ? rawData.deviations : [],
+        unmatchedAiLines: Array.isArray(rawData.unmatchedAiLines) ? rawData.unmatchedAiLines : [],
+        unmatchedTraces: Array.isArray(rawData.unmatchedTraces) ? rawData.unmatchedTraces : [],
+        autoCorrectionsAvailable: typeof rawData.autoCorrectionsAvailable === 'number' ? rawData.autoCorrectionsAvailable : 0,
+      });
       toast.success('Deviation analysis complete');
     } catch (err: any) {
       console.error('Deviation analysis error:', err);
@@ -110,20 +137,28 @@ export function DeviationAnalysisCard({
   };
 
   const handleStoreCorrections = async () => {
-    if (!analysisResult) return;
+    if (!safeResult) return;
 
     setIsStoringCorrections(true);
     try {
-      const corrections = analysisResult.deviations
-        .filter(d => d.deviationFt > 0)
+      // Build corrections from deviations, handling both old and new field names
+      const corrections = safeResult.deviations
+        .filter(d => (d.deviationFt || d.avgDeviationFt || 0) > 0 || d.needsCorrection)
         .map(d => ({
-          original_line_wkt: d.aiWkt,
-          original_line_type: d.lineType,
-          corrected_line_wkt: d.traceWkt,
-          deviation_ft: d.deviationFt,
-          deviation_pct: d.deviationPct,
+          original_line_wkt: d.aiWkt || '', // May be empty if backend doesn't provide
+          original_line_type: d.lineType || d.featureType || 'unknown',
+          corrected_line_wkt: d.traceWkt || d.correctedWkt || '',
+          deviation_ft: d.deviationFt || d.avgDeviationFt || 0,
+          deviation_pct: d.deviationPct || (d.alignmentScore != null ? (1 - d.alignmentScore) * 100 : 0),
           correction_source: 'user_trace',
-        }));
+        }))
+        .filter(c => c.corrected_line_wkt); // Only include if we have a corrected WKT
+
+      if (corrections.length === 0) {
+        toast.info('No corrections to store');
+        setIsStoringCorrections(false);
+        return;
+      }
 
       const { data, error } = await supabase.functions.invoke('measure', {
         body: {
@@ -171,7 +206,7 @@ export function DeviationAnalysisCard({
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
-        {!analysisResult ? (
+        {!safeResult ? (
           <Button
             onClick={handleAnalyze}
             disabled={isAnalyzing || safeAiFeatures.length === 0 || safeManualTraces.length === 0}
@@ -194,45 +229,45 @@ export function DeviationAnalysisCard({
             {/* Overall Score */}
             <div className="flex items-center justify-between">
               <span className="text-sm font-medium">Line-Level Accuracy</span>
-              <span className={`text-2xl font-bold ${getScoreColor(analysisResult.overallScore)}`}>
-                {analysisResult.overallScore.toFixed(1)}%
+              <span className={`text-2xl font-bold ${getScoreColor(safeResult.overallScore)}`}>
+                {safeResult.overallScore.toFixed(1)}%
               </span>
             </div>
-            <Progress value={analysisResult.overallScore} className="h-2" />
+            <Progress value={safeResult.overallScore} className="h-2" />
 
             {/* Deviation Details */}
-            {analysisResult.deviations.length > 0 && (
+            {safeResult.deviations.length > 0 && (
               <div className="space-y-2 max-h-60 overflow-y-auto">
-                {analysisResult.deviations.map((dev, idx) => (
+                {safeResult.deviations.map((dev, idx) => (
                   <div
                     key={idx}
                     className="flex items-center justify-between p-2 bg-muted/50 rounded text-sm"
                   >
                     <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="capitalize">{dev.lineType}</Badge>
+                      <Badge variant="outline" className="capitalize">{dev.lineType || dev.featureType || 'unknown'}</Badge>
                       <span className="text-muted-foreground">
-                        {Math.round(dev.deviationFt)}ft off
+                        {Math.round(dev.deviationFt || dev.avgDeviationFt || 0)}ft off
                       </span>
                     </div>
-                    {getDeviationBadge(dev.deviationPct)}
+                    {getDeviationBadge(dev.deviationPct || (dev.alignmentScore ? (1 - dev.alignmentScore) * 100 : 0))}
                   </div>
                 ))}
               </div>
             )}
 
             {/* Unmatched Lines */}
-            {(analysisResult.unmatchedAiLines.length > 0 || analysisResult.unmatchedTraces.length > 0) && (
+            {(safeResult.unmatchedAiLines.length > 0 || safeResult.unmatchedTraces.length > 0) && (
               <div className="flex items-center gap-4 text-sm text-muted-foreground">
-                {analysisResult.unmatchedAiLines.length > 0 && (
+                {safeResult.unmatchedAiLines.length > 0 && (
                   <div className="flex items-center gap-1">
                     <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
-                    {analysisResult.unmatchedAiLines.length} AI lines unmatched
+                    {safeResult.unmatchedAiLines.length} AI lines unmatched
                   </div>
                 )}
-                {analysisResult.unmatchedTraces.length > 0 && (
+                {safeResult.unmatchedTraces.length > 0 && (
                   <div className="flex items-center gap-1">
                     <AlertTriangle className="h-3.5 w-3.5 text-yellow-500" />
-                    {analysisResult.unmatchedTraces.length} traces unmatched
+                    {safeResult.unmatchedTraces.length} traces unmatched
                   </div>
                 )}
               </div>
@@ -242,7 +277,7 @@ export function DeviationAnalysisCard({
             <div className="flex gap-2">
               <Button
                 onClick={handleStoreCorrections}
-                disabled={isStoringCorrections || analysisResult.deviations.length === 0}
+                disabled={isStoringCorrections || safeResult.deviations.length === 0}
                 className="flex-1"
               >
                 {isStoringCorrections ? (
@@ -253,7 +288,7 @@ export function DeviationAnalysisCard({
                 ) : (
                   <>
                     <CheckCircle className="h-4 w-4 mr-2" />
-                    Store {analysisResult.deviations.length} Corrections
+                    Store {safeResult.deviations.length} Corrections
                   </>
                 )}
               </Button>
@@ -262,10 +297,10 @@ export function DeviationAnalysisCard({
               </Button>
             </div>
 
-            {analysisResult.autoCorrectionsAvailable > 0 && (
+            {safeResult.autoCorrectionsAvailable > 0 && (
               <div className="flex items-center gap-2 text-sm text-green-600 bg-green-50 p-2 rounded">
                 <CheckCircle className="h-4 w-4" />
-                {analysisResult.autoCorrectionsAvailable} auto-corrections available
+                {safeResult.autoCorrectionsAvailable} auto-corrections available
               </div>
             )}
           </div>
