@@ -51,13 +51,17 @@ interface DeviationAnalysisCardProps {
 
 export function DeviationAnalysisCard({
   sessionId,
-  aiLinearFeatures = [],
-  manualTraces = [],
+  aiLinearFeatures,
+  manualTraces,
   centerLat,
   centerLng,
   zoom,
   onCorrectionsApplied,
 }: DeviationAnalysisCardProps) {
+  // Ensure arrays are always defined - handle undefined/null props
+  const safeAiFeatures = Array.isArray(aiLinearFeatures) ? aiLinearFeatures : [];
+  const safeManualTraces = Array.isArray(manualTraces) ? manualTraces : [];
+  
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysisResult, setAnalysisResult] = useState<DeviationAnalysisResult | null>(null);
   const [isStoringCorrections, setIsStoringCorrections] = useState(false);
@@ -66,7 +70,7 @@ export function DeviationAnalysisCard({
     setIsAnalyzing(true);
     try {
       // Convert canvas points to WKT for comparison
-      const traceFeaturesWithWkt = (Array.isArray(manualTraces) ? manualTraces : []).map(trace => {
+      const traceFeaturesWithWkt = safeManualTraces.map(trace => {
         // Ensure canvas_points exists and is an array
         const points = Array.isArray(trace?.canvas_points) ? trace.canvas_points : [];
         if (points.length < 2) return null;
@@ -86,7 +90,7 @@ export function DeviationAnalysisCard({
       const { data, error } = await supabase.functions.invoke('measure', {
         body: {
           action: 'evaluate-overlay',
-          aiFeatures: aiLinearFeatures,
+          aiFeatures: safeAiFeatures,
           userTraces: traceFeaturesWithWkt,
           sessionId,
         },
@@ -170,7 +174,7 @@ export function DeviationAnalysisCard({
         {!analysisResult ? (
           <Button
             onClick={handleAnalyze}
-            disabled={isAnalyzing || !aiLinearFeatures?.length || !manualTraces?.length}
+            disabled={isAnalyzing || safeAiFeatures.length === 0 || safeManualTraces.length === 0}
             className="w-full"
           >
             {isAnalyzing ? (
