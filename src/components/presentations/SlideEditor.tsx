@@ -5,6 +5,8 @@ import { VideoSlideEditor } from "./slide-editors/VideoSlideEditor";
 import { EstimateSummarySlideEditor } from "./slide-editors/EstimateSummarySlideEditor";
 import { TestimonialSlideEditor } from "./slide-editors/TestimonialSlideEditor";
 import { SignatureSlideEditor } from "./slide-editors/SignatureSlideEditor";
+import { SectionMenuSlideEditor } from "./slide-editors/SectionMenuSlideEditor";
+import { PricingComparisonSlideEditor } from "./slide-editors/PricingComparisonSlideEditor";
 
 interface SlideEditorProps {
   slide: any;
@@ -23,11 +25,17 @@ export const SlideEditor = ({ slide, onSlideUpdate }: SlideEditorProps) => {
       case "video":
         return <VideoSlideEditor slide={slide} onUpdate={onSlideUpdate} />;
       case "estimate_summary":
+      case "pricing":
         return <EstimateSummarySlideEditor slide={slide} onUpdate={onSlideUpdate} />;
       case "testimonial":
         return <TestimonialSlideEditor slide={slide} onUpdate={onSlideUpdate} />;
       case "signature":
         return <SignatureSlideEditor slide={slide} onUpdate={onSlideUpdate} />;
+      case "section_menu":
+        return <SectionMenuSlideEditor slide={slide} onUpdate={onSlideUpdate} />;
+      case "pricing_comparison":
+      case "good_better_best":
+        return <PricingComparisonSlideEditor slide={slide} onUpdate={onSlideUpdate} />;
       default:
         return (
           <div className="text-center text-muted-foreground py-12">

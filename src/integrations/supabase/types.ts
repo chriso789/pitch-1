@@ -16600,6 +16600,66 @@ export type Database = {
         }
         Relationships: []
       }
+      presentation_sections: {
+        Row: {
+          color: string | null
+          created_at: string | null
+          icon: string | null
+          id: string
+          is_visible: boolean | null
+          name: string
+          presentation_id: string
+          section_order: number
+          slug: string
+          tenant_id: string
+          updated_at: string | null
+          visibility_conditions: Json | null
+        }
+        Insert: {
+          color?: string | null
+          created_at?: string | null
+          icon?: string | null
+          id?: string
+          is_visible?: boolean | null
+          name: string
+          presentation_id: string
+          section_order?: number
+          slug: string
+          tenant_id: string
+          updated_at?: string | null
+          visibility_conditions?: Json | null
+        }
+        Update: {
+          color?: string | null
+          created_at?: string | null
+          icon?: string | null
+          id?: string
+          is_visible?: boolean | null
+          name?: string
+          presentation_id?: string
+          section_order?: number
+          slug?: string
+          tenant_id?: string
+          updated_at?: string | null
+          visibility_conditions?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presentation_sections_presentation_id_fkey"
+            columns: ["presentation_id"]
+            isOneToOne: false
+            referencedRelation: "presentations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "presentation_sections_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       presentation_sessions: {
         Row: {
           completed_at: string | null
@@ -16663,39 +16723,172 @@ export type Database = {
           },
         ]
       }
+      presentation_slide_library: {
+        Row: {
+          category: string | null
+          content_template: Json
+          created_at: string | null
+          created_by: string | null
+          id: string
+          is_global: boolean | null
+          name: string
+          slide_type: string
+          tenant_id: string
+          thumbnail_url: string | null
+          updated_at: string | null
+        }
+        Insert: {
+          category?: string | null
+          content_template?: Json
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_global?: boolean | null
+          name: string
+          slide_type: string
+          tenant_id: string
+          thumbnail_url?: string | null
+          updated_at?: string | null
+        }
+        Update: {
+          category?: string | null
+          content_template?: Json
+          created_at?: string | null
+          created_by?: string | null
+          id?: string
+          is_global?: boolean | null
+          name?: string
+          slide_type?: string
+          tenant_id?: string
+          thumbnail_url?: string | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presentation_slide_library_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      presentation_slide_views: {
+        Row: {
+          created_at: string | null
+          duration_seconds: number | null
+          id: string
+          interaction_count: number | null
+          section_id: string | null
+          session_id: string
+          slide_id: string | null
+          tenant_id: string
+          view_ended_at: string | null
+          view_started_at: string
+        }
+        Insert: {
+          created_at?: string | null
+          duration_seconds?: number | null
+          id?: string
+          interaction_count?: number | null
+          section_id?: string | null
+          session_id: string
+          slide_id?: string | null
+          tenant_id: string
+          view_ended_at?: string | null
+          view_started_at?: string
+        }
+        Update: {
+          created_at?: string | null
+          duration_seconds?: number | null
+          id?: string
+          interaction_count?: number | null
+          section_id?: string | null
+          session_id?: string
+          slide_id?: string | null
+          tenant_id?: string
+          view_ended_at?: string | null
+          view_started_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "presentation_slide_views_section_id_fkey"
+            columns: ["section_id"]
+            isOneToOne: false
+            referencedRelation: "presentation_sections"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "presentation_slide_views_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "presentation_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "presentation_slide_views_slide_id_fkey"
+            columns: ["slide_id"]
+            isOneToOne: false
+            referencedRelation: "presentation_slides"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "presentation_slide_views_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       presentation_slides: {
         Row: {
           content: Json
           created_at: string
+          dynamic_fields: string[] | null
           id: string
+          is_enabled: boolean | null
+          navigation_links: Json | null
           notes: string | null
           presentation_id: string
+          section_id: string | null
           slide_order: number
           slide_type: string
           transition_effect: string | null
           updated_at: string
+          visibility_conditions: Json | null
         }
         Insert: {
           content?: Json
           created_at?: string
+          dynamic_fields?: string[] | null
           id?: string
+          is_enabled?: boolean | null
+          navigation_links?: Json | null
           notes?: string | null
           presentation_id: string
+          section_id?: string | null
           slide_order: number
           slide_type: string
           transition_effect?: string | null
           updated_at?: string
+          visibility_conditions?: Json | null
         }
         Update: {
           content?: Json
           created_at?: string
+          dynamic_fields?: string[] | null
           id?: string
+          is_enabled?: boolean | null
+          navigation_links?: Json | null
           notes?: string | null
           presentation_id?: string
+          section_id?: string | null
           slide_order?: number
           slide_type?: string
           transition_effect?: string | null
           updated_at?: string
+          visibility_conditions?: Json | null
         }
         Relationships: [
           {
@@ -16703,6 +16896,13 @@ export type Database = {
             columns: ["presentation_id"]
             isOneToOne: false
             referencedRelation: "presentations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "presentation_slides_section_id_fkey"
+            columns: ["section_id"]
+            isOneToOne: false
+            referencedRelation: "presentation_sections"
             referencedColumns: ["id"]
           },
         ]
