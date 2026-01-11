@@ -353,14 +353,15 @@ const ProductionKanban = () => {
 
             for (const project of projectsWithoutWorkflows) {
               try {
+                // Use upsert with onConflict to prevent duplicate key errors
                 const { data: workflow } = await supabase
                   .from('production_workflows')
-                  .insert({
+                  .upsert({
                     tenant_id: profile.tenant_id,
                     project_id: project.id,
                     pipeline_entry_id: project.pipeline_entry_id,
                     current_stage: 'submit_documents',
-                  })
+                  }, { onConflict: 'project_id,tenant_id' })
                   .select()
                   .single();
 
@@ -368,14 +369,23 @@ const ProductionKanban = () => {
                   // Add workflow to map
                   workflowsMap[project.id] = workflow;
                   
-                  await supabase
+                  // Only create history if this is a new workflow
+                  const { data: existingHistory } = await supabase
                     .from('production_stage_history')
-                    .insert({
-                      tenant_id: profile.tenant_id,
-                      production_workflow_id: workflow.id,
-                      to_stage: 'submit_documents',
-                      notes: 'Production workflow auto-created',
-                    });
+                    .select('id')
+                    .eq('production_workflow_id', workflow.id)
+                    .limit(1);
+                  
+                  if (!existingHistory?.length) {
+                    await supabase
+                      .from('production_stage_history')
+                      .insert({
+                        tenant_id: profile.tenant_id,
+                        production_workflow_id: workflow.id,
+                        to_stage: 'submit_documents',
+                        notes: 'Production workflow auto-created',
+                      });
+                  }
                 }
               } catch (err) {
                 console.error('Error creating workflow:', err);
@@ -511,7 +521,7 @@ const ProductionKanban = () => {
       // Log the move attempt for debugging
       console.log(`[ProductionKanban] User ${user.id} (role: ${profile.role}) moving project ${projectId} from ${fromStage} to ${newStage}`);
 
-      // Update production workflow stage
+      // Update production workflow stage with proper onConflict to prevent duplicate key errors
       const { error } = await supabase
         .from('production_workflows')
         .upsert({
@@ -520,7 +530,7 @@ const ProductionKanban = () => {
           pipeline_entry_id: movedProject.pipeline_entry_id,
           current_stage: newStage,
           stage_changed_at: new Date().toISOString()
-        });
+        }, { onConflict: 'project_id,tenant_id' });
 
       if (error) {
         console.error('Production workflow update failed:', error);
