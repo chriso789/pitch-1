@@ -2,13 +2,22 @@ import { Card } from "@/components/ui/card";
 import { SignatureCapture } from "./SignatureCapture";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { injectVariables, PresentationContext } from "@/lib/presentation-variables";
+import { NavigationLinkRenderer, NavigationLink } from "./mode/NavigationLinkRenderer";
 
 interface SlideRendererProps {
   slide: any;
   sessionId: string | null;
+  presentationContext?: PresentationContext;
+  onNavigateToSection?: (sectionSlug: string, slideIndex?: number) => void;
 }
 
-export const SlideRenderer = ({ slide, sessionId }: SlideRendererProps) => {
+export const SlideRenderer = ({ 
+  slide, 
+  sessionId, 
+  presentationContext,
+  onNavigateToSection 
+}: SlideRendererProps) => {
   const { toast } = useToast();
 
   const handleSignatureSave = async (signatureData: string) => {
@@ -33,6 +42,13 @@ export const SlideRenderer = ({ slide, sessionId }: SlideRendererProps) => {
     }
   };
 
+  // Handle navigation link clicks
+  const handleNavigate = (targetSection?: string, targetSlideIndex?: number) => {
+    if (targetSection && onNavigateToSection) {
+      onNavigateToSection(targetSection, targetSlideIndex);
+    }
+  };
+
   // Get photo URL from storage path
   const getPhotoUrl = (storagePath: string) => {
     if (!storagePath) return '';
@@ -41,10 +57,16 @@ export const SlideRenderer = ({ slide, sessionId }: SlideRendererProps) => {
     return data?.publicUrl || '';
   };
 
+  // Apply dynamic variables to content
+  const rawContent = slide.content || {};
+  const content = presentationContext 
+    ? injectVariables(rawContent, presentationContext) 
+    : rawContent;
+  
+  const slideTitle = content.title || '';
+  const navigationLinks: NavigationLink[] = slide.navigation_links || content.navigation_links || [];
+
   const renderSlideContent = () => {
-    const content = slide.content || {};
-    const slideTitle = content.title || '';
-    
     switch (slide.slide_type) {
       case "title":
         return (
@@ -62,6 +84,25 @@ export const SlideRenderer = ({ slide, sessionId }: SlideRendererProps) => {
             )}
             {content.address && (
               <p className="text-xl text-muted-foreground mt-4">{content.address}</p>
+            )}
+          </div>
+        );
+
+      case "section_menu":
+        // Special slide type for hub navigation
+        return (
+          <div className="space-y-8 text-center">
+            <h2 className="text-4xl font-bold">{slideTitle || "Choose a Topic"}</h2>
+            {content.description && (
+              <p className="text-xl text-muted-foreground">{content.description}</p>
+            )}
+            {navigationLinks.length > 0 && (
+              <NavigationLinkRenderer
+                links={navigationLinks}
+                onNavigate={handleNavigate}
+                layout="grid"
+                size="lg"
+              />
             )}
           </div>
         );
@@ -219,6 +260,42 @@ export const SlideRenderer = ({ slide, sessionId }: SlideRendererProps) => {
           </div>
         );
 
+      case "pricing_comparison":
+      case "good_better_best":
+        // Good/Better/Best pricing comparison slide
+        const options = content.options || [];
+        return (
+          <div className="space-y-8">
+            <h2 className="text-4xl font-bold text-center">{slideTitle || "Your Investment Options"}</h2>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {options.map((option: any, index: number) => (
+                <Card 
+                  key={index}
+                  className={`p-6 text-center transition-all hover:scale-105 ${
+                    option.recommended ? 'ring-2 ring-primary shadow-lg' : ''
+                  }`}
+                >
+                  {option.badge && (
+                    <div className="bg-primary text-primary-foreground px-3 py-1 rounded-full text-sm font-medium inline-block mb-4">
+                      {option.badge}
+                    </div>
+                  )}
+                  <h3 className="text-2xl font-bold mb-2">{option.name}</h3>
+                  <p className="text-4xl font-bold text-primary mb-4">{option.price}</p>
+                  <ul className="space-y-2 text-left">
+                    {(option.features || []).map((feature: string, i: number) => (
+                      <li key={i} className="flex items-start gap-2">
+                        <span className="text-primary">✓</span>
+                        <span>{feature}</span>
+                      </li>
+                    ))}
+                  </ul>
+                </Card>
+              ))}
+            </div>
+          </div>
+        );
+
       case "estimate_summary":
       case "pricing":
         return (
@@ -367,6 +444,16 @@ export const SlideRenderer = ({ slide, sessionId }: SlideRendererProps) => {
   return (
     <div className="w-full max-w-6xl mx-auto">
       {renderSlideContent()}
+      
+      {/* Render navigation links at the bottom of any slide that has them */}
+      {navigationLinks.length > 0 && slide.slide_type !== "section_menu" && (
+        <NavigationLinkRenderer
+          links={navigationLinks}
+          onNavigate={handleNavigate}
+          layout="horizontal"
+          size="md"
+        />
+      )}
     </div>
   );
 };
