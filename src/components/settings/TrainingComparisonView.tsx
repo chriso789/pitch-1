@@ -278,8 +278,37 @@ export function TrainingComparisonView({
     perimeter: summary?.perimeter_ft || 0,
   };
 
-  // Extract AI linear features for overlay
-  const aiLinearFeatures = (aiMeasurement as any)?.linear_features || [];
+  // Extract and sanitize AI linear features for overlay
+  const rawAiLinearFeatures = (aiMeasurement as any)?.linear_features;
+  const aiLinearFeatures = (() => {
+    if (!Array.isArray(rawAiLinearFeatures)) return [];
+    return rawAiLinearFeatures.filter((f: unknown): f is { type: string; wkt: string; length_ft: number } => {
+      if (!f || typeof f !== 'object') {
+        console.error('[TrainingComparisonView] Invalid AI feature dropped (not an object):', f);
+        return false;
+      }
+      const feature = f as Record<string, unknown>;
+      if (typeof feature.type !== 'string' || !feature.type.trim()) {
+        console.error('[TrainingComparisonView] Invalid AI feature dropped (missing type):', feature);
+        return false;
+      }
+      if (typeof feature.wkt !== 'string' || !feature.wkt.trim()) {
+        console.error('[TrainingComparisonView] Invalid AI feature dropped (missing wkt):', feature);
+        return false;
+      }
+      // Only accept LINESTRING geometry
+      if (!feature.wkt.toUpperCase().startsWith('LINESTRING(')) {
+        console.error('[TrainingComparisonView] Invalid AI feature dropped (not LINESTRING):', feature.wkt?.slice?.(0, 30));
+        return false;
+      }
+      return true;
+    }).map((f: { type: string; wkt: string; length_ft?: unknown; id?: unknown }) => ({
+      id: typeof f.id === 'string' ? f.id : undefined,
+      type: f.type,
+      wkt: f.wkt,
+      length_ft: typeof f.length_ft === 'number' && isFinite(f.length_ft) ? f.length_ft : 0,
+    }));
+  })();
 
   const calculateVariance = (manual: number, ai: number): { variance: number; variancePct: number } => {
     if (manual === 0 && ai === 0) return { variance: 0, variancePct: 0 };
