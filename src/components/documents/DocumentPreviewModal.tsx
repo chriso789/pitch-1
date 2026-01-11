@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { Download, X, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, FileText, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
+import { Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, FileText, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { resolveStorageBucket } from '@/lib/documents/resolveStorageBucket';
 
@@ -202,21 +202,31 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
               />
             </div>
           ) : previewType === 'pdf' && previewUrl ? (
-            <object
-              data={previewUrl}
-              type="application/pdf"
-              className="w-full h-[600px]"
-            >
-              <embed src={previewUrl} type="application/pdf" className="w-full h-[600px]" />
-              <div className="flex flex-col items-center justify-center min-h-[300px] gap-4">
-                <FileText className="h-16 w-16 text-muted-foreground" />
-                <p className="text-muted-foreground">Unable to display PDF inline</p>
-                <Button onClick={() => window.open(previewUrl, '_blank')}>
-                  <Download className="h-4 w-4 mr-2" />
-                  Open PDF in new tab
-                </Button>
-              </div>
-            </object>
+            <div className="w-full min-h-[50vh] md:min-h-[60vh] max-h-[70vh] overflow-auto">
+              <object
+                data={previewUrl}
+                type="application/pdf"
+                className="w-full h-[50vh] md:h-[60vh]"
+              >
+                <embed src={previewUrl} type="application/pdf" className="w-full h-[50vh] md:h-[60vh]" />
+                <div className="flex flex-col items-center justify-center min-h-[300px] gap-4 p-4">
+                  <FileText className="h-16 w-16 text-muted-foreground" />
+                  <p className="text-muted-foreground text-center">Unable to display PDF inline</p>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <Button onClick={() => window.open(previewUrl, '_blank')} className="min-h-[44px]">
+                      <ExternalLink className="h-4 w-4 mr-2" />
+                      Open in new tab
+                    </Button>
+                    {currentDoc && (
+                      <Button variant="outline" onClick={() => onDownload(currentDoc)} className="min-h-[44px]">
+                        <Download className="h-4 w-4 mr-2" />
+                        Download
+                      </Button>
+                    )}
+                  </div>
+                </div>
+              </object>
+            </div>
           ) : previewType === 'text' && textContent ? (
             <pre className="p-4 text-sm overflow-auto whitespace-pre-wrap font-mono bg-background border rounded m-4">
               {textContent}

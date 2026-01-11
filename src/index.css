@@ -447,3 +447,53 @@
     }
   }
 }
+
+/* Mobile PDF viewing improvements */
+@media (max-width: 768px) {
+  /* Responsive PDF embeds */
+  iframe[src*=".pdf"],
+  embed[type="application/pdf"],
+  object[type="application/pdf"] {
+    min-height: 50vh;
+    max-height: 70vh;
+    width: 100%;
+  }
+  
+  /* Ensure touch targets are large enough */
+  .touch-target {
+    min-width: 44px;
+    min-height: 44px;
+  }
+  
+  /* PDF viewer action buttons */
+  .pdf-actions button {
+    min-height: 48px;
+    padding-left: 1.5rem;
+    padding-right: 1.5rem;
+  }
+  
+  /* Better modal sizing on mobile */
+  [role="dialog"] {
+    max-height: 95vh;
+    margin: 0.5rem;
+  }
+  
+  /* Prevent horizontal scroll in PDF containers */
+  .pdf-container {
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* Allow zoom on specific content */
+.allow-zoom {
+  touch-action: manipulation;
+}
+
+/* Prevent zoom when drawing */
+.drawing-active {
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+}

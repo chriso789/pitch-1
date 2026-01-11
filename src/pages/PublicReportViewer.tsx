@@ -3,9 +3,11 @@ import { useParams } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
 import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Download, Eye, Clock } from 'lucide-react';
+import { Download, Eye, Clock, ExternalLink } from 'lucide-react';
 import { toast } from 'sonner';
 import { format } from 'date-fns';
+import { MobilePDFViewer } from '@/components/ui/MobilePDFViewer';
+import { isMobileDevice } from '@/utils/mobileDetection';
 
 export default function PublicReportViewer() {
   const { token } = useParams<{ token: string }>();
@@ -120,12 +122,14 @@ export default function PublicReportViewer() {
         </div>
       </div>
 
-      <div className="container mx-auto px-4 py-6">
+      <div className="container mx-auto px-4 py-4 md:py-6">
         <Card className="overflow-hidden">
-          <iframe
-            src={pdfUrl}
-            className="w-full h-[800px]"
-            title="Measurement Report"
+          <MobilePDFViewer
+            url={pdfUrl}
+            title={report.property_address || 'Measurement Report'}
+            filename={report?.file_name || 'measurement-report.pdf'}
+            onDownload={handleDownload}
+            className="min-h-[50vh] md:min-h-[70vh]"
           />
         </Card>
 
