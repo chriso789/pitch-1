@@ -535,7 +535,10 @@ export function TrainingComparisonView({
       )}
 
       {/* Visual Overlay Comparison */}
-      {satelliteImageUrl && session?.lat && session?.lng && (manualTraces.length > 0 || aiLinearFeatures.length > 0) && (
+      {satelliteImageUrl && session?.lat && session?.lng && (
+        (Array.isArray(manualTraces) && manualTraces.length > 0) || 
+        (Array.isArray(aiLinearFeatures) && aiLinearFeatures.length > 0)
+      ) && (
         <TrainingOverlayComparison
           satelliteImageUrl={satelliteImageUrl}
           centerLat={session.lat}

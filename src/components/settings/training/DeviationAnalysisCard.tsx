@@ -66,8 +66,9 @@ export function DeviationAnalysisCard({
     setIsAnalyzing(true);
     try {
       // Convert canvas points to WKT for comparison
-      const traceFeaturesWithWkt = (manualTraces || []).map(trace => {
-        const points = trace.canvas_points || [];
+      const traceFeaturesWithWkt = (Array.isArray(manualTraces) ? manualTraces : []).map(trace => {
+        // Ensure canvas_points exists and is an array
+        const points = Array.isArray(trace?.canvas_points) ? trace.canvas_points : [];
         if (points.length < 2) return null;
         
         // Convert canvas points to geo coordinates
