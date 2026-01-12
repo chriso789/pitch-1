@@ -16,20 +16,28 @@ import {
   verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { GripVertical, Trash2 } from "lucide-react";
+import { GripVertical, Trash2, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/components/ui/use-toast";
+
+interface Section {
+  id: string;
+  name: string;
+  color?: string;
+}
 
 interface SlideItemProps {
   slide: any;
   isSelected: boolean;
   onSelect: () => void;
   onDelete: () => void;
+  sections: Section[];
 }
 
-const SlideItem = ({ slide, isSelected, onSelect, onDelete }: SlideItemProps) => {
+const SlideItem = ({ slide, isSelected, onSelect, onDelete, sections }: SlideItemProps) => {
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: slide.id });
 
@@ -37,6 +45,8 @@ const SlideItem = ({ slide, isSelected, onSelect, onDelete }: SlideItemProps) =>
     transform: CSS.Transform.toString(transform),
     transition,
   };
+
+  const section = sections.find(s => s.id === slide.section_id);
 
   const getSlideTypeLabel = (type: string) => {
     const labels: Record<string, string> = {
@@ -50,9 +60,19 @@ const SlideItem = ({ slide, isSelected, onSelect, onDelete }: SlideItemProps) =>
       company_intro: "Company",
       financing: "Financing",
       warranty: "Warranty",
+      section_menu: "Section Menu",
+      pricing_comparison: "Pricing",
+      about: "About Us",
+      scope: "Scope",
+      materials: "Materials",
+      timeline: "Timeline",
+      photo_gallery: "Photos",
+      next_steps: "Next Steps",
     };
     return labels[type] || type;
   };
+
+  const isDisabled = slide.is_enabled === false;
 
   return (
     <div
@@ -62,7 +82,8 @@ const SlideItem = ({ slide, isSelected, onSelect, onDelete }: SlideItemProps) =>
         "group relative border rounded-lg p-3 mb-2 cursor-pointer transition-all",
         isSelected
           ? "bg-primary/10 border-primary"
-          : "bg-card border-border hover:border-primary/50"
+          : "bg-card border-border hover:border-primary/50",
+        isDisabled && "opacity-50"
       )}
       onClick={onSelect}
     >
@@ -76,9 +97,14 @@ const SlideItem = ({ slide, isSelected, onSelect, onDelete }: SlideItemProps) =>
         </button>
         <div className="flex-1 min-w-0">
           <div className="flex items-center justify-between mb-1">
-            <span className="text-xs font-medium text-muted-foreground">
-              Slide {slide.slide_order + 1}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-medium text-muted-foreground">
+                Slide {slide.slide_order + 1}
+              </span>
+              {isDisabled && (
+                <EyeOff className="h-3 w-3 text-muted-foreground" />
+              )}
+            </div>
             <Button
               variant="ghost"
               size="icon"
@@ -99,6 +125,18 @@ const SlideItem = ({ slide, isSelected, onSelect, onDelete }: SlideItemProps) =>
               {slide.content.title}
             </p>
           )}
+          {section && (
+            <Badge 
+              variant="outline" 
+              className="mt-2 text-xs"
+              style={{ 
+                borderColor: section.color || undefined,
+                color: section.color || undefined,
+              }}
+            >
+              {section.name}
+            </Badge>
+          )}
         </div>
       </div>
     </div>
@@ -111,6 +149,7 @@ interface PresentationSlideListProps {
   onSlideSelect: (id: string) => void;
   onSlidesReorder: (slides: any[]) => void;
   onRefetch: () => void;
+  sections?: Section[];
 }
 
 export const PresentationSlideList = ({
@@ -119,6 +158,7 @@ export const PresentationSlideList = ({
   onSlideSelect,
   onSlidesReorder,
   onRefetch,
+  sections = [],
 }: PresentationSlideListProps) => {
   const { toast } = useToast();
   const sensors = useSensors(
@@ -214,6 +254,7 @@ export const PresentationSlideList = ({
               isSelected={selectedSlideId === slide.id}
               onSelect={() => onSlideSelect(slide.id)}
               onDelete={() => handleDeleteSlide(slide.id)}
+              sections={sections}
             />
           ))}
         </SortableContext>
