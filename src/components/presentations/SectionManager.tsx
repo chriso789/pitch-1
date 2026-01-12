@@ -187,15 +187,23 @@ export const SectionManager = ({ presentationId }: SectionManagerProps) => {
 
   const createSectionMutation = useMutation({
     mutationFn: async (data: typeof formData) => {
-      const { error } = await supabase.from("presentation_sections").insert({
+      const { data: userData } = await supabase.auth.getUser();
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select("tenant_id")
+        .eq("id", userData.user?.id)
+        .single();
+      
+      const { error } = await supabase.from("presentation_sections").insert([{
         presentation_id: presentationId,
+        tenant_id: profile?.tenant_id || "",
         name: data.name,
         slug: data.slug,
-        icon: data.icon,
-        color: data.color,
+        icon: data.icon || null,
+        color: data.color || null,
         section_order: sections.length,
         is_visible: true,
-      });
+      }]);
       if (error) throw error;
     },
     onSuccess: () => {

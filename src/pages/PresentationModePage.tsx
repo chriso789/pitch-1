@@ -268,7 +268,7 @@ const PresentationModePage = () => {
       )}
 
       <div className="flex-1 flex items-center justify-center p-8">
-        <SlideTransition slideId={currentSlide.id} transitionType={currentSlide.transition_effect || "fade"}>
+        <SlideTransition slideId={currentSlide.id} transitionType={(currentSlide.transition_effect as "fade" | "slide" | "zoom") || "fade"}>
           <SlideRenderer
             slide={currentSlide}
             sessionId={sessionId}
