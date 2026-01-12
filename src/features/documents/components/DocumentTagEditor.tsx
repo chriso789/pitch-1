@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, MutableRefObject } from "react";
 import { Canvas as FabricCanvas, Rect, FabricText, FabricObject, FabricImage } from "fabric";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -164,6 +164,10 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
   const [pageRendering, setPageRendering] = useState(false);
   const [isDocumentPdf, setIsDocumentPdf] = useState(false);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<{ message: string; details: Record<string, unknown> } | null>(null);
+  
+  // Load version guard to prevent race conditions when switching documents
+  const loadVersionRef = useRef(0);
   
   // Helper to check if canvas is valid (not disposed)
   const isCanvasValid = (canvas: FabricCanvas | null): boolean => {
@@ -228,18 +232,47 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
 
   // Load document and existing placements
   useEffect(() => {
+    // Increment load version to invalidate stale async responses
+    loadVersionRef.current += 1;
+    const thisLoadVersion = loadVersionRef.current;
+    
+    // Reset state for new document
+    setPdfBlob(null);
+    setPdfDocument(null);
+    setDocumentUrl(null);
+    setCurrentPage(1);
+    setTotalPages(1);
+    setAllPlacements([]);
+    setLoadError(null);
+    setPdfError(null);
+    
     const loadDocumentData = async () => {
       setLoading(true);
       setPdfError(null);
+      setLoadError(null);
       
       // Determine the correct storage bucket
       const bucket = resolveStorageBucket(document.document_type, document.file_path);
       console.log(`[TagEditor] Loading from bucket: ${bucket}, path: ${document.file_path}`);
       
+      const debugInfo = {
+        bucket,
+        file_path: document.file_path,
+        mime_type: document.mime_type,
+        filename: document.filename,
+        document_id: document.id,
+      };
+      
       try {
         // Check if it's a PDF
         const isPdfDoc = isPDF(document.mime_type, document.filename);
         setIsDocumentPdf(isPdfDoc);
+        
+        // Abort if document changed while loading
+        if (thisLoadVersion !== loadVersionRef.current) {
+          console.log("[TagEditor] Load aborted - document changed");
+          return;
+        }
 
         if (isPdfDoc) {
           // Use public URL to bypass RLS issues with createSignedUrl()
@@ -255,19 +288,39 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
             throw new Error(`Failed to fetch PDF: ${response.status} ${response.statusText}`);
           }
           
+          // Abort if document changed while fetching
+          if (thisLoadVersion !== loadVersionRef.current) {
+            console.log("[TagEditor] Load aborted after fetch - document changed");
+            return;
+          }
+          
           const blobData = await response.blob();
           console.log("✅ PDF downloaded, size:", blobData.size);
           // Store blob - we'll create fresh ArrayBuffer when loading
           setPdfBlob(blobData);
         } else {
-          // For images, use signed URL
-          const { data: urlData, error: urlError } = await supabase.storage
-            .from(bucket)
-            .createSignedUrl(document.file_path, 3600);
+          // For images in smartdoc-assets (public bucket), use getPublicUrl
+          // For other buckets (private), use signed URL
+          if (bucket === 'smartdoc-assets') {
+            const { data: urlData } = supabase.storage
+              .from(bucket)
+              .getPublicUrl(document.file_path);
+            
+            console.log("✅ Using public URL for image in smartdoc-assets");
+            setDocumentUrl(urlData.publicUrl);
+          } else {
+            // Private bucket - use signed URL
+            const { data: urlData, error: urlError } = await supabase.storage
+              .from(bucket)
+              .createSignedUrl(document.file_path, 3600);
 
-          if (urlError) throw urlError;
-          setDocumentUrl(urlData.signedUrl);
+            if (urlError) throw urlError;
+            setDocumentUrl(urlData.signedUrl);
+          }
         }
+        
+        // Abort if document changed
+        if (thisLoadVersion !== loadVersionRef.current) return;
 
         // Load existing tag placements
         const { data: existingPlacements, error: placementsError } = await supabase
@@ -276,6 +329,9 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
           .eq("document_id", document.id);
 
         if (placementsError) throw placementsError;
+        
+        // Abort if document changed
+        if (thisLoadVersion !== loadVersionRef.current) return;
 
         if (existingPlacements && existingPlacements.length > 0) {
           setAllPlacements(existingPlacements.map(p => ({
@@ -292,7 +348,17 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
           })));
         }
       } catch (error) {
-        console.error("Error loading document:", error);
+        console.error("Error loading document:", error, debugInfo);
+        
+        // Set detailed error for UI display
+        setLoadError({
+          message: error instanceof Error ? error.message : "Unknown error loading document",
+          details: {
+            ...debugInfo,
+            error: error instanceof Error ? { name: error.name, message: error.message } : String(error),
+          }
+        });
+        
         toast.error("Failed to load document");
       } finally {
         setLoading(false);
@@ -857,12 +923,48 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
             </div>
           )}
           
-          {/* Error state with retry and fallback options */}
-          {pdfError && !pageRendering && (
+          {/* General load error state */}
+          {loadError && !loading && (
+            <div className="absolute inset-0 flex items-center justify-center z-10 bg-background/80">
+              <div className="bg-card border border-destructive/50 rounded-lg p-6 max-w-lg text-center shadow-lg">
+                <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+                <h3 className="font-semibold text-lg mb-2">Failed to Load Document</h3>
+                <p className="text-sm text-muted-foreground mb-4">{loadError.message}</p>
+                <details className="text-left text-xs bg-muted p-3 rounded mb-4">
+                  <summary className="cursor-pointer font-medium">Debug Details</summary>
+                  <pre className="mt-2 overflow-auto max-h-32 whitespace-pre-wrap">
+                    {JSON.stringify(loadError.details, null, 2)}
+                  </pre>
+                </details>
+                <div className="flex gap-2 justify-center">
+                  <Button 
+                    variant="outline" 
+                    onClick={() => {
+                      setLoadError(null);
+                      // Trigger reload by incrementing version
+                      loadVersionRef.current += 1;
+                      setLoading(true);
+                      // Re-run effect by calling the same logic
+                      window.location.reload();
+                    }}
+                  >
+                    <RefreshCw className="h-4 w-4 mr-2" />
+                    Retry
+                  </Button>
+                  <Button variant="secondary" onClick={onClose}>
+                    Close
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
+          
+          {/* PDF-specific error state with retry and fallback options */}
+          {pdfError && !pageRendering && !loadError && (
             <div className="absolute inset-0 flex items-center justify-center z-10 bg-background/80">
               <div className="bg-card border border-destructive/50 rounded-lg p-6 max-w-md text-center shadow-lg">
                 <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
-                <h3 className="font-semibold text-lg mb-2">PDF Load Error</h3>
+                <h3 className="font-semibold text-lg mb-2">PDF Rendering Error</h3>
                 <p className="text-sm text-muted-foreground mb-4">{pdfError}</p>
                 <div className="flex gap-2 justify-center">
                   <Button 
@@ -891,13 +993,20 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
                   <Button 
                     variant="secondary"
                     onClick={async () => {
-                      // Get signed URL and open in new tab
+                      // Use public URL for smartdoc-assets, signed URL for others
                       const bucket = resolveStorageBucket(document.document_type, document.file_path);
-                      const { data } = await supabase.storage
-                        .from(bucket)
-                        .createSignedUrl(document.file_path, 3600);
-                      if (data?.signedUrl) {
-                        window.open(data.signedUrl, '_blank');
+                      if (bucket === 'smartdoc-assets') {
+                        const { data } = supabase.storage
+                          .from(bucket)
+                          .getPublicUrl(document.file_path);
+                        window.open(data.publicUrl, '_blank');
+                      } else {
+                        const { data } = await supabase.storage
+                          .from(bucket)
+                          .createSignedUrl(document.file_path, 3600);
+                        if (data?.signedUrl) {
+                          window.open(data.signedUrl, '_blank');
+                        }
                       }
                     }}
                   >
