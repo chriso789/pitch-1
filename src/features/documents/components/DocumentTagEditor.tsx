@@ -242,20 +242,15 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
         setIsDocumentPdf(isPdfDoc);
 
         if (isPdfDoc) {
-          // Use signed URL + fetch to bypass RLS issues with storage.download()
-          const { data: urlData, error: urlError } = await supabase.storage
+          // Use public URL to bypass RLS issues with createSignedUrl()
+          const { data: urlData } = supabase.storage
             .from(bucket)
-            .createSignedUrl(document.file_path, 3600);
+            .getPublicUrl(document.file_path);
 
-          if (urlError) {
-            console.error("❌ Failed to create signed URL:", urlError);
-            throw urlError;
-          }
-
-          console.log("✅ Signed URL created, fetching PDF...");
+          console.log("✅ Public URL created, fetching PDF...");
           
-          // Fetch PDF via signed URL (bypasses internal storage operations)
-          const response = await fetch(urlData.signedUrl);
+          // Fetch PDF via public URL (no RLS issues)
+          const response = await fetch(urlData.publicUrl);
           if (!response.ok) {
             throw new Error(`Failed to fetch PDF: ${response.status} ${response.statusText}`);
           }

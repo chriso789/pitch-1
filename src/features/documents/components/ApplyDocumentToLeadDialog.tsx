@@ -215,13 +215,15 @@ export const ApplyDocumentToLeadDialog: React.FC<ApplyDocumentToLeadDialogProps>
       console.error("Error generating PDF:", error);
       toast.error("Failed to generate PDF. The document will be downloaded as-is.");
       
-      // Fallback: download original document
+      // Fallback: download original document using public URL
       try {
-        const { data } = await supabase.storage
+        const { data: urlData } = supabase.storage
           .from("smartdoc-assets")
-          .download(document.file_path);
+          .getPublicUrl(document.file_path);
 
-        if (data) {
+        const response = await fetch(urlData.publicUrl);
+        if (response.ok) {
+          const data = await response.blob();
           const url = URL.createObjectURL(data);
           const a = window.document.createElement("a");
           a.href = url;

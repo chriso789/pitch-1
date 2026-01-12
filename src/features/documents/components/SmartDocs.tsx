@@ -251,12 +251,15 @@ const SmartDocs = () => {
 
   const handleDownload = async (doc: CompanyDoc) => {
     try {
-      const { data, error } = await supabase.storage
+      // Use public URL to bypass RLS issues
+      const { data: urlData } = supabase.storage
         .from('smartdoc-assets')
-        .download(doc.file_path);
+        .getPublicUrl(doc.file_path);
 
-      if (error) throw error;
-
+      const response = await fetch(urlData.publicUrl);
+      if (!response.ok) throw new Error('Failed to fetch file');
+      
+      const data = await response.blob();
       const url = URL.createObjectURL(data);
       const a = document.createElement('a');
       a.href = url;
