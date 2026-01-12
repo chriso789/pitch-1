@@ -13,6 +13,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrls[0];
 // Track worker loading state
 let workerVerified = false;
 let workerLoadingPromise: Promise<void> | null = null;
+let shouldDisableWorker = false;
 
 export interface PDFDocumentProxy {
   numPages: number;
@@ -53,6 +54,7 @@ export async function ensureWorkerLoaded(): Promise<void> {
         const response = await fetch(url, { method: 'HEAD', mode: 'cors' });
         if (response.ok) {
           pdfjsLib.GlobalWorkerOptions.workerSrc = url;
+          shouldDisableWorker = false;
           workerVerified = true;
           console.log('[PDF] ✅ Worker verified from:', url);
           return;
@@ -62,9 +64,10 @@ export async function ensureWorkerLoaded(): Promise<void> {
       }
     }
     
-    // Fallback: disable worker (slower but works without CORS issues)
+    // Fallback: disable worker entirely (slower but works without CORS issues)
     console.warn('[PDF] ⚠️ Running without worker (fallback mode - may be slower)');
     pdfjsLib.GlobalWorkerOptions.workerSrc = '';
+    shouldDisableWorker = true;
     workerVerified = true;
   })();
   
@@ -77,11 +80,13 @@ export async function ensureWorkerLoaded(): Promise<void> {
 export async function loadPDF(url: string): Promise<PDFDocumentProxy> {
   await ensureWorkerLoaded();
   
+  // Note: disableWorker is a valid runtime option but may not be in types
   const loadingTask = pdfjsLib.getDocument({
     url,
     cMapUrl: `//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/`,
     cMapPacked: true,
-  });
+    ...(shouldDisableWorker ? { disableWorker: true } : {}),
+  } as any);
   
   const pdf = await loadingTask.promise;
   return pdf as unknown as PDFDocumentProxy;
@@ -93,13 +98,15 @@ export async function loadPDF(url: string): Promise<PDFDocumentProxy> {
 export async function loadPDFFromArrayBuffer(arrayBuffer: ArrayBuffer): Promise<PDFDocumentProxy> {
   await ensureWorkerLoaded();
   
-  console.log('[PDF] Loading from ArrayBuffer, size:', arrayBuffer.byteLength);
+  console.log('[PDF] Loading from ArrayBuffer, size:', arrayBuffer.byteLength, 'disableWorker:', shouldDisableWorker);
   
+  // Note: disableWorker is a valid runtime option but may not be in types
   const loadingTask = pdfjsLib.getDocument({
     data: arrayBuffer,
     cMapUrl: `//cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/cmaps/`,
     cMapPacked: true,
-  });
+    ...(shouldDisableWorker ? { disableWorker: true } : {}),
+  } as any);
   
   const pdf = await loadingTask.promise;
   console.log('[PDF] ✅ PDF loaded, pages:', (pdf as any).numPages);
