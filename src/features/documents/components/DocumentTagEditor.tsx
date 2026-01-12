@@ -242,16 +242,25 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
         setIsDocumentPdf(isPdfDoc);
 
         if (isPdfDoc) {
-          // Download PDF as blob to bypass CORS issues
-          const { data: blobData, error: downloadError } = await supabase.storage
+          // Use signed URL + fetch to bypass RLS issues with storage.download()
+          const { data: urlData, error: urlError } = await supabase.storage
             .from(bucket)
-            .download(document.file_path);
+            .createSignedUrl(document.file_path, 3600);
 
-          if (downloadError) {
-            console.error("❌ Failed to download PDF:", downloadError);
-            throw downloadError;
+          if (urlError) {
+            console.error("❌ Failed to create signed URL:", urlError);
+            throw urlError;
           }
 
+          console.log("✅ Signed URL created, fetching PDF...");
+          
+          // Fetch PDF via signed URL (bypasses internal storage operations)
+          const response = await fetch(urlData.signedUrl);
+          if (!response.ok) {
+            throw new Error(`Failed to fetch PDF: ${response.status} ${response.statusText}`);
+          }
+          
+          const blobData = await response.blob();
           console.log("✅ PDF downloaded, size:", blobData.size);
           // Store blob - we'll create fresh ArrayBuffer when loading
           setPdfBlob(blobData);
