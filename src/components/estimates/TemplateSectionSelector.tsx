@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
@@ -10,6 +10,7 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { format } from 'date-fns';
 import { LaborOrderExport } from '@/components/orders/LaborOrderExport';
+import { MaterialLineItemsExport } from '@/components/orders/MaterialLineItemsExport';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -102,24 +103,25 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
         .single();
       
       if (error) throw error;
-      
-      // Load saved line items if they exist
-      if (data?.line_items) {
-        const items = data.line_items as unknown as Record<string, LineItem[]>;
-        const sectionKey = sectionType === 'material' ? 'materials' : 'labor';
-        if (items[sectionKey]) {
-          setLineItems(items[sectionKey]);
-        }
-      }
-      
-      if (data?.template_id) {
-        setSelectedTemplateId(data.template_id);
-      }
-      
       return data;
     },
     enabled: !!selectedEstimateId
   });
+
+  // Load line items when estimate data changes - using useEffect for proper state management
+  useEffect(() => {
+    if (existingEstimate?.line_items) {
+      const items = existingEstimate.line_items as unknown as Record<string, LineItem[]>;
+      const sectionKey = sectionType === 'material' ? 'materials' : 'labor';
+      if (items[sectionKey] && items[sectionKey].length > 0) {
+        setLineItems(items[sectionKey]);
+      }
+    }
+    
+    if (existingEstimate?.template_id) {
+      setSelectedTemplateId(existingEstimate.template_id);
+    }
+  }, [existingEstimate, sectionType]);
 
   // Save line items mutation
   const saveLineItemsMutation = useMutation({
@@ -431,6 +433,13 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
             <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
           )}
           {/* Export buttons */}
+          {lineItems.length > 0 && sectionType === 'material' && existingEstimate?.id && (
+            <MaterialLineItemsExport
+              estimateId={existingEstimate.id}
+              materialItems={lineItems}
+              totalAmount={sectionTotal}
+            />
+          )}
           {lineItems.length > 0 && sectionType === 'labor' && existingEstimate?.id && (
             <LaborOrderExport
               estimateId={existingEstimate.id}
