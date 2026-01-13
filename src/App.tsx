@@ -2,7 +2,7 @@ import React, { useState, useEffect } from "react";
 import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
+import { QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route, useNavigate } from "react-router-dom";
 import { ErrorTrackingProvider } from "@/hooks/useErrorTracking";
 import { LocationSelectionDialog } from "@/components/auth/LocationSelectionDialog";
@@ -19,6 +19,8 @@ import { GlobalLocationHandler } from "@/components/layout/GlobalLocationHandler
 import GlobalErrorBoundary from "@/components/error/GlobalErrorBoundary";
 import { initializeMonitoring } from "@/lib/MonitoringSelfHealing";
 import { installFetchInterceptor } from "@/lib/apiInterceptor";
+import { queryClient } from "@/lib/queryClient";
+import { cleanupAllChannels } from "@/lib/realtimeManager";
 import { RealTimeNotificationProvider } from "@/components/notifications/RealTimeNotificationProvider";
 import { AIFixProvider } from "@/components/error/AIFixProvider";
 import LandingPage from "./pages/LandingPage";
@@ -123,14 +125,7 @@ import StormCanvassPhotos from "./pages/StormCanvassPhotos";
 import UnmatchedInboxPage from "./pages/UnmatchedInboxPage";
 import AIFollowupQueuePage from "./pages/AIFollowupQueuePage";
 import CallCenterPage from "./pages/CallCenterPage";
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      retry: 1,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
+// QueryClient is now imported from @/lib/queryClient with enterprise-optimized settings
 
 const AppContent = () => {
   const [userId, setUserId] = useState<string | null>(null);
@@ -144,6 +139,16 @@ const AppContent = () => {
   useEffect(() => {
     initializeMonitoring();
     installFetchInterceptor();
+    
+    // Register service worker for static asset caching
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+    
+    // Cleanup realtime channels on unmount
+    return () => {
+      cleanupAllChannels();
+    };
   }, []);
 
   useEffect(() => {
