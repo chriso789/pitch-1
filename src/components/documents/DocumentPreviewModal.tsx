@@ -70,19 +70,31 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
       const bucket = resolveStorageBucket(currentDoc.document_type, currentDoc.file_path);
       console.log(`[Preview] Loading from bucket: ${bucket}, path: ${currentDoc.file_path}`);
 
+      // Public buckets - use getPublicUrl (no RLS checks needed)
+      const PUBLIC_BUCKETS = ['smartdoc-assets', 'company-logos', 'avatars', 
+                              'roof-reports', 'customer-photos', 'documents',
+                              'measurement-visualizations', 'measurement-reports'];
+      const isPublicBucket = PUBLIC_BUCKETS.includes(bucket);
+
       try {
         const mimeType = currentDoc.mime_type || '';
         const filename = currentDoc.filename.toLowerCase();
         const isPDF = mimeType === 'application/pdf' || filename.endsWith('.pdf');
         
-        // For PDFs, use signed URL for better browser compatibility
+        // For PDFs, use public URL or signed URL for better browser compatibility
         if (isPDF) {
-          const { data: signedData, error: signedError } = await supabase.storage
-            .from(bucket)
-            .createSignedUrl(currentDoc.file_path, 3600); // 1 hour expiry
-          
-          if (signedError) throw signedError;
-          setPreviewUrl(signedData.signedUrl);
+          if (isPublicBucket) {
+            // Public bucket - use public URL directly (no RLS checks needed)
+            const { data } = supabase.storage.from(bucket).getPublicUrl(currentDoc.file_path);
+            setPreviewUrl(data.publicUrl);
+          } else {
+            // Private bucket - use signed URL
+            const { data: signedData, error: signedError } = await supabase.storage
+              .from(bucket)
+              .createSignedUrl(currentDoc.file_path, 3600);
+            if (signedError) throw signedError;
+            setPreviewUrl(signedData.signedUrl);
+          }
         } else if (mimeType.startsWith('text/') || 
             mimeType === 'application/json' ||
             currentDoc.filename.match(/\.(txt|csv|json|md|log)$/i)) {
@@ -95,13 +107,18 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
           setTextContent(text);
           setPreviewUrl(null);
         } else {
-          // Images and other files - use blob URL
-          const { data, error } = await supabase.storage
-            .from(bucket)
-            .download(currentDoc.file_path);
-          if (error) throw error;
-          const url = URL.createObjectURL(data);
-          setPreviewUrl(url);
+          // Images and other files - use public URL or blob URL
+          if (isPublicBucket) {
+            const { data } = supabase.storage.from(bucket).getPublicUrl(currentDoc.file_path);
+            setPreviewUrl(data.publicUrl);
+          } else {
+            const { data, error } = await supabase.storage
+              .from(bucket)
+              .download(currentDoc.file_path);
+            if (error) throw error;
+            const url = URL.createObjectURL(data);
+            setPreviewUrl(url);
+          }
         }
       } catch (error) {
         console.error('Error loading preview:', error);
@@ -121,13 +138,23 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     };
   }, [currentDoc, isOpen]);
 
-  // Open document in new tab using signed URL
+  // Open document in new tab using public or signed URL
   const openInNewTab = async () => {
     if (!currentDoc) return;
     const bucket = resolveStorageBucket(currentDoc.document_type, currentDoc.file_path);
-    const { data } = await supabase.storage.from(bucket).createSignedUrl(currentDoc.file_path, 3600);
-    if (data?.signedUrl) {
-      window.open(data.signedUrl, '_blank');
+    const PUBLIC_BUCKETS = ['smartdoc-assets', 'company-logos', 'avatars', 
+                            'roof-reports', 'customer-photos', 'documents',
+                            'measurement-visualizations', 'measurement-reports'];
+    const isPublicBucket = PUBLIC_BUCKETS.includes(bucket);
+    
+    if (isPublicBucket) {
+      const { data } = supabase.storage.from(bucket).getPublicUrl(currentDoc.file_path);
+      window.open(data.publicUrl, '_blank');
+    } else {
+      const { data } = await supabase.storage.from(bucket).createSignedUrl(currentDoc.file_path, 3600);
+      if (data?.signedUrl) {
+        window.open(data.signedUrl, '_blank');
+      }
     }
   };
 
