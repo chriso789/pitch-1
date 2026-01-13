@@ -68,17 +68,25 @@ export function TrainingComparisonView({
     queryFn: async () => {
       const { data, error } = await supabase
         .from('roof_training_sessions')
-        .select('id, lat, lng, property_address, ai_measurement_id, pipeline_entry_id')
+        .select('id, lat, lng, property_address, ai_measurement_id, pipeline_entry_id, original_ai_measurement_id, corrected_ai_measurement_id')
         .eq('id', sessionId)
         .single();
       
       if (error) throw error;
-      return data;
+      return data as typeof data & { 
+        original_ai_measurement_id?: string | null; 
+        corrected_ai_measurement_id?: string | null; 
+      };
     },
   });
 
-  // Update currentAiMeasurementId when session data changes
-  const effectiveAiMeasurementId = currentAiMeasurementId || session?.ai_measurement_id;
+  // Use ORIGINAL AI measurement for comparison (before any training overrides)
+  // Fall back to ai_measurement_id for backwards compatibility
+  const originalAiMeasurementId = session?.original_ai_measurement_id || currentAiMeasurementId || session?.ai_measurement_id;
+  const correctedAiMeasurementId = session?.corrected_ai_measurement_id;
+  
+  // For display, use the ORIGINAL AI measurement to show true independent AI vs user comparison
+  const effectiveAiMeasurementId = originalAiMeasurementId;
 
   const handleRunAIMeasure = async () => {
     if (!session?.lat || !session?.lng) {
@@ -123,11 +131,13 @@ export function TrainingComparisonView({
 
       const summary = measurement?.summary || {};
 
-      // Update the training session with the AI measurement ID
+      // Update the training session with the AI measurement ID as ORIGINAL (independent AI)
+      // This is the baseline that never gets modified by training overrides
       const { error: updateError } = await supabase
         .from('roof_training_sessions')
         .update({ 
           ai_measurement_id: measurementId,
+          original_ai_measurement_id: measurementId, // Store as original - this won't be overwritten
           ai_totals: {
             ridge: summary?.ridge_ft || 0,
             hip: summary?.hip_ft || 0,
@@ -219,14 +229,16 @@ export function TrainingComparisonView({
       const measurementId = measurement?.id;
       
       if (measurementId) {
-        setCurrentAiMeasurementId(measurementId);
+        // Don't update currentAiMeasurementId - we want to keep showing ORIGINAL AI for comparison
+        // This corrected measurement is stored separately
         
-        // Update session
+        // Update session with CORRECTED measurement (separate from original)
         const summary = measurement?.summary || {};
         await supabase
           .from('roof_training_sessions')
           .update({ 
-            ai_measurement_id: measurementId,
+            // Keep ai_measurement_id pointing to original for backwards compatibility
+            corrected_ai_measurement_id: measurementId, // NEW: Store corrected separately
             ai_totals: {
               ridge: summary?.ridge_ft || 0,
               hip: summary?.hip_ft || 0,
@@ -521,6 +533,25 @@ export function TrainingComparisonView({
 
   return (
     <div className="space-y-6">
+      {/* Measurement Source Indicator */}
+      {session?.original_ai_measurement_id && (
+        <Card className="border-blue-200 bg-blue-50/50">
+          <CardContent className="py-3">
+            <div className="flex items-center gap-2 text-sm">
+              <Zap className="h-4 w-4 text-blue-600" />
+              <span className="text-blue-700 font-medium">
+                Showing ORIGINAL AI Measurement (independent detection, not trained)
+              </span>
+              {correctedAiMeasurementId && (
+                <Badge variant="outline" className="ml-auto border-green-500 text-green-600">
+                  Corrected version available
+                </Badge>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Retrain AI Button */}
       <RetrainAICard />
       
