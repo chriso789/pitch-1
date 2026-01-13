@@ -6,8 +6,8 @@
 // Phase 5: Self-evaluation with overlay-evaluator
 // Phase 6: Continuous learning with correction-tracker
 
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient, SupabaseClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
 import { computeStraightSkeleton } from "./straight-skeleton.ts";
 import { classifyBoundaryEdges } from "./gable-detector.ts";
 import { analyzeDSM, fetchDSMFromGoogleSolar, detectRidgeLinesFromDSM, detectValleyLinesFromDSM } from "./dsm-analyzer.ts";
@@ -561,11 +561,16 @@ function buildEaveRakeOnlyFromPerimeter(
   };
 }
 
-// ============= DEDUPLICATION HELPER =============
-// Removes duplicate linear features (same type + matching endpoints within epsilon)
-// A→B is considered the same as B→A (direction-agnostic matching)
+// ============= ENHANCED DEDUPLICATION HELPER =============
+// Removes duplicate linear features using multiple strategies:
+// 1. Exact endpoint matching (A→B == A→B or B→A)
+// 2. Overlap detection (lines parallel within 5° and >50% overlap)
+// 3. Midpoint proximity (midpoints within 3m = likely same feature)
 function deduplicateLinearFeatures(features: LinearFeature[]): LinearFeature[] {
-  const EPSILON = 0.00001; // ~1 meter in lat/lng degrees
+  const ENDPOINT_EPSILON = 0.00005; // ~5 meters in lat/lng degrees (increased from 1m)
+  const MIDPOINT_EPSILON = 0.00003; // ~3 meters for midpoint proximity
+  const PARALLEL_ANGLE_THRESHOLD = 0.09; // ~5 degrees in radians
+  const OVERLAP_THRESHOLD = 0.5; // 50% overlap required
   
   const parseLineString = (wkt: string): [[number, number], [number, number]] | null => {
     const match = wkt.match(/LINESTRING\(([^)]+)\)/i);
@@ -580,60 +585,168 @@ function deduplicateLinearFeatures(features: LinearFeature[]): LinearFeature[] {
     return [coords[0], coords[coords.length - 1]];
   };
   
-  const pointsMatch = (p1: [number, number], p2: [number, number]): boolean => {
-    return Math.abs(p1[0] - p2[0]) < EPSILON && Math.abs(p1[1] - p2[1]) < EPSILON;
+  const distance = (p1: [number, number], p2: [number, number]): number => {
+    const dx = p2[0] - p1[0];
+    const dy = p2[1] - p1[1];
+    return Math.sqrt(dx * dx + dy * dy);
   };
   
-  const linesMatch = (
+  const midpoint = (p1: [number, number], p2: [number, number]): [number, number] => {
+    return [(p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2];
+  };
+  
+  const lineLength = (line: [[number, number], [number, number]]): number => {
+    return distance(line[0], line[1]);
+  };
+  
+  const lineAngle = (line: [[number, number], [number, number]]): number => {
+    return Math.atan2(line[1][1] - line[0][1], line[1][0] - line[0][0]);
+  };
+  
+  const pointsMatch = (p1: [number, number], p2: [number, number], epsilon: number = ENDPOINT_EPSILON): boolean => {
+    return Math.abs(p1[0] - p2[0]) < epsilon && Math.abs(p1[1] - p2[1]) < epsilon;
+  };
+  
+  // Check if two lines match by endpoints (direction-agnostic)
+  const endpointsMatch = (
     line1: [[number, number], [number, number]], 
     line2: [[number, number], [number, number]]
   ): boolean => {
-    // Check A→B == A→B
     const forwardMatch = pointsMatch(line1[0], line2[0]) && pointsMatch(line1[1], line2[1]);
-    // Check A→B == B→A (reversed)
     const reverseMatch = pointsMatch(line1[0], line2[1]) && pointsMatch(line1[1], line2[0]);
     return forwardMatch || reverseMatch;
+  };
+  
+  // Check if two lines are parallel (within angle threshold)
+  const areLinesParallel = (
+    line1: [[number, number], [number, number]], 
+    line2: [[number, number], [number, number]]
+  ): boolean => {
+    const angle1 = lineAngle(line1);
+    const angle2 = lineAngle(line2);
+    let angleDiff = Math.abs(angle1 - angle2);
+    // Normalize to [0, PI/2] since lines can point opposite directions
+    if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
+    if (angleDiff > Math.PI / 2) angleDiff = Math.PI - angleDiff;
+    return angleDiff < PARALLEL_ANGLE_THRESHOLD;
+  };
+  
+  // Calculate overlap ratio between two parallel lines projected onto same axis
+  const calculateOverlap = (
+    line1: [[number, number], [number, number]], 
+    line2: [[number, number], [number, number]]
+  ): number => {
+    // Project both lines onto the dominant axis
+    const len1 = lineLength(line1);
+    const len2 = lineLength(line2);
+    if (len1 === 0 || len2 === 0) return 0;
+    
+    // Calculate parametric overlap
+    const angle = lineAngle(line1);
+    const cos = Math.cos(angle);
+    const sin = Math.sin(angle);
+    
+    // Project all 4 endpoints onto line1's direction
+    const proj1Start = line1[0][0] * cos + line1[0][1] * sin;
+    const proj1End = line1[1][0] * cos + line1[1][1] * sin;
+    const proj2Start = line2[0][0] * cos + line2[0][1] * sin;
+    const proj2End = line2[1][0] * cos + line2[1][1] * sin;
+    
+    const min1 = Math.min(proj1Start, proj1End);
+    const max1 = Math.max(proj1Start, proj1End);
+    const min2 = Math.min(proj2Start, proj2End);
+    const max2 = Math.max(proj2Start, proj2End);
+    
+    const overlapStart = Math.max(min1, min2);
+    const overlapEnd = Math.min(max1, max2);
+    const overlapLength = Math.max(0, overlapEnd - overlapStart);
+    
+    const shorterLength = Math.min(max1 - min1, max2 - min2);
+    return shorterLength > 0 ? overlapLength / shorterLength : 0;
+  };
+  
+  // Check if midpoints are close (likely same feature)
+  const midpointsClose = (
+    line1: [[number, number], [number, number]], 
+    line2: [[number, number], [number, number]]
+  ): boolean => {
+    const mid1 = midpoint(line1[0], line1[1]);
+    const mid2 = midpoint(line2[0], line2[1]);
+    return pointsMatch(mid1, mid2, MIDPOINT_EPSILON);
+  };
+  
+  // Comprehensive duplicate check using all three strategies
+  const areDuplicates = (
+    line1: [[number, number], [number, number]], 
+    line2: [[number, number], [number, number]]
+  ): { isDupe: boolean; reason: string } => {
+    // Strategy 1: Endpoint matching
+    if (endpointsMatch(line1, line2)) {
+      return { isDupe: true, reason: 'endpoint-match' };
+    }
+    
+    // Strategy 2: Parallel lines with significant overlap
+    if (areLinesParallel(line1, line2)) {
+      const overlap = calculateOverlap(line1, line2);
+      if (overlap >= OVERLAP_THRESHOLD) {
+        return { isDupe: true, reason: `parallel-overlap-${(overlap * 100).toFixed(0)}%` };
+      }
+    }
+    
+    // Strategy 3: Close midpoints (catch nearly-identical lines with slight endpoint differences)
+    if (midpointsClose(line1, line2) && areLinesParallel(line1, line2)) {
+      return { isDupe: true, reason: 'midpoint-proximity' };
+    }
+    
+    return { isDupe: false, reason: '' };
   };
   
   const deduplicated: LinearFeature[] = [];
   const usedIndices = new Set<number>();
   
-  for (let i = 0; i < features.length; i++) {
-    if (usedIndices.has(i)) continue;
+  // Sort by length descending - keep longer lines when deduplicating
+  const sortedFeatures = features
+    .map((f, idx) => ({ feature: f, originalIdx: idx }))
+    .sort((a, b) => b.feature.length_ft - a.feature.length_ft);
+  
+  for (const { feature, originalIdx } of sortedFeatures) {
+    if (usedIndices.has(originalIdx)) continue;
     
-    const feature = features[i];
     const line1 = parseLineString(feature.wkt);
     if (!line1) {
-      // Can't parse, keep it anyway
       deduplicated.push(feature);
-      usedIndices.add(i);
+      usedIndices.add(originalIdx);
       continue;
     }
     
-    // Check for duplicates
+    // Check against already-kept features
     let isDuplicate = false;
-    for (let j = 0; j < i; j++) {
-      if (usedIndices.has(j)) {
-        const otherFeature = features[j];
-        // Only compare features of same type
-        if (otherFeature.type !== feature.type) continue;
-        
-        const line2 = parseLineString(otherFeature.wkt);
-        if (!line2) continue;
-        
-        if (linesMatch(line1, line2)) {
-          isDuplicate = true;
-          console.log(`   🗑️ Duplicate ${feature.type} found: ${feature.id} matches ${otherFeature.id}`);
-          break;
-        }
+    for (const keptFeature of deduplicated) {
+      if (keptFeature.type !== feature.type) continue;
+      
+      const line2 = parseLineString(keptFeature.wkt);
+      if (!line2) continue;
+      
+      const { isDupe, reason } = areDuplicates(line1, line2);
+      if (isDupe) {
+        isDuplicate = true;
+        console.log(`   🗑️ Duplicate ${feature.type}: ${feature.id} → ${keptFeature.id} (${reason})`);
+        break;
       }
     }
     
     if (!isDuplicate) {
       deduplicated.push(feature);
     }
-    usedIndices.add(i);
+    usedIndices.add(originalIdx);
   }
+  
+  // Restore original order
+  deduplicated.sort((a, b) => {
+    const aIdx = features.findIndex(f => f.id === a.id);
+    const bIdx = features.findIndex(f => f.id === b.id);
+    return aIdx - bIdx;
+  });
   
   return deduplicated;
 }

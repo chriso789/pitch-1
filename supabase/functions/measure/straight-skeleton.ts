@@ -229,6 +229,11 @@ function generateConstrainedMultiWingSkeleton(
     return generateSimpleConstrainedSkeleton(vertices);
   }
   
+  // SANITY LIMIT: Maximum hips per wing = 4 (corners of rectangle)
+  const MAX_HIPS_PER_WING = 4;
+  // SANITY LIMIT: Maximum valleys = number of reflex vertices (1 per reflex)
+  const MAX_VALLEYS = reflexIndices.size;
+  
   // Create ridge for each wing - constrained to wing bounds
   wings.forEach((wing, wingIdx) => {
     const constrainedRidge = constrainRidgeToWing(wing);
@@ -245,8 +250,13 @@ function generateConstrainedMultiWingSkeleton(
     });
   });
   
+  // Track hips created per wing and per ridge endpoint
+  const hipsPerWing: Map<number, number> = new Map();
+  const hipsPerRidgeEnd: Map<string, number> = new Map();
+  
   // Create hips - each corner connects to its LOCAL wing's ridge only
   // Partition corners by ridge side to prevent crossing
+  // LIMIT: Max 2 hips per ridge endpoint (4 total per wing)
   for (let i = 0; i < n; i++) {
     if (reflexIndices.has(i)) continue;
     
@@ -256,11 +266,26 @@ function generateConstrainedMultiWingSkeleton(
     
     const wing = wings[wingIdx];
     
+    // Check wing hip limit
+    const currentWingHips = hipsPerWing.get(wingIdx) || 0;
+    if (currentWingHips >= MAX_HIPS_PER_WING) {
+      console.log(`  ⚠️ Skipping hip at vertex ${i} - wing ${wingIdx} already has ${MAX_HIPS_PER_WING} hips`);
+      continue;
+    }
+    
     // Determine which ridge endpoint this corner should connect to
-    // Based on which SIDE of the ridge the corner is on (not just distance)
     const hipEnd = assignHipToRidgeEndpoint(vertex, wing, vertices);
     
     if (hipEnd) {
+      // Check if this ridge endpoint already has 2 hips
+      const endpointKey = hipEnd.id;
+      const currentEndpointHips = hipsPerRidgeEnd.get(endpointKey) || 0;
+      
+      if (currentEndpointHips >= 2) {
+        console.log(`  ⚠️ Skipping hip at vertex ${i} - endpoint ${endpointKey} already has 2 hips`);
+        continue;
+      }
+      
       skeleton.push({
         id: `hip_${i}`,
         start: vertex,
@@ -270,11 +295,23 @@ function generateConstrainedMultiWingSkeleton(
         endVertexId: hipEnd.id,
         wingIndex: wingIdx
       });
+      
+      hipsPerWing.set(wingIdx, currentWingHips + 1);
+      hipsPerRidgeEnd.set(endpointKey, currentEndpointHips + 1);
     }
   }
   
+  // Track valleys to prevent duplicates (same reflex vertex → same ridge intersection)
+  const valleyEndpoints: Set<string> = new Set();
+  let valleysCreated = 0;
+  
   // Create valleys from reflex vertices
   reflexIndices.forEach((idx) => {
+    if (valleysCreated >= MAX_VALLEYS) {
+      console.log(`  ⚠️ Skipping valley at vertex ${idx} - max valleys (${MAX_VALLEYS}) reached`);
+      return;
+    }
+    
     const vertex = vertices[idx];
     const prev = vertices[(idx - 1 + n) % n];
     const next = vertices[(idx + 1) % n];
@@ -283,6 +320,14 @@ function generateConstrainedMultiWingSkeleton(
     const valleyEnd = findValleyEndpoint(vertex, prev, next, wings, skeleton);
     
     if (valleyEnd) {
+      // Check for duplicate valley endpoint (two reflex vertices pointing to same ridge point)
+      const endpointKey = `${valleyEnd.point[0].toFixed(6)},${valleyEnd.point[1].toFixed(6)}`;
+      
+      if (valleyEndpoints.has(endpointKey)) {
+        console.log(`  ⚠️ Skipping duplicate valley at vertex ${idx} - endpoint already used`);
+        return;
+      }
+      
       skeleton.push({
         id: `valley_${idx}`,
         start: vertex,
@@ -291,6 +336,9 @@ function generateConstrainedMultiWingSkeleton(
         boundaryIndices: [idx],
         endVertexId: valleyEnd.id
       });
+      
+      valleyEndpoints.add(endpointKey);
+      valleysCreated++;
     }
   });
   
