@@ -223,9 +223,9 @@ export function TrainingComparisonView({
     }
   };
 
-  // Handler for applying training truth override (uses user traces as ground truth)
-  // This creates a CORRECTED measurement separate from the original AI
-  const handleRemeasure = async () => {
+  // Handler for LEARNING from traces (adjusts AI, doesn't copy)
+  // This creates an ADJUSTED measurement where AI learns from user traces
+  const handleLearnFromTraces = async () => {
     if (!session?.lat || !session?.lng) {
       toast.error('No coordinates available for this property');
       return;
@@ -239,9 +239,9 @@ export function TrainingComparisonView({
 
     setIsRemeasuring(true);
     try {
-      toast.info('Creating corrected measurement using your traced geometry...');
+      toast.info('AI is learning from your traces (adjusting, not copying)...');
 
-      // Call measure WITH training_session_id - this uses user traces as ground truth
+      // Call measure WITH training_session_id - this triggers AI learning
       const { data, error } = await supabase.functions.invoke('measure', {
         body: {
           action: 'pull',
@@ -250,31 +250,28 @@ export function TrainingComparisonView({
           lng: session.lng,
           address: session.property_address || undefined,
           apply_corrections: true,
-          training_session_id: sessionId, // This triggers training truth override
+          training_session_id: sessionId, // Triggers AI learning pipeline
         },
       });
 
       if (error) throw error;
 
       if (!data?.ok) {
-        throw new Error(data?.error || 'Remeasurement failed');
+        throw new Error(data?.error || 'Learning failed');
       }
 
       const measurement = data?.data?.measurement;
       const measurementId = measurement?.id;
       const originalMeasurementId = data?.data?.original_measurement_id;
+      const learningMetrics = data?.data?.learning_metrics;
       
       if (measurementId) {
-        // Store the corrected measurement separately
-        const summary = measurement?.summary || {};
         const updatePayload: Record<string, unknown> = {
           corrected_ai_measurement_id: measurementId,
         };
 
-        // If the edge function returned an original_measurement_id, update that too
         if (originalMeasurementId) {
           updatePayload.original_ai_measurement_id = originalMeasurementId;
-          // Also update currentAiMeasurementId to show the ORIGINAL for comparison
           setCurrentAiMeasurementId(originalMeasurementId);
         }
 
@@ -287,13 +284,17 @@ export function TrainingComparisonView({
       queryClient.invalidateQueries({ queryKey: ['ai-measurement'] });
       queryClient.invalidateQueries({ queryKey: ['training-session-for-measure', sessionId] });
 
-      // Auto-switch to corrected view to show the result
       setViewMode('corrected');
 
-      toast.success('Corrected measurement created! Showing corrected geometry now.');
+      // Show learning metrics if available
+      if (learningMetrics) {
+        toast.success(`AI learned! Score: ${learningMetrics.evaluationScore}%, Adjusted: ${learningMetrics.featuresAdjusted}, Injected: ${learningMetrics.featuresInjected}`);
+      } else {
+        toast.success('AI learned from your traces! Features adjusted (not copied).');
+      }
     } catch (err: any) {
-      console.error('Failed to apply training override:', err);
-      toast.error(err.message || 'Failed to apply training override');
+      console.error('Failed to learn from traces:', err);
+      toast.error(err.message || 'Failed to learn from traces');
     } finally {
       setIsRemeasuring(false);
     }
@@ -526,10 +527,10 @@ export function TrainingComparisonView({
               {isRetraining ? 'Retraining...' : 'Retrain AI'}
             </Button>
             
-            {/* Step 3: Apply corrections - always show after retraining OR if original AI exists */}
+            {/* Step 3: Learn from traces - adjusts AI toward user traces (not copy) */}
             {(retrainComplete || hasOriginalAI) && (
               <Button 
-                onClick={handleRemeasure} 
+                onClick={handleLearnFromTraces} 
                 disabled={isRemeasuring || !session?.lat}
                 variant="outline"
                 className="border-green-500 text-green-600 hover:bg-green-50"
@@ -537,9 +538,9 @@ export function TrainingComparisonView({
                 {isRemeasuring ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
-                  <RotateCcw className="h-4 w-4 mr-2" />
+                  <Brain className="h-4 w-4 mr-2" />
                 )}
-                {isRemeasuring ? 'Applying...' : 'Apply Training Truth'}
+                {isRemeasuring ? 'Learning...' : 'Learn from Traces'}
               </Button>
             )}
             </div>
