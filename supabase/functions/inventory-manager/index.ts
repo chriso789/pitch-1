@@ -1,10 +1,6 @@
-import { serve } from "https://deno.land/std@0.190.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { supabaseService } from '../_shared/supabase.ts';
+import { corsHeaders } from '../_shared/cors.ts';
 
 serve(async (req: Request) => {
   if (req.method === 'OPTIONS') {
@@ -12,9 +8,7 @@ serve(async (req: Request) => {
   }
 
   try {
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, serviceKey);
+    const supabase = supabaseService();
 
     const { action, ...data } = await req.json();
     console.log(`[inventory-manager] Action: ${action}`, data);
