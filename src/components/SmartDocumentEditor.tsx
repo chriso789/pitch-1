@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Trash2, Edit, Plus, FileText, Code, Eye } from 'lucide-react';
+import { Trash2, Edit, Plus, FileText, Code, Eye, Lock } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -20,6 +20,43 @@ interface SmartDoc {
   created_at: string;
   updated_at: string;
 }
+
+// Hook to check if user can edit smart docs (owner or master role only)
+const useCanEditSmartDocs = () => {
+  const [canEdit, setCanEdit] = useState(false);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const checkRole = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setCanEdit(false);
+          setLoading(false);
+          return;
+        }
+
+        // Check user_roles table for master or owner role
+        const { data: roles } = await supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', user.id);
+
+        const hasEditAccess = roles?.some(r => r.role === 'master' || r.role === 'owner') ?? false;
+        setCanEdit(hasEditAccess);
+      } catch (error) {
+        console.error('Error checking role:', error);
+        setCanEdit(false);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    checkRole();
+  }, []);
+
+  return { canEdit, loading };
+};
 
 interface DynamicTag {
   id: string;
@@ -248,6 +285,7 @@ export const SmartDocumentEditor: React.FC = () => {
   const [docs, setDocs] = useState<SmartDoc[]>([]);
   const [loading, setLoading] = useState(true);
   const { toast } = useToast();
+  const { canEdit, loading: roleLoading } = useCanEditSmartDocs();
 
   const fetchDocs = async () => {
     try {
@@ -301,7 +339,7 @@ export const SmartDocumentEditor: React.FC = () => {
     fetchDocs();
   }, []);
 
-  if (loading) {
+  if (loading || roleLoading) {
     return <div className="p-6">Loading documents...</div>;
   }
 
@@ -309,18 +347,28 @@ export const SmartDocumentEditor: React.FC = () => {
     <div className="space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h2 className="text-2xl font-bold">Smart Document Editor</h2>
-          <p className="text-muted-foreground">Create and manage Liquid templates with dynamic content</p>
+          <h2 className="text-2xl font-bold">Smart Document Templates</h2>
+          <p className="text-muted-foreground">
+            Liquid templates with dynamic tags that can be applied to projects
+          </p>
+          {!canEdit && (
+            <p className="text-sm text-amber-600 flex items-center gap-1 mt-1">
+              <Lock className="w-3 h-3" />
+              Only Owners and Master users can create or edit templates
+            </p>
+          )}
         </div>
-        <SmartDocDialog
-          onSave={fetchDocs}
-          trigger={
-            <Button>
-              <Plus className="w-4 h-4 mr-2" />
-              Create Document
-            </Button>
-          }
-        />
+        {canEdit && (
+          <SmartDocDialog
+            onSave={fetchDocs}
+            trigger={
+              <Button>
+                <Plus className="w-4 h-4 mr-2" />
+                Create Template
+              </Button>
+            }
+          />
+        )}
       </div>
 
       <div className="grid gap-4">
@@ -361,22 +409,37 @@ export const SmartDocumentEditor: React.FC = () => {
                     )}
                   </div>
                   <div className="flex items-center gap-2">
-                    <SmartDocDialog
-                      doc={doc}
-                      onSave={fetchDocs}
-                      trigger={
-                        <Button variant="ghost" size="sm">
-                          <Edit className="w-4 h-4" />
+                    {canEdit ? (
+                      <>
+                        <SmartDocDialog
+                          doc={doc}
+                          onSave={fetchDocs}
+                          trigger={
+                            <Button variant="ghost" size="sm" title="Edit template">
+                              <Edit className="w-4 h-4" />
+                            </Button>
+                          }
+                        />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => deleteDoc(doc.id)}
+                          title="Delete template"
+                        >
+                          <Trash2 className="w-4 h-4 text-destructive" />
                         </Button>
-                      }
-                    />
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => deleteDoc(doc.id)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
+                      </>
+                    ) : (
+                      <SmartDocDialog
+                        doc={doc}
+                        onSave={fetchDocs}
+                        trigger={
+                          <Button variant="ghost" size="sm" title="View template">
+                            <Eye className="w-4 h-4" />
+                          </Button>
+                        }
+                      />
+                    )}
                   </div>
                 </div>
               </CardHeader>
