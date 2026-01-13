@@ -1674,20 +1674,66 @@ serve(async (req) => {
         const { data: { user } } = await supabase.auth.getUser();
         const userId = user?.id;
 
-        // Load correction factors if apply_corrections is true
+        // Load correction factors AND feature injections if apply_corrections is true
         let corrections: Record<string, number> = {};
+        let featureInjections: Array<{ type: string; wkt: string; length_ft: number }> = [];
+        
         if (apply_corrections) {
-          const { data: correctionRows } = await supabase
-            .from('measurement_corrections')
-            .select('feature_type, multiplier')
-            .order('created_at', { ascending: false });
+          // Get auth user's tenant for filtering
+          const { data: { user: authUser } } = await supabase.auth.getUser();
+          const tenantId = authUser?.user_metadata?.tenant_id;
           
-          if (correctionRows && correctionRows.length > 0) {
-            corrections = correctionRows.reduce((acc: Record<string, number>, row: any) => {
-              acc[row.feature_type] = row.multiplier;
-              return acc;
-            }, {});
-            console.log('Applying corrections:', corrections);
+          if (tenantId) {
+            // Load regular corrections (multipliers based on deviation)
+            const { data: correctionRows } = await supabase
+              .from('measurement_corrections')
+              .select('original_line_type, deviation_ft, is_feature_injection, corrected_line_wkt')
+              .eq('tenant_id', tenantId)
+              .eq('is_feature_injection', false)
+              .order('created_at', { ascending: false });
+            
+            if (correctionRows && correctionRows.length > 0) {
+              // Calculate multipliers from deviation data (group by type, average deviation)
+              const typeDeviations: Record<string, number[]> = {};
+              for (const row of correctionRows) {
+                const type = row.original_line_type || 'unknown';
+                if (!typeDeviations[type]) typeDeviations[type] = [];
+                typeDeviations[type].push(row.deviation_ft || 0);
+              }
+              
+              // Simple correction: if average deviation is X%, apply inverse
+              for (const [type, devs] of Object.entries(typeDeviations)) {
+                const avgDev = devs.reduce((a, b) => a + b, 0) / devs.length;
+                // If avg deviation is 10ft on a 100ft line, apply 1.1 multiplier
+                corrections[type] = avgDev > 0 ? 1 + (avgDev / 100) : 1;
+              }
+              console.log('Applying corrections from training:', corrections);
+            }
+            
+            // Load feature injections (user-traced geometry when AI produced nothing)
+            const { data: injectionRows } = await supabase
+              .from('measurement_corrections')
+              .select('original_line_type, corrected_line_wkt, deviation_ft')
+              .eq('tenant_id', tenantId)
+              .eq('is_feature_injection', true)
+              .order('created_at', { ascending: false });
+            
+            if (injectionRows && injectionRows.length > 0) {
+              console.log(`Found ${injectionRows.length} feature injections to apply`);
+              
+              for (const injection of injectionRows) {
+                if (injection.corrected_line_wkt) {
+                  // Calculate length from WKT
+                  const lengthFt = injection.deviation_ft || 0; // deviation_ft stores the traced length for injections
+                  featureInjections.push({
+                    type: injection.original_line_type || 'unknown',
+                    wkt: injection.corrected_line_wkt,
+                    length_ft: lengthFt
+                  });
+                }
+              }
+              console.log('Feature injections loaded:', featureInjections.map(f => `${f.type}: ${f.length_ft}ft`));
+            }
           }
         }
 
@@ -1752,6 +1798,73 @@ serve(async (req) => {
             ridge: meas.summary?.ridge_ft,
             hip: meas.summary?.hip_ft,
             valley: meas.summary?.valley_ft
+          });
+        }
+        
+        // FEATURE INJECTION: Apply user-traced geometry when AI produced nothing
+        if (apply_corrections && featureInjections.length > 0 && meas.summary) {
+          console.log('Applying feature injections...');
+          
+          // Group injections by type
+          const injectionsByType: Record<string, typeof featureInjections> = {};
+          for (const inj of featureInjections) {
+            if (!injectionsByType[inj.type]) injectionsByType[inj.type] = [];
+            injectionsByType[inj.type].push(inj);
+          }
+          
+          // For each feature type, if AI produced 0, inject stored user traces
+          const featureTypeMap: Record<string, keyof typeof meas.summary> = {
+            'ridge': 'ridge_ft',
+            'hip': 'hip_ft',
+            'valley': 'valley_ft',
+            'eave': 'eave_ft',
+            'rake': 'rake_ft'
+          };
+          
+          for (const [type, injections] of Object.entries(injectionsByType)) {
+            const summaryKey = featureTypeMap[type];
+            if (!summaryKey) continue;
+            
+            const currentValue = (meas.summary as any)[summaryKey] || 0;
+            
+            // Only inject if AI produced 0 for this feature type
+            if (currentValue === 0) {
+              let totalInjectedLength = 0;
+              
+              for (const injection of injections) {
+                // Add to linear_features array
+                if (!meas.linear_features) meas.linear_features = [];
+                meas.linear_features.push({
+                  id: `injected-${type}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+                  type: type as any,
+                  wkt: injection.wkt,
+                  length_ft: injection.length_ft,
+                  source: 'training_injection',
+                  confidence: 0.95 // High confidence - user traced
+                });
+                
+                totalInjectedLength += injection.length_ft;
+              }
+              
+              // Update summary
+              (meas.summary as any)[summaryKey] = totalInjectedLength;
+              console.log(`✅ INJECTED ${injections.length} ${type}(s) totaling ${totalInjectedLength.toFixed(1)}ft (AI had 0)`);
+            } else {
+              console.log(`Skipping ${type} injection - AI already has ${currentValue}ft`);
+            }
+          }
+          
+          // Mark source as having injections
+          if (!meas.source.includes('_injected')) {
+            meas.source = `${meas.source}_injected`;
+          }
+          
+          console.log('Post-injection summary:', {
+            ridge: meas.summary.ridge_ft,
+            hip: meas.summary.hip_ft,
+            valley: meas.summary.valley_ft,
+            eave: meas.summary.eave_ft,
+            rake: meas.summary.rake_ft
           });
         }
 
