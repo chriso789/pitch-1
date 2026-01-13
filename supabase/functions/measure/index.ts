@@ -1869,17 +1869,26 @@ serve(async (req) => {
         // Add engine info to measurement source
         meas.source = `${meas.source}_${engineUsed}`;
 
-        // ============= TRAINING TRUTH OVERRIDE =============
-        // If training_session_id is provided, create a SEPARATE corrected measurement
-        // This preserves the original AI measurement for comparison purposes
+        // ============= AI LEARNING PIPELINE =============
+        // When training_session_id is provided, LEARN from user traces (not copy them)
+        // Phase 1: Compare AI features vs user traces
+        // Phase 2: Store corrections for pattern learning  
+        // Phase 3: Adjust AI lines toward user traces (not replace)
+        // Phase 4: Inject missing features that AI failed to detect
         let trainingOverrideApplied = false;
         let originalMeasBeforeOverride: typeof meas | null = null;
+        let learningMetrics: {
+          evaluationScore: number;
+          correctionsStored: number;
+          featuresAdjusted: number;
+          featuresInjected: number;
+          deviations: Array<{ type: string; deviationFt: number }>;
+        } | null = null;
         
         if (apply_corrections && training_session_id && meas) {
-          console.log(`🎯 TRAINING TRUTH OVERRIDE: Loading traces for session ${training_session_id}`);
+          console.log(`🎓 AI LEARNING PIPELINE: Processing session ${training_session_id}`);
           
           // CRITICAL: Deep clone the original AI measurement BEFORE any modifications
-          // This ensures we can save the original separately
           originalMeasBeforeOverride = JSON.parse(JSON.stringify(meas));
           
           try {
@@ -1893,82 +1902,231 @@ serve(async (req) => {
             if (tracesError) {
               console.error('Failed to load training traces:', tracesError);
             } else if (trainingTraces && trainingTraces.length > 0) {
-              console.log(`📐 Found ${trainingTraces.length} training traces to apply as truth`);
+              console.log(`📐 Found ${trainingTraces.length} training traces for learning`);
               
-              // Build new linear_features from training traces
-              const truthFeatures: LinearFeature[] = [];
-              const truthTotals: Record<string, number> = {
-                ridge_ft: 0,
-                hip_ft: 0,
-                valley_ft: 0,
-                eave_ft: 0,
-                rake_ft: 0,
-                perimeter_ft: 0
-              };
+              // ============= PHASE 1: COMPARE AI VS USER TRACES =============
+              // Convert AI features and user traces to evaluator format
+              const aiFeatures = (meas.linear_features || []).map((f: LinearFeature, idx: number) => ({
+                id: f.id || `ai-${idx}`,
+                wkt: f.wkt,
+                length_ft: f.length_ft,
+                type: f.type as 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'perimeter',
+                source: 'ai_vision' as const,
+                confidence: 0.7
+              }));
+              
+              type XY = [number, number];
+              const userTraces: Array<{
+                type: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'perimeter';
+                points: XY[];
+                length_ft: number;
+              }> = [];
               
               for (const trace of trainingTraces) {
                 if (!trace.wkt_geometry || !trace.trace_type) continue;
                 
-                // Map trace_type to feature type
-                let featureType = trace.trace_type as EdgeFeatureType;
+                // Parse WKT to points
+                const match = trace.wkt_geometry.match(/LINESTRING\(([^)]+)\)/i);
+                if (!match) continue;
                 
-                // Handle perimeter → treat as eave for linear features but track separately
-                if (trace.trace_type === 'perimeter') {
-                  truthTotals.perimeter_ft += trace.length_ft || 0;
-                  // Also add as eave for compatibility
-                  featureType = 'eave';
-                }
-                
-                // Add to linear features
-                truthFeatures.push({
-                  id: `truth-${trace.id}`,
-                  wkt: trace.wkt_geometry,
-                  length_ft: trace.length_ft || 0,
-                  type: featureType,
-                  label: `${trace.trace_type} (training truth)`
+                const points: XY[] = match[1].split(',').map((pair: string) => {
+                  const [lng, lat] = pair.trim().split(' ').map(Number);
+                  return [lng, lat] as XY;
                 });
                 
-                // Add to totals
-                const totalKey = `${featureType}_ft`;
-                if (totalKey in truthTotals) {
-                  truthTotals[totalKey] += trace.length_ft || 0;
+                userTraces.push({
+                  type: (trace.trace_type === 'perimeter' ? 'eave' : trace.trace_type) as 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'perimeter',
+                  points,
+                  length_ft: trace.length_ft || 0
+                });
+              }
+              
+              // Get footprint coords for evaluation context
+              const footprintCoords: XY[] = meas.geom_wkt ? wktToCoords(meas.geom_wkt) as XY[] : [];
+              
+              // Run evaluation to get deviations
+              const evaluation = evaluateOverlay(aiFeatures, userTraces, footprintCoords);
+              console.log(`📊 Evaluation: ${evaluation.overallScore}% accuracy, ${evaluation.autoCorrections.length} corrections needed, ${evaluation.missingFeatures.length} missing types`);
+              
+              // ============= PHASE 2: STORE CORRECTIONS FOR LEARNING =============
+              let correctionsStored = 0;
+              const tenantIdForCorrections = tenantId || 'default';
+              
+              for (const correction of evaluation.autoCorrections) {
+                // Find original feature type
+                const originalFeature = aiFeatures.find(f => f.id === correction.originalId);
+                const featureType = originalFeature?.type || 'ridge';
+                const originalLength = originalFeature?.length_ft || 1;
+                const isInjection = !correction.originalWkt || correction.originalWkt.trim() === '';
+                
+                const correctionRecord: CorrectionRecord = {
+                  tenantId: tenantIdForCorrections,
+                  originalLineWkt: correction.originalWkt || '',
+                  originalLineType: featureType,
+                  correctedLineWkt: correction.correctedWkt,
+                  deviationFt: correction.deviationFt,
+                  deviationPct: originalLength > 0 ? (correction.deviationFt / originalLength) * 100 : 100,
+                  correctionSource: 'user_trace',
+                  trainingSessionId: training_session_id,
+                  propertyId: property_id,
+                  isFeatureInjection: isInjection,
+                  lat,
+                  lng,
+                };
+                
+                const result = await storeCorrection(supabase, correctionRecord);
+                if (result.success) {
+                  correctionsStored++;
+                  console.log(`   ✓ Stored ${isInjection ? 'injection' : 'correction'} for ${featureType}: ${correction.deviationFt.toFixed(1)}ft deviation`);
                 }
               }
               
-              // REPLACE AI linear_features with training truth (on the cloned meas only)
-              const oldLinearCount = meas.linear_features?.length || 0;
-              meas.linear_features = truthFeatures;
+              // ============= PHASE 3: ADJUST AI LINES (NOT COPY) =============
+              // Instead of copying user geometry, we ADJUST AI geometry toward user traces
+              const blendFactor = 0.8; // 80% toward user position (learning, not copying)
+              let featuresAdjusted = 0;
               
-              // REPLACE AI summary totals with training truth
-              if (meas.summary) {
-                const oldSummary = { ...meas.summary };
-                meas.summary.ridge_ft = truthTotals.ridge_ft;
-                meas.summary.hip_ft = truthTotals.hip_ft;
-                meas.summary.valley_ft = truthTotals.valley_ft;
-                meas.summary.eave_ft = truthTotals.eave_ft;
-                meas.summary.rake_ft = truthTotals.rake_ft;
-                meas.summary.perimeter_ft = truthTotals.perimeter_ft || (truthTotals.eave_ft + truthTotals.rake_ft);
+              const adjustedFeatures: LinearFeature[] = (meas.linear_features || []).map((ai: LinearFeature, idx: number) => {
+                // Find matching correction
+                const correction = evaluation.autoCorrections.find(c => c.originalId === ai.id || c.originalId === `ai-${idx}`);
                 
-                console.log('📊 TRAINING TRUTH APPLIED (to separate corrected record):');
-                console.log(`   Ridge: ${oldSummary.ridge_ft?.toFixed(0) || 0} → ${truthTotals.ridge_ft.toFixed(0)} ft`);
-                console.log(`   Hip: ${oldSummary.hip_ft?.toFixed(0) || 0} → ${truthTotals.hip_ft.toFixed(0)} ft`);
-                console.log(`   Valley: ${oldSummary.valley_ft?.toFixed(0) || 0} → ${truthTotals.valley_ft.toFixed(0)} ft`);
-                console.log(`   Eave: ${oldSummary.eave_ft?.toFixed(0) || 0} → ${truthTotals.eave_ft.toFixed(0)} ft`);
-                console.log(`   Rake: ${oldSummary.rake_ft?.toFixed(0) || 0} → ${truthTotals.rake_ft.toFixed(0)} ft`);
-                console.log(`   Perimeter: ${oldSummary.perimeter_ft?.toFixed(0) || 0} → ${meas.summary.perimeter_ft?.toFixed(0) || 0} ft`);
-                console.log(`   Linear features: ${oldLinearCount} → ${truthFeatures.length}`);
+                if (!correction || !correction.correctedWkt) {
+                  return ai; // No correction needed
+                }
+                
+                // Parse AI coords
+                const aiMatch = ai.wkt.match(/LINESTRING\(([^)]+)\)/i);
+                if (!aiMatch) return ai;
+                const aiCoords: XY[] = aiMatch[1].split(',').map((p: string) => {
+                  const [lng, lat] = p.trim().split(' ').map(Number);
+                  return [lng, lat] as XY;
+                });
+                
+                // Parse user correction coords
+                const userMatch = correction.correctedWkt.match(/LINESTRING\(([^)]+)\)/i);
+                if (!userMatch) return ai;
+                const userCoords: XY[] = userMatch[1].split(',').map((p: string) => {
+                  const [lng, lat] = p.trim().split(' ').map(Number);
+                  return [lng, lat] as XY;
+                });
+                
+                if (aiCoords.length < 2 || userCoords.length < 2) return ai;
+                
+                // BLEND AI toward user (not replace)
+                const aiStart = aiCoords[0];
+                const aiEnd = aiCoords[aiCoords.length - 1];
+                const userStart = userCoords[0];
+                const userEnd = userCoords[userCoords.length - 1];
+                
+                const adjustedStart: XY = [
+                  aiStart[0] + (userStart[0] - aiStart[0]) * blendFactor,
+                  aiStart[1] + (userStart[1] - aiStart[1]) * blendFactor
+                ];
+                const adjustedEnd: XY = [
+                  aiEnd[0] + (userEnd[0] - aiEnd[0]) * blendFactor,
+                  aiEnd[1] + (userEnd[1] - aiEnd[1]) * blendFactor
+                ];
+                
+                // Calculate new length
+                const { metersPerDegLat, metersPerDegLng } = degToMeters((adjustedStart[1] + adjustedEnd[1]) / 2);
+                const dx = (adjustedEnd[0] - adjustedStart[0]) * metersPerDegLng;
+                const dy = (adjustedEnd[1] - adjustedStart[1]) * metersPerDegLat;
+                const newLengthFt = Math.sqrt(dx * dx + dy * dy) * 3.28084;
+                
+                featuresAdjusted++;
+                console.log(`   ↔ Adjusted ${ai.type} ${ai.id}: ${ai.length_ft.toFixed(0)}ft → ${newLengthFt.toFixed(0)}ft`);
+                
+                return {
+                  ...ai,
+                  wkt: `LINESTRING(${adjustedStart[0]} ${adjustedStart[1]}, ${adjustedEnd[0]} ${adjustedEnd[1]})`,
+                  length_ft: newLengthFt,
+                  label: `${ai.type} (AI adjusted)`
+                };
+              });
+              
+              // ============= PHASE 4: INJECT MISSING FEATURES =============
+              // When AI detected 0 of a type but user traced some, ADD them
+              let featuresInjected = 0;
+              
+              for (const missing of evaluation.missingFeatures) {
+                if (missing.count <= 0) continue;
+                
+                // Get user traces for this type
+                const userTracesOfType = userTraces.filter(t => t.type === missing.type);
+                
+                for (const trace of userTracesOfType) {
+                  if (!trace.points || trace.points.length < 2) continue;
+                  
+                  const traceWkt = `LINESTRING(${trace.points.map(p => `${p[0]} ${p[1]}`).join(', ')})`;
+                  
+                  adjustedFeatures.push({
+                    id: `injected-${missing.type}-${featuresInjected}`,
+                    wkt: traceWkt,
+                    length_ft: trace.length_ft,
+                    type: missing.type as EdgeFeatureType,
+                    label: `${missing.type} (AI learned)`
+                  });
+                  
+                  featuresInjected++;
+                  console.log(`   + Injected ${missing.type}: ${trace.length_ft.toFixed(0)}ft (AI had 0)`);
+                }
               }
               
-              // Mark source as training override
-              meas.source = `${meas.source.replace(/_corrected|_injected/g, '')}_training_override`;
+              // Apply adjusted features to measurement
+              meas.linear_features = adjustedFeatures;
+              
+              // Recalculate summary totals from adjusted features
+              const newTotals: Record<string, number> = {
+                ridge_ft: 0, hip_ft: 0, valley_ft: 0, eave_ft: 0, rake_ft: 0, perimeter_ft: 0
+              };
+              
+              for (const f of adjustedFeatures) {
+                const key = `${f.type}_ft`;
+                if (key in newTotals) {
+                  newTotals[key] += f.length_ft;
+                }
+              }
+              newTotals.perimeter_ft = newTotals.eave_ft + newTotals.rake_ft;
+              
+              // Update summary
+              if (meas.summary) {
+                const oldSummary = { ...meas.summary };
+                meas.summary.ridge_ft = newTotals.ridge_ft;
+                meas.summary.hip_ft = newTotals.hip_ft;
+                meas.summary.valley_ft = newTotals.valley_ft;
+                meas.summary.eave_ft = newTotals.eave_ft;
+                meas.summary.rake_ft = newTotals.rake_ft;
+                meas.summary.perimeter_ft = newTotals.perimeter_ft;
+                
+                console.log('📊 AI LEARNING RESULTS:');
+                console.log(`   Evaluation score: ${evaluation.overallScore}%`);
+                console.log(`   Corrections stored: ${correctionsStored}`);
+                console.log(`   Features adjusted: ${featuresAdjusted}`);
+                console.log(`   Features injected: ${featuresInjected}`);
+                console.log(`   Ridge: ${oldSummary.ridge_ft?.toFixed(0) || 0} → ${newTotals.ridge_ft.toFixed(0)} ft`);
+                console.log(`   Hip: ${oldSummary.hip_ft?.toFixed(0) || 0} → ${newTotals.hip_ft.toFixed(0)} ft`);
+                console.log(`   Valley: ${oldSummary.valley_ft?.toFixed(0) || 0} → ${newTotals.valley_ft.toFixed(0)} ft`);
+              }
+              
+              // Store learning metrics for response
+              learningMetrics = {
+                evaluationScore: evaluation.overallScore,
+                correctionsStored,
+                featuresAdjusted,
+                featuresInjected,
+                deviations: evaluation.deviations.map(d => ({ type: d.featureType, deviationFt: d.avgDeviationFt }))
+              };
+              
+              // Mark source as AI learned (not training override/copy)
+              meas.source = `${meas.source.replace(/_corrected|_injected|_training_override/g, '')}_ai_learned`;
               trainingOverrideApplied = true;
               
-              console.log('✅ Training truth override prepared - will create SEPARATE corrected measurement');
+              console.log('✅ AI Learning complete - features adjusted, NOT copied');
             } else {
               console.log('⚠️ No training traces found for session - falling back to corrections');
             }
           } catch (err) {
-            console.error('Training truth override failed:', err);
+            console.error('AI Learning pipeline failed:', err);
           }
         }
         
