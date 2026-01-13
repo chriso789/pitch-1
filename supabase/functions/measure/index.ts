@@ -561,6 +561,83 @@ function buildEaveRakeOnlyFromPerimeter(
   };
 }
 
+// ============= DEDUPLICATION HELPER =============
+// Removes duplicate linear features (same type + matching endpoints within epsilon)
+// A→B is considered the same as B→A (direction-agnostic matching)
+function deduplicateLinearFeatures(features: LinearFeature[]): LinearFeature[] {
+  const EPSILON = 0.00001; // ~1 meter in lat/lng degrees
+  
+  const parseLineString = (wkt: string): [[number, number], [number, number]] | null => {
+    const match = wkt.match(/LINESTRING\(([^)]+)\)/i);
+    if (!match) return null;
+    
+    const coords = match[1].split(',').map((pair: string) => {
+      const [lng, lat] = pair.trim().split(' ').map(Number);
+      return [lng, lat] as [number, number];
+    });
+    
+    if (coords.length < 2) return null;
+    return [coords[0], coords[coords.length - 1]];
+  };
+  
+  const pointsMatch = (p1: [number, number], p2: [number, number]): boolean => {
+    return Math.abs(p1[0] - p2[0]) < EPSILON && Math.abs(p1[1] - p2[1]) < EPSILON;
+  };
+  
+  const linesMatch = (
+    line1: [[number, number], [number, number]], 
+    line2: [[number, number], [number, number]]
+  ): boolean => {
+    // Check A→B == A→B
+    const forwardMatch = pointsMatch(line1[0], line2[0]) && pointsMatch(line1[1], line2[1]);
+    // Check A→B == B→A (reversed)
+    const reverseMatch = pointsMatch(line1[0], line2[1]) && pointsMatch(line1[1], line2[0]);
+    return forwardMatch || reverseMatch;
+  };
+  
+  const deduplicated: LinearFeature[] = [];
+  const usedIndices = new Set<number>();
+  
+  for (let i = 0; i < features.length; i++) {
+    if (usedIndices.has(i)) continue;
+    
+    const feature = features[i];
+    const line1 = parseLineString(feature.wkt);
+    if (!line1) {
+      // Can't parse, keep it anyway
+      deduplicated.push(feature);
+      usedIndices.add(i);
+      continue;
+    }
+    
+    // Check for duplicates
+    let isDuplicate = false;
+    for (let j = 0; j < i; j++) {
+      if (usedIndices.has(j)) {
+        const otherFeature = features[j];
+        // Only compare features of same type
+        if (otherFeature.type !== feature.type) continue;
+        
+        const line2 = parseLineString(otherFeature.wkt);
+        if (!line2) continue;
+        
+        if (linesMatch(line1, line2)) {
+          isDuplicate = true;
+          console.log(`   🗑️ Duplicate ${feature.type} found: ${feature.id} matches ${otherFeature.id}`);
+          break;
+        }
+      }
+    }
+    
+    if (!isDuplicate) {
+      deduplicated.push(feature);
+    }
+    usedIndices.add(i);
+  }
+  
+  return deduplicated;
+}
+
 // Smart Tags builder - Expanded to 100+ tags
 function buildSmartTags(meas: MeasureResult) {
   const tags: Record<string, number|string> = {};
@@ -1934,8 +2011,16 @@ serve(async (req) => {
                   return [lng, lat] as XY;
                 });
                 
+                // FIXED: Keep perimeter as perimeter, don't convert to eave (causes doubling)
+                // Only include roof feature types in learning pipeline
+                const traceType = trace.trace_type?.toLowerCase() || 'unknown';
+                if (traceType === 'perimeter') {
+                  // Skip perimeter traces - they're not edge features for learning
+                  continue;
+                }
+                
                 userTraces.push({
-                  type: (trace.trace_type === 'perimeter' ? 'eave' : trace.trace_type) as 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'perimeter',
+                  type: traceType as 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'perimeter',
                   points,
                   length_ft: trace.length_ft || 0
                 });
@@ -2082,12 +2167,26 @@ serve(async (req) => {
               
               console.log(`📊 Filtering complete: Removed ${featuresRemoved} unmatched, Adjusted ${featuresAdjusted}, Kept ${adjustedFeatures.length}`);
               
-              // ============= PHASE 4: INJECT MISSING FEATURES =============
-              // When AI detected 0 of a type but user traced some, ADD them
+              // ============= PHASE 4: INJECT MISSING FEATURES (ONLY WHEN AI HAD ZERO) =============
+              // FIXED: Only inject when AI detected 0 of a type AND user traced some
+              // Do NOT inject if AI already has features of that type (prevents doubling)
               let featuresInjected = 0;
+              
+              // Count how many of each type are already in adjustedFeatures
+              const existingTypeCounts: Record<string, number> = {};
+              for (const f of adjustedFeatures) {
+                existingTypeCounts[f.type] = (existingTypeCounts[f.type] || 0) + 1;
+              }
               
               for (const missing of evaluation.missingFeatures) {
                 if (missing.count <= 0) continue;
+                
+                // CRITICAL FIX: Only inject if AI has ZERO of this type
+                const existingCount = existingTypeCounts[missing.type] || 0;
+                if (existingCount > 0) {
+                  console.log(`   ⊘ Skipping ${missing.type} injection: AI already has ${existingCount} features`);
+                  continue;
+                }
                 
                 // Get user traces for this type
                 const userTracesOfType = userTraces.filter(t => t.type === missing.type);
@@ -2110,16 +2209,24 @@ serve(async (req) => {
                 }
               }
               
-              // Apply adjusted features to measurement
-              meas.linear_features = adjustedFeatures;
-              console.log(`🎓 Final result: ${adjustedFeatures.length} features (was ${(originalMeasBeforeOverride?.linear_features || []).length})`);
+              // ============= DEDUPLICATION STEP =============
+              // Remove duplicate line segments (same type + matching endpoints within tolerance)
+              const deduplicatedFeatures = deduplicateLinearFeatures(adjustedFeatures);
+              const removedDupes = adjustedFeatures.length - deduplicatedFeatures.length;
+              if (removedDupes > 0) {
+                console.log(`🧹 Removed ${removedDupes} duplicate features`);
+              }
               
-              // Recalculate summary totals from adjusted features
+              // Apply deduplicated features to measurement
+              meas.linear_features = deduplicatedFeatures;
+              console.log(`🎓 Final result: ${deduplicatedFeatures.length} features (was ${(originalMeasBeforeOverride?.linear_features || []).length})`);
+              
+              // Recalculate summary totals from deduplicated features
               const newTotals: Record<string, number> = {
                 ridge_ft: 0, hip_ft: 0, valley_ft: 0, eave_ft: 0, rake_ft: 0, perimeter_ft: 0
               };
               
-              for (const f of adjustedFeatures) {
+              for (const f of deduplicatedFeatures) {
                 const key = `${f.type}_ft`;
                 if (key in newTotals) {
                   newTotals[key] += f.length_ft;
@@ -2142,6 +2249,7 @@ serve(async (req) => {
                 console.log(`   Corrections stored: ${correctionsStored}`);
                 console.log(`   Features adjusted: ${featuresAdjusted}`);
                 console.log(`   Features injected: ${featuresInjected}`);
+                console.log(`   Duplicates removed: ${removedDupes}`);
                 console.log(`   Ridge: ${oldSummary.ridge_ft?.toFixed(0) || 0} → ${newTotals.ridge_ft.toFixed(0)} ft`);
                 console.log(`   Hip: ${oldSummary.hip_ft?.toFixed(0) || 0} → ${newTotals.hip_ft.toFixed(0)} ft`);
                 console.log(`   Valley: ${oldSummary.valley_ft?.toFixed(0) || 0} → ${newTotals.valley_ft.toFixed(0)} ft`);

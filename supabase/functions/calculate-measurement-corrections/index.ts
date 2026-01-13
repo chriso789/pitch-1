@@ -1,10 +1,11 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+// ============================================
+// CALCULATE MEASUREMENT CORRECTIONS
+// Analyzes training sessions to compute correction factors for AI measurements
+// ============================================
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { corsHeaders } from "../_shared/cors.ts";
+import { supabaseService, supabaseAuth } from "../_shared/supabase.ts";
 
 interface FeatureAccumulator {
   ai_total: number;
@@ -18,23 +19,9 @@ serve(async (req) => {
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!
-    );
-
-    // Get auth user
-    const authHeader = req.headers.get("Authorization");
-    if (!authHeader) {
-      return new Response(JSON.stringify({ error: "Unauthorized" }), {
-        status: 401,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
-    }
-
-    const { data: { user }, error: authError } = await supabase.auth.getUser(
-      authHeader.replace("Bearer ", "")
-    );
+    // Get auth user using the authenticated client
+    const supabase = supabaseAuth(req);
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
 
     if (authError || !user) {
       return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -43,8 +30,11 @@ serve(async (req) => {
       });
     }
 
+    // Use service client for DB operations
+    const admin = supabaseService();
+
     // Get user's tenant
-    const { data: profile, error: profileError } = await supabase
+    const { data: profile, error: profileError } = await admin
       .from("profiles")
       .select("tenant_id")
       .eq("id", user.id)
@@ -60,7 +50,7 @@ serve(async (req) => {
     const tenantId = profile.tenant_id;
 
     // Fetch training sessions with AI totals - include in_progress and completed
-    const { data: rawSessions, error: sessionsError } = await supabase
+    const { data: rawSessions, error: sessionsError } = await admin
       .from("roof_training_sessions")
       .select("id, ai_totals, traced_totals, status")
       .eq("tenant_id", tenantId)
@@ -93,7 +83,7 @@ serve(async (req) => {
       
       if (!tracedTotals) {
         // Fetch traces for this session and compute totals
-        const { data: traces } = await supabase
+        const { data: traces } = await admin
           .from("roof_training_traces")
           .select("trace_type, length_ft")
           .eq("session_id", session.id);
@@ -187,8 +177,6 @@ serve(async (req) => {
       }
 
       // Calculate correction multiplier
-      // If AI overestimates by 10%, multiplier = 0.909 (reduce by 10%)
-      // If AI underestimates by 10%, multiplier = 1.111 (increase by 10%)
       const multiplier = acc.manual_total / acc.ai_total;
       
       // Clamp to reasonable range (0.5 to 2.0)
@@ -198,10 +186,9 @@ serve(async (req) => {
       const variancePct = ((acc.ai_total - acc.manual_total) / acc.manual_total) * 100;
       
       // Calculate confidence based on sample count and consistency
-      // More samples = higher confidence
       const confidenceFromSamples = Math.min(1, acc.count / 10);
       
-      // Lower variance = higher confidence (if AI is already accurate, we're more confident)
+      // Lower variance = higher confidence
       const absVariance = Math.abs(variancePct);
       const confidenceFromAccuracy = absVariance < 5 ? 1 : absVariance < 15 ? 0.7 : 0.4;
       
@@ -224,7 +211,7 @@ serve(async (req) => {
 
     // Upsert correction factors
     for (const correction of corrections) {
-      const { error: upsertError } = await supabase
+      const { error: upsertError } = await admin
         .from("measurement_correction_factors")
         .upsert({
           tenant_id: tenantId,
