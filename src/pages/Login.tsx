@@ -161,6 +161,22 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
 
           console.log('[Login] Session verified for user:', authUser.email);
           
+          // CRITICAL: If user logged in with password but password_set_at is NULL, fix it now
+          // This handles legacy accounts that existed before password_set_at was added
+          const { data: profileCheck } = await supabase
+            .from('profiles')
+            .select('password_set_at')
+            .eq('id', authUser.id)
+            .single();
+          
+          if (!profileCheck?.password_set_at) {
+            console.log('[Login] User logged in with password but password_set_at was null, fixing...');
+            await supabase
+              .from('profiles')
+              .update({ password_set_at: new Date().toISOString() })
+              .eq('id', authUser.id);
+          }
+          
           // Initialize session with configured timeout
           initSession(rememberMe);
           
