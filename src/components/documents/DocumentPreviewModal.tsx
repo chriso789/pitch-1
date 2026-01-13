@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, FileText, Loader2, AlertCircle, ExternalLink } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { resolveStorageBucket } from '@/lib/documents/resolveStorageBucket';
+import { loadPDFFromArrayBuffer, renderPageToDataUrl, PDFDocumentProxy, RenderedPage, clearPageCache } from '@/lib/pdfRenderer';
 
 interface Document {
   id: string;
@@ -35,6 +36,14 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   const [zoom, setZoom] = useState(1);
   const [currentIndex, setCurrentIndex] = useState(0);
 
+  // PDF.js state
+  const [pdfDoc, setPdfDoc] = useState<PDFDocumentProxy | null>(null);
+  const [pdfNumPages, setPdfNumPages] = useState(0);
+  const [pdfCurrentPage, setPdfCurrentPage] = useState(1);
+  const [pdfRenderedPage, setPdfRenderedPage] = useState<RenderedPage | null>(null);
+  const [pdfScale, setPdfScale] = useState(1.5);
+  const [pdfLoading, setPdfLoading] = useState(false);
+
   const currentDoc = documents.length > 0 ? documents[currentIndex] : document;
 
   useEffect(() => {
@@ -44,11 +53,47 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     }
   }, [document, documents]);
 
+  // Cleanup PDF on unmount or document change
+  const cleanupPdf = useCallback(() => {
+    if (pdfDoc) {
+      try {
+        pdfDoc.destroy();
+      } catch (e) {
+        console.warn('[PDF] Cleanup error:', e);
+      }
+    }
+    setPdfDoc(null);
+    setPdfNumPages(0);
+    setPdfCurrentPage(1);
+    setPdfRenderedPage(null);
+    clearPageCache();
+  }, [pdfDoc]);
+
+  // Render current PDF page when page or scale changes
+  useEffect(() => {
+    if (!pdfDoc || pdfCurrentPage < 1 || pdfCurrentPage > pdfNumPages) return;
+
+    const renderPage = async () => {
+      setPdfLoading(true);
+      try {
+        const rendered = await renderPageToDataUrl(pdfDoc, pdfCurrentPage, pdfScale);
+        setPdfRenderedPage(rendered);
+      } catch (error) {
+        console.error('[PDF] Error rendering page:', error);
+      } finally {
+        setPdfLoading(false);
+      }
+    };
+
+    renderPage();
+  }, [pdfDoc, pdfCurrentPage, pdfScale, pdfNumPages]);
+
   useEffect(() => {
     if (!currentDoc || !isOpen) {
       setPreviewUrl(null);
       setTextContent(null);
       setLoadError(null);
+      cleanupPdf();
       return;
     }
 
@@ -57,6 +102,7 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
       setTextContent(null);
       setLoadError(null);
       setZoom(1);
+      cleanupPdf();
 
       const isExternal = currentDoc.file_path.startsWith('http') || currentDoc.file_path.startsWith('data:');
       
@@ -81,19 +127,40 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
         const filename = currentDoc.filename.toLowerCase();
         const isPDF = mimeType === 'application/pdf' || filename.endsWith('.pdf');
         
-        // For PDFs, use public URL or signed URL for better browser compatibility
+        // For PDFs, download and render with PDF.js to avoid iframe blocking
         if (isPDF) {
+          console.log('[PDF] Downloading PDF for in-app rendering...');
+          const { data, error } = await supabase.storage
+            .from(bucket)
+            .download(currentDoc.file_path);
+          
+          if (error) throw error;
+          
+          const arrayBuffer = await data.arrayBuffer();
+          console.log('[PDF] Loading PDF with PDF.js...');
+          const pdf = await loadPDFFromArrayBuffer(arrayBuffer);
+          
+          setPdfDoc(pdf);
+          setPdfNumPages(pdf.numPages);
+          setPdfCurrentPage(1);
+          setPdfScale(1.5);
+          
+          // Render first page
+          const rendered = await renderPageToDataUrl(pdf, 1, 1.5);
+          setPdfRenderedPage(rendered);
+          setPreviewUrl(null); // Clear preview URL since we're using PDF.js
+          
+          // Also store public/signed URL for "Open in new tab"
           if (isPublicBucket) {
-            // Public bucket - use public URL directly (no RLS checks needed)
-            const { data } = supabase.storage.from(bucket).getPublicUrl(currentDoc.file_path);
-            setPreviewUrl(data.publicUrl);
+            const { data: urlData } = supabase.storage.from(bucket).getPublicUrl(currentDoc.file_path);
+            setPreviewUrl(urlData.publicUrl);
           } else {
-            // Private bucket - use signed URL
-            const { data: signedData, error: signedError } = await supabase.storage
+            const { data: signedData } = await supabase.storage
               .from(bucket)
               .createSignedUrl(currentDoc.file_path, 3600);
-            if (signedError) throw signedError;
-            setPreviewUrl(signedData.signedUrl);
+            if (signedData?.signedUrl) {
+              setPreviewUrl(signedData.signedUrl);
+            }
           }
         } else if (mimeType.startsWith('text/') || 
             mimeType === 'application/json' ||
@@ -141,6 +208,13 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
   // Open document in new tab using public or signed URL
   const openInNewTab = async () => {
     if (!currentDoc) return;
+    
+    // If we have a stored preview URL for PDFs, use it
+    if (previewUrl && previewUrl.startsWith('http')) {
+      window.open(previewUrl, '_blank');
+      return;
+    }
+    
     const bucket = resolveStorageBucket(currentDoc.document_type, currentDoc.file_path);
     const PUBLIC_BUCKETS = ['smartdoc-assets', 'company-logos', 'avatars', 
                             'roof-reports', 'customer-photos', 'documents',
@@ -186,8 +260,27 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
     if (currentIndex < documents.length - 1) setCurrentIndex(currentIndex + 1);
   };
 
+  // PDF page navigation
+  const handlePdfPrevPage = () => {
+    if (pdfCurrentPage > 1) setPdfCurrentPage(p => p - 1);
+  };
+
+  const handlePdfNextPage = () => {
+    if (pdfCurrentPage < pdfNumPages) setPdfCurrentPage(p => p + 1);
+  };
+
+  // PDF zoom
+  const handlePdfZoomIn = () => {
+    setPdfScale(s => Math.min(3, s + 0.25));
+  };
+
+  const handlePdfZoomOut = () => {
+    setPdfScale(s => Math.max(0.5, s - 0.25));
+  };
+
   const previewType = getPreviewType();
   const showNavigation = documents.length > 1;
+  const isPdfReady = pdfDoc && pdfRenderedPage;
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -205,6 +298,17 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                   </Button>
                   <span className="text-sm text-muted-foreground w-12 text-center">{Math.round(zoom * 100)}%</span>
                   <Button size="icon" variant="ghost" onClick={() => setZoom(z => Math.min(3, z + 0.25))}>
+                    <ZoomIn className="h-4 w-4" />
+                  </Button>
+                </>
+              )}
+              {previewType === 'pdf' && isPdfReady && (
+                <>
+                  <Button size="icon" variant="ghost" onClick={handlePdfZoomOut} title="Zoom out">
+                    <ZoomOut className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-muted-foreground w-12 text-center">{Math.round(pdfScale * 100 / 1.5)}%</span>
+                  <Button size="icon" variant="ghost" onClick={handlePdfZoomIn} title="Zoom in">
                     <ZoomIn className="h-4 w-4" />
                   </Button>
                 </>
@@ -242,14 +346,52 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                 className="max-w-full transition-transform object-contain"
               />
             </div>
-          ) : previewType === 'pdf' && previewUrl ? (
+          ) : previewType === 'pdf' && isPdfReady ? (
             <div className="w-full h-full flex flex-col min-h-[60vh]">
-              <iframe
-                src={previewUrl}
-                className="w-full flex-1 min-h-[55vh] border-0"
-                title={currentDoc?.filename || 'PDF Preview'}
-              />
-              <div className="flex justify-center gap-2 p-2 border-t bg-muted/50">
+              {/* PDF rendered page */}
+              <div className="flex-1 overflow-auto flex items-start justify-center p-4 bg-muted/20">
+                {pdfLoading ? (
+                  <div className="flex items-center justify-center min-h-[400px]">
+                    <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+                  </div>
+                ) : (
+                  <img 
+                    src={pdfRenderedPage.dataUrl} 
+                    alt={`Page ${pdfCurrentPage} of ${currentDoc?.filename}`}
+                    className="max-w-full shadow-lg rounded"
+                    style={{ maxHeight: '70vh' }}
+                  />
+                )}
+              </div>
+              
+              {/* PDF controls */}
+              <div className="flex items-center justify-center gap-4 p-3 border-t bg-muted/50">
+                {/* Page navigation */}
+                <div className="flex items-center gap-2">
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    onClick={handlePdfPrevPage}
+                    disabled={pdfCurrentPage <= 1 || pdfLoading}
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </Button>
+                  <span className="text-sm text-muted-foreground min-w-[80px] text-center">
+                    Page {pdfCurrentPage} / {pdfNumPages}
+                  </span>
+                  <Button 
+                    size="sm" 
+                    variant="ghost" 
+                    onClick={handlePdfNextPage}
+                    disabled={pdfCurrentPage >= pdfNumPages || pdfLoading}
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </Button>
+                </div>
+                
+                <div className="h-4 w-px bg-border" />
+                
+                {/* Actions */}
                 <Button size="sm" variant="ghost" onClick={openInNewTab}>
                   <ExternalLink className="h-4 w-4 mr-2" />
                   Open in new tab
@@ -261,6 +403,10 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
                   </Button>
                 )}
               </div>
+            </div>
+          ) : previewType === 'pdf' && loading ? (
+            <div className="absolute inset-0 flex items-center justify-center">
+              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           ) : previewType === 'text' && textContent ? (
             <pre className="p-4 text-sm overflow-auto whitespace-pre-wrap font-mono bg-background border rounded m-4">
