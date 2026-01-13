@@ -1650,7 +1650,10 @@ serve(async (req) => {
 
       // Route: action=pull
       if (action === 'pull') {
-        let { propertyId, lat, lng, address, apply_corrections, training_session_id } = body;
+        // Phase 1: Added 'engine' parameter for baseline detection method
+        // 'skeleton' = geometric straight-skeleton algorithm (default, fast)
+        // 'vision' = AI vision-based detection from satellite imagery (more accurate)
+        let { propertyId, lat, lng, address, apply_corrections, training_session_id, engine = 'skeleton' } = body;
 
         if (!propertyId) {
           return json({ 
@@ -1683,8 +1686,11 @@ serve(async (req) => {
             console.log(`[pull] Auto-detected training session ${training_session_id} for property ${propertyId}`);
           }
         }
+        
+        // Track which engine was actually used (may fallback)
+        let engineUsed = engine;
 
-        console.log('[pull] Request:', { propertyId, lat, lng, address, apply_corrections, training_session_id });
+        console.log('[pull] Request:', { propertyId, lat, lng, address, apply_corrections, training_session_id, engine });
 
         // Get user ID
         const { data: { user } } = await supabase.auth.getUser();
@@ -1766,30 +1772,85 @@ serve(async (req) => {
           }
         }
 
-        // Provider chain: Google Solar (primary) → Free Footprint (OSM + Open Buildings fallback)
+        // ============= ENGINE SELECTION (Phase 1) =============
+        // Vision engine: Uses AI-based detection from satellite imagery (more accurate for complex roofs)
+        // Skeleton engine: Uses geometric straight-skeleton algorithm (default, fast, works offline)
+        
         let meas: MeasureResult | null = null;
-        const tryOrder = [
-          async () => await providerGoogleSolar(supabase, lat, lng),
-          async () => await providerFreeFootprint(supabase, lat, lng, address),
-        ];
-
-        for (const fn of tryOrder) {
+        
+        if (engine === 'vision') {
+          console.log('[pull] 🔭 Using VISION engine (AI-based detection from satellite imagery)');
+          
           try {
-            const r = await fn();
-            meas = { ...r, property_id: propertyId };
-            console.log(`Provider success: ${meas.source}`);
-            break;
-          } catch (err) {
-            console.log(`Provider failed: ${err}`);
+            // Call the vision-based overlay generator
+            const { data: overlayData, error: overlayError } = await supabase.functions.invoke('generate-roof-overlay', {
+              body: { lat, lng, address }
+            });
+            
+            if (overlayError) {
+              console.error('[pull] Vision engine failed:', overlayError);
+              console.log('[pull] Falling back to skeleton engine');
+              engineUsed = 'skeleton';
+            } else if (overlayData?.success && overlayData?.data) {
+              const overlay = overlayData.data;
+              console.log(`[pull] Vision engine success: ${overlay.ridges?.length || 0} ridges, ${overlay.hips?.length || 0} hips, ${overlay.valleys?.length || 0} valleys`);
+              
+              // Convert vision overlay to MeasureResult format
+              meas = convertVisionOverlayToMeasureResult(overlay, propertyId, lat, lng);
+              
+              if (meas) {
+                console.log('[pull] Vision-based measurement ready:', {
+                  ridge_ft: meas.summary?.ridge_ft || 0,
+                  hip_ft: meas.summary?.hip_ft || 0,
+                  valley_ft: meas.summary?.valley_ft || 0,
+                  linear_features: meas.linear_features?.length || 0,
+                  source: meas.source
+                });
+              }
+            } else {
+              console.log('[pull] Vision engine returned no data, falling back to skeleton');
+              engineUsed = 'skeleton';
+            }
+          } catch (visionErr) {
+            console.error('[pull] Vision engine exception:', visionErr);
+            engineUsed = 'skeleton';
+          }
+        }
+        
+        // Skeleton engine (default or fallback from vision failure)
+        if (!meas) {
+          console.log('[pull] 📐 Using SKELETON engine (geometric detection)');
+          engineUsed = 'skeleton';
+          
+          // Provider chain: Google Solar (primary) → Free Footprint (OSM + Open Buildings fallback)
+          const tryOrder = [
+            async () => await providerGoogleSolar(supabase, lat, lng),
+            async () => await providerFreeFootprint(supabase, lat, lng, address),
+          ];
+
+          for (const fn of tryOrder) {
+            try {
+              const r = await fn();
+              meas = { ...r, property_id: propertyId };
+              console.log(`Provider success: ${meas.source}`);
+              break;
+            } catch (err) {
+              console.log(`Provider failed: ${err}`);
+            }
           }
         }
 
         if (!meas) {
           return json({ 
             ok: false, 
-            error: 'No provider available. Please use manual measurements.' 
+            error: 'No provider available. Please use manual measurements.',
+            engineAttempted: engine,
+            engineUsed: engineUsed
           }, corsHeaders, 404);
         }
+        
+        // Add engine info to measurement source
+        meas.source = `${meas.source}_${engineUsed}`;
 
         // ============= TRAINING TRUTH OVERRIDE =============
         // If training_session_id is provided, create a SEPARATE corrected measurement
@@ -2165,7 +2226,7 @@ serve(async (req) => {
 
         return json({ 
           ok: true, 
-          data: { measurement: row, tags } 
+          data: { measurement: row, tags, engine_used: engineUsed } 
         }, corsHeaders);
       }
 
@@ -2942,4 +3003,156 @@ function json(payload: unknown, headers: Record<string,string>, status = 200) {
     status,
     headers: { ...headers, 'Content-Type': 'application/json' },
   });
+}
+
+// ============= VISION OVERLAY CONVERTER (Phase 1) =============
+// Converts the output from generate-roof-overlay to MeasureResult format
+function convertVisionOverlayToMeasureResult(
+  overlay: {
+    perimeter: [number, number][];
+    ridges: Array<{ start: [number, number]; end: [number, number]; confidence: number }>;
+    hips: Array<{ start: [number, number]; end: [number, number]; confidence: number }>;
+    valleys: Array<{ start: [number, number]; end: [number, number]; confidence: number }>;
+    metadata: {
+      roofType?: string;
+      qualityScore?: number;
+      totalAreaSqft?: number;
+    };
+  },
+  propertyId: string,
+  lat: number,
+  lng: number
+): MeasureResult | null {
+  try {
+    const { perimeter, ridges, hips, valleys, metadata } = overlay;
+    
+    if (!perimeter || perimeter.length < 4) {
+      console.error('[convertVisionOverlay] Invalid perimeter');
+      return null;
+    }
+    
+    // Helper: Calculate line length in feet from geo coordinates
+    const calcLengthFt = (start: [number, number], end: [number, number]): number => {
+      const midLat = (start[1] + end[1]) / 2;
+      const metersPerDegLat = 111320;
+      const metersPerDegLng = 111320 * Math.cos(midLat * Math.PI / 180);
+      const dx = (end[0] - start[0]) * metersPerDegLng;
+      const dy = (end[1] - start[1]) * metersPerDegLat;
+      const lengthM = Math.sqrt(dx * dx + dy * dy);
+      return lengthM * 3.28084;
+    };
+    
+    // Convert perimeter to WKT
+    const perimeterWkt = `POLYGON((${perimeter.map(p => `${p[0]} ${p[1]}`).join(', ')}))`;
+    
+    // Calculate area from perimeter (shoelace formula)
+    const midLat = perimeter.reduce((sum, p) => sum + p[1], 0) / perimeter.length;
+    const metersPerDegLat = 111320;
+    const metersPerDegLng = 111320 * Math.cos(midLat * Math.PI / 180);
+    let areaSum = 0;
+    for (let i = 0; i < perimeter.length - 1; i++) {
+      const x1 = perimeter[i][0] * metersPerDegLng;
+      const y1 = perimeter[i][1] * metersPerDegLat;
+      const x2 = perimeter[i + 1][0] * metersPerDegLng;
+      const y2 = perimeter[i + 1][1] * metersPerDegLat;
+      areaSum += (x1 * y2 - x2 * y1);
+    }
+    const areaSqM = Math.abs(areaSum) / 2;
+    const areaSqFt = areaSqM * 10.7639;
+    
+    // Build linear features
+    const linearFeatures: LinearFeature[] = [];
+    let featureId = 1;
+    let ridgeTotalFt = 0, hipTotalFt = 0, valleyTotalFt = 0;
+    
+    // Add ridges
+    for (const ridge of ridges || []) {
+      const lengthFt = calcLengthFt(ridge.start, ridge.end);
+      ridgeTotalFt += lengthFt;
+      linearFeatures.push({
+        id: `vision-ridge-${featureId++}`,
+        type: 'ridge',
+        wkt: `LINESTRING(${ridge.start[0]} ${ridge.start[1]}, ${ridge.end[0]} ${ridge.end[1]})`,
+        length_ft: lengthFt,
+        label: `Ridge ${featureId - 1} (vision)`
+      });
+    }
+    
+    // Add hips
+    for (const hip of hips || []) {
+      const lengthFt = calcLengthFt(hip.start, hip.end);
+      hipTotalFt += lengthFt;
+      linearFeatures.push({
+        id: `vision-hip-${featureId++}`,
+        type: 'hip',
+        wkt: `LINESTRING(${hip.start[0]} ${hip.start[1]}, ${hip.end[0]} ${hip.end[1]})`,
+        length_ft: lengthFt,
+        label: `Hip ${featureId - 1} (vision)`
+      });
+    }
+    
+    // Add valleys
+    for (const valley of valleys || []) {
+      const lengthFt = calcLengthFt(valley.start, valley.end);
+      valleyTotalFt += lengthFt;
+      linearFeatures.push({
+        id: `vision-valley-${featureId++}`,
+        type: 'valley',
+        wkt: `LINESTRING(${valley.start[0]} ${valley.start[1]}, ${valley.end[0]} ${valley.end[1]})`,
+        length_ft: lengthFt,
+        label: `Valley ${featureId - 1} (vision)`
+      });
+    }
+    
+    // Calculate eave/rake from perimeter (simplified - assume all edges are eave)
+    let perimeterTotalFt = 0;
+    for (let i = 0; i < perimeter.length - 1; i++) {
+      perimeterTotalFt += calcLengthFt(perimeter[i], perimeter[i + 1]);
+    }
+    
+    // Build single face from perimeter
+    const faces: RoofFace[] = [{
+      id: 'vision-face-1',
+      wkt: perimeterWkt,
+      plan_area_sqft: areaSqFt,
+      pitch: '5/12', // Default pitch
+      area_sqft: areaSqFt * 1.08, // Apply ~5/12 pitch factor
+      linear_features: linearFeatures
+    }];
+    
+    // Create MeasureResult
+    const result: MeasureResult = {
+      property_id: propertyId,
+      source: 'vision_overlay',
+      faces,
+      linear_features: linearFeatures,
+      summary: {
+        total_area_sqft: metadata?.totalAreaSqft || areaSqFt,
+        total_squares: (metadata?.totalAreaSqft || areaSqFt) / 100,
+        waste_pct: 10,
+        pitch_method: 'assumed',
+        perimeter_ft: perimeterTotalFt,
+        ridge_ft: ridgeTotalFt,
+        hip_ft: hipTotalFt,
+        valley_ft: valleyTotalFt,
+        eave_ft: perimeterTotalFt * 0.7, // Rough split
+        rake_ft: perimeterTotalFt * 0.3,
+      },
+      geom_wkt: perimeterWkt
+    };
+    
+    console.log('[convertVisionOverlay] Created MeasureResult:', {
+      source: result.source,
+      areaSqft: result.summary.total_area_sqft,
+      ridgeFt: result.summary.ridge_ft,
+      hipFt: result.summary.hip_ft,
+      valleyFt: result.summary.valley_ft,
+      linearFeatures: linearFeatures.length
+    });
+    
+    return result;
+  } catch (err) {
+    console.error('[convertVisionOverlay] Error:', err);
+    return null;
+  }
 }

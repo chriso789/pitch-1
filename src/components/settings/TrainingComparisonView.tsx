@@ -8,10 +8,18 @@ import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { CheckCircle, XCircle, AlertTriangle, BarChart2, RefreshCw, Loader2, Zap, RotateCcw, Sparkles, Brain } from 'lucide-react';
+import { CheckCircle, XCircle, AlertTriangle, BarChart2, RefreshCw, Loader2, Zap, RotateCcw, Sparkles, Brain, Eye, Settings2, Cpu } from 'lucide-react';
 import { toast } from 'sonner';
 import { TrainingOverlayComparison } from './TrainingOverlayComparison';
 import { DeviationAnalysisCard } from './training/DeviationAnalysisCard';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
 interface TrainingComparisonViewProps {
   sessionId: string;
   aiMeasurementId?: string;
@@ -63,6 +71,10 @@ export function TrainingComparisonView({
   const [applyToFuture, setApplyToFuture] = useState(true);
   const [correctionsStored, setCorrectionsStored] = useState(false);
   const [viewMode, setViewMode] = useState<'original' | 'corrected'>('original');
+  
+  // Phase 1: Engine selection - 'skeleton' (fast, geometric) or 'vision' (accurate, AI-based)
+  const [selectedEngine, setSelectedEngine] = useState<'skeleton' | 'vision'>('vision');
+  const [lastEngineUsed, setLastEngineUsed] = useState<string | null>(null);
 
   // Fetch session data for lat/lng/address when running AI measure
   const { data: session } = useQuery({
@@ -108,10 +120,9 @@ export function TrainingComparisonView({
 
     setIsRunningAIMeasure(true);
     try {
-      toast.info('Running fresh AI measurement (no corrections)...');
+      toast.info(`Running AI measurement using ${selectedEngine.toUpperCase()} engine...`);
 
-      // Call measure function WITHOUT apply_corrections or training_session_id
-      // This ensures we get a pure AI skeleton measurement
+      // Call measure function with engine selection
       const { data, error } = await supabase.functions.invoke('measure', {
         body: {
           action: 'pull',
@@ -119,12 +130,19 @@ export function TrainingComparisonView({
           lat: session.lat,
           lng: session.lng,
           address: session.property_address || undefined,
-          // CRITICAL: Do NOT pass apply_corrections or training_session_id
-          // This ensures we get the raw AI detection without any user overrides
+          engine: selectedEngine, // Phase 1: Use selected engine (vision or skeleton)
         },
       });
 
       if (error) throw error;
+
+      if (!data?.ok) {
+        throw new Error(data?.error || 'AI measurement failed');
+      }
+      
+      // Track which engine was actually used (may fallback)
+      const engineUsed = data?.data?.engine_used || selectedEngine;
+      setLastEngineUsed(engineUsed);
 
       if (!data?.ok) {
         throw new Error(data?.error || 'AI measurement failed');
@@ -431,32 +449,71 @@ export function TrainingComparisonView({
   const RetrainAICard = () => (
     <Card className="border-primary/20 bg-primary/5">
       <CardContent className="py-4">
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-          <div>
-            <p className="font-medium">Train AI with Your Traces</p>
-            <p className="text-sm text-muted-foreground">
-              {!hasOriginalAI 
-                ? 'First, run AI measurement to generate baseline skeleton for comparison'
-                : 'Apply your manual corrections to create a corrected measurement'
-              }
+        <div className="flex flex-col gap-4">
+          {/* Engine Selection */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <Settings2 className="h-4 w-4 text-muted-foreground" />
+              <span className="text-sm font-medium">AI Engine:</span>
+              <Select value={selectedEngine} onValueChange={(v) => setSelectedEngine(v as 'skeleton' | 'vision')}>
+                <SelectTrigger className="w-[180px] h-8">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="vision">
+                    <div className="flex items-center gap-2">
+                      <Eye className="h-3 w-3" />
+                      <span>Vision (Recommended)</span>
+                    </div>
+                  </SelectItem>
+                  <SelectItem value="skeleton">
+                    <div className="flex items-center gap-2">
+                      <Cpu className="h-3 w-3" />
+                      <span>Skeleton (Fast)</span>
+                    </div>
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              {lastEngineUsed && (
+                <Badge variant="outline" className="text-xs">
+                  Last: {lastEngineUsed}
+                </Badge>
+              )}
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {selectedEngine === 'vision' 
+                ? 'AI analyzes satellite imagery to detect roof lines (more accurate)' 
+                : 'Uses geometric algorithm from footprint (faster, less accurate)'}
             </p>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
-            {/* Step 1: Run AI Measure - only show if no original AI exists */}
-            {!hasOriginalAI && (
+
+          {/* Action Buttons */}
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+            <div>
+              <p className="font-medium">Train AI with Your Traces</p>
+              <p className="text-sm text-muted-foreground">
+                {!hasOriginalAI 
+                  ? 'First, generate AI baseline to compare against your traces'
+                  : 'Apply your manual corrections to create a corrected measurement'
+                }
+              </p>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              {/* Step 1: Run AI Measure */}
               <Button 
                 onClick={handleRunAIMeasure} 
                 disabled={isRunningAIMeasure || !session?.lat}
-                variant="default"
+                variant={!hasOriginalAI ? "default" : "outline"}
               >
                 {isRunningAIMeasure ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                ) : selectedEngine === 'vision' ? (
+                  <Eye className="h-4 w-4 mr-2" />
                 ) : (
-                  <Sparkles className="h-4 w-4 mr-2" />
+                  <Cpu className="h-4 w-4 mr-2" />
                 )}
-                {isRunningAIMeasure ? 'Generating AI skeleton...' : 'Generate AI Baseline'}
+                {isRunningAIMeasure ? 'Generating...' : hasOriginalAI ? 'Regenerate AI' : 'Generate AI Baseline'}
               </Button>
-            )}
             
             {/* Step 2: Retrain AI (recalculate correction factors) */}
             <Button onClick={handleRetrainAI} disabled={isRetraining} variant={hasOriginalAI ? "default" : "outline"}>
@@ -484,6 +541,7 @@ export function TrainingComparisonView({
                 {isRemeasuring ? 'Applying...' : 'Apply Training Truth'}
               </Button>
             )}
+            </div>
           </div>
         </div>
       </CardContent>
