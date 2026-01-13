@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -7,11 +7,15 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, Mail, ArrowLeft, CheckCircle, AlertCircle } from 'lucide-react';
+import { Loader2, Mail, ArrowLeft, CheckCircle, AlertCircle, KeyRound } from 'lucide-react';
 
 const RequestSetupLink: React.FC = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
+  
+  // Check if user was redirected because they haven't set their password
+  const needsPasswordSetup = (location.state as any)?.needsPasswordSetup === true;
   
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
@@ -148,6 +152,16 @@ const RequestSetupLink: React.FC = () => {
           </CardHeader>
           
           <CardContent>
+            {needsPasswordSetup && (
+              <Alert className="mb-4 border-amber-200 bg-amber-50 dark:bg-amber-950/20">
+                <KeyRound className="h-4 w-4 text-amber-600" />
+                <AlertDescription className="text-amber-800 dark:text-amber-200">
+                  You need to complete your password setup before accessing the dashboard. 
+                  Enter your email below to receive a new setup link.
+                </AlertDescription>
+              </Alert>
+            )}
+            
             {error && (
               <Alert variant="destructive" className="mb-4">
                 <AlertCircle className="h-4 w-4" />

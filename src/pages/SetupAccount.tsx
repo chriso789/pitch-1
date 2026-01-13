@@ -70,6 +70,10 @@ export default function SetupAccount() {
 
         if (data?.user) {
           console.log('[SetupAccount] Token verified, user:', data.user.email);
+          
+          // CRITICAL: Set flag to prevent ProtectedRoute from redirecting during password setup
+          localStorage.setItem('pitch_password_setup_in_progress', 'true');
+          
           setUserEmail(data.user.email || null);
           
           // Fetch user's company info for branding
@@ -188,15 +192,36 @@ export default function SetupAccount() {
           .eq('user_id', user.id)
           .maybeSingle();
 
+        // CRITICAL: Clear setup-in-progress flag now that password is set
+        localStorage.removeItem('pitch_password_setup_in_progress');
+        
+        // Role-based redirect map for all user types
+        const roleDashboards: Record<string, string> = {
+          'super_admin': '/admin/dashboard',
+          'owner': '/settings?tab=company',
+          'corporate': '/dashboard',
+          'office_admin': '/dashboard',
+          'regional_manager': '/dashboard',
+          'sales_manager': '/pipeline',
+          'project_manager': '/production',
+          'crew_member': '/crew-portal',
+          'subcontractor': '/crew-portal',
+          'sales_rep': '/pipeline',
+          'canvasser': '/storm-canvass/dashboard',
+        };
+        
+        const userRole = roleData?.role || 'sales_rep';
+        const redirectPath = roleDashboards[userRole] || '/dashboard';
+        
+        console.log('[SetupAccount] Redirecting user with role:', userRole, 'to:', redirectPath);
+        
         // Role-based redirect with delay to ensure context is ready
         setTimeout(() => {
-          if (roleData?.role === 'owner') {
-            navigate('/settings?tab=company');
-          } else {
-            navigate('/dashboard');
-          }
+          navigate(redirectPath);
         }, 1500);
       } else {
+        // Clear flag even for fallback case
+        localStorage.removeItem('pitch_password_setup_in_progress');
         setTimeout(() => navigate('/dashboard'), 1500);
       }
     } catch (err) {
