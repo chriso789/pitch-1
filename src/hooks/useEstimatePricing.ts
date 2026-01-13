@@ -1,5 +1,6 @@
 // Pricing calculations hook with fixed price override support
-import { useState, useCallback, useMemo } from 'react';
+// Supports both profit_split (commission from net profit) and sales_percentage (commission from sale)
+import { useState, useCallback, useMemo, useEffect } from 'react';
 
 export interface LineItem {
   id: string;
@@ -19,6 +20,7 @@ export interface PricingConfig {
   overheadPercent: number;
   profitMarginPercent: number;
   repCommissionPercent: number;
+  commissionStructure: 'profit_split' | 'sales_percentage';
 }
 
 export interface PricingBreakdown {
@@ -28,6 +30,7 @@ export interface PricingBreakdown {
   overheadAmount: number;
   totalCost: number;
   profitAmount: number;
+  netProfit: number; // Net profit before commission (for profit_split display)
   repCommissionAmount: number;
   sellingPrice: number;
   actualProfitMargin: number;
@@ -53,12 +56,26 @@ const DEFAULT_CONFIG: PricingConfig = {
   overheadPercent: 10,
   profitMarginPercent: 30,
   repCommissionPercent: 8,
+  commissionStructure: 'profit_split',
 };
 
-export function useEstimatePricing(initialItems: LineItem[] = []): UseEstimatePricingReturn {
+export function useEstimatePricing(
+  initialItems: LineItem[] = [],
+  initialConfig?: Partial<PricingConfig>
+): UseEstimatePricingReturn {
   const [lineItems, setLineItems] = useState<LineItem[]>(initialItems);
-  const [config, setConfigState] = useState<PricingConfig>(DEFAULT_CONFIG);
+  const [config, setConfigState] = useState<PricingConfig>(() => ({
+    ...DEFAULT_CONFIG,
+    ...initialConfig,
+  }));
   const [fixedPrice, setFixedPriceState] = useState<number | null>(null);
+
+  // Update config when initialConfig changes (e.g., when rep rates are fetched)
+  useEffect(() => {
+    if (initialConfig) {
+      setConfigState(current => ({ ...current, ...initialConfig }));
+    }
+  }, [initialConfig?.overheadPercent, initialConfig?.repCommissionPercent, initialConfig?.commissionStructure]);
 
   const isFixedPrice = fixedPrice !== null;
 
@@ -80,6 +97,9 @@ export function useEstimatePricing(initialItems: LineItem[] = []): UseEstimatePr
   // Calculate pricing breakdown
   // Overhead and Profit are both percentages of SELLING PRICE
   // Formula: Selling Price = Direct Cost / (1 - OH% - Profit%)
+  // Commission calculation respects commission structure:
+  //   - profit_split: Commission = Net Profit × Rate %
+  //   - sales_percentage: Commission = Selling Price × Rate %
   const breakdown = useMemo((): PricingBreakdown => {
     const materialsTotal = materialItems.reduce((sum, item) => sum + item.line_total, 0);
     const laborTotal = laborItems.reduce((sum, item) => sum + item.line_total, 0);
@@ -115,7 +135,19 @@ export function useEstimatePricing(initialItems: LineItem[] = []): UseEstimatePr
     }
 
     const totalCost = directCost + overheadAmount; // For display: cost before profit
-    const repCommissionAmount = sellingPrice * (config.repCommissionPercent / 100);
+    
+    // Net profit = Selling Price - Direct Cost - Overhead
+    const netProfit = sellingPrice - directCost - overheadAmount;
+    
+    // Calculate commission based on structure type
+    let repCommissionAmount: number;
+    if (config.commissionStructure === 'profit_split') {
+      // Commission is a percentage of net profit
+      repCommissionAmount = Math.max(0, netProfit * (config.repCommissionPercent / 100));
+    } else {
+      // Commission is a percentage of selling price
+      repCommissionAmount = sellingPrice * (config.repCommissionPercent / 100);
+    }
 
     return {
       materialsTotal,
@@ -124,6 +156,7 @@ export function useEstimatePricing(initialItems: LineItem[] = []): UseEstimatePr
       overheadAmount,
       totalCost,
       profitAmount,
+      netProfit,
       repCommissionAmount,
       sellingPrice,
       actualProfitMargin,

@@ -27,6 +27,7 @@ interface EstimateBreakdownCardProps {
   onConfigChange: (config: Partial<PricingConfig>) => void;
   onFixedPriceChange: (price: number | null) => void;
   className?: string;
+  repName?: string; // Display the assigned rep's name
 }
 
 const formatCurrency = (amount: number): string => {
@@ -49,10 +50,16 @@ export function EstimateBreakdownCard({
   onConfigChange,
   onFixedPriceChange,
   className = '',
+  repName,
 }: EstimateBreakdownCardProps) {
   const [fixedPriceInput, setFixedPriceInput] = useState(
     fixedPrice?.toString() || ''
   );
+
+  // Determine commission label based on structure type
+  const commissionLabel = config.commissionStructure === 'profit_split'
+    ? `${repName || 'Rep'} Commission (${formatPercent(config.repCommissionPercent)} of Profit)`
+    : `${repName || 'Rep'} Commission (${formatPercent(config.repCommissionPercent)} of Sale)`;
 
   const handleFixedPriceToggle = (enabled: boolean) => {
     if (enabled) {
@@ -161,12 +168,17 @@ export function EstimateBreakdownCard({
           <div className="flex items-center justify-between text-sm">
             <span className="flex items-center gap-2 text-muted-foreground">
               <Users className="h-4 w-4" />
-              Rep Commission ({formatPercent(config.repCommissionPercent)})
+              {commissionLabel}
             </span>
             <span className="font-medium text-blue-600">
               {formatCurrency(breakdown.repCommissionAmount)}
             </span>
           </div>
+          {config.commissionStructure === 'profit_split' && (
+            <div className="text-xs text-muted-foreground pl-6">
+              Net Profit: {formatCurrency(breakdown.netProfit)}
+            </div>
+          )}
         </div>
 
         <Separator />
