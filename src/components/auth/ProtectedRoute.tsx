@@ -19,6 +19,8 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   const [isValid, setIsValid] = useState(false);
   const [isRetrying, setIsRetrying] = useState(false);
   const [loadingTooLong, setLoadingTooLong] = useState(false);
+  const [passwordCheckDone, setPasswordCheckDone] = useState(false);
+  const [passwordIsSet, setPasswordIsSet] = useState<boolean | null>(null);
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -156,18 +158,52 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     );
   }
 
-  // CRITICAL: Check if user needs to complete password setup
-  // Skip this check if password setup is actively in progress (user on setup-account page)
-  const passwordSetupInProgress = localStorage.getItem('pitch_password_setup_in_progress') === 'true';
-  
-  // Only redirect if profile explicitly has password_set_at as null/undefined AND it's from the fresh profile
-  // If we have a profile with password_set_at set, clear any stale setup flags
-  if (profile?.password_set_at) {
-    // Password is already set - clear any stale flags
-    if (passwordSetupInProgress) {
-      localStorage.removeItem('pitch_password_setup_in_progress');
-    }
-  } else if (profile && !profile.password_set_at && !passwordSetupInProgress) {
+  // CRITICAL: Fetch password_set_at directly from database to avoid stale cache issues
+  useEffect(() => {
+    const checkPasswordStatus = async () => {
+      if (!user || !hasWorkspaceIdentity) return;
+      
+      const passwordSetupInProgress = localStorage.getItem('pitch_password_setup_in_progress') === 'true';
+      if (passwordSetupInProgress) {
+        setPasswordIsSet(true); // Don't block if setup in progress
+        setPasswordCheckDone(true);
+        return;
+      }
+      
+      // Fetch fresh from database instead of using cached profile
+      const { data: freshProfile } = await supabase
+        .from('profiles')
+        .select('password_set_at')
+        .eq('id', user.id)
+        .single();
+      
+      if (freshProfile?.password_set_at) {
+        setPasswordIsSet(true);
+        // Clear any stale flags
+        localStorage.removeItem('pitch_password_setup_in_progress');
+      } else {
+        setPasswordIsSet(false);
+      }
+      setPasswordCheckDone(true);
+    };
+    
+    checkPasswordStatus();
+  }, [user, hasWorkspaceIdentity]);
+
+  // Wait for password check before rendering
+  if (hasWorkspaceIdentity && !passwordCheckDone) {
+    return (
+      <div className="flex items-center justify-center min-h-screen bg-background">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <p className="text-muted-foreground">Verifying account...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Redirect if password not set (based on fresh database check)
+  if (passwordIsSet === false) {
     console.log('[ProtectedRoute] User has not set password, redirecting to request-setup-link');
     return <Navigate to="/request-setup-link" state={{ needsPasswordSetup: true }} replace />;
   }

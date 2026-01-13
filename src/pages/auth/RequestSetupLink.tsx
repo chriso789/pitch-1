@@ -43,6 +43,8 @@ const RequestSetupLink: React.FC = () => {
           
           if (profile?.password_set_at) {
             console.log('[RequestSetupLink] User already has password set, redirecting to dashboard');
+            // Clear stale profile cache before redirect
+            localStorage.removeItem('user-profile-cache');
             navigate('/dashboard', { replace: true });
             return;
           }
