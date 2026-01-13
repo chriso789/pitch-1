@@ -1792,12 +1792,17 @@ serve(async (req) => {
         }
 
         // ============= TRAINING TRUTH OVERRIDE =============
-        // If training_session_id is provided, REPLACE AI output with user's training traces
-        // This ensures 0ft tolerance by using the user's canonical geometry directly
+        // If training_session_id is provided, create a SEPARATE corrected measurement
+        // This preserves the original AI measurement for comparison purposes
         let trainingOverrideApplied = false;
+        let originalMeasBeforeOverride: typeof meas | null = null;
         
         if (apply_corrections && training_session_id && meas) {
           console.log(`🎯 TRAINING TRUTH OVERRIDE: Loading traces for session ${training_session_id}`);
+          
+          // CRITICAL: Deep clone the original AI measurement BEFORE any modifications
+          // This ensures we can save the original separately
+          originalMeasBeforeOverride = JSON.parse(JSON.stringify(meas));
           
           try {
             // Load all training traces for this session
@@ -1852,7 +1857,7 @@ serve(async (req) => {
                 }
               }
               
-              // REPLACE AI linear_features with training truth
+              // REPLACE AI linear_features with training truth (on the cloned meas only)
               const oldLinearCount = meas.linear_features?.length || 0;
               meas.linear_features = truthFeatures;
               
@@ -1866,7 +1871,7 @@ serve(async (req) => {
                 meas.summary.rake_ft = truthTotals.rake_ft;
                 meas.summary.perimeter_ft = truthTotals.perimeter_ft || (truthTotals.eave_ft + truthTotals.rake_ft);
                 
-                console.log('📊 TRAINING TRUTH APPLIED:');
+                console.log('📊 TRAINING TRUTH APPLIED (to separate corrected record):');
                 console.log(`   Ridge: ${oldSummary.ridge_ft?.toFixed(0) || 0} → ${truthTotals.ridge_ft.toFixed(0)} ft`);
                 console.log(`   Hip: ${oldSummary.hip_ft?.toFixed(0) || 0} → ${truthTotals.hip_ft.toFixed(0)} ft`);
                 console.log(`   Valley: ${oldSummary.valley_ft?.toFixed(0) || 0} → ${truthTotals.valley_ft.toFixed(0)} ft`);
@@ -1880,7 +1885,7 @@ serve(async (req) => {
               meas.source = `${meas.source.replace(/_corrected|_injected/g, '')}_training_override`;
               trainingOverrideApplied = true;
               
-              console.log('✅ Training truth override complete - AI output replaced with user traces');
+              console.log('✅ Training truth override prepared - will create SEPARATE corrected measurement');
             } else {
               console.log('⚠️ No training traces found for session - falling back to corrections');
             }
@@ -1996,7 +2001,71 @@ serve(async (req) => {
           });
         }
 
-        // Save measurement with analysis coordinates for overlay alignment
+        // ============= SAVE MEASUREMENTS =============
+        // When training override was applied, we save TWO measurements:
+        // 1. Original AI measurement (preserved for comparison)
+        // 2. Corrected measurement (with user traces applied)
+        
+        let originalMeasurementRow: any = null;
+        let correctedMeasurementRow: any = null;
+        
+        if (trainingOverrideApplied && originalMeasBeforeOverride) {
+          // STEP 1: Save the ORIGINAL AI measurement first (untouched)
+          console.log('📊 Saving ORIGINAL AI measurement (before training override)...');
+          originalMeasurementRow = await persistMeasurement(supabase, originalMeasBeforeOverride, userId, { lat, lng, zoom: 20 });
+          
+          // Generate tags for original
+          const originalTags = buildSmartTags({ ...originalMeasBeforeOverride, id: originalMeasurementRow.id });
+          await persistTags(supabase, originalMeasurementRow.id, propertyId, originalTags, userId);
+          await persistFacets(supabase, originalMeasurementRow.id, originalMeasBeforeOverride.faces || []);
+          
+          console.log(`✅ Original AI measurement saved: ${originalMeasurementRow.id}`);
+          
+          // STEP 2: Save the CORRECTED measurement (with training truth)
+          console.log('📊 Saving CORRECTED measurement (with training override)...');
+          correctedMeasurementRow = await persistMeasurement(supabase, meas, userId, { lat, lng, zoom: 20 });
+          
+          // Generate tags for corrected
+          const correctedTags = buildSmartTags({ ...meas, id: correctedMeasurementRow.id });
+          await persistTags(supabase, correctedMeasurementRow.id, propertyId, correctedTags, userId);
+          await persistFacets(supabase, correctedMeasurementRow.id, meas.faces || []);
+          await persistWasteCalculations(supabase, correctedMeasurementRow.id, meas.summary.total_area_sqft, meas.summary.total_squares, correctedTags);
+          
+          console.log(`✅ Corrected measurement saved: ${correctedMeasurementRow.id}`);
+          
+          // Update training session with BOTH measurement IDs
+          if (training_session_id) {
+            const { error: sessionUpdateError } = await supabase
+              .from('roof_training_sessions')
+              .update({
+                original_ai_measurement_id: originalMeasurementRow.id,
+                corrected_ai_measurement_id: correctedMeasurementRow.id,
+                // Keep ai_measurement_id pointing to original for backwards compatibility
+                ai_measurement_id: originalMeasurementRow.id
+              } as any)
+              .eq('id', training_session_id);
+            
+            if (sessionUpdateError) {
+              console.error('Failed to update training session with measurement IDs:', sessionUpdateError);
+            } else {
+              console.log(`✅ Training session ${training_session_id} updated with both measurement IDs`);
+            }
+          }
+          
+          // Return the CORRECTED measurement as the primary result (for backwards compatibility)
+          // But include original_measurement_id for frontend to use
+          return json({ 
+            ok: true, 
+            data: { 
+              measurement: correctedMeasurementRow, 
+              original_measurement_id: originalMeasurementRow.id,
+              corrected_measurement_id: correctedMeasurementRow.id,
+              tags: correctedTags 
+            } 
+          }, corsHeaders);
+        }
+        
+        // Standard flow (no training override) - save measurement normally
         const row = await persistMeasurement(supabase, meas, userId, { lat, lng, zoom: 20 });
         
         // Generate and save Smart Tags
