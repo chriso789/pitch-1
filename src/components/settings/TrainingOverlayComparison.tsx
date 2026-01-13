@@ -25,6 +25,8 @@ interface TrainingOverlayComparisonProps {
   }[];
   // The AI measurement's own center for proper WKT alignment
   aiMeasurementCenter?: { lat: number; lng: number };
+  // View mode: 'original' shows raw AI detection, 'corrected' shows user-trained result
+  viewMode?: 'original' | 'corrected';
 }
 
 // Match TrainingCanvas dimensions exactly
@@ -142,6 +144,7 @@ export function TrainingOverlayComparison({
   manualTraces,
   aiLinearFeatures,
   aiMeasurementCenter,
+  viewMode = 'original',
 }: TrainingOverlayComparisonProps) {
   // Use the AI measurement's center for WKT conversion if provided
   // This ensures AI features align correctly with the satellite image
@@ -535,8 +538,10 @@ export function TrainingOverlayComparison({
           {/* AI Lines */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <h4 className="font-medium text-sm">AI Measurements</h4>
-              <Badge variant="secondary" className="text-xs">
+              <h4 className="font-medium text-sm">
+                {viewMode === 'corrected' ? 'Corrected AI' : 'AI Measurements'}
+              </h4>
+              <Badge variant={viewMode === 'corrected' ? 'default' : 'secondary'} className={viewMode === 'corrected' ? 'bg-green-500 text-xs' : 'text-xs'}>
                 {Math.round(Object.values(aiTotals).reduce((a, b) => a + b, 0))} ft total
               </Badge>
             </div>

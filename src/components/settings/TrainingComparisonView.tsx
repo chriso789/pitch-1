@@ -62,6 +62,7 @@ export function TrainingComparisonView({
   const [retrainComplete, setRetrainComplete] = useState(false);
   const [applyToFuture, setApplyToFuture] = useState(true);
   const [correctionsStored, setCorrectionsStored] = useState(false);
+  const [viewMode, setViewMode] = useState<'original' | 'corrected'>('original');
 
   // Fetch session data for lat/lng/address when running AI measure
   const { data: session } = useQuery({
@@ -86,8 +87,10 @@ export function TrainingComparisonView({
   const originalAiMeasurementId = session?.original_ai_measurement_id || currentAiMeasurementId || session?.ai_measurement_id;
   const correctedAiMeasurementId = session?.corrected_ai_measurement_id;
   
-  // For display, use the ORIGINAL AI measurement to show true independent AI vs user comparison
-  const effectiveAiMeasurementId = originalAiMeasurementId;
+  // For display, respect viewMode: show original for comparison or corrected to verify training worked
+  const effectiveAiMeasurementId = viewMode === 'corrected' && correctedAiMeasurementId
+    ? correctedAiMeasurementId
+    : originalAiMeasurementId;
 
   // Handler for running fresh AI measurement (no corrections)
   // This generates an independent AI measurement for comparison
@@ -265,7 +268,10 @@ export function TrainingComparisonView({
       queryClient.invalidateQueries({ queryKey: ['ai-measurement'] });
       queryClient.invalidateQueries({ queryKey: ['training-session-for-measure', sessionId] });
 
-      toast.success('Corrected measurement created! Your traces are now stored as ground truth for this property.');
+      // Auto-switch to corrected view to show the result
+      setViewMode('corrected');
+
+      toast.success('Corrected measurement created! Showing corrected geometry now.');
     } catch (err: any) {
       console.error('Failed to apply training override:', err);
       toast.error(err.message || 'Failed to apply training override');
@@ -598,8 +604,46 @@ export function TrainingComparisonView({
         </Alert>
       )}
 
-      {/* Measurement Source Indicator */}
-      {session?.original_ai_measurement_id && (
+      {/* View Mode Toggle - Switch between Original AI and Corrected AI */}
+      {correctedAiMeasurementId && (
+        <Card className="border-blue-200 bg-blue-50/50">
+          <CardContent className="py-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm">
+                <Zap className="h-4 w-4 text-blue-600" />
+                <span className="text-blue-700 font-medium">
+                  {viewMode === 'corrected' 
+                    ? 'Showing CORRECTED Measurement (your traces applied)'
+                    : 'Showing ORIGINAL AI (independent skeleton detection)'
+                  }
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant={viewMode === 'original' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setViewMode('original')}
+                >
+                  <Brain className="h-3 w-3 mr-1" />
+                  Original AI
+                </Button>
+                <Button
+                  variant={viewMode === 'corrected' ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => setViewMode('corrected')}
+                  className={viewMode === 'corrected' ? 'bg-green-600 hover:bg-green-700' : 'border-green-500 text-green-600 hover:bg-green-50'}
+                >
+                  <CheckCircle className="h-3 w-3 mr-1" />
+                  Corrected
+                </Button>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Show original AI indicator when no corrected version exists */}
+      {session?.original_ai_measurement_id && !correctedAiMeasurementId && (
         <Card className="border-blue-200 bg-blue-50/50">
           <CardContent className="py-3">
             <div className="flex items-center gap-2 text-sm">
@@ -607,11 +651,6 @@ export function TrainingComparisonView({
               <span className="text-blue-700 font-medium">
                 Showing ORIGINAL AI Measurement (independent detection, not trained)
               </span>
-              {correctedAiMeasurementId && (
-                <Badge variant="outline" className="ml-auto border-green-500 text-green-600">
-                  Corrected version available
-                </Badge>
-              )}
             </div>
           </CardContent>
         </Card>
@@ -678,6 +717,7 @@ export function TrainingComparisonView({
           manualTraces={manualTraces}
           aiLinearFeatures={Array.isArray(aiLinearFeatures) ? aiLinearFeatures : []}
           aiMeasurementCenter={(aiMeasurement as any)?.gps_coordinates}
+          viewMode={viewMode}
         />
       )}
 
