@@ -413,11 +413,34 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
         body: { document_ids: docIds, mode }
       });
 
+      // Handle edge function HTTP errors that contain useful response data
       if (error) {
+        // Try to extract error body if available (for FunctionsHttpError)
+        let errorData: any = null;
+        try {
+          if ('context' in error && error.context?.body) {
+            errorData = JSON.parse(error.context.body);
+          }
+        } catch {
+          // Ignore JSON parse errors
+        }
+
+        // If we have blocked_ids from error response, handle the FK conflict
+        if (errorData?.blocked_ids?.length > 0) {
+          const blockedCount = errorData.blocked_ids.length;
+          const choice = window.confirm(
+            `${blockedCount} document(s) are linked to approved measurements.\n\n` +
+            `Click OK to delete the linked approvals too, or Cancel to detach them (keep approvals, remove report link).`
+          );
+          
+          const newMode = choice ? 'cascade_approvals' : 'detach_approvals';
+          return handleDeleteDocuments(docIds, newMode);
+        }
+
         console.error('Delete error:', error);
         toast({
           title: 'Delete Failed',
-          description: error.message || 'Failed to delete documents',
+          description: errorData?.errors?.[0] || error.message || 'Failed to delete documents',
           variant: 'destructive',
         });
         return { success: false };
@@ -462,10 +485,32 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
 
       return { success: data.success, deleted: deletedCount };
     } catch (error: any) {
+      // For caught exceptions, try to extract response body from FunctionsHttpError
+      let errorData: any = null;
+      try {
+        if (error?.context?.body) {
+          errorData = JSON.parse(error.context.body);
+        }
+      } catch {
+        // Ignore JSON parse errors
+      }
+
+      // If we have blocked_ids from error response, handle the FK conflict
+      if (errorData?.blocked_ids?.length > 0) {
+        const blockedCount = errorData.blocked_ids.length;
+        const choice = window.confirm(
+          `${blockedCount} document(s) are linked to approved measurements.\n\n` +
+          `Click OK to delete the linked approvals too, or Cancel to detach them (keep approvals, remove report link).`
+        );
+        
+        const newMode = choice ? 'cascade_approvals' : 'detach_approvals';
+        return handleDeleteDocuments(docIds, newMode);
+      }
+
       console.error('Delete error:', error);
       toast({
         title: 'Delete Failed',
-        description: error.message || 'Failed to delete documents',
+        description: errorData?.errors?.[0] || error.message || 'Failed to delete documents',
         variant: 'destructive',
       });
       return { success: false };
