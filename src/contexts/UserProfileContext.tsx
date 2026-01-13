@@ -15,6 +15,7 @@ interface UserProfile {
   phone?: string;
   title?: string;
   is_developer?: boolean;
+  password_set_at?: string | null;
   profileLoaded: boolean;
 }
 
@@ -177,6 +178,7 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
         phone: result.phone,
         title: result.title,
         is_developer: result.is_developer,
+        password_set_at: result.password_set_at,
         profileLoaded: true,
       });
       
@@ -238,6 +240,7 @@ export const UserProfileProvider = ({ children }: { children: React.ReactNode })
       phone: dbProfile.phone,
       title: dbProfile.title,
       is_developer: dbProfile.is_developer,
+      password_set_at: dbProfile.password_set_at,
       profileLoaded: true,
     });
     

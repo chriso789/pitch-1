@@ -156,5 +156,14 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     );
   }
 
+  // CRITICAL: Check if user needs to complete password setup
+  // Skip this check if password setup is actively in progress (user on setup-account page)
+  const passwordSetupInProgress = localStorage.getItem('pitch_password_setup_in_progress') === 'true';
+  
+  if (profile && !profile.password_set_at && !passwordSetupInProgress) {
+    console.log('[ProtectedRoute] User has not set password, redirecting to request-setup-link');
+    return <Navigate to="/request-setup-link" state={{ needsPasswordSetup: true }} replace />;
+  }
+
   return <>{children}</>;
 };
