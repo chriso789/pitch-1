@@ -367,17 +367,22 @@ export function TrainingComparisonView({
   const overallVariancePct = totalManual > 0 ? Math.abs(((totalAI - totalManual) / totalManual) * 100) : 0;
   const overallAccuracy = Math.max(0, 100 - overallVariancePct);
 
-  const getVarianceColor = (pct: number) => {
+  // 0ft tolerance: Only 0% variance is green, everything else needs work
+  const getVarianceColor = (pct: number, aiValue: number = 0, manualValue: number = 0) => {
+    // If AI has 0 but manual has value, it's MISSING - always red
+    if (aiValue === 0 && manualValue > 0) return 'text-red-500';
     const absPct = Math.abs(pct);
-    if (absPct <= 5) return 'text-green-500';
-    if (absPct <= 15) return 'text-yellow-500';
-    return 'text-red-500';
+    if (absPct === 0) return 'text-green-500'; // Only exact match is green
+    if (absPct <= 5) return 'text-yellow-500'; // Small variance is yellow
+    return 'text-red-500'; // Anything else is red
   };
 
-  const getVarianceIcon = (pct: number) => {
+  const getVarianceIcon = (pct: number, aiValue: number = 0, manualValue: number = 0) => {
+    // If AI has 0 but manual has value, it's MISSING
+    if (aiValue === 0 && manualValue > 0) return <XCircle className="h-4 w-4 text-red-500" />;
     const absPct = Math.abs(pct);
-    if (absPct <= 5) return <CheckCircle className="h-4 w-4 text-green-500" />;
-    if (absPct <= 15) return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
+    if (absPct === 0) return <CheckCircle className="h-4 w-4 text-green-500" />;
+    if (absPct <= 5) return <AlertTriangle className="h-4 w-4 text-yellow-500" />;
     return <XCircle className="h-4 w-4 text-red-500" />;
   };
 
@@ -630,43 +635,62 @@ export function TrainingComparisonView({
             </div>
 
             {/* Rows */}
-            {activeRows.map((row) => (
-              <div key={row.label} className="grid grid-cols-5 gap-4 items-center py-2 border-b border-dashed last:border-0">
-                <div className="font-medium">{row.label}</div>
-                <div className="text-right">{Math.round(row.manual)}</div>
-                <div className="text-right">{Math.round(row.ai)}</div>
-                <div className={`text-right font-medium ${getVarianceColor(row.variancePct)}`}>
-                  {row.variancePct > 0 ? '+' : ''}{row.variancePct.toFixed(1)}%
-                  <span className="text-xs text-muted-foreground ml-1">
-                    ({row.variance > 0 ? '+' : ''}{Math.round(row.variance)} ft)
-                  </span>
+            {activeRows.map((row) => {
+              const isMissing = row.ai === 0 && row.manual > 0;
+              
+              return (
+                <div key={row.label} className={`grid grid-cols-5 gap-4 items-center py-2 border-b border-dashed last:border-0 ${isMissing ? 'bg-red-50' : ''}`}>
+                  <div className="font-medium">{row.label}</div>
+                  <div className="text-right">{Math.round(row.manual)}</div>
+                  <div className="text-right">
+                    {isMissing ? (
+                      <span className="text-red-600 font-medium">0 (MISSING)</span>
+                    ) : (
+                      Math.round(row.ai)
+                    )}
+                  </div>
+                  <div className={`text-right font-medium ${getVarianceColor(row.variancePct, row.ai, row.manual)}`}>
+                    {isMissing ? (
+                      <span className="text-red-600">AI missed this feature</span>
+                    ) : (
+                      <>
+                        {row.variancePct > 0 ? '+' : ''}{row.variancePct.toFixed(1)}%
+                        <span className="text-xs text-muted-foreground ml-1">
+                          ({row.variance > 0 ? '+' : ''}{Math.round(row.variance)} ft)
+                        </span>
+                      </>
+                    )}
+                  </div>
+                  <div className="flex justify-end">
+                    {getVarianceIcon(row.variancePct, row.ai, row.manual)}
+                  </div>
                 </div>
-                <div className="flex justify-end">
-                  {getVarianceIcon(row.variancePct)}
-                </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </CardContent>
       </Card>
 
-      {/* Legend */}
+      {/* Legend - Updated for 0ft tolerance */}
       <Card>
         <CardContent className="py-4">
           <div className="flex flex-wrap items-center gap-6 text-sm">
             <div className="flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-green-500" />
-              <span>Within 5% (Excellent)</span>
+              <span>Exact Match (0%)</span>
             </div>
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-yellow-500" />
-              <span>5-15% (Acceptable)</span>
+              <span>Close (1-5%)</span>
             </div>
             <div className="flex items-center gap-2">
               <XCircle className="h-4 w-4 text-red-500" />
-              <span>15%+ (Needs Review)</span>
+              <span>Needs Correction (5%+) or MISSING</span>
             </div>
           </div>
+          <p className="text-xs text-muted-foreground mt-2">
+            Using 0ft tolerance: Your traces are ground truth. AI must match exactly.
+          </p>
         </CardContent>
       </Card>
     </div>

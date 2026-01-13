@@ -14267,6 +14267,7 @@ export type Database = {
           deviation_ft: number | null
           deviation_pct: number | null
           id: string
+          is_feature_injection: boolean | null
           lat: number | null
           lng: number | null
           measurement_id: string | null
@@ -14287,6 +14288,7 @@ export type Database = {
           deviation_ft?: number | null
           deviation_pct?: number | null
           id?: string
+          is_feature_injection?: boolean | null
           lat?: number | null
           lng?: number | null
           measurement_id?: string | null
@@ -14307,6 +14309,7 @@ export type Database = {
           deviation_ft?: number | null
           deviation_pct?: number | null
           id?: string
+          is_feature_injection?: boolean | null
           lat?: number | null
           lng?: number | null
           measurement_id?: string | null
