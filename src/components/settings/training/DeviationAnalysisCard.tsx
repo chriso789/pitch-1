@@ -145,7 +145,7 @@ export function DeviationAnalysisCard({
       const corrections = safeResult.deviations
         .filter(d => (d.deviationFt || d.avgDeviationFt || 0) > 0 || d.needsCorrection)
         .map(d => ({
-          original_line_wkt: d.aiWkt || '', // May be empty if backend doesn't provide
+          original_line_wkt: d.aiWkt || '', // Now properly populated from backend
           original_line_type: d.lineType || d.featureType || 'unknown',
           corrected_line_wkt: d.traceWkt || d.correctedWkt || '',
           deviation_ft: d.deviationFt || d.avgDeviationFt || 0,
@@ -155,10 +155,21 @@ export function DeviationAnalysisCard({
         .filter(c => c.corrected_line_wkt); // Only include if we have a corrected WKT
 
       if (corrections.length === 0) {
-        toast.info('No corrections to store');
+        toast.info('No corrections to store - missing corrected WKT data');
+        console.warn('Store corrections: No valid corrections found', {
+          totalDeviations: safeResult.deviations.length,
+          filteredCount: safeResult.deviations.filter(d => (d.deviationFt || d.avgDeviationFt || 0) > 0 || d.needsCorrection).length,
+          sampleDeviation: safeResult.deviations[0],
+        });
         setIsStoringCorrections(false);
         return;
       }
+
+      console.log('Storing corrections:', {
+        count: corrections.length,
+        sample: corrections[0],
+        hasOriginalWkt: corrections.filter(c => c.original_line_wkt).length,
+      });
 
       const { data, error } = await supabase.functions.invoke('measure', {
         body: {
@@ -171,7 +182,29 @@ export function DeviationAnalysisCard({
       if (error) throw error;
       if (!data?.ok) throw new Error(data?.error || 'Failed to store corrections');
 
-      toast.success(`Stored ${corrections.length} corrections for AI learning`);
+      // Display detailed results
+      const result = data.data;
+      const stored = result?.stored || 0;
+      const failed = result?.failed || 0;
+      const skipped = result?.skipped || 0;
+
+      if (stored > 0) {
+        toast.success(`Stored ${stored} corrections for AI learning${failed > 0 ? ` (${failed} failed)` : ''}${skipped > 0 ? ` (${skipped} skipped)` : ''}`);
+      } else if (failed > 0 || skipped > 0) {
+        toast.warning(`No corrections stored. Failed: ${failed}, Skipped: ${skipped}`);
+        console.warn('Store corrections result:', result);
+      } else {
+        toast.info('No corrections were stored');
+      }
+
+      // Log detailed failure/skip reasons if any
+      if (result?.failureReasons?.length > 0) {
+        console.warn('Correction failures:', result.failureReasons);
+      }
+      if (result?.skippedReasons?.length > 0) {
+        console.info('Corrections skipped:', result.skippedReasons);
+      }
+
       onCorrectionsApplied?.(corrections);
     } catch (err: any) {
       console.error('Store corrections error:', err);

@@ -2327,25 +2327,44 @@ serve(async (req) => {
             }
           }
 
+          // Create a lookup for original WKT from autoCorrections
+          const originalWktLookup = new Map<string, string>();
+          for (const corr of result.autoCorrections || []) {
+            originalWktLookup.set(corr.originalId, corr.originalWkt);
+          }
+          
+          // Also create lookup from aiFeatures input
+          const aiWktLookup = new Map<string, string>();
+          for (const ai of aiFeatures) {
+            if (ai.id && ai.wkt) {
+              aiWktLookup.set(ai.id, ai.wkt);
+            }
+          }
+
           // Map deviations to include both old and new field names for compatibility
-          const mappedDeviations = (result.deviations || []).map(dev => ({
-            // Old format fields (for backward compat)
-            aiLineId: dev.featureId,
-            traceLineId: dev.featureId,
-            lineType: dev.featureType,
-            aiWkt: '', // Original evaluator doesn't track this
-            traceWkt: dev.correctedWkt || '',
-            deviationFt: dev.avgDeviationFt,
-            deviationPct: dev.alignmentScore != null ? (1 - dev.alignmentScore) * 100 : 0,
-            // New format fields
-            featureId: dev.featureId,
-            featureType: dev.featureType,
-            avgDeviationFt: dev.avgDeviationFt,
-            maxDeviationFt: dev.maxDeviationFt,
-            alignmentScore: dev.alignmentScore,
-            needsCorrection: dev.needsCorrection,
-            correctedWkt: dev.correctedWkt,
-          }));
+          const mappedDeviations = (result.deviations || []).map(dev => {
+            // Try to find original AI WKT: first from autoCorrections, then from original aiFeatures
+            const aiWkt = originalWktLookup.get(dev.featureId) || aiWktLookup.get(dev.featureId) || '';
+            
+            return {
+              // Old format fields (for backward compat)
+              aiLineId: dev.featureId,
+              traceLineId: dev.featureId,
+              lineType: dev.featureType,
+              aiWkt, // Now properly populated from original AI features
+              traceWkt: dev.correctedWkt || '',
+              deviationFt: dev.avgDeviationFt,
+              deviationPct: dev.alignmentScore != null ? (1 - dev.alignmentScore) * 100 : 0,
+              // New format fields
+              featureId: dev.featureId,
+              featureType: dev.featureType,
+              avgDeviationFt: dev.avgDeviationFt,
+              maxDeviationFt: dev.maxDeviationFt,
+              alignmentScore: dev.alignmentScore,
+              needsCorrection: dev.needsCorrection,
+              correctedWkt: dev.correctedWkt,
+            };
+          });
           
           return json({
             ok: true,
@@ -2387,20 +2406,35 @@ serve(async (req) => {
 
         console.log('Storing', corrections.length, 'corrections for session', sessionId);
 
-        const storedCount = { success: 0, failed: 0 };
+        const storedCount = { success: 0, failed: 0, skipped: 0 };
+        const failureReasons: string[] = [];
+        const skippedReasons: string[] = [];
 
         for (const correction of corrections) {
+          // Validate correction data before attempting insert
+          if (!correction.corrected_line_wkt || correction.corrected_line_wkt.trim() === '') {
+            storedCount.skipped++;
+            skippedReasons.push(`Skipped: empty corrected_line_wkt for ${correction.original_line_type}`);
+            console.warn('Skipping correction with empty corrected_line_wkt:', correction.original_line_type);
+            continue;
+          }
+          
+          // Log warning if original_line_wkt is empty (but still proceed - it's useful partial data)
+          if (!correction.original_line_wkt || correction.original_line_wkt.trim() === '') {
+            console.warn('Correction has empty original_line_wkt (AI line not found):', correction.original_line_type);
+          }
+
           try {
             const result = await storeCorrection(supabase, {
               tenantId: sessionData.tenant_id,
-              originalLineWkt: correction.original_line_wkt,
+              originalLineWkt: correction.original_line_wkt || '',
               originalLineType: correction.original_line_type,
               correctedLineWkt: correction.corrected_line_wkt,
               deviationFt: correction.deviation_ft,
               deviationPct: correction.deviation_pct,
               source: correction.correction_source || 'user_trace',
-              buildingShape: correction.building_shape,
-              roofType: correction.roof_type,
+              buildingShape: correction.building_shape || 'complex',
+              roofType: correction.roof_type || 'complex',
               propertyAddress: sessionData.property_address,
               lat: sessionData.lat,
               lng: sessionData.lng,
@@ -2409,24 +2443,32 @@ serve(async (req) => {
 
             if (result.success) {
               storedCount.success++;
+              console.log(`✓ Stored correction: ${correction.original_line_type}, deviation: ${correction.deviation_ft?.toFixed(1)}ft`);
             } else {
               storedCount.failed++;
+              const reason = `Failed ${correction.original_line_type}: ${result.error}`;
+              failureReasons.push(reason);
               console.warn('Failed to store correction:', result.error);
             }
           } catch (err) {
             storedCount.failed++;
+            const reason = `Exception ${correction.original_line_type}: ${err instanceof Error ? err.message : String(err)}`;
+            failureReasons.push(reason);
             console.error('Correction store error:', err);
           }
         }
 
-        console.log('Corrections stored:', storedCount);
+        console.log('Corrections stored:', storedCount, 'failures:', failureReasons.length, 'skipped:', skippedReasons.length);
 
         return json({
           ok: true,
           data: {
             stored: storedCount.success,
             failed: storedCount.failed,
+            skipped: storedCount.skipped,
             sessionId,
+            failureReasons: failureReasons.slice(0, 5), // Return first 5 failure reasons
+            skippedReasons: skippedReasons.slice(0, 5), // Return first 5 skip reasons
           }
         }, corsHeaders);
       }

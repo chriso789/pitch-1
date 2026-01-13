@@ -8,14 +8,14 @@ export interface CorrectionRecord {
   measurementId?: string;
   tenantId: string;
   originalLineWkt: string;
-  originalLineType: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake';
+  originalLineType: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | string; // Allow string for unknown types
   correctedLineWkt: string;
   deviationFt: number;
   deviationPct: number;
-  correctionSource: 'user_trace' | 'manual_edit' | 'auto_correction' | 'qa_review';
-  buildingShape: 'rectangle' | 'L-shape' | 'T-shape' | 'U-shape' | 'complex';
-  roofType: 'gable' | 'hip' | 'complex' | 'flat';
-  vertexCount: number;
+  correctionSource: 'user_trace' | 'manual_edit' | 'auto_correction' | 'qa_review' | string;
+  buildingShape?: 'rectangle' | 'L-shape' | 'T-shape' | 'U-shape' | 'complex' | string; // Optional with default
+  roofType?: 'gable' | 'hip' | 'complex' | 'flat' | string; // Optional with default
+  vertexCount?: number; // Optional - will default if not provided
   propertyAddress?: string;
   lat?: number;
   lng?: number;
@@ -51,35 +51,71 @@ export async function storeCorrection(
   correction: CorrectionRecord
 ): Promise<{ success: boolean; id?: string; error?: string }> {
   try {
+    // Calculate vertex count from WKT if not provided
+    let vertexCount = correction.vertexCount;
+    if (!vertexCount && correction.correctedLineWkt) {
+      const match = correction.correctedLineWkt.match(/LINESTRING\(([^)]+)\)/i);
+      if (match) {
+        vertexCount = match[1].split(',').length;
+      }
+    }
+    
+    // Normalize line type to valid enum values
+    const validLineTypes = ['ridge', 'hip', 'valley', 'eave', 'rake'];
+    const normalizedLineType = validLineTypes.includes(correction.originalLineType) 
+      ? correction.originalLineType 
+      : 'ridge'; // Default to ridge for unknown types
+    
+    // Normalize building shape
+    const validShapes = ['rectangle', 'L-shape', 'T-shape', 'U-shape', 'complex'];
+    const normalizedShape = correction.buildingShape && validShapes.includes(correction.buildingShape)
+      ? correction.buildingShape
+      : 'complex';
+    
+    // Normalize roof type
+    const validRoofTypes = ['gable', 'hip', 'complex', 'flat'];
+    const normalizedRoofType = correction.roofType && validRoofTypes.includes(correction.roofType)
+      ? correction.roofType
+      : 'complex';
+
+    const insertData = {
+      measurement_id: correction.measurementId || null,
+      tenant_id: correction.tenantId,
+      original_line_wkt: correction.originalLineWkt || '',
+      original_line_type: normalizedLineType,
+      corrected_line_wkt: correction.correctedLineWkt,
+      deviation_ft: correction.deviationFt || 0,
+      deviation_pct: correction.deviationPct || 0,
+      correction_source: correction.correctionSource || 'user_trace',
+      building_shape: normalizedShape,
+      roof_type: normalizedRoofType,
+      vertex_count: vertexCount || 2,
+      property_address: correction.propertyAddress || null,
+      lat: correction.lat || null,
+      lng: correction.lng || null,
+      correction_notes: correction.correctionNotes || null,
+      created_by: correction.createdBy || null
+    };
+
+    console.log('Inserting correction:', {
+      type: insertData.original_line_type,
+      hasOriginalWkt: !!insertData.original_line_wkt,
+      hasCorrectedWkt: !!insertData.corrected_line_wkt,
+      deviationFt: insertData.deviation_ft,
+    });
+
     const { data, error } = await supabaseClient
       .from('measurement_corrections')
-      .insert({
-        measurement_id: correction.measurementId,
-        tenant_id: correction.tenantId,
-        original_line_wkt: correction.originalLineWkt,
-        original_line_type: correction.originalLineType,
-        corrected_line_wkt: correction.correctedLineWkt,
-        deviation_ft: correction.deviationFt,
-        deviation_pct: correction.deviationPct,
-        correction_source: correction.correctionSource,
-        building_shape: correction.buildingShape,
-        roof_type: correction.roofType,
-        vertex_count: correction.vertexCount,
-        property_address: correction.propertyAddress,
-        lat: correction.lat,
-        lng: correction.lng,
-        correction_notes: correction.correctionNotes,
-        created_by: correction.createdBy
-      })
+      .insert(insertData)
       .select('id')
       .single();
 
     if (error) {
-      console.error('Failed to store correction:', error);
-      return { success: false, error: error.message };
+      console.error('Failed to store correction:', error.message, error.details, error.hint);
+      return { success: false, error: `${error.message}${error.hint ? ` (${error.hint})` : ''}` };
     }
 
-    console.log(`Stored correction ${data.id} for ${correction.originalLineType}`);
+    console.log(`✓ Stored correction ${data.id} for ${correction.originalLineType}`);
     return { success: true, id: data.id };
   } catch (err) {
     console.error('Exception storing correction:', err);

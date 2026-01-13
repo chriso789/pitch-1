@@ -545,6 +545,11 @@ export const Settings = () => {
           {renderTabContent()}
         </div>
       </div>
+      
+      {/* Build ID Footer - helps verify latest code is loaded */}
+      <div className="mt-4 text-center text-xs text-muted-foreground/50 select-all">
+        Build: 2026-01-13-v3 | {new Date().toISOString().slice(0, 16)}
+      </div>
     </div>
   );
 };
