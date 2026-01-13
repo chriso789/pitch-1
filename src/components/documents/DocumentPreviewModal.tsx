@@ -71,21 +71,35 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
       console.log(`[Preview] Loading from bucket: ${bucket}, path: ${currentDoc.file_path}`);
 
       try {
-        const { data, error } = await supabase.storage
-          .from(bucket)
-          .download(currentDoc.file_path);
-
-        if (error) throw error;
-
         const mimeType = currentDoc.mime_type || '';
+        const filename = currentDoc.filename.toLowerCase();
+        const isPDF = mimeType === 'application/pdf' || filename.endsWith('.pdf');
         
-        if (mimeType.startsWith('text/') || 
+        // For PDFs, use signed URL for better browser compatibility
+        if (isPDF) {
+          const { data: signedData, error: signedError } = await supabase.storage
+            .from(bucket)
+            .createSignedUrl(currentDoc.file_path, 3600); // 1 hour expiry
+          
+          if (signedError) throw signedError;
+          setPreviewUrl(signedData.signedUrl);
+        } else if (mimeType.startsWith('text/') || 
             mimeType === 'application/json' ||
             currentDoc.filename.match(/\.(txt|csv|json|md|log)$/i)) {
+          // Text files - download and display content
+          const { data, error } = await supabase.storage
+            .from(bucket)
+            .download(currentDoc.file_path);
+          if (error) throw error;
           const text = await data.text();
           setTextContent(text);
           setPreviewUrl(null);
         } else {
+          // Images and other files - use blob URL
+          const { data, error } = await supabase.storage
+            .from(bucket)
+            .download(currentDoc.file_path);
+          if (error) throw error;
           const url = URL.createObjectURL(data);
           setPreviewUrl(url);
         }
