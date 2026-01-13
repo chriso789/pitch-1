@@ -21,6 +21,7 @@ export interface CorrectionRecord {
   lng?: number;
   correctionNotes?: string;
   createdBy?: string;
+  isFeatureInjection?: boolean; // True when AI produced 0 features but user traced some - these get INJECTED not multiplied
 }
 
 export interface PatternMatch {
@@ -77,6 +78,11 @@ export async function storeCorrection(
     const normalizedRoofType = correction.roofType && validRoofTypes.includes(correction.roofType)
       ? correction.roofType
       : 'complex';
+    
+    // Determine if this is a feature injection (AI had nothing, user traced something)
+    const isFeatureInjection = correction.isFeatureInjection || 
+      (!correction.originalLineWkt || correction.originalLineWkt.trim() === '') && 
+      (correction.correctedLineWkt && correction.correctedLineWkt.trim() !== '');
 
     const insertData = {
       measurement_id: correction.measurementId || null,
@@ -94,7 +100,8 @@ export async function storeCorrection(
       lat: correction.lat || null,
       lng: correction.lng || null,
       correction_notes: correction.correctionNotes || null,
-      created_by: correction.createdBy || null
+      created_by: correction.createdBy || null,
+      is_feature_injection: isFeatureInjection,
     };
 
     console.log('Inserting correction:', {
@@ -102,6 +109,7 @@ export async function storeCorrection(
       hasOriginalWkt: !!insertData.original_line_wkt,
       hasCorrectedWkt: !!insertData.corrected_line_wkt,
       deviationFt: insertData.deviation_ft,
+      isFeatureInjection: insertData.is_feature_injection,
     });
 
     const { data, error } = await supabaseClient

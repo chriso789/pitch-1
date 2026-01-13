@@ -214,16 +214,22 @@ export function DeviationAnalysisCard({
     }
   };
 
-  const getDeviationBadge = (pct: number) => {
-    const abs = Math.abs(pct);
-    if (abs < 5) return <Badge className="bg-green-500 text-white">Accurate</Badge>;
-    if (abs < 15) return <Badge variant="outline" className="border-yellow-500 text-yellow-600">Minor</Badge>;
-    return <Badge variant="destructive">Significant</Badge>;
+  // 0ft tolerance: ONLY show Accurate badge when deviation is exactly 0
+  const getDeviationBadge = (deviationFt: number, pct: number, isMissing: boolean = false) => {
+    // If AI produced nothing (missing feature), show MISSING badge
+    if (isMissing) return <Badge variant="destructive">MISSING</Badge>;
+    
+    // 0ft tolerance: must be exactly 0 to be "Accurate"
+    if (deviationFt === 0) return <Badge className="bg-green-500 text-white">Accurate</Badge>;
+    
+    // Any deviation > 0 needs correction
+    if (deviationFt <= 2) return <Badge variant="outline" className="border-yellow-500 text-yellow-600">Close ({deviationFt.toFixed(1)}ft)</Badge>;
+    return <Badge variant="destructive">Off ({Math.round(deviationFt)}ft)</Badge>;
   };
 
   const getScoreColor = (score: number) => {
-    if (score >= 90) return 'text-green-500';
-    if (score >= 70) return 'text-yellow-500';
+    if (score >= 95) return 'text-green-500'; // Only 95%+ is green (very strict)
+    if (score >= 80) return 'text-yellow-500';
     return 'text-red-500';
   };
 
@@ -271,20 +277,30 @@ export function DeviationAnalysisCard({
             {/* Deviation Details */}
             {safeResult.deviations.length > 0 && (
               <div className="space-y-2 max-h-60 overflow-y-auto">
-                {safeResult.deviations.map((dev, idx) => (
-                  <div
-                    key={idx}
-                    className="flex items-center justify-between p-2 bg-muted/50 rounded text-sm"
-                  >
-                    <div className="flex items-center gap-2">
-                      <Badge variant="outline" className="capitalize">{dev.lineType || dev.featureType || 'unknown'}</Badge>
-                      <span className="text-muted-foreground">
-                        {Math.round(dev.deviationFt || dev.avgDeviationFt || 0)}ft off
-                      </span>
+                {safeResult.deviations.map((dev, idx) => {
+                  const deviationFt = dev.deviationFt || dev.avgDeviationFt || 0;
+                  // Check if this is a MISSING feature (AI had nothing, high deviation, or featureId starts with 'missing-')
+                  const isMissing: boolean = Boolean(
+                    (!dev.aiWkt && dev.traceWkt) || 
+                    (dev.featureId?.startsWith('missing-')) ||
+                    (deviationFt > 100 && dev.alignmentScore === 0)
+                  );
+                  
+                  return (
+                    <div
+                      key={idx}
+                      className={`flex items-center justify-between p-2 rounded text-sm ${isMissing ? 'bg-red-50 border border-red-200' : 'bg-muted/50'}`}
+                    >
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="capitalize">{dev.lineType || dev.featureType || 'unknown'}</Badge>
+                        <span className={isMissing ? 'text-red-600 font-medium' : 'text-muted-foreground'}>
+                          {isMissing ? 'AI detected 0ft' : `${Math.round(deviationFt)}ft off`}
+                        </span>
+                      </div>
+                      {getDeviationBadge(deviationFt, dev.deviationPct || 0, isMissing)}
                     </div>
-                    {getDeviationBadge(dev.deviationPct || (dev.alignmentScore ? (1 - dev.alignmentScore) * 100 : 0))}
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
 

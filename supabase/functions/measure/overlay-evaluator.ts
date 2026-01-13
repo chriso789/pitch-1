@@ -44,8 +44,9 @@ export interface EvaluationResult {
 }
 
 // Constants for evaluation thresholds
-const DEVIATION_THRESHOLD_FT = 2.0; // Max acceptable deviation
-const ALIGNMENT_THRESHOLD = 0.85; // Minimum acceptable alignment score
+// 0ft tolerance means ANY deviation requires correction - user's training is ground truth
+const DEVIATION_THRESHOLD_FT = 0.0; // ZERO tolerance - user traces are authoritative
+const ALIGNMENT_THRESHOLD = 1.0; // Must be perfect alignment
 const POINT_MATCH_RADIUS_FT = 5.0; // Radius for matching endpoints
 
 /**
@@ -133,32 +134,69 @@ export function evaluateOverlay(
   }
   
   // Identify missing features (user traced but AI didn't detect)
+  // CRITICAL: When AI has 0 features but user traced some, those are MISSING and must be auto-added
   const missingFeatures: EvaluationResult['missingFeatures'] = [];
   const extraFeatures: EvaluationResult['extraFeatures'] = [];
   
   for (const type of featureTypes) {
-    const aiCount = (aiByType.get(type) || []).length;
-    const userCount = (userByType.get(type) || []).length;
+    const aiOfType = aiByType.get(type) || [];
+    const userOfType = userByType.get(type) || [];
+    const aiCount = aiOfType.length;
+    const userCount = userOfType.length;
     
     if (userCount > aiCount) {
       missingFeatures.push({ type, count: userCount - aiCount });
-      recommendations.push(`Missing ${userCount - aiCount} ${type}(s) that user traced. AI may have missed these features.`);
+      
+      // AUTO-ADD MISSING LINES: When AI has 0 but user traced, inject user's geometry
+      if (aiCount === 0 && userCount > 0) {
+        recommendations.push(`MISSING ${userCount} ${type}(s) - AI detected NONE. Auto-adding from user traces.`);
+        
+        // Add each user trace as an auto-correction (feature injection)
+        for (const userTrace of userOfType) {
+          if (userTrace?.points && userTrace.points.length >= 2) {
+            const userWkt = pointsToWkt(userTrace.points);
+            autoCorrections.push({
+              originalId: `injected-${type}-${autoCorrections.length}`,
+              originalWkt: '', // Empty - AI had nothing
+              correctedWkt: userWkt,
+              deviationFt: userTrace.length_ft || 0, // Full length is the "deviation" since AI had 0
+            });
+            
+            // Also add to deviations for display
+            deviations.push({
+              featureId: `missing-${type}-${deviations.length}`,
+              featureType: type,
+              avgDeviationFt: userTrace.length_ft || 999, // High deviation indicates missing
+              maxDeviationFt: userTrace.length_ft || 999,
+              alignmentScore: 0, // 0 alignment since AI had nothing
+              needsCorrection: true,
+              correctedWkt: userWkt,
+            });
+          }
+        }
+      } else {
+        recommendations.push(`Missing ${userCount - aiCount} ${type}(s) that user traced. AI may have missed these features.`);
+      }
     } else if (aiCount > userCount && userCount > 0) {
       extraFeatures.push({ type, count: aiCount - userCount });
       recommendations.push(`AI detected ${aiCount - userCount} extra ${type}(s) not present in user trace. These may be false positives.`);
     }
   }
   
-  // Calculate overall score
+  // Calculate overall score - ACCURATE only when no corrections needed AND no missing features
   const totalFeatures = deviations.length;
   const correctFeatures = deviations.filter(d => !d.needsCorrection).length;
   const alignmentSum = deviations.reduce((sum, d) => sum + d.alignmentScore, 0);
+  const missingCount = missingFeatures.reduce((sum, m) => sum + m.count, 0);
   
-  const overallScore = totalFeatures > 0 
-    ? Math.round((correctFeatures / totalFeatures * 50) + (alignmentSum / totalFeatures * 50))
-    : 50; // Default score if no features to evaluate
+  // Penalize heavily for missing features - accuracy should be 0% when AI missed everything
+  const missingPenalty = missingCount > 0 ? (missingCount * 10) : 0;
+  const baseScore = totalFeatures > 0 
+    ? (correctFeatures / totalFeatures * 50) + (alignmentSum / totalFeatures * 50)
+    : 50;
+  const overallScore = Math.max(0, Math.round(baseScore - missingPenalty));
   
-  console.log(`Overlay evaluation: ${overallScore}% score, ${deviations.filter(d => d.needsCorrection).length} corrections needed`);
+  console.log(`Overlay evaluation: ${overallScore}% score, ${deviations.filter(d => d.needsCorrection).length} corrections needed, ${missingCount} missing features`);
   
   return {
     overallScore,
