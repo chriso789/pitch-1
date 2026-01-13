@@ -160,7 +160,14 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   // Skip this check if password setup is actively in progress (user on setup-account page)
   const passwordSetupInProgress = localStorage.getItem('pitch_password_setup_in_progress') === 'true';
   
-  if (profile && !profile.password_set_at && !passwordSetupInProgress) {
+  // Only redirect if profile explicitly has password_set_at as null/undefined AND it's from the fresh profile
+  // If we have a profile with password_set_at set, clear any stale setup flags
+  if (profile?.password_set_at) {
+    // Password is already set - clear any stale flags
+    if (passwordSetupInProgress) {
+      localStorage.removeItem('pitch_password_setup_in_progress');
+    }
+  } else if (profile && !profile.password_set_at && !passwordSetupInProgress) {
     console.log('[ProtectedRoute] User has not set password, redirecting to request-setup-link');
     return <Navigate to="/request-setup-link" state={{ needsPasswordSetup: true }} replace />;
   }
