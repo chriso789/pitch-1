@@ -29,6 +29,9 @@ interface LineDeviation {
   alignmentScore?: number;
   needsCorrection?: boolean;
   correctedWkt?: string;
+  // Missing feature detection fields
+  isMissingFeature?: boolean;
+  tracedLengthFt?: number;
 }
 
 interface DeviationAnalysisResult {
@@ -329,22 +332,46 @@ export function DeviationAnalysisCard({
               <div className="space-y-2 max-h-60 overflow-y-auto">
                 {safeResult.deviations.map((dev, idx) => {
                   const deviationFt = dev.deviationFt || dev.avgDeviationFt || 0;
-                  // Check if this is a MISSING feature (AI had nothing, high deviation, or featureId starts with 'missing-')
+                  const tracedLength = dev.tracedLengthFt || dev.maxDeviationFt || deviationFt;
+                  
+                  // FIXED: Check if this is a MISSING feature using explicit backend flag
                   const isMissing: boolean = Boolean(
-                    (!dev.aiWkt && dev.traceWkt) || 
-                    (dev.featureId?.startsWith('missing-')) ||
-                    (deviationFt > 100 && dev.alignmentScore === 0)
+                    dev.isMissingFeature ||  // Explicit flag from backend
+                    dev.featureId?.startsWith('missing-') ||
+                    dev.featureId?.startsWith('injected-') ||
+                    (!dev.aiWkt && dev.traceWkt) ||  // AI had nothing but user traced
+                    (!dev.aiWkt && dev.correctedWkt) ||  // Same check with correctedWkt
+                    (dev.alignmentScore === 0 && deviationFt > 50)  // Zero alignment + high deviation
                   );
+                  
+                  // Debug log to verify detection
+                  if (idx === 0) {
+                    console.log('[DeviationAnalysisCard] First deviation:', {
+                      featureId: dev.featureId,
+                      lineType: dev.lineType,
+                      isMissingFeature: dev.isMissingFeature,
+                      aiWkt: dev.aiWkt?.substring(0, 30),
+                      traceWkt: dev.traceWkt?.substring(0, 30),
+                      correctedWkt: dev.correctedWkt?.substring(0, 30),
+                      alignmentScore: dev.alignmentScore,
+                      deviationFt,
+                      computed_isMissing: isMissing,
+                    });
+                  }
                   
                   return (
                     <div
                       key={idx}
-                      className={`flex items-center justify-between p-2 rounded text-sm ${isMissing ? 'bg-red-50 border border-red-200' : 'bg-muted/50'}`}
+                      className={`flex items-center justify-between p-2 rounded text-sm ${isMissing ? 'bg-destructive/10 border border-destructive/30' : 'bg-muted/50'}`}
                     >
                       <div className="flex items-center gap-2">
-                        <Badge variant="outline" className="capitalize">{dev.lineType || dev.featureType || 'unknown'}</Badge>
-                        <span className={isMissing ? 'text-red-600 font-medium' : 'text-muted-foreground'}>
-                          {isMissing ? 'AI detected 0ft' : `${Math.round(deviationFt)}ft off`}
+                        <Badge variant={isMissing ? "destructive" : "outline"} className="capitalize">
+                          {dev.lineType || dev.featureType || 'unknown'}
+                        </Badge>
+                        <span className={isMissing ? 'text-destructive font-medium' : 'text-muted-foreground'}>
+                          {isMissing 
+                            ? `MISSING - AI: 0ft, You: ${Math.round(tracedLength)}ft` 
+                            : `${Math.round(deviationFt)}ft off`}
                         </span>
                       </div>
                       {getDeviationBadge(deviationFt, dev.deviationPct || 0, isMissing)}

@@ -2584,16 +2584,29 @@ serve(async (req) => {
 
           // Map deviations to include both old and new field names for compatibility
           const mappedDeviations = (result.deviations || []).map(dev => {
+            // Check if this is a missing feature (AI had 0 of this type)
+            const isMissingFeature = Boolean(
+              dev.isMissingFeature || 
+              dev.featureId?.startsWith('missing-') || 
+              dev.featureId?.startsWith('injected-')
+            );
+            
             // Try to find original AI WKT: first from autoCorrections, then from original aiFeatures
-            const aiWkt = originalWktLookup.get(dev.featureId) || aiWktLookup.get(dev.featureId) || '';
+            // For missing features, AI WKT should be empty
+            const aiWkt = isMissingFeature 
+              ? '' 
+              : (originalWktLookup.get(dev.featureId) || aiWktLookup.get(dev.featureId) || '');
+            
+            // For missing features, traceWkt is the user's traced geometry
+            const traceWkt = dev.correctedWkt || '';
             
             return {
               // Old format fields (for backward compat)
               aiLineId: dev.featureId,
               traceLineId: dev.featureId,
               lineType: dev.featureType,
-              aiWkt, // Now properly populated from original AI features
-              traceWkt: dev.correctedWkt || '',
+              aiWkt,
+              traceWkt,
               deviationFt: dev.avgDeviationFt,
               deviationPct: dev.alignmentScore != null ? (1 - dev.alignmentScore) * 100 : 0,
               // New format fields
@@ -2604,6 +2617,9 @@ serve(async (req) => {
               alignmentScore: dev.alignmentScore,
               needsCorrection: dev.needsCorrection,
               correctedWkt: dev.correctedWkt,
+              // CRITICAL: Explicit missing feature flag for frontend
+              isMissingFeature,
+              tracedLengthFt: dev.tracedLengthFt || dev.maxDeviationFt || 0,
             };
           });
           
