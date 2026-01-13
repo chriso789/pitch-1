@@ -120,15 +120,11 @@ export function evaluateOverlay(
           );
         }
       } else {
-        // No matching user trace - flag as potentially extra
-        deviations.push({
-          featureId: aiFeature.id,
-          featureType: type,
-          avgDeviationFt: 0,
-          maxDeviationFt: 0,
-          alignmentScore: 0.5, // Unknown alignment
-          needsCorrection: false
-        });
+        // No matching user trace - this AI line has no user validation
+        // Mark as "unvalidated" with low alignment score - NOT "Accurate"
+        // Don't add to deviations since there's nothing to compare against
+        // The AI line may be correct, but we can't validate it without user trace
+        console.log(`[evaluator] AI ${type} line ${aiFeature.id} has no matching user trace - skipping from deviation list`);
       }
     }
   }

@@ -142,23 +142,38 @@ export function DeviationAnalysisCard({
     setIsStoringCorrections(true);
     try {
       // Build corrections from deviations, handling both old and new field names
+      // Include ALL deviations that need correction - especially MISSING features
       const corrections = safeResult.deviations
-        .filter(d => (d.deviationFt || d.avgDeviationFt || 0) > 0 || d.needsCorrection)
-        .map(d => ({
-          original_line_wkt: d.aiWkt || '', // Now properly populated from backend
-          original_line_type: d.lineType || d.featureType || 'unknown',
-          corrected_line_wkt: d.traceWkt || d.correctedWkt || '',
-          deviation_ft: d.deviationFt || d.avgDeviationFt || 0,
-          deviation_pct: d.deviationPct || (d.alignmentScore != null ? (1 - d.alignmentScore) * 100 : 0),
-          correction_source: 'user_trace',
-        }))
+        .filter(d => {
+          const deviationFt = d.deviationFt || d.avgDeviationFt || 0;
+          const isMissing = (!d.aiWkt || d.aiWkt === '') && (d.traceWkt || d.correctedWkt);
+          const hasDeviation = deviationFt > 0;
+          const needsCorrection = d.needsCorrection === true;
+          
+          // Include if: has deviation, needs correction, OR is a missing feature
+          return hasDeviation || needsCorrection || isMissing;
+        })
+        .map(d => {
+          const deviationFt = d.deviationFt || d.avgDeviationFt || 0;
+          const correctedWkt = d.traceWkt || d.correctedWkt || '';
+          const isMissing = (!d.aiWkt || d.aiWkt === '') && correctedWkt;
+          
+          return {
+            original_line_wkt: d.aiWkt || '', // Empty for missing features → triggers is_feature_injection
+            original_line_type: d.lineType || d.featureType || 'unknown',
+            corrected_line_wkt: correctedWkt,
+            // For missing features, deviation_ft represents the total traced length (used for injection)
+            deviation_ft: isMissing ? (d.maxDeviationFt || deviationFt || 0) : deviationFt,
+            deviation_pct: d.deviationPct || (d.alignmentScore != null ? (1 - d.alignmentScore) * 100 : 0),
+            correction_source: isMissing ? 'feature_injection' : 'user_trace',
+          };
+        })
         .filter(c => c.corrected_line_wkt); // Only include if we have a corrected WKT
 
       if (corrections.length === 0) {
-        toast.info('No corrections to store - missing corrected WKT data');
+        toast.info('No corrections to store - all features matched or missing corrected WKT data');
         console.warn('Store corrections: No valid corrections found', {
           totalDeviations: safeResult.deviations.length,
-          filteredCount: safeResult.deviations.filter(d => (d.deviationFt || d.avgDeviationFt || 0) > 0 || d.needsCorrection).length,
           sampleDeviation: safeResult.deviations[0],
         });
         setIsStoringCorrections(false);
@@ -167,8 +182,9 @@ export function DeviationAnalysisCard({
 
       console.log('Storing corrections:', {
         count: corrections.length,
-        sample: corrections[0],
-        hasOriginalWkt: corrections.filter(c => c.original_line_wkt).length,
+        featureInjections: corrections.filter(c => !c.original_line_wkt).length,
+        regularCorrections: corrections.filter(c => c.original_line_wkt).length,
+        types: corrections.map(c => c.original_line_type),
       });
 
       const { data, error } = await supabase.functions.invoke('measure', {
