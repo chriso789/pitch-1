@@ -8,11 +8,11 @@ export interface CorrectionRecord {
   measurementId?: string;
   tenantId: string;
   originalLineWkt: string;
-  originalLineType: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | string; // Allow string for unknown types
+  originalLineType: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'perimeter' | string; // Allow string for unknown types
   correctedLineWkt: string;
   deviationFt: number;
   deviationPct: number;
-  correctionSource: 'user_trace' | 'manual_edit' | 'auto_correction' | 'qa_review' | string;
+  correctionSource: 'user_trace' | 'manual_edit' | 'auto_correction' | 'qa_review' | 'feature_injection' | string;
   buildingShape?: 'rectangle' | 'L-shape' | 'T-shape' | 'U-shape' | 'complex' | string; // Optional with default
   roofType?: 'gable' | 'hip' | 'complex' | 'flat' | string; // Optional with default
   vertexCount?: number; // Optional - will default if not provided
@@ -22,6 +22,8 @@ export interface CorrectionRecord {
   correctionNotes?: string;
   createdBy?: string;
   isFeatureInjection?: boolean; // True when AI produced 0 features but user traced some - these get INJECTED not multiplied
+  trainingSessionId?: string; // Links to the training session for scoped corrections
+  propertyId?: string; // Links to the property (pipeline_entry_id) for property-scoped learning
 }
 
 export interface PatternMatch {
@@ -61,11 +63,11 @@ export async function storeCorrection(
       }
     }
     
-    // Normalize line type to valid enum values
-    const validLineTypes = ['ridge', 'hip', 'valley', 'eave', 'rake'];
+    // Normalize line type to valid enum values (including perimeter)
+    const validLineTypes = ['ridge', 'hip', 'valley', 'eave', 'rake', 'perimeter'];
     const normalizedLineType = validLineTypes.includes(correction.originalLineType) 
       ? correction.originalLineType 
-      : 'ridge'; // Default to ridge for unknown types
+      : correction.originalLineType; // Preserve original type - don't default to ridge
     
     // Normalize building shape
     const validShapes = ['rectangle', 'L-shape', 'T-shape', 'U-shape', 'complex'];
@@ -103,6 +105,8 @@ export async function storeCorrection(
       correction_notes: correction.correctionNotes || null,
       created_by: correction.createdBy || null,
       is_feature_injection: isFeatureInjection,
+      training_session_id: correction.trainingSessionId || null,
+      property_id: correction.propertyId || null,
     };
 
     console.log('Inserting correction:', {

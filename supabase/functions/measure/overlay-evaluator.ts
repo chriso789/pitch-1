@@ -8,13 +8,13 @@ export interface LinearFeature {
   id: string;
   wkt: string;
   length_ft: number;
-  type: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake';
+  type: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'perimeter';
   source?: 'dsm' | 'solar_segment' | 'skeleton' | 'ai_vision' | 'manual';
   confidence?: number;
 }
 
 export interface UserTrace {
-  type: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake';
+  type: 'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'perimeter';
   points: XY[];
   length_ft: number;
 }
@@ -66,8 +66,8 @@ export function evaluateOverlay(
   const aiByType = groupByType(aiFeatures);
   const userByType = groupUserTracesByType(userTraces);
   
-  // Analyze each feature type
-  const featureTypes: Array<'ridge' | 'hip' | 'valley' | 'eave' | 'rake'> = ['ridge', 'hip', 'valley', 'eave', 'rake'];
+  // Analyze each feature type (including perimeter for full coverage)
+  const featureTypes: Array<'ridge' | 'hip' | 'valley' | 'eave' | 'rake' | 'perimeter'> = ['ridge', 'hip', 'valley', 'eave', 'rake', 'perimeter'];
   
   for (const type of featureTypes) {
     const aiOfType = aiByType.get(type) || [];

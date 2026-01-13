@@ -14274,8 +14274,10 @@ export type Database = {
           original_line_type: string
           original_line_wkt: string
           property_address: string | null
+          property_id: string | null
           roof_type: string | null
           tenant_id: string | null
+          training_session_id: string | null
           vertex_count: number | null
         }
         Insert: {
@@ -14295,8 +14297,10 @@ export type Database = {
           original_line_type: string
           original_line_wkt: string
           property_address?: string | null
+          property_id?: string | null
           roof_type?: string | null
           tenant_id?: string | null
+          training_session_id?: string | null
           vertex_count?: number | null
         }
         Update: {
@@ -14316,8 +14320,10 @@ export type Database = {
           original_line_type?: string
           original_line_wkt?: string
           property_address?: string | null
+          property_id?: string | null
           roof_type?: string | null
           tenant_id?: string | null
+          training_session_id?: string | null
           vertex_count?: number | null
         }
         Relationships: [
@@ -14340,6 +14346,13 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "measurement_corrections_training_session_id_fkey"
+            columns: ["training_session_id"]
+            isOneToOne: false
+            referencedRelation: "roof_training_sessions"
             referencedColumns: ["id"]
           },
         ]
