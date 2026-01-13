@@ -24,7 +24,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { TemplateEditor } from "./TemplateEditor";
 import { TemplateLibrary } from "./TemplateLibrary";
-import { SmartDocumentEditor } from "@/components/SmartDocumentEditor";
+
 import { ProfessionalTemplatesDialog } from "@/components/documents/ProfessionalTemplatesDialog";
 import { BulkDocumentUpload } from "./BulkDocumentUpload";
 import { DocumentPreviewModal } from "@/components/documents/DocumentPreviewModal";
@@ -72,10 +72,15 @@ interface CompanyDoc {
   created_at: string;
 }
 
+interface TaggedDocument extends CompanyDoc {
+  tag_count: number;
+}
+
 const SmartDocs = () => {
   const [templates, setTemplates] = useState<SmartDocTemplate[]>([]);
   const [folders, setFolders] = useState<SmartDocFolder[]>([]);
   const [companyDocs, setCompanyDocs] = useState<CompanyDoc[]>([]);
+  const [taggedDocs, setTaggedDocs] = useState<TaggedDocument[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
   const [showEditor, setShowEditor] = useState(false);
@@ -127,7 +132,7 @@ const SmartDocs = () => {
       const { data: { user } } = await supabase.auth.getUser();
       console.log('[SmartDocs] Loading data for user:', user?.id);
 
-      const [templatesResult, foldersResult, docsResult] = await Promise.all([
+      const [templatesResult, foldersResult, docsResult, taggedDocsResult] = await Promise.all([
         supabase
           .from('smartdoc_templates')
           .select(`
@@ -151,7 +156,12 @@ const SmartDocs = () => {
           .from('documents')
           .select('*')
           .eq('document_type', 'company_resource')
-          .order('created_at', { ascending: false })
+          .order('created_at', { ascending: false }),
+        
+        // Get documents that have smart tag placements
+        supabase
+          .from('document_tag_placements')
+          .select('document_id')
       ]);
 
       if (templatesResult.error) throw templatesResult.error;
@@ -169,9 +179,29 @@ const SmartDocs = () => {
         });
       }
 
+      // Count tags per document
+      const tagCountMap = new Map<string, number>();
+      if (taggedDocsResult.data) {
+        taggedDocsResult.data.forEach((placement: { document_id: string }) => {
+          const count = tagCountMap.get(placement.document_id) || 0;
+          tagCountMap.set(placement.document_id, count + 1);
+        });
+      }
+
+      // Filter documents that have tags and add count
+      const docsWithTags: TaggedDocument[] = (docsResult.data || [])
+        .filter(doc => tagCountMap.has(doc.id))
+        .map(doc => ({
+          ...doc,
+          tag_count: tagCountMap.get(doc.id) || 0
+        }));
+
+      console.log('[SmartDocs] Documents with smart tags:', docsWithTags.length);
+
       setTemplates(templatesResult.data || []);
       setFolders(foldersResult.data || []);
       setCompanyDocs(docsResult.data || []);
+      setTaggedDocs(docsWithTags);
     } catch (error) {
       console.error('Error loading Smart Docs data:', error);
       toast.error("Failed to load templates and folders");
@@ -390,14 +420,86 @@ const SmartDocs = () => {
             <CardHeader>
               <CardTitle className="flex items-center gap-2">
                 <Sparkles className="h-5 w-5" />
-                Smart Documents (Liquid Templates)
+                Tagged Documents
               </CardTitle>
               <p className="text-sm text-muted-foreground">
-                Create and manage Liquid templates with dynamic tags. These can be applied to projects.
+                Company documents with smart tag placements. These can be applied to leads/projects with auto-filled data.
               </p>
             </CardHeader>
             <CardContent>
-              <SmartDocumentEditor />
+              <div className="grid gap-4">
+                {taggedDocs.map((doc) => (
+                  <div key={doc.id} className="flex items-center justify-between p-4 border rounded-lg hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-primary/10 rounded-lg">
+                        <FileText className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <h4 className="font-medium">{doc.filename}</h4>
+                        <div className="flex items-center gap-2 mt-1">
+                          <Badge variant="secondary" className="gap-1">
+                            <Tag className="h-3 w-3" />
+                            {doc.tag_count} smart tag{doc.tag_count !== 1 ? 's' : ''}
+                          </Badge>
+                          <span className="text-xs text-muted-foreground">
+                            Uploaded {new Date(doc.created_at).toLocaleDateString()}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setPreviewDoc(doc)}
+                        className="gap-1"
+                      >
+                        <Eye className="h-4 w-4" />
+                        Preview
+                      </Button>
+                      {canEditSmartTags && (
+                        <>
+                          <Button
+                            size="sm"
+                            variant="secondary"
+                            onClick={() => setTagEditorDoc(doc)}
+                            className="gap-1"
+                          >
+                            <Sparkles className="h-4 w-4" />
+                            Edit Tags
+                          </Button>
+                          <Button
+                            size="sm"
+                            variant="destructive"
+                            onClick={() => setDeleteDoc(doc)}
+                            className="gap-1"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
+                      <Button
+                        size="sm"
+                        variant="default"
+                        onClick={() => setApplyToLeadDoc(doc)}
+                        className="gap-1"
+                      >
+                        <UserPlus className="h-4 w-4" />
+                        Apply to Lead
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+                {taggedDocs.length === 0 && (
+                  <div className="text-center py-8">
+                    <Sparkles className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
+                    <h3 className="text-lg font-medium mb-2">No tagged documents yet</h3>
+                    <p className="text-muted-foreground mb-4">
+                      Go to Company Docs tab and click "Configure Smart Tags" on a document to add smart tags
+                    </p>
+                  </div>
+                )}
+              </div>
             </CardContent>
           </Card>
         </TabsContent>
