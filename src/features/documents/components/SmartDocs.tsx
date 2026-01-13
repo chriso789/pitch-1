@@ -24,6 +24,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { TemplateEditor } from "./TemplateEditor";
 import { TemplateLibrary } from "./TemplateLibrary";
+import { SmartDocumentEditor } from "@/components/SmartDocumentEditor";
 import { ProfessionalTemplatesDialog } from "@/components/documents/ProfessionalTemplatesDialog";
 import { BulkDocumentUpload } from "./BulkDocumentUpload";
 import { DocumentPreviewModal } from "@/components/documents/DocumentPreviewModal";
@@ -376,12 +377,30 @@ const SmartDocs = () => {
         onClose={() => setShowProfessionalTemplates(false)}
       />
 
-      <Tabs defaultValue="library" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+      <Tabs defaultValue="smart-docs" className="w-full">
+        <TabsList className="grid w-full grid-cols-4">
+          <TabsTrigger value="smart-docs">Smart Docs</TabsTrigger>
           <TabsTrigger value="library">Template Library</TabsTrigger>
           <TabsTrigger value="company-docs">Company Docs</TabsTrigger>
           <TabsTrigger value="folders">Folders</TabsTrigger>
         </TabsList>
+
+        <TabsContent value="smart-docs" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5" />
+                Smart Documents (Liquid Templates)
+              </CardTitle>
+              <p className="text-sm text-muted-foreground">
+                Create and manage Liquid templates with dynamic tags. These can be applied to projects.
+              </p>
+            </CardHeader>
+            <CardContent>
+              <SmartDocumentEditor />
+            </CardContent>
+          </Card>
+        </TabsContent>
 
         <TabsContent value="library" className="space-y-4">
           <div className="flex items-center space-x-4">
