@@ -372,6 +372,7 @@ export function RoofrStyleReportPreview({
       if (uploadError) throw uploadError;
       
       // Insert into documents table
+      console.log('[Confirm] Inserting document with tenant_id:', tenantId);
       const { data: docData, error: docError } = await supabase
         .from('documents')
         .insert({
@@ -392,7 +393,8 @@ export function RoofrStyleReportPreview({
       
       // Save measurement approval with tags for smart templates
       if (pipelineEntryId && measurementId) {
-        await supabase.from('measurement_approvals').upsert({
+        console.log('[Confirm] Upserting measurement_approval with tenant_id:', tenantId);
+        const { error: approvalError } = await supabase.from('measurement_approvals').upsert({
           tenant_id: tenantId,
           pipeline_entry_id: pipelineEntryId,
           measurement_id: measurementId,
@@ -402,6 +404,15 @@ export function RoofrStyleReportPreview({
           report_generated: true,
           report_document_id: docData.id,
         }, { onConflict: 'pipeline_entry_id,measurement_id' });
+        
+        if (approvalError) {
+          console.error('Measurement approval save failed:', approvalError);
+          toast({ 
+            title: "Warning", 
+            description: "Report saved but measurement approval failed", 
+            variant: "default" 
+          });
+        }
       }
       
       toast({ title: "Confirmed", description: "Saved to Documents" });
