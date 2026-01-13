@@ -89,13 +89,14 @@ export function TrainingComparisonView({
   // For display, use the ORIGINAL AI measurement to show true independent AI vs user comparison
   const effectiveAiMeasurementId = originalAiMeasurementId;
 
+  // Handler for running fresh AI measurement (no corrections)
+  // This generates an independent AI measurement for comparison
   const handleRunAIMeasure = async () => {
     if (!session?.lat || !session?.lng) {
       toast.error('No coordinates available for this property');
       return;
     }
 
-    // Use pipeline_entry_id as propertyId - this is what the measure function expects
     const propertyId = session.pipeline_entry_id;
     if (!propertyId) {
       toast.error('No linked property found for this training session');
@@ -104,9 +105,10 @@ export function TrainingComparisonView({
 
     setIsRunningAIMeasure(true);
     try {
-      toast.info('Running AI measurement analysis...');
+      toast.info('Running fresh AI measurement (no corrections)...');
 
-      // Call the measure edge function with the pipeline_entry_id
+      // Call measure function WITHOUT apply_corrections or training_session_id
+      // This ensures we get a pure AI skeleton measurement
       const { data, error } = await supabase.functions.invoke('measure', {
         body: {
           action: 'pull',
@@ -114,6 +116,8 @@ export function TrainingComparisonView({
           lat: session.lat,
           lng: session.lng,
           address: session.property_address || undefined,
+          // CRITICAL: Do NOT pass apply_corrections or training_session_id
+          // This ensures we get the raw AI detection without any user overrides
         },
       });
 
@@ -123,7 +127,6 @@ export function TrainingComparisonView({
         throw new Error(data?.error || 'AI measurement failed');
       }
 
-      // Extract measurement from nested response: data.data.measurement
       const measurement = data?.data?.measurement;
       const measurementId = measurement?.id;
       if (!measurementId) {
@@ -132,35 +135,42 @@ export function TrainingComparisonView({
 
       const summary = measurement?.summary || {};
 
-      // Update the training session with the AI measurement ID as ORIGINAL (independent AI)
-      // This is the baseline that never gets modified by training overrides
+      // Store as ORIGINAL AI measurement - this is the baseline for comparison
+      // Only update original_ai_measurement_id if it's currently NULL (corrupted session)
+      // Otherwise update both for fresh sessions
+      const updatePayload: Record<string, unknown> = {
+        original_ai_measurement_id: measurementId,
+        ai_totals: {
+          ridge: summary?.ridge_ft || 0,
+          hip: summary?.hip_ft || 0,
+          valley: summary?.valley_ft || 0,
+          eave: summary?.eave_ft || 0,
+          rake: summary?.rake_ft || 0,
+        }
+      };
+
+      // If this is a fresh session (no existing ai_measurement_id), also set it
+      // For corrupted sessions, ONLY set original_ai_measurement_id to preserve the corrupted one
+      if (!session?.ai_measurement_id) {
+        updatePayload.ai_measurement_id = measurementId;
+      }
+
       const { error: updateError } = await supabase
         .from('roof_training_sessions')
-        .update({ 
-          ai_measurement_id: measurementId,
-          original_ai_measurement_id: measurementId, // Store as original - this won't be overwritten
-          ai_totals: {
-            ridge: summary?.ridge_ft || 0,
-            hip: summary?.hip_ft || 0,
-            valley: summary?.valley_ft || 0,
-            eave: summary?.eave_ft || 0,
-            rake: summary?.rake_ft || 0,
-          }
-        } as any)
+        .update(updatePayload as any)
         .eq('id', sessionId);
 
       if (updateError) throw updateError;
 
-      // Update local state to trigger comparison
+      // Update local state to trigger comparison with fresh AI data
       setCurrentAiMeasurementId(measurementId);
 
-      // Invalidate queries to refetch data
       queryClient.invalidateQueries({ queryKey: ['ai-measurement'] });
       queryClient.invalidateQueries({ queryKey: ['training-session-for-measure', sessionId] });
 
       const facetCount = measurement?.faces?.length || 0;
       const totalArea = Math.round(summary?.total_area_sqft || 0);
-      toast.success(`AI Measurement complete! Found ${facetCount} facets, ${totalArea} sqft`);
+      toast.success(`Fresh AI Measurement complete! Found ${facetCount} facets, ${totalArea} sqft. Now showing original AI vs your traces.`);
     } catch (err: any) {
       console.error('Failed to run AI measurement:', err);
       toast.error(err.message || 'Failed to run AI measurement');
@@ -191,6 +201,8 @@ export function TrainingComparisonView({
     }
   };
 
+  // Handler for applying training truth override (uses user traces as ground truth)
+  // This creates a CORRECTED measurement separate from the original AI
   const handleRemeasure = async () => {
     if (!session?.lat || !session?.lng) {
       toast.error('No coordinates available for this property');
@@ -205,9 +217,9 @@ export function TrainingComparisonView({
 
     setIsRemeasuring(true);
     try {
-      toast.info('Applying training truth override...');
+      toast.info('Creating corrected measurement using your traced geometry...');
 
-      // Call the measure edge function with training_session_id for truth override
+      // Call measure WITH training_session_id - this uses user traces as ground truth
       const { data, error } = await supabase.functions.invoke('measure', {
         body: {
           action: 'pull',
@@ -216,7 +228,7 @@ export function TrainingComparisonView({
           lng: session.lng,
           address: session.property_address || undefined,
           apply_corrections: true,
-          training_session_id: sessionId, // Pass session ID for truth override
+          training_session_id: sessionId, // This triggers training truth override
         },
       });
 
@@ -228,36 +240,35 @@ export function TrainingComparisonView({
 
       const measurement = data?.data?.measurement;
       const measurementId = measurement?.id;
+      const originalMeasurementId = data?.data?.original_measurement_id;
       
       if (measurementId) {
-        // Don't update currentAiMeasurementId - we want to keep showing ORIGINAL AI for comparison
-        // This corrected measurement is stored separately
-        
-        // Update session with CORRECTED measurement (separate from original)
+        // Store the corrected measurement separately
         const summary = measurement?.summary || {};
+        const updatePayload: Record<string, unknown> = {
+          corrected_ai_measurement_id: measurementId,
+        };
+
+        // If the edge function returned an original_measurement_id, update that too
+        if (originalMeasurementId) {
+          updatePayload.original_ai_measurement_id = originalMeasurementId;
+          // Also update currentAiMeasurementId to show the ORIGINAL for comparison
+          setCurrentAiMeasurementId(originalMeasurementId);
+        }
+
         await supabase
           .from('roof_training_sessions')
-          .update({ 
-            // Keep ai_measurement_id pointing to original for backwards compatibility
-            corrected_ai_measurement_id: measurementId, // NEW: Store corrected separately
-            ai_totals: {
-              ridge: summary?.ridge_ft || 0,
-              hip: summary?.hip_ft || 0,
-              valley: summary?.valley_ft || 0,
-              eave: summary?.eave_ft || 0,
-              rake: summary?.rake_ft || 0,
-            }
-          } as any)
+          .update(updatePayload as any)
           .eq('id', sessionId);
       }
 
       queryClient.invalidateQueries({ queryKey: ['ai-measurement'] });
       queryClient.invalidateQueries({ queryKey: ['training-session-for-measure', sessionId] });
 
-      toast.success('Training truth override applied - AI now matches your traces!');
+      toast.success('Corrected measurement created! Your traces are now stored as ground truth for this property.');
     } catch (err: any) {
-      console.error('Failed to remeasure:', err);
-      toast.error(err.message || 'Failed to remeasure');
+      console.error('Failed to apply training override:', err);
+      toast.error(err.message || 'Failed to apply training override');
     } finally {
       setIsRemeasuring(false);
     }
@@ -408,32 +419,41 @@ export function TrainingComparisonView({
   };
 
   // Retrain AI button component - rendered in all states
-  const RetrainAICard = ({ showRunAI = false }: { showRunAI?: boolean }) => (
+  // Shows different buttons based on session state
+  const hasOriginalAI = !!session?.original_ai_measurement_id;
+  
+  const RetrainAICard = () => (
     <Card className="border-primary/20 bg-primary/5">
       <CardContent className="py-4">
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
           <div>
             <p className="font-medium">Train AI with Your Traces</p>
             <p className="text-sm text-muted-foreground">
-              Apply your manual corrections to improve future AI measurements
+              {!hasOriginalAI 
+                ? 'First, run AI measurement to generate baseline skeleton for comparison'
+                : 'Apply your manual corrections to create a corrected measurement'
+              }
             </p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
-            {showRunAI && (
+            {/* Step 1: Run AI Measure - only show if no original AI exists */}
+            {!hasOriginalAI && (
               <Button 
                 onClick={handleRunAIMeasure} 
                 disabled={isRunningAIMeasure || !session?.lat}
-                variant="secondary"
+                variant="default"
               >
                 {isRunningAIMeasure ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
                 ) : (
-                  <Zap className="h-4 w-4 mr-2" />
+                  <Sparkles className="h-4 w-4 mr-2" />
                 )}
-                {isRunningAIMeasure ? 'Analyzing...' : 'Run AI Measure'}
+                {isRunningAIMeasure ? 'Generating AI skeleton...' : 'Generate AI Baseline'}
               </Button>
             )}
-            <Button onClick={handleRetrainAI} disabled={isRetraining}>
+            
+            {/* Step 2: Retrain AI (recalculate correction factors) */}
+            <Button onClick={handleRetrainAI} disabled={isRetraining} variant={hasOriginalAI ? "default" : "outline"}>
               {isRetraining ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
@@ -441,7 +461,9 @@ export function TrainingComparisonView({
               )}
               {isRetraining ? 'Retraining...' : 'Retrain AI'}
             </Button>
-            {retrainComplete && (
+            
+            {/* Step 3: Apply corrections - always show after retraining OR if original AI exists */}
+            {(retrainComplete || hasOriginalAI) && (
               <Button 
                 onClick={handleRemeasure} 
                 disabled={isRemeasuring || !session?.lat}
@@ -453,7 +475,7 @@ export function TrainingComparisonView({
                 ) : (
                   <RotateCcw className="h-4 w-4 mr-2" />
                 )}
-                {isRemeasuring ? 'Remeasuring...' : 'Remeasure'}
+                {isRemeasuring ? 'Applying...' : 'Apply Training Truth'}
               </Button>
             )}
           </div>
@@ -505,13 +527,14 @@ export function TrainingComparisonView({
   if (!effectiveAiMeasurementId) {
     return (
       <div className="space-y-6">
-        <RetrainAICard showRunAI={true} />
+        <RetrainAICard />
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
-            <Zap className="h-12 w-12 text-muted-foreground mb-4" />
+            <Sparkles className="h-12 w-12 text-muted-foreground mb-4" />
             <p className="text-lg font-medium mb-2">No AI Measurement Available</p>
             <p className="text-muted-foreground text-center max-w-md mb-4">
-              Click "Run AI Measure" above to analyze this property and generate AI measurements for comparison.
+              Click "Generate AI Baseline" above to run the AI skeleton detection algorithm.
+              This creates an independent measurement you can compare against your traces.
             </p>
             {!session?.lat && (
               <Badge variant="destructive">No coordinates available</Badge>
@@ -548,11 +571,14 @@ export function TrainingComparisonView({
           <AlertTitle className="text-orange-800">Original AI Data Missing</AlertTitle>
           <AlertDescription className="text-orange-700">
             <p className="mb-2">
-              The original AI measurement was overwritten by a previous "Remeasure with Corrections" operation. 
-              Both "Your Measurements" and "AI Measurements" now show identical data (0% variance).
+              The original AI skeleton measurement was overwritten. The "AI Measurements" panel 
+              currently shows your traced lines, not the AI's independent detection. This makes 
+              accuracy comparison meaningless (0% variance).
             </p>
             <p className="mb-3">
-              Click "Run AI Measure" to generate a fresh independent AI measurement for accurate comparison.
+              Click below to generate a fresh AI skeleton measurement. This will run the geometric 
+              detection algorithm again WITHOUT any corrections, so you can see where the AI places 
+              ridge, hip, valley lines independently.
             </p>
             <Button 
               onClick={handleRunAIMeasure} 
@@ -564,9 +590,9 @@ export function TrainingComparisonView({
               {isRunningAIMeasure ? (
                 <Loader2 className="h-4 w-4 mr-2 animate-spin" />
               ) : (
-                <Zap className="h-4 w-4 mr-2" />
+                <Sparkles className="h-4 w-4 mr-2" />
               )}
-              {isRunningAIMeasure ? 'Re-running AI...' : 'Re-run Original AI Measurement'}
+              {isRunningAIMeasure ? 'Generating fresh AI skeleton...' : 'Generate Fresh AI Measurement'}
             </Button>
           </AlertDescription>
         </Alert>
