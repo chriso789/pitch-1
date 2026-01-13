@@ -1650,7 +1650,7 @@ serve(async (req) => {
 
       // Route: action=pull
       if (action === 'pull') {
-        const { propertyId, lat, lng, address, apply_corrections, training_session_id } = body;
+        let { propertyId, lat, lng, address, apply_corrections, training_session_id } = body;
 
         if (!propertyId) {
           return json({ 
@@ -1668,7 +1668,23 @@ serve(async (req) => {
           }, corsHeaders, 400);
         }
 
-        console.log('Pull request:', { propertyId, lat, lng, address, apply_corrections, training_session_id });
+        // Phase 10: Auto-detect training session if apply_corrections is true but no session provided
+        if (apply_corrections && !training_session_id) {
+          const { data: trainingSession } = await supabase
+            .from('roof_training_sessions')
+            .select('id')
+            .eq('pipeline_entry_id', propertyId)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .single();
+          
+          if (trainingSession?.id) {
+            training_session_id = trainingSession.id;
+            console.log(`[pull] Auto-detected training session ${training_session_id} for property ${propertyId}`);
+          }
+        }
+
+        console.log('[pull] Request:', { propertyId, lat, lng, address, apply_corrections, training_session_id });
 
         // Get user ID
         const { data: { user } } = await supabase.auth.getUser();
@@ -1684,13 +1700,20 @@ serve(async (req) => {
           const tenantId = authUser?.user_metadata?.tenant_id;
           
           if (tenantId) {
-            // Load regular corrections (multipliers based on deviation)
-            const { data: correctionRows } = await supabase
+            // Build query for regular corrections (multipliers based on deviation)
+            let correctionQuery = supabase
               .from('measurement_corrections')
               .select('original_line_type, deviation_ft, is_feature_injection, corrected_line_wkt')
               .eq('tenant_id', tenantId)
-              .eq('is_feature_injection', false)
-              .order('created_at', { ascending: false });
+              .eq('is_feature_injection', false);
+            
+            // If training_session_id provided, scope to that session for property-specific corrections
+            if (training_session_id) {
+              correctionQuery = correctionQuery.eq('training_session_id', training_session_id);
+              console.log(`[pull] Scoping corrections to training session: ${training_session_id}`);
+            }
+            
+            const { data: correctionRows } = await correctionQuery.order('created_at', { ascending: false });
             
             if (correctionRows && correctionRows.length > 0) {
               // Calculate multipliers from deviation data (group by type, average deviation)
@@ -1707,19 +1730,25 @@ serve(async (req) => {
                 // If avg deviation is 10ft on a 100ft line, apply 1.1 multiplier
                 corrections[type] = avgDev > 0 ? 1 + (avgDev / 100) : 1;
               }
-              console.log('Applying corrections from training:', corrections);
+              console.log('[pull] Applying corrections from training:', corrections);
             }
             
-            // Load feature injections (user-traced geometry when AI produced nothing)
-            const { data: injectionRows } = await supabase
+            // Build query for feature injections (user-traced geometry when AI produced nothing)
+            let injectionQuery = supabase
               .from('measurement_corrections')
               .select('original_line_type, corrected_line_wkt, deviation_ft')
               .eq('tenant_id', tenantId)
-              .eq('is_feature_injection', true)
-              .order('created_at', { ascending: false });
+              .eq('is_feature_injection', true);
+            
+            // Scope to training session if provided
+            if (training_session_id) {
+              injectionQuery = injectionQuery.eq('training_session_id', training_session_id);
+            }
+            
+            const { data: injectionRows } = await injectionQuery.order('created_at', { ascending: false });
             
             if (injectionRows && injectionRows.length > 0) {
-              console.log(`Found ${injectionRows.length} feature injections to apply`);
+              console.log(`[pull] Found ${injectionRows.length} feature injections to apply`);
               
               for (const injection of injectionRows) {
                 if (injection.corrected_line_wkt) {
@@ -1732,7 +1761,7 @@ serve(async (req) => {
                   });
                 }
               }
-              console.log('Feature injections loaded:', featureInjections.map(f => `${f.type}: ${f.length_ft}ft`));
+              console.log('[pull] Feature injections loaded:', featureInjections.map(f => `${f.type}: ${f.length_ft}ft`));
             }
           }
         }
@@ -2578,6 +2607,18 @@ serve(async (req) => {
             };
           });
           
+          // Log deviation summary for debugging
+          console.log('[evaluate-overlay] Returning deviations:', JSON.stringify({
+            total: mappedDeviations.length,
+            byType: mappedDeviations.reduce((acc: Record<string, number>, d: any) => {
+              acc[d.lineType || 'unknown'] = (acc[d.lineType || 'unknown'] || 0) + 1;
+              return acc;
+            }, {}),
+            withTraceWkt: mappedDeviations.filter((d: any) => d.traceWkt).length,
+            missingCount: mappedDeviations.filter((d: any) => !d.aiWkt && d.traceWkt).length,
+            needsCorrectionCount: mappedDeviations.filter((d: any) => d.needsCorrection).length,
+          }));
+          
           return json({
             ok: true,
             data: {
@@ -2605,16 +2646,23 @@ serve(async (req) => {
         const { data: { user } } = await supabase.auth.getUser();
         const userId = user?.id;
 
-        // Get session details for context
+        // Get session details for context (including pipeline_entry_id for property scoping)
         const { data: sessionData } = await supabase
           .from('roof_training_sessions')
-          .select('tenant_id, property_address, lat, lng')
+          .select('tenant_id, property_address, lat, lng, pipeline_entry_id')
           .eq('id', sessionId)
           .single();
 
         if (!sessionData) {
           return json({ ok: false, error: 'Session not found' }, corsHeaders, 404);
         }
+
+        console.log('[store-corrections] Session data:', {
+          sessionId,
+          tenantId: sessionData.tenant_id,
+          propertyId: sessionData.pipeline_entry_id,
+          address: sessionData.property_address,
+        });
 
         console.log('Storing', corrections.length, 'corrections for session', sessionId);
 
@@ -2651,6 +2699,9 @@ serve(async (req) => {
               lat: sessionData.lat,
               lng: sessionData.lng,
               createdBy: userId,
+              isFeatureInjection: correction.is_feature_injection || false,
+              trainingSessionId: sessionId,
+              propertyId: sessionData.pipeline_entry_id || null,
             });
 
             if (result.success) {

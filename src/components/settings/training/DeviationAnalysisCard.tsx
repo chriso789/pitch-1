@@ -106,10 +106,24 @@ export function DeviationAnalysisCard({
         };
       }).filter(Boolean);
 
+      // Ensure AI features have IDs for proper matching
+      const aiWithIds = safeAiFeatures.map((f, idx) => ({
+        ...f,
+        id: f.id || `ai-${f.type}-${idx}`,
+      }));
+
+      // Log what we're sending for debugging
+      console.log('[DeviationAnalysis] Sending to evaluate-overlay:', {
+        aiFeatureCount: aiWithIds.length,
+        aiFeatureTypes: [...new Set(aiWithIds.map(f => f.type))],
+        traceCount: traceFeaturesWithWkt.length,
+        traceTypes: [...new Set(traceFeaturesWithWkt.map((t: any) => t?.type))],
+      });
+
       const { data, error } = await supabase.functions.invoke('measure', {
         body: {
           action: 'evaluate-overlay',
-          aiFeatures: safeAiFeatures,
+          aiFeatures: aiWithIds,  // Use aiWithIds to ensure all have IDs
           userTraces: traceFeaturesWithWkt,
           sessionId,
         },
@@ -146,9 +160,20 @@ export function DeviationAnalysisCard({
       const corrections = safeResult.deviations
         .filter(d => {
           const deviationFt = d.deviationFt || d.avgDeviationFt || 0;
-          const isMissing = (!d.aiWkt || d.aiWkt === '') && (d.traceWkt || d.correctedWkt);
+          // Detect missing features: featureId starts with 'missing-' OR (no aiWkt but has traceWkt)
+          const isMissing = d.featureId?.startsWith('missing-') || 
+                           ((!d.aiWkt || d.aiWkt === '') && (d.traceWkt || d.correctedWkt));
           const hasDeviation = deviationFt > 0;
           const needsCorrection = d.needsCorrection === true;
+          
+          console.log('[Filter] Checking deviation:', {
+            featureId: d.featureId,
+            lineType: d.lineType || d.featureType,
+            isMissing,
+            hasDeviation,
+            needsCorrection,
+            included: hasDeviation || needsCorrection || isMissing,
+          });
           
           // Include if: has deviation, needs correction, OR is a missing feature
           return hasDeviation || needsCorrection || isMissing;
@@ -156,16 +181,19 @@ export function DeviationAnalysisCard({
         .map(d => {
           const deviationFt = d.deviationFt || d.avgDeviationFt || 0;
           const correctedWkt = d.traceWkt || d.correctedWkt || '';
-          const isMissing = (!d.aiWkt || d.aiWkt === '') && correctedWkt;
+          // Detect missing features
+          const isMissing = d.featureId?.startsWith('missing-') || 
+                           ((!d.aiWkt || d.aiWkt === '') && correctedWkt);
           
           return {
             original_line_wkt: d.aiWkt || '', // Empty for missing features → triggers is_feature_injection
             original_line_type: d.lineType || d.featureType || 'unknown',
             corrected_line_wkt: correctedWkt,
-            // For missing features, deviation_ft represents the total traced length (used for injection)
+            // For missing features, use the traced length (stored in maxDeviationFt) as deviation
             deviation_ft: isMissing ? (d.maxDeviationFt || deviationFt || 0) : deviationFt,
             deviation_pct: d.deviationPct || (d.alignmentScore != null ? (1 - d.alignmentScore) * 100 : 0),
             correction_source: isMissing ? 'feature_injection' : 'user_trace',
+            is_feature_injection: isMissing, // Explicitly flag feature injections
           };
         })
         .filter(c => c.corrected_line_wkt); // Only include if we have a corrected WKT
@@ -180,11 +208,17 @@ export function DeviationAnalysisCard({
         return;
       }
 
-      console.log('Storing corrections:', {
+      // Show summary toast before storing
+      const featureInjections = corrections.filter(c => c.is_feature_injection).length;
+      const lineCorrections = corrections.filter(c => !c.is_feature_injection).length;
+      toast.info(`Storing ${corrections.length} corrections: ${featureInjections} feature injections, ${lineCorrections} line corrections`);
+
+      console.log('[StoreCorrections] Storing corrections:', {
         count: corrections.length,
-        featureInjections: corrections.filter(c => !c.original_line_wkt).length,
-        regularCorrections: corrections.filter(c => c.original_line_wkt).length,
+        featureInjections,
+        lineCorrections,
         types: corrections.map(c => c.original_line_type),
+        samples: corrections.slice(0, 3),
       });
 
       const { data, error } = await supabase.functions.invoke('measure', {
