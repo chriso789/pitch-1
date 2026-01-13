@@ -1981,22 +1981,51 @@ serve(async (req) => {
                 }
               }
               
-              // ============= PHASE 3: ADJUST AI LINES (NOT COPY) =============
-              // Instead of copying user geometry, we ADJUST AI geometry toward user traces
+              // ============= PHASE 3: FILTER + ADJUST AI LINES =============
+              // CRITICAL: Only keep AI lines that have a matching user trace
+              // Remove any AI lines the user did NOT trace (false positives)
               const blendFactor = 0.8; // 80% toward user position (learning, not copying)
               let featuresAdjusted = 0;
+              let featuresRemoved = 0;
               
-              const adjustedFeatures: LinearFeature[] = (meas.linear_features || []).map((ai: LinearFeature, idx: number) => {
-                // Find matching correction
-                const correction = evaluation.autoCorrections.find(c => c.originalId === ai.id || c.originalId === `ai-${idx}`);
+              // Build set of matched AI feature IDs from corrections
+              const matchedAiIds = new Set<string>();
+              for (const correction of evaluation.autoCorrections) {
+                if (correction.originalId && correction.originalWkt) {
+                  matchedAiIds.add(correction.originalId);
+                }
+              }
+              
+              console.log(`📊 AI features: ${(meas.linear_features || []).length}, Matched by user traces: ${matchedAiIds.size}`);
+              
+              // First, FILTER: only keep AI features that have matching user traces
+              const adjustedFeatures: LinearFeature[] = [];
+              
+              for (let idx = 0; idx < (meas.linear_features || []).length; idx++) {
+                const ai = (meas.linear_features as LinearFeature[])[idx];
+                const aiId = ai.id || `ai-${idx}`;
                 
-                if (!correction || !correction.correctedWkt) {
-                  return ai; // No correction needed
+                // Find matching correction for this AI feature
+                const correction = evaluation.autoCorrections.find(c => 
+                  c.originalId === aiId && c.originalWkt && c.correctedWkt
+                );
+                
+                if (!correction) {
+                  // NO matching user trace - REMOVE this AI feature
+                  console.log(`   ✖ Removing unmatched AI ${ai.type}: ${ai.length_ft.toFixed(0)}ft (no user trace)`);
+                  featuresRemoved++;
+                  continue; // Skip this feature - don't add to adjustedFeatures
                 }
                 
+                // Has matching trace - ADJUST toward user position
                 // Parse AI coords
                 const aiMatch = ai.wkt.match(/LINESTRING\(([^)]+)\)/i);
-                if (!aiMatch) return ai;
+                if (!aiMatch) {
+                  adjustedFeatures.push(ai);
+                  continue;
+                }
+                
+                type XY = [number, number];
                 const aiCoords: XY[] = aiMatch[1].split(',').map((p: string) => {
                   const [lng, lat] = p.trim().split(' ').map(Number);
                   return [lng, lat] as XY;
@@ -2004,13 +2033,20 @@ serve(async (req) => {
                 
                 // Parse user correction coords
                 const userMatch = correction.correctedWkt.match(/LINESTRING\(([^)]+)\)/i);
-                if (!userMatch) return ai;
+                if (!userMatch) {
+                  adjustedFeatures.push(ai);
+                  continue;
+                }
+                
                 const userCoords: XY[] = userMatch[1].split(',').map((p: string) => {
                   const [lng, lat] = p.trim().split(' ').map(Number);
                   return [lng, lat] as XY;
                 });
                 
-                if (aiCoords.length < 2 || userCoords.length < 2) return ai;
+                if (aiCoords.length < 2 || userCoords.length < 2) {
+                  adjustedFeatures.push(ai);
+                  continue;
+                }
                 
                 // BLEND AI toward user (not replace)
                 const aiStart = aiCoords[0];
@@ -2034,15 +2070,17 @@ serve(async (req) => {
                 const newLengthFt = Math.sqrt(dx * dx + dy * dy) * 3.28084;
                 
                 featuresAdjusted++;
-                console.log(`   ↔ Adjusted ${ai.type} ${ai.id}: ${ai.length_ft.toFixed(0)}ft → ${newLengthFt.toFixed(0)}ft`);
+                console.log(`   ↔ Adjusted ${ai.type} ${aiId}: ${ai.length_ft.toFixed(0)}ft → ${newLengthFt.toFixed(0)}ft`);
                 
-                return {
+                adjustedFeatures.push({
                   ...ai,
                   wkt: `LINESTRING(${adjustedStart[0]} ${adjustedStart[1]}, ${adjustedEnd[0]} ${adjustedEnd[1]})`,
                   length_ft: newLengthFt,
                   label: `${ai.type} (AI adjusted)`
-                };
-              });
+                });
+              }
+              
+              console.log(`📊 Filtering complete: Removed ${featuresRemoved} unmatched, Adjusted ${featuresAdjusted}, Kept ${adjustedFeatures.length}`);
               
               // ============= PHASE 4: INJECT MISSING FEATURES =============
               // When AI detected 0 of a type but user traced some, ADD them
@@ -2074,6 +2112,7 @@ serve(async (req) => {
               
               // Apply adjusted features to measurement
               meas.linear_features = adjustedFeatures;
+              console.log(`🎓 Final result: ${adjustedFeatures.length} features (was ${(originalMeasBeforeOverride?.linear_features || []).length})`);
               
               // Recalculate summary totals from adjusted features
               const newTotals: Record<string, number> = {
