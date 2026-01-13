@@ -13,6 +13,7 @@ import GPSAcquiringOverlay from '@/components/storm-canvass/GPSAcquiringOverlay'
 import MapStyleToggle, { MapStyle } from '@/components/storm-canvass/MapStyleToggle';
 import { CanvassPhotoCapture } from '@/components/storm-canvass/CanvassPhotoCapture';
 import { OfflinePhotoSyncManager } from '@/components/storm-canvass/OfflinePhotoSyncManager';
+import PropertyInfoPanel from '@/components/storm-canvass/PropertyInfoPanel';
 import { locationService } from '@/services/locationService';
 import { useToast } from '@/hooks/use-toast';
 import { useStormCanvass } from '@/hooks/useStormCanvass';
@@ -59,6 +60,8 @@ export default function LiveCanvassingPage() {
   const [dispositions, setDispositions] = useState<Disposition[]>([]);
   const [mapStyle, setMapStyle] = useState<MapStyle>('satellite');
   const [showPhotoCapture, setShowPhotoCapture] = useState(false);
+  const [selectedProperty, setSelectedProperty] = useState<any>(null);
+  const [showPropertyPanel, setShowPropertyPanel] = useState(false);
   const [destination, setDestination] = useState<{
     lat: number;
     lng: number;
@@ -315,10 +318,9 @@ export default function LiveCanvassingPage() {
           currentAddress={currentAddress}
           onContactSelect={setSelectedContact}
           onParcelSelect={(property) => {
-            // Navigate to property interaction page
-            navigate(`/storm-canvass/property/${property.id}`, { 
-              state: { property, userLocation } 
-            });
+            // Open bottom sheet instead of navigating
+            setSelectedProperty(property);
+            setShowPropertyPanel(true);
           }}
           routeData={routeData}
           destination={destination}
@@ -356,8 +358,23 @@ export default function LiveCanvassingPage() {
       <CanvassPhotoCapture
         open={showPhotoCapture}
         onOpenChange={setShowPhotoCapture}
-        propertyAddress={selectedContact?.address_street}
+        propertyAddress={selectedContact?.address_street || selectedProperty?.address?.street}
         userLocation={userLocation}
+      />
+
+      {/* Property Info Panel (Bottom Sheet) */}
+      <PropertyInfoPanel
+        open={showPropertyPanel}
+        onOpenChange={(open) => {
+          setShowPropertyPanel(open);
+          if (!open) setSelectedProperty(null);
+        }}
+        property={selectedProperty}
+        userLocation={userLocation}
+        onDispositionUpdate={() => {
+          // Keep panel open, property will be refreshed by markers layer
+        }}
+        onNavigate={handleNavigateToProperty}
       />
     </div>
   );

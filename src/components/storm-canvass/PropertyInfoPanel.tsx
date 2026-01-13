@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   Phone, Mail, MapPin, Navigation, User, Plus, Home, Clock, 
   ThumbsUp, ThumbsDown, X, AlertTriangle, DollarSign, CheckCircle,
@@ -54,6 +54,39 @@ export default function PropertyInfoPanel({
   const [enriching, setEnriching] = useState(false);
   const [enrichedOwners, setEnrichedOwners] = useState<any[]>([]);
   const [showFastEstimate, setShowFastEstimate] = useState(false);
+  const hasAutoEnrichedRef = useRef<string | null>(null);
+
+  // Auto-enrich when panel opens and no enrichment data exists
+  useEffect(() => {
+    if (!open || !property?.id || !profile?.tenant_id) return;
+    
+    // Parse existing data to check if already enriched
+    const existingPhones = typeof property.phone_numbers === 'string' 
+      ? JSON.parse(property.phone_numbers || '[]') 
+      : (property.phone_numbers || []);
+    const existingSearchbug = typeof property.searchbug_data === 'string'
+      ? JSON.parse(property.searchbug_data || '{}')
+      : (property.searchbug_data || {});
+    
+    // Only auto-enrich once per property and if no data exists
+    const hasEnrichmentData = existingPhones.length > 0 || 
+      (existingSearchbug && Object.keys(existingSearchbug).length > 0) ||
+      enrichedOwners.length > 0;
+    
+    if (!hasEnrichmentData && hasAutoEnrichedRef.current !== property.id) {
+      hasAutoEnrichedRef.current = property.id;
+      handleEnrich();
+    }
+  }, [open, property?.id]);
+
+  // Reset enriched data when property changes
+  useEffect(() => {
+    if (property?.id) {
+      setEnrichedOwners([]);
+      setSelectedOwner(null);
+      setNotes('');
+    }
+  }, [property?.id]);
 
   if (!property) return null;
 
