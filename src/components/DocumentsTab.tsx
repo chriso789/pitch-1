@@ -9,12 +9,13 @@ import { Label } from '@/components/ui/label';
 import { 
   FileText, Download, Trash2, Upload, Eye,
   File, Image as ImageIcon, FileCheck, FileLock, X,
-  Package, Wrench, DollarSign, Loader2
+  Package, Wrench, DollarSign, Loader2, Sparkles
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { formatDistanceToNow, isAfter, isBefore, startOfDay, endOfDay } from 'date-fns';
 import { DocumentPreviewModal } from '@/components/documents/DocumentPreviewModal';
 import { DocumentSearchFilters } from '@/components/documents/DocumentSearchFilters';
+import { AddSmartDocToProjectDialog } from '@/components/documents/AddSmartDocToProjectDialog';
 import {
   Dialog,
   DialogContent,
@@ -79,6 +80,9 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
   const [vendorName, setVendorName] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
   const [isLinkingInvoice, setIsLinkingInvoice] = useState(false);
+  
+  // Smart doc dialog state
+  const [addSmartDocOpen, setAddSmartDocOpen] = useState(false);
   
   // Search and filter state
   const [searchQuery, setSearchQuery] = useState('');
@@ -406,7 +410,7 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
     }
   };
 
-  const handleDeleteDocuments = async (docIds: string[], mode: 'delete_only' | 'detach_approvals' | 'cascade_approvals' = 'delete_only') => {
+  const handleDeleteDocuments = async (docIds: string[], mode: 'delete_only' | 'detach_approvals' | 'cascade_approvals' = 'delete_only'): Promise<{ success: boolean; deleted?: number }> => {
     setIsDeleting(true);
     try {
       const { data, error } = await supabase.functions.invoke('delete-documents', {
@@ -415,18 +419,31 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
 
       // Handle edge function HTTP errors that contain useful response data
       if (error) {
-        // Try to extract error body if available (for FunctionsHttpError)
+        // FunctionsHttpError contains the response in different ways
+        // Try multiple extraction methods
         let errorData: any = null;
         try {
-          if ('context' in error && error.context?.body) {
-            errorData = JSON.parse(error.context.body);
+          // Method 1: error.context.body (newer client versions)
+          if (error.context?.body) {
+            const bodyText = typeof error.context.body === 'string' 
+              ? error.context.body 
+              : await error.context.body?.text?.();
+            if (bodyText) errorData = JSON.parse(bodyText);
+          }
+          // Method 2: Try parsing from error message if it contains JSON
+          if (!errorData && error.message) {
+            const jsonMatch = error.message.match(/\{[\s\S]*\}/);
+            if (jsonMatch) {
+              errorData = JSON.parse(jsonMatch[0]);
+            }
           }
         } catch {
           // Ignore JSON parse errors
         }
 
         // If we have blocked_ids from error response, handle the FK conflict
-        if (errorData?.blocked_ids?.length > 0) {
+        if (errorData?.blocked_ids?.length > 0 && mode === 'delete_only') {
+          setIsDeleting(false);
           const blockedCount = errorData.blocked_ids.length;
           const choice = window.confirm(
             `${blockedCount} document(s) are linked to approved measurements.\n\n` +
@@ -437,7 +454,7 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
           return handleDeleteDocuments(docIds, newMode);
         }
 
-        console.error('Delete error:', error);
+        console.error('Delete error:', error, 'Extracted data:', errorData);
         toast({
           title: 'Delete Failed',
           description: errorData?.errors?.[0] || error.message || 'Failed to delete documents',
@@ -582,11 +599,20 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
     <div className="space-y-6">
       {/* Upload Section with Category Counters */}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
           <CardTitle className="flex items-center gap-2">
             <Upload className="h-5 w-5" />
             Upload Document
           </CardTitle>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => setAddSmartDocOpen(true)}
+            className="shrink-0"
+          >
+            <Sparkles className="h-4 w-4 mr-2" />
+            Add Smart Doc
+          </Button>
         </CardHeader>
         <CardContent>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -887,6 +913,17 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Add Smart Doc Dialog */}
+      <AddSmartDocToProjectDialog
+        open={addSmartDocOpen}
+        onOpenChange={setAddSmartDocOpen}
+        pipelineEntryId={pipelineEntryId}
+        onDocumentAdded={() => {
+          fetchDocuments();
+          onUploadComplete?.();
+        }}
+      />
     </div>
   );
 };
