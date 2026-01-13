@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -12,6 +12,7 @@ import { CheckCircle, XCircle, AlertTriangle, BarChart2, RefreshCw, Loader2, Zap
 import { toast } from 'sonner';
 import { TrainingOverlayComparison } from './TrainingOverlayComparison';
 import { DeviationAnalysisCard } from './training/DeviationAnalysisCard';
+import { TrainingVerificationMetrics } from './training/TrainingVerificationMetrics';
 import {
   Select,
   SelectContent,
@@ -719,6 +720,23 @@ export function TrainingComparisonView({
       
       {/* Learned Corrections Summary */}
       <LearnedCorrectionsCard />
+
+      {/* Verification Metrics (Phase 4) */}
+      {(lastEngineUsed || activeRows.length > 0) && (
+        <TrainingVerificationMetrics
+          engineUsed={lastEngineUsed}
+          deviations={activeRows.map(row => ({
+            featureType: row.label.toLowerCase(),
+            avgDeviationFt: Math.abs(row.variance),
+            alignmentScore: row.variancePct === 0 ? 1 : Math.max(0, 1 - Math.abs(row.variancePct) / 100),
+            needsCorrection: Math.abs(row.variancePct) > 0,
+          }))}
+          beforeAccuracy={undefined}
+          afterAccuracy={viewMode === 'corrected' ? overallAccuracy : undefined}
+          missingFeatures={activeRows.filter(r => r.ai === 0 && r.manual > 0).length}
+          correctedFeatures={viewMode === 'corrected' ? activeRows.filter(r => Math.abs(r.variancePct) < 5).length : 0}
+        />
+      )}
 
       {/* Line-by-Line Deviation Analysis (Phase 1) */}
       {effectiveAiMeasurementId && session?.lat && session?.lng && manualTraces.length > 0 && Array.isArray(aiLinearFeatures) && aiLinearFeatures.length > 0 && (
