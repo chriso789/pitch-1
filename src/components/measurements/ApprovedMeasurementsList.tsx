@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -8,7 +8,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { 
   CheckCircle2, Download, User, Trash2,
-  Ruler, Home, Loader2, X
+  Ruler, Home, Loader2, X, Calculator
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { toast } from '@/components/ui/use-toast';
@@ -38,6 +38,25 @@ export function ApprovedMeasurementsList({ pipelineEntryId }: ApprovedMeasuremen
   const queryClient = useQueryClient();
   const [selectedApprovals, setSelectedApprovals] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
+  const [activeApprovalId, setActiveApprovalId] = useState<string | null>(null);
+  const [isSettingActive, setIsSettingActive] = useState(false);
+
+  // Fetch current active approval from pipeline entry metadata
+  useEffect(() => {
+    async function fetchActiveApproval() {
+      const { data } = await supabase
+        .from('pipeline_entries')
+        .select('metadata')
+        .eq('id', pipelineEntryId)
+        .single();
+      
+      const metadata = data?.metadata as any;
+      if (metadata?.selected_measurement_approval_id) {
+        setActiveApprovalId(metadata.selected_measurement_approval_id);
+      }
+    }
+    fetchActiveApproval();
+  }, [pipelineEntryId]);
 
   const { data: approvals, isLoading } = useQuery({
     queryKey: ['measurement-approvals', pipelineEntryId],
@@ -206,6 +225,11 @@ export function ApprovedMeasurementsList({ pipelineEntryId }: ApprovedMeasuremen
         }
       }
 
+      // Clear active if deleted
+      if (approvalIds.includes(activeApprovalId || '')) {
+        setActiveApprovalId(null);
+      }
+
       toast({
         title: 'Deleted',
         description: `${approvalIds.length} approved measurement(s) deleted successfully`,
@@ -213,6 +237,7 @@ export function ApprovedMeasurementsList({ pipelineEntryId }: ApprovedMeasuremen
 
       setSelectedApprovals(new Set());
       queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
     } catch (error: any) {
       console.error('Bulk delete error:', error);
       toast({
@@ -222,6 +247,53 @@ export function ApprovedMeasurementsList({ pipelineEntryId }: ApprovedMeasuremen
       });
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  // Set an approval as the active one for estimates
+  const handleSetActiveForEstimates = async (approvalId: string) => {
+    setIsSettingActive(true);
+    try {
+      // Update pipeline entry metadata
+      const { data: currentEntry } = await supabase
+        .from('pipeline_entries')
+        .select('metadata')
+        .eq('id', pipelineEntryId)
+        .single();
+
+      const currentMetadata = (currentEntry?.metadata as Record<string, any>) || {};
+      
+      const { error } = await supabase
+        .from('pipeline_entries')
+        .update({
+          metadata: {
+            ...currentMetadata,
+            selected_measurement_approval_id: approvalId
+          }
+        })
+        .eq('id', pipelineEntryId);
+
+      if (error) throw error;
+
+      setActiveApprovalId(approvalId);
+      
+      // Invalidate measurement context so templates recalculate
+      queryClient.invalidateQueries({ queryKey: ['measurement-context', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['measurement-approvals', pipelineEntryId] });
+
+      toast({
+        title: 'Active Measurement Set',
+        description: 'This measurement will now be used for estimate calculations',
+      });
+    } catch (error: any) {
+      console.error('Error setting active approval:', error);
+      toast({
+        title: 'Error',
+        description: 'Failed to set active measurement',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsSettingActive(false);
     }
   };
 
@@ -324,9 +396,11 @@ export function ApprovedMeasurementsList({ pipelineEntryId }: ApprovedMeasuremen
               return (
                 <div
                   key={approval.id}
-                  className={`flex items-center justify-between p-4 rounded-lg border bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-900 ${
-                    isSelected ? 'ring-2 ring-primary' : ''
-                  }`}
+                  className={`flex items-center justify-between p-4 rounded-lg border ${
+                    activeApprovalId === approval.id 
+                      ? 'bg-primary/5 border-primary ring-2 ring-primary/30' 
+                      : 'bg-green-50/50 dark:bg-green-950/20 border-green-200 dark:border-green-900'
+                  } ${isSelected ? 'ring-2 ring-primary' : ''}`}
                 >
                   <div className="flex items-start gap-3 flex-1">
                     <Checkbox
@@ -336,11 +410,17 @@ export function ApprovedMeasurementsList({ pipelineEntryId }: ApprovedMeasuremen
                       className="mt-1"
                     />
                     <div className="flex-1">
-                      <div className="flex items-center gap-2 mb-2">
+                      <div className="flex items-center gap-2 mb-2 flex-wrap">
                         <Badge variant="outline" className="bg-green-500/10 text-green-700 border-green-500/30">
                           <CheckCircle2 className="h-3 w-3 mr-1" />
                           Approved
                         </Badge>
+                        {activeApprovalId === approval.id && (
+                          <Badge className="bg-primary text-primary-foreground">
+                            <Calculator className="h-3 w-3 mr-1" />
+                            In Use for Estimates
+                          </Badge>
+                        )}
                         <span className="text-xs text-muted-foreground">
                           {format(new Date(approval.approved_at), 'MMM d, yyyy h:mm a')}
                         </span>
@@ -386,6 +466,23 @@ export function ApprovedMeasurementsList({ pipelineEntryId }: ApprovedMeasuremen
                   </div>
 
                   <div className="flex items-center gap-2 ml-4">
+                    {activeApprovalId !== approval.id && (
+                      <Button
+                        variant="secondary"
+                        size="sm"
+                        onClick={() => handleSetActiveForEstimates(approval.id)}
+                        disabled={isSettingActive}
+                      >
+                        {isSettingActive ? (
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                        ) : (
+                          <>
+                            <Calculator className="h-4 w-4 mr-1" />
+                            Use for Estimates
+                          </>
+                        )}
+                      </Button>
+                    )}
                     {approval.report_generated && approval.document && (
                       <Button
                         variant="outline"

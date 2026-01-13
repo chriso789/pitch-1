@@ -233,6 +233,7 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
 
   // Redirect if already authenticated (landing on /login while logged in)
   // SECURITY: Verify session before auto-redirect
+  // CRITICAL: Check if password_set_at is null - if so, redirect to setup link page
   useEffect(() => {
     const checkAndRedirect = async () => {
       if (!authLoading && session && authUser && !loginAttempted) {
@@ -243,6 +244,19 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
           console.log('[Login] Invalid session detected, clearing...');
           clearAllSessionData();
           await supabase.auth.signOut();
+          return;
+        }
+        
+        // Check if the user has set their password
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('password_set_at')
+          .eq('id', authUser.id)
+          .single();
+        
+        if (!profile?.password_set_at) {
+          console.log('[Login] User has session but password not set, redirecting to setup link');
+          navigate('/request-setup-link', { replace: true, state: { needsPasswordSetup: true } });
           return;
         }
         
