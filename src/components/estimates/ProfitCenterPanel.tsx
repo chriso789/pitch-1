@@ -332,7 +332,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                 <div className="flex justify-between items-center py-2 bg-primary/10 rounded-md px-3 -mx-3">
                   <div className="flex items-center gap-2">
                     <DollarSign className="h-4 w-4 text-primary" />
-                    <span className="font-medium">Rep Commission ({commissionRate}%)</span>
+                    <span className="font-medium">Rep Commission</span>
                   </div>
                   <span className="font-bold text-xl text-primary">
                     {formatCurrency(repCommission)}
@@ -468,7 +468,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                   <div className="flex justify-between items-center py-2 bg-primary/10 rounded-md px-3 -mx-3">
                     <div className="flex items-center gap-2">
                       <DollarSign className="h-4 w-4 text-primary" />
-                      <span className="font-medium">Rep Commission ({commissionRate}%)</span>
+                      <span className="font-medium">Rep Commission</span>
                     </div>
                     <span className="font-bold text-xl text-primary">
                       {formatCurrency(repCommission)}
@@ -484,17 +484,9 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
                 <div className="bg-muted/50 rounded-lg p-3 mt-4">
                   <div className="flex items-start gap-2">
                     <Info className="h-4 w-4 text-muted-foreground mt-0.5" />
-                    <div className="text-xs text-muted-foreground space-y-1">
-                      <p>
-                        <strong>Overhead Rate:</strong> {overheadRate}% of selling price
-                      </p>
-                      <p>
-                        <strong>Commission Rate:</strong> {commissionRate}% of net profit
-                      </p>
-                      <p className="text-primary/80">
-                        Upload actual invoices in the Invoices tab to update profit calculations.
-                      </p>
-                    </div>
+                    <p className="text-xs text-muted-foreground text-primary/80">
+                      Upload actual invoices in the Invoices tab to update profit calculations.
+                    </p>
                   </div>
                 </div>
               </>
