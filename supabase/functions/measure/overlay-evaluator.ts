@@ -158,7 +158,7 @@ export function evaluateOverlay(
               deviationFt: userTrace.length_ft || 0, // Full length is the "deviation" since AI had 0
             });
             
-            // Also add to deviations for display
+            // Also add to deviations for display - CRITICAL: Mark as missing explicitly
             deviations.push({
               featureId: `missing-${type}-${deviations.length}`,
               featureType: type,
@@ -167,7 +167,11 @@ export function evaluateOverlay(
               alignmentScore: 0, // 0 alignment since AI had nothing
               needsCorrection: true,
               correctedWkt: userWkt,
+              isMissingFeature: true, // Explicit flag - AI had 0 of this feature type
+              tracedLengthFt: userTrace.length_ft || 0, // Length user actually traced
             });
+            
+            console.log(`[evaluator] Added MISSING ${type}: AI=0ft, User=${userTrace.length_ft}ft, WKT=${userWkt.substring(0, 50)}...`);
           }
         }
       } else {
