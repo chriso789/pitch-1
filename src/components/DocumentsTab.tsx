@@ -833,10 +833,10 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
         )}
       </div>
 
-      {/* Preview Modal */}
+      {/* Preview Modal - show only the selected document, not all filtered */}
       <DocumentPreviewModal
         document={previewDoc}
-        documents={filteredDocuments}
+        documents={previewDoc ? [previewDoc] : []}
         isOpen={!!previewDoc}
         onClose={() => setPreviewDoc(null)}
         onDownload={handleDownload}

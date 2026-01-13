@@ -693,3 +693,6 @@ verify_jwt = true
 
 [functions.generate-roof-overlay]
 verify_jwt = true
+
+[functions.render-tagged-pdf]
+verify_jwt = true

@@ -689,7 +689,7 @@ const SmartDocs = () => {
         </TabsContent>
       </Tabs>
 
-      {/* Preview Modal */}
+      {/* Preview Modal - show only the selected document */}
       <DocumentPreviewModal
         isOpen={!!previewDoc}
         onClose={() => setPreviewDoc(null)}
@@ -700,6 +700,13 @@ const SmartDocs = () => {
           mime_type: previewDoc.mime_type,
           document_type: previewDoc.document_type
         } : null}
+        documents={previewDoc ? [{
+          id: previewDoc.id,
+          filename: previewDoc.filename,
+          file_path: previewDoc.file_path,
+          mime_type: previewDoc.mime_type,
+          document_type: previewDoc.document_type
+        }] : []}
         onDownload={() => previewDoc && handleDownload(previewDoc)}
       />
 

@@ -376,9 +376,55 @@ export const AddSmartDocToProjectDialog: React.FC<AddSmartDocToProjectDialogProp
       const effectiveTenantId = profile?.active_tenant_id || profile?.tenant_id;
       if (!effectiveTenantId) throw new Error('Profile not found');
 
-      // Create a blob from the rendered content
-      const blob = new Blob([preview], { type: 'text/html' });
-      const fileName = `${pipelineEntryId}/${Date.now()}_${selectedDoc.name.replace(/[^a-zA-Z0-9]/g, '_')}.html`;
+      let blob: Blob;
+      let fileName: string;
+      let mimeType: string;
+      let displayName: string;
+
+      // For tagged PDFs, call the render-tagged-pdf edge function
+      if (selectedDoc.source === 'tagged_doc' && selectedDoc.document_id) {
+        console.log('[AddSmartDoc] Rendering tagged PDF via edge function...');
+        
+        const { data: renderResult, error: renderError } = await supabase.functions.invoke(
+          'render-tagged-pdf',
+          {
+            body: {
+              document_id: selectedDoc.document_id,
+              pipeline_entry_id: pipelineEntryId,
+            },
+          }
+        );
+
+        if (renderError) {
+          console.error('[AddSmartDoc] Edge function error:', renderError);
+          throw new Error(renderError.message || 'Failed to render PDF');
+        }
+
+        if (!renderResult?.pdfBase64) {
+          throw new Error('No PDF data returned from renderer');
+        }
+
+        // Convert base64 to blob
+        const binaryString = atob(renderResult.pdfBase64);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          bytes[i] = binaryString.charCodeAt(i);
+        }
+        blob = new Blob([bytes], { type: 'application/pdf' });
+        
+        const baseName = selectedDoc.name.replace(/\.[^/.]+$/, '').replace(/[^a-zA-Z0-9]/g, '_');
+        fileName = `${pipelineEntryId}/${Date.now()}_${baseName}_filled.pdf`;
+        mimeType = 'application/pdf';
+        displayName = `${selectedDoc.name.replace(/\.[^/.]+$/, '')}_filled.pdf`;
+
+        console.log(`[AddSmartDoc] PDF rendered successfully: ${blob.size} bytes, ${renderResult.tagCount} tags filled`);
+      } else {
+        // For HTML templates, keep existing behavior
+        blob = new Blob([preview], { type: 'text/html' });
+        fileName = `${pipelineEntryId}/${Date.now()}_${selectedDoc.name.replace(/[^a-zA-Z0-9]/g, '_')}.html`;
+        mimeType = 'text/html';
+        displayName = `${selectedDoc.name}.html`;
+      }
 
       // Upload to storage
       const { error: uploadError } = await supabase.storage
@@ -394,10 +440,10 @@ export const AddSmartDocToProjectDialog: React.FC<AddSmartDocToProjectDialogProp
           tenant_id: effectiveTenantId,
           pipeline_entry_id: pipelineEntryId,
           document_type: 'contract',
-          filename: `${selectedDoc.name}.html`,
+          filename: displayName,
           file_path: fileName,
           file_size: blob.size,
-          mime_type: 'text/html',
+          mime_type: mimeType,
           uploaded_by: user?.id,
           description: `Generated from Smart Doc: ${selectedDoc.name}`,
         });
@@ -406,7 +452,7 @@ export const AddSmartDocToProjectDialog: React.FC<AddSmartDocToProjectDialogProp
 
       toast({
         title: 'Success',
-        description: `"${selectedDoc.name}" added to documents`,
+        description: `"${displayName}" added to documents`,
       });
 
       onOpenChange(false);
