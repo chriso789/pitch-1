@@ -54,6 +54,45 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     }
   }, [profile?.tenant_id, profile?.role, profileError]);
 
+  // Password status check - must be before any conditional returns (React hooks rule)
+  useEffect(() => {
+    const checkPasswordStatus = async () => {
+      if (!user) return;
+      
+      // Check workspace identity inline to avoid dependency issues
+      const cachedIdentity = getCachedWorkspaceIdentity(user.id);
+      const workspaceReady = !!(
+        (profile?.tenant_id && profile?.role) || 
+        (cachedIdentity?.tenant_id && cachedIdentity?.role)
+      );
+      
+      if (!workspaceReady) return;
+      
+      const passwordSetupInProgress = localStorage.getItem('pitch_password_setup_in_progress') === 'true';
+      if (passwordSetupInProgress) {
+        setPasswordIsSet(true);
+        setPasswordCheckDone(true);
+        return;
+      }
+      
+      const { data: freshProfile } = await supabase
+        .from('profiles')
+        .select('password_set_at')
+        .eq('id', user.id)
+        .single();
+      
+      if (freshProfile?.password_set_at) {
+        setPasswordIsSet(true);
+        localStorage.removeItem('pitch_password_setup_in_progress');
+      } else {
+        setPasswordIsSet(false);
+      }
+      setPasswordCheckDone(true);
+    };
+    
+    checkPasswordStatus();
+  }, [user, profile?.tenant_id, profile?.role]);
+
   const handleRetry = async () => {
     setIsRetrying(true);
     setLoadingTooLong(false);
@@ -158,39 +197,7 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
     );
   }
 
-  // CRITICAL: Fetch password_set_at directly from database to avoid stale cache issues
-  useEffect(() => {
-    const checkPasswordStatus = async () => {
-      if (!user || !hasWorkspaceIdentity) return;
-      
-      const passwordSetupInProgress = localStorage.getItem('pitch_password_setup_in_progress') === 'true';
-      if (passwordSetupInProgress) {
-        setPasswordIsSet(true); // Don't block if setup in progress
-        setPasswordCheckDone(true);
-        return;
-      }
-      
-      // Fetch fresh from database instead of using cached profile
-      const { data: freshProfile } = await supabase
-        .from('profiles')
-        .select('password_set_at')
-        .eq('id', user.id)
-        .single();
-      
-      if (freshProfile?.password_set_at) {
-        setPasswordIsSet(true);
-        // Clear any stale flags
-        localStorage.removeItem('pitch_password_setup_in_progress');
-      } else {
-        setPasswordIsSet(false);
-      }
-      setPasswordCheckDone(true);
-    };
-    
-    checkPasswordStatus();
-  }, [user, hasWorkspaceIdentity]);
-
-  // Wait for password check before rendering
+  // Wait for password check before rendering (only after workspace identity confirmed)
   if (hasWorkspaceIdentity && !passwordCheckDone) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-background">
@@ -203,7 +210,7 @@ export const ProtectedRoute = ({ children }: ProtectedRouteProps) => {
   }
 
   // Redirect if password not set (based on fresh database check)
-  if (passwordIsSet === false) {
+  if (hasWorkspaceIdentity && passwordIsSet === false) {
     console.log('[ProtectedRoute] User has not set password, redirecting to request-setup-link');
     return <Navigate to="/request-setup-link" state={{ needsPasswordSetup: true }} replace />;
   }
