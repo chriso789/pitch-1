@@ -175,6 +175,9 @@ const Login: React.FC<LoginProps> = ({ initialTab = 'login' }) => {
               .from('profiles')
               .update({ password_set_at: new Date().toISOString() })
               .eq('id', authUser.id);
+            
+            // Clear profile cache so ProtectedRoute gets fresh data
+            localStorage.removeItem('user-profile-cache');
           }
           
           // Initialize session with configured timeout
