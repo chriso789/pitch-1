@@ -15,6 +15,7 @@ import { useToast } from '@/hooks/use-toast';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { renderTemplate, SmartTagContext } from '@/lib/smartTags/smartTagParser';
 
 interface SmartDoc {
   id: string;
@@ -124,42 +125,238 @@ export const AddSmartDocToProjectDialog: React.FC<AddSmartDocToProjectDialogProp
     }
   };
 
-  // When a doc is selected, render preview
+  // Build context from pipeline entry and related data
+  const buildProjectContext = async (): Promise<SmartTagContext> => {
+    const context: SmartTagContext = {};
+
+    try {
+      // Fetch pipeline entry with contact
+      const { data: entry } = await supabase
+        .from('pipeline_entries')
+        .select(`
+          *,
+          contacts(*)
+        `)
+        .eq('id', pipelineEntryId)
+        .single();
+
+      if (entry) {
+        context.lead = entry;
+        if (entry.contacts) {
+          const c = entry.contacts as Record<string, any>;
+          context.contact = c;
+          // Build property from contact address (using correct field names)
+          context.property = {
+            address: c.address_street,
+            city: c.address_city,
+            state: c.address_state,
+            zip: c.address_zip,
+            full_address: [
+              c.address_street,
+              c.address_city,
+              c.address_state,
+              c.address_zip
+            ].filter(Boolean).join(', ')
+          };
+        }
+      }
+
+      // Fetch job if exists
+      const { data: job } = await supabase
+        .from('jobs')
+        .select('*')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .maybeSingle();
+
+      if (job) {
+        context.job = job;
+      }
+
+      // Fetch project if exists
+      const { data: project } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .maybeSingle();
+
+      if (project) {
+        context.project = project;
+      }
+
+      // Fetch estimates
+      const { data: estimates } = await supabase
+        .from('enhanced_estimates')
+        .select('*')
+        .eq('pipeline_entry_id', pipelineEntryId)
+        .order('created_at', { ascending: false });
+
+      if (estimates && estimates.length > 0) {
+        context.estimates = estimates;
+        context.estimate = estimates[0]; // Most recent
+      }
+
+      // Fetch measurement reports from ai_measurement_analysis
+      const { data: measurements } = await supabase
+        .from('ai_measurement_analysis')
+        .select('*')
+        .eq('project_id', context.project?.id)
+        .order('created_at', { ascending: false });
+
+      if (measurements && measurements.length > 0) {
+        context.measurements = measurements;
+        // Flatten first measurement for easy access
+        const m = measurements[0] as Record<string, any>;
+        context.roof = {
+          total_sqft: m.total_roof_area,
+          squares: m.total_roof_area ? Math.ceil(m.total_roof_area / 100) : null,
+          predominant_pitch: m.predominant_pitch,
+          facets_count: m.total_facets,
+        };
+        context.lf = {
+          ridge: m.ridge_length,
+          hip: m.hip_length,
+          valley: m.valley_length,
+          eave: m.eave_length,
+          rake: m.rake_length,
+        };
+      }
+
+      // Fetch tenant/company info
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id, active_tenant_id')
+        .eq('id', (await supabase.auth.getUser()).data.user?.id)
+        .single();
+
+      const tenantId = profile?.active_tenant_id || profile?.tenant_id;
+      if (tenantId) {
+        const { data: tenant } = await supabase
+          .from('tenants')
+          .select('*')
+          .eq('id', tenantId)
+          .single();
+
+        if (tenant) {
+          const t = tenant as Record<string, any>;
+          context.company = {
+            name: t.name,
+            phone: t.phone,
+            email: t.email,
+            address: [t.address_street, t.address_city, t.address_state, t.address_zip].filter(Boolean).join(', '),
+            logo_url: t.logo_url,
+          };
+        }
+      }
+
+      // Add current date
+      context.today = new Date().toLocaleDateString();
+      context.current_date = new Date().toISOString().split('T')[0];
+
+    } catch (error) {
+      console.error('Error building project context:', error);
+    }
+
+    return context;
+  };
+
+  // When a doc is selected, render preview with actual data
   const handleSelectDoc = async (doc: SmartDoc) => {
     setSelectedDoc(doc);
     setPreview(null);
     setUnresolvedTags([]);
 
     try {
+      // Build context from project data
+      const context = await buildProjectContext();
+
       if (doc.source === 'tagged_doc' && doc.document_id) {
-        // For tagged documents, show a simple preview message
+        // For tagged documents, show info about what will be filled
+        const tagCount = await supabase
+          .from('document_tag_placements')
+          .select('id, tag_key')
+          .eq('document_id', doc.document_id);
+
+        const tags = tagCount.data?.map(t => t.tag_key) || [];
+        const resolvedCount = tags.filter(tag => {
+          const value = getContextValue(context, tag);
+          return value !== undefined && value !== null && value !== '';
+        }).length;
+
         setPreview(`
           <div style="text-align: center; padding: 20px;">
             <p><strong>${doc.name}</strong></p>
-            <p style="color: #666;">This document has smart tags that will be auto-filled with project data when generated.</p>
-            <p style="margin-top: 10px; font-size: 12px;">Click "Add to Documents" to create a copy with resolved values.</p>
+            <p style="color: #666; margin-top: 10px;">This document has <strong>${tags.length}</strong> smart tags.</p>
+            <p style="color: #22c55e; font-size: 14px;">${resolvedCount} will be auto-filled from project data.</p>
+            ${tags.length - resolvedCount > 0 ? `<p style="color: #f59e0b; font-size: 12px;">${tags.length - resolvedCount} tags have no data available.</p>` : ''}
+            <hr style="margin: 15px 0;" />
+            <p style="font-size: 12px; color: #666;">Click "Add to Documents" to generate the filled document.</p>
           </div>
         `);
+        setUnresolvedTags(tags.filter(tag => !getContextValue(context, tag)));
       } else {
-        // For smartdoc_templates, show template info preview
-        setPreview(`
-          <div style="padding: 10px; text-align: center;">
-            <p><strong>Template: ${doc.name}</strong></p>
-            <p style="color: #666; font-size: 12px;">${doc.description || 'No description'}</p>
-            <hr style="margin: 10px 0;" />
-            <p style="font-size: 12px;">This template will be populated with data from the current project.</p>
-          </div>
-        `);
+        // For smartdoc_templates, fetch and render the actual template
+        const { data: version } = await supabase
+          .from('smartdoc_template_versions')
+          .select('schema, engine')
+          .eq('template_id', doc.id)
+          .eq('is_latest', true)
+          .single();
+
+        if (version?.schema) {
+          const schema = version.schema as Record<string, any>;
+          const templateBody = schema.html_body || schema.body || '';
+
+          if (templateBody) {
+            // Render the template with project context
+            const rendered = renderTemplate(templateBody, context);
+            setPreview(rendered);
+
+            // Find unresolved tags (still have {tag} pattern)
+            const unresolvedPattern = /\{([^#/}]+)\}/g;
+            const unresolved: string[] = [];
+            let match;
+            while ((match = unresolvedPattern.exec(rendered)) !== null) {
+              unresolved.push(match[1].trim());
+            }
+            setUnresolvedTags(unresolved);
+          } else {
+            setPreview(`
+              <div style="padding: 20px; text-align: center;">
+                <p><strong>${doc.name}</strong></p>
+                <p style="color: #666; font-size: 14px;">Template has no HTML body defined.</p>
+                <p style="font-size: 12px;">Please edit the template to add content.</p>
+              </div>
+            `);
+          }
+        } else {
+          setPreview(`
+            <div style="padding: 20px; text-align: center;">
+              <p><strong>${doc.name}</strong></p>
+              <p style="color: #f59e0b; font-size: 14px;">No published version found.</p>
+            </div>
+          `);
+        }
       }
     } catch (error) {
       console.error('Error loading preview:', error);
-      setPreview(`<p>Ready to generate: ${doc.name}</p>`);
+      setPreview(`<p style="color: #ef4444;">Error loading preview: ${error}</p>`);
       toast({
-        title: 'Preview Info',
-        description: 'Preview not available. Document can still be generated.',
-        variant: 'default',
+        title: 'Preview Error',
+        description: 'Failed to render document preview',
+        variant: 'destructive',
       });
     }
+  };
+
+  // Helper to get value from context by dot-notation path
+  const getContextValue = (ctx: Record<string, any>, path: string): any => {
+    const parts = path.split('.');
+    let value = ctx;
+    for (const part of parts) {
+      if (value === null || value === undefined) return undefined;
+      value = value[part];
+    }
+    return value;
   };
 
   // Save rendered doc to documents table
