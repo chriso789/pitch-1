@@ -10951,6 +10951,44 @@ export type Database = {
           },
         ]
       }
+      function_cache: {
+        Row: {
+          cache_key: string
+          created_at: string | null
+          id: string
+          result: string
+          tenant_id: string | null
+          ttl_seconds: number | null
+          updated_at: string | null
+        }
+        Insert: {
+          cache_key: string
+          created_at?: string | null
+          id?: string
+          result: string
+          tenant_id?: string | null
+          ttl_seconds?: number | null
+          updated_at?: string | null
+        }
+        Update: {
+          cache_key?: string
+          created_at?: string | null
+          id?: string
+          result?: string
+          tenant_id?: string | null
+          ttl_seconds?: number | null
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "function_cache_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       function_logs: {
         Row: {
           context: Json | null
