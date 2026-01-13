@@ -243,30 +243,24 @@ export const DocumentPreviewModal: React.FC<DocumentPreviewModalProps> = ({
               />
             </div>
           ) : previewType === 'pdf' && previewUrl ? (
-            <div className="w-full min-h-[50vh] md:min-h-[60vh] max-h-[70vh] overflow-auto">
-              <object
-                data={previewUrl}
-                type="application/pdf"
-                className="w-full h-[50vh] md:h-[60vh]"
-              >
-                <embed src={previewUrl} type="application/pdf" className="w-full h-[50vh] md:h-[60vh]" />
-                <div className="flex flex-col items-center justify-center min-h-[300px] gap-4 p-4">
-                  <FileText className="h-16 w-16 text-muted-foreground" />
-                  <p className="text-muted-foreground text-center">Unable to display PDF inline</p>
-                  <div className="flex flex-col sm:flex-row gap-2">
-                    <Button onClick={() => window.open(previewUrl, '_blank')} className="min-h-[44px]">
-                      <ExternalLink className="h-4 w-4 mr-2" />
-                      Open in new tab
-                    </Button>
-                    {currentDoc && (
-                      <Button variant="outline" onClick={() => onDownload(currentDoc)} className="min-h-[44px]">
-                        <Download className="h-4 w-4 mr-2" />
-                        Download
-                      </Button>
-                    )}
-                  </div>
-                </div>
-              </object>
+            <div className="w-full h-full flex flex-col min-h-[60vh]">
+              <iframe
+                src={previewUrl}
+                className="w-full flex-1 min-h-[55vh] border-0"
+                title={currentDoc?.filename || 'PDF Preview'}
+              />
+              <div className="flex justify-center gap-2 p-2 border-t bg-muted/50">
+                <Button size="sm" variant="ghost" onClick={openInNewTab}>
+                  <ExternalLink className="h-4 w-4 mr-2" />
+                  Open in new tab
+                </Button>
+                {currentDoc && (
+                  <Button size="sm" variant="ghost" onClick={() => onDownload(currentDoc)}>
+                    <Download className="h-4 w-4 mr-2" />
+                    Download
+                  </Button>
+                )}
+              </div>
             </div>
           ) : previewType === 'text' && textContent ? (
             <pre className="p-4 text-sm overflow-auto whitespace-pre-wrap font-mono bg-background border rounded m-4">
