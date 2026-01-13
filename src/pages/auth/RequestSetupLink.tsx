@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, Mail, ArrowLeft, CheckCircle, AlertCircle, KeyRound, LogIn } from 'lucide-react';
+import { Loader2, Mail, ArrowLeft, CheckCircle, AlertCircle, KeyRound, LogIn, LogOut } from 'lucide-react';
 
 const RequestSetupLink: React.FC = () => {
   const navigate = useNavigate();
@@ -22,6 +22,8 @@ const RequestSetupLink: React.FC = () => {
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
   const [checkingAuth, setCheckingAuth] = useState(true);
+  const [hasSessionWithoutPassword, setHasSessionWithoutPassword] = useState(false);
+  const [signingOut, setSigningOut] = useState(false);
 
   // Check if user is already authenticated with password set - redirect to dashboard
   useEffect(() => {
@@ -44,6 +46,10 @@ const RequestSetupLink: React.FC = () => {
             navigate('/dashboard', { replace: true });
             return;
           }
+          
+          // User is authenticated but password not set - show sign out option
+          console.log('[RequestSetupLink] User has session but password not set');
+          setHasSessionWithoutPassword(true);
         }
       } catch (err) {
         console.error('[RequestSetupLink] Error checking auth:', err);
@@ -54,6 +60,26 @@ const RequestSetupLink: React.FC = () => {
     
     checkAuthAndRedirect();
   }, [navigate]);
+
+  // Handle sign out and go to login
+  const handleSignOutAndLogin = async () => {
+    setSigningOut(true);
+    try {
+      localStorage.removeItem('pitch_password_setup_in_progress');
+      localStorage.removeItem('user-profile-cache');
+      await supabase.auth.signOut({ scope: 'local' });
+      navigate('/login', { replace: true });
+    } catch (err) {
+      console.error('[RequestSetupLink] Sign out error:', err);
+      toast({
+        title: 'Error',
+        description: 'Failed to sign out. Please try again.',
+        variant: 'destructive'
+      });
+    } finally {
+      setSigningOut(false);
+    }
+  };
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -250,12 +276,34 @@ const RequestSetupLink: React.FC = () => {
                 </div>
               </div>
 
-              <Link to="/login" className="block">
-                <Button type="button" variant="outline" className="w-full">
-                  <LogIn className="mr-2 h-4 w-4" />
-                  Login with Password
+              {hasSessionWithoutPassword ? (
+                <Button 
+                  type="button" 
+                  variant="outline" 
+                  className="w-full"
+                  onClick={handleSignOutAndLogin}
+                  disabled={signingOut}
+                >
+                  {signingOut ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Signing out...
+                    </>
+                  ) : (
+                    <>
+                      <LogOut className="mr-2 h-4 w-4" />
+                      Sign Out & Go to Login
+                    </>
+                  )}
                 </Button>
-              </Link>
+              ) : (
+                <Link to="/login" className="block">
+                  <Button type="button" variant="outline" className="w-full">
+                    <LogIn className="mr-2 h-4 w-4" />
+                    Login with Password
+                  </Button>
+                </Link>
+              )}
             </form>
 
             <div className="mt-6 p-4 bg-muted/50 rounded-lg">

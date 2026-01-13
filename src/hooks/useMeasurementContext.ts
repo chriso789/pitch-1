@@ -1,5 +1,6 @@
 /**
  * Hook to fetch and build measurement context for smart tag evaluation
+ * Priority: measurement_approvals.saved_tags > roof_measurements > pipeline_entries.metadata
  */
 import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
@@ -38,10 +39,59 @@ export interface MeasurementSummary {
   valleyLength: number;
   stepFlashingLength: number;
   pipeVents: number;
+  source: 'approval' | 'roof_measurements' | 'metadata' | 'none';
+  approvalId?: string;
+  approvalDate?: string;
+}
+
+// Build context from saved_tags (measurement_approvals format)
+function buildContextFromTags(tags: Record<string, any>): MeasurementContext {
+  // Handle different tag naming conventions
+  const squares = Number(tags['roof.squares'] || tags['roof.plan_area'] ? (Number(tags['roof.plan_area']) / 100) : 0) || 0;
+  const sqft = Number(tags['roof.total_sqft'] || tags['roof.plan_area'] || squares * 100) || 0;
+  const eave = Number(tags['lf.eave'] || tags['lf.eaves'] || 0);
+  const rake = Number(tags['lf.rake'] || tags['lf.rakes'] || 0);
+  const ridge = Number(tags['lf.ridge'] || tags['lf.ridges'] || 0);
+  const hip = Number(tags['lf.hip'] || tags['lf.hips'] || 0);
+  const valley = Number(tags['lf.valley'] || tags['lf.valleys'] || 0);
+  const step = Number(tags['lf.step'] || tags['lf.step_flashing'] || 0);
+  const pipeVent = Number(tags['pen.pipe_vent'] || tags['pen.pipe_vents'] || tags['penetrations'] || 3);
+
+  return {
+    roof: {
+      squares,
+      total_sqft: sqft,
+    },
+    waste: {
+      '10pct': { 
+        squares: Number(tags['waste.10pct.squares']) || squares * 1.10, 
+        sqft: Number(tags['waste.10pct.sqft']) || sqft * 1.10 
+      },
+      '12pct': { 
+        squares: Number(tags['waste.12pct.squares']) || squares * 1.12, 
+        sqft: Number(tags['waste.12pct.sqft']) || sqft * 1.12 
+      },
+      '15pct': { 
+        squares: Number(tags['waste.15pct.squares']) || squares * 1.15, 
+        sqft: Number(tags['waste.15pct.sqft']) || sqft * 1.15 
+      },
+    },
+    lf: {
+      eave,
+      rake,
+      ridge,
+      hip,
+      valley,
+      step,
+    },
+    pen: {
+      pipe_vent: pipeVent,
+    },
+  };
 }
 
 // Build context from roof_measurements data
-function buildContext(data: any): MeasurementContext {
+function buildContextFromRoofMeasurements(data: any): MeasurementContext {
   const squares = data?.total_squares || 0;
   const sqft = data?.total_area_adjusted_sqft || squares * 100;
   const eave = data?.total_eave_length || 0;
@@ -70,24 +120,32 @@ function buildContext(data: any): MeasurementContext {
       step,
     },
     pen: {
-      pipe_vent: data?.penetration_count || 3, // Default estimate
+      pipe_vent: data?.penetration_count || 3,
     },
   };
 }
 
 // Build summary for display
-function buildSummary(data: any): MeasurementSummary {
+function buildSummaryFromContext(
+  ctx: MeasurementContext, 
+  source: 'approval' | 'roof_measurements' | 'metadata' | 'none',
+  approvalId?: string,
+  approvalDate?: string
+): MeasurementSummary {
   return {
-    totalSquares: data?.total_squares || 0,
-    totalSqFt: data?.total_area_adjusted_sqft || 0,
-    wastePercent: data?.waste_factor_percent || 10,
-    eaveLength: data?.total_eave_length || 0,
-    rakeLength: data?.total_rake_length || 0,
-    ridgeLength: data?.total_ridge_length || 0,
-    hipLength: data?.total_hip_length || 0,
-    valleyLength: data?.total_valley_length || 0,
-    stepFlashingLength: data?.total_step_flashing_length || 0,
-    pipeVents: data?.penetration_count || 3,
+    totalSquares: ctx.roof.squares,
+    totalSqFt: ctx.roof.total_sqft,
+    wastePercent: 10,
+    eaveLength: ctx.lf.eave,
+    rakeLength: ctx.lf.rake,
+    ridgeLength: ctx.lf.ridge,
+    hipLength: ctx.lf.hip,
+    valleyLength: ctx.lf.valley,
+    stepFlashingLength: ctx.lf.step,
+    pipeVents: ctx.pen.pipe_vent,
+    source,
+    approvalId,
+    approvalDate,
   };
 }
 
@@ -156,6 +214,7 @@ export function useMeasurementContext(pipelineEntryId: string) {
   const [summary, setSummary] = useState<MeasurementSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [activeApprovalId, setActiveApprovalId] = useState<string | null>(null);
 
   useEffect(() => {
     async function fetchMeasurements() {
@@ -165,8 +224,48 @@ export function useMeasurementContext(pipelineEntryId: string) {
       }
 
       try {
-        // Try to get measurements from roof_measurements table linked to this pipeline entry
-        const { data, error: queryError } = await supabase
+        // PRIORITY 1: Check for selected or latest measurement_approval
+        const { data: pipelineEntry } = await supabase
+          .from('pipeline_entries')
+          .select('metadata')
+          .eq('id', pipelineEntryId)
+          .single();
+
+        const metadata = pipelineEntry?.metadata as any;
+        const selectedApprovalId = metadata?.selected_measurement_approval_id;
+
+        // Fetch approval - either selected or latest
+        let approvalQuery = supabase
+          .from('measurement_approvals')
+          .select('id, saved_tags, approved_at')
+          .eq('pipeline_entry_id', pipelineEntryId)
+          .order('approved_at', { ascending: false });
+
+        if (selectedApprovalId) {
+          approvalQuery = supabase
+            .from('measurement_approvals')
+            .select('id, saved_tags, approved_at')
+            .eq('id', selectedApprovalId);
+        }
+
+        const { data: approvals, error: approvalError } = await approvalQuery.limit(1);
+
+        if (!approvalError && approvals && approvals.length > 0) {
+          const approval = approvals[0];
+          const savedTags = approval.saved_tags as Record<string, any>;
+          
+          if (savedTags && Object.keys(savedTags).length > 0) {
+            const ctx = buildContextFromTags(savedTags);
+            setContext(ctx);
+            setSummary(buildSummaryFromContext(ctx, 'approval', approval.id, approval.approved_at));
+            setActiveApprovalId(approval.id);
+            setLoading(false);
+            return;
+          }
+        }
+
+        // PRIORITY 2: Try roof_measurements table
+        const { data: roofData, error: roofError } = await supabase
           .from('roof_measurements')
           .select('*')
           .eq('customer_id', pipelineEntryId)
@@ -174,41 +273,39 @@ export function useMeasurementContext(pipelineEntryId: string) {
           .limit(1)
           .maybeSingle();
 
-        if (queryError) {
-          console.error('Error fetching measurements:', queryError);
-          // Don't set error - measurements might not exist yet
+        if (!roofError && roofData) {
+          const ctx = buildContextFromRoofMeasurements(roofData);
+          setContext(ctx);
+          setSummary(buildSummaryFromContext(ctx, 'roof_measurements'));
+          setLoading(false);
+          return;
         }
 
-        if (data) {
-          setContext(buildContext(data));
-          setSummary(buildSummary(data));
-        } else {
-          // Try to get from pipeline entry metadata
-          const { data: entry } = await supabase
-            .from('pipeline_entries')
-            .select('metadata')
-            .eq('id', pipelineEntryId)
-            .single();
-
-          const metadata = entry?.metadata as any;
-          if (metadata?.comprehensive_measurements) {
-            const cm = metadata.comprehensive_measurements;
-            const mockData = {
-              total_squares: cm.roof_squares || cm.total_squares || 0,
-              total_area_adjusted_sqft: cm.roof_area_sq_ft || cm.total_area_sqft || 0,
-              total_eave_length: cm.eave_length || 0,
-              total_rake_length: cm.rake_length || 0,
-              total_ridge_length: cm.ridge_length || 0,
-              total_hip_length: cm.hip_length || 0,
-              total_valley_length: cm.valley_length || 0,
-              total_step_flashing_length: cm.step_flashing_length || 0,
-              penetration_count: cm.penetration_count || 3,
-              waste_factor_percent: cm.waste_factor_percent || 10,
-            };
-            setContext(buildContext(mockData));
-            setSummary(buildSummary(mockData));
-          }
+        // PRIORITY 3: Fallback to pipeline entry metadata
+        if (metadata?.comprehensive_measurements) {
+          const cm = metadata.comprehensive_measurements;
+          const mockData = {
+            total_squares: cm.roof_squares || cm.total_squares || 0,
+            total_area_adjusted_sqft: cm.roof_area_sq_ft || cm.total_area_sqft || 0,
+            total_eave_length: cm.eave_length || 0,
+            total_rake_length: cm.rake_length || 0,
+            total_ridge_length: cm.ridge_length || 0,
+            total_hip_length: cm.hip_length || 0,
+            total_valley_length: cm.valley_length || 0,
+            total_step_flashing_length: cm.step_flashing_length || 0,
+            penetration_count: cm.penetration_count || 3,
+            waste_factor_percent: cm.waste_factor_percent || 10,
+          };
+          const ctx = buildContextFromRoofMeasurements(mockData);
+          setContext(ctx);
+          setSummary(buildSummaryFromContext(ctx, 'metadata'));
+          setLoading(false);
+          return;
         }
+
+        // No measurements found
+        setContext(null);
+        setSummary(null);
       } catch (err) {
         console.error('Error in fetchMeasurements:', err);
         setError('Failed to load measurements');
@@ -220,5 +317,5 @@ export function useMeasurementContext(pipelineEntryId: string) {
     fetchMeasurements();
   }, [pipelineEntryId]);
 
-  return { context, summary, loading, error, evaluateFormula };
+  return { context, summary, loading, error, evaluateFormula, activeApprovalId };
 }
