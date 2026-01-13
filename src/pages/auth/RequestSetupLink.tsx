@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, Link, useLocation } from 'react-router-dom';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -7,7 +7,7 @@ import { Label } from '@/components/ui/label';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { useToast } from '@/components/ui/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, Mail, ArrowLeft, CheckCircle, AlertCircle, KeyRound } from 'lucide-react';
+import { Loader2, Mail, ArrowLeft, CheckCircle, AlertCircle, KeyRound, LogIn } from 'lucide-react';
 
 const RequestSetupLink: React.FC = () => {
   const navigate = useNavigate();
@@ -21,6 +21,39 @@ const RequestSetupLink: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState('');
+  const [checkingAuth, setCheckingAuth] = useState(true);
+
+  // Check if user is already authenticated with password set - redirect to dashboard
+  useEffect(() => {
+    const checkAuthAndRedirect = async () => {
+      // Always clear stale setup flag on this page
+      localStorage.removeItem('pitch_password_setup_in_progress');
+      
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          // Fetch fresh profile to check password_set_at
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('password_set_at, role')
+            .eq('id', user.id)
+            .single();
+          
+          if (profile?.password_set_at) {
+            console.log('[RequestSetupLink] User already has password set, redirecting to dashboard');
+            navigate('/dashboard', { replace: true });
+            return;
+          }
+        }
+      } catch (err) {
+        console.error('[RequestSetupLink] Error checking auth:', err);
+      } finally {
+        setCheckingAuth(false);
+      }
+    };
+    
+    checkAuthAndRedirect();
+  }, [navigate]);
 
   const validateEmail = (email: string) => {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -83,6 +116,18 @@ const RequestSetupLink: React.FC = () => {
       setLoading(false);
     }
   };
+
+  // Show loading while checking auth
+  if (checkingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center gradient-hero p-4">
+        <div className="flex flex-col items-center gap-4">
+          <Loader2 className="h-8 w-8 animate-spin text-white" />
+          <p className="text-white/90">Checking authentication...</p>
+        </div>
+      </div>
+    );
+  }
 
   if (sent) {
     return (
@@ -196,15 +241,21 @@ const RequestSetupLink: React.FC = () => {
                 )}
               </Button>
 
-              <div className="text-center pt-2">
-                <Link 
-                  to="/login" 
-                  className="text-sm text-muted-foreground hover:text-primary transition-colors inline-flex items-center gap-1"
-                >
-                  <ArrowLeft className="h-3 w-3" />
-                  Back to Login
-                </Link>
+              <div className="relative my-4">
+                <div className="absolute inset-0 flex items-center">
+                  <span className="w-full border-t" />
+                </div>
+                <div className="relative flex justify-center text-xs uppercase">
+                  <span className="bg-white px-2 text-muted-foreground">or</span>
+                </div>
               </div>
+
+              <Link to="/login" className="block">
+                <Button type="button" variant="outline" className="w-full">
+                  <LogIn className="mr-2 h-4 w-4" />
+                  Login with Password
+                </Button>
+              </Link>
             </form>
 
             <div className="mt-6 p-4 bg-muted/50 rounded-lg">
