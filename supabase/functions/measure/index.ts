@@ -1650,7 +1650,7 @@ serve(async (req) => {
 
       // Route: action=pull
       if (action === 'pull') {
-        const { propertyId, lat, lng, address, apply_corrections } = body;
+        const { propertyId, lat, lng, address, apply_corrections, training_session_id } = body;
 
         if (!propertyId) {
           return json({ 
@@ -1668,7 +1668,7 @@ serve(async (req) => {
           }, corsHeaders, 400);
         }
 
-        console.log('Pull request:', { propertyId, lat, lng, address, apply_corrections });
+        console.log('Pull request:', { propertyId, lat, lng, address, apply_corrections, training_session_id });
 
         // Get user ID
         const { data: { user } } = await supabase.auth.getUser();
@@ -1762,8 +1762,106 @@ serve(async (req) => {
           }, corsHeaders, 404);
         }
 
-        // Apply corrections to linear features and summary
-        if (apply_corrections && Object.keys(corrections).length > 0) {
+        // ============= TRAINING TRUTH OVERRIDE =============
+        // If training_session_id is provided, REPLACE AI output with user's training traces
+        // This ensures 0ft tolerance by using the user's canonical geometry directly
+        let trainingOverrideApplied = false;
+        
+        if (apply_corrections && training_session_id && meas) {
+          console.log(`🎯 TRAINING TRUTH OVERRIDE: Loading traces for session ${training_session_id}`);
+          
+          try {
+            // Load all training traces for this session
+            const { data: trainingTraces, error: tracesError } = await supabase
+              .from('roof_training_traces')
+              .select('id, trace_type, length_ft, wkt_geometry')
+              .eq('session_id', training_session_id)
+              .not('wkt_geometry', 'is', null);
+            
+            if (tracesError) {
+              console.error('Failed to load training traces:', tracesError);
+            } else if (trainingTraces && trainingTraces.length > 0) {
+              console.log(`📐 Found ${trainingTraces.length} training traces to apply as truth`);
+              
+              // Build new linear_features from training traces
+              const truthFeatures: LinearFeature[] = [];
+              const truthTotals: Record<string, number> = {
+                ridge_ft: 0,
+                hip_ft: 0,
+                valley_ft: 0,
+                eave_ft: 0,
+                rake_ft: 0,
+                perimeter_ft: 0
+              };
+              
+              for (const trace of trainingTraces) {
+                if (!trace.wkt_geometry || !trace.trace_type) continue;
+                
+                // Map trace_type to feature type
+                let featureType = trace.trace_type as EdgeFeatureType;
+                
+                // Handle perimeter → treat as eave for linear features but track separately
+                if (trace.trace_type === 'perimeter') {
+                  truthTotals.perimeter_ft += trace.length_ft || 0;
+                  // Also add as eave for compatibility
+                  featureType = 'eave';
+                }
+                
+                // Add to linear features
+                truthFeatures.push({
+                  id: `truth-${trace.id}`,
+                  wkt: trace.wkt_geometry,
+                  length_ft: trace.length_ft || 0,
+                  type: featureType,
+                  label: `${trace.trace_type} (training truth)`
+                });
+                
+                // Add to totals
+                const totalKey = `${featureType}_ft`;
+                if (totalKey in truthTotals) {
+                  truthTotals[totalKey] += trace.length_ft || 0;
+                }
+              }
+              
+              // REPLACE AI linear_features with training truth
+              const oldLinearCount = meas.linear_features?.length || 0;
+              meas.linear_features = truthFeatures;
+              
+              // REPLACE AI summary totals with training truth
+              if (meas.summary) {
+                const oldSummary = { ...meas.summary };
+                meas.summary.ridge_ft = truthTotals.ridge_ft;
+                meas.summary.hip_ft = truthTotals.hip_ft;
+                meas.summary.valley_ft = truthTotals.valley_ft;
+                meas.summary.eave_ft = truthTotals.eave_ft;
+                meas.summary.rake_ft = truthTotals.rake_ft;
+                meas.summary.perimeter_ft = truthTotals.perimeter_ft || (truthTotals.eave_ft + truthTotals.rake_ft);
+                
+                console.log('📊 TRAINING TRUTH APPLIED:');
+                console.log(`   Ridge: ${oldSummary.ridge_ft?.toFixed(0) || 0} → ${truthTotals.ridge_ft.toFixed(0)} ft`);
+                console.log(`   Hip: ${oldSummary.hip_ft?.toFixed(0) || 0} → ${truthTotals.hip_ft.toFixed(0)} ft`);
+                console.log(`   Valley: ${oldSummary.valley_ft?.toFixed(0) || 0} → ${truthTotals.valley_ft.toFixed(0)} ft`);
+                console.log(`   Eave: ${oldSummary.eave_ft?.toFixed(0) || 0} → ${truthTotals.eave_ft.toFixed(0)} ft`);
+                console.log(`   Rake: ${oldSummary.rake_ft?.toFixed(0) || 0} → ${truthTotals.rake_ft.toFixed(0)} ft`);
+                console.log(`   Perimeter: ${oldSummary.perimeter_ft?.toFixed(0) || 0} → ${meas.summary.perimeter_ft?.toFixed(0) || 0} ft`);
+                console.log(`   Linear features: ${oldLinearCount} → ${truthFeatures.length}`);
+              }
+              
+              // Mark source as training override
+              meas.source = `${meas.source.replace(/_corrected|_injected/g, '')}_training_override`;
+              trainingOverrideApplied = true;
+              
+              console.log('✅ Training truth override complete - AI output replaced with user traces');
+            } else {
+              console.log('⚠️ No training traces found for session - falling back to corrections');
+            }
+          } catch (err) {
+            console.error('Training truth override failed:', err);
+          }
+        }
+        
+        // Apply multiplier corrections only if training truth was NOT applied
+        if (apply_corrections && !trainingOverrideApplied && Object.keys(corrections).length > 0) {
           // Log pre-correction state for debugging
           console.log('Pre-correction linear features:', {
             ridge: meas.summary?.ridge_ft,
@@ -1802,7 +1900,8 @@ serve(async (req) => {
         }
         
         // FEATURE INJECTION: Apply user-traced geometry when AI produced nothing
-        if (apply_corrections && featureInjections.length > 0 && meas.summary) {
+        // SKIP if training override was already applied (it already uses user traces)
+        if (apply_corrections && !trainingOverrideApplied && featureInjections.length > 0 && meas.summary) {
           console.log('Applying feature injections...');
           
           // Group injections by type

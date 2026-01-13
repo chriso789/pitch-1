@@ -194,9 +194,9 @@ export function TrainingComparisonView({
 
     setIsRemeasuring(true);
     try {
-      toast.info('Remeasuring with learned corrections...');
+      toast.info('Applying training truth override...');
 
-      // Call the measure edge function with apply_corrections flag
+      // Call the measure edge function with training_session_id for truth override
       const { data, error } = await supabase.functions.invoke('measure', {
         body: {
           action: 'pull',
@@ -205,6 +205,7 @@ export function TrainingComparisonView({
           lng: session.lng,
           address: session.property_address || undefined,
           apply_corrections: true,
+          training_session_id: sessionId, // Pass session ID for truth override
         },
       });
 
@@ -240,7 +241,7 @@ export function TrainingComparisonView({
       queryClient.invalidateQueries({ queryKey: ['ai-measurement'] });
       queryClient.invalidateQueries({ queryKey: ['training-session-for-measure', sessionId] });
 
-      toast.success('Remeasurement complete with corrections applied!');
+      toast.success('Training truth override applied - AI now matches your traces!');
     } catch (err: any) {
       console.error('Failed to remeasure:', err);
       toast.error(err.message || 'Failed to remeasure');
