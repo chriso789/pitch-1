@@ -22319,6 +22319,7 @@ export type Database = {
           ai_totals: Json | null
           completed_at: string | null
           contact_id: string | null
+          corrected_ai_measurement_id: string | null
           created_at: string | null
           created_by: string | null
           description: string | null
@@ -22326,6 +22327,7 @@ export type Database = {
           lat: number | null
           lng: number | null
           name: string
+          original_ai_measurement_id: string | null
           pipeline_entry_id: string | null
           property_address: string | null
           satellite_image_url: string | null
@@ -22339,6 +22341,7 @@ export type Database = {
           ai_totals?: Json | null
           completed_at?: string | null
           contact_id?: string | null
+          corrected_ai_measurement_id?: string | null
           created_at?: string | null
           created_by?: string | null
           description?: string | null
@@ -22346,6 +22349,7 @@ export type Database = {
           lat?: number | null
           lng?: number | null
           name: string
+          original_ai_measurement_id?: string | null
           pipeline_entry_id?: string | null
           property_address?: string | null
           satellite_image_url?: string | null
@@ -22359,6 +22363,7 @@ export type Database = {
           ai_totals?: Json | null
           completed_at?: string | null
           contact_id?: string | null
+          corrected_ai_measurement_id?: string | null
           created_at?: string | null
           created_by?: string | null
           description?: string | null
@@ -22366,6 +22371,7 @@ export type Database = {
           lat?: number | null
           lng?: number | null
           name?: string
+          original_ai_measurement_id?: string | null
           pipeline_entry_id?: string | null
           property_address?: string | null
           satellite_image_url?: string | null
@@ -22387,6 +22393,20 @@ export type Database = {
             columns: ["contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roof_training_sessions_corrected_ai_measurement_id_fkey"
+            columns: ["corrected_ai_measurement_id"]
+            isOneToOne: false
+            referencedRelation: "measurements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roof_training_sessions_original_ai_measurement_id_fkey"
+            columns: ["original_ai_measurement_id"]
+            isOneToOne: false
+            referencedRelation: "measurements"
             referencedColumns: ["id"]
           },
           {
