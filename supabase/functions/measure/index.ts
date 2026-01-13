@@ -2644,7 +2644,7 @@ serve(async (req) => {
               correctedLineWkt: correction.corrected_line_wkt,
               deviationFt: correction.deviation_ft,
               deviationPct: correction.deviation_pct,
-              source: correction.correction_source || 'user_trace',
+              correctionSource: correction.correction_source || 'user_trace',
               buildingShape: correction.building_shape || 'complex',
               roofType: correction.roof_type || 'complex',
               propertyAddress: sessionData.property_address,

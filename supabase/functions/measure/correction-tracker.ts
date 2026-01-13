@@ -80,9 +80,10 @@ export async function storeCorrection(
       : 'complex';
     
     // Determine if this is a feature injection (AI had nothing, user traced something)
+    // Note: explicit parentheses are CRITICAL for correct operator precedence
     const isFeatureInjection = correction.isFeatureInjection || 
-      (!correction.originalLineWkt || correction.originalLineWkt.trim() === '') && 
-      (correction.correctedLineWkt && correction.correctedLineWkt.trim() !== '');
+      ((!correction.originalLineWkt || correction.originalLineWkt.trim() === '') && 
+       (correction.correctedLineWkt && correction.correctedLineWkt.trim() !== ''));
 
     const insertData = {
       measurement_id: correction.measurementId || null,
