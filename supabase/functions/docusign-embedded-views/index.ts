@@ -1,7 +1,6 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from "https://esm.sh/@supabase/supabase-js@2.57.4";
-import { corsHeaders } from "../_shared/cors.ts";
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { supabaseAuth } from '../_shared/supabase.ts';
+import { corsHeaders } from '../_shared/cors.ts';
 
 interface EmbeddedViewRequest {
   agreement_instance_id: string;
@@ -16,11 +15,7 @@ serve(async (req) => {
   }
 
   try {
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { auth: { persistSession: false }, global: { headers: { Authorization: req.headers.get('Authorization')! } } }
-    );
+    const supabaseClient = supabaseAuth(req);
 
     const { data: { user } } = await supabaseClient.auth.getUser();
     if (!user) {

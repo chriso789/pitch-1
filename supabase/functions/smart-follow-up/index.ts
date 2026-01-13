@@ -1,11 +1,6 @@
-import "https://deno.land/x/xhr@0.1.0/mod.ts";
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.38.4';
-
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-};
+import { serve } from 'https://deno.land/std@0.168.0/http/server.ts';
+import { supabaseService } from '../_shared/supabase.ts';
+import { corsHeaders } from '../_shared/cors.ts';
 
 interface FollowUpRequest {
   action: 'create_campaign' | 'trigger_follow_up' | 'analyze_leads' | 'send_scheduled';
@@ -23,9 +18,7 @@ serve(async (req) => {
     console.log('Smart follow-up action:', action);
 
     // Initialize Supabase client
-    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
-    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    const supabase = supabaseService();
 
     // Get user context
     const authHeader = req.headers.get('authorization');

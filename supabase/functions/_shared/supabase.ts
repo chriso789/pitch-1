@@ -18,6 +18,20 @@ export function supabaseAnon(authHeader?: string): SupabaseClient {
 }
 
 /**
+ * Create Supabase client from request with user's auth token
+ * Convenience wrapper for Edge Functions that extracts auth from request
+ */
+export function supabaseAuth(req: Request): SupabaseClient {
+  const authHeader = req.headers.get('Authorization') || '';
+  return createClient(ENV.SUPABASE_URL, ENV.SUPABASE_ANON_KEY, {
+    auth: { persistSession: false },
+    global: {
+      headers: { Authorization: authHeader },
+    },
+  });
+}
+
+/**
  * Create Supabase client with service role (bypasses RLS)
  * Use for system operations, webhooks, and background jobs
  */
