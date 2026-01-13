@@ -130,6 +130,14 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [importParsedData, setImportParsedData] = useState<ParsedMeasurements | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
   
+  // Assigned rep rates state
+  const [repRates, setRepRates] = useState<{
+    overheadPercent: number;
+    commissionPercent: number;
+    commissionStructure: 'profit_split' | 'sales_percentage';
+    repName: string;
+  } | null>(null);
+  
   const { toast } = useToast();
   const { context: measurementContext, summary: measurementSummary } = useMeasurementContext(pipelineEntryId);
   const { generatePDF } = usePDFGeneration();
@@ -137,7 +145,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const pdfContainerRef = useRef<HTMLDivElement>(null);
   const [searchParams] = useSearchParams();
 
-  // Use the pricing hook
+  // Use the pricing hook - pass rep rates as initial config when available
   const {
     lineItems,
     materialItems,
@@ -151,7 +159,60 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     setConfig,
     setFixedPrice,
     resetToOriginal,
-  } = useEstimatePricing([]);
+  } = useEstimatePricing([], repRates ? {
+    overheadPercent: repRates.overheadPercent,
+    repCommissionPercent: repRates.commissionPercent,
+    commissionStructure: repRates.commissionStructure,
+  } : undefined);
+
+  // Fetch assigned rep's rates from the pipeline entry
+  useEffect(() => {
+    const fetchAssignedRepRates = async () => {
+      try {
+        const { data, error } = await supabaseClient
+          .from('pipeline_entries')
+          .select(`
+            assigned_to,
+            profiles!pipeline_entries_assigned_to_fkey(
+              first_name,
+              last_name,
+              overhead_rate,
+              commission_rate,
+              commission_structure
+            )
+          `)
+          .eq('id', pipelineEntryId)
+          .single();
+        
+        if (error) {
+          console.error('Error fetching assigned rep rates:', error);
+          return;
+        }
+        
+        const profile = data?.profiles as any;
+        if (profile) {
+          const rates = {
+            overheadPercent: profile.overhead_rate ?? 10,
+            commissionPercent: profile.commission_rate ?? 50,
+            commissionStructure: (profile.commission_structure === 'sales_percentage' ? 'sales_percentage' : 'profit_split') as 'profit_split' | 'sales_percentage',
+            repName: `${profile.first_name || ''} ${profile.last_name || ''}`.trim() || 'Rep'
+          };
+          setRepRates(rates);
+          
+          // Apply rep's rates to pricing config
+          setConfig({
+            overheadPercent: rates.overheadPercent,
+            repCommissionPercent: rates.commissionPercent,
+            commissionStructure: rates.commissionStructure,
+          });
+        }
+      } catch (err) {
+        console.error('Error fetching assigned rep rates:', err);
+      }
+    };
+    
+    fetchAssignedRepRates();
+  }, [pipelineEntryId, setConfig]);
 
   useEffect(() => {
     fetchTemplates();
@@ -1389,6 +1450,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           fixedPrice={fixedPrice}
           onConfigChange={setConfig}
           onFixedPriceChange={setFixedPrice}
+          repName={repRates?.repName}
         />
       )}
 
