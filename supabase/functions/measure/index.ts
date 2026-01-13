@@ -284,6 +284,23 @@ function unionFacesWKT(faces: RoofFace[]): string | undefined {
   return `MULTIPOLYGON(${polys})`;
 }
 
+// Ensure a WKT geometry is always MULTIPOLYGON format for DB column compatibility
+function ensureMultiPolygon(wkt: string | undefined): string | undefined {
+  if (!wkt) return undefined;
+  // Already MULTIPOLYGON
+  if (wkt.toUpperCase().startsWith('MULTIPOLYGON')) {
+    return wkt;
+  }
+  // Convert POLYGON to MULTIPOLYGON
+  if (wkt.toUpperCase().startsWith('POLYGON')) {
+    // Extract the polygon content (everything after "POLYGON")
+    const polygonContent = wkt.replace(/^POLYGON\s*/i, '');
+    return `MULTIPOLYGON(${polygonContent})`;
+  }
+  // Unknown format, return as-is
+  return wkt;
+}
+
 // Calculate geodesic line length in feet
 function calculateGeodesicLength(start: [number, number], end: [number, number], midLat: number): number {
   const { metersPerDegLat, metersPerDegLng } = degToMeters(midLat);
@@ -2478,7 +2495,7 @@ serve(async (req) => {
               eave_ft: outputSchema.totals['lf.eave'],
               rake_ft: outputSchema.totals['lf.rake'],
             },
-            geom_wkt: toPolygonWKT(coords),
+            geom_wkt: ensureMultiPolygon(toPolygonWKT(coords)),
           };
 
           const row = await persistMeasurement(supabase, measureResult, userId, { lat, lng, zoom: 20 });
@@ -3138,7 +3155,7 @@ function convertVisionOverlayToMeasureResult(
         eave_ft: perimeterTotalFt * 0.7, // Rough split
         rake_ft: perimeterTotalFt * 0.3,
       },
-      geom_wkt: perimeterWkt
+      geom_wkt: ensureMultiPolygon(perimeterWkt)
     };
     
     console.log('[convertVisionOverlay] Created MeasureResult:', {
