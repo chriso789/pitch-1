@@ -7,6 +7,7 @@ import { Progress } from '@/components/ui/progress';
 import { Button } from '@/components/ui/button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { CheckCircle, XCircle, AlertTriangle, BarChart2, RefreshCw, Loader2, Zap, RotateCcw, Sparkles, Brain } from 'lucide-react';
 import { toast } from 'sonner';
 import { TrainingOverlayComparison } from './TrainingOverlayComparison';
@@ -374,11 +375,18 @@ export function TrainingComparisonView({
   // Filter to rows with data
   const activeRows = comparisonData.filter(row => row.manual > 0 || row.ai > 0);
 
-  // Calculate overall accuracy
-  const totalManual = activeRows.reduce((sum, row) => sum + row.manual, 0);
-  const totalAI = activeRows.reduce((sum, row) => sum + row.ai, 0);
+  // Calculate overall accuracy - EXCLUDE PERIMETER from accuracy calculation
+  // Perimeter is often auto-calculated (eave + rake) and creates misleading variance
+  const coreFeatureRows = activeRows.filter(row => row.label !== 'Perimeter');
+  const totalManual = coreFeatureRows.reduce((sum, row) => sum + row.manual, 0);
+  const totalAI = coreFeatureRows.reduce((sum, row) => sum + row.ai, 0);
   const overallVariancePct = totalManual > 0 ? Math.abs(((totalAI - totalManual) / totalManual) * 100) : 0;
   const overallAccuracy = Math.max(0, 100 - overallVariancePct);
+  
+  // Detect corrupted session where original AI data was overwritten
+  const isDataCorrupted = !session?.original_ai_measurement_id && 
+    session?.ai_measurement_id && 
+    coreFeatureRows.every(row => Math.abs(row.variancePct) < 0.1);
 
   // 0ft tolerance: Only 0% variance is green, everything else needs work
   const getVarianceColor = (pct: number, aiValue: number = 0, manualValue: number = 0) => {
@@ -533,6 +541,37 @@ export function TrainingComparisonView({
 
   return (
     <div className="space-y-6">
+      {/* Data Corruption Warning - Original AI data was overwritten */}
+      {isDataCorrupted && (
+        <Alert variant="destructive" className="border-orange-300 bg-orange-50 text-orange-800">
+          <AlertTriangle className="h-4 w-4" />
+          <AlertTitle className="text-orange-800">Original AI Data Missing</AlertTitle>
+          <AlertDescription className="text-orange-700">
+            <p className="mb-2">
+              The original AI measurement was overwritten by a previous "Remeasure with Corrections" operation. 
+              Both "Your Measurements" and "AI Measurements" now show identical data (0% variance).
+            </p>
+            <p className="mb-3">
+              Click "Run AI Measure" to generate a fresh independent AI measurement for accurate comparison.
+            </p>
+            <Button 
+              onClick={handleRunAIMeasure} 
+              disabled={isRunningAIMeasure || !session?.lat}
+              variant="secondary"
+              size="sm"
+              className="bg-orange-100 hover:bg-orange-200 border-orange-300"
+            >
+              {isRunningAIMeasure ? (
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              ) : (
+                <Zap className="h-4 w-4 mr-2" />
+              )}
+              {isRunningAIMeasure ? 'Re-running AI...' : 'Re-run Original AI Measurement'}
+            </Button>
+          </AlertDescription>
+        </Alert>
+      )}
+
       {/* Measurement Source Indicator */}
       {session?.original_ai_measurement_id && (
         <Card className="border-blue-200 bg-blue-50/50">
