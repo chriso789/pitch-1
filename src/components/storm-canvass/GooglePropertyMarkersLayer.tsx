@@ -141,7 +141,7 @@ export default function GooglePropertyMarkersLayer({
       
       const { data: properties, error } = await supabase
         .from('canvassiq_properties')
-        .select('id, lat, lng, disposition, address, owner_name, tenant_id, created_at')
+        .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at')
         .eq('tenant_id', profile.tenant_id)
         .gte('lat', sw.lat())
         .lte('lat', ne.lat())
