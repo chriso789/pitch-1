@@ -171,11 +171,13 @@ export const AddSmartDocToProjectDialog: React.FC<AddSmartDocToProjectDialogProp
       const { data: { user } } = await supabase.auth.getUser();
       const { data: profile } = await supabase
         .from('profiles')
-        .select('tenant_id')
+        .select('tenant_id, active_tenant_id')
         .eq('id', user?.id)
         .single();
 
-      if (!profile?.tenant_id) throw new Error('Profile not found');
+      // Use active_tenant_id if set, otherwise tenant_id (matches get_user_tenant_id() RLS function)
+      const effectiveTenantId = profile?.active_tenant_id || profile?.tenant_id;
+      if (!effectiveTenantId) throw new Error('Profile not found');
 
       // Create a blob from the rendered content
       const blob = new Blob([preview], { type: 'text/html' });
@@ -192,7 +194,7 @@ export const AddSmartDocToProjectDialog: React.FC<AddSmartDocToProjectDialogProp
       const { error: dbError } = await supabase
         .from('documents')
         .insert({
-          tenant_id: profile.tenant_id,
+          tenant_id: effectiveTenantId,
           pipeline_entry_id: pipelineEntryId,
           document_type: 'contract',
           filename: `${selectedDoc.name}.html`,
