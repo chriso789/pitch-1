@@ -3939,16 +3939,25 @@ async function processSolarFastPath(
   
   const boundingBox = solarData.boundingBox
   let perimeterXY: [number, number][] = []
-  let footprintSource: 'mapbox_vector' | 'google_solar_api' | 'solar_bbox_fallback' = 'solar_bbox_fallback'
+  let footprintSource: 'mapbox_vector' | 'regrid_parcel' | 'google_solar_api' | 'solar_bbox_fallback' = 'solar_bbox_fallback'
   let footprintConfidence = 0.75
   let footprintVertexCount = 4
   
   // STEP 1: Try Mapbox Vector Footprint (highest fidelity)
+  console.log('🗺️ STEP 1: Attempting Mapbox Vector Footprint...')
   const mapboxResult = await fetchMapboxVectorFootprint(
     coordinates.lat,
     coordinates.lng,
-    MAPBOX_PUBLIC_TOKEN
+    MAPBOX_PUBLIC_TOKEN,
+    { radius: 50 } // Increased radius for better building detection
   )
+  
+  // Enhanced diagnostics for Mapbox result
+  if (mapboxResult.footprint) {
+    console.log(`✅ Mapbox returned footprint: ${mapboxResult.footprint.vertexCount} vertices, ${Math.round(mapboxResult.footprint.areaM2 || 0)}m²`)
+  } else {
+    console.log(`⚠️ Mapbox failed: reason=${mapboxResult.fallbackReason || 'unknown'}, error=${mapboxResult.error || 'none'}`)
+  }
   
   if (mapboxResult.footprint && mapboxResult.footprint.vertexCount >= 4) {
     // Compare with Solar API area to validate we got the right building
@@ -3970,8 +3979,44 @@ async function processSolarFastPath(
     }
   }
   
-  // STEP 2: Fallback to Solar bounding box if Mapbox failed
+  // STEP 2: Fallback to Regrid parcel footprint if Mapbox failed
+  const REGRID_API_KEY = Deno.env.get('REGRID_API_KEY')
+  if (perimeterXY.length === 0 && REGRID_API_KEY) {
+    console.log('🗺️ STEP 2: Mapbox unavailable, trying Regrid parcel footprint...')
+    
+    try {
+      const regridFootprint = await fetchRegridFootprint(coordinates.lat, coordinates.lng, REGRID_API_KEY)
+      
+      if (regridFootprint && regridFootprint.vertices.length >= 4) {
+        // Convert Regrid vertices {lat, lng} to XY coordinates [lng, lat]
+        perimeterXY = regridFootprint.vertices.map(v => [v.lng, v.lat] as [number, number])
+        footprintSource = 'regrid_parcel' as any
+        footprintConfidence = regridFootprint.confidence
+        footprintVertexCount = regridFootprint.vertices.length
+        
+        // Validate area is reasonable compared to Solar
+        const regridAreaSqft = regridFootprint.buildingArea || 0
+        if (regridAreaSqft > 0 && totalFlatArea > 0) {
+          const areaRatio = regridAreaSqft / totalFlatArea
+          if (areaRatio < 0.5 || areaRatio > 2.0) {
+            console.warn(`⚠️ Regrid area mismatch: ${regridAreaSqft}sqft vs Solar ${totalFlatArea}sqft (ratio: ${areaRatio.toFixed(2)})`)
+            // Still use it but reduce confidence
+            footprintConfidence = Math.max(0.6, footprintConfidence - 0.15)
+          }
+        }
+        
+        console.log(`✅ Regrid footprint: ${footprintVertexCount} vertices, ${regridAreaSqft || 'unknown'}sqft, confidence ${(footprintConfidence * 100).toFixed(0)}%`)
+      } else {
+        console.log(`⚠️ Regrid returned no usable footprint`)
+      }
+    } catch (regridErr) {
+      console.warn('⚠️ Regrid lookup failed:', regridErr)
+    }
+  }
+  
+  // STEP 3: Fallback to Solar bounding box (rectangle - lowest fidelity)
   if (perimeterXY.length === 0 && boundingBox?.sw && boundingBox?.ne) {
+    console.log('📐 STEP 3: Using Solar API bounding box as perimeter fallback (4 vertices - rectangle)')
     const sw = boundingBox.sw
     const ne = boundingBox.ne
     perimeterXY = [
@@ -3983,11 +4028,11 @@ async function processSolarFastPath(
     footprintSource = 'google_solar_api'
     footprintConfidence = 0.80
     footprintVertexCount = 4
-    console.log('📐 Using Solar API bounding box as perimeter fallback (4 vertices)')
   }
   
-  // STEP 3: Last resort - build from segment bounding boxes
+  // STEP 4: Last resort - build from segment bounding boxes (convex hull)
   if (perimeterXY.length === 0) {
+    console.log('📐 STEP 4: Building perimeter from segment bounding boxes (convex hull - last resort)')
     const allCorners: [number, number][] = []
     solarData.roofSegments.forEach((seg: any) => {
       if (seg.boundingBox?.sw && seg.boundingBox?.ne) {
@@ -4009,7 +4054,7 @@ async function processSolarFastPath(
     footprintSource = 'solar_bbox_fallback'
     footprintConfidence = 0.65
     footprintVertexCount = perimeterXY.length
-    console.log(`📐 Built perimeter from ${allCorners.length} segment corners -> ${perimeterXY.length} hull vertices (fallback)`)
+    console.log(`📐 Built perimeter from ${allCorners.length} segment corners -> ${perimeterXY.length} hull vertices`)
   }
   
   if (perimeterXY.length < 3) {
