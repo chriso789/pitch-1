@@ -4014,6 +4014,28 @@ async function processSolarFastPath(
     }
   }
   
+  // STEP 2.5: NEW - OSM Overpass fallback (free, no API key required)
+  if (perimeterXY.length === 0) {
+    console.log('🗺️ STEP 2.5: Trying OpenStreetMap Overpass building footprint...')
+    
+    try {
+      const osmFootprint = await fetchOSMBuildingFootprint(coordinates.lat, coordinates.lng)
+      
+      if (osmFootprint && osmFootprint.vertices.length >= 4) {
+        perimeterXY = osmFootprint.vertices.map(v => [v.lng, v.lat] as [number, number])
+        footprintSource = 'osm_overpass' as any
+        footprintConfidence = osmFootprint.confidence
+        footprintVertexCount = osmFootprint.vertices.length
+        
+        console.log(`✅ OSM Overpass footprint: ${footprintVertexCount} vertices, confidence ${(footprintConfidence * 100).toFixed(0)}%`)
+      } else {
+        console.log(`⚠️ OSM Overpass returned no usable footprint`)
+      }
+    } catch (osmErr) {
+      console.warn('⚠️ OSM Overpass lookup failed:', osmErr)
+    }
+  }
+  
   // STEP 3: Fallback to Solar bounding box (rectangle - lowest fidelity)
   if (perimeterXY.length === 0 && boundingBox?.sw && boundingBox?.ne) {
     console.log('📐 STEP 3: Using Solar API bounding box as perimeter fallback (4 vertices - rectangle)')
@@ -4448,4 +4470,138 @@ function degreesToPitchFast(degrees: number): string {
   if (degrees < 40) return '9/12'
   if (degrees < 45) return '10/12'
   return '12/12'
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// 🗺️ OSM OVERPASS BUILDING FOOTPRINT FALLBACK
+// Free API, no key required - backup when Mapbox and Regrid fail
+// ═══════════════════════════════════════════════════════════════════════════
+
+interface OSMFootprint {
+  vertices: Array<{ lat: number; lng: number }>;
+  confidence: number;
+  source: 'osm_overpass';
+  osmId?: string;
+}
+
+async function fetchOSMBuildingFootprint(
+  lat: number,
+  lng: number
+): Promise<OSMFootprint | null> {
+  try {
+    // Query buildings within ~50m of the point
+    const radius = 50; // meters
+    const overpassQuery = `
+      [out:json][timeout:10];
+      way["building"](around:${radius},${lat},${lng});
+      out geom;
+    `;
+    
+    const overpassUrl = 'https://overpass-api.de/api/interpreter';
+    console.log(`🗺️ OSM Overpass: Querying buildings within ${radius}m of ${lat.toFixed(6)}, ${lng.toFixed(6)}`);
+    
+    const response = await fetch(overpassUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: `data=${encodeURIComponent(overpassQuery)}`,
+    });
+    
+    if (!response.ok) {
+      console.warn(`⚠️ OSM Overpass failed: ${response.status}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    
+    if (!data.elements || data.elements.length === 0) {
+      console.log('⚠️ No OSM buildings found');
+      return null;
+    }
+    
+    console.log(`📊 OSM Overpass: Found ${data.elements.length} building(s)`);
+    
+    // Find the building that contains the point or is closest
+    type Candidate = {
+      vertices: Array<{ lat: number; lng: number }>;
+      osmId: string;
+      containsPoint: boolean;
+      distance: number;
+    };
+    
+    const candidates: Candidate[] = [];
+    
+    for (const element of data.elements) {
+      if (element.type !== 'way' || !element.geometry || element.geometry.length < 4) continue;
+      
+      const vertices = element.geometry.map((g: any) => ({ lat: g.lat, lng: g.lon }));
+      
+      // Check if point is inside polygon
+      const containsPoint = pointInPolygonLatLng({ lat, lng }, vertices);
+      
+      // Calculate distance to centroid
+      const centroid = {
+        lat: vertices.reduce((s: number, v: { lat: number }) => s + v.lat, 0) / vertices.length,
+        lng: vertices.reduce((s: number, v: { lng: number }) => s + v.lng, 0) / vertices.length,
+      };
+      const distanceDeg = Math.sqrt(Math.pow(lat - centroid.lat, 2) + Math.pow(lng - centroid.lng, 2));
+      const distanceM = distanceDeg * 111320; // rough conversion
+      
+      candidates.push({
+        vertices,
+        osmId: element.id?.toString() || 'unknown',
+        containsPoint,
+        distance: distanceM,
+      });
+    }
+    
+    if (candidates.length === 0) {
+      console.log('⚠️ No valid OSM building polygons found');
+      return null;
+    }
+    
+    // Sort: prefer containing point, then by distance
+    candidates.sort((a, b) => {
+      if (a.containsPoint !== b.containsPoint) return a.containsPoint ? -1 : 1;
+      return a.distance - b.distance;
+    });
+    
+    const best = candidates[0];
+    
+    // Confidence based on containment and distance
+    let confidence = 0.80;
+    if (!best.containsPoint) confidence -= 0.15;
+    if (best.distance > 20) confidence -= 0.05;
+    confidence = Math.max(0.55, confidence);
+    
+    console.log(`✅ OSM footprint: ${best.vertices.length} vertices, containsPoint=${best.containsPoint}, distance=${best.distance.toFixed(1)}m, confidence ${(confidence * 100).toFixed(0)}%`);
+    
+    return {
+      vertices: best.vertices,
+      confidence,
+      source: 'osm_overpass',
+      osmId: best.osmId,
+    };
+    
+  } catch (error) {
+    console.error('❌ OSM Overpass error:', error);
+    return null;
+  }
+}
+
+// Point-in-polygon test for {lat, lng} objects
+function pointInPolygonLatLng(point: { lat: number; lng: number }, polygon: Array<{ lat: number; lng: number }>): boolean {
+  let inside = false;
+  const n = polygon.length;
+  
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const xi = polygon[i].lng, yi = polygon[i].lat;
+    const xj = polygon[j].lng, yj = polygon[j].lat;
+    
+    if (((yi > point.lat) !== (yj > point.lat)) &&
+        (point.lng < (xj - xi) * (point.lat - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+  
+  return inside;
 }
