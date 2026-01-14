@@ -44,6 +44,12 @@ import {
   type MapboxFootprint,
   type MapboxFootprintResult 
 } from '../_shared/mapbox-footprint-extractor.ts'
+// NEW: Microsoft Buildings fallback (uses Esri/Overture data - no API key needed)
+import { 
+  fetchMicrosoftBuildingFootprint, 
+  type MicrosoftFootprint,
+  type MicrosoftFootprintResult 
+} from '../_shared/microsoft-footprint-extractor.ts'
 import { 
   validateGeometry, 
   calculateAreaSqFt, 
@@ -4043,9 +4049,44 @@ async function processSolarFastPath(
     }
   }
   
+  // STEP 2.7: NEW - Microsoft/Esri Building Footprints fallback (free, uses Esri ArcGIS service)
+  if (perimeterXY.length === 0) {
+    console.log('🏢 STEP 2.7: Trying Microsoft/Esri Building Footprints (free, no API key)...')
+    
+    try {
+      const msftFootprint = await fetchMicrosoftBuildingFootprint(coordinates.lat, coordinates.lng)
+      
+      if (msftFootprint.footprint && msftFootprint.footprint.vertexCount >= 4) {
+        perimeterXY = msftFootprint.footprint.coordinates
+        footprintSource = 'microsoft_buildings' as any
+        footprintConfidence = msftFootprint.footprint.confidence
+        footprintVertexCount = msftFootprint.footprint.vertexCount
+        
+        // Validate area is reasonable compared to Solar
+        const msftAreaSqft = (msftFootprint.footprint.areaM2 || 0) * 10.764
+        if (msftAreaSqft > 0 && totalFlatArea > 0) {
+          const areaRatio = msftAreaSqft / totalFlatArea
+          if (areaRatio < 0.5 || areaRatio > 2.0) {
+            console.warn(`⚠️ Microsoft area mismatch: ${Math.round(msftAreaSqft)}sqft vs Solar ${Math.round(totalFlatArea)}sqft (ratio: ${areaRatio.toFixed(2)})`)
+            footprintConfidence = Math.max(0.6, footprintConfidence - 0.15)
+          }
+        }
+        
+        console.log(`✅ Microsoft footprint: ${footprintVertexCount} vertices, ${Math.round(msftAreaSqft)}sqft, confidence ${(footprintConfidence * 100).toFixed(0)}%`)
+      } else {
+        console.log(`⚠️ Microsoft/Esri returned no usable footprint: ${msftFootprint.fallbackReason || msftFootprint.error || 'unknown'}`)
+      }
+    } catch (msftErr) {
+      console.warn('⚠️ Microsoft/Esri lookup failed:', msftErr)
+    }
+  }
+  
   // STEP 3: Fallback to Solar bounding box (rectangle - lowest fidelity)
+  // ⚠️ CRITICAL: Bounding box includes non-roof areas (patios, pools, landscaping)
+  // This WILL overestimate area - mark as low confidence and require review
   if (perimeterXY.length === 0 && boundingBox?.sw && boundingBox?.ne) {
-    console.log('📐 STEP 3: Using Solar API bounding box as perimeter fallback (4 vertices - rectangle)')
+    console.log('⚠️ STEP 3: Using Solar API bounding box as perimeter fallback (4 vertices - rectangle)')
+    console.log('⚠️ WARNING: Bounding box includes non-roof areas - area may be significantly overestimated!')
     const sw = boundingBox.sw
     const ne = boundingBox.ne
     perimeterXY = [
@@ -4054,14 +4095,29 @@ async function processSolarFastPath(
       [ne.longitude, ne.latitude],
       [sw.longitude, ne.latitude],
     ]
-    footprintSource = 'google_solar_api'
-    footprintConfidence = 0.80
+    footprintSource = 'solar_bbox_fallback' // Explicit name to flag low-quality footprint
+    footprintConfidence = 0.60 // Lower confidence - bounding box is unreliable for area
     footprintVertexCount = 4
+    
+    // Calculate bounding box area vs Solar API area to log the discrepancy
+    const bboxWidthDeg = ne.longitude - sw.longitude
+    const bboxHeightDeg = ne.latitude - sw.latitude
+    const avgLat = (ne.latitude + sw.latitude) / 2
+    const metersPerDegLat = 111320
+    const metersPerDegLng = 111320 * Math.cos(avgLat * Math.PI / 180)
+    const bboxWidthFt = bboxWidthDeg * metersPerDegLng * 3.28084
+    const bboxHeightFt = bboxHeightDeg * metersPerDegLat * 3.28084
+    const bboxAreaSqft = bboxWidthFt * bboxHeightFt
+    
+    console.log(`📐 BBox area: ${Math.round(bboxAreaSqft)}sqft vs Solar API: ${Math.round(totalFlatArea)}sqft (ratio: ${(bboxAreaSqft/totalFlatArea).toFixed(2)}x)`)
+    console.log('📐 Using Solar API buildingFootprintSqft as authoritative area, NOT recalculating from bbox polygon')
   }
   
   // STEP 4: Last resort - build from segment bounding boxes (convex hull)
+  // ⚠️ CRITICAL: This is even less accurate than bbox - will significantly overestimate area
   if (perimeterXY.length === 0) {
-    console.log('📐 STEP 4: Building perimeter from segment bounding boxes (convex hull - last resort)')
+    console.log('⚠️ STEP 4: Building perimeter from segment bounding boxes (convex hull - last resort)')
+    console.log('⚠️ WARNING: Convex hull from segment boxes will include gaps and overestimate area significantly!')
     const allCorners: [number, number][] = []
     solarData.roofSegments.forEach((seg: any) => {
       if (seg.boundingBox?.sw && seg.boundingBox?.ne) {
@@ -4081,9 +4137,10 @@ async function processSolarFastPath(
     // Compute convex hull from all corners
     perimeterXY = computeConvexHull(allCorners)
     footprintSource = 'solar_bbox_fallback'
-    footprintConfidence = 0.65
+    footprintConfidence = 0.55 // Very low confidence - convex hull is unreliable
     footprintVertexCount = perimeterXY.length
     console.log(`📐 Built perimeter from ${allCorners.length} segment corners -> ${perimeterXY.length} hull vertices`)
+    console.log('📐 Using Solar API buildingFootprintSqft as authoritative area, NOT recalculating from convex hull')
   }
   
   if (perimeterXY.length < 3) {
