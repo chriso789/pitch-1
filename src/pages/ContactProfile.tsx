@@ -318,6 +318,7 @@ const ContactProfile = () => {
 
           <TabsContent value="details" className="space-y-0">
             <ContactDetailsTab 
+              key={contact.id}
               contact={contact} 
               onContactUpdate={handleContactUpdate}
             />
