@@ -6,7 +6,8 @@ import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
-import { Columns2, AlertCircle, Hand, ZoomIn, ZoomOut, RotateCcw, Filter, FilterX } from 'lucide-react';
+import { Columns2, AlertCircle, Hand, ZoomIn, ZoomOut, RotateCcw, Filter, FilterX, Map, Cpu } from 'lucide-react';
+import { TrainingSchematicWrapper } from './TrainingSchematicWrapper';
 
 interface TrainingOverlayComparisonProps {
   satelliteImageUrl: string;
@@ -29,6 +30,17 @@ interface TrainingOverlayComparisonProps {
   aiMeasurementCenter?: { lat: number; lng: number };
   // View mode: 'original' shows raw AI detection, 'corrected' shows user-trained result
   viewMode?: 'original' | 'corrected';
+  // Full AI measurement data for schematic rendering
+  aiMeasurement?: {
+    id: string;
+    target_lat?: number;
+    target_lng?: number;
+    perimeter_wkt?: string;
+    footprint_vertices_geo?: any;
+    footprint_source?: string;
+    footprint_confidence?: number;
+    detection_method?: string;
+  } | null;
 }
 
 // Match TrainingCanvas dimensions exactly
@@ -247,6 +259,7 @@ export function TrainingOverlayComparison({
   aiLinearFeatures,
   aiMeasurementCenter,
   viewMode = 'original',
+  aiMeasurement,
 }: TrainingOverlayComparisonProps) {
   // Use the AI measurement's center for WKT conversion if provided
   // This ensures AI features align correctly with the satellite image
@@ -264,6 +277,8 @@ export function TrainingOverlayComparison({
   const [syncCanvases, setSyncCanvases] = useState(true);
   const [zoomLevel, setZoomLevel] = useState(1);
   const [showFiltered, setShowFiltered] = useState(true); // Default to filtered view for clean diagrams
+  // NEW: Render mode toggle - schematic uses SchematicRoofDiagram, raw uses Fabric.js
+  const [renderMode, setRenderMode] = useState<'schematic' | 'raw'>('schematic');
   const isDraggingRef = useRef(false);
   const lastPosRef = useRef({ x: 0, y: 0 });
 
@@ -645,6 +660,27 @@ export function TrainingOverlayComparison({
               {showFiltered ? 'Filtered' : 'Raw'}
             </Label>
           </div>
+          {/* NEW: Render mode toggle (Schematic vs Raw Fabric) */}
+          <div className="flex items-center gap-2 ml-3 border-l pl-3">
+            <Button
+              variant={renderMode === 'schematic' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setRenderMode('schematic')}
+              className="h-7 px-2"
+            >
+              <Cpu className="h-3 w-3 mr-1" />
+              Schematic
+            </Button>
+            <Button
+              variant={renderMode === 'raw' ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setRenderMode('raw')}
+              className="h-7 px-2"
+            >
+              <Map className="h-3 w-3 mr-1" />
+              Raw
+            </Button>
+          </div>
         </div>
 
         {/* Side-by-side canvases */}
@@ -688,8 +724,14 @@ export function TrainingOverlayComparison({
           {/* AI Lines */}
           <div className="space-y-2">
             <div className="flex items-center justify-between">
-              <h4 className="font-medium text-sm">
+              <h4 className="font-medium text-sm flex items-center gap-1.5">
                 {viewMode === 'corrected' ? 'Corrected AI' : 'AI Measurements'}
+                {renderMode === 'schematic' && (
+                  <Badge variant="outline" className="text-xs font-normal">
+                    <Cpu className="h-3 w-3 mr-1" />
+                    Schematic
+                  </Badge>
+                )}
               </h4>
               <Badge variant={viewMode === 'corrected' ? 'default' : 'secondary'} className={viewMode === 'corrected' ? 'bg-green-500 text-xs' : 'text-xs'}>
                 {Math.round(Object.values(aiTotals).reduce((a, b) => a + b, 0))} ft total
@@ -711,14 +753,27 @@ export function TrainingOverlayComparison({
                 height: '100%',
                 overflow: 'hidden',
               }}>
-                <canvas 
-                  ref={aiCanvasRef} 
-                  style={{ 
-                    display: 'block',
-                    width: '100%',
-                    height: '100%',
-                  }} 
-                />
+                {renderMode === 'schematic' ? (
+                  <TrainingSchematicWrapper
+                    aiMeasurement={aiMeasurement || null}
+                    aiLinearFeatures={Array.isArray(aiLinearFeatures) ? aiLinearFeatures : []}
+                    satelliteImageUrl={satelliteImageUrl}
+                    centerLat={aiCenterLat}
+                    centerLng={aiCenterLng}
+                    width={CANVAS_WIDTH}
+                    height={CANVAS_HEIGHT}
+                    showSatelliteOverlay={true}
+                  />
+                ) : (
+                  <canvas 
+                    ref={aiCanvasRef} 
+                    style={{ 
+                      display: 'block',
+                      width: '100%',
+                      height: '100%',
+                    }} 
+                  />
+                )}
               </div>
             </div>
           </div>

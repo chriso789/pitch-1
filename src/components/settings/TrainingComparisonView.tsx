@@ -762,6 +762,32 @@ export function TrainingComparisonView({
         </Card>
       )}
 
+      {/* Footprint Source Badge - Show detection method from roofMeasurement */}
+      {roofMeasurement?.footprint_source && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <Badge variant="outline" className="text-xs">
+            <Cpu className="h-3 w-3 mr-1" />
+            Footprint: {roofMeasurement.footprint_source.replace(/_/g, ' ')}
+          </Badge>
+          {roofMeasurement.footprint_confidence && (
+            <Badge variant={roofMeasurement.footprint_confidence >= 0.85 ? 'default' : 'secondary'} className="text-xs">
+              {Math.round(roofMeasurement.footprint_confidence * 100)}% confidence
+            </Badge>
+          )}
+          {roofMeasurement.detection_method && (
+            <Badge variant="outline" className="text-xs">
+              Detection: {roofMeasurement.detection_method}
+            </Badge>
+          )}
+          {roofMeasurement.footprint_requires_review && (
+            <Badge variant="destructive" className="text-xs">
+              <AlertTriangle className="h-3 w-3 mr-1" />
+              Needs Review
+            </Badge>
+          )}
+        </div>
+      )}
+
       {/* Retrain AI Button */}
       <RetrainAICard />
       
@@ -841,6 +867,16 @@ export function TrainingComparisonView({
           aiLinearFeatures={Array.isArray(aiLinearFeatures) ? aiLinearFeatures : []}
           aiMeasurementCenter={(aiMeasurement as any)?.gps_coordinates}
           viewMode={viewMode}
+          aiMeasurement={roofMeasurement ? {
+            id: roofMeasurement.id,
+            target_lat: roofMeasurement.target_lat,
+            target_lng: roofMeasurement.target_lng,
+            perimeter_wkt: roofMeasurement.perimeter_wkt,
+            footprint_vertices_geo: roofMeasurement.footprint_vertices_geo as any,
+            footprint_source: roofMeasurement.footprint_source,
+            footprint_confidence: roofMeasurement.footprint_confidence,
+            detection_method: roofMeasurement.detection_method,
+          } : null}
         />
       )}
 

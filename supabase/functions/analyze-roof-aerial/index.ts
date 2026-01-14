@@ -73,6 +73,13 @@ import {
   PLANIMETER_THRESHOLDS,
 } from '../_shared/roof-analysis-helpers.ts'
 
+// Import interior line detector for optimized detection when authoritative footprint is available
+import { 
+  detectInteriorRoofLines, 
+  combineFootprintWithInteriorLines,
+  type InteriorLinesResult 
+} from '../_shared/interior-line-detector.ts'
+
 const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY')!
 const GOOGLE_MAPS_API_KEY = Deno.env.get('GOOGLE_MAPS_API_KEY')!
 const GOOGLE_SOLAR_API_KEY = Deno.env.get('GOOGLE_SOLAR_API_KEY')!
