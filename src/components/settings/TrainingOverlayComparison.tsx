@@ -1,10 +1,12 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState, useCallback, useMemo } from 'react';
 import { Canvas as FabricCanvas, Line, FabricImage, FabricText, Circle, Point } from 'fabric';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
-import { Columns2, AlertCircle, Hand, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { Switch } from '@/components/ui/switch';
+import { Label } from '@/components/ui/label';
+import { Columns2, AlertCircle, Hand, ZoomIn, ZoomOut, RotateCcw, Filter, FilterX } from 'lucide-react';
 
 interface TrainingOverlayComparisonProps {
   satelliteImageUrl: string;
@@ -136,6 +138,106 @@ function calculateAITotals(features: { type: string; length_ft: number }[] | und
   return totals;
 }
 
+// Plausibility thresholds for linear features - same as SchematicRoofDiagram
+const LINE_PLAUSIBILITY = {
+  MAX_LINES_PER_TYPE: 20,
+  MAX_STARBURST_RATIO: 0.50,
+  MIN_LINE_LENGTH_FT: 2,
+  MAX_LINE_LENGTH_FT: 200,
+  MIN_LINES_FOR_STARBURST: 8,
+  ABSOLUTE_MAX_CONVERGENCE: 6,
+};
+
+// Label collision detection - track rendered label bounds
+interface LabelBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+function checkLabelCollision(newLabel: LabelBounds, existingLabels: LabelBounds[]): boolean {
+  return existingLabels.some(existing =>
+    !(newLabel.x + newLabel.width < existing.x ||
+      newLabel.x > existing.x + existing.width ||
+      newLabel.y + newLabel.height < existing.y ||
+      newLabel.y > existing.y + existing.height)
+  );
+}
+
+// Filter out implausible AI features - SAME logic as SchematicRoofDiagram
+interface FeatureWithPoints {
+  id?: string;
+  type: string;
+  wkt: string;
+  length_ft: number;
+  points: { x: number; y: number }[];
+}
+
+function filterPlausibleFeatures(
+  features: FeatureWithPoints[]
+): { plausible: FeatureWithPoints[]; implausibleCount: number; starburstDetected: boolean } {
+  // Separate eaves/rakes from interior lines - eaves/rakes bypass filtering
+  const eavesRakes = features.filter(f => f.type === 'eave' || f.type === 'rake');
+  const interiorLines = features.filter(f => f.type !== 'eave' && f.type !== 'rake');
+
+  // Count interior lines by type
+  const typeCounts: Record<string, number> = {};
+  interiorLines.forEach(f => {
+    typeCounts[f.type] = (typeCounts[f.type] || 0) + 1;
+  });
+
+  // Check for starburst pattern - lines converging at one point
+  const allEndpoints: Record<string, number> = {};
+  interiorLines.forEach(f => {
+    if (f.points && f.points.length >= 2) {
+      const startKey = `${f.points[0].x.toFixed(0)},${f.points[0].y.toFixed(0)}`;
+      allEndpoints[startKey] = (allEndpoints[startKey] || 0) + 1;
+      const lastIdx = f.points.length - 1;
+      const endKey = `${f.points[lastIdx].x.toFixed(0)},${f.points[lastIdx].y.toFixed(0)}`;
+      allEndpoints[endKey] = (allEndpoints[endKey] || 0) + 1;
+    }
+  });
+
+  const maxAtSinglePoint = Math.max(...Object.values(allEndpoints), 0);
+  const totalInteriorEndpoints = interiorLines.length * 2;
+  const starburstRatio = totalInteriorEndpoints > 0 ? maxAtSinglePoint / totalInteriorEndpoints : 0;
+
+  const highConvergencePoints = Object.entries(allEndpoints)
+    .filter(([_, count]) => count >= Math.max(3, interiorLines.length * 0.25));
+
+  let plausibleInterior = interiorLines;
+  let starburstDetected = false;
+
+  const hasEnoughLines = interiorLines.length >= LINE_PLAUSIBILITY.MIN_LINES_FOR_STARBURST;
+  const isTrueStarburst = highConvergencePoints.length === 1 &&
+    maxAtSinglePoint >= LINE_PLAUSIBILITY.ABSOLUTE_MAX_CONVERGENCE &&
+    starburstRatio > LINE_PLAUSIBILITY.MAX_STARBURST_RATIO;
+
+  if (hasEnoughLines && isTrueStarburst) {
+    console.warn('[TrainingOverlay] Starburst pattern detected - hiding interior lines');
+    plausibleInterior = [];
+    starburstDetected = true;
+  } else {
+    // Filter individual interior lines
+    plausibleInterior = interiorLines.filter(f => {
+      if (f.length_ft < LINE_PLAUSIBILITY.MIN_LINE_LENGTH_FT) return false;
+      if (f.length_ft > LINE_PLAUSIBILITY.MAX_LINE_LENGTH_FT) return false;
+      if (typeCounts[f.type] > LINE_PLAUSIBILITY.MAX_LINES_PER_TYPE) return false;
+      return true;
+    });
+  }
+
+  // Always include eaves/rakes with basic length filter
+  const plausibleEavesRakes = eavesRakes.filter(f => f.length_ft >= 1);
+
+  return {
+    plausible: [...plausibleEavesRakes, ...plausibleInterior],
+    implausibleCount: features.length - plausibleEavesRakes.length - plausibleInterior.length,
+    starburstDetected
+  };
+}
+
 export function TrainingOverlayComparison({
   satelliteImageUrl,
   centerLat,
@@ -161,6 +263,7 @@ export function TrainingOverlayComparison({
   const [isPanMode, setIsPanMode] = useState(false);
   const [syncCanvases, setSyncCanvases] = useState(true);
   const [zoomLevel, setZoomLevel] = useState(1);
+  const [showFiltered, setShowFiltered] = useState(true); // Default to filtered view for clean diagrams
   const isDraggingRef = useRef(false);
   const lastPosRef = useRef({ x: 0, y: 0 });
 
@@ -270,7 +373,7 @@ export function TrainingOverlayComparison({
     manualFabricCanvas.renderAll();
   }, [manualFabricCanvas, manualImageLoaded, manualTraces]);
 
-  // Render AI lines - use aiCenterLat/aiCenterLng for proper alignment
+  // Render AI lines - with plausibility filtering and label collision detection
   const renderAILines = useCallback(() => {
     if (!aiFabricCanvas || !aiImageLoaded) return;
     aiFabricCanvas.getObjects().forEach((obj) => aiFabricCanvas.remove(obj));
@@ -278,17 +381,34 @@ export function TrainingOverlayComparison({
     // Ensure aiLinearFeatures is an array
     const safeAiFeatures = Array.isArray(aiLinearFeatures) ? aiLinearFeatures : [];
 
-    safeAiFeatures.forEach((feature) => {
-      // Guard: skip features without required properties
-      if (!feature || typeof feature.wkt !== 'string' || typeof feature.type !== 'string') {
-        return;
+    // Parse WKT and add canvas points to each feature
+    const featuresWithPoints = safeAiFeatures
+      .filter(feature => feature && typeof feature.wkt === 'string' && typeof feature.type === 'string')
+      .map(feature => ({
+        ...feature,
+        points: parseWKTLineString(feature.wkt, aiCenterLat, aiCenterLng, CANVAS_WIDTH, CANVAS_HEIGHT, zoom)
+      }))
+      .filter(f => f.points.length >= 2);
+
+    // Apply plausibility filter if enabled
+    let featuresToRender = featuresWithPoints;
+    if (showFiltered) {
+      const { plausible, implausibleCount, starburstDetected } = filterPlausibleFeatures(featuresWithPoints);
+      featuresToRender = plausible;
+      if (implausibleCount > 0) {
+        console.log(`[TrainingOverlay] Filtered ${implausibleCount} implausible features${starburstDetected ? ' (starburst detected)' : ''}`);
       }
-      
-      // Use the AI measurement's center for WKT-to-canvas conversion
-      const points = parseWKTLineString(feature.wkt, aiCenterLat, aiCenterLng, CANVAS_WIDTH, CANVAS_HEIGHT, zoom);
-      if (points.length < 2) return;
+    }
+
+    // Track label positions for collision detection
+    const renderedLabels: LabelBounds[] = [];
+    const MIN_LABEL_LENGTH = 5; // Only show labels for features >= 5ft
+
+    featuresToRender.forEach((feature) => {
+      const points = feature.points;
       const color = TRACE_COLORS[feature.type] || '#6b7280';
 
+      // Draw lines
       for (let i = 0; i < points.length - 1; i++) {
         const line = new Line(
           [points[i].x, points[i].y, points[i + 1].x, points[i + 1].y],
@@ -297,8 +417,10 @@ export function TrainingOverlayComparison({
         aiFabricCanvas.add(line);
       }
 
-      // Add endpoint circles
-      points.forEach((point) => {
+      // Add endpoint circles - but only for first and last point to reduce clutter
+      const firstPoint = points[0];
+      const lastPoint = points[points.length - 1];
+      [firstPoint, lastPoint].forEach((point) => {
         const circle = new Circle({
           left: point.x - 4, top: point.y - 4, radius: 4,
           fill: color, stroke: '#fff', strokeWidth: 1, selectable: false, evented: false,
@@ -306,20 +428,37 @@ export function TrainingOverlayComparison({
         aiFabricCanvas.add(circle);
       });
 
-      // Add length label
-      if (points.length >= 2) {
+      // Add length label with collision detection
+      if (points.length >= 2 && feature.length_ft >= MIN_LABEL_LENGTH) {
         const midX = (points[0].x + points[points.length - 1].x) / 2;
         const midY = (points[0].y + points[points.length - 1].y) / 2;
-        const label = new FabricText(`${Math.round(feature.length_ft)}ft`, {
-          left: midX, top: midY - 12, fontSize: 11, fill: '#fff', fontFamily: 'sans-serif',
-          fontWeight: 'bold', textBackgroundColor: color, selectable: false, evented: false, originX: 'center',
-        });
-        aiFabricCanvas.add(label);
+        
+        // Define label bounds (approximate text size)
+        const labelWidth = 40;
+        const labelHeight = 16;
+        const newLabelBounds: LabelBounds = {
+          x: midX - labelWidth / 2,
+          y: midY - labelHeight / 2 - 6,
+          width: labelWidth,
+          height: labelHeight
+        };
+
+        // Check for collision with existing labels
+        const hasCollision = checkLabelCollision(newLabelBounds, renderedLabels);
+        
+        if (!hasCollision) {
+          const label = new FabricText(`${Math.round(feature.length_ft)}ft`, {
+            left: midX, top: midY - 12, fontSize: 11, fill: '#fff', fontFamily: 'sans-serif',
+            fontWeight: 'bold', textBackgroundColor: color, selectable: false, evented: false, originX: 'center',
+          });
+          aiFabricCanvas.add(label);
+          renderedLabels.push(newLabelBounds);
+        }
       }
     });
 
     aiFabricCanvas.renderAll();
-  }, [aiFabricCanvas, aiImageLoaded, aiLinearFeatures, aiCenterLat, aiCenterLng, zoom]);
+  }, [aiFabricCanvas, aiImageLoaded, aiLinearFeatures, aiCenterLat, aiCenterLng, zoom, showFiltered]);
 
   useEffect(() => { renderManualTraces(); }, [renderManualTraces]);
   useEffect(() => { renderAILines(); }, [renderAILines]);
@@ -494,6 +633,17 @@ export function TrainingOverlayComparison({
               onCheckedChange={(checked) => setSyncCanvases(checked === true)} 
             />
             <label htmlFor="sync-views" className="text-xs cursor-pointer">Sync views</label>
+          </div>
+          <div className="flex items-center gap-2 ml-3 border-l pl-3">
+            <Switch
+              id="filter-toggle"
+              checked={showFiltered}
+              onCheckedChange={setShowFiltered}
+            />
+            <Label htmlFor="filter-toggle" className="text-xs cursor-pointer flex items-center gap-1">
+              {showFiltered ? <Filter className="h-3 w-3" /> : <FilterX className="h-3 w-3" />}
+              {showFiltered ? 'Filtered' : 'Raw'}
+            </Label>
           </div>
         </div>
 
