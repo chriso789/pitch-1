@@ -696,3 +696,6 @@ verify_jwt = true
 
 [functions.render-tagged-pdf]
 verify_jwt = true
+
+[functions.debug-footprint-sources]
+verify_jwt = true
