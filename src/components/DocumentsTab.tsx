@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label';
 import { 
   FileText, Download, Trash2, Upload, Eye,
   File, Image as ImageIcon, FileCheck, FileLock, X,
-  Package, Wrench, DollarSign, Loader2, Sparkles
+  Package, Wrench, DollarSign, Loader2, Sparkles,
+  ChevronDown, FolderOpen, ArrowLeft, CheckCircle, Clock
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { formatDistanceToNow, isAfter, isBefore, startOfDay, endOfDay } from 'date-fns';
@@ -23,6 +24,12 @@ import {
   DialogTitle,
   DialogFooter,
 } from '@/components/ui/dialog';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 
 interface Document {
   id: string;
@@ -38,6 +45,7 @@ interface Document {
     first_name: string;
     last_name: string;
   };
+  signature_status?: 'pending' | 'sent' | 'signed' | 'voided' | null;
 }
 
 interface DocumentsTabProps {
@@ -68,6 +76,13 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
   const [showAllDocs, setShowAllDocs] = useState(false);
   const [previewDoc, setPreviewDoc] = useState<Document | null>(null);
   
+  // Folder navigation state
+  const [activeFolder, setActiveFolder] = useState<string | null>(null);
+  
+  // File input ref for programmatic trigger
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingUploadCategory, setPendingUploadCategory] = useState<string>('other');
+  
   // Bulk selection state
   const [selectedDocs, setSelectedDocs] = useState<Set<string>>(new Set());
   const [isDeleting, setIsDeleting] = useState(false);
@@ -92,6 +107,17 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
   const [uploaderFilter, setUploaderFilter] = useState('all');
   
   const { toast } = useToast();
+  
+  // Trigger file upload for a specific category
+  const triggerFileInput = (category: string) => {
+    setPendingUploadCategory(category);
+    fileInputRef.current?.click();
+  };
+  
+  // Get category details by value
+  const getCategoryDetails = (value: string) => {
+    return DOCUMENT_CATEGORIES.find(c => c.value === value);
+  };
 
   useEffect(() => {
     fetchDocuments();
@@ -595,85 +621,243 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
     return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
   };
 
+  // Documents filtered by active folder
+  const folderDocuments = useMemo(() => {
+    if (!activeFolder) return [];
+    return documents.filter(d => d.document_type === activeFolder);
+  }, [documents, activeFolder]);
+
   return (
     <div className="space-y-6">
-      {/* Upload Section with Category Counters */}
-      <Card>
-        <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-          <CardTitle className="flex items-center gap-2">
-            <Upload className="h-5 w-5" />
-            Upload Document
-          </CardTitle>
+      {/* Hidden file input for programmatic upload */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) {
+            const category = getCategoryDetails(pendingUploadCategory);
+            const isInvoiceCategory = category?.tracksCost;
+            const invoiceType = pendingUploadCategory === 'invoice_material' ? 'material' : 
+                               pendingUploadCategory === 'invoice_labor' ? 'labor' : null;
+            
+            if (isInvoiceCategory && invoiceType) {
+              handleInvoiceFileSelect(file, invoiceType as 'material' | 'labor');
+            } else {
+              handleFileUpload(file, pendingUploadCategory);
+            }
+          }
+          e.target.value = ''; // Reset input
+        }}
+        disabled={uploading || isLinkingInvoice}
+      />
+
+      {/* Active Folder View */}
+      {activeFolder ? (
+        <div className="space-y-4">
+          {/* Folder Header with Back Button */}
+          <div className="flex items-center gap-3">
+            <Button 
+              variant="ghost" 
+              size="sm"
+              onClick={() => setActiveFolder(null)}
+            >
+              <ArrowLeft className="h-4 w-4 mr-2" />
+              Back
+            </Button>
+            <span className="text-muted-foreground">/</span>
+            <div className="flex items-center gap-2">
+              {(() => {
+                const cat = getCategoryDetails(activeFolder);
+                const Icon = cat?.icon || FolderOpen;
+                return (
+                  <>
+                    <div className={`${cat?.color || 'bg-gray-500'} text-white p-1.5 rounded`}>
+                      <Icon className="h-4 w-4" />
+                    </div>
+                    <span className="font-medium">{cat?.label || 'Documents'}</span>
+                  </>
+                );
+              })()}
+              <Badge variant="secondary">{folderDocuments.length}</Badge>
+            </div>
+          </div>
+          
+          {/* Folder Upload Button */}
           <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={() => setAddSmartDocOpen(true)}
-            className="shrink-0"
+            onClick={() => triggerFileInput(activeFolder)}
+            disabled={uploading}
           >
-            <Sparkles className="h-4 w-4 mr-2" />
-            Add Smart Doc
+            <Upload className="h-4 w-4 mr-2" />
+            Upload {getCategoryDetails(activeFolder)?.label || 'Document'}
           </Button>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {DOCUMENT_CATEGORIES.map((category) => {
-              const Icon = category.icon;
-              const count = categoryCounts[category.value] || 0;
-              const isInvoiceCategory = category.tracksCost;
-              const invoiceType = category.value === 'invoice_material' ? 'material' : 
-                                 category.value === 'invoice_labor' ? 'labor' : null;
-              
-              return (
-                <label
-                  key={category.value}
-                  className="cursor-pointer group"
-                >
-                  <input
-                    type="file"
-                    className="hidden"
-                    onChange={(e) => {
-                      const file = e.target.files?.[0];
-                      if (file) {
-                        if (isInvoiceCategory && invoiceType) {
-                          handleInvoiceFileSelect(file, invoiceType);
-                        } else {
-                          handleFileUpload(file, category.value);
-                        }
-                      }
-                      e.target.value = ''; // Reset input
-                    }}
-                    disabled={uploading || isLinkingInvoice}
-                  />
-                  <Card className="hover:border-primary transition-colors relative">
-                    <CardContent className="flex flex-col items-center justify-center p-6 space-y-2">
-                      <div className={`${category.color} text-white p-3 rounded-lg relative`}>
-                        <Icon className="h-6 w-6" />
-                        {isInvoiceCategory && (
-                          <DollarSign className="absolute -top-1 -right-1 h-3 w-3" />
+          
+          {/* Folder Documents List */}
+          {folderDocuments.length === 0 ? (
+            <Card>
+              <CardContent className="flex flex-col items-center justify-center py-12">
+                <FolderOpen className="h-12 w-12 text-muted-foreground mb-4" />
+                <p className="text-muted-foreground">No documents in this folder</p>
+              </CardContent>
+            </Card>
+          ) : (
+            <div className="grid gap-3">
+              {folderDocuments.map((doc) => {
+                const Icon = getCategoryIcon(doc.document_type);
+                const category = getCategoryDetails(doc.document_type || 'other');
+                
+                return (
+                  <Card key={doc.id} className="hover:border-primary/50 transition-colors">
+                    <CardContent className="flex items-center justify-between p-4">
+                      <div 
+                        className="flex items-center gap-4 flex-1 cursor-pointer"
+                        onClick={() => setPreviewDoc(doc)}
+                      >
+                        <div className={`${category?.color || 'bg-gray-500'} text-white p-2.5 rounded-lg`}>
+                          <Icon className="h-5 w-5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium truncate">{doc.filename}</p>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <span>{formatFileSize(doc.file_size)}</span>
+                            <span>•</span>
+                            <span>{formatDistanceToNow(new Date(doc.created_at), { addSuffix: true })}</span>
+                          </div>
+                        </div>
+                        {/* Signature status badges */}
+                        {doc.signature_status === 'signed' && (
+                          <Badge variant="outline" className="text-green-600 border-green-600 gap-1">
+                            <CheckCircle className="h-3 w-3" />
+                            Signed
+                          </Badge>
                         )}
-                        {count > 0 && (
-                          <Badge 
-                            variant="secondary" 
-                            className="absolute -top-2 -right-2 h-5 min-w-5 px-1 flex items-center justify-center text-xs"
-                          >
-                            {count}
+                        {doc.signature_status === 'sent' && (
+                          <Badge variant="outline" className="text-amber-600 border-amber-600 gap-1">
+                            <Clock className="h-3 w-3" />
+                            Awaiting
+                          </Badge>
+                        )}
+                        {doc.description?.includes('Signed on') && (
+                          <Badge variant="outline" className="text-green-600 border-green-600 gap-1">
+                            <CheckCircle className="h-3 w-3" />
+                            Signed
                           </Badge>
                         )}
                       </div>
-                      <span className="text-sm font-medium text-center">{category.label}</span>
-                      {isInvoiceCategory && (
-                        <span className="text-xs text-muted-foreground">Tracks cost</span>
-                      )}
+                      <div className="flex items-center gap-1">
+                        <Button size="icon" variant="ghost" onClick={() => setPreviewDoc(doc)}>
+                          <Eye className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" onClick={() => handleDownload(doc)}>
+                          <Download className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          size="icon" 
+                          variant="ghost" 
+                          className="text-destructive"
+                          onClick={() => handleDelete(doc.id, doc.file_path)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </CardContent>
                   </Card>
-                </label>
-              );
-            })}
-          </div>
-        </CardContent>
-      </Card>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      ) : (
+        <>
+          {/* Main View: Upload Dropdown + Folder Grid */}
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="flex items-center gap-2">
+                <FolderOpen className="h-5 w-5" />
+                Documents
+              </CardTitle>
+              <div className="flex items-center gap-2">
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <Button disabled={uploading || isLinkingInvoice}>
+                      <Upload className="h-4 w-4 mr-2" />
+                      Upload Document
+                      <ChevronDown className="h-4 w-4 ml-2" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-56">
+                    {DOCUMENT_CATEGORIES.map((category) => {
+                      const Icon = category.icon;
+                      return (
+                        <DropdownMenuItem
+                          key={category.value}
+                          onClick={() => triggerFileInput(category.value)}
+                          className="cursor-pointer"
+                        >
+                          <div className={`${category.color} text-white p-1 rounded mr-2`}>
+                            <Icon className="h-3.5 w-3.5" />
+                          </div>
+                          <span>{category.label}</span>
+                          {category.tracksCost && (
+                            <DollarSign className="h-3 w-3 ml-auto text-muted-foreground" />
+                          )}
+                        </DropdownMenuItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setAddSmartDocOpen(true)}
+                >
+                  <Sparkles className="h-4 w-4 mr-2" />
+                  Add Smart Doc
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {/* Folder Grid */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {DOCUMENT_CATEGORIES.map((category) => {
+                  const Icon = category.icon;
+                  const count = categoryCounts[category.value] || 0;
+                  
+                  return (
+                    <Card 
+                      key={category.value}
+                      className="cursor-pointer hover:border-primary transition-colors group"
+                      onClick={() => setActiveFolder(category.value)}
+                    >
+                      <CardContent className="flex flex-col items-center justify-center p-6 space-y-2">
+                        <div className={`${category.color} text-white p-3 rounded-lg relative group-hover:scale-105 transition-transform`}>
+                          <Icon className="h-6 w-6" />
+                          {category.tracksCost && (
+                            <DollarSign className="absolute -top-1 -right-1 h-3 w-3" />
+                          )}
+                          {count > 0 && (
+                            <Badge 
+                              variant="secondary" 
+                              className="absolute -top-2 -right-2 h-5 min-w-5 px-1 flex items-center justify-center text-xs"
+                            >
+                              {count}
+                            </Badge>
+                          )}
+                        </div>
+                        <span className="text-sm font-medium text-center">{category.label}</span>
+                        {category.tracksCost && (
+                          <span className="text-xs text-muted-foreground">Tracks cost</span>
+                        )}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
 
-      {/* Search and Filters */}
+          {/* Search and Filters */}
       <DocumentSearchFilters
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -832,6 +1016,8 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
           </div>
         )}
       </div>
+        </>
+      )}
 
       {/* Preview Modal - show only the selected document, not all filtered */}
       <DocumentPreviewModal
