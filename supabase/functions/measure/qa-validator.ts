@@ -11,6 +11,8 @@ export interface QualityChecks {
   segmentConnectivity: boolean;
   facetsClosed: boolean;
   topologyValid: boolean;
+  solarAreaMatch: boolean;
+  solarAreaErrorPercent: number;
   issues: string[];
   warnings: string[];
 }
@@ -52,33 +54,38 @@ interface MeasurementData {
 
 /**
  * Validate measurement data for quality and consistency
+ * ENHANCED: Stricter tolerances per spec (±3% area, ±1% perimeter)
  */
 export function validateMeasurements(data: MeasurementData): ValidationResult {
   const issues: string[] = [];
   const warnings: string[] = [];
   let score = 1.0;
 
-  // 1. Area Consistency Check
+  // 1. Area Consistency Check (±3% tolerance)
   const { areaMatch, areaErrorPercent } = checkAreaConsistency(data, issues, warnings);
   if (!areaMatch) score -= 0.2;
 
-  // 2. Perimeter Consistency Check
+  // 2. Perimeter Consistency Check (±1% tolerance)
   const { perimeterMatch, perimeterErrorPercent } = checkPerimeterConsistency(data, issues, warnings);
   if (!perimeterMatch) score -= 0.15;
 
-  // 3. Segment Connectivity Check
+  // 3. Google Solar Area Check (±3% tolerance)
+  const { solarMatch, solarErrorPercent } = checkSolarAreaConsistency(data, issues, warnings);
+  if (!solarMatch) score -= 0.2;
+
+  // 4. Segment Connectivity Check
   const segmentConnectivity = checkSegmentConnectivity(data.edges, issues, warnings);
   if (!segmentConnectivity) score -= 0.15;
 
-  // 4. Facet Closure Check
+  // 5. Facet Closure Check
   const facetsClosed = checkFacetsClosed(data.facets, issues, warnings);
   if (!facetsClosed) score -= 0.1;
 
-  // 5. NEW: Topological Validation
+  // 6. Topological Validation
   const topologyValid = checkTopologicalConstraints(data, issues, warnings);
   if (!topologyValid) score -= 0.25;
 
-  // 6. Check for requiresReview flags
+  // 7. Check for requiresReview flags
   const reviewFlagsCount = data.facets.filter(f => f.requiresReview).length;
   if (reviewFlagsCount > 0) {
     warnings.push(`${reviewFlagsCount} facet(s) flagged for review`);
@@ -90,7 +97,8 @@ export function validateMeasurements(data: MeasurementData): ValidationResult {
     i.includes('not closed') || 
     i.includes('disconnected') ||
     i.includes('outside footprint') ||
-    i.includes('crossing')
+    i.includes('crossing') ||
+    i.includes('tolerance')
   );
   
   const manualReviewRecommended = 
@@ -107,6 +115,8 @@ export function validateMeasurements(data: MeasurementData): ValidationResult {
       segmentConnectivity,
       facetsClosed,
       topologyValid,
+      solarAreaMatch: solarMatch,
+      solarAreaErrorPercent: solarErrorPercent,
       issues,
       warnings
     },
@@ -351,7 +361,7 @@ function getBoundsFromCoords(coords: XY[]): { minX: number; maxX: number; minY: 
 }
 
 /**
- * Check if sum of facet areas matches total area
+ * Check if sum of facet areas matches total area (±3% tolerance per spec)
  */
 function checkAreaConsistency(
   data: MeasurementData,
@@ -368,8 +378,9 @@ function checkAreaConsistency(
 
   const errorPercent = Math.abs((facetSum - reportedTotal) / reportedTotal) * 100;
   
+  // SPEC: Facet areas must sum to within ±3% of total
   if (errorPercent > 3) {
-    issues.push(`Facet area sum (${Math.round(facetSum)}) differs from total (${Math.round(reportedTotal)}) by ${errorPercent.toFixed(1)}%`);
+    issues.push(`Facet area sum (${Math.round(facetSum)}) differs from total (${Math.round(reportedTotal)}) by ${errorPercent.toFixed(1)}% (exceeds ±3% tolerance)`);
     return { areaMatch: false, areaErrorPercent: errorPercent };
   }
   
@@ -377,18 +388,39 @@ function checkAreaConsistency(
     warnings.push(`Minor area discrepancy: ${errorPercent.toFixed(1)}%`);
   }
 
-  if (data.googleSolarTotalArea) {
-    const googleError = Math.abs((reportedTotal - data.googleSolarTotalArea) / data.googleSolarTotalArea) * 100;
-    if (googleError > 5) {
-      warnings.push(`Differs from Google Solar by ${googleError.toFixed(1)}%`);
-    }
-  }
-
   return { areaMatch: true, areaErrorPercent: errorPercent };
 }
 
 /**
- * Check if eave + rake lengths match footprint perimeter
+ * Check area against Google Solar total (±3% tolerance per spec)
+ */
+function checkSolarAreaConsistency(
+  data: MeasurementData,
+  issues: string[],
+  warnings: string[]
+): { solarMatch: boolean; solarErrorPercent: number } {
+  if (!data.googleSolarTotalArea || data.googleSolarTotalArea <= 0) {
+    return { solarMatch: true, solarErrorPercent: 0 };
+  }
+
+  const reportedTotal = data.totals['roof.total_sqft'];
+  const errorPercent = Math.abs((reportedTotal - data.googleSolarTotalArea) / data.googleSolarTotalArea) * 100;
+  
+  // SPEC: Must match Google Solar within ±3%
+  if (errorPercent > 3) {
+    issues.push(`Total area (${Math.round(reportedTotal)}) differs from Google Solar (${Math.round(data.googleSolarTotalArea)}) by ${errorPercent.toFixed(1)}% (exceeds ±3% tolerance)`);
+    return { solarMatch: false, solarErrorPercent: errorPercent };
+  }
+  
+  if (errorPercent > 2) {
+    warnings.push(`Area close to Google Solar tolerance: ${errorPercent.toFixed(1)}%`);
+  }
+
+  return { solarMatch: true, solarErrorPercent: errorPercent };
+}
+
+/**
+ * Check if eave + rake lengths match footprint perimeter (±1% tolerance per spec)
  */
 function checkPerimeterConsistency(
   data: MeasurementData,
@@ -405,12 +437,13 @@ function checkPerimeterConsistency(
 
   const errorPercent = Math.abs((edgePerimeter - footprintPerimeter) / footprintPerimeter) * 100;
   
-  if (errorPercent > 5) {
-    issues.push(`Perimeter mismatch: edges (${Math.round(edgePerimeter)} ft) vs footprint (${Math.round(footprintPerimeter)} ft) = ${errorPercent.toFixed(1)}%`);
+  // SPEC: Eave + rake must match perimeter within ±1%
+  if (errorPercent > 1) {
+    issues.push(`Perimeter mismatch: eave+rake (${Math.round(edgePerimeter)} ft) vs footprint (${Math.round(footprintPerimeter)} ft) = ${errorPercent.toFixed(1)}% (exceeds ±1% tolerance)`);
     return { perimeterMatch: false, perimeterErrorPercent: errorPercent };
   }
   
-  if (errorPercent > 1) {
+  if (errorPercent > 0.5) {
     warnings.push(`Minor perimeter discrepancy: ${errorPercent.toFixed(1)}%`);
   }
 
