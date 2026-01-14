@@ -30,6 +30,7 @@ import { useLatestMeasurement } from '@/hooks/useMeasurement';
 import { LinearFeaturesPanel } from '@/components/measurements/LinearFeaturesPanel';
 import { PullMeasurementsButton } from '@/components/measurements/PullMeasurementsButton';
 import { ImportReportButton } from '@/components/measurements/ImportReportButton';
+import { ManualMeasurementButton } from '@/components/estimates/ManualMeasurementButton';
 import { ApprovedMeasurementsList } from '@/components/measurements/ApprovedMeasurementsList';
 import { CallStatusMonitor } from '@/components/communication/CallStatusMonitor';
 import { CallDispositionDialog } from '@/components/communication/CallDispositionDialog';
@@ -414,13 +415,22 @@ const LeadDetails = () => {
                       Choose how to measure the roof - manually draw or use AI automation
                     </p>
                   </div>
-                  <ImportReportButton 
-                    pipelineEntryId={id!}
-                    onSuccess={() => {
-                      refetchMeasurements();
-                      refetchRequirements();
-                    }}
-                  />
+                  <div className="flex items-center gap-2">
+                    <ManualMeasurementButton
+                      pipelineEntryId={id!}
+                      onSuccess={() => {
+                        refetchMeasurements();
+                        refetchRequirements();
+                      }}
+                    />
+                    <ImportReportButton 
+                      pipelineEntryId={id!}
+                      onSuccess={() => {
+                        refetchMeasurements();
+                        refetchRequirements();
+                      }}
+                    />
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
