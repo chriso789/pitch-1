@@ -1015,21 +1015,6 @@ const LeadDetails = () => {
       {/* Dynamic Content Sections */}
       <div ref={estimateSectionRef} className="space-y-6">{renderActiveSection()}</div>
 
-      {/* Quick Create Estimate FAB */}
-      {activeTab !== 'estimate' && (
-        <Button
-          className="fixed bottom-6 right-6 z-40 h-14 w-14 rounded-full shadow-lg hover:shadow-xl transition-all hover:scale-105"
-          size="icon"
-          onClick={() => {
-            setActiveTab('estimate');
-            setTimeout(() => {
-              estimateSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-            }, 100);
-          }}
-        >
-          <Calculator className="h-6 w-6" />
-        </Button>
-      )}
 
       {/* Call Status Monitor */}
       {activeCall && (
