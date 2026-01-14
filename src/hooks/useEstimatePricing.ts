@@ -5,6 +5,7 @@ import { useState, useCallback, useMemo, useEffect } from 'react';
 export interface LineItem {
   id: string;
   item_name: string;
+  description?: string;           // Product description for consumer-facing PDFs
   item_type: 'material' | 'labor';
   qty: number;
   qty_original?: number;

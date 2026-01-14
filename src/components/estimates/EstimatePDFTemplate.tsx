@@ -235,8 +235,54 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
         </div>
       )}
 
-      {/* Materials Section */}
-      {!opts.showOnlyTotal && opts.showMaterialsSection && materialItems.length > 0 && (
+      {/* UNIFIED ITEMS SECTION - Consumer-Friendly Single List */}
+      {!opts.showOnlyTotal && opts.showUnifiedItems && (
+        <div className="mb-8 avoid-break">
+          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
+            <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+            Project Scope
+          </h3>
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b-2 border-gray-200">
+                <th className="text-left py-3 text-gray-700 font-semibold">Description</th>
+                {opts.showLineItemQuantities && (
+                  <>
+                    <th className="text-right py-3 text-gray-700 font-semibold w-20">Qty</th>
+                    <th className="text-right py-3 text-gray-700 font-semibold w-20">Unit</th>
+                  </>
+                )}
+              </tr>
+            </thead>
+            <tbody>
+              {/* Combine all items and sort */}
+              {[...materialItems, ...laborItems]
+                .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+                .map((item, idx) => (
+                  <tr key={item.id || idx} className="border-b border-gray-100">
+                    <td className="py-3">
+                      <div className="font-medium text-gray-900">{item.item_name}</div>
+                      {opts.showItemDescriptions && item.description && (
+                        <div className="text-xs text-gray-500 mt-1 leading-relaxed">
+                          {item.description}
+                        </div>
+                      )}
+                    </td>
+                    {opts.showLineItemQuantities && (
+                      <>
+                        <td className="py-3 text-right text-gray-700 align-top">{item.qty.toFixed(0)}</td>
+                        <td className="py-3 text-right text-gray-500 align-top">{item.unit}</td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Materials Section - Traditional View (not unified) */}
+      {!opts.showOnlyTotal && !opts.showUnifiedItems && opts.showMaterialsSection && materialItems.length > 0 && (
         <div className="mb-6 avoid-break">
           <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
             <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
@@ -279,7 +325,7 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
                 </tr>
               ))}
             </tbody>
-            {opts.showSubtotals && (
+            {opts.showSubtotals && !opts.hideSectionSubtotals && (
               <tfoot>
                 <tr className="border-t-2 border-gray-200">
                   <td 
@@ -299,8 +345,8 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
         </div>
       )}
 
-      {/* Labor Section */}
-      {!opts.showOnlyTotal && opts.showLaborSection && laborItems.length > 0 && (
+      {/* Labor Section - Traditional View (not unified) */}
+      {!opts.showOnlyTotal && !opts.showUnifiedItems && opts.showLaborSection && laborItems.length > 0 && (
         <div className="mb-8 avoid-break">
           <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
             <span className="w-2 h-2 bg-green-500 rounded-full"></span>
@@ -343,7 +389,7 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
                 </tr>
               ))}
             </tbody>
-            {opts.showSubtotals && (
+            {opts.showSubtotals && !opts.hideSectionSubtotals && (
               <tfoot>
                 <tr className="border-t-2 border-gray-200">
                   <td 
@@ -363,10 +409,14 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
         </div>
       )}
 
-      {/* Cost Summary */}
+      {/* Cost Summary - Consumer-Friendly or Internal */}
       {!opts.showOnlyTotal && (
         <div className="bg-gray-50 rounded-lg p-6 mb-8 avoid-break">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4">Estimate Summary</h3>
+          {/* Show internal breakdown header only when showing internal info */}
+          {(opts.showCostBreakdown || opts.showProfitInfo) && (
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">Estimate Summary</h3>
+          )}
+          
           <div className="space-y-2 text-sm">
             {/* Internal-only cost breakdown */}
             {opts.showCostBreakdown && (
@@ -395,13 +445,26 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
             )}
           </div>
           
-          {/* Final Price - Always shown unless showOnlyTotal is true */}
-          <div className="mt-6 pt-4 border-t-2 border-gray-300">
-            <div className="flex justify-between items-center">
-              <span className="text-xl font-bold text-gray-900">Total Investment</span>
-              <span className="text-3xl font-bold text-blue-600">{formatCurrency(breakdown.sellingPrice)}</span>
+          {/* Consumer-Friendly Total - Clean centered display when no internal breakdown */}
+          {!opts.showCostBreakdown && !opts.showProfitInfo ? (
+            <div className="text-center py-4">
+              <p className="text-sm text-gray-500 mb-2">Your Investment</p>
+              <div className="text-4xl font-bold text-blue-600 mb-2">
+                {formatCurrency(breakdown.sellingPrice)}
+              </div>
+              <p className="text-xs text-gray-400">
+                Complete installation as described above
+              </p>
             </div>
-          </div>
+          ) : (
+            /* Internal view - side by side total */
+            <div className="mt-6 pt-4 border-t-2 border-gray-300">
+              <div className="flex justify-between items-center">
+                <span className="text-xl font-bold text-gray-900">Total Investment</span>
+                <span className="text-3xl font-bold text-blue-600">{formatCurrency(breakdown.sellingPrice)}</span>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
