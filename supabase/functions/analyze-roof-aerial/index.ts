@@ -28,6 +28,24 @@ import { reconstructRoofGeometry, roofToLinearFeaturesWKT } from '../_shared/roo
 // Import solar segment assembler for accurate facet positioning from Google Solar data
 import { assembleFacetsFromSolarSegments, type AssembledGeometry, type SolarSegment } from '../_shared/solar-segment-assembler.ts'
 
+// Import authoritative footprint extractors - prioritize ground-truth data over AI guessing
+import { 
+  fetchSolarFootprint, 
+  expandFootprintForOverhang, 
+  boundingBoxToFootprint,
+  validateSolarFootprint,
+  type SolarFootprint 
+} from '../_shared/solar-footprint-extractor.ts'
+import { fetchRegridFootprint, type RegridFootprint } from '../_shared/regrid-footprint-extractor.ts'
+import { 
+  validateGeometry, 
+  calculateAreaSqFt, 
+  calculatePerimeterFt,
+  formatValidationResult,
+  type ValidationResult,
+  type FootprintSource 
+} from '../_shared/geometry-validator.ts'
+
 // Import shared helper functions
 import {
   type StructureAnalysis,
@@ -200,6 +218,76 @@ Deno.serve(async (req) => {
       } catch (fastPathErr) {
         console.error('⚠️ Solar Fast Path error, falling back to AI:', fastPathErr)
       }
+    }
+    // ═══════════════════════════════════════════════════════════════════════════
+
+    // ═══════════════════════════════════════════════════════════════════════════
+    // 🏢 AUTHORITATIVE FOOTPRINT EXTRACTION (Solar API → Regrid → AI Fallback)
+    // Prioritize ground-truth building geometry over AI guessing
+    // ═══════════════════════════════════════════════════════════════════════════
+    
+    let authoritativeFootprint: {
+      vertices: Array<{ lat: number; lng: number }>;
+      confidence: number;
+      source: FootprintSource;
+      requiresManualReview: boolean;
+      validation?: ValidationResult;
+    } | null = null;
+
+    // STEP 1: Try Solar API bounding box first (most accurate - 95% confidence)
+    if (solarData?.available && solarData?.boundingBox) {
+      console.log('🌞 Extracting authoritative footprint from Solar API bounding box...');
+      
+      const solarVertices = boundingBoxToFootprint(solarData.boundingBox);
+      const expandedVertices = expandFootprintForOverhang(solarVertices, 2); // 2ft overhang
+      const validation = validateGeometry(expandedVertices, 'google_solar_api');
+      
+      if (validation.valid) {
+        authoritativeFootprint = {
+          vertices: expandedVertices,
+          confidence: validation.confidence,
+          source: 'google_solar_api',
+          requiresManualReview: false,
+          validation,
+        };
+        console.log(`✅ Solar API footprint: ${validation.metrics.areaSqFt.toFixed(0)} sqft, ${(validation.confidence * 100).toFixed(0)}% confidence`);
+      } else {
+        console.warn(`⚠️ Solar footprint failed validation: ${validation.errors.join(', ')}`);
+      }
+    }
+
+    // STEP 2: Fallback to Regrid parcel data (85% confidence)
+    const REGRID_API_KEY = Deno.env.get('REGRID_API_KEY');
+    if (!authoritativeFootprint && REGRID_API_KEY) {
+      console.log('🗺️ Solar footprint unavailable, trying Regrid parcel data...');
+      
+      try {
+        const regridFootprint = await fetchRegridFootprint(coordinates.lat, coordinates.lng, REGRID_API_KEY);
+        
+        if (regridFootprint) {
+          const validation = validateGeometry(regridFootprint.vertices, 'regrid_parcel');
+          
+          if (validation.valid) {
+            authoritativeFootprint = {
+              vertices: regridFootprint.vertices,
+              confidence: validation.confidence,
+              source: 'regrid_parcel',
+              requiresManualReview: false,
+              validation,
+            };
+            console.log(`✅ Regrid footprint: ${validation.metrics.areaSqFt.toFixed(0)} sqft, ${(validation.confidence * 100).toFixed(0)}% confidence`);
+          }
+        }
+      } catch (regridErr) {
+        console.warn('⚠️ Regrid lookup failed:', regridErr);
+      }
+    }
+
+    // Log footprint source for tracking
+    if (authoritativeFootprint) {
+      console.log(`🎯 Using ${authoritativeFootprint.source} footprint (${(authoritativeFootprint.confidence * 100).toFixed(0)}% confidence)`);
+    } else {
+      console.log('⚠️ No authoritative footprint available - will use AI detection');
     }
     // ═══════════════════════════════════════════════════════════════════════════
 
