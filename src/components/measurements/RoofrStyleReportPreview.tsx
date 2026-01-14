@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Share2, ChevronLeft, ChevronRight, Loader2, FileText, ChevronsDown, Check, RefreshCw, Bug } from 'lucide-react';
+import { Download, Share2, ChevronLeft, ChevronRight, Loader2, FileText, ChevronsDown, Check, RefreshCw, Bug, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { ReportPage } from './ReportPage';
@@ -690,6 +690,48 @@ export function RoofrStyleReportPreview({
                     `❌ ${debugResults.osm?.error || 'failed'}`}</div>
                   <div><strong>Recommendation:</strong> {debugResults.recommendation?.reasoning || 'N/A'}</div>
                 </div>
+              )}
+            </div>
+          )}
+          
+          {/* Manual Review Warning Banner - shows when AI detection requires verification */}
+          {roofMeasurementData?.footprint_requires_review && (
+            <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium text-amber-800 dark:text-amber-300 text-sm">Manual Review Recommended</p>
+                <p className="text-xs text-amber-700 dark:text-amber-400 mt-1">
+                  This roof geometry was detected by AI and may not be fully accurate. 
+                  Please verify the outline matches the satellite image before using for estimates.
+                </p>
+              </div>
+              <Badge variant="outline" className="text-amber-600 border-amber-300 text-xs flex-shrink-0">
+                {roofMeasurementData?.detection_method === 'ai_detection' ? '🤖 AI Detection' :
+                 roofMeasurementData?.detection_method || 'Review Needed'}
+              </Badge>
+            </div>
+          )}
+          
+          {/* Detection Source Badge - always visible when we have footprint source info */}
+          {roofMeasurementData?.footprint_source && !showDebugMetadata && !roofMeasurementData?.footprint_requires_review && (
+            <div className="flex items-center gap-2">
+              <Badge variant={
+                roofMeasurementData.footprint_source === 'google_solar_api' ? 'default' :
+                roofMeasurementData.footprint_source === 'mapbox_vector' ? 'default' :
+                roofMeasurementData.footprint_source === 'regrid_parcel' ? 'secondary' :
+                'outline'
+              } className="text-xs">
+                {roofMeasurementData.footprint_source === 'google_solar_api' && '🌞 Solar API'}
+                {roofMeasurementData.footprint_source === 'mapbox_vector' && '🗺️ Mapbox Vector'}
+                {roofMeasurementData.footprint_source === 'regrid_parcel' && '📋 Parcel Data'}
+                {roofMeasurementData.footprint_source === 'ai_detection' && '🤖 AI Detection'}
+                {!['google_solar_api', 'mapbox_vector', 'regrid_parcel', 'ai_detection'].includes(roofMeasurementData.footprint_source) && 
+                  roofMeasurementData.footprint_source}
+              </Badge>
+              {roofMeasurementData.footprint_confidence && (
+                <span className="text-xs text-muted-foreground">
+                  {Math.round(roofMeasurementData.footprint_confidence * 100)}% confidence
+                </span>
               )}
             </div>
           )}
