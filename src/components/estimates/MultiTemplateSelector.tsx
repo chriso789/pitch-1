@@ -114,6 +114,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [showExportDialog, setShowExportDialog] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [companyInfo, setCompanyInfo] = useState<CompanyInfo | null>(null);
+  const [companyLocations, setCompanyLocations] = useState<any[]>([]);
   const [finePrintContent, setFinePrintContent] = useState<string>('');
   const [customerInfo, setCustomerInfo] = useState<{ name: string; address: string; phone?: string; email?: string } | null>(null);
   const [pdfOptions, setPdfOptions] = useState<PDFComponentOptions>(getDefaultOptions('customer'));
@@ -426,6 +427,18 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
       if (tenant) {
         setCompanyInfo(tenant as CompanyInfo);
+      }
+
+      // Fetch all company locations
+      const { data: locations } = await supabaseClient
+        .from('locations')
+        .select('id, name, address_street, address_city, address_state, address_zip, phone, email, is_primary, logo_url')
+        .eq('tenant_id', tenantId)
+        .eq('is_active', true)
+        .order('is_primary', { ascending: false });
+
+      if (locations && locations.length > 0) {
+        setCompanyLocations(locations);
       }
 
       // Fetch estimate settings for fine print
@@ -805,6 +818,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         customerPhone: contact?.phone,
         customerEmail: contact?.email,
         companyInfo,
+        companyLocations,
         materialItems,
         laborItems,
         breakdown,
@@ -1553,6 +1567,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             customerPhone={pdfData.customerPhone}
             customerEmail={pdfData.customerEmail}
             companyInfo={pdfData.companyInfo}
+            companyLocations={pdfData.companyLocations}
             materialItems={pdfData.materialItems}
             laborItems={pdfData.laborItems}
             breakdown={pdfData.breakdown}

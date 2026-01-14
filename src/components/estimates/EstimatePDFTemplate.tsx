@@ -39,6 +39,19 @@ interface JobPhoto {
   category?: string | null;
 }
 
+interface CompanyLocation {
+  id: string;
+  name: string;
+  address_street?: string | null;
+  address_city?: string | null;
+  address_state?: string | null;
+  address_zip?: string | null;
+  phone?: string | null;
+  email?: string | null;
+  is_primary?: boolean | null;
+  logo_url?: string | null;
+}
+
 interface EstimatePDFTemplateProps {
   estimateNumber: string;
   customerName: string;
@@ -48,6 +61,7 @@ interface EstimatePDFTemplateProps {
   companyName?: string;
   companyLogo?: string;
   companyInfo?: CompanyInfo;
+  companyLocations?: CompanyLocation[];
   materialItems: LineItem[];
   laborItems: LineItem[];
   breakdown: {
@@ -102,6 +116,7 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
   companyName = 'PITCH CRM',
   companyLogo,
   companyInfo,
+  companyLocations,
   materialItems,
   laborItems,
   breakdown,
@@ -145,62 +160,10 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
     >
       <style>{pageBreakStyles}</style>
       
-      {/* Page Header - Repeats on every page when printing */}
-      {opts.showPageHeader && companyInfo && (
-        <div className="pdf-header bg-gray-50 border-b px-8 py-3 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            {opts.showCompanyLogo && (companyLogo || companyInfo?.logo_url) && (
-              <img 
-                src={companyLogo || companyInfo?.logo_url || ''} 
-                alt="Logo" 
-                className="h-8 object-contain" 
-              />
-            )}
-            <span className="font-semibold text-gray-800">{companyInfo?.name || companyName}</span>
-          </div>
-          <div className="text-xs text-gray-500">
-            {companyInfo?.phone && <span>{companyInfo.phone}</span>}
-            {companyInfo?.phone && companyInfo?.email && <span className="mx-2">•</span>}
-            {companyInfo?.email && <span>{companyInfo.email}</span>}
-          </div>
-        </div>
-      )}
-
       {/* Main Content */}
       <div className="p-6 min-h-[1000px]">
-      {/* Header - Compact */}
-      <div className="flex justify-between items-start mb-4 pb-3 border-b border-gray-200">
-        <div>
-          {opts.showCompanyLogo && (companyLogo || companyInfo?.logo_url) ? (
-            <>
-              <img 
-                src={companyLogo || companyInfo?.logo_url || ''} 
-                alt="Company Logo" 
-                className="h-12 mb-1 object-contain" 
-              />
-              <h1 className="text-lg font-bold text-gray-900">
-                {companyInfo?.name || companyName}
-              </h1>
-            </>
-          ) : (
-            <h1 className="text-xl font-bold text-gray-900">
-              {companyInfo?.name || companyName}
-            </h1>
-          )}
-          {opts.showCompanyInfo && companyInfo && (
-            <div className="text-xs text-gray-600 mt-1 space-y-0.5">
-              {companyAddressStr && <p>{companyAddressStr}</p>}
-              <p>
-                {companyInfo.phone}
-                {companyInfo.phone && companyInfo.email && ' • '}
-                {companyInfo.email}
-              </p>
-              {companyInfo.license_number && (
-                <p className="text-gray-500">License: {companyInfo.license_number}</p>
-              )}
-            </div>
-          )}
-        </div>
+      {/* Minimal Header - Just Estimate Info */}
+      <div className="flex justify-end mb-4 pb-3 border-b border-gray-200">
         <div className="text-right">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Estimate</p>
           {opts.showEstimateNumber && (
@@ -624,11 +587,65 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
 
       </div>
       
-      {/* Page Footer */}
+      {/* Professional Master Footer with Logo + All Locations */}
       {opts.showPageFooter && (
-        <div className="pdf-footer border-t px-8 py-3 flex items-center justify-between text-xs text-gray-500">
-          <span>© {currentYear} {companyInfo?.name || companyName}</span>
-          <span>{companyInfo?.license_number ? `License #${companyInfo.license_number}` : ''}</span>
+        <div className="pdf-footer border-t-2 border-gray-300 bg-gray-50 px-6 py-5">
+          <div className="flex items-start gap-6">
+            {/* Logo + Company Info Section */}
+            <div className="flex-shrink-0 min-w-[140px]">
+              {(companyLogo || companyInfo?.logo_url) && (
+                <img 
+                  src={companyLogo || companyInfo?.logo_url || ''} 
+                  alt={companyInfo?.name || 'Company Logo'} 
+                  className="h-12 object-contain mb-2" 
+                />
+              )}
+              <p className="font-bold text-gray-900 text-sm">
+                {companyInfo?.name || companyName}
+              </p>
+              {companyInfo?.license_number && (
+                <p className="text-xs text-gray-500 mt-0.5">License #{companyInfo.license_number}</p>
+              )}
+            </div>
+            
+            {/* Locations Grid */}
+            <div className="flex-1 grid grid-cols-2 gap-x-6 gap-y-3">
+              {(companyLocations && companyLocations.length > 0 
+                ? companyLocations 
+                : [{ 
+                    id: 'main',
+                    name: 'Main Office',
+                    address_street: companyInfo?.address_street,
+                    address_city: companyInfo?.address_city,
+                    address_state: companyInfo?.address_state,
+                    address_zip: companyInfo?.address_zip,
+                    phone: companyInfo?.phone,
+                    email: companyInfo?.email
+                  }]
+              ).slice(0, 4).map((location, idx) => (
+                <div key={location.id || idx} className="text-xs">
+                  <p className="font-semibold text-gray-800 mb-0.5">{location.name}</p>
+                  {location.address_street && (
+                    <p className="text-gray-600 leading-tight">{location.address_street}</p>
+                  )}
+                  {(location.address_city || location.address_state || location.address_zip) && (
+                    <p className="text-gray-600 leading-tight">
+                      {[location.address_city, location.address_state].filter(Boolean).join(', ')}
+                      {location.address_zip && ` ${location.address_zip}`}
+                    </p>
+                  )}
+                  {location.phone && (
+                    <p className="text-gray-600 mt-0.5">{location.phone}</p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+          
+          {/* Copyright Line */}
+          <div className="mt-4 pt-3 border-t border-gray-200 text-center text-xs text-gray-400">
+            © {currentYear} {companyInfo?.name || companyName}. All rights reserved.
+          </div>
         </div>
       )}
     </div>
