@@ -8,6 +8,14 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
 import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -40,23 +48,29 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import type { Database } from '@/integrations/supabase/types';
+
+type RoofType = Database['public']['Enums']['roof_type'];
 
 interface Template {
   id: string;
   name: string;
-  status: string;
-  template_type?: string;
-  template_description?: string;
+  roof_type: RoofType;
+  template_category: string;
+  is_active: boolean;
+  overhead_percentage: number;
+  target_profit_percentage: number;
   created_at: string;
+  updated_at: string;
+  item_count: number;
 }
 
-const TEMPLATE_TYPES = [
+const ROOF_TYPES = [
   { value: 'all', label: 'All Types' },
-  { value: 'steep_slope', label: 'Steep Slope' },
-  { value: 'low_slope', label: 'Low Slope' },
+  { value: 'shingle', label: 'Shingle' },
   { value: 'metal', label: 'Metal' },
   { value: 'tile', label: 'Tile' },
-  { value: 'gutters', label: 'Gutters' },
+  { value: 'flat', label: 'Flat' },
 ];
 
 export function EstimateTemplateList() {
@@ -68,24 +82,54 @@ export function EstimateTemplateList() {
   const [typeFilter, setTypeFilter] = useState('all');
   const [showNewDialog, setShowNewDialog] = useState(false);
   const [newTemplateName, setNewTemplateName] = useState('');
-  const [newTemplateType, setNewTemplateType] = useState('steep_slope');
+  const [newTemplateType, setNewTemplateType] = useState<RoofType>('shingle');
   const [templateToDelete, setTemplateToDelete] = useState<Template | null>(null);
 
   const { data: templates = [], isLoading } = useQuery({
-    queryKey: ['estimate-templates'],
+    queryKey: ['estimate-calculation-templates'],
     queryFn: async () => {
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('tenant_id')
+        .single();
+
+      if (!profile?.tenant_id) return [];
+
       const { data, error } = await supabase
-        .from('templates')
-        .select('id, name, status, template_type, template_description, created_at')
+        .from('estimate_calculation_templates')
+        .select(`
+          id, 
+          name, 
+          roof_type, 
+          template_category, 
+          is_active, 
+          overhead_percentage, 
+          target_profit_percentage,
+          created_at,
+          updated_at
+        `)
+        .eq('tenant_id', profile.tenant_id)
         .order('name');
 
       if (error) throw error;
-      return data as Template[];
+
+      // Get item counts for each template
+      const templatesWithCounts = await Promise.all(
+        (data || []).map(async (t) => {
+          const { count } = await supabase
+            .from('estimate_calc_template_items')
+            .select('*', { count: 'exact', head: true })
+            .eq('calc_template_id', t.id);
+          return { ...t, item_count: count || 0 };
+        })
+      );
+
+      return templatesWithCounts as Template[];
     },
   });
 
   const createMutation = useMutation({
-    mutationFn: async ({ name, template_type }: { name: string; template_type: string }) => {
+    mutationFn: async ({ name, roof_type }: { name: string; roof_type: RoofType }) => {
       const { data: profile } = await supabase
         .from('profiles')
         .select('tenant_id')
@@ -94,13 +138,16 @@ export function EstimateTemplateList() {
       if (!profile?.tenant_id) throw new Error('No tenant found');
 
       const { data, error } = await supabase
-        .from('templates')
+        .from('estimate_calculation_templates')
         .insert({
           name,
-          template_type,
-          status: 'active',
+          roof_type,
+          template_category: 'standard',
+          is_active: true,
+          overhead_percentage: 15,
+          target_profit_percentage: 30,
           tenant_id: profile.tenant_id,
-        } as any)
+        })
         .select()
         .single();
 
@@ -108,11 +155,11 @@ export function EstimateTemplateList() {
       return data;
     },
     onSuccess: (data) => {
-      queryClient.invalidateQueries({ queryKey: ['estimate-templates'] });
+      queryClient.invalidateQueries({ queryKey: ['estimate-calculation-templates'] });
       setShowNewDialog(false);
       setNewTemplateName('');
       toast({ title: 'Template created' });
-      navigate(`/templates/smart-editor/${data.id}`);
+      navigate(`/templates/calc-editor/${data.id}`);
     },
     onError: (error: any) => {
       toast({
@@ -137,14 +184,16 @@ export function EstimateTemplateList() {
 
       // Create new template
       const { data: newTemplate, error: templateError } = await supabase
-        .from('templates')
+        .from('estimate_calculation_templates')
         .insert({
           name: `${template.name} (Copy)`,
-          template_type: template.template_type,
-          template_description: template.template_description,
-          status: 'active',
+          roof_type: template.roof_type,
+          template_category: template.template_category,
+          is_active: true,
+          overhead_percentage: template.overhead_percentage,
+          target_profit_percentage: template.target_profit_percentage,
           tenant_id: profile.tenant_id,
-        } as any)
+        })
         .select()
         .single();
 
@@ -152,16 +201,16 @@ export function EstimateTemplateList() {
 
       // Copy groups
       const { data: groups } = await supabase
-        .from('estimate_template_groups')
+        .from('estimate_calc_template_groups')
         .select('*')
-        .eq('template_id', templateId);
+        .eq('calc_template_id', templateId);
 
       const groupMapping: Record<string, string> = {};
       for (const group of groups || []) {
         const { data: newGroup } = await supabase
-          .from('estimate_template_groups')
+          .from('estimate_calc_template_groups')
           .insert({
-            template_id: newTemplate.id,
+            calc_template_id: newTemplate.id,
             name: group.name,
             group_type: group.group_type,
             sort_order: group.sort_order,
@@ -176,33 +225,31 @@ export function EstimateTemplateList() {
 
       // Copy items
       const { data: items } = await supabase
-        .from('template_items')
+        .from('estimate_calc_template_items')
         .select('*')
-        .eq('template_id', templateId);
+        .eq('calc_template_id', templateId);
 
       for (const item of items || []) {
-        await supabase.from('template_items').insert({
-          template_id: newTemplate.id,
+        await supabase.from('estimate_calc_template_items').insert({
+          calc_template_id: newTemplate.id,
           group_id: item.group_id ? groupMapping[item.group_id] : null,
           item_name: item.item_name,
-          estimate_item_name: item.estimate_item_name,
           description: item.description,
           item_type: item.item_type,
           unit: item.unit,
           unit_cost: item.unit_cost,
-          waste_pct: item.waste_pct,
-          pricing_type: item.pricing_type,
-          fixed_price: item.fixed_price,
           measurement_type: item.measurement_type,
-          qty_formula: item.qty_formula,
+          coverage_per_unit: item.coverage_per_unit,
           sort_order: item.sort_order,
+          qty_formula: item.qty_formula,
+          tenant_id: profile.tenant_id,
         });
       }
 
       return newTemplate;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['estimate-templates'] });
+      queryClient.invalidateQueries({ queryKey: ['estimate-calculation-templates'] });
       toast({ title: 'Template duplicated' });
     },
     onError: (error: any) => {
@@ -217,14 +264,14 @@ export function EstimateTemplateList() {
   const deleteMutation = useMutation({
     mutationFn: async (templateId: string) => {
       const { error } = await supabase
-        .from('templates')
+        .from('estimate_calculation_templates')
         .delete()
         .eq('id', templateId);
 
       if (error) throw error;
     },
     onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ['estimate-templates'] });
+      queryClient.invalidateQueries({ queryKey: ['estimate-calculation-templates'] });
       setTemplateToDelete(null);
       toast({ title: 'Template deleted' });
     },
@@ -241,22 +288,20 @@ export function EstimateTemplateList() {
     const matchesSearch = template.name.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesType =
       typeFilter === 'all' ||
-      (template.template_type || '').toLowerCase() === typeFilter.toLowerCase();
+      (template.roof_type || '').toLowerCase() === typeFilter.toLowerCase();
     return matchesSearch && matchesType;
   });
 
   const getTypeBadgeVariant = (type?: string) => {
     switch (type?.toLowerCase()) {
-      case 'steep_slope':
+      case 'shingle':
         return 'default';
       case 'metal':
         return 'secondary';
       case 'tile':
         return 'outline';
-      case 'low_slope':
+      case 'flat':
         return 'destructive';
-      case 'gutters':
-        return 'secondary';
       default:
         return 'outline';
     }
@@ -268,7 +313,7 @@ export function EstimateTemplateList() {
         <div>
           <h2 className="text-2xl font-semibold tracking-tight">Estimate Templates</h2>
           <p className="text-muted-foreground">
-            Create and manage templates for generating estimates
+            Create and manage calculation templates for generating estimates
           </p>
         </div>
         <Button onClick={() => setShowNewDialog(true)}>
@@ -292,7 +337,7 @@ export function EstimateTemplateList() {
             <SelectValue placeholder="Filter by type" />
           </SelectTrigger>
           <SelectContent>
-            {TEMPLATE_TYPES.map((type) => (
+            {ROOF_TYPES.map((type) => (
               <SelectItem key={type.value} value={type.value}>
                 {type.label}
               </SelectItem>
@@ -302,16 +347,35 @@ export function EstimateTemplateList() {
       </div>
 
       {isLoading ? (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {[...Array(6)].map((_, i) => (
-            <Card key={i}>
-              <CardContent className="p-6">
-                <Skeleton className="h-5 w-32 mb-2" />
-                <Skeleton className="h-4 w-20 mb-4" />
-                <Skeleton className="h-8 w-16" />
-              </CardContent>
-            </Card>
-          ))}
+        <div className="border rounded-lg">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[300px]">Template Name</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead className="text-center">Items</TableHead>
+                <TableHead className="text-right">Overhead</TableHead>
+                <TableHead className="text-right">Profit</TableHead>
+                <TableHead className="text-center">Status</TableHead>
+                <TableHead className="w-[60px]"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {[...Array(5)].map((_, i) => (
+                <TableRow key={i}>
+                  <TableCell><Skeleton className="h-5 w-40" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-16" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-8 mx-auto" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-12 ml-auto" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-12 ml-auto" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-16 mx-auto" /></TableCell>
+                  <TableCell><Skeleton className="h-5 w-8" /></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       ) : filteredTemplates.length === 0 ? (
         <Card>
@@ -332,83 +396,88 @@ export function EstimateTemplateList() {
           </CardContent>
         </Card>
       ) : (
-        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-          {filteredTemplates.map((template) => (
-            <Card
-              key={template.id}
-              className="group hover:border-primary/50 transition-colors cursor-pointer"
-              onClick={() => navigate(`/templates/smart-editor/${template.id}`)}
-            >
-              <CardContent className="p-6">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <h3 className="font-semibold truncate">{template.name}</h3>
-                    {template.template_description && (
-                      <p className="text-sm text-muted-foreground truncate mt-1">
-                        {template.template_description}
-                      </p>
-                    )}
-                  </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 opacity-0 group-hover:opacity-100"
-                      >
-                        <MoreVertical className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          navigate(`/templates/smart-editor/${template.id}`);
-                        }}
-                      >
-                        <Pencil className="h-4 w-4 mr-2" />
-                        Edit
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          duplicateMutation.mutate(template.id);
-                        }}
-                      >
-                        <Copy className="h-4 w-4 mr-2" />
-                        Duplicate
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setTemplateToDelete(template);
-                        }}
-                        className="text-destructive"
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-                <div className="flex items-center gap-2 mt-4">
-                  <Badge variant={getTypeBadgeVariant(template.template_type)}>
-                    {(template.template_type || 'Unknown').replace('_', ' ')}
-                  </Badge>
-                  <Badge
-                    variant={template.status === 'active' ? 'default' : 'secondary'}
-                    className={
-                      template.status === 'active'
-                        ? 'bg-green-500/10 text-green-700 border-green-500/20'
-                        : ''
-                    }
-                  >
-                    {template.status}
-                  </Badge>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
+        <div className="border rounded-lg">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-[300px]">Template Name</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead className="text-center">Items</TableHead>
+                <TableHead className="text-right">Overhead</TableHead>
+                <TableHead className="text-right">Profit</TableHead>
+                <TableHead className="text-center">Status</TableHead>
+                <TableHead className="w-[60px]"></TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredTemplates.map((template) => (
+                <TableRow
+                  key={template.id}
+                  className="cursor-pointer hover:bg-muted/50"
+                  onClick={() => navigate(`/templates/calc-editor/${template.id}`)}
+                >
+                  <TableCell className="font-medium">{template.name}</TableCell>
+                  <TableCell>
+                    <Badge variant={getTypeBadgeVariant(template.roof_type)} className="capitalize">
+                      {template.roof_type || 'Unknown'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell className="capitalize">{template.template_category || 'standard'}</TableCell>
+                  <TableCell className="text-center">{template.item_count}</TableCell>
+                  <TableCell className="text-right">{template.overhead_percentage}%</TableCell>
+                  <TableCell className="text-right">{template.target_profit_percentage}%</TableCell>
+                  <TableCell className="text-center">
+                    <Badge 
+                      variant={template.is_active ? 'default' : 'secondary'}
+                      className={template.is_active ? 'bg-green-500/10 text-green-700 border-green-500/20' : ''}
+                    >
+                      {template.is_active ? 'Active' : 'Inactive'}
+                    </Badge>
+                  </TableCell>
+                  <TableCell>
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
+                        <Button variant="ghost" size="icon" className="h-8 w-8">
+                          <MoreVertical className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            navigate(`/templates/calc-editor/${template.id}`);
+                          }}
+                        >
+                          <Pencil className="h-4 w-4 mr-2" />
+                          Edit
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            duplicateMutation.mutate(template.id);
+                          }}
+                        >
+                          <Copy className="h-4 w-4 mr-2" />
+                          Duplicate
+                        </DropdownMenuItem>
+                        <DropdownMenuItem
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setTemplateToDelete(template);
+                          }}
+                          className="text-destructive"
+                        >
+                          <Trash2 className="h-4 w-4 mr-2" />
+                          Delete
+                        </DropdownMenuItem>
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                  </TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       )}
 
@@ -418,7 +487,7 @@ export function EstimateTemplateList() {
           <DialogHeader>
             <DialogTitle>Create New Template</DialogTitle>
             <DialogDescription>
-              Create a new estimate template for generating project estimates
+              Create a new calculation template for generating project estimates
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-4">
@@ -432,17 +501,16 @@ export function EstimateTemplateList() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="type">Template Type</Label>
-              <Select value={newTemplateType} onValueChange={setNewTemplateType}>
+              <Label htmlFor="type">Roof Type</Label>
+              <Select value={newTemplateType} onValueChange={(v) => setNewTemplateType(v as RoofType)}>
                 <SelectTrigger>
                   <SelectValue placeholder="Select type" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="steep_slope">Steep Slope (Shingle)</SelectItem>
+                  <SelectItem value="shingle">Shingle</SelectItem>
                   <SelectItem value="metal">Metal</SelectItem>
                   <SelectItem value="tile">Tile</SelectItem>
-                  <SelectItem value="low_slope">Low Slope (Flat)</SelectItem>
-                  <SelectItem value="gutters">Gutters</SelectItem>
+                  <SelectItem value="flat">Flat</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -455,7 +523,7 @@ export function EstimateTemplateList() {
               onClick={() =>
                 createMutation.mutate({
                   name: newTemplateName,
-                  template_type: newTemplateType,
+                  roof_type: newTemplateType,
                 })
               }
               disabled={!newTemplateName.trim() || createMutation.isPending}
