@@ -264,9 +264,10 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
             </thead>
             <tbody>
               {/* Combine all items and sort */}
-              {[...materialItems, ...laborItems]
-                .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
-                .map((item, idx) => (
+                  {/* Only show material items - labor is included in price but not displayed */}
+                  {materialItems
+                    .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+                    .map((item, idx) => (
                   <tr key={item.id || idx} className="border-b border-gray-100">
                     <td className="py-2">
                       <div className="font-medium text-gray-900">{item.item_name}</div>
