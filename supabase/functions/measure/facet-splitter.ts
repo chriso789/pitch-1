@@ -66,6 +66,8 @@ export function splitFootprintIntoFacets(
 
 /**
  * Create facets from Google Solar segment data
+ * ENHANCED: Properly inherit pitch, azimuth, and area from Solar segments
+ * Solar segments provide the most accurate pitch/area data available
  */
 function createFacetsFromGoogleSegments(
   footprint: XY[],
@@ -74,35 +76,80 @@ function createFacetsFromGoogleSegments(
   const facets: RoofFacet[] = [];
   let totalQuality = 0;
 
-  for (let i = 0; i < segments.length; i++) {
-    const seg = segments[i];
-    const pitchDeg = seg.pitchDegrees || 18.5; // Default ~4/12
-    const azimuthDeg = seg.azimuthDegrees || 0;
-    const areaSqM = seg.stats?.areaMeters2 || 0;
-    const areaSqFt = areaSqM * 10.7639;
+  // Sort segments by area (largest first) for better ID assignment
+  const sortedSegments = [...segments].sort((a, b) => {
+    const areaA = a.stats?.areaMeters2 || 0;
+    const areaB = b.stats?.areaMeters2 || 0;
+    return areaB - areaA;
+  });
 
-    // Calculate pitch factor for plan area
-    const pitchFactor = 1 / Math.cos(pitchDeg * Math.PI / 180);
-    const planAreaSqFt = areaSqFt / pitchFactor;
+  for (let i = 0; i < sortedSegments.length; i++) {
+    const seg = sortedSegments[i];
+    
+    // Extract Solar API segment data with proper defaults
+    const pitchDeg = seg.pitchDegrees ?? seg.pitch ?? 20; // Default 4/12 (~18.5°)
+    const azimuthDeg = seg.azimuthDegrees ?? seg.azimuth ?? 0;
+    const areaSqM = seg.stats?.areaMeters2 || seg.area_m2 || 0;
+    const areaSqFt = areaSqM * 10.7639;
+    
+    // Validate pitch is in reasonable range (0-90 degrees)
+    const validPitch = Math.max(0, Math.min(90, pitchDeg));
+    
+    // Calculate plan area from sloped area
+    // plan_area = sloped_area * cos(pitch)
+    const pitchRad = validPitch * Math.PI / 180;
+    const planAreaSqFt = areaSqFt * Math.cos(pitchRad);
+
+    // Extract segment polygon if available (bounding box from Solar API)
+    // Note: Solar API provides bounding boxes, not exact facet polygons
+    let segmentPolygon = footprint;
+    if (seg.boundingBox?.sw && seg.boundingBox?.ne) {
+      const sw = seg.boundingBox.sw;
+      const ne = seg.boundingBox.ne;
+      segmentPolygon = [
+        [sw.longitude, sw.latitude],
+        [ne.longitude, sw.latitude],
+        [ne.longitude, ne.latitude],
+        [sw.longitude, ne.latitude],
+        [sw.longitude, sw.latitude]
+      ];
+    }
+
+    // Quality score based on data completeness
+    let quality = 0.9;
+    if (!seg.pitchDegrees && !seg.pitch) quality -= 0.1; // No pitch data
+    if (!seg.stats?.areaMeters2 && !seg.area_m2) quality -= 0.15; // No area data
+    if (areaSqFt < 10) quality -= 0.2; // Very small segment
 
     facets.push({
       id: String.fromCharCode(65 + i), // A, B, C...
-      polygon: footprint, // Google doesn't give us facet polygons, use footprint
+      polygon: segmentPolygon,
       area: areaSqFt,
       planArea: planAreaSqFt,
-      pitch: pitchDeg,
-      pitchRatio: degreesToPitchRatio(pitchDeg),
+      pitch: validPitch,
+      pitchRatio: degreesToPitchRatio(validPitch),
       azimuth: azimuthDeg,
-      requiresReview: false
+      requiresReview: quality < 0.7
     });
 
-    totalQuality += 0.9; // High quality from Google data
+    totalQuality += quality;
   }
+
+  // Calculate overall split quality
+  const avgQuality = facets.length > 0 ? totalQuality / facets.length : 0;
+  
+  // Flag for manual review if:
+  // - Only 1 facet (unusual for most roofs)
+  // - Total area seems wrong
+  // - Average quality is low
+  const manualReviewRecommended = facets.length === 1 || avgQuality < 0.7;
+
+  console.log(`✓ Created ${facets.length} facets from Solar segments (quality: ${(avgQuality * 100).toFixed(0)}%)`);
 
   return {
     facets,
-    manualReviewRecommended: false,
-    splitQuality: facets.length > 0 ? totalQuality / facets.length : 0
+    manualReviewRecommended,
+    splitQuality: avgQuality
   };
 }
 

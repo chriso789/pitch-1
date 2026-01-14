@@ -1178,23 +1178,49 @@ export function SchematicRoofDiagram({
       )}
       
       {/* Footprint Source Badge - shows data origin for transparency */}
-      {measurement?.footprint_source && (
-        <div className="absolute top-3 left-48 z-10">
+      {(measurement?.footprint_source || measurement?.dsm_available !== undefined) && (
+        <div className="absolute top-3 left-48 z-10 flex flex-col gap-1">
+          {/* Primary source badge */}
           <Badge 
             variant={
-              measurement.footprint_source === 'google_solar_api' ? 'default' :
+              measurement.footprint_source?.includes('google_solar') ? 'default' :
+              measurement.footprint_source === 'mapbox_vector' ? 'default' :
               measurement.footprint_source === 'regrid_parcel' ? 'secondary' :
               'outline'
             }
             className={`text-xs gap-1 ${
-              measurement.footprint_source === 'google_solar_api' 
-                ? 'bg-green-600 hover:bg-green-600' 
+              measurement.footprint_source?.includes('google_solar') && measurement.dsm_available
+                ? 'bg-emerald-600 hover:bg-emerald-600' 
+                : measurement.footprint_source?.includes('google_solar')
+                ? 'bg-green-600 hover:bg-green-600'
+                : measurement.footprint_source === 'google_solar+mapbox'
+                ? 'bg-green-600 hover:bg-green-600'
+                : measurement.footprint_source === 'mapbox_vector'
+                ? 'bg-blue-600 hover:bg-blue-600 text-white'
                 : measurement.footprint_source === 'regrid_parcel'
                 ? 'bg-blue-600 hover:bg-blue-600 text-white'
                 : 'bg-amber-100 text-amber-800 border-amber-300'
             }`}
           >
-            {measurement.footprint_source === 'google_solar_api' && (
+            {measurement.footprint_source?.includes('google_solar') && measurement.dsm_available && (
+              <>
+                <CheckCircle className="h-3 w-3" />
+                DSM + Solar Verified ({Math.round((measurement.footprint_confidence || 0.95) * 100)}%)
+              </>
+            )}
+            {measurement.footprint_source === 'google_solar+mapbox' && (
+              <>
+                <CheckCircle className="h-3 w-3" />
+                Solar + Mapbox ({Math.round((measurement.footprint_confidence || 0.92) * 100)}%)
+              </>
+            )}
+            {measurement.footprint_source === 'mapbox_vector' && (
+              <>
+                <Map className="h-3 w-3" />
+                Mapbox Footprint ({Math.round((measurement.footprint_confidence || 0.92) * 100)}%)
+              </>
+            )}
+            {measurement.footprint_source === 'google_solar_api' && !measurement.dsm_available && (
               <>
                 <CheckCircle className="h-3 w-3" />
                 Solar API ({Math.round((measurement.footprint_confidence || 0.95) * 100)}%)
@@ -1209,10 +1235,34 @@ export function SchematicRoofDiagram({
             {measurement.footprint_source === 'ai_detection' && (
               <>
                 <Cpu className="h-3 w-3" />
-                AI Detection - Review Recommended
+                AI Detection - Review
               </>
             )}
           </Badge>
+          
+          {/* DSM Quality Indicator */}
+          {measurement.dsm_available !== undefined && (
+            <Badge 
+              variant="outline"
+              className={`text-[10px] gap-1 ${
+                measurement.dsm_available 
+                  ? 'bg-green-50 text-green-700 border-green-300' 
+                  : 'bg-amber-50 text-amber-700 border-amber-300'
+              }`}
+            >
+              {measurement.dsm_available ? (
+                <>
+                  <CheckCircle className="h-2.5 w-2.5" />
+                  DSM Ridge Detection
+                </>
+              ) : (
+                <>
+                  <AlertTriangle className="h-2.5 w-2.5" />
+                  Skeleton Fallback
+                </>
+              )}
+            </Badge>
+          )}
         </div>
       )}
     </div>
