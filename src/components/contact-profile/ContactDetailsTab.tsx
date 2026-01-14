@@ -85,26 +85,36 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
     }
   };
 
-  const form = useForm<FormData>({
-    defaultValues: {
-      first_name: contact?.first_name || '',
-      last_name: contact?.last_name || '',
-      email: contact?.email || '',
-      phone: contact?.phone || '',
-      secondary_email: contact?.secondary_email || '',
-      secondary_phone: contact?.secondary_phone || '',
-      additional_emails: (contact?.additional_emails || []).map((e: string) => ({ value: e })),
-      additional_phones: (contact?.additional_phones || []).map((p: string) => ({ value: p })),
-      company_name: contact?.company_name || '',
-      address_street: contact?.address_street || '',
-      address_city: contact?.address_city || '',
-      address_state: contact?.address_state || '',
-      address_zip: contact?.address_zip || '',
-      notes: contact?.notes || '',
-      lead_source: contact?.lead_source || '',
-      tags: contact?.tags?.join(', ') || ''
-    }
+  const getFormDefaults = (c: any): FormData => ({
+    first_name: c?.first_name || '',
+    last_name: c?.last_name || '',
+    email: c?.email || '',
+    phone: c?.phone || '',
+    secondary_email: c?.secondary_email || '',
+    secondary_phone: c?.secondary_phone || '',
+    additional_emails: (c?.additional_emails || []).map((e: string) => ({ value: e })),
+    additional_phones: (c?.additional_phones || []).map((p: string) => ({ value: p })),
+    company_name: c?.company_name || '',
+    address_street: c?.address_street || '',
+    address_city: c?.address_city || '',
+    address_state: c?.address_state || '',
+    address_zip: c?.address_zip || '',
+    notes: c?.notes || '',
+    lead_source: c?.lead_source || '',
+    tags: c?.tags?.join(', ') || ''
   });
+
+  const form = useForm<FormData>({
+    defaultValues: getFormDefaults(contact)
+  });
+
+  // Reset form when contact changes to prevent stale data
+  useEffect(() => {
+    if (contact) {
+      form.reset(getFormDefaults(contact));
+      setIsEditing(false);
+    }
+  }, [contact?.id]);
 
   const { fields: emailFields, append: appendEmail, remove: removeEmail } = useFieldArray({
     control: form.control,
@@ -327,7 +337,7 @@ export const ContactDetailsTab: React.FC<ContactDetailsTabProps> = ({
             onClick={() => {
               if (isEditing) {
                 setIsEditing(false);
-                form.reset();
+                form.reset(getFormDefaults(contact));
               } else {
                 setIsEditing(true);
               }
