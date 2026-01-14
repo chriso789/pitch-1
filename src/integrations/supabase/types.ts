@@ -3450,6 +3450,41 @@ export type Database = {
           },
         ]
       }
+      clj_sequences: {
+        Row: {
+          created_at: string | null
+          current_value: number
+          id: string
+          sequence_type: string
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          current_value?: number
+          id?: string
+          sequence_type: string
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          current_value?: number
+          id?: string
+          sequence_type?: string
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "clj_sequences_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       commission_adjustments: {
         Row: {
           adjustment_type: string
