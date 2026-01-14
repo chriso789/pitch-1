@@ -57,45 +57,70 @@ export function RoofrStyleReportPreview({
   
   const totalPages = 7;
   
-  // Fetch roof_measurements data with WKT geometry by address
+  // Fetch roof_measurements data - prioritize measurementId, fallback to address
   useEffect(() => {
     async function fetchRoofMeasurements() {
-      // We have the address prop - use it to find WKT data
-      if (!address) return;
+      const selectFields = `
+        id,
+        facet_count,
+        total_area_flat_sqft,
+        total_area_adjusted_sqft,
+        predominant_pitch,
+        measurement_confidence,
+        roof_type,
+        complexity_rating,
+        total_eave_length,
+        total_rake_length,
+        total_hip_length,
+        total_valley_length,
+        total_ridge_length,
+        perimeter_wkt,
+        linear_features_wkt,
+        property_address,
+        footprint_source,
+        footprint_confidence,
+        footprint_vertices_geo,
+        footprint_requires_review,
+        dsm_available,
+        created_at
+      `;
       
       try {
-        // Normalize address for search (extract street number and name)
-        const normalizedAddress = address.split(',')[0].trim().toUpperCase();
+        let data = null;
+        let error = null;
         
-        const { data, error } = await supabase
-          .from('roof_measurements')
-          .select(`
-            id,
-            facet_count,
-            total_area_flat_sqft,
-            total_area_adjusted_sqft,
-            predominant_pitch,
-            measurement_confidence,
-            roof_type,
-            complexity_rating,
-            total_eave_length,
-            total_rake_length,
-            total_hip_length,
-            total_valley_length,
-            total_ridge_length,
-            perimeter_wkt,
-            linear_features_wkt,
-            property_address,
-            footprint_source,
-            footprint_confidence,
-            footprint_vertices_geo,
-            footprint_requires_review,
-            dsm_available
-          `)
-          .ilike('property_address', `%${normalizedAddress}%`)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        // PRIORITY 1: Fetch by measurementId if available (guarantees latest result)
+        if (measurementId) {
+          const result = await supabase
+            .from('roof_measurements')
+            .select(selectFields)
+            .eq('id', measurementId)
+            .maybeSingle();
+          data = result.data;
+          error = result.error;
+          
+          if (data) {
+            console.log('📐 Fetched roof_measurements by ID:', measurementId);
+          }
+        }
+        
+        // PRIORITY 2: Fallback to address lookup if no measurementId or not found
+        if (!data && address) {
+          const normalizedAddress = address.split(',')[0].trim().toUpperCase();
+          const result = await supabase
+            .from('roof_measurements')
+            .select(selectFields)
+            .ilike('property_address', `%${normalizedAddress}%`)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          data = result.data;
+          error = result.error;
+          
+          if (data) {
+            console.log('📐 Fetched roof_measurements by address fallback');
+          }
+        }
         
         if (error) {
           console.log('No roof_measurements found:', error.message);
@@ -104,13 +129,14 @@ export function RoofrStyleReportPreview({
         
         if (data) {
           const wktFeatures = data.linear_features_wkt as any[];
-          console.log('📐 Fetched roof_measurements with full data:', {
+          console.log('📐 Loaded roof_measurements:', {
             id: data.id,
             facet_count: data.facet_count,
             total_area: data.total_area_adjusted_sqft,
+            footprint_source: data.footprint_source,
             perimeter_wkt: (data.perimeter_wkt as string)?.substring(0, 50),
             linear_features_wkt: wktFeatures?.length || 0,
-            property_address: data.property_address,
+            created_at: data.created_at,
           });
           setRoofMeasurementData(data);
         }
@@ -122,7 +148,7 @@ export function RoofrStyleReportPreview({
     if (open) {
       fetchRoofMeasurements();
     }
-  }, [open, address]);
+  }, [open, measurementId, address]);
   
   // Merge measurement with full data from roof_measurements DB
   const enrichedMeasurement = useMemo(() => {
