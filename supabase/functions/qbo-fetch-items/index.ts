@@ -46,7 +46,7 @@ Deno.serve(async (req) => {
     }
 
     // Check if token needs refresh
-    const tokenExpiresAt = new Date(connection.token_expires_at);
+    const tokenExpiresAt = new Date(connection.expires_at);
     const now = new Date();
     
     if (tokenExpiresAt <= now) {
