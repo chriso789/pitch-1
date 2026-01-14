@@ -21792,6 +21792,7 @@ export type Database = {
           created_at: string | null
           customer_id: string | null
           detection_confidence: number | null
+          detection_method: string | null
           detection_timestamp: string | null
           dsm_available: boolean | null
           edge_count: number | null
@@ -21814,6 +21815,8 @@ export type Database = {
           image_quality_score: number | null
           image_source: string | null
           image_year: number | null
+          imagery_date: string | null
+          imagery_quality: string | null
           interior_vertex_count: number | null
           is_archived: boolean | null
           linear_features_wkt: Json | null
@@ -21889,6 +21892,7 @@ export type Database = {
           created_at?: string | null
           customer_id?: string | null
           detection_confidence?: number | null
+          detection_method?: string | null
           detection_timestamp?: string | null
           dsm_available?: boolean | null
           edge_count?: number | null
@@ -21911,6 +21915,8 @@ export type Database = {
           image_quality_score?: number | null
           image_source?: string | null
           image_year?: number | null
+          imagery_date?: string | null
+          imagery_quality?: string | null
           interior_vertex_count?: number | null
           is_archived?: boolean | null
           linear_features_wkt?: Json | null
@@ -21986,6 +21992,7 @@ export type Database = {
           created_at?: string | null
           customer_id?: string | null
           detection_confidence?: number | null
+          detection_method?: string | null
           detection_timestamp?: string | null
           dsm_available?: boolean | null
           edge_count?: number | null
@@ -22008,6 +22015,8 @@ export type Database = {
           image_quality_score?: number | null
           image_source?: string | null
           image_year?: number | null
+          imagery_date?: string | null
+          imagery_quality?: string | null
           interior_vertex_count?: number | null
           is_archived?: boolean | null
           linear_features_wkt?: Json | null

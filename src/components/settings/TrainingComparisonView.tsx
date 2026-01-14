@@ -318,6 +318,52 @@ export function TrainingComparisonView({
     enabled: !!effectiveAiMeasurementId,
   });
 
+  // NEW: Fetch authoritative WKT data from roof_measurements table
+  // This is the source of truth for diagram rendering - matches Project "AI Measurements" view
+  const { data: roofMeasurement } = useQuery({
+    queryKey: ['roof-measurement-wkt', effectiveAiMeasurementId],
+    queryFn: async () => {
+      if (!effectiveAiMeasurementId) return null;
+      
+      const { data, error } = await supabase
+        .from('roof_measurements')
+        .select(`
+          id,
+          linear_features_wkt,
+          perimeter_wkt,
+          footprint_vertices_geo,
+          gps_coordinates,
+          target_lat,
+          target_lng,
+          facet_count,
+          total_area_adjusted_sqft,
+          predominant_pitch,
+          footprint_source,
+          footprint_confidence,
+          footprint_requires_review,
+          detection_method
+        `)
+        .eq('id', effectiveAiMeasurementId)
+        .maybeSingle();
+      
+      if (error) {
+        console.log('No roof_measurements found for ID:', effectiveAiMeasurementId);
+        return null;
+      }
+      
+      if (data) {
+        console.log('📐 Loaded roof_measurements WKT:', {
+          id: data.id,
+          wkt_features: (data.linear_features_wkt as any[])?.length || 0,
+          vertices: (data.footprint_vertices_geo as any[])?.length || 0,
+          source: data.footprint_source,
+        });
+      }
+      return data;
+    },
+    enabled: !!effectiveAiMeasurementId,
+  });
+
   // Calculate comparison data - extract from summary JSONB in measurements table
   const summary = (aiMeasurement as any)?.summary || {};
   const aiTotals = {
