@@ -16,6 +16,11 @@ export interface PDFComponentOptions {
   showLineItemPricing: boolean; // unit cost + line totals
   showLineItemQuantities: boolean;
   
+  // NEW: Consumer-friendly unified view options
+  showUnifiedItems: boolean;       // Combine materials + labor into single "Project Scope" list
+  showItemDescriptions: boolean;   // Show description under item name
+  hideSectionSubtotals: boolean;   // Hide "Materials Subtotal" and "Labor Subtotal"
+  
   // Pricing Summary
   showSubtotals: boolean; // materials subtotal, labor subtotal
   showCostBreakdown: boolean; // direct cost, overhead (internal numbers)
@@ -60,16 +65,20 @@ export const PDF_PRESETS: Record<PDFViewMode, PDFComponentOptions> = {
     showCustomerName: true,
     showCustomerAddress: true,
     showCustomerContact: false,
-    // Line items - show items but hide unit pricing for cleaner look
-    showMaterialsSection: true,
-    showLaborSection: true,
-    showLineItemPricing: false, // Hide unit costs from customer
+    // Line items - UNIFIED VIEW for customer (no separate Materials/Labor)
+    showMaterialsSection: false,  // Hidden - use unified view instead
+    showLaborSection: false,      // Hidden - use unified view instead
+    showLineItemPricing: false,   // Hide unit costs from customer
     showLineItemQuantities: true,
+    // NEW: Consumer-friendly unified view
+    showUnifiedItems: true,       // Show single combined list
+    showItemDescriptions: true,   // Show descriptions for each item
+    hideSectionSubtotals: true,   // Don't expose cost breakdown
     // Pricing - customer sees total only
-    showSubtotals: true,
-    showCostBreakdown: false, // Hide internal costs
-    showProfitInfo: false, // NEVER show to customer
-    showRepCommission: false, // NEVER show to customer
+    showSubtotals: false,         // CHANGED: Hide subtotals from customer
+    showCostBreakdown: false,     // Hide internal costs
+    showProfitInfo: false,        // NEVER show to customer
+    showRepCommission: false,     // NEVER show to customer
     showOnlyTotal: false,
     // Terms
     showTermsAndConditions: true,
@@ -95,11 +104,15 @@ export const PDF_PRESETS: Record<PDFViewMode, PDFComponentOptions> = {
     showCustomerName: true,
     showCustomerAddress: true,
     showCustomerContact: true,
-    // Line items - show everything
+    // Line items - show everything in separate sections
     showMaterialsSection: true,
     showLaborSection: true,
     showLineItemPricing: true,
     showLineItemQuantities: true,
+    // NEW: Internal uses traditional view
+    showUnifiedItems: false,
+    showItemDescriptions: false,
+    hideSectionSubtotals: false,
     // Pricing - show all internal numbers
     showSubtotals: true,
     showCostBreakdown: true,
@@ -128,6 +141,7 @@ export const PDF_PRESETS: Record<PDFViewMode, PDFComponentOptions> = {
 export const TOTAL_ONLY_PRESET: Partial<PDFComponentOptions> = {
   showMaterialsSection: false,
   showLaborSection: false,
+  showUnifiedItems: false,
   showSubtotals: false,
   showCostBreakdown: false,
   showOnlyTotal: true,
