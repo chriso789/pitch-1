@@ -24,7 +24,7 @@ import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptio
 import { useQueryClient } from '@tanstack/react-query';
 import { saveEstimatePdf } from '@/lib/estimates/estimatePdfSaver';
 import { useEstimatePricing, type LineItem } from '@/hooks/useEstimatePricing';
-import { usePDFGeneration } from '@/hooks/usePDFGeneration';
+// usePDFGeneration removed - now using useMultiPagePDFGeneration for all PDF operations
 import { useMultiPagePDFGeneration } from '@/hooks/useMultiPagePDFGeneration';
 
 // Parsed measurements interface for inline import
@@ -144,8 +144,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   
   const { toast } = useToast();
   const { context: measurementContext, summary: measurementSummary } = useMeasurementContext(pipelineEntryId);
-  const { generatePDF } = usePDFGeneration();
-  const { downloadPDF: downloadMultiPagePDF, isGenerating: isGeneratingMultiPage } = useMultiPagePDFGeneration();
+  const { generateMultiPagePDF, downloadPDF: downloadMultiPagePDF, isGenerating: isGeneratingMultiPage } = useMultiPagePDFGeneration();
   const queryClient = useQueryClient();
   const pdfContainerRef = useRef<HTMLDivElement>(null);
   const [searchParams] = useSearchParams();
@@ -835,20 +834,21 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
       // Wait for render (increased delay for reliable capture)
       await new Promise(resolve => setTimeout(resolve, 500));
 
-      // Generate PDF
+      // Generate PDF using multi-page generator with correct element ID
       toast({ title: 'Generating PDF...', description: 'Please wait while we create your estimate document.' });
       
       let pdfBlob: Blob | null = null;
       try {
-        pdfBlob = await generatePDF('estimate-pdf-template', {
+        const pdfResult = await generateMultiPagePDF('estimate-pdf-pages', 1, {
           filename: `${estimateNumber}.pdf`,
-          orientation: 'portrait',
           format: 'letter',
-          quality: 2
+          orientation: 'portrait',
         });
         
-        if (!pdfBlob) {
-          console.error('PDF generation returned null blob');
+        if (pdfResult.success && pdfResult.blob) {
+          pdfBlob = pdfResult.blob;
+        } else {
+          console.error('PDF generation failed:', pdfResult.error);
         }
       } catch (pdfError) {
         console.error('PDF generation failed:', pdfError);
