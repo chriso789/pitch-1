@@ -1,10 +1,10 @@
-import { useState, useEffect, useRef, useMemo } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Download, Share2, ChevronLeft, ChevronRight, Loader2, FileText, ChevronsDown, Check } from 'lucide-react';
+import { Download, Share2, ChevronLeft, ChevronRight, Loader2, FileText, ChevronsDown, Check, RefreshCw, Bug } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { ReportPage } from './ReportPage';
@@ -53,102 +53,153 @@ export function RoofrStyleReportPreview({
   const [showScrollHint, setShowScrollHint] = useState(true);
   const [roofMeasurementData, setRoofMeasurementData] = useState<any>(null);
   const [showHiddenPages, setShowHiddenPages] = useState(false);
+  const [isRemeasuring, setIsRemeasuring] = useState(false);
+  const [showDebugMetadata, setShowDebugMetadata] = useState(false);
+  const [activeMeasurementId, setActiveMeasurementId] = useState<string | undefined>(measurementId);
   const scrollRef = useRef<HTMLDivElement>(null);
   
   const totalPages = 7;
   
-  // Fetch roof_measurements data - prioritize measurementId, fallback to address
-  useEffect(() => {
-    async function fetchRoofMeasurements() {
-      const selectFields = `
-        id,
-        facet_count,
-        total_area_flat_sqft,
-        total_area_adjusted_sqft,
-        predominant_pitch,
-        measurement_confidence,
-        roof_type,
-        complexity_rating,
-        total_eave_length,
-        total_rake_length,
-        total_hip_length,
-        total_valley_length,
-        total_ridge_length,
-        perimeter_wkt,
-        linear_features_wkt,
-        property_address,
-        footprint_source,
-        footprint_confidence,
-        footprint_vertices_geo,
-        footprint_requires_review,
-        dsm_available,
-        created_at
-      `;
+  // Fetch roof_measurements data - prioritize activeMeasurementId, fallback to address
+  const fetchRoofMeasurements = useCallback(async (targetMeasurementId?: string) => {
+    const selectFields = `
+      id,
+      facet_count,
+      total_area_flat_sqft,
+      total_area_adjusted_sqft,
+      predominant_pitch,
+      measurement_confidence,
+      roof_type,
+      complexity_rating,
+      total_eave_length,
+      total_rake_length,
+      total_hip_length,
+      total_valley_length,
+      total_ridge_length,
+      perimeter_wkt,
+      linear_features_wkt,
+      property_address,
+      footprint_source,
+      footprint_confidence,
+      footprint_vertices_geo,
+      footprint_requires_review,
+      dsm_available,
+      created_at,
+      latitude,
+      longitude
+    `;
+    
+    try {
+      let data = null;
+      let error = null;
+      const idToFetch = targetMeasurementId || activeMeasurementId;
       
-      try {
-        let data = null;
-        let error = null;
-        
-        // PRIORITY 1: Fetch by measurementId if available (guarantees latest result)
-        if (measurementId) {
-          const result = await supabase
-            .from('roof_measurements')
-            .select(selectFields)
-            .eq('id', measurementId)
-            .maybeSingle();
-          data = result.data;
-          error = result.error;
-          
-          if (data) {
-            console.log('📐 Fetched roof_measurements by ID:', measurementId);
-          }
-        }
-        
-        // PRIORITY 2: Fallback to address lookup if no measurementId or not found
-        if (!data && address) {
-          const normalizedAddress = address.split(',')[0].trim().toUpperCase();
-          const result = await supabase
-            .from('roof_measurements')
-            .select(selectFields)
-            .ilike('property_address', `%${normalizedAddress}%`)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-          data = result.data;
-          error = result.error;
-          
-          if (data) {
-            console.log('📐 Fetched roof_measurements by address fallback');
-          }
-        }
-        
-        if (error) {
-          console.log('No roof_measurements found:', error.message);
-          return;
-        }
+      // PRIORITY 1: Fetch by measurementId if available (guarantees latest result)
+      if (idToFetch) {
+        const result = await supabase
+          .from('roof_measurements')
+          .select(selectFields)
+          .eq('id', idToFetch)
+          .maybeSingle();
+        data = result.data;
+        error = result.error;
         
         if (data) {
-          const wktFeatures = data.linear_features_wkt as any[];
-          console.log('📐 Loaded roof_measurements:', {
-            id: data.id,
-            facet_count: data.facet_count,
-            total_area: data.total_area_adjusted_sqft,
-            footprint_source: data.footprint_source,
-            perimeter_wkt: (data.perimeter_wkt as string)?.substring(0, 50),
-            linear_features_wkt: wktFeatures?.length || 0,
-            created_at: data.created_at,
-          });
-          setRoofMeasurementData(data);
+          console.log('📐 Fetched roof_measurements by ID:', idToFetch);
         }
-      } catch (err) {
-        console.error('Error fetching roof_measurements:', err);
       }
+      
+      // PRIORITY 2: Fallback to address lookup if no measurementId or not found
+      if (!data && address) {
+        const normalizedAddress = address.split(',')[0].trim().toUpperCase();
+        const result = await supabase
+          .from('roof_measurements')
+          .select(selectFields)
+          .ilike('property_address', `%${normalizedAddress}%`)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        data = result.data;
+        error = result.error;
+        
+        if (data) {
+          console.log('📐 Fetched roof_measurements by address fallback');
+        }
+      }
+      
+      if (error) {
+        console.log('No roof_measurements found:', error.message);
+        return null;
+      }
+      
+      if (data) {
+        const wktFeatures = data.linear_features_wkt as any[];
+        const vertices = data.footprint_vertices_geo as any[];
+        console.log('📐 Loaded roof_measurements:', {
+          id: data.id,
+          facet_count: data.facet_count,
+          total_area: data.total_area_adjusted_sqft,
+          footprint_source: data.footprint_source,
+          vertex_count: vertices?.length || 'unknown',
+          perimeter_wkt: (data.perimeter_wkt as string)?.substring(0, 50),
+          linear_features_wkt: wktFeatures?.length || 0,
+          created_at: data.created_at,
+        });
+        setRoofMeasurementData(data);
+        return data;
+      }
+      return null;
+    } catch (err) {
+      console.error('Error fetching roof_measurements:', err);
+      return null;
     }
-    
+  }, [activeMeasurementId, address]);
+
+  useEffect(() => {
     if (open) {
       fetchRoofMeasurements();
     }
-  }, [open, measurementId, address]);
+  }, [open, activeMeasurementId, fetchRoofMeasurements]);
+
+  // Re-measure function - triggers a new AI measurement
+  const handleRemeasure = async () => {
+    if (!roofMeasurementData?.latitude || !roofMeasurementData?.longitude) {
+      toast({ title: "Error", description: "No coordinates available for re-measurement", variant: "destructive" });
+      return;
+    }
+    
+    setIsRemeasuring(true);
+    try {
+      console.log('🔄 Re-measuring roof at:', roofMeasurementData.latitude, roofMeasurementData.longitude);
+      
+      const { data, error } = await supabase.functions.invoke('analyze-roof-aerial', {
+        body: {
+          address: address || roofMeasurementData.property_address,
+          coordinates: {
+            lat: roofMeasurementData.latitude,
+            lng: roofMeasurementData.longitude,
+          },
+        },
+      });
+      
+      if (error) throw error;
+      
+      if (data?.measurementId) {
+        console.log('✅ New measurement created:', data.measurementId);
+        setActiveMeasurementId(data.measurementId);
+        await fetchRoofMeasurements(data.measurementId);
+        toast({ title: "Re-measured", description: `New measurement: ${data.measurementId.substring(0, 8)}...` });
+      } else {
+        throw new Error('No measurement ID returned');
+      }
+    } catch (err: any) {
+      console.error('Re-measure error:', err);
+      toast({ title: "Re-measure failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsRemeasuring(false);
+    }
+  };
+
   
   // Merge measurement with full data from roof_measurements DB
   const enrichedMeasurement = useMemo(() => {
@@ -489,35 +540,85 @@ export function RoofrStyleReportPreview({
       
       <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-4xl max-h-[90vh] p-0 overflow-hidden flex flex-col">
-        <DialogHeader className="p-4 border-b flex-row items-center justify-between">
-          <div className="flex items-center gap-3">
-            <FileText className="h-5 w-5 text-primary" />
-            <DialogTitle>Professional Measurement Report</DialogTitle>
-            <Badge variant="outline" className="ml-2">
-              Page {currentPage} of {totalPages}
-            </Badge>
-          </div>
-          <div className="flex items-center gap-2 mr-8">
-            <Button variant="outline" size="sm" onClick={handleShare} disabled={isSharing}>
-              {isSharing ? (
-                <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-              ) : (
-                <Share2 className="h-4 w-4 mr-1" />
-              )}
-              Share
-            </Button>
-            <Button size="sm" onClick={handleConfirm} disabled={isConfirming || isPDFGenerating}>
-              {isConfirming || isPDFGenerating ? (
-                <>
+        <DialogHeader className="p-4 border-b flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <FileText className="h-5 w-5 text-primary" />
+              <DialogTitle>Professional Measurement Report</DialogTitle>
+              <Badge variant="outline" className="ml-2">
+                Page {currentPage} of {totalPages}
+              </Badge>
+            </div>
+            <div className="flex items-center gap-2">
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={() => setShowDebugMetadata(!showDebugMetadata)}
+                className="text-muted-foreground"
+              >
+                <Bug className="h-4 w-4" />
+              </Button>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={handleRemeasure} 
+                disabled={isRemeasuring || !roofMeasurementData?.latitude}
+              >
+                {isRemeasuring ? (
                   <Loader2 className="h-4 w-4 mr-1 animate-spin" />
-                  {Math.round(progress)}%
-                </>
-              ) : (
-                <Check className="h-4 w-4 mr-1" />
-              )}
-              Confirm
-            </Button>
+                ) : (
+                  <RefreshCw className="h-4 w-4 mr-1" />
+                )}
+                Re-measure
+              </Button>
+              <Button variant="outline" size="sm" onClick={handleShare} disabled={isSharing}>
+                {isSharing ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <Share2 className="h-4 w-4 mr-1" />
+                )}
+                Share
+              </Button>
+              <Button size="sm" onClick={handleConfirm} disabled={isConfirming || isPDFGenerating}>
+                {isConfirming || isPDFGenerating ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                    {Math.round(progress)}%
+                  </>
+                ) : (
+                  <Check className="h-4 w-4 mr-1" />
+                )}
+                Confirm
+              </Button>
+            </div>
           </div>
+          
+          {/* Debug Metadata Panel */}
+          {showDebugMetadata && roofMeasurementData && (
+            <div className="bg-muted/50 rounded-lg p-3 text-xs font-mono space-y-1 border">
+              <div className="flex flex-wrap gap-4">
+                <span><strong>ID:</strong> {roofMeasurementData.id?.substring(0, 8)}...</span>
+                <span><strong>Source:</strong> <Badge variant={
+                  roofMeasurementData.footprint_source === 'mapbox_vector' ? 'default' :
+                  roofMeasurementData.footprint_source === 'regrid_parcel' ? 'secondary' :
+                  'outline'
+                }>{roofMeasurementData.footprint_source || 'unknown'}</Badge></span>
+                <span><strong>Vertices:</strong> {
+                  Array.isArray(roofMeasurementData.footprint_vertices_geo) 
+                    ? roofMeasurementData.footprint_vertices_geo.length 
+                    : 'N/A'
+                }</span>
+                <span><strong>Confidence:</strong> {roofMeasurementData.footprint_confidence ? `${Math.round(roofMeasurementData.footprint_confidence * 100)}%` : 'N/A'}</span>
+                <span><strong>DSM:</strong> {roofMeasurementData.dsm_available ? '✓' : '✗'}</span>
+                <span><strong>Created:</strong> {new Date(roofMeasurementData.created_at).toLocaleString()}</span>
+              </div>
+              {roofMeasurementData.footprint_requires_review && (
+                <div className="text-amber-600 dark:text-amber-400 mt-1">
+                  ⚠️ Footprint requires manual review
+                </div>
+              )}
+            </div>
+          )}
         </DialogHeader>
 
         <div className="flex flex-1 min-h-0">
