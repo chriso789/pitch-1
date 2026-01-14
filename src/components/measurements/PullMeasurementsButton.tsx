@@ -393,9 +393,27 @@ export function PullMeasurementsButton({
       setVerificationData({ measurement, tags, satelliteImageUrl, finalCoords });
       setShowReportPreview(true);
       
-      // Show confidence-based toast
+      // Show confidence-based toast with performance info
       const confidenceScore = data.data?.confidence?.score || 0;
       const confidenceRating = data.data?.confidence?.rating || 'unknown';
+      const performanceData = data.data?.performance;
+      const footprintData = data.data?.footprint;
+      
+      // Format path and timing info
+      const pathUsed = performanceData?.path_used === 'solar_fast_path' ? '⚡ Fast Path' : '🔍 AI Analysis';
+      const totalTimeSeconds = performanceData?.timings_ms?.total 
+        ? (performanceData.timings_ms.total / 1000).toFixed(1) 
+        : (pullDuration / 1000).toFixed(1);
+      const footprintSource = footprintData?.source || performanceData?.footprint_source || 'unknown';
+      
+      // Format footprint source for display
+      const footprintLabel = {
+        'mapbox_vector': '📍 Mapbox Vector',
+        'google_solar_api': '🌞 Solar API',
+        'regrid_parcel': '🗺️ Regrid',
+        'solar_bbox_fallback': '⚠️ Solar BBox',
+        'ai_detection': '🤖 AI Detection'
+      }[footprintSource] || footprintSource;
       
       toast({
         title: "🎯 AI Measurements Complete",
@@ -403,7 +421,10 @@ export function PullMeasurementsButton({
           <div className="space-y-1">
             <p>Confidence: {confidenceScore}% ({confidenceRating})</p>
             <p className="text-muted-foreground text-xs">
-              {measurement.summary?.total_squares?.toFixed(1)} squares detected
+              {measurement.summary?.total_squares?.toFixed(1)} squares • {pathUsed} • {totalTimeSeconds}s
+            </p>
+            <p className="text-xs text-muted-foreground">
+              Footprint: {footprintLabel}
             </p>
           </div>
         ),

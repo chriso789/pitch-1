@@ -242,9 +242,16 @@ Deno.serve(async (req) => {
     // ═══════════════════════════════════════════════════════════════════════════
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // 🏢 AUTHORITATIVE FOOTPRINT EXTRACTION (Solar API → Regrid → AI Fallback)
-    // Prioritize ground-truth building geometry over AI guessing
+    // 🏢 AUTHORITATIVE FOOTPRINT EXTRACTION - NEW PRIORITY ORDER:
+    // 1. Mapbox Vector (highest fidelity - detailed polygon with many vertices)
+    // 2. Solar API bounding box (rectangular, only 4 vertices)
+    // 3. Regrid parcel data
+    // 4. AI Detection (fallback)
     // ═══════════════════════════════════════════════════════════════════════════
+    
+    // Performance tracking for visibility
+    const timings: Record<string, number> = {};
+    let footprintFetchStart = Date.now();
     
     let authoritativeFootprint: {
       vertices: Array<{ lat: number; lng: number }>;
@@ -254,58 +261,122 @@ Deno.serve(async (req) => {
       validation?: ValidationResult;
     } | null = null;
 
-    // STEP 1: Try Solar API bounding box first (most accurate - 95% confidence)
-    if (solarData?.available && solarData?.boundingBox) {
-      console.log('🌞 Extracting authoritative footprint from Solar API bounding box...');
+    // STEP 1: Try Mapbox Vector footprint FIRST (highest fidelity - detailed polygon)
+    if (MAPBOX_PUBLIC_TOKEN) {
+      console.log('🗺️ STEP 1: Attempting Mapbox vector footprint (highest priority)...');
+      
+      try {
+        const mapboxResult = await fetchMapboxVectorFootprint(
+          coordinates.lat, 
+          coordinates.lng, 
+          MAPBOX_PUBLIC_TOKEN,
+          { radius: 50 }
+        );
+        
+        if (mapboxResult.footprint && mapboxResult.footprint.vertexCount >= 4) {
+          // Convert Mapbox coordinates [lng, lat][] to {lat, lng}[]
+          const mapboxVertices = mapboxResult.footprint.coordinates.map(coord => ({
+            lat: coord[1],
+            lng: coord[0]
+          }));
+          
+          // Use selectBestFootprint to compare against Solar area if available
+          const solarAreaSqft = solarData?.buildingFootprintSqft || 0;
+          const selected = selectBestFootprint(
+            mapboxResult.footprint,
+            solarData?.boundingBox || null,
+            solarAreaSqft
+          );
+          
+          // Only apply minimal overhang for vector footprints (already accurate)
+          const expandedVertices = selected.source === 'mapbox_vector' 
+            ? expandFootprintForOverhang(mapboxVertices, 0.5) // 0.5ft for vector sources
+            : expandFootprintForOverhang(mapboxVertices, 1.5); // 1.5ft for non-vector
+          
+          const validation = validateGeometry(expandedVertices, 'mapbox_vector' as FootprintSource);
+          
+          if (validation.valid) {
+            authoritativeFootprint = {
+              vertices: expandedVertices,
+              confidence: selected.confidence,
+              source: 'mapbox_vector' as FootprintSource,
+              requiresManualReview: false,
+              validation,
+            };
+            console.log(`✅ Mapbox footprint: ${validation.metrics.areaSqFt.toFixed(0)} sqft, ${selected.vertexCount} vertices, ${(selected.confidence * 100).toFixed(0)}% confidence`);
+            console.log(`   Reason: ${selected.reasoning}`);
+          }
+        } else {
+          console.log(`⚠️ Mapbox returned no usable footprint: ${mapboxResult.fallbackReason || mapboxResult.error || 'unknown'}`);
+        }
+      } catch (mapboxErr) {
+        console.warn('⚠️ Mapbox lookup failed:', mapboxErr);
+      }
+    }
+    timings.footprint_mapbox = Date.now() - footprintFetchStart;
+
+    // STEP 2: Try Solar API bounding box (rectangular - lower fidelity than vector)
+    if (!authoritativeFootprint && solarData?.available && solarData?.boundingBox) {
+      console.log('🌞 STEP 2: Extracting footprint from Solar API bounding box (4 vertices)...');
       
       const solarVertices = boundingBoxToFootprint(solarData.boundingBox);
-      const expandedVertices = expandFootprintForOverhang(solarVertices, 2); // 2ft overhang
+      // Use 1.5ft overhang for Solar bbox (reduced from 2ft)
+      const expandedVertices = expandFootprintForOverhang(solarVertices, 1.5);
       const validation = validateGeometry(expandedVertices, 'google_solar_api');
       
       if (validation.valid) {
         authoritativeFootprint = {
           vertices: expandedVertices,
-          confidence: validation.confidence,
+          confidence: validation.confidence * 0.9, // Reduce confidence for rectangular footprint
           source: 'google_solar_api',
           requiresManualReview: false,
           validation,
         };
-        console.log(`✅ Solar API footprint: ${validation.metrics.areaSqFt.toFixed(0)} sqft, ${(validation.confidence * 100).toFixed(0)}% confidence`);
+        console.log(`✅ Solar API footprint: ${validation.metrics.areaSqFt.toFixed(0)} sqft, 4 vertices (rectangle), ${(validation.confidence * 90).toFixed(0)}% confidence`);
       } else {
         console.warn(`⚠️ Solar footprint failed validation: ${validation.errors.join(', ')}`);
       }
     }
+    timings.footprint_solar = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0);
 
-    // STEP 2: Fallback to Regrid parcel data (85% confidence)
+    // STEP 3: Fallback to Regrid parcel data (85% confidence)
     const REGRID_API_KEY = Deno.env.get('REGRID_API_KEY');
     if (!authoritativeFootprint && REGRID_API_KEY) {
-      console.log('🗺️ Solar footprint unavailable, trying Regrid parcel data...');
+      console.log('🗺️ STEP 3: Trying Regrid parcel data...');
       
       try {
         const regridFootprint = await fetchRegridFootprint(coordinates.lat, coordinates.lng, REGRID_API_KEY);
         
         if (regridFootprint) {
-          const validation = validateGeometry(regridFootprint.vertices, 'regrid_parcel');
+          // Use 0.5ft overhang for Regrid (vector-quality data)
+          const expandedVertices = expandFootprintForOverhang(regridFootprint.vertices, 0.5);
+          const validation = validateGeometry(expandedVertices, 'regrid_parcel');
           
           if (validation.valid) {
             authoritativeFootprint = {
-              vertices: regridFootprint.vertices,
+              vertices: expandedVertices,
               confidence: validation.confidence,
               source: 'regrid_parcel',
               requiresManualReview: false,
               validation,
             };
-            console.log(`✅ Regrid footprint: ${validation.metrics.areaSqFt.toFixed(0)} sqft, ${(validation.confidence * 100).toFixed(0)}% confidence`);
+            console.log(`✅ Regrid footprint: ${validation.metrics.areaSqFt.toFixed(0)} sqft, ${regridFootprint.vertices.length} vertices, ${(validation.confidence * 100).toFixed(0)}% confidence`);
           }
         }
       } catch (regridErr) {
         console.warn('⚠️ Regrid lookup failed:', regridErr);
       }
     }
+    timings.footprint_regrid = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0) - (timings.footprint_solar || 0);
+    timings.footprint_total = Date.now() - footprintFetchStart;
+
+    // Determine if we have a vector footprint (for conditional Florida shrinkage)
+    const hasVectorFootprint = authoritativeFootprint && 
+      ['mapbox_vector', 'regrid_parcel'].includes(authoritativeFootprint.source);
 
     // Log footprint source for tracking
     if (authoritativeFootprint) {
-      console.log(`🎯 Using ${authoritativeFootprint.source} footprint (${(authoritativeFootprint.confidence * 100).toFixed(0)}% confidence)`);
+      console.log(`🎯 Using ${authoritativeFootprint.source} footprint (${(authoritativeFootprint.confidence * 100).toFixed(0)}% confidence, vector=${hasVectorFootprint})`);
     } else {
       console.log('⚠️ No authoritative footprint available - will use AI detection');
     }
@@ -327,9 +398,10 @@ Deno.serve(async (req) => {
     let buildingIsolation = await isolateTargetBuilding(selectedImage.url, address, coordinates, solarData)
     console.log(`⏱️ Pass 1 (building isolation) complete: ${Date.now() - startTime}ms`)
     
-    // PHASE 6: Apply Florida bounds shrinkage (screen enclosure mitigation)
+    // PHASE 6: Apply Florida bounds shrinkage ONLY when using AI bounding-box isolation
+    // Skip shrinkage when we have authoritative vector footprint (already accurate)
     const isFlorida = isFloridaAddress(address)
-    if (isFlorida) {
+    if (isFlorida && !hasVectorFootprint) {
       const shrinkPct = 5 // 5% shrinkage for Florida properties
       const oldBounds = { ...buildingIsolation.bounds }
       buildingIsolation.bounds = {
@@ -338,9 +410,11 @@ Deno.serve(async (req) => {
         bottomRightX: Math.max(5, buildingIsolation.bounds.bottomRightX - shrinkPct / 2),
         bottomRightY: Math.max(5, buildingIsolation.bounds.bottomRightY - shrinkPct / 2)
       }
-      console.log(`🌴 Florida property: Applied ${shrinkPct}% bounds shrinkage to exclude screen enclosures`)
+      console.log(`🌴 Florida property: Applied ${shrinkPct}% bounds shrinkage (AI bounding-box mode)`)
       console.log(`   Old bounds: (${oldBounds.topLeftX.toFixed(1)}%, ${oldBounds.topLeftY.toFixed(1)}%) to (${oldBounds.bottomRightX.toFixed(1)}%, ${oldBounds.bottomRightY.toFixed(1)}%)`)
       console.log(`   New bounds: (${buildingIsolation.bounds.topLeftX.toFixed(1)}%, ${buildingIsolation.bounds.topLeftY.toFixed(1)}%) to (${buildingIsolation.bounds.bottomRightX.toFixed(1)}%, ${buildingIsolation.bounds.bottomRightY.toFixed(1)}%)`)
+    } else if (isFlorida && hasVectorFootprint) {
+      console.log(`🌴 Florida property: Skipping shrinkage (using authoritative ${authoritativeFootprint?.source} footprint)`)
     }
     
     // Pass 2: Detect perimeter vertices with FULL IMAGE TRACING
@@ -706,6 +780,29 @@ Deno.serve(async (req) => {
           pixelsPerFoot: scale.pixelsPerFoot,
           method: scale.method,
           confidence: scale.confidence
+        },
+        // NEW: Footprint tracking for frontend badge display
+        footprint: {
+          source: authoritativeFootprint?.source || 'ai_detection',
+          confidence: authoritativeFootprint?.confidence || 0.5,
+          vertexCount: authoritativeFootprint?.vertices?.length || perimeterResult.vertices.length,
+          dsmAvailable: false,
+          requiresReview: !authoritativeFootprint
+        },
+        // NEW: Performance metrics for transparency
+        performance: {
+          path_used: 'ai_fallback',
+          fast_path_skipped_reason: solarData?.available ? 'segment_count_insufficient' : 'solar_unavailable',
+          timings_ms: {
+            imagery_fetch: 0, // Would need to track from image fetch start
+            footprint_total: timings.footprint_total || 0,
+            building_isolation: 0,
+            perimeter_detection: 0,
+            ridge_detection: 0,
+            skeleton_generation: 0,
+            total: totalTime
+          },
+          footprint_source: authoritativeFootprint?.source || 'ai_detection'
         }
       }
     }), {
@@ -2365,8 +2462,56 @@ function deriveLinesToPerimeter(
   
   const dedupedLines = removeDuplicateLines(lines)
   
-  const eaveFt = dedupedLines.filter(l => l.type === 'eave').length
-  const rakeFt = dedupedLines.filter(l => l.type === 'rake').length
+  // FALLBACK: If no eaves detected after all attempts, compute from perimeter directly
+  // This ensures we NEVER return 0 eaves/rakes
+  const eaveCount = dedupedLines.filter(l => l.type === 'eave').length
+  const rakeCount = dedupedLines.filter(l => l.type === 'rake').length
+  
+  if (eaveCount === 0 && rakeCount === 0 && perimeterVertices.length >= 4) {
+    console.log(`🏠 FALLBACK: No eave/rake classification succeeded, computing from perimeter edges...`)
+    
+    // All perimeter edges become eaves by default (conservative assumption)
+    // Typical residential: ~70% eave, ~30% rake for gable roofs
+    // For hip roofs: ~100% eave (no rakes)
+    const ridgeCount = dedupedLines.filter(l => l.type === 'ridge').length
+    const hasGable = ridgeCount > 0 && dedupedLines.filter(l => l.type === 'hip').length === 0
+    
+    // Remove any existing empty eave/rake entries and re-add
+    const nonPerimeterLines = dedupedLines.filter(l => l.type !== 'eave' && l.type !== 'rake')
+    
+    for (let i = 0; i < perimeterVertices.length; i++) {
+      const v1 = perimeterVertices[i]
+      const v2 = perimeterVertices[(i + 1) % perimeterVertices.length]
+      
+      // For gable roofs, short horizontal edges near ridge ends are rakes
+      // For hip roofs, all edges are eaves
+      let edgeType: 'eave' | 'rake' = 'eave'
+      
+      if (hasGable) {
+        // Check if edge is roughly vertical (rake) or horizontal (eave)
+        const dx = Math.abs(v2.x - v1.x)
+        const dy = Math.abs(v2.y - v1.y)
+        if (dy > dx * 1.5) {
+          edgeType = 'rake' // Vertical-ish edges are rakes on gable roofs
+        }
+      }
+      
+      nonPerimeterLines.push({
+        type: edgeType,
+        startX: v1.x,
+        startY: v1.y,
+        endX: v2.x,
+        endY: v2.y,
+        source: 'perimeter_fallback'
+      })
+    }
+    
+    console.log(`🏠 Fallback eave/rake: ${nonPerimeterLines.filter(l => l.type === 'eave').length} eaves, ${nonPerimeterLines.filter(l => l.type === 'rake').length} rakes`)
+    return nonPerimeterLines
+  }
+  
+  const eaveFt = eaveCount
+  const rakeFt = rakeCount
   const hipFt = dedupedLines.filter(l => l.type === 'hip').length
   const valleyFt = dedupedLines.filter(l => l.type === 'valley').length
   const ridgeFt = dedupedLines.filter(l => l.type === 'ridge').length
@@ -4479,6 +4624,21 @@ async function processSolarFastPath(
         vertexCount: footprintVertexCount,
         dsmAvailable: dsmAvailable,
         requiresReview: footprintSource === 'solar_bbox_fallback'
+      },
+      // NEW: Performance metrics for transparency
+      performance: {
+        path_used: 'solar_fast_path',
+        fast_path_skipped_reason: null,
+        timings_ms: {
+          imagery_fetch: 0,
+          footprint_total: 0,
+          building_isolation: 0,
+          perimeter_detection: 0,
+          ridge_detection: 0,
+          skeleton_generation: 0,
+          total: totalTime
+        },
+        footprint_source: footprintSource
       }
     }
   }
