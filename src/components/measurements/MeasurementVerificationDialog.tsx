@@ -419,10 +419,10 @@ export function MeasurementVerificationDialog({
             .limit(1)
             .maybeSingle(),
           
-          // Query 2: roof_measurements table - has WKT geometry for overlay alignment
+          // Query 2: roof_measurements table - has WKT geometry for overlay alignment + footprint tracking
           supabase
             .from('roof_measurements')
-            .select('id, linear_features_wkt, perimeter_wkt, analysis_zoom, gps_coordinates')
+            .select('id, linear_features_wkt, perimeter_wkt, analysis_zoom, gps_coordinates, footprint_source, footprint_confidence, footprint_vertices_geo, dsm_available')
             .eq('customer_id', pipelineEntryId)
             .order('created_at', { ascending: false })
             .limit(1)
@@ -445,6 +445,11 @@ export function MeasurementVerificationDialog({
             perimeter_wkt: roofMeasData.perimeter_wkt,
             analysis_zoom: roofMeasData.analysis_zoom || 20,
             gps_coordinates: roofMeasData.gps_coordinates,
+            // Footprint tracking fields for source badge
+            footprint_source: roofMeasData.footprint_source,
+            footprint_confidence: roofMeasData.footprint_confidence,
+            footprint_vertices_geo: roofMeasData.footprint_vertices_geo,
+            dsm_available: roofMeasData.dsm_available,
           };
           
           console.log('📐 WKT features merged:', {
@@ -494,7 +499,7 @@ export function MeasurementVerificationDialog({
         
         supabase
           .from('roof_measurements')
-          .select('id, linear_features_wkt, perimeter_wkt, analysis_zoom, gps_coordinates')
+          .select('id, linear_features_wkt, perimeter_wkt, analysis_zoom, gps_coordinates, footprint_source, footprint_confidence, footprint_vertices_geo, dsm_available')
           .eq('customer_id', pipelineEntryId)
           .order('created_at', { ascending: false })
           .limit(1)
@@ -512,7 +517,12 @@ export function MeasurementVerificationDialog({
           linear_features: roofMeasData.linear_features_wkt,
           perimeter_wkt: roofMeasData.perimeter_wkt,
           analysis_zoom: roofMeasData.analysis_zoom || 20,
-          gps_coordinates: roofMeasData.gps_coordinates, // CRITICAL: Include gps_coordinates
+          gps_coordinates: roofMeasData.gps_coordinates,
+          // Footprint tracking fields for source badge
+          footprint_source: roofMeasData.footprint_source,
+          footprint_confidence: roofMeasData.footprint_confidence,
+          footprint_vertices_geo: roofMeasData.footprint_vertices_geo,
+          dsm_available: roofMeasData.dsm_available,
         };
         console.log('✅ Merged WKT features:', roofMeasData.linear_features_wkt.length, 'gps:', roofMeasData.gps_coordinates);
       }
