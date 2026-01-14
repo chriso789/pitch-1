@@ -21797,6 +21797,11 @@ export type Database = {
           edge_count: number | null
           edge_segments: Json | null
           facet_count: number | null
+          footprint_confidence: number | null
+          footprint_requires_review: boolean | null
+          footprint_source: string | null
+          footprint_validation: Json | null
+          footprint_vertices_geo: Json | null
           gable_peak_count: number | null
           google_maps_image_url: string | null
           google_maps_zoom_level: number | null
@@ -21889,6 +21894,11 @@ export type Database = {
           edge_count?: number | null
           edge_segments?: Json | null
           facet_count?: number | null
+          footprint_confidence?: number | null
+          footprint_requires_review?: boolean | null
+          footprint_source?: string | null
+          footprint_validation?: Json | null
+          footprint_vertices_geo?: Json | null
           gable_peak_count?: number | null
           google_maps_image_url?: string | null
           google_maps_zoom_level?: number | null
@@ -21981,6 +21991,11 @@ export type Database = {
           edge_count?: number | null
           edge_segments?: Json | null
           facet_count?: number | null
+          footprint_confidence?: number | null
+          footprint_requires_review?: boolean | null
+          footprint_source?: string | null
+          footprint_validation?: Json | null
+          footprint_vertices_geo?: Json | null
           gable_peak_count?: number | null
           google_maps_image_url?: string | null
           google_maps_zoom_level?: number | null
