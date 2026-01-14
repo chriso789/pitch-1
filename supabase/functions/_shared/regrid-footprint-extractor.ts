@@ -44,7 +44,12 @@ export async function fetchRegridFootprint(
   try {
     console.log(`🗺️ Fetching Regrid parcel footprint for: ${latitude}, ${longitude}`);
 
-    const url = `https://app.regrid.com/api/v2/parcels/point.json?lat=${latitude}&lon=${longitude}&token=${apiKey}`;
+    // FIXED: Use correct Regrid API v2 URL format per their documentation
+    // Format: https://app.regrid.com/api/v2/us/parcels/point?lat=...&lon=...&token=...
+    // Note: No .json extension, use /us/ country code prefix, and query params
+    const url = `https://app.regrid.com/api/v2/us/parcels/point?lat=${latitude}&lon=${longitude}&token=${apiKey}&return_geometry=true`;
+
+    console.log(`🔗 Regrid request URL: ${url.replace(apiKey, 'REDACTED')}`);
 
     const response = await fetch(url, {
       method: 'GET',
@@ -54,8 +59,8 @@ export async function fetchRegridFootprint(
     });
 
     if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`❌ Regrid API error: ${response.status} - ${errorText}`);
+      const errorText = await response.text().catch(() => 'Unable to read response');
+      console.error(`❌ Regrid API error: ${response.status} - ${errorText.substring(0, 200)}`);
       return null;
     }
 

@@ -56,6 +56,8 @@ export function RoofrStyleReportPreview({
   const [isRemeasuring, setIsRemeasuring] = useState(false);
   const [showDebugMetadata, setShowDebugMetadata] = useState(false);
   const [activeMeasurementId, setActiveMeasurementId] = useState<string | undefined>(measurementId);
+  const [debugResults, setDebugResults] = useState<any>(null);
+  const [isRunningDebug, setIsRunningDebug] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   
   const totalPages = 7;
@@ -200,7 +202,39 @@ export function RoofrStyleReportPreview({
     }
   };
 
-  
+  // Run footprint debug function
+  const handleRunDebug = async () => {
+    if (!roofMeasurementData?.latitude || !roofMeasurementData?.longitude) {
+      toast({ title: "Error", description: "No coordinates available", variant: "destructive" });
+      return;
+    }
+    
+    setIsRunningDebug(true);
+    setDebugResults(null);
+    
+    try {
+      console.log('🐛 Running footprint debug at:', roofMeasurementData.latitude, roofMeasurementData.longitude);
+      
+      const { data, error } = await supabase.functions.invoke('debug-footprint-sources', {
+        body: {
+          lat: roofMeasurementData.latitude,
+          lng: roofMeasurementData.longitude,
+        },
+      });
+      
+      if (error) throw error;
+      
+      console.log('🐛 Debug results:', data);
+      setDebugResults(data);
+      toast({ title: "Debug Complete", description: `Best source: ${data?.recommendation?.bestSource || 'none'}` });
+    } catch (err: any) {
+      console.error('Debug error:', err);
+      toast({ title: "Debug failed", description: err.message, variant: "destructive" });
+    } finally {
+      setIsRunningDebug(false);
+    }
+  };
+
   // Merge measurement with full data from roof_measurements DB
   const enrichedMeasurement = useMemo(() => {
     if (!roofMeasurementData) return measurement;
@@ -595,12 +629,13 @@ export function RoofrStyleReportPreview({
           
           {/* Debug Metadata Panel */}
           {showDebugMetadata && roofMeasurementData && (
-            <div className="bg-muted/50 rounded-lg p-3 text-xs font-mono space-y-1 border">
+            <div className="bg-muted/50 rounded-lg p-3 text-xs font-mono space-y-2 border">
               <div className="flex flex-wrap gap-4">
                 <span><strong>ID:</strong> {roofMeasurementData.id?.substring(0, 8)}...</span>
                 <span><strong>Source:</strong> <Badge variant={
                   roofMeasurementData.footprint_source === 'mapbox_vector' ? 'default' :
                   roofMeasurementData.footprint_source === 'regrid_parcel' ? 'secondary' :
+                  roofMeasurementData.footprint_source === 'osm_overpass' ? 'secondary' :
                   'outline'
                 }>{roofMeasurementData.footprint_source || 'unknown'}</Badge></span>
                 <span><strong>Vertices:</strong> {
@@ -613,8 +648,47 @@ export function RoofrStyleReportPreview({
                 <span><strong>Created:</strong> {new Date(roofMeasurementData.created_at).toLocaleString()}</span>
               </div>
               {roofMeasurementData.footprint_requires_review && (
-                <div className="text-amber-600 dark:text-amber-400 mt-1">
+                <div className="text-amber-600 dark:text-amber-400">
                   ⚠️ Footprint requires manual review
+                </div>
+              )}
+              
+              {/* Debug Button */}
+              <div className="flex items-center gap-2 pt-2 border-t">
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={handleRunDebug}
+                  disabled={isRunningDebug}
+                  className="text-xs"
+                >
+                  {isRunningDebug ? (
+                    <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                  ) : (
+                    <Bug className="h-3 w-3 mr-1" />
+                  )}
+                  Run Footprint Debug
+                </Button>
+                {debugResults && (
+                  <span className="text-green-600">
+                    Best: {debugResults.recommendation?.bestSource || 'none'}
+                  </span>
+                )}
+              </div>
+              
+              {/* Debug Results */}
+              {debugResults && (
+                <div className="mt-2 p-2 bg-background rounded border space-y-1 text-[10px] max-h-40 overflow-auto">
+                  <div><strong>Mapbox:</strong> {debugResults.mapbox?.success ? 
+                    `✅ ${debugResults.mapbox.selectedPolygon?.vertexCount || 0} vertices` : 
+                    `❌ ${debugResults.mapbox?.error || debugResults.mapbox?.fallbackReason || 'failed'}`}</div>
+                  <div><strong>Regrid:</strong> {debugResults.regrid?.success ? 
+                    `✅ ${debugResults.regrid.footprint?.vertexCount || 0} vertices` : 
+                    `❌ ${debugResults.regrid?.error || 'failed'}`}</div>
+                  <div><strong>OSM:</strong> {debugResults.osm?.success ? 
+                    `✅ ${debugResults.osm.footprint?.vertexCount || 0} vertices` : 
+                    `❌ ${debugResults.osm?.error || 'failed'}`}</div>
+                  <div><strong>Recommendation:</strong> {debugResults.recommendation?.reasoning || 'N/A'}</div>
                 </div>
               )}
             </div>

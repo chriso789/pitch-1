@@ -40,9 +40,11 @@ export async function fetchMapboxVectorFootprint(
   const radius = options?.radius || 25; // meters
   
   try {
-    const url = `https://api.mapbox.com/v4/${tileset}/tilequery/${lng},${lat}.json?radius=${radius}&layers=${layers}&limit=25&access_token=${accessToken}`;
+    // CRITICAL: Add geometry=polygon to request polygon geometries instead of centroids
+    // Also increase limit for better building coverage
+    const url = `https://api.mapbox.com/v4/${tileset}/tilequery/${lng},${lat}.json?radius=${radius}&layers=${layers}&limit=50&geometry=polygon&access_token=${accessToken}`;
     
-    console.log(`🗺️ Mapbox Tilequery: Fetching footprint at ${lat.toFixed(6)}, ${lng.toFixed(6)} (radius=${radius}m)`);
+    console.log(`🗺️ Mapbox Tilequery v2: ${lat.toFixed(6)}, ${lng.toFixed(6)} (radius=${radius}m, geometry=polygon)`);
     
     const response = await fetch(url);
     
