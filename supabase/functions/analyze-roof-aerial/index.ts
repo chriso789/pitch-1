@@ -37,6 +37,13 @@ import {
   type SolarFootprint 
 } from '../_shared/solar-footprint-extractor.ts'
 import { fetchRegridFootprint, type RegridFootprint } from '../_shared/regrid-footprint-extractor.ts'
+// NEW: Mapbox vector footprint for high-fidelity perimeters in Solar Fast Path
+import { 
+  fetchMapboxVectorFootprint, 
+  selectBestFootprint,
+  type MapboxFootprint,
+  type MapboxFootprintResult 
+} from '../_shared/mapbox-footprint-extractor.ts'
 import { 
   validateGeometry, 
   calculateAreaSqFt, 
@@ -3924,12 +3931,47 @@ async function processSolarFastPath(
     return { success: false, reason: 'Invalid Solar footprint area' }
   }
   
-  // Build perimeter from Solar bounding box
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 🗺️ AUTHORITATIVE FOOTPRINT: Mapbox Vector > Solar BBox > Segment Convex Hull
+  // Mapbox provides sub-meter accuracy with real building geometry (many vertices)
+  // Solar bbox is just a rectangle (4 vertices) - low geometric fidelity
+  // ═══════════════════════════════════════════════════════════════════════════
+  
   const boundingBox = solarData.boundingBox
   let perimeterXY: [number, number][] = []
+  let footprintSource: 'mapbox_vector' | 'google_solar_api' | 'solar_bbox_fallback' = 'solar_bbox_fallback'
+  let footprintConfidence = 0.75
+  let footprintVertexCount = 4
   
-  if (boundingBox?.sw && boundingBox?.ne) {
-    // Use building bounding box as perimeter approximation
+  // STEP 1: Try Mapbox Vector Footprint (highest fidelity)
+  const mapboxResult = await fetchMapboxVectorFootprint(
+    coordinates.lat,
+    coordinates.lng,
+    MAPBOX_PUBLIC_TOKEN
+  )
+  
+  if (mapboxResult.footprint && mapboxResult.footprint.vertexCount >= 4) {
+    // Compare with Solar API area to validate we got the right building
+    try {
+      const selected = selectBestFootprint(
+        mapboxResult.footprint,
+        boundingBox,
+        totalFlatArea
+      )
+      
+      perimeterXY = selected.coordinates
+      footprintSource = selected.source
+      footprintConfidence = selected.confidence
+      footprintVertexCount = selected.vertexCount
+      
+      console.log(`🗺️ Footprint selected: ${footprintSource} with ${footprintVertexCount} vertices (${selected.reasoning})`)
+    } catch (err) {
+      console.warn('⚠️ Footprint selection failed:', err)
+    }
+  }
+  
+  // STEP 2: Fallback to Solar bounding box if Mapbox failed
+  if (perimeterXY.length === 0 && boundingBox?.sw && boundingBox?.ne) {
     const sw = boundingBox.sw
     const ne = boundingBox.ne
     perimeterXY = [
@@ -3938,9 +3980,14 @@ async function processSolarFastPath(
       [ne.longitude, ne.latitude],
       [sw.longitude, ne.latitude],
     ]
-    console.log('📐 Built perimeter from Solar bounding box')
-  } else {
-    // Build perimeter from segment bounding boxes
+    footprintSource = 'google_solar_api'
+    footprintConfidence = 0.80
+    footprintVertexCount = 4
+    console.log('📐 Using Solar API bounding box as perimeter fallback (4 vertices)')
+  }
+  
+  // STEP 3: Last resort - build from segment bounding boxes
+  if (perimeterXY.length === 0) {
     const allCorners: [number, number][] = []
     solarData.roofSegments.forEach((seg: any) => {
       if (seg.boundingBox?.sw && seg.boundingBox?.ne) {
@@ -3959,7 +4006,10 @@ async function processSolarFastPath(
     
     // Compute convex hull from all corners
     perimeterXY = computeConvexHull(allCorners)
-    console.log(`📐 Built perimeter from ${allCorners.length} segment corners -> ${perimeterXY.length} hull vertices`)
+    footprintSource = 'solar_bbox_fallback'
+    footprintConfidence = 0.65
+    footprintVertexCount = perimeterXY.length
+    console.log(`📐 Built perimeter from ${allCorners.length} segment corners -> ${perimeterXY.length} hull vertices (fallback)`)
   }
   
   if (perimeterXY.length < 3) {
@@ -4144,14 +4194,20 @@ async function processSolarFastPath(
     }
   }
   
-  // Build authoritative footprint for Solar Fast Path (always google_solar_api with high confidence)
+  // Build authoritative footprint for Solar Fast Path (now uses Mapbox when available!)
   const solarFastPathFootprint = {
     vertices: perimeterXY.map(p => ({ lat: p[1], lng: p[0] })),
-    confidence: 0.95,
-    source: 'google_solar_api' as const,
-    requiresManualReview: false,
+    confidence: footprintConfidence,
+    source: footprintSource,
+    requiresManualReview: footprintSource === 'solar_bbox_fallback', // Flag if using rectangle fallback
     validation: { valid: true, areaSqFt: totalFlatArea },
   };
+  
+  // Determine if DSM data was available (for badge display)
+  // Solar Fast Path doesn't use DSM currently, but we track for future enhancement
+  const dsmAvailable = false;
+  
+  console.log(`📊 Footprint tracking: source=${footprintSource}, vertices=${footprintVertexCount}, confidence=${(footprintConfidence * 100).toFixed(0)}%`);
 
   // Save to database
   const { data: measurementRecord, error: saveError } = await supabase.from('roof_measurements').insert({
@@ -4167,7 +4223,7 @@ async function processSolarFastPath(
     solar_api_available: true,
     solar_building_footprint_sqft: totalFlatArea,
     solar_api_response: solarData,
-    ai_detection_data: { ...aiAnalysis, source: 'solar_fast_path' },
+    ai_detection_data: { ...aiAnalysis, source: 'solar_fast_path', footprint_source: footprintSource },
     total_area_flat_sqft: totalFlatArea,
     total_area_adjusted_sqft: totalAdjustedArea,
     total_squares: totalSquares,
@@ -4178,7 +4234,7 @@ async function processSolarFastPath(
     scale_method: 'solar_api_footprint',
     scale_confidence: 'high',
     measurement_confidence: 90,
-    requires_manual_review: false,
+    requires_manual_review: footprintSource === 'solar_bbox_fallback',
     roof_type: roofTypeFromTopology,
     complexity_rating: complexity,
     facet_count: segmentCount, // Use Solar segment count (11 for this property)
@@ -4194,15 +4250,21 @@ async function processSolarFastPath(
     analysis_zoom: IMAGE_ZOOM,
     analysis_image_size: { width: 640, height: 640 },
     validation_status: 'pending',
-    vertex_count: perimeterXY.length,
-    perimeter_vertex_count: perimeterXY.length,
+    vertex_count: footprintVertexCount,
+    perimeter_vertex_count: footprintVertexCount,
     interior_vertex_count: 0,
-    metadata: { fast_path: true, solar_segments: solarData.roofSegments.length },
-    // NEW: Authoritative footprint tracking fields (Solar Fast Path always uses Solar API)
-    footprint_source: 'google_solar_api',
-    footprint_confidence: 0.95,
+    metadata: { 
+      fast_path: true, 
+      solar_segments: solarData.roofSegments.length,
+      footprint_source: footprintSource,
+      footprint_vertex_count: footprintVertexCount
+    },
+    // Authoritative footprint tracking fields (now correctly tracks source!)
+    footprint_source: footprintSource,
+    footprint_confidence: footprintConfidence,
     footprint_vertices_geo: solarFastPathFootprint.vertices,
-    footprint_requires_review: false,
+    footprint_requires_review: footprintSource === 'solar_bbox_fallback',
+    dsm_available: dsmAvailable,
     footprint_validation: solarFastPathFootprint.validation,
   }).select().single()
   
@@ -4271,13 +4333,21 @@ async function processSolarFastPath(
       confidence: {
         score: 90,
         rating: 'high',
-        factors: ['Solar API validation', 'Fast path processing'],
-        requiresReview: false
+        factors: ['Solar API validation', 'Fast path processing', `Footprint: ${footprintSource}`],
+        requiresReview: footprintSource === 'solar_bbox_fallback'
       },
       scale: {
         pixelsPerFoot: 10,
         method: 'solar_api_footprint',
         confidence: 'high'
+      },
+      // NEW: Footprint tracking for frontend badge display
+      footprint: {
+        source: footprintSource,
+        confidence: footprintConfidence,
+        vertexCount: footprintVertexCount,
+        dsmAvailable: dsmAvailable,
+        requiresReview: footprintSource === 'solar_bbox_fallback'
       }
     }
   }
