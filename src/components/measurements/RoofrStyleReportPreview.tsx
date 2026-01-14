@@ -694,8 +694,46 @@ export function RoofrStyleReportPreview({
             </div>
           )}
           
+          {/* CRITICAL: Bounding Box Fallback Warning - Area may be significantly overestimated */}
+          {roofMeasurementData?.footprint_source === 'solar_bbox_fallback' && (
+            <div className="bg-red-50 dark:bg-red-950/30 border border-red-300 dark:border-red-800 rounded-lg p-3 flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400 mt-0.5 flex-shrink-0" />
+              <div className="flex-1">
+                <p className="font-medium text-red-800 dark:text-red-300 text-sm">⚠️ Area May Be Overestimated</p>
+                <p className="text-xs text-red-700 dark:text-red-400 mt-1">
+                  Unable to detect accurate roof outline. Using a rectangular bounding box which <strong>includes non-roof areas</strong> (patios, pools, landscaping).
+                  The displayed area ({Math.round(enrichedMeasurement?.total_area_adjusted_sqft || 0).toLocaleString()} sq ft) is likely <strong>15-40% higher</strong> than actual roof area.
+                </p>
+                <div className="mt-2 flex gap-2">
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={handleRemeasure}
+                    disabled={isRemeasuring}
+                    className="text-xs border-red-300 text-red-700 hover:bg-red-100"
+                  >
+                    {isRemeasuring ? <Loader2 className="h-3 w-3 mr-1 animate-spin" /> : <RefreshCw className="h-3 w-3 mr-1" />}
+                    Re-measure
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => setShowDebugMetadata(true)}
+                    className="text-xs border-red-300 text-red-700 hover:bg-red-100"
+                  >
+                    <Bug className="h-3 w-3 mr-1" />
+                    Debug Sources
+                  </Button>
+                </div>
+              </div>
+              <Badge variant="destructive" className="text-xs flex-shrink-0">
+                📐 Bounding Box
+              </Badge>
+            </div>
+          )}
+          
           {/* Manual Review Warning Banner - shows when AI detection requires verification */}
-          {roofMeasurementData?.footprint_requires_review && (
+          {roofMeasurementData?.footprint_requires_review && roofMeasurementData?.footprint_source !== 'solar_bbox_fallback' && (
             <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-lg p-3 flex items-start gap-3">
               <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
               <div className="flex-1">
@@ -713,19 +751,23 @@ export function RoofrStyleReportPreview({
           )}
           
           {/* Detection Source Badge - always visible when we have footprint source info */}
-          {roofMeasurementData?.footprint_source && !showDebugMetadata && !roofMeasurementData?.footprint_requires_review && (
+          {roofMeasurementData?.footprint_source && !showDebugMetadata && !roofMeasurementData?.footprint_requires_review && roofMeasurementData?.footprint_source !== 'solar_bbox_fallback' && (
             <div className="flex items-center gap-2">
               <Badge variant={
                 roofMeasurementData.footprint_source === 'google_solar_api' ? 'default' :
                 roofMeasurementData.footprint_source === 'mapbox_vector' ? 'default' :
                 roofMeasurementData.footprint_source === 'regrid_parcel' ? 'secondary' :
+                roofMeasurementData.footprint_source === 'microsoft_buildings' ? 'secondary' :
+                roofMeasurementData.footprint_source === 'osm_overpass' ? 'secondary' :
                 'outline'
               } className="text-xs">
                 {roofMeasurementData.footprint_source === 'google_solar_api' && '🌞 Solar API'}
                 {roofMeasurementData.footprint_source === 'mapbox_vector' && '🗺️ Mapbox Vector'}
                 {roofMeasurementData.footprint_source === 'regrid_parcel' && '📋 Parcel Data'}
+                {roofMeasurementData.footprint_source === 'microsoft_buildings' && '🏢 Microsoft Buildings'}
+                {roofMeasurementData.footprint_source === 'osm_overpass' && '🗺️ OpenStreetMap'}
                 {roofMeasurementData.footprint_source === 'ai_detection' && '🤖 AI Detection'}
-                {!['google_solar_api', 'mapbox_vector', 'regrid_parcel', 'ai_detection'].includes(roofMeasurementData.footprint_source) && 
+                {!['google_solar_api', 'mapbox_vector', 'regrid_parcel', 'microsoft_buildings', 'osm_overpass', 'ai_detection'].includes(roofMeasurementData.footprint_source) && 
                   roofMeasurementData.footprint_source}
               </Badge>
               {roofMeasurementData.footprint_confidence && (
