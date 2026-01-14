@@ -534,7 +534,8 @@ Deno.serve(async (req) => {
       vertexStats,
       footprintValidation: footprintCheck,
       metadata: measurementMetadata,
-      shadowRisk: shadowRiskAssessment
+      shadowRisk: shadowRiskAssessment,
+      authoritativeFootprint, // NEW: Pass footprint data for database storage
     })
     
     // Save vertices and edges to dedicated tables
@@ -3264,11 +3265,22 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
     address, coordinates, customerId, userId, googleImage, mapboxImage,
     selectedImage, solarData, aiAnalysis, scale, measurements, confidence,
     linearFeatures, imageSource, imageYear, perimeterWkt, visionEdges, imageSize,
-    vertexStats, footprintValidation, metadata, shadowRisk
+    vertexStats, footprintValidation, metadata, shadowRisk, authoritativeFootprint
   } = params
 
   // Determine if manual review needed based on shadow risk
   const requiresManualReview = confidence.requiresReview || shadowRisk?.recommendManualReview || false
+
+  // Use authoritative footprint for perimeter WKT if available (Solar API or Regrid)
+  let finalPerimeterWkt = perimeterWkt;
+  if (authoritativeFootprint?.vertices?.length >= 3) {
+    const coords = authoritativeFootprint.vertices
+      .map((v: { lat: number; lng: number }) => `${v.lng} ${v.lat}`)
+      .join(', ');
+    const first = authoritativeFootprint.vertices[0];
+    finalPerimeterWkt = `POLYGON((${coords}, ${first.lng} ${first.lat}))`;
+    console.log(`📐 Using ${authoritativeFootprint.source} footprint for perimeter WKT`);
+  }
 
   const { data, error } = await supabase.from('roof_measurements').insert({
     customer_id: customerId || null,
@@ -3305,7 +3317,7 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
     total_ridge_length: measurements.linearMeasurements?.ridge || 0,
     material_calculations: measurements.materials,
     linear_features_wkt: linearFeatures,
-    perimeter_wkt: perimeterWkt,
+    perimeter_wkt: finalPerimeterWkt, // Use authoritative footprint if available
     vision_edges: visionEdges,
     bounding_box: aiAnalysis.boundingBox,
     roof_perimeter: aiAnalysis.roofPerimeter,
@@ -3318,7 +3330,13 @@ async function saveMeasurementToDatabase(supabase: any, params: any) {
     hip_corner_count: vertexStats?.hipCornerCount || 0,
     valley_entry_count: vertexStats?.valleyEntryCount || 0,
     gable_peak_count: vertexStats?.gablePeakCount || 0,
-    metadata: metadata || {}
+    metadata: metadata || {},
+    // NEW: Authoritative footprint tracking fields
+    footprint_source: authoritativeFootprint?.source || 'ai_detection',
+    footprint_confidence: authoritativeFootprint?.confidence || 0.5,
+    footprint_vertices_geo: authoritativeFootprint?.vertices || null,
+    footprint_requires_review: authoritativeFootprint?.requiresManualReview ?? true,
+    footprint_validation: authoritativeFootprint?.validation || null,
   }).select().single()
 
   if (error) {
@@ -4126,6 +4144,15 @@ async function processSolarFastPath(
     }
   }
   
+  // Build authoritative footprint for Solar Fast Path (always google_solar_api with high confidence)
+  const solarFastPathFootprint = {
+    vertices: perimeterXY.map(p => ({ lat: p[1], lng: p[0] })),
+    confidence: 0.95,
+    source: 'google_solar_api' as const,
+    requiresManualReview: false,
+    validation: { valid: true, areaSqFt: totalFlatArea },
+  };
+
   // Save to database
   const { data: measurementRecord, error: saveError } = await supabase.from('roof_measurements').insert({
     customer_id: customerId || null,
@@ -4170,7 +4197,13 @@ async function processSolarFastPath(
     vertex_count: perimeterXY.length,
     perimeter_vertex_count: perimeterXY.length,
     interior_vertex_count: 0,
-    metadata: { fast_path: true, solar_segments: solarData.roofSegments.length }
+    metadata: { fast_path: true, solar_segments: solarData.roofSegments.length },
+    // NEW: Authoritative footprint tracking fields (Solar Fast Path always uses Solar API)
+    footprint_source: 'google_solar_api',
+    footprint_confidence: 0.95,
+    footprint_vertices_geo: solarFastPathFootprint.vertices,
+    footprint_requires_review: false,
+    footprint_validation: solarFastPathFootprint.validation,
   }).select().single()
   
   if (saveError) {

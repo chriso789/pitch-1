@@ -1,10 +1,11 @@
 import { useMemo, useEffect, useState } from 'react';
 import { wktLineToLatLngs, wktPolygonToLatLngs } from '@/lib/canvassiq/wkt';
 import { supabase } from '@/integrations/supabase/client';
-import { AlertTriangle, Eye, EyeOff, MapPin, Layers, Info } from 'lucide-react';
+import { AlertTriangle, Eye, EyeOff, MapPin, Layers, Info, CheckCircle, Map, Cpu } from 'lucide-react';
 import { calculateImageBounds, gpsToPixel, type ImageBounds, type GPSCoord } from '@/utils/gpsCalculations';
 import { type SolarSegment } from '@/lib/measurements/segmentGeometryParser';
 import { reconstructRoofFromPerimeter, type ReconstructedRoof } from '@/lib/measurements/roofGeometryReconstructor';
+import { Badge } from '@/components/ui/badge';
 // Roofr exact color palette - MATCHED to Roofr conventions
 const FEATURE_COLORS = {
   eave: '#006400',    // Dark green - Eaves
@@ -1173,6 +1174,45 @@ export function SchematicRoofDiagram({
           {totals.facet_count > 0 && (
             <div className="text-[10px] text-muted-foreground">{totals.facet_count} Facets</div>
           )}
+        </div>
+      )}
+      
+      {/* Footprint Source Badge - shows data origin for transparency */}
+      {measurement?.footprint_source && (
+        <div className="absolute top-3 left-48 z-10">
+          <Badge 
+            variant={
+              measurement.footprint_source === 'google_solar_api' ? 'default' :
+              measurement.footprint_source === 'regrid_parcel' ? 'secondary' :
+              'outline'
+            }
+            className={`text-xs gap-1 ${
+              measurement.footprint_source === 'google_solar_api' 
+                ? 'bg-green-600 hover:bg-green-600' 
+                : measurement.footprint_source === 'regrid_parcel'
+                ? 'bg-blue-600 hover:bg-blue-600 text-white'
+                : 'bg-amber-100 text-amber-800 border-amber-300'
+            }`}
+          >
+            {measurement.footprint_source === 'google_solar_api' && (
+              <>
+                <CheckCircle className="h-3 w-3" />
+                Solar API ({Math.round((measurement.footprint_confidence || 0.95) * 100)}%)
+              </>
+            )}
+            {measurement.footprint_source === 'regrid_parcel' && (
+              <>
+                <Map className="h-3 w-3" />
+                Parcel Data ({Math.round((measurement.footprint_confidence || 0.85) * 100)}%)
+              </>
+            )}
+            {measurement.footprint_source === 'ai_detection' && (
+              <>
+                <Cpu className="h-3 w-3" />
+                AI Detection - Review Recommended
+              </>
+            )}
+          </Badge>
         </div>
       )}
     </div>
