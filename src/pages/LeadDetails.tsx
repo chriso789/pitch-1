@@ -35,7 +35,7 @@ import { ApprovedMeasurementsList } from '@/components/measurements/ApprovedMeas
 import { CallStatusMonitor } from '@/components/communication/CallStatusMonitor';
 import { CallDispositionDialog } from '@/components/communication/CallDispositionDialog';
 import { SMSComposerDialog } from '@/components/communication/SMSComposerDialog';
-import { FloatingEmailComposer } from '@/components/messaging/FloatingEmailComposer';
+import { FloatingEmailComposer, type EmailDocument } from '@/components/messaging/FloatingEmailComposer';
 import { BackButton } from '@/shared/components/BackButton';
 import { useSendSMS } from '@/hooks/useSendSMS';
 import { useLeadDetails, LeadDetailsData, ApprovalRequirements } from '@/hooks/useLeadDetails';
@@ -245,6 +245,45 @@ const LeadDetails = () => {
   // Fetch measurement data
   const { data: measurementData, isLoading: measurementLoading, refetch: refetchMeasurements } = useLatestMeasurement(id);
   
+  // Fetch documents with signature status for email composer
+  const { data: emailDocuments } = useTanstackQuery({
+    queryKey: ['email-documents', id],
+    queryFn: async () => {
+      const { data: docs } = await supabase
+        .from('documents')
+        .select('id, filename, file_size, document_type')
+        .eq('pipeline_entry_id', id)
+        .order('created_at', { ascending: false });
+      
+      if (!docs) return [];
+      
+      // For estimate docs, check signature status via enhanced_estimates
+      const estimateDocs = docs.filter(d => d.document_type === 'estimate');
+      const otherDocs = docs.filter(d => d.document_type !== 'estimate');
+      
+      // Get signature status for estimates linked to this pipeline entry
+      const { data: estimates } = await supabase
+        .from('enhanced_estimates')
+        .select('id, estimate_number, signature_envelope_id, signature_envelopes(status)')
+        .eq('pipeline_entry_id', id);
+      
+      const signatureMap = new Map<string, string>();
+      estimates?.forEach(est => {
+        if (est.signature_envelopes && (est.signature_envelopes as any).status) {
+          signatureMap.set(est.estimate_number, (est.signature_envelopes as any).status);
+        }
+      });
+      
+      return docs.map(doc => ({
+        ...doc,
+        signature_status: doc.filename.includes('EST-') 
+          ? (signatureMap.get(doc.filename.split('.')[0]) || 'none')
+          : 'none'
+      }));
+    },
+    enabled: !!id
+  });
+  
   // Call states
   const [showCallDialog, setShowCallDialog] = useState(false);
   const [activeCall, setActiveCall] = useState<any>(null);
@@ -267,6 +306,7 @@ const LeadDetails = () => {
     bcc?: string[];
     subject: string;
     body: string;
+    document_ids?: string[];
   }) => {
     try {
       const { error } = await supabase.functions.invoke('send-email', {
@@ -276,7 +316,8 @@ const LeadDetails = () => {
           bcc: emailData.bcc,
           subject: emailData.subject,
           body: emailData.body,
-          contactId: lead?.contact?.id
+          contactId: lead?.contact?.id,
+          document_ids: emailData.document_ids
         }
       });
       
@@ -284,7 +325,9 @@ const LeadDetails = () => {
       
       toast({
         title: "Email Sent",
-        description: "Your email was sent successfully"
+        description: emailData.document_ids?.length 
+          ? `Your email was sent with ${emailData.document_ids.length} attachment(s)`
+          : "Your email was sent successfully"
       });
       
       setShowEmailComposer(false);
