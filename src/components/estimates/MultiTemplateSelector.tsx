@@ -802,10 +802,15 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         estimateNumber,
         customerName,
         customerAddress,
+        customerPhone: contact?.phone,
+        customerEmail: contact?.email,
+        companyInfo,
         materialItems,
         laborItems,
         breakdown,
-        config
+        config,
+        finePrintContent,
+        options: pdfOptions,
       });
       setShowPDFTemplate(true);
 

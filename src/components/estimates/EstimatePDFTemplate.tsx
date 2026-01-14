@@ -167,36 +167,44 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
       )}
 
       {/* Main Content */}
-      <div className="p-8 min-h-[1000px]">
-      {/* Header */}
-      <div className="flex justify-between items-start mb-8 pb-6 border-b-2 border-gray-200">
+      <div className="p-6 min-h-[1000px]">
+      {/* Header - Compact */}
+      <div className="flex justify-between items-start mb-4 pb-3 border-b border-gray-200">
         <div>
           {opts.showCompanyLogo && (companyLogo || companyInfo?.logo_url) ? (
-            <img 
-              src={companyLogo || companyInfo?.logo_url || ''} 
-              alt="Company Logo" 
-              className="h-16 mb-2 object-contain" 
-            />
+            <>
+              <img 
+                src={companyLogo || companyInfo?.logo_url || ''} 
+                alt="Company Logo" 
+                className="h-12 mb-1 object-contain" 
+              />
+              <h1 className="text-lg font-bold text-gray-900">
+                {companyInfo?.name || companyName}
+              </h1>
+            </>
           ) : (
-            <h1 className="text-2xl font-bold text-gray-900">
+            <h1 className="text-xl font-bold text-gray-900">
               {companyInfo?.name || companyName}
             </h1>
           )}
           {opts.showCompanyInfo && companyInfo && (
-            <div className="text-sm text-gray-600 mt-2 space-y-0.5">
-              {companyInfo.phone && <p>{companyInfo.phone}</p>}
-              {companyInfo.email && <p>{companyInfo.email}</p>}
+            <div className="text-xs text-gray-600 mt-1 space-y-0.5">
               {companyAddressStr && <p>{companyAddressStr}</p>}
+              <p>
+                {companyInfo.phone}
+                {companyInfo.phone && companyInfo.email && ' • '}
+                {companyInfo.email}
+              </p>
               {companyInfo.license_number && (
-                <p className="text-xs text-gray-500">License: {companyInfo.license_number}</p>
+                <p className="text-gray-500">License: {companyInfo.license_number}</p>
               )}
             </div>
           )}
-          <p className="text-sm text-gray-500 mt-2">Professional Roofing Estimate</p>
         </div>
         <div className="text-right">
+          <p className="text-xs text-gray-500 uppercase tracking-wide">Estimate</p>
           {opts.showEstimateNumber && (
-            <h2 className="text-xl font-bold text-gray-900">{estimateNumber}</h2>
+            <h2 className="text-lg font-bold text-gray-900">{estimateNumber}</h2>
           )}
           {opts.showDate && (
             <p className="text-sm text-gray-500">{dateStr}</p>
@@ -204,18 +212,18 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
         </div>
       </div>
 
-      {/* Customer Info */}
+      {/* Customer Info - Compact */}
       {(opts.showCustomerName || opts.showCustomerAddress) && (
-        <div className="mb-8 p-4 bg-gray-50 rounded-lg">
-          <h3 className="text-xs uppercase tracking-wide text-gray-500 mb-2">Prepared For</h3>
+        <div className="mb-4 p-3 bg-gray-50 rounded-lg">
+          <h3 className="text-xs uppercase tracking-wide text-gray-500 mb-1">Prepared For</h3>
           {opts.showCustomerName && (
-            <p className="font-semibold text-lg text-gray-900">{customerName || 'Customer'}</p>
+            <p className="font-semibold text-base text-gray-900">{customerName || 'Customer'}</p>
           )}
           {opts.showCustomerAddress && (
             <p className="text-gray-600 text-sm">{customerAddress || 'Address not specified'}</p>
           )}
           {opts.showCustomerContact && (customerPhone || customerEmail) && (
-            <div className="mt-2 text-sm text-gray-500">
+            <div className="mt-1 text-sm text-gray-500">
               {customerPhone && <span>{customerPhone}</span>}
               {customerPhone && customerEmail && <span> • </span>}
               {customerEmail && <span>{customerEmail}</span>}
@@ -226,30 +234,30 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
 
       {/* Show Only Total Mode - Clean Summary */}
       {opts.showOnlyTotal && (
-        <div className="bg-gray-50 rounded-lg p-8 mb-8 text-center">
-          <h3 className="text-lg font-semibold text-gray-700 mb-4">Project Investment</h3>
-          <div className="text-4xl font-bold text-blue-600">
+        <div className="bg-gray-50 rounded-lg p-6 mb-4 text-center">
+          <h3 className="text-base font-semibold text-gray-700 mb-2">Project Investment</h3>
+          <div className="text-3xl font-bold text-blue-600">
             {formatCurrency(breakdown.sellingPrice)}
           </div>
-          <p className="text-sm text-gray-500 mt-2">Complete roofing installation</p>
+          <p className="text-sm text-gray-500 mt-1">Complete roofing installation</p>
         </div>
       )}
 
       {/* UNIFIED ITEMS SECTION - Consumer-Friendly Single List */}
       {!opts.showOnlyTotal && opts.showUnifiedItems && (
-        <div className="mb-8 avoid-break">
-          <h3 className="text-lg font-semibold text-gray-900 mb-4 flex items-center gap-2">
-            <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+        <div className="mb-4 avoid-break">
+          <h3 className="text-base font-semibold text-gray-900 mb-2 flex items-center gap-2">
+            <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
             Project Scope
           </h3>
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b-2 border-gray-200">
-                <th className="text-left py-3 text-gray-700 font-semibold">Description</th>
+              <tr className="border-b border-gray-200">
+                <th className="text-left py-2 text-gray-700 font-semibold">Description</th>
                 {opts.showLineItemQuantities && (
                   <>
-                    <th className="text-right py-3 text-gray-700 font-semibold w-20">Qty</th>
-                    <th className="text-right py-3 text-gray-700 font-semibold w-20">Unit</th>
+                    <th className="text-right py-2 text-gray-700 font-semibold w-16">Qty</th>
+                    <th className="text-right py-2 text-gray-700 font-semibold w-16">Unit</th>
                   </>
                 )}
               </tr>
@@ -260,18 +268,18 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
                 .sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
                 .map((item, idx) => (
                   <tr key={item.id || idx} className="border-b border-gray-100">
-                    <td className="py-3">
+                    <td className="py-2">
                       <div className="font-medium text-gray-900">{item.item_name}</div>
                       {opts.showItemDescriptions && item.description && (
-                        <div className="text-xs text-gray-500 mt-1 leading-relaxed">
+                        <div className="text-xs text-gray-500 mt-0.5 leading-snug">
                           {item.description}
                         </div>
                       )}
                     </td>
                     {opts.showLineItemQuantities && (
                       <>
-                        <td className="py-3 text-right text-gray-700 align-top">{item.qty.toFixed(0)}</td>
-                        <td className="py-3 text-right text-gray-500 align-top">{item.unit}</td>
+                        <td className="py-2 text-right text-gray-700 align-top">{item.qty.toFixed(0)}</td>
+                        <td className="py-2 text-right text-gray-500 align-top">{item.unit}</td>
                       </>
                     )}
                   </tr>
@@ -283,25 +291,25 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
 
       {/* Materials Section - Traditional View (not unified) */}
       {!opts.showOnlyTotal && !opts.showUnifiedItems && opts.showMaterialsSection && materialItems.length > 0 && (
-        <div className="mb-6 avoid-break">
-          <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            <span className="w-2 h-2 bg-blue-500 rounded-full"></span>
+        <div className="mb-4 avoid-break">
+          <h3 className="text-base font-semibold text-gray-900 mb-2 flex items-center gap-2">
+            <span className="w-1.5 h-1.5 bg-blue-500 rounded-full"></span>
             Materials
           </h3>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200">
-                <th className="text-left py-2 text-gray-600 font-medium">Item</th>
+                <th className="text-left py-1.5 text-gray-600 font-medium">Item</th>
                 {opts.showLineItemQuantities && (
                   <>
-                    <th className="text-right py-2 text-gray-600 font-medium w-20">Qty</th>
-                    <th className="text-right py-2 text-gray-600 font-medium w-16">Unit</th>
+                    <th className="text-right py-1.5 text-gray-600 font-medium w-16">Qty</th>
+                    <th className="text-right py-1.5 text-gray-600 font-medium w-14">Unit</th>
                   </>
                 )}
                 {opts.showLineItemPricing && (
                   <>
-                    <th className="text-right py-2 text-gray-600 font-medium w-24">Unit Cost</th>
-                    <th className="text-right py-2 text-gray-600 font-medium w-28">Total</th>
+                    <th className="text-right py-1.5 text-gray-600 font-medium w-20">Unit Cost</th>
+                    <th className="text-right py-1.5 text-gray-600 font-medium w-24">Total</th>
                   </>
                 )}
               </tr>
@@ -309,17 +317,17 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
             <tbody>
               {materialItems.map((item, idx) => (
                 <tr key={item.id || idx} className="border-b border-gray-100">
-                  <td className="py-2 text-gray-900">{item.item_name}</td>
+                  <td className="py-1.5 text-gray-900">{item.item_name}</td>
                   {opts.showLineItemQuantities && (
                     <>
-                      <td className="py-2 text-right text-gray-700">{item.qty.toFixed(2)}</td>
-                      <td className="py-2 text-right text-gray-500">{item.unit}</td>
+                      <td className="py-1.5 text-right text-gray-700">{item.qty.toFixed(2)}</td>
+                      <td className="py-1.5 text-right text-gray-500">{item.unit}</td>
                     </>
                   )}
                   {opts.showLineItemPricing && (
                     <>
-                      <td className="py-2 text-right text-gray-700">{formatCurrency(item.unit_cost)}</td>
-                      <td className="py-2 text-right font-medium text-gray-900">{formatCurrency(item.line_total)}</td>
+                      <td className="py-1.5 text-right text-gray-700">{formatCurrency(item.unit_cost)}</td>
+                      <td className="py-1.5 text-right font-medium text-gray-900">{formatCurrency(item.line_total)}</td>
                     </>
                   )}
                 </tr>
@@ -327,15 +335,15 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
             </tbody>
             {opts.showSubtotals && !opts.hideSectionSubtotals && (
               <tfoot>
-                <tr className="border-t-2 border-gray-200">
+                <tr className="border-t border-gray-200">
                   <td 
                     colSpan={opts.showLineItemQuantities ? 3 : 1} 
-                    className="py-3 text-right font-semibold text-gray-700"
+                    className="py-2 text-right font-semibold text-gray-700"
                   >
                     Materials Subtotal
                   </td>
                   {opts.showLineItemPricing && <td />}
-                  <td className="py-3 text-right font-bold text-gray-900">
+                  <td className="py-2 text-right font-bold text-gray-900">
                     {formatCurrency(breakdown.materialsTotal)}
                   </td>
                 </tr>
@@ -347,25 +355,25 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
 
       {/* Labor Section - Traditional View (not unified) */}
       {!opts.showOnlyTotal && !opts.showUnifiedItems && opts.showLaborSection && laborItems.length > 0 && (
-        <div className="mb-8 avoid-break">
-          <h3 className="text-lg font-semibold text-gray-900 mb-3 flex items-center gap-2">
-            <span className="w-2 h-2 bg-green-500 rounded-full"></span>
+        <div className="mb-4 avoid-break">
+          <h3 className="text-base font-semibold text-gray-900 mb-2 flex items-center gap-2">
+            <span className="w-1.5 h-1.5 bg-green-500 rounded-full"></span>
             Labor
           </h3>
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-gray-200">
-                <th className="text-left py-2 text-gray-600 font-medium">Item</th>
+                <th className="text-left py-1.5 text-gray-600 font-medium">Item</th>
                 {opts.showLineItemQuantities && (
                   <>
-                    <th className="text-right py-2 text-gray-600 font-medium w-20">Qty</th>
-                    <th className="text-right py-2 text-gray-600 font-medium w-16">Unit</th>
+                    <th className="text-right py-1.5 text-gray-600 font-medium w-16">Qty</th>
+                    <th className="text-right py-1.5 text-gray-600 font-medium w-14">Unit</th>
                   </>
                 )}
                 {opts.showLineItemPricing && (
                   <>
-                    <th className="text-right py-2 text-gray-600 font-medium w-24">Rate</th>
-                    <th className="text-right py-2 text-gray-600 font-medium w-28">Total</th>
+                    <th className="text-right py-1.5 text-gray-600 font-medium w-20">Rate</th>
+                    <th className="text-right py-1.5 text-gray-600 font-medium w-24">Total</th>
                   </>
                 )}
               </tr>
@@ -373,17 +381,17 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
             <tbody>
               {laborItems.map((item, idx) => (
                 <tr key={item.id || idx} className="border-b border-gray-100">
-                  <td className="py-2 text-gray-900">{item.item_name}</td>
+                  <td className="py-1.5 text-gray-900">{item.item_name}</td>
                   {opts.showLineItemQuantities && (
                     <>
-                      <td className="py-2 text-right text-gray-700">{item.qty.toFixed(2)}</td>
-                      <td className="py-2 text-right text-gray-500">{item.unit}</td>
+                      <td className="py-1.5 text-right text-gray-700">{item.qty.toFixed(2)}</td>
+                      <td className="py-1.5 text-right text-gray-500">{item.unit}</td>
                     </>
                   )}
                   {opts.showLineItemPricing && (
                     <>
-                      <td className="py-2 text-right text-gray-700">{formatCurrency(item.unit_cost)}</td>
-                      <td className="py-2 text-right font-medium text-gray-900">{formatCurrency(item.line_total)}</td>
+                      <td className="py-1.5 text-right text-gray-700">{formatCurrency(item.unit_cost)}</td>
+                      <td className="py-1.5 text-right font-medium text-gray-900">{formatCurrency(item.line_total)}</td>
                     </>
                   )}
                 </tr>
@@ -391,15 +399,15 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
             </tbody>
             {opts.showSubtotals && !opts.hideSectionSubtotals && (
               <tfoot>
-                <tr className="border-t-2 border-gray-200">
+                <tr className="border-t border-gray-200">
                   <td 
                     colSpan={opts.showLineItemQuantities ? 3 : 1} 
-                    className="py-3 text-right font-semibold text-gray-700"
+                    className="py-2 text-right font-semibold text-gray-700"
                   >
                     Labor Subtotal
                   </td>
                   {opts.showLineItemPricing && <td />}
-                  <td className="py-3 text-right font-bold text-gray-900">
+                  <td className="py-2 text-right font-bold text-gray-900">
                     {formatCurrency(breakdown.laborTotal)}
                   </td>
                 </tr>
@@ -411,10 +419,10 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
 
       {/* Cost Summary - Consumer-Friendly or Internal */}
       {!opts.showOnlyTotal && (
-        <div className="bg-gray-50 rounded-lg p-6 mb-8 avoid-break">
+        <div className="bg-gray-50 rounded-lg p-4 mb-4 avoid-break">
           {/* Show internal breakdown header only when showing internal info */}
           {(opts.showCostBreakdown || opts.showProfitInfo) && (
-            <h3 className="text-lg font-semibold text-gray-900 mb-4">Estimate Summary</h3>
+            <h3 className="text-base font-semibold text-gray-900 mb-3">Estimate Summary</h3>
           )}
           
           <div className="space-y-2 text-sm">
