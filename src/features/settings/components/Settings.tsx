@@ -19,6 +19,7 @@ import { ApprovalManager } from "@/components/ApprovalManager";
 import * as LucideIcons from "lucide-react";
 import { MaterialCatalogManager } from "@/components/MaterialCatalogManager";
 import { EstimateBuilder } from "@/features/estimates/components/EstimateBuilder";
+import { EstimateTemplateList } from "@/components/settings/EstimateTemplateList";
 import { GeneralSettings } from "@/components/settings/GeneralSettings";
 import { UserManagement } from "@/components/settings/UserManagement";
 import { DeveloperAccess } from "@/components/settings/DeveloperAccess";
@@ -249,7 +250,20 @@ export const Settings = () => {
       case "materials":
         return <MaterialCatalogManager />;
       case "estimates":
-        return <EstimateBuilder />;
+        return (
+          <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="w-full">
+            <TabsList>
+              <TabsTrigger value="templates">Templates</TabsTrigger>
+              <TabsTrigger value="calculator">Quick Calculator</TabsTrigger>
+            </TabsList>
+            <TabsContent value="templates" className="mt-6">
+              <EstimateTemplateList />
+            </TabsContent>
+            <TabsContent value="calculator" className="mt-6">
+              <EstimateBuilder />
+            </TabsContent>
+          </Tabs>
+        );
       case "commissions":
         return <CommissionManagement />;
       case "suppliers":
