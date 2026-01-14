@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/integrations/supabase/client';
+import { useEffectiveTenantId } from '@/hooks/useEffectiveTenantId';
 import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -77,6 +78,7 @@ export function EstimateTemplateList() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const effectiveTenantId = useEffectiveTenantId();
 
   const [searchQuery, setSearchQuery] = useState('');
   const [typeFilter, setTypeFilter] = useState('all');
@@ -86,14 +88,9 @@ export function EstimateTemplateList() {
   const [templateToDelete, setTemplateToDelete] = useState<Template | null>(null);
 
   const { data: templates = [], isLoading } = useQuery({
-    queryKey: ['estimate-calculation-templates'],
+    queryKey: ['estimate-calculation-templates', effectiveTenantId],
     queryFn: async () => {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('tenant_id')
-        .single();
-
-      if (!profile?.tenant_id) return [];
+      if (!effectiveTenantId) return [];
 
       const { data, error } = await supabase
         .from('estimate_calculation_templates')
@@ -108,7 +105,7 @@ export function EstimateTemplateList() {
           created_at,
           updated_at
         `)
-        .eq('tenant_id', profile.tenant_id)
+        .eq('tenant_id', effectiveTenantId)
         .order('name');
 
       if (error) throw error;
@@ -126,16 +123,12 @@ export function EstimateTemplateList() {
 
       return templatesWithCounts as Template[];
     },
+    enabled: !!effectiveTenantId,
   });
 
   const createMutation = useMutation({
     mutationFn: async ({ name, roof_type }: { name: string; roof_type: RoofType }) => {
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('tenant_id')
-        .single();
-
-      if (!profile?.tenant_id) throw new Error('No tenant found');
+      if (!effectiveTenantId) throw new Error('No tenant found');
 
       const { data, error } = await supabase
         .from('estimate_calculation_templates')
@@ -146,7 +139,7 @@ export function EstimateTemplateList() {
           is_active: true,
           overhead_percentage: 15,
           target_profit_percentage: 30,
-          tenant_id: profile.tenant_id,
+          tenant_id: effectiveTenantId,
         })
         .select()
         .single();
@@ -175,12 +168,7 @@ export function EstimateTemplateList() {
       const template = templates.find((t) => t.id === templateId);
       if (!template) throw new Error('Template not found');
 
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('tenant_id')
-        .single();
-
-      if (!profile?.tenant_id) throw new Error('No tenant found');
+      if (!effectiveTenantId) throw new Error('No tenant found');
 
       // Create new template
       const { data: newTemplate, error: templateError } = await supabase
@@ -192,7 +180,7 @@ export function EstimateTemplateList() {
           is_active: true,
           overhead_percentage: template.overhead_percentage,
           target_profit_percentage: template.target_profit_percentage,
-          tenant_id: profile.tenant_id,
+          tenant_id: effectiveTenantId,
         })
         .select()
         .single();
@@ -214,7 +202,7 @@ export function EstimateTemplateList() {
             name: group.name,
             group_type: group.group_type,
             sort_order: group.sort_order,
-            tenant_id: profile.tenant_id,
+            tenant_id: effectiveTenantId,
           })
           .select()
           .single();
@@ -242,7 +230,7 @@ export function EstimateTemplateList() {
           coverage_per_unit: item.coverage_per_unit,
           sort_order: item.sort_order,
           qty_formula: item.qty_formula,
-          tenant_id: profile.tenant_id,
+          tenant_id: effectiveTenantId,
         });
       }
 
