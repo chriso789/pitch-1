@@ -15,12 +15,14 @@ import { useMeasurementContext, evaluateFormula } from '@/hooks/useMeasurementCo
 import { SectionedLineItemsTable } from './SectionedLineItemsTable';
 import { EstimateBreakdownCard } from './EstimateBreakdownCard';
 import { EstimatePDFTemplate } from './EstimatePDFTemplate';
+import { EstimatePDFDocument } from './EstimatePDFDocument';
 import { PDFExportDialog } from './PDFExportDialog';
 import { EstimatePreviewPanel } from './EstimatePreviewPanel';
 import { EstimateAddonsPanel } from './EstimateAddonsPanel';
 import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptions';
 import { useEstimatePricing, type LineItem } from '@/hooks/useEstimatePricing';
 import { usePDFGeneration } from '@/hooks/usePDFGeneration';
+import { useMultiPagePDFGeneration } from '@/hooks/useMultiPagePDFGeneration';
 import { useQueryClient } from '@tanstack/react-query';
 import { saveEstimatePdf } from '@/lib/estimates/estimatePdfSaver';
 
@@ -142,6 +144,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const { toast } = useToast();
   const { context: measurementContext, summary: measurementSummary } = useMeasurementContext(pipelineEntryId);
   const { generatePDF } = usePDFGeneration();
+  const { downloadPDF: downloadMultiPagePDF, isGenerating: isGeneratingMultiPage } = useMultiPagePDFGeneration();
   const queryClient = useQueryClient();
   const pdfContainerRef = useRef<HTMLDivElement>(null);
   const [searchParams] = useSearchParams();
@@ -1210,7 +1213,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     [templates, selectedTemplateId]
   );
 
-  // Handle PDF export with options
+  // Handle PDF export with options - using multi-page generation for proper pagination
   const handleExportPDF = async (options: PDFComponentOptions) => {
     if (lineItems.length === 0) return;
     
@@ -1236,7 +1239,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         ? `EST-EXPORT-${timestamp}`
         : `EST-DRAFT-${timestamp}`;
 
-      // Set up PDF data with company info and options
+      // Set up PDF data with company info and options for the paged document
       setPdfData({
         estimateNumber,
         customerName: customerInfo?.name || 'Customer',
@@ -1244,44 +1247,37 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         customerPhone: customerInfo?.phone,
         customerEmail: customerInfo?.email,
         companyInfo,
+        companyLocations,
         materialItems,
         laborItems,
         breakdown,
         config,
         finePrintContent: options.showCustomFinePrint ? finePrintContent : undefined,
         options,
+        measurementSummary,
       });
       setShowPDFTemplate(true);
 
-      // Wait for render
-      await new Promise(resolve => setTimeout(resolve, 600));
+      // Wait for render of all pages
+      await new Promise(resolve => setTimeout(resolve, 800));
 
-      // Generate PDF
-      const pdfBlob = await generatePDF('estimate-pdf-template', {
+      // Use multi-page PDF generation for proper pagination
+      const result = await downloadMultiPagePDF('estimate-pdf-pages', 1, {
         filename: `${estimateNumber}.pdf`,
-        orientation: 'portrait',
-        format: 'letter',
-        quality: 2
+        customerName: customerInfo?.name || 'Customer',
+        propertyAddress: customerInfo?.address || '',
       });
 
       setShowPDFTemplate(false);
       setPdfData(null);
 
-      if (pdfBlob) {
-        // Download the PDF
-        const url = URL.createObjectURL(pdfBlob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `${estimateNumber}.pdf`;
-        a.click();
-        URL.revokeObjectURL(url);
-
+      if (result.success) {
         toast({
           title: 'PDF Downloaded',
           description: `${estimateNumber}.pdf has been downloaded`
         });
       } else {
-        throw new Error('PDF generation failed');
+        throw new Error(result.error || 'PDF generation failed');
       }
 
       setShowExportDialog(false);
@@ -1552,7 +1548,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         finePrintContent={finePrintContent}
       />
 
-      {/* Hidden PDF Template for capture - positioned in DOM but invisible for html2canvas */}
+      {/* Hidden PDF Document for multi-page capture */}
       {showPDFTemplate && pdfData && (
         <div 
           ref={pdfContainerRef}
@@ -1560,7 +1556,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           style={{ visibility: 'visible' }}
           aria-hidden="true"
         >
-          <EstimatePDFTemplate
+          <EstimatePDFDocument
             estimateNumber={pdfData.estimateNumber}
             customerName={pdfData.customerName}
             customerAddress={pdfData.customerAddress}
@@ -1574,6 +1570,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             config={pdfData.config}
             finePrintContent={pdfData.finePrintContent}
             options={pdfData.options}
+            measurementSummary={pdfData.measurementSummary}
           />
         </div>
       )}

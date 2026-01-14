@@ -10,6 +10,8 @@ interface PDFGenerationOptions {
   measurementId?: string;
   pipelineEntryId?: string;
   customerName?: string;
+  format?: 'a4' | 'letter';
+  orientation?: 'portrait' | 'landscape';
 }
 
 interface PDFGenerationResult {
@@ -40,15 +42,19 @@ export function useMultiPagePDFGeneration() {
         throw new Error('Report container not found');
       }
 
-      // A4 dimensions in mm
-      const pageWidth = 210;
-      const pageHeight = 297;
+      // Determine format and dimensions
+      const format = options.format || 'letter';
+      const orientation = options.orientation || 'portrait';
       
       const pdf = new jsPDF({
-        orientation: 'portrait',
+        orientation,
         unit: 'mm',
-        format: 'a4',
+        format,
       });
+      
+      // Get actual page dimensions from jsPDF
+      const pageWidth = pdf.internal.pageSize.getWidth();
+      const pageHeight = pdf.internal.pageSize.getHeight();
 
       // Get all page elements
       const pageElements = container.querySelectorAll('[data-report-page]');
