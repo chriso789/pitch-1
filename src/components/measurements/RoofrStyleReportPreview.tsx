@@ -85,7 +85,12 @@ export function RoofrStyleReportPreview({
             total_ridge_length,
             perimeter_wkt,
             linear_features_wkt,
-            property_address
+            property_address,
+            footprint_source,
+            footprint_confidence,
+            footprint_vertices_geo,
+            footprint_requires_review,
+            dsm_available
           `)
           .ilike('property_address', `%${normalizedAddress}%`)
           .order('created_at', { ascending: false })
@@ -142,6 +147,12 @@ export function RoofrStyleReportPreview({
       // WKT geometry
       perimeter_wkt: roofMeasurementData.perimeter_wkt || measurement?.perimeter_wkt,
       linear_features_wkt: roofMeasurementData.linear_features_wkt || measurement?.linear_features_wkt,
+      // Footprint tracking fields for source badge
+      footprint_source: roofMeasurementData.footprint_source,
+      footprint_confidence: roofMeasurementData.footprint_confidence,
+      footprint_vertices_geo: roofMeasurementData.footprint_vertices_geo,
+      footprint_requires_review: roofMeasurementData.footprint_requires_review,
+      dsm_available: roofMeasurementData.dsm_available,
     };
   }, [measurement, roofMeasurementData]);
   
