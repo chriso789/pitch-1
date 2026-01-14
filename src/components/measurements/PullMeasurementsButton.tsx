@@ -31,7 +31,7 @@ interface PullMeasurementsButtonProps {
  * Transform new analyze-roof-aerial response to legacy format for MeasurementVerificationDialog
  */
 function transformNewMeasurementToLegacyFormat(newData: any) {
-  const { measurements, aiAnalysis, confidence, images, linearFeaturesWkt, perimeterWkt, analysisZoom } = newData;
+  const { measurements, aiAnalysis, confidence, images, linearFeaturesWkt, perimeterWkt, analysisZoom, footprint } = newData;
   
   // Transform to legacy "measurement" object
   const measurement = {
@@ -85,6 +85,12 @@ function transformNewMeasurementToLegacyFormat(newData: any) {
     // AI-specific fields
     aiAnalysis: aiAnalysis || null,
     confidence: confidence || null,
+    // NEW: Footprint tracking fields for source badge display
+    footprint_source: footprint?.source || 'ai_detection',
+    footprint_confidence: footprint?.confidence || 0.5,
+    footprint_vertices_geo: footprint?.vertices || null,
+    footprint_requires_review: footprint?.requiresReview || false,
+    dsm_available: footprint?.dsmAvailable || false,
   };
 
   // Get pitch multiplier
@@ -124,6 +130,12 @@ function transformNewMeasurementToLegacyFormat(newData: any) {
     'ai.rating': confidence?.rating || 'unknown',
     'ai.roof_type': aiAnalysis?.roofType || 'unknown',
     'ai.complexity': aiAnalysis?.complexity || 'moderate',
+    // NEW: Footprint tracking tags for source badge and DSM indicator
+    'footprint.source': footprint?.source || 'ai_detection',
+    'footprint.confidence': footprint?.confidence || 0.5,
+    'footprint.vertex_count': footprint?.vertexCount || 0,
+    'footprint.dsm_available': footprint?.dsmAvailable || false,
+    'footprint.requires_review': footprint?.requiresReview || false,
   };
 
   return { measurement, tags };
