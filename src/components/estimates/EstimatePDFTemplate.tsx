@@ -155,15 +155,47 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
   return (
     <div 
       id="estimate-pdf-template"
-      className="bg-white text-black w-[816px]"
+      className="bg-white text-black w-[816px] min-h-[1056px] flex flex-col"
       style={{ fontFamily: 'Inter, system-ui, sans-serif' }}
     >
       <style>{pageBreakStyles}</style>
       
       {/* Main Content */}
-      <div className="p-6 min-h-[1000px]">
-      {/* Minimal Header - Just Estimate Info */}
-      <div className="flex justify-end mb-4 pb-3 border-b border-gray-200">
+      <div className="p-6 flex-1">
+      {/* Professional Header with Company Branding */}
+      <div className="flex justify-between items-start mb-6 pb-4 border-b border-gray-200">
+        {/* Left: Company Logo + Info */}
+        <div className="flex items-start gap-4">
+          {opts.showCompanyLogo && (companyLogo || companyInfo?.logo_url) && (
+            <img 
+              src={companyLogo || companyInfo?.logo_url || ''} 
+              alt={companyInfo?.name || 'Company Logo'} 
+              className="h-16 object-contain" 
+            />
+          )}
+          {opts.showCompanyInfo && (
+            <div>
+              <h1 className="text-xl font-bold text-gray-900">
+                {companyInfo?.name || companyName}
+              </h1>
+              {companyAddressStr && (
+                <p className="text-sm text-gray-600">{companyAddressStr}</p>
+              )}
+              <div className="text-sm text-gray-600">
+                {companyInfo?.phone && <span>{companyInfo.phone}</span>}
+                {companyInfo?.phone && companyInfo?.email && <span> • </span>}
+                {companyInfo?.email && <span>{companyInfo.email}</span>}
+              </div>
+              {companyInfo?.license_number && (
+                <p className="text-xs text-gray-500 mt-1">
+                  License #{companyInfo.license_number}
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+        
+        {/* Right: Estimate Number + Date */}
         <div className="text-right">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Estimate</p>
           {opts.showEstimateNumber && (
@@ -587,9 +619,9 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
 
       </div>
       
-      {/* Professional Master Footer with Logo + All Locations */}
+      {/* Professional Master Footer with Logo + All Locations - Sticky to Bottom */}
       {opts.showPageFooter && (
-        <div className="pdf-footer border-t-2 border-gray-300 bg-gray-50 px-6 py-5">
+        <div className="pdf-footer mt-auto border-t-2 border-gray-300 bg-gray-50 px-6 py-5">
           <div className="flex items-start gap-6">
             {/* Logo + Company Info Section */}
             <div className="flex-shrink-0 min-w-[140px]">
