@@ -274,12 +274,15 @@ const LeadDetails = () => {
         }
       });
       
-      return docs.map(doc => ({
-        ...doc,
-        signature_status: doc.filename.includes('EST-') 
+      return docs.map(doc => {
+        const status = doc.filename.includes('EST-') 
           ? (signatureMap.get(doc.filename.split('.')[0]) || 'none')
-          : 'none'
-      }));
+          : 'none';
+        return {
+          ...doc,
+          signature_status: status as 'none' | 'pending' | 'sent' | 'completed' | 'voided'
+        };
+      });
     },
     enabled: !!id
   });
@@ -1108,6 +1111,7 @@ const LeadDetails = () => {
             email: lead.contact.email || '',
             type: 'contact'
           }}
+          availableDocuments={emailDocuments || []}
           onSendEmail={handleSendEmail}
         />
       )}
