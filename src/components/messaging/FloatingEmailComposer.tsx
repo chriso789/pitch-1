@@ -67,6 +67,9 @@ export const FloatingEmailComposer: React.FC<FloatingEmailComposerProps> = ({
   const [selectedDocIds, setSelectedDocIds] = useState<Set<string>>(new Set());
   const [selectedRecipient, setSelectedRecipient] = useState("");
   const [docPickerOpen, setDocPickerOpen] = useState(false);
+  const [toInput, setToInput] = useState("");
+  const [ccInput, setCcInput] = useState("");
+  const [bccInput, setBccInput] = useState("");
 
   useEffect(() => {
     if (defaultRecipient) {
@@ -112,6 +115,22 @@ export const FloatingEmailComposer: React.FC<FloatingEmailComposerProps> = ({
     const currentField = field === 'to' ? to : field === 'cc' ? cc : bcc;
     
     setField(currentField.filter(e => e !== email));
+  };
+
+  const handleEmailInputKeyDown = (
+    e: React.KeyboardEvent<HTMLInputElement>,
+    input: string,
+    setInput: (v: string) => void,
+    field: 'to' | 'cc' | 'bcc'
+  ) => {
+    if (e.key === 'Enter' || e.key === ',') {
+      e.preventDefault();
+      const email = input.trim().replace(/,$/, '');
+      if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        addRecipient(email, field);
+        setInput("");
+      }
+    }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -190,7 +209,7 @@ export const FloatingEmailComposer: React.FC<FloatingEmailComposerProps> = ({
             <div className="space-y-2">
               <div className="flex items-center gap-2">
                 <Label htmlFor="to" className="text-xs font-medium w-8">To:</Label>
-                <div className="flex-1 flex flex-wrap gap-1">
+                <div className="flex-1 flex flex-wrap gap-1 items-center">
                   {to.map((email) => (
                     <span
                       key={email}
@@ -205,6 +224,20 @@ export const FloatingEmailComposer: React.FC<FloatingEmailComposerProps> = ({
                       </button>
                     </span>
                   ))}
+                  <Input
+                    value={toInput}
+                    onChange={(e) => setToInput(e.target.value)}
+                    onKeyDown={(e) => handleEmailInputKeyDown(e, toInput, setToInput, 'to')}
+                    onBlur={() => {
+                      const email = toInput.trim();
+                      if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                        addRecipient(email, 'to');
+                        setToInput("");
+                      }
+                    }}
+                    placeholder="Type email, press Enter"
+                    className="flex-1 min-w-[140px] h-7 text-xs border-dashed"
+                  />
                 </div>
                 <Button
                   variant="ghost"
@@ -220,7 +253,7 @@ export const FloatingEmailComposer: React.FC<FloatingEmailComposerProps> = ({
                 <>
                   <div className="flex items-center gap-2">
                     <Label className="text-xs font-medium w-8">Cc:</Label>
-                    <div className="flex-1 flex flex-wrap gap-1">
+                    <div className="flex-1 flex flex-wrap gap-1 items-center">
                       {cc.map((email) => (
                         <span
                           key={email}
@@ -235,11 +268,25 @@ export const FloatingEmailComposer: React.FC<FloatingEmailComposerProps> = ({
                           </button>
                         </span>
                       ))}
+                      <Input
+                        value={ccInput}
+                        onChange={(e) => setCcInput(e.target.value)}
+                        onKeyDown={(e) => handleEmailInputKeyDown(e, ccInput, setCcInput, 'cc')}
+                        onBlur={() => {
+                          const email = ccInput.trim();
+                          if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                            addRecipient(email, 'cc');
+                            setCcInput("");
+                          }
+                        }}
+                        placeholder="Type email, press Enter"
+                        className="flex-1 min-w-[140px] h-7 text-xs border-dashed"
+                      />
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
                     <Label className="text-xs font-medium w-8">Bcc:</Label>
-                    <div className="flex-1 flex flex-wrap gap-1">
+                    <div className="flex-1 flex flex-wrap gap-1 items-center">
                       {bcc.map((email) => (
                         <span
                           key={email}
@@ -254,6 +301,20 @@ export const FloatingEmailComposer: React.FC<FloatingEmailComposerProps> = ({
                           </button>
                         </span>
                       ))}
+                      <Input
+                        value={bccInput}
+                        onChange={(e) => setBccInput(e.target.value)}
+                        onKeyDown={(e) => handleEmailInputKeyDown(e, bccInput, setBccInput, 'bcc')}
+                        onBlur={() => {
+                          const email = bccInput.trim();
+                          if (email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                            addRecipient(email, 'bcc');
+                            setBccInput("");
+                          }
+                        }}
+                        placeholder="Type email, press Enter"
+                        className="flex-1 min-w-[140px] h-7 text-xs border-dashed"
+                      />
                     </div>
                   </div>
                 </>
