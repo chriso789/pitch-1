@@ -50,6 +50,12 @@ import {
   type MicrosoftFootprint,
   type MicrosoftFootprintResult 
 } from '../_shared/microsoft-footprint-extractor.ts'
+// NEW: OSM Building Footprints (Overpass API - no API key needed)
+import { 
+  fetchOSMBuildingFootprint, 
+  type OSMFootprint,
+  type OSMFootprintResult 
+} from '../_shared/osm-footprint-extractor.ts'
 import { 
   validateGeometry, 
   calculateAreaSqFt, 
@@ -242,11 +248,13 @@ Deno.serve(async (req) => {
     // ═══════════════════════════════════════════════════════════════════════════
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // 🏢 AUTHORITATIVE FOOTPRINT EXTRACTION - NEW PRIORITY ORDER:
+    // 🏢 AUTHORITATIVE FOOTPRINT EXTRACTION - ENHANCED PRIORITY ORDER:
     // 1. Mapbox Vector (highest fidelity - detailed polygon with many vertices)
-    // 2. Solar API bounding box (rectangular, only 4 vertices)
-    // 3. Regrid parcel data
-    // 4. AI Detection (fallback)
+    // 2. Regrid parcel data (accurate building outlines)
+    // 3. OSM Overpass API (community-mapped buildings - no API key)
+    // 4. Microsoft/Esri Buildings (global coverage - no API key)  
+    // 5. Solar API bounding box (rectangular, 4 vertices - LAST RESORT)
+    // 6. AI Detection (fallback when all else fails)
     // ═══════════════════════════════════════════════════════════════════════════
     
     // Performance tracking for visibility
@@ -315,34 +323,10 @@ Deno.serve(async (req) => {
     }
     timings.footprint_mapbox = Date.now() - footprintFetchStart;
 
-    // STEP 2: Try Solar API bounding box (rectangular - lower fidelity than vector)
-    if (!authoritativeFootprint && solarData?.available && solarData?.boundingBox) {
-      console.log('🌞 STEP 2: Extracting footprint from Solar API bounding box (4 vertices)...');
-      
-      const solarVertices = boundingBoxToFootprint(solarData.boundingBox);
-      // Use 1.5ft overhang for Solar bbox (reduced from 2ft)
-      const expandedVertices = expandFootprintForOverhang(solarVertices, 1.5);
-      const validation = validateGeometry(expandedVertices, 'google_solar_api');
-      
-      if (validation.valid) {
-        authoritativeFootprint = {
-          vertices: expandedVertices,
-          confidence: validation.confidence * 0.9, // Reduce confidence for rectangular footprint
-          source: 'google_solar_api',
-          requiresManualReview: false,
-          validation,
-        };
-        console.log(`✅ Solar API footprint: ${validation.metrics.areaSqFt.toFixed(0)} sqft, 4 vertices (rectangle), ${(validation.confidence * 90).toFixed(0)}% confidence`);
-      } else {
-        console.warn(`⚠️ Solar footprint failed validation: ${validation.errors.join(', ')}`);
-      }
-    }
-    timings.footprint_solar = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0);
-
-    // STEP 3: Fallback to Regrid parcel data (85% confidence)
+    // STEP 2: Fallback to Regrid parcel data (high-quality building outlines)
     const REGRID_API_KEY = Deno.env.get('REGRID_API_KEY');
     if (!authoritativeFootprint && REGRID_API_KEY) {
-      console.log('🗺️ STEP 3: Trying Regrid parcel data...');
+      console.log('🗺️ STEP 2: Trying Regrid parcel data...');
       
       try {
         const regridFootprint = await fetchRegridFootprint(coordinates.lat, coordinates.lng, REGRID_API_KEY);
@@ -367,12 +351,111 @@ Deno.serve(async (req) => {
         console.warn('⚠️ Regrid lookup failed:', regridErr);
       }
     }
-    timings.footprint_regrid = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0) - (timings.footprint_solar || 0);
+    timings.footprint_regrid = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0);
+
+    // STEP 3: Try OSM Overpass API (community-mapped buildings - free, no API key)
+    if (!authoritativeFootprint) {
+      console.log('🗺️ STEP 3: Trying OSM Overpass API for building footprint...');
+      
+      try {
+        const osmResult = await fetchOSMBuildingFootprint(coordinates.lat, coordinates.lng, { searchRadius: 50 });
+        
+        if (osmResult.footprint && osmResult.footprint.vertexCount >= 4) {
+          const osmVertices = osmResult.footprint.coordinates.map(coord => ({
+            lat: coord[1],
+            lng: coord[0]
+          }));
+          
+          // Use 0.5ft overhang for OSM (vector-quality data)
+          const expandedVertices = expandFootprintForOverhang(osmVertices, 0.5);
+          const validation = validateGeometry(expandedVertices, 'osm_buildings' as FootprintSource);
+          
+          if (validation.valid) {
+            authoritativeFootprint = {
+              vertices: expandedVertices,
+              confidence: osmResult.footprint.confidence,
+              source: 'osm_buildings' as FootprintSource,
+              requiresManualReview: false,
+              validation,
+            };
+            console.log(`✅ OSM footprint: ${validation.metrics.areaSqFt.toFixed(0)} sqft, ${osmResult.footprint.vertexCount} vertices, ${(osmResult.footprint.confidence * 100).toFixed(0)}% confidence`);
+          }
+        } else {
+          console.log(`⚠️ OSM returned no usable footprint: ${osmResult.fallbackReason || osmResult.error || 'unknown'}`);
+        }
+      } catch (osmErr) {
+        console.warn('⚠️ OSM Overpass lookup failed:', osmErr);
+      }
+    }
+    timings.footprint_osm = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0) - (timings.footprint_regrid || 0);
+
+    // STEP 4: Try Microsoft/Esri Buildings (global coverage - free, no API key)
+    if (!authoritativeFootprint) {
+      console.log('🏢 STEP 4: Trying Microsoft/Esri Buildings API...');
+      
+      try {
+        const msResult = await fetchMicrosoftBuildingFootprint(coordinates.lat, coordinates.lng, { searchRadius: 50 });
+        
+        if (msResult.footprint && msResult.footprint.vertexCount >= 4) {
+          const msVertices = msResult.footprint.coordinates.map(coord => ({
+            lat: coord[1],
+            lng: coord[0]
+          }));
+          
+          // Use 0.5ft overhang for Microsoft data
+          const expandedVertices = expandFootprintForOverhang(msVertices, 0.5);
+          const validation = validateGeometry(expandedVertices, 'microsoft_buildings' as FootprintSource);
+          
+          if (validation.valid) {
+            authoritativeFootprint = {
+              vertices: expandedVertices,
+              confidence: msResult.footprint.confidence,
+              source: 'microsoft_buildings' as FootprintSource,
+              requiresManualReview: false,
+              validation,
+            };
+            console.log(`✅ Microsoft footprint: ${validation.metrics.areaSqFt.toFixed(0)} sqft, ${msResult.footprint.vertexCount} vertices, ${(msResult.footprint.confidence * 100).toFixed(0)}% confidence`);
+          }
+        } else {
+          console.log(`⚠️ Microsoft returned no usable footprint: ${msResult.fallbackReason || msResult.error || 'unknown'}`);
+        }
+      } catch (msErr) {
+        console.warn('⚠️ Microsoft Buildings lookup failed:', msErr);
+      }
+    }
+    timings.footprint_microsoft = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0) - (timings.footprint_regrid || 0) - (timings.footprint_osm || 0);
+
+    // STEP 5: LAST RESORT - Solar API bounding box (rectangular - lowest fidelity)
+    // ⚠️ This creates a simple rectangle which often OVERESTIMATES area by 15-25%
+    if (!authoritativeFootprint && solarData?.available && solarData?.boundingBox) {
+      console.log('🌞 STEP 5: LAST RESORT - Solar API bounding box (4 vertices, rectangular)...');
+      console.warn('⚠️ Using solar_bbox_fallback - area will likely be 15-25% OVERESTIMATED');
+      
+      const solarVertices = boundingBoxToFootprint(solarData.boundingBox);
+      // Use 1.5ft overhang for Solar bbox (reduced from 2ft)
+      const expandedVertices = expandFootprintForOverhang(solarVertices, 1.5);
+      const validation = validateGeometry(expandedVertices, 'solar_bbox_fallback' as FootprintSource);
+      
+      if (validation.valid) {
+        authoritativeFootprint = {
+          vertices: expandedVertices,
+          confidence: validation.confidence * 0.55, // Heavily reduce confidence for rectangular bbox
+          source: 'solar_bbox_fallback' as FootprintSource, // Explicitly mark as fallback
+          requiresManualReview: true, // ALWAYS require manual review for bbox fallback
+          validation,
+        };
+        console.log(`⚠️ Solar bbox fallback: ${validation.metrics.areaSqFt.toFixed(0)} sqft, 4 vertices (RECTANGLE), ${(validation.confidence * 55).toFixed(0)}% confidence - REQUIRES MANUAL REVIEW`);
+      } else {
+        console.warn(`⚠️ Solar footprint failed validation: ${validation.errors.join(', ')}`);
+      }
+    }
+    timings.footprint_solar = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0) - (timings.footprint_regrid || 0) - (timings.footprint_osm || 0) - (timings.footprint_microsoft || 0);
     timings.footprint_total = Date.now() - footprintFetchStart;
 
     // Determine if we have a vector footprint (for conditional Florida shrinkage)
     const hasVectorFootprint = authoritativeFootprint && 
-      ['mapbox_vector', 'regrid_parcel'].includes(authoritativeFootprint.source);
+      ['mapbox_vector', 'regrid_parcel', 'osm_buildings', 'microsoft_buildings'].includes(authoritativeFootprint.source);
+    const usingSolarBboxFallback = authoritativeFootprint?.source === 'solar_bbox_fallback';
 
     // Log footprint source for tracking
     if (authoritativeFootprint) {
