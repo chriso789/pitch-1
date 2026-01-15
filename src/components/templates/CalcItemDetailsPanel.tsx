@@ -41,6 +41,11 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
 }) => {
   // Buffer changes locally - only save when Done is clicked
   const [localItem, setLocalItem] = useState<CalcTemplateItem>(item);
+  
+  // String buffers for numeric inputs to prevent cursor jumping while typing
+  const [unitCostInput, setUnitCostInput] = useState(String(item.unit_cost ?? 0));
+  const [marginOverrideInput, setMarginOverrideInput] = useState(String(item.margin_override ?? 0));
+  
   const { calculatePrice, formatCurrency } = usePricingCalculation();
   
   // Calculate effective margin (item override or template default)
@@ -49,13 +54,30 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
     : profitMargin;
   const pricing = calculatePrice(localItem.unit_cost, effectiveMargin, 'profit_margin');
 
-  // Sync local state when switching items
+  // Sync local state when switching items (different item id)
   useEffect(() => {
     setLocalItem(item);
+    setUnitCostInput(String(item.unit_cost ?? 0));
+    setMarginOverrideInput(String(item.margin_override ?? 0));
   }, [item.id]);
 
   const handleLocalUpdate = (updates: Partial<CalcTemplateItem>) => {
     setLocalItem(prev => ({ ...prev, ...updates }));
+  };
+  
+  // Parse numeric value from string input on blur
+  const handleUnitCostBlur = () => {
+    const parsed = parseFloat(unitCostInput);
+    const value = isNaN(parsed) ? 0 : parsed;
+    setUnitCostInput(String(value));
+    handleLocalUpdate({ unit_cost: value });
+  };
+  
+  const handleMarginOverrideBlur = () => {
+    const parsed = parseFloat(marginOverrideInput);
+    const value = isNaN(parsed) ? 0 : Math.min(100, Math.max(0, parsed));
+    setMarginOverrideInput(String(value));
+    handleLocalUpdate({ margin_override: value });
   };
 
   const handleDone = () => {
@@ -149,10 +171,11 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
           <Label htmlFor="unit_cost">Unit Cost ($)</Label>
           <Input
             id="unit_cost"
-            type="number"
-            step="0.01"
-            value={localItem.unit_cost}
-            onChange={(e) => handleLocalUpdate({ unit_cost: parseFloat(e.target.value) || 0 })}
+            type="text"
+            inputMode="decimal"
+            value={unitCostInput}
+            onChange={(e) => setUnitCostInput(e.target.value)}
+            onBlur={handleUnitCostBlur}
           />
         </div>
 
@@ -167,12 +190,11 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
           <div className="flex items-center gap-2">
             <Input
               id="margin_override"
-              type="number"
-              step="1"
-              min="0"
-              max="100"
-              value={localItem.margin_override ?? 0}
-              onChange={(e) => handleLocalUpdate({ margin_override: parseFloat(e.target.value) || 0 })}
+              type="text"
+              inputMode="decimal"
+              value={marginOverrideInput}
+              onChange={(e) => setMarginOverrideInput(e.target.value)}
+              onBlur={handleMarginOverrideBlur}
               className="w-24"
             />
             <span className="text-muted-foreground">%</span>

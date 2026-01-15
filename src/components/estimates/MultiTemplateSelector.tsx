@@ -67,9 +67,7 @@ interface Template {
   id: string;
   name: string;
   roof_type?: string;
-  labor: Record<string, any>;
-  overhead: Record<string, any>;
-  currency: string;
+  template_category?: string;
 }
 
 interface TemplateLineItem {
@@ -614,7 +612,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     try {
       const result = await supabaseClient
         .from('estimate_calculation_templates')
-        .select('id, name, roof_type, labor, overhead, currency')
+        .select('id, name, roof_type, template_category')
         .eq('is_active', true)
         .order('roof_type')
         .order('name');
@@ -625,9 +623,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
         id: t.id,
         name: t.name,
         roof_type: t.roof_type || 'other',
-        labor: t.labor || {},
-        overhead: t.overhead || {},
-        currency: t.currency || 'USD'
+        template_category: t.template_category || 'general'
       }));
       
       setTemplates(templatesData);
