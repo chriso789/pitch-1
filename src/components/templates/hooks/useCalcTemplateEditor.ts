@@ -386,8 +386,7 @@ export const useCalcTemplateEditor = (templateId?: string) => {
       if (selectedItem?.id === itemId) {
         setSelectedItem({ ...selectedItem, ...updates });
       }
-
-      toast({ title: 'Item updated' });
+      // Toast removed - shown by caller on Done
     } catch (error: any) {
       console.error('Error updating item:', error);
       toast({
