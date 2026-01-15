@@ -896,13 +896,14 @@ export function SchematicRoofDiagram({
           />
         )}
         
-        {/* Eave segments - thick dark green straight lines with length labels */}
+        {/* Eave segments - thick dark green straight lines with length labels and IDs */}
         {eaveSegments.map((seg, i) => {
           const midX = (seg.start.x + seg.end.x) / 2;
           const midY = (seg.start.y + seg.end.y) / 2;
           const angle = Math.atan2(seg.end.y - seg.start.y, seg.end.x - seg.start.x) * 180 / Math.PI;
           const displayAngle = angle > 90 || angle < -90 ? angle + 180 : angle;
           const length = seg.length || 0;
+          const edgeId = `E${i + 1}`;
           
           return (
             <g key={`eave-${i}`}>
@@ -915,28 +916,28 @@ export function SchematicRoofDiagram({
                 strokeWidth={5}
                 strokeLinecap="square"
               />
-              {/* Eave length label */}
-              {showLengthLabels && length >= 3 && (
+              {/* Eave length label - show all segments >= 1ft */}
+              {showLengthLabels && length >= 1 && (
                 <g transform={`translate(${midX}, ${midY}) rotate(${displayAngle})`}>
                   <rect
-                    x={-18}
+                    x={-26}
                     y={-11}
-                    width={36}
+                    width={52}
                     height={18}
                     fill="white"
                     stroke={FEATURE_COLORS.eave}
-                    strokeWidth={1}
+                    strokeWidth={1.5}
                     rx={3}
                   />
                   <text
                     x={0}
                     y={4}
                     textAnchor="middle"
-                    fontSize={11}
+                    fontSize={10}
                     fontWeight="bold"
                     fill={FEATURE_COLORS.eave}
                   >
-                    {Math.round(length)}'
+                    {edgeId}: {length.toFixed(1)}'
                   </text>
                 </g>
               )}
@@ -944,13 +945,14 @@ export function SchematicRoofDiagram({
           );
         })}
         
-        {/* Rake segments - thick cyan straight lines with length labels */}
+        {/* Rake segments - thick cyan straight lines with length labels and IDs */}
         {rakeSegments.map((seg, i) => {
           const midX = (seg.start.x + seg.end.x) / 2;
           const midY = (seg.start.y + seg.end.y) / 2;
           const angle = Math.atan2(seg.end.y - seg.start.y, seg.end.x - seg.start.x) * 180 / Math.PI;
           const displayAngle = angle > 90 || angle < -90 ? angle + 180 : angle;
           const length = seg.length || 0;
+          const edgeId = `R${i + 1}`;
           
           return (
             <g key={`rake-${i}`}>
@@ -963,28 +965,28 @@ export function SchematicRoofDiagram({
                 strokeWidth={5}
                 strokeLinecap="square"
               />
-              {/* Rake length label */}
-              {showLengthLabels && length >= 3 && (
+              {/* Rake length label - show all segments >= 1ft */}
+              {showLengthLabels && length >= 1 && (
                 <g transform={`translate(${midX}, ${midY}) rotate(${displayAngle})`}>
                   <rect
-                    x={-18}
+                    x={-26}
                     y={-11}
-                    width={36}
+                    width={52}
                     height={18}
                     fill="white"
                     stroke={FEATURE_COLORS.rake}
-                    strokeWidth={1}
+                    strokeWidth={1.5}
                     rx={3}
                   />
                   <text
                     x={0}
                     y={4}
                     textAnchor="middle"
-                    fontSize={11}
+                    fontSize={10}
                     fontWeight="bold"
                     fill={FEATURE_COLORS.rake}
                   >
-                    {Math.round(length)}'
+                    {edgeId}: {length.toFixed(1)}'
                   </text>
                 </g>
               )}
