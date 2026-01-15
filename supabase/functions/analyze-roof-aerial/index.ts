@@ -452,10 +452,9 @@ Deno.serve(async (req) => {
             },
             body: JSON.stringify({
               imageUrl: selectedImage.url,
-              lat: coordinates.lat,
-              lng: coordinates.lng,
-              imageWidth: IMAGE_SIZE,
-              imageHeight: IMAGE_SIZE
+              coordinates: { lat: coordinates.lat, lng: coordinates.lng },
+              imageSize: IMAGE_SIZE,
+              zoom: IMAGE_ZOOM
             })
           }
         );
@@ -547,66 +546,116 @@ Deno.serve(async (req) => {
     
     console.log(`✅ Using: ${imageSource} (${actualImageSize}x${actualImageSize} pixels, ${logicalImageSize}x${logicalImageSize} logical)`)
 
-    // NEW VERTEX-BASED DETECTION APPROACH (Roofr-quality)
-    // Pass 1: Isolate target building with EXPANDED bounds for larger roofs
-    let buildingIsolation = await isolateTargetBuilding(selectedImage.url, address, coordinates, solarData)
-    console.log(`⏱️ Pass 1 (building isolation) complete: ${Date.now() - startTime}ms`)
+    // ═══════════════════════════════════════════════════════════════════════════
+    // OPTIMIZATION: Skip slow AI Vision passes when we have authoritative footprint
+    // This saves 60-90+ seconds by using existing footprint data
+    // ═══════════════════════════════════════════════════════════════════════════
+    let buildingIsolation: any;
+    let perimeterResult: any;
     
-    // PHASE 6: Apply Florida bounds shrinkage ONLY when using AI bounding-box isolation
-    // Skip shrinkage when we have authoritative vector footprint (already accurate)
-    const isFlorida = isFloridaAddress(address)
-    if (isFlorida && !hasVectorFootprint) {
-      const shrinkPct = 5 // 5% shrinkage for Florida properties
-      const oldBounds = { ...buildingIsolation.bounds }
-      buildingIsolation.bounds = {
-        topLeftX: Math.min(95, buildingIsolation.bounds.topLeftX + shrinkPct / 2),
-        topLeftY: Math.min(95, buildingIsolation.bounds.topLeftY + shrinkPct / 2),
-        bottomRightX: Math.max(5, buildingIsolation.bounds.bottomRightX - shrinkPct / 2),
-        bottomRightY: Math.max(5, buildingIsolation.bounds.bottomRightY - shrinkPct / 2)
+    if (authoritativeFootprint && authoritativeFootprint.vertices.length >= 4) {
+      // FAST PATH: Convert authoritative footprint vertices to pixel coordinates
+      console.log(`🚀 SKIPPING SLOW AI PASSES: Using ${authoritativeFootprint.source} footprint with ${authoritativeFootprint.vertices.length} vertices`);
+      
+      // Convert geo coordinates to pixel coordinates for the perimeter
+      const perimeterVertices = authoritativeFootprint.vertices.map((v, i) => {
+        const pixel = geoToPixel(v.lat, v.lng, coordinates.lat, coordinates.lng, logicalImageSize, IMAGE_ZOOM);
+        return {
+          x: (pixel.x / logicalImageSize) * 100,  // Convert to percentage
+          y: (pixel.y / logicalImageSize) * 100,
+          type: 'corner' as const,
+          label: `corner_${i + 1}`
+        };
+      });
+      
+      // Calculate bounding box from footprint
+      const xCoords = perimeterVertices.map(v => v.x);
+      const yCoords = perimeterVertices.map(v => v.y);
+      
+      buildingIsolation = {
+        bounds: {
+          topLeftX: Math.max(0, Math.min(...xCoords) - 5),
+          topLeftY: Math.max(0, Math.min(...yCoords) - 5),
+          bottomRightX: Math.min(100, Math.max(...xCoords) + 5),
+          bottomRightY: Math.min(100, Math.max(...yCoords) + 5)
+        },
+        confidence: authoritativeFootprint.confidence,
+        building_type: 'residential',
+        notes: `Derived from ${authoritativeFootprint.source} footprint`
+      };
+      
+      perimeterResult = {
+        vertices: perimeterVertices,
+        confidence: authoritativeFootprint.confidence,
+        source: authoritativeFootprint.source
+      };
+      
+      console.log(`⏱️ FAST PATH: Skipped Pass 1 & 2, using authoritative footprint: ${Date.now() - startTime}ms`);
+    } else {
+      // SLOW PATH: Run AI Vision passes (no authoritative footprint available)
+      console.log(`⚠️ No authoritative footprint - running full AI Vision analysis...`);
+      
+      // NEW VERTEX-BASED DETECTION APPROACH (Roofr-quality)
+      // Pass 1: Isolate target building with EXPANDED bounds for larger roofs
+      buildingIsolation = await isolateTargetBuilding(selectedImage.url, address, coordinates, solarData)
+      console.log(`⏱️ Pass 1 (building isolation) complete: ${Date.now() - startTime}ms`)
+      
+      // PHASE 6: Apply Florida bounds shrinkage ONLY when using AI bounding-box isolation
+      // Skip shrinkage when we have authoritative vector footprint (already accurate)
+      const isFlorida = isFloridaAddress(address)
+      if (isFlorida && !hasVectorFootprint) {
+        const shrinkPct = 5 // 5% shrinkage for Florida properties
+        const oldBounds = { ...buildingIsolation.bounds }
+        buildingIsolation.bounds = {
+          topLeftX: Math.min(95, buildingIsolation.bounds.topLeftX + shrinkPct / 2),
+          topLeftY: Math.min(95, buildingIsolation.bounds.topLeftY + shrinkPct / 2),
+          bottomRightX: Math.max(5, buildingIsolation.bounds.bottomRightX - shrinkPct / 2),
+          bottomRightY: Math.max(5, buildingIsolation.bounds.bottomRightY - shrinkPct / 2)
+        }
+        console.log(`🌴 Florida property: Applied ${shrinkPct}% bounds shrinkage (AI bounding-box mode)`)
+        console.log(`   Old bounds: (${oldBounds.topLeftX.toFixed(1)}%, ${oldBounds.topLeftY.toFixed(1)}%) to (${oldBounds.bottomRightX.toFixed(1)}%, ${oldBounds.bottomRightY.toFixed(1)}%)`)
+        console.log(`   New bounds: (${buildingIsolation.bounds.topLeftX.toFixed(1)}%, ${buildingIsolation.bounds.topLeftY.toFixed(1)}%) to (${buildingIsolation.bounds.bottomRightX.toFixed(1)}%, ${buildingIsolation.bounds.bottomRightY.toFixed(1)}%)`)
+      } else if (isFlorida && hasVectorFootprint) {
+        console.log(`🌴 Florida property: Skipping shrinkage (using authoritative ${authoritativeFootprint?.source} footprint)`)
       }
-      console.log(`🌴 Florida property: Applied ${shrinkPct}% bounds shrinkage (AI bounding-box mode)`)
-      console.log(`   Old bounds: (${oldBounds.topLeftX.toFixed(1)}%, ${oldBounds.topLeftY.toFixed(1)}%) to (${oldBounds.bottomRightX.toFixed(1)}%, ${oldBounds.bottomRightY.toFixed(1)}%)`)
-      console.log(`   New bounds: (${buildingIsolation.bounds.topLeftX.toFixed(1)}%, ${buildingIsolation.bounds.topLeftY.toFixed(1)}%) to (${buildingIsolation.bounds.bottomRightX.toFixed(1)}%, ${buildingIsolation.bounds.bottomRightY.toFixed(1)}%)`)
-    } else if (isFlorida && hasVectorFootprint) {
-      console.log(`🌴 Florida property: Skipping shrinkage (using authoritative ${authoritativeFootprint?.source} footprint)`)
-    }
-    
-    // Pass 2: Detect perimeter vertices with FULL IMAGE TRACING
-    let perimeterResult = await detectPerimeterVertices(selectedImage.url, buildingIsolation.bounds, solarData, coordinates, logicalImageSize)
-    console.log(`⏱️ Pass 2 (perimeter vertices) complete: ${Date.now() - startTime}ms`)
-    
-    // NEW: FOOTPRINT SANITY CHECK - verify vertices span the full roof
-    const footprintCheck = validateFootprintCoverage(perimeterResult.vertices, buildingIsolation.bounds, solarData, coordinates, logicalImageSize)
-    console.log(`📐 Footprint check: span=${footprintCheck.spanXPct.toFixed(1)}% x ${footprintCheck.spanYPct.toFixed(1)}%, perimeter=${footprintCheck.estimatedPerimeterFt.toFixed(0)}ft, ${footprintCheck.longSegments.length} long segments`)
-    
-    // If footprint check fails, run CORNER COMPLETION PASS
-    if (!footprintCheck.isValid) {
-      console.warn(`⚠️ FOOTPRINT CHECK FAILED: ${footprintCheck.failureReason}`)
-      console.log(`🔄 Running corner completion pass...`)
       
-      // Expand bounds and re-detect
-      const expandedBounds = {
-        topLeftX: Math.max(5, buildingIsolation.bounds.topLeftX - 10),
-        topLeftY: Math.max(5, buildingIsolation.bounds.topLeftY - 10),
-        bottomRightX: Math.min(95, buildingIsolation.bounds.bottomRightX + 10),
-        bottomRightY: Math.min(95, buildingIsolation.bounds.bottomRightY + 10)
-      }
+      // Pass 2: Detect perimeter vertices with FULL IMAGE TRACING
+      perimeterResult = await detectPerimeterVertices(selectedImage.url, buildingIsolation.bounds, solarData, coordinates, logicalImageSize)
+      console.log(`⏱️ Pass 2 (perimeter vertices) complete: ${Date.now() - startTime}ms`)
       
-      // Re-detect with expanded bounds and explicit instructions to find missing corners
-      const redetectedResult = await detectPerimeterVerticesWithCornerFocus(
-        selectedImage.url, 
-        expandedBounds, 
-        perimeterResult.vertices,
-        footprintCheck.longSegments,
-        solarData,
-        coordinates,
-        logicalImageSize
-      )
+      // NEW: FOOTPRINT SANITY CHECK - verify vertices span the full roof
+      const footprintCheck = validateFootprintCoverage(perimeterResult.vertices, buildingIsolation.bounds, solarData, coordinates, logicalImageSize)
+      console.log(`📐 Footprint check: span=${footprintCheck.spanXPct.toFixed(1)}% x ${footprintCheck.spanYPct.toFixed(1)}%, perimeter=${footprintCheck.estimatedPerimeterFt.toFixed(0)}ft, ${footprintCheck.longSegments.length} long segments`)
       
-      // Use re-detected result if it has more vertices and better coverage
-      if (redetectedResult.vertices.length > perimeterResult.vertices.length) {
-        console.log(`✅ Corner completion found ${redetectedResult.vertices.length - perimeterResult.vertices.length} additional vertices`)
-        perimeterResult = redetectedResult
+      // If footprint check fails, run CORNER COMPLETION PASS
+      if (!footprintCheck.isValid) {
+        console.warn(`⚠️ FOOTPRINT CHECK FAILED: ${footprintCheck.failureReason}`)
+        console.log(`🔄 Running corner completion pass...`)
+        
+        // Expand bounds and re-detect
+        const expandedBounds = {
+          topLeftX: Math.max(5, buildingIsolation.bounds.topLeftX - 10),
+          topLeftY: Math.max(5, buildingIsolation.bounds.topLeftY - 10),
+          bottomRightX: Math.min(95, buildingIsolation.bounds.bottomRightX + 10),
+          bottomRightY: Math.min(95, buildingIsolation.bounds.bottomRightY + 10)
+        }
+        
+        // Re-detect with expanded bounds and explicit instructions to find missing corners
+        const redetectedResult = await detectPerimeterVerticesWithCornerFocus(
+          selectedImage.url, 
+          expandedBounds, 
+          perimeterResult.vertices,
+          footprintCheck.longSegments,
+          solarData,
+          coordinates,
+          logicalImageSize
+        )
+        
+        // Use re-detected result if it has more vertices and better coverage
+        if (redetectedResult.vertices.length > perimeterResult.vertices.length) {
+          console.log(`✅ Corner completion found ${redetectedResult.vertices.length - perimeterResult.vertices.length} additional vertices`)
+          perimeterResult = redetectedResult
+        }
       }
     }
     
@@ -4415,10 +4464,9 @@ async function processSolarFastPath(
           },
           body: JSON.stringify({
             imageUrl: selectedImage.url,
-            lat: coordinates.lat,
-            lng: coordinates.lng,
-            imageWidth: 640,
-            imageHeight: 640
+            coordinates: { lat: coordinates.lat, lng: coordinates.lng },
+            imageSize: 640,
+            zoom: 20
           })
         }
       )
