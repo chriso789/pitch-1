@@ -4674,7 +4674,7 @@ async function processSolarFastPath(
   // Select image source
   const selectedImage = googleImage.url ? googleImage : mapboxImage
   const imageSource = selectedImage.source
-  const imageYear = new Date().getFullYear()
+  const solarImageYear = new Date().getFullYear() // Renamed to avoid any scope collision
   
   // Build AI analysis structure (for compatibility)
   const ridgeCount = linearFeatures.filter(f => f.type === 'ridge').length
@@ -4721,7 +4721,7 @@ async function processSolarFastPath(
     mapbox_image_url: mapboxImage.url,
     selected_image_source: imageSource,
     image_source: imageSource,
-    image_year: imageYear,
+    image_year: solarImageYear,
     solar_api_available: true,
     solar_building_footprint_sqft: totalFlatArea,
     solar_api_response: solarData,
