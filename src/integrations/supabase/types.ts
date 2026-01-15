@@ -22611,6 +22611,8 @@ export type Database = {
           ai_analysis: Json | null
           ai_detection_data: Json
           ai_model_version: string | null
+          ai_vision_detection_attempts: number | null
+          ai_vision_footprint_confidence: number | null
           analysis_image_size: Json | null
           analysis_zoom: number | null
           api_variance_percent: number | null
@@ -22627,6 +22629,7 @@ export type Database = {
           edge_segments: Json | null
           facet_count: number | null
           footprint_confidence: number | null
+          footprint_detection_method: string | null
           footprint_is_rectangular: boolean | null
           footprint_requires_review: boolean | null
           footprint_source: string | null
@@ -22719,6 +22722,8 @@ export type Database = {
           ai_analysis?: Json | null
           ai_detection_data: Json
           ai_model_version?: string | null
+          ai_vision_detection_attempts?: number | null
+          ai_vision_footprint_confidence?: number | null
           analysis_image_size?: Json | null
           analysis_zoom?: number | null
           api_variance_percent?: number | null
@@ -22735,6 +22740,7 @@ export type Database = {
           edge_segments?: Json | null
           facet_count?: number | null
           footprint_confidence?: number | null
+          footprint_detection_method?: string | null
           footprint_is_rectangular?: boolean | null
           footprint_requires_review?: boolean | null
           footprint_source?: string | null
@@ -22827,6 +22833,8 @@ export type Database = {
           ai_analysis?: Json | null
           ai_detection_data?: Json
           ai_model_version?: string | null
+          ai_vision_detection_attempts?: number | null
+          ai_vision_footprint_confidence?: number | null
           analysis_image_size?: Json | null
           analysis_zoom?: number | null
           api_variance_percent?: number | null
@@ -22843,6 +22851,7 @@ export type Database = {
           edge_segments?: Json | null
           facet_count?: number | null
           footprint_confidence?: number | null
+          footprint_detection_method?: string | null
           footprint_is_rectangular?: boolean | null
           footprint_requires_review?: boolean | null
           footprint_source?: string | null
