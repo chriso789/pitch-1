@@ -125,6 +125,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
   const [editEstimateProcessed, setEditEstimateProcessed] = useState(false);
   const [editingEstimateNumber, setEditingEstimateNumber] = useState<string | null>(null);
   const [isEditingLoadedEstimate, setIsEditingLoadedEstimate] = useState(false);
+  const [estimateDisplayName, setEstimateDisplayName] = useState<string>('');
   
   // Inline import state (replaces dialog)
   const [isImporting, setIsImporting] = useState(false);
@@ -893,6 +894,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           estimate_number: estimateNumber,
           status: 'draft',
           template_id: selectedTemplateId,
+          display_name: estimateDisplayName.trim() || null,
           customer_name: customerName,
           customer_address: customerAddress,
           property_details: propertyDetails,
@@ -1468,6 +1470,25 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           onFixedPriceChange={setFixedPrice}
           repName={repRates?.repName}
         />
+      )}
+
+      {/* Estimate Name Input */}
+      {lineItems.length > 0 && (
+        <div className="space-y-2">
+          <Label htmlFor="estimate-display-name" className="text-sm font-medium">
+            Estimate Name <span className="text-muted-foreground font-normal">(optional)</span>
+          </Label>
+          <Input
+            id="estimate-display-name"
+            value={estimateDisplayName}
+            onChange={(e) => setEstimateDisplayName(e.target.value)}
+            placeholder="e.g., Smith Residence - Full Roof Replacement"
+            className="max-w-md"
+          />
+          <p className="text-xs text-muted-foreground">
+            Leave blank to use auto-generated estimate number
+          </p>
+        </div>
       )}
 
       {/* Action Buttons */}
