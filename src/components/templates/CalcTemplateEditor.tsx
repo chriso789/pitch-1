@@ -15,7 +15,8 @@ import {
   arrayMove,
 } from '@dnd-kit/sortable';
 import { Button } from '@/components/ui/button';
-import { Loader2, ArrowLeft, Plus, Save } from 'lucide-react';
+import { Input } from '@/components/ui/input';
+import { Loader2, ArrowLeft, Plus, Save, Pencil } from 'lucide-react';
 import { useCalcTemplateEditor, CalcTemplateItem, CalcTemplateGroup } from './hooks/useCalcTemplateEditor';
 import { CalcTemplateItemGroup } from './CalcTemplateItemGroup';
 import { CalcItemDetailsPanel } from './CalcItemDetailsPanel';
@@ -119,7 +120,17 @@ const CalcTemplateEditor: React.FC = () => {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-xl font-semibold">{template.name}</h1>
+            <div className="flex items-center gap-2 group">
+              <Input
+                value={template.name}
+                onChange={(e) => saveTemplate({ name: e.target.value })}
+                className="text-xl font-semibold border-none bg-transparent px-1 h-auto 
+                           focus-visible:ring-1 focus-visible:ring-primary/50
+                           hover:bg-muted/50 rounded transition-colors max-w-md"
+                placeholder="Template Name"
+              />
+              <Pencil className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+            </div>
             <p className="text-sm text-muted-foreground">
               {template.roof_type} • {groups.reduce((sum, g) => sum + g.items.length, 0)} items
             </p>
