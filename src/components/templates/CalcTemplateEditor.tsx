@@ -23,10 +23,12 @@ import { CalcTemplateDetailsPanel } from './CalcTemplateDetailsPanel';
 import { AddGroupDialog } from './AddGroupDialog';
 import { AddItemDialog } from './AddItemDialog';
 import { MaterialCheatSheet } from './MaterialCheatSheet';
+import { useToast } from '@/hooks/use-toast';
 
 const CalcTemplateEditor: React.FC = () => {
   const navigate = useNavigate();
   const { templateId } = useParams<{ templateId: string }>();
+  const { toast } = useToast();
   const {
     loading,
     saving,
@@ -186,7 +188,10 @@ const CalcTemplateEditor: React.FC = () => {
             <CalcItemDetailsPanel
               item={selectedItem}
               profitMargin={template.target_profit_percentage}
-              onUpdate={(updates) => updateItem(selectedItem.id, updates)}
+              onUpdate={(updatedItem) => {
+                updateItem(selectedItem.id, updatedItem);
+                toast({ title: 'Item saved' });
+              }}
               onDone={() => setSelectedItem(null)}
             />
           ) : (

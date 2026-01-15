@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -14,10 +14,11 @@ import { ArrowLeft, Package, Wrench } from 'lucide-react';
 import { CalcTemplateItem } from './hooks/useCalcTemplateEditor';
 import { usePricingCalculation } from './hooks/usePricingCalculation';
 import { FormulaBuilder } from './FormulaBuilder';
+
 interface CalcItemDetailsPanelProps {
   item: CalcTemplateItem;
   profitMargin: number;
-  onUpdate: (updates: Partial<CalcTemplateItem>) => void;
+  onUpdate: (updatedItem: CalcTemplateItem) => void;
   onDone: () => void;
 }
 
@@ -49,8 +50,24 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
   onUpdate,
   onDone,
 }) => {
+  // Buffer changes locally - only save when Done is clicked
+  const [localItem, setLocalItem] = useState<CalcTemplateItem>(item);
   const { calculatePrice, formatCurrency } = usePricingCalculation();
-  const pricing = calculatePrice(item.unit_cost, profitMargin, 'profit_margin');
+  const pricing = calculatePrice(localItem.unit_cost, profitMargin, 'profit_margin');
+
+  // Sync local state when switching items
+  useEffect(() => {
+    setLocalItem(item);
+  }, [item.id]);
+
+  const handleLocalUpdate = (updates: Partial<CalcTemplateItem>) => {
+    setLocalItem(prev => ({ ...prev, ...updates }));
+  };
+
+  const handleDone = () => {
+    onUpdate(localItem);
+    onDone();
+  };
 
   return (
     <div className="space-y-6">
@@ -78,8 +95,8 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
           <Label htmlFor="item_name">Item Name</Label>
           <Input
             id="item_name"
-            value={item.item_name}
-            onChange={(e) => onUpdate({ item_name: e.target.value })}
+            value={localItem.item_name}
+            onChange={(e) => handleLocalUpdate({ item_name: e.target.value })}
             placeholder="e.g., 3-Tab Shingles"
           />
         </div>
@@ -89,8 +106,8 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
           <Label htmlFor="description">Description</Label>
           <Textarea
             id="description"
-            value={item.description || ''}
-            onChange={(e) => onUpdate({ description: e.target.value })}
+            value={localItem.description || ''}
+            onChange={(e) => handleLocalUpdate({ description: e.target.value })}
             placeholder="Optional description..."
             rows={2}
           />
@@ -100,8 +117,8 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
         <div className="space-y-2">
           <Label>Item Type</Label>
           <Select
-            value={item.item_type}
-            onValueChange={(value) => onUpdate({ item_type: value as 'material' | 'labor' })}
+            value={localItem.item_type}
+            onValueChange={(value) => handleLocalUpdate({ item_type: value as 'material' | 'labor' })}
           >
             <SelectTrigger>
               <SelectValue />
@@ -117,8 +134,8 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
         <div className="space-y-2">
           <Label>Unit</Label>
           <Select
-            value={item.unit}
-            onValueChange={(value) => onUpdate({ unit: value })}
+            value={localItem.unit}
+            onValueChange={(value) => handleLocalUpdate({ unit: value })}
           >
             <SelectTrigger>
               <SelectValue />
@@ -140,16 +157,16 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
             id="unit_cost"
             type="number"
             step="0.01"
-            value={item.unit_cost}
-            onChange={(e) => onUpdate({ unit_cost: parseFloat(e.target.value) || 0 })}
+            value={localItem.unit_cost}
+            onChange={(e) => handleLocalUpdate({ unit_cost: parseFloat(e.target.value) || 0 })}
           />
         </div>
 
         {/* Formula Builder */}
         <FormulaBuilder
-          value={item.qty_formula}
-          unit={item.unit}
-          onChange={(formula) => onUpdate({ qty_formula: formula })}
+          value={localItem.qty_formula}
+          unit={localItem.unit}
+          onChange={(formula) => handleLocalUpdate({ qty_formula: formula })}
         />
 
         {/* SKU Pattern */}
@@ -157,8 +174,8 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
           <Label htmlFor="sku_pattern">SKU Pattern</Label>
           <Input
             id="sku_pattern"
-            value={item.sku_pattern || ''}
-            onChange={(e) => onUpdate({ sku_pattern: e.target.value })}
+            value={localItem.sku_pattern || ''}
+            onChange={(e) => handleLocalUpdate({ sku_pattern: e.target.value })}
             placeholder="e.g., ABC-SHINGLE-*"
           />
         </div>
@@ -168,8 +185,8 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
           <Label htmlFor="manufacturer">Manufacturer</Label>
           <Input
             id="manufacturer"
-            value={item.manufacturer || ''}
-            onChange={(e) => onUpdate({ manufacturer: e.target.value })}
+            value={localItem.manufacturer || ''}
+            onChange={(e) => handleLocalUpdate({ manufacturer: e.target.value })}
             placeholder="e.g., GAF, Owens Corning"
           />
         </div>
@@ -181,7 +198,7 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
         <div className="grid grid-cols-3 gap-4 text-sm">
           <div>
             <p className="text-muted-foreground">Unit Cost</p>
-            <p className="font-semibold">{formatCurrency(item.unit_cost)}</p>
+            <p className="font-semibold">{formatCurrency(localItem.unit_cost)}</p>
           </div>
           <div>
             <p className="text-muted-foreground">Margin</p>
@@ -195,7 +212,7 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
       </div>
 
       {/* Done Button */}
-      <Button className="w-full" onClick={onDone}>
+      <Button className="w-full" onClick={handleDone}>
         Done Editing
       </Button>
     </div>
