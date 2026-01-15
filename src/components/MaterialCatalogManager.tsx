@@ -39,10 +39,20 @@ interface Category {
   name: string;
   description: string | null;
   order_index: number;
+  section: string;
 }
+
+const SECTIONS = [
+  { value: 'all', label: 'All Sections' },
+  { value: 'roof', label: 'Roofing' },
+  { value: 'gutter', label: 'Gutters' },
+  { value: 'exterior', label: 'Exterior' },
+  { value: 'interior', label: 'Interior' }
+];
 
 export function MaterialCatalogManager() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [selectedSection, setSelectedSection] = useState<string>("all");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [dialogOpen, setDialogOpen] = useState(false);
   const [editingMaterial, setEditingMaterial] = useState<Material | null>(null);
@@ -77,15 +87,30 @@ export function MaterialCatalogManager() {
     queryClient.invalidateQueries({ queryKey: ['material-catalog'] });
   };
 
+  // Reset category filter when section changes
+  useEffect(() => {
+    setSelectedCategory('all');
+  }, [selectedSection]);
+
+  // Filter categories by selected section
+  const filteredCategories = categories.filter(c => 
+    selectedSection === 'all' || (c as any).section === selectedSection
+  );
+
   const filteredMaterials = materials.filter(m => {
     const matchesSearch = !searchQuery || 
       m.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
       m.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
       (m.description?.toLowerCase().includes(searchQuery.toLowerCase()));
     
+    // Find the category's section
+    const cat = categories.find(c => c.id === m.category_id);
+    const catSection = (cat as any)?.section || 'roof';
+    
+    const matchesSection = selectedSection === 'all' || catSection === selectedSection;
     const matchesCategory = selectedCategory === "all" || m.category_id === selectedCategory;
     
-    return matchesSearch && matchesCategory;
+    return matchesSearch && matchesSection && matchesCategory;
   });
 
   const handleDelete = async (id: string) => {
@@ -332,13 +357,23 @@ export function MaterialCatalogManager() {
                 className="pl-10"
               />
             </div>
+            <Select value={selectedSection} onValueChange={setSelectedSection}>
+              <SelectTrigger className="w-[140px]">
+                <SelectValue placeholder="Section" />
+              </SelectTrigger>
+              <SelectContent>
+                {SECTIONS.map((s) => (
+                  <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select value={selectedCategory} onValueChange={setSelectedCategory}>
               <SelectTrigger className="w-[200px]">
                 <SelectValue placeholder="All Categories" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">All Categories</SelectItem>
-                {categories.map((cat) => (
+                {filteredCategories.map((cat) => (
                   <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
                 ))}
               </SelectContent>

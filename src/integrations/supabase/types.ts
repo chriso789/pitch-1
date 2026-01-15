@@ -14588,6 +14588,7 @@ export type Database = {
           is_active: boolean | null
           name: string
           order_index: number | null
+          section: string | null
         }
         Insert: {
           code: string
@@ -14597,6 +14598,7 @@ export type Database = {
           is_active?: boolean | null
           name: string
           order_index?: number | null
+          section?: string | null
         }
         Update: {
           code?: string
@@ -14606,6 +14608,7 @@ export type Database = {
           is_active?: boolean | null
           name?: string
           order_index?: number | null
+          section?: string | null
         }
         Relationships: []
       }
@@ -31143,6 +31146,7 @@ export type Database = {
           id: string
           name: string
           order_index: number
+          section: string
         }[]
       }
       api_get_materials: {

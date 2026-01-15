@@ -16,17 +16,36 @@ interface Material {
   coverage_per_unit: number;
   category_id: string;
   category_name?: string;
+  category_section?: string;
   attributes: Record<string, any>;
+}
+
+interface Category {
+  id: string;
+  code: string;
+  name: string;
+  description: string | null;
+  order_index: number;
+  section: string;
 }
 
 interface MaterialBrowserProps {
   onSelect: (material: Material) => void;
 }
 
+const SECTIONS = [
+  { value: 'all', label: 'All Sections' },
+  { value: 'roof', label: 'Roofing' },
+  { value: 'gutter', label: 'Gutters' },
+  { value: 'exterior', label: 'Exterior' },
+  { value: 'interior', label: 'Interior' }
+];
+
 export const MaterialBrowser = ({ onSelect }: MaterialBrowserProps) => {
   const [materials, setMaterials] = useState<Material[]>([]);
-  const [categories, setCategories] = useState<{ id: string; name: string }[]>([]);
+  const [categories, setCategories] = useState<Category[]>([]);
   const [search, setSearch] = useState('');
+  const [sectionFilter, setSectionFilter] = useState<string>('all');
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [loading, setLoading] = useState(true);
 
@@ -34,38 +53,50 @@ export const MaterialBrowser = ({ onSelect }: MaterialBrowserProps) => {
     fetchData();
   }, []);
 
+  // Reset category filter when section changes
+  useEffect(() => {
+    setCategoryFilter('all');
+  }, [sectionFilter]);
+
   const fetchData = async () => {
     setLoading(true);
+    
+    // Use RPC functions to bypass RLS (same as MaterialCatalogManager)
     const [materialsRes, categoriesRes] = await Promise.all([
-      supabase
-        .from('materials')
-        .select('*, material_categories(name)')
-        .eq('active', true)
-        .order('name'),
-      supabase
-        .from('material_categories')
-        .select('id, name')
-        .order('name')
+      supabase.rpc('api_get_materials' as any),
+      supabase.rpc('api_get_material_categories' as any)
     ]);
 
     if (materialsRes.data) {
-      setMaterials(materialsRes.data.map((m: any) => ({
+      const cats = (categoriesRes.data || []) as Category[];
+      const catMap = new Map(cats.map(c => [c.id, c]));
+      
+      setMaterials((materialsRes.data as any[]).filter(m => m.active !== false).map((m: any) => ({
         ...m,
-        category_name: m.material_categories?.name
+        category_name: catMap.get(m.category_id)?.name,
+        category_section: catMap.get(m.category_id)?.section || 'roof'
       })));
     }
+    
     if (categoriesRes.data) {
-      setCategories(categoriesRes.data);
+      setCategories(categoriesRes.data as Category[]);
     }
+    
     setLoading(false);
   };
+
+  // Filter categories by selected section
+  const filteredCategories = categories.filter(c => 
+    sectionFilter === 'all' || c.section === sectionFilter
+  );
 
   const filtered = materials.filter(m => {
     const matchesSearch = !search || 
       m.name.toLowerCase().includes(search.toLowerCase()) ||
       m.code.toLowerCase().includes(search.toLowerCase());
+    const matchesSection = sectionFilter === 'all' || m.category_section === sectionFilter;
     const matchesCategory = categoryFilter === 'all' || m.category_id === categoryFilter;
-    return matchesSearch && matchesCategory;
+    return matchesSearch && matchesSection && matchesCategory;
   });
 
   return (
@@ -80,13 +111,27 @@ export const MaterialBrowser = ({ onSelect }: MaterialBrowserProps) => {
             className="pl-9"
           />
         </div>
+      </div>
+      
+      <div className="flex gap-2">
+        <Select value={sectionFilter} onValueChange={setSectionFilter}>
+          <SelectTrigger className="w-[140px]">
+            <SelectValue placeholder="Section" />
+          </SelectTrigger>
+          <SelectContent>
+            {SECTIONS.map((s) => (
+              <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        
         <Select value={categoryFilter} onValueChange={setCategoryFilter}>
           <SelectTrigger className="w-[180px]">
             <SelectValue placeholder="Category" />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Categories</SelectItem>
-            {categories.map((cat) => (
+            {filteredCategories.map((cat) => (
               <SelectItem key={cat.id} value={cat.id}>{cat.name}</SelectItem>
             ))}
           </SelectContent>
@@ -120,7 +165,7 @@ export const MaterialBrowser = ({ onSelect }: MaterialBrowserProps) => {
                     </div>
                   </div>
                   <div className="text-right shrink-0">
-                    <div className="font-semibold">${material.base_cost.toFixed(2)}</div>
+                    <div className="font-semibold">${(material.base_cost || 0).toFixed(2)}</div>
                     <div className="text-xs text-muted-foreground">per {material.uom}</div>
                   </div>
                 </div>

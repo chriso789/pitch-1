@@ -22,11 +22,45 @@ interface Product {
   is_active: boolean;
 }
 
+const SECTIONS = [
+  { value: 'all', label: 'All Sections' },
+  { value: 'roof', label: 'Roofing' },
+  { value: 'gutter', label: 'Gutters' },
+  { value: 'exterior', label: 'Exterior' },
+  { value: 'interior', label: 'Interior' }
+];
+
+const CATEGORIES_BY_SECTION: Record<string, { value: string; label: string }[]> = {
+  all: [],
+  roof: [
+    { value: 'asphalt_shingle', label: 'Asphalt Shingle' },
+    { value: 'stone_coated_steel', label: 'Stone-Coated Steel' },
+    { value: 'concrete_tile', label: 'Concrete Tile' },
+    { value: 'metal_exposed', label: 'Metal (Exposed)' },
+    { value: 'metal_hidden', label: 'Metal (Hidden)' }
+  ],
+  gutter: [
+    { value: 'gutter', label: 'Gutters' },
+    { value: 'downspout', label: 'Downspouts' }
+  ],
+  exterior: [
+    { value: 'siding', label: 'Siding' },
+    { value: 'soffit', label: 'Soffit' },
+    { value: 'fascia', label: 'Fascia' }
+  ],
+  interior: [
+    { value: 'paint', label: 'Paint' },
+    { value: 'drywall', label: 'Drywall' },
+    { value: 'trim', label: 'Trim' }
+  ]
+};
+
 export function ProductCatalogManager() {
   const [products, setProducts] = useState<Product[]>([]);
   const [loading, setLoading] = useState(true);
   const [showDialog, setShowDialog] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
+  const [filterSection, setFilterSection] = useState<string>('all');
   const [filterCategory, setFilterCategory] = useState<string>('all');
   
   const [formData, setFormData] = useState({
@@ -138,9 +172,29 @@ export function ProductCatalogManager() {
     });
   };
 
-  const filteredProducts = filterCategory === 'all'
-    ? products
-    : products.filter(p => p.category === filterCategory);
+  // Get categories for selected section
+  const availableCategories = filterSection === 'all' 
+    ? Object.values(CATEGORIES_BY_SECTION).flat()
+    : CATEGORIES_BY_SECTION[filterSection] || [];
+
+  // Reset category when section changes
+  useEffect(() => {
+    setFilterCategory('all');
+  }, [filterSection]);
+
+  // Get section for a category
+  const getCategorySection = (category: string) => {
+    for (const [section, cats] of Object.entries(CATEGORIES_BY_SECTION)) {
+      if (cats.some(c => c.value === category)) return section;
+    }
+    return 'roof';
+  };
+
+  const filteredProducts = products.filter(p => {
+    const matchesSection = filterSection === 'all' || getCategorySection(p.category) === filterSection;
+    const matchesCategory = filterCategory === 'all' || p.category === filterCategory;
+    return matchesSection && matchesCategory;
+  });
 
   const getTierColor = (tier: string) => {
     switch (tier) {
@@ -167,17 +221,25 @@ export function ProductCatalogManager() {
       </div>
 
       <div className="flex gap-4">
+        <Select value={filterSection} onValueChange={setFilterSection}>
+          <SelectTrigger className="w-[140px]">
+            <SelectValue placeholder="Section" />
+          </SelectTrigger>
+          <SelectContent>
+            {SECTIONS.map((s) => (
+              <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
         <Select value={filterCategory} onValueChange={setFilterCategory}>
           <SelectTrigger className="w-64">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="all">All Categories</SelectItem>
-            <SelectItem value="asphalt_shingle">Asphalt Shingle</SelectItem>
-            <SelectItem value="stone_coated_steel">Stone-Coated Steel</SelectItem>
-            <SelectItem value="concrete_tile">Concrete Tile</SelectItem>
-            <SelectItem value="metal_exposed">Metal (Exposed)</SelectItem>
-            <SelectItem value="metal_hidden">Metal (Hidden)</SelectItem>
+            {availableCategories.map((cat) => (
+              <SelectItem key={cat.value} value={cat.value}>{cat.label}</SelectItem>
+            ))}
           </SelectContent>
         </Select>
       </div>
