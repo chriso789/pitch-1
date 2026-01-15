@@ -445,7 +445,7 @@ function createFallbackGeometry(
   }];
   
   // Classify perimeter edges as eaves/rakes for fallback
-  const isWider = (bounds.maxX - bounds.minX) > (bounds.maxY - bounds.minY);
+  // Note: isWider is already declared above, reuse it
   const eaves: AssembledLine[] = [];
   const rakes: AssembledLine[] = [];
   classifyPerimeterEdges(perimeter, isWider, eaves, rakes);
