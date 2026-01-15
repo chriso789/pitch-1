@@ -234,7 +234,7 @@ export function PullMeasurementsButton({
 
     // 📊 Performance Monitoring: Start timing
     const pullStartTime = Date.now();
-    const REQUEST_TIMEOUT_MS = 90000; // 90 second frontend timeout (matches backend budget)
+    const REQUEST_TIMEOUT_MS = 300000; // 300 second frontend timeout (matches backend wall_clock_limit)
     console.log('⏱️ AI Measurement analysis started:', { 
       propertyId, 
       pullLat, 
