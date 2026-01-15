@@ -22,6 +22,7 @@ import { CalcItemDetailsPanel } from './CalcItemDetailsPanel';
 import { CalcTemplateDetailsPanel } from './CalcTemplateDetailsPanel';
 import { AddGroupDialog } from './AddGroupDialog';
 import { AddItemDialog } from './AddItemDialog';
+import { MaterialCheatSheet } from './MaterialCheatSheet';
 
 const CalcTemplateEditor: React.FC = () => {
   const navigate = useNavigate();
@@ -180,7 +181,7 @@ const CalcTemplateEditor: React.FC = () => {
         </div>
 
         {/* Right panel - Details */}
-        <div className="w-1/2 overflow-y-auto p-4">
+        <div className="w-1/2 overflow-y-auto p-4 space-y-4">
           {selectedItem ? (
             <CalcItemDetailsPanel
               item={selectedItem}
@@ -189,11 +190,17 @@ const CalcTemplateEditor: React.FC = () => {
               onDone={() => setSelectedItem(null)}
             />
           ) : (
-            <CalcTemplateDetailsPanel
-              template={template}
-              onUpdate={saveTemplate}
-              saving={saving}
-            />
+            <>
+              <CalcTemplateDetailsPanel
+                template={template}
+                onUpdate={saveTemplate}
+                saving={saving}
+              />
+              <MaterialCheatSheet 
+                defaultRoofType={template.roof_type === 'metal' ? 'metal-5v' : template.roof_type}
+                compact 
+              />
+            </>
           )}
         </div>
       </div>
