@@ -214,46 +214,42 @@ const PageFooter: React.FC<{
       }];
 
   return (
-    <div className="border-t-2 border-gray-300 bg-gray-50 px-4 py-3">
-      <div className="flex items-start gap-4">
-        <div className="flex-shrink-0 min-w-[100px]">
+    <div className="border-t border-gray-200 bg-gray-50 px-3 py-2">
+      <div className="flex items-center gap-3">
+        {/* Logo + Company */}
+        <div className="flex items-center gap-2 flex-shrink-0">
           {(companyLogo || companyInfo?.logo_url) && (
             <img 
               src={companyLogo || companyInfo?.logo_url || ''} 
               alt={companyInfo?.name || 'Company Logo'} 
-              className="h-8 object-contain mb-1" 
+              className="h-5 object-contain" 
             />
           )}
-          <p className="font-bold text-gray-900 text-xs">
-            {companyInfo?.name || companyName}
-          </p>
-          {companyInfo?.license_number && (
-            <p className="text-[10px] text-gray-500">License #{companyInfo.license_number}</p>
-          )}
+          <div>
+            <p className="font-semibold text-gray-800 text-[10px]">
+              {companyInfo?.name || companyName}
+            </p>
+            {companyInfo?.license_number && (
+              <p className="text-[8px] text-gray-500">License #{companyInfo.license_number}</p>
+            )}
+          </div>
         </div>
         
-        <div className="flex-1 grid grid-cols-2 gap-x-4 gap-y-2">
-          {locations.slice(0, 4).map((location, idx) => (
-            <div key={location.id || idx} className="text-[10px]">
-              <p className="font-semibold text-gray-800">{location.name}</p>
-              {location.address_street && (
-                <p className="text-gray-600 leading-tight">{location.address_street}</p>
-              )}
-              {(location.address_city || location.address_state) && (
-                <p className="text-gray-600 leading-tight">
-                  {[location.address_city, location.address_state].filter(Boolean).join(', ')}
-                  {location.address_zip && ` ${location.address_zip}`}
-                </p>
-              )}
-              {location.phone && (
-                <p className="text-gray-600">{location.phone}</p>
-              )}
-            </div>
+        {/* Locations - inline compact format */}
+        <div className="flex-1 flex flex-wrap gap-x-4 gap-y-0.5 text-[9px] text-gray-600">
+          {locations.slice(0, 2).map((location, idx) => (
+            <span key={location.id || idx}>
+              <span className="font-medium text-gray-700">{location.name}:</span>{' '}
+              {location.address_street && `${location.address_street}, `}
+              {[location.address_city, location.address_state].filter(Boolean).join(', ')}
+              {location.address_zip && ` ${location.address_zip}`}
+              {location.phone && ` | ${location.phone}`}
+            </span>
           ))}
         </div>
       </div>
       
-      <div className="mt-2 pt-2 border-t border-gray-200 flex justify-between items-center text-[10px] text-gray-400">
+      <div className="flex justify-between items-center text-[8px] text-gray-400 mt-1 pt-1 border-t border-gray-100">
         <span>© {currentYear} {companyInfo?.name || companyName}. All rights reserved.</span>
         <span>Page {pageNumber} of {totalPages}</span>
       </div>
