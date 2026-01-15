@@ -619,6 +619,12 @@ function normalizeRow(rawRow: Record<string, any>): ContactImportData {
   // Normalize status value
   const normalizedStatus = normalizeStatus(normalized.qualification_status);
   
+  // Extract city from address if not already set
+  let city = normalized.address_city;
+  if (!city && normalized.address_street) {
+    city = extractCityFromAddress(normalized.address_street);
+  }
+  
   return {
     first_name: String(normalized.first_name || '').trim(),
     last_name: String(normalized.last_name || '').trim(),
@@ -630,7 +636,7 @@ function normalizeRow(rawRow: Record<string, any>): ContactImportData {
     additional_phones: uniquePhones.slice(2),
     company_name: normalized.company_name || undefined,
     address_street: normalized.address_street || undefined,
-    address_city: normalized.address_city || undefined,
+    address_city: city || undefined,
     address_state: normalized.address_state || undefined,
     address_zip: normalized.address_zip || undefined,
     lead_source: normalized.lead_source || undefined,
@@ -640,6 +646,55 @@ function normalizeRow(rawRow: Record<string, any>): ContactImportData {
     qualification_status: normalizedStatus || undefined,
     estimated_value: normalized.estimated_value || undefined,
   };
+}
+
+/**
+ * Extract city from a full address string
+ * Handles formats like:
+ * - "123 Main St, Sarasota, FL 34231"
+ * - "123 Main St, Sarasota FL 34231"
+ */
+function extractCityFromAddress(address: string): string | null {
+  if (!address) return null;
+  
+  // Known Florida cities for matching (common in this business)
+  const KNOWN_CITIES = [
+    'sarasota', 'venice', 'bradenton', 'naples', 'tampa', 
+    'st petersburg', 'st. petersburg', 'clearwater', 'lakewood ranch', 
+    'palmetto', 'punta gorda', 'port charlotte', 'englewood',
+    'north port', 'osprey', 'nokomis', 'siesta key', 'longboat key',
+    'anna maria', 'holmes beach', 'ellenton', 'parrish', 'myakka city',
+    'arcadia', 'fort myers', 'cape coral', 'bonita springs', 'estero',
+    'orlando', 'kissimmee', 'jacksonville', 'gainesville', 'ocala',
+    'miami', 'fort lauderdale', 'west palm beach', 'boca raton',
+    'delray beach', 'boynton beach', 'jupiter', 'stuart', 'vero beach'
+  ];
+  
+  const normalized = address.toLowerCase();
+  
+  // Check if any known city appears in the address
+  for (const city of KNOWN_CITIES) {
+    if (normalized.includes(city)) {
+      // Return properly capitalized
+      return city.split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+    }
+  }
+  
+  // Try to parse from comma-separated format: "Street, City, State ZIP"
+  const parts = address.split(',').map(p => p.trim());
+  if (parts.length >= 2) {
+    // Second part is usually city - remove state and zip if present
+    const potentialCity = parts[1]
+      .replace(/\s+(FL|CA|TX|NY|GA|NC|SC|OH|PA|NJ|VA|MD|MA|CT|CO|AZ|WA|OR|NV|TN|AL|LA|KY|IN|MO|WI|MN|IA|KS|AR|OK|MS|UT|NM|NE|WV|ID|HI|ME|NH|RI|MT|DE|SD|ND|AK|VT|WY|DC)\s*\d{5}(-\d{4})?$/i, '')
+      .trim();
+    if (potentialCity && potentialCity.length > 1 && !/^\d+$/.test(potentialCity)) {
+      return potentialCity;
+    }
+  }
+  
+  return null;
 }
 
 /**
@@ -654,6 +709,19 @@ function parseEstimatedValue(value: string | undefined): number | null {
 }
 
 /**
+ * Special company name mappings to sales rep names
+ * When CSV contains a company name instead of a person name, map it to the correct rep
+ */
+const COMPANY_TO_REP_MAPPING: Record<string, string> = {
+  "o'brien contracting": 'chris o',
+  'obrien contracting': 'chris o',
+  "o'brien contracting usa": 'chris o',
+  'obrien contracting usa': 'chris o',
+  "o'brien": 'chris o',
+  'obrien': 'chris o',
+};
+
+/**
  * Match a sales rep name from CSV to a profile ID
  */
 function matchSalesRepToProfile(
@@ -664,6 +732,21 @@ function matchSalesRepToProfile(
   
   const normalized = repName.toLowerCase().trim();
   if (!normalized) return null;
+  
+  // Check if this is a company name that should map to a specific rep
+  const mappedRepName = COMPANY_TO_REP_MAPPING[normalized];
+  if (mappedRepName) {
+    // Find the mapped rep in profiles
+    for (const profile of profiles) {
+      const firstName = profile.first_name?.toLowerCase().trim() || '';
+      const lastName = profile.last_name?.toLowerCase().trim() || '';
+      const fullName = `${firstName} ${lastName}`.trim();
+      
+      if (fullName === mappedRepName || `${firstName} ${lastName.charAt(0)}` === mappedRepName) {
+        return profile.id;
+      }
+    }
+  }
   
   for (const profile of profiles) {
     const firstName = profile.first_name?.toLowerCase().trim() || '';
@@ -1041,7 +1124,7 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
     const file = event.target.files?.[0];
     if (!file) return;
 
-    // Fetch profiles for rep matching preview - store in local variable to avoid race condition
+    // Fetch profiles for rep matching preview - filter by location if set
     let loadedProfiles: ProfileMatch[] = [];
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -1053,11 +1136,31 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
           .single();
 
         if (profile?.tenant_id) {
-          const { data: allProfiles } = await supabase
-            .from('profiles')
-            .select('id, first_name, last_name, email')
-            .eq('tenant_id', profile.tenant_id);
-          loadedProfiles = allProfiles || [];
+          // If importing to a specific location, only get reps assigned to that location
+          if (currentLocationId) {
+            const { data: locationAssignments } = await supabase
+              .from('user_location_assignments')
+              .select('user_id')
+              .eq('location_id', currentLocationId);
+            
+            const assignedUserIds = (locationAssignments || []).map(a => a.user_id);
+            
+            if (assignedUserIds.length > 0) {
+              const { data: locationProfiles } = await supabase
+                .from('profiles')
+                .select('id, first_name, last_name, email')
+                .eq('tenant_id', profile.tenant_id)
+                .in('id', assignedUserIds);
+              loadedProfiles = locationProfiles || [];
+            }
+          } else {
+            // No location filter - get all tenant profiles
+            const { data: allProfiles } = await supabase
+              .from('profiles')
+              .select('id, first_name, last_name, email')
+              .eq('tenant_id', profile.tenant_id);
+            loadedProfiles = allProfiles || [];
+          }
           setProfilesForPreview(loadedProfiles);
         }
       }
@@ -1151,14 +1254,35 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
 
           if (!profile?.tenant_id) throw new Error('No tenant found');
 
-          // Fetch all profiles for sales rep matching
+          // Fetch profiles for sales rep matching - filter by location if set
           setImportProgress('Loading sales reps...');
-          const { data: allProfiles } = await supabase
-            .from('profiles')
-            .select('id, first_name, last_name, email')
-            .eq('tenant_id', profile.tenant_id);
-
-          const profilesForMatching: ProfileMatch[] = allProfiles || [];
+          let profilesForMatching: ProfileMatch[] = [];
+          
+          if (currentLocationId) {
+            // Get reps assigned to this location
+            const { data: locationAssignments } = await supabase
+              .from('user_location_assignments')
+              .select('user_id')
+              .eq('location_id', currentLocationId);
+            
+            const assignedUserIds = (locationAssignments || []).map(a => a.user_id);
+            
+            if (assignedUserIds.length > 0) {
+              const { data: locationProfiles } = await supabase
+                .from('profiles')
+                .select('id, first_name, last_name, email')
+                .eq('tenant_id', profile.tenant_id)
+                .in('id', assignedUserIds);
+              profilesForMatching = locationProfiles || [];
+            }
+          } else {
+            // No location filter - get all tenant profiles
+            const { data: allProfiles } = await supabase
+              .from('profiles')
+              .select('id, first_name, last_name, email')
+              .eq('tenant_id', profile.tenant_id);
+            profilesForMatching = allProfiles || [];
+          }
 
           const rawData = results.data as Record<string, any>[];
           const normalizedData = rawData.map(row => normalizeRow(row));
