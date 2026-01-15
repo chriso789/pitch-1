@@ -22606,6 +22606,8 @@ export type Database = {
       }
       roof_measurements: {
         Row: {
+          accuracy_compared_at: string | null
+          accuracy_vs_manual_percent: number | null
           ai_analysis: Json | null
           ai_detection_data: Json
           ai_model_version: string | null
@@ -22621,12 +22623,15 @@ export type Database = {
           detection_timestamp: string | null
           dsm_available: boolean | null
           edge_count: number | null
+          edge_coverage_percent: number | null
           edge_segments: Json | null
           facet_count: number | null
           footprint_confidence: number | null
+          footprint_is_rectangular: boolean | null
           footprint_requires_review: boolean | null
           footprint_source: string | null
           footprint_validation: Json | null
+          footprint_vertex_count: number | null
           footprint_vertices_geo: Json | null
           gable_peak_count: number | null
           google_maps_image_url: string | null
@@ -22645,6 +22650,8 @@ export type Database = {
           interior_vertex_count: number | null
           is_archived: boolean | null
           linear_features_wkt: Json | null
+          manual_perimeter_wkt: string | null
+          manual_reference_area_sqft: number | null
           manual_review_recommended: boolean | null
           mapbox_image_url: string | null
           material_calculations: Json | null
@@ -22667,6 +22674,7 @@ export type Database = {
           property_zip: string | null
           quality_assessment: Json | null
           quality_checks: Json | null
+          quality_score: number | null
           report_generated_at: string | null
           report_pdf_url: string | null
           requires_manual_review: boolean | null
@@ -22706,6 +22714,8 @@ export type Database = {
           waste_factor_percent: number | null
         }
         Insert: {
+          accuracy_compared_at?: string | null
+          accuracy_vs_manual_percent?: number | null
           ai_analysis?: Json | null
           ai_detection_data: Json
           ai_model_version?: string | null
@@ -22721,12 +22731,15 @@ export type Database = {
           detection_timestamp?: string | null
           dsm_available?: boolean | null
           edge_count?: number | null
+          edge_coverage_percent?: number | null
           edge_segments?: Json | null
           facet_count?: number | null
           footprint_confidence?: number | null
+          footprint_is_rectangular?: boolean | null
           footprint_requires_review?: boolean | null
           footprint_source?: string | null
           footprint_validation?: Json | null
+          footprint_vertex_count?: number | null
           footprint_vertices_geo?: Json | null
           gable_peak_count?: number | null
           google_maps_image_url?: string | null
@@ -22745,6 +22758,8 @@ export type Database = {
           interior_vertex_count?: number | null
           is_archived?: boolean | null
           linear_features_wkt?: Json | null
+          manual_perimeter_wkt?: string | null
+          manual_reference_area_sqft?: number | null
           manual_review_recommended?: boolean | null
           mapbox_image_url?: string | null
           material_calculations?: Json | null
@@ -22767,6 +22782,7 @@ export type Database = {
           property_zip?: string | null
           quality_assessment?: Json | null
           quality_checks?: Json | null
+          quality_score?: number | null
           report_generated_at?: string | null
           report_pdf_url?: string | null
           requires_manual_review?: boolean | null
@@ -22806,6 +22822,8 @@ export type Database = {
           waste_factor_percent?: number | null
         }
         Update: {
+          accuracy_compared_at?: string | null
+          accuracy_vs_manual_percent?: number | null
           ai_analysis?: Json | null
           ai_detection_data?: Json
           ai_model_version?: string | null
@@ -22821,12 +22839,15 @@ export type Database = {
           detection_timestamp?: string | null
           dsm_available?: boolean | null
           edge_count?: number | null
+          edge_coverage_percent?: number | null
           edge_segments?: Json | null
           facet_count?: number | null
           footprint_confidence?: number | null
+          footprint_is_rectangular?: boolean | null
           footprint_requires_review?: boolean | null
           footprint_source?: string | null
           footprint_validation?: Json | null
+          footprint_vertex_count?: number | null
           footprint_vertices_geo?: Json | null
           gable_peak_count?: number | null
           google_maps_image_url?: string | null
@@ -22845,6 +22866,8 @@ export type Database = {
           interior_vertex_count?: number | null
           is_archived?: boolean | null
           linear_features_wkt?: Json | null
+          manual_perimeter_wkt?: string | null
+          manual_reference_area_sqft?: number | null
           manual_review_recommended?: boolean | null
           mapbox_image_url?: string | null
           material_calculations?: Json | null
@@ -22867,6 +22890,7 @@ export type Database = {
           property_zip?: string | null
           quality_assessment?: Json | null
           quality_checks?: Json | null
+          quality_score?: number | null
           report_generated_at?: string | null
           report_pdf_url?: string | null
           requires_manual_review?: boolean | null
