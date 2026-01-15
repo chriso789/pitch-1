@@ -228,7 +228,7 @@ async function getWorkflow(supabase: any, profile: any, jobId?: string, projectI
   });
 }
 
-async function advanceStage(supabase: any, profile: any, jobId?: string, projectId?: string, newStage?: string, notes?: string, userId?: string) {
+async function advanceStage(supabase: any, profile: any, jobId?: string, projectId?: string, newStage?: string, notes?: string, userId?: string, bypassGate?: boolean, bypassReason?: string) {
   if (!jobId && !projectId) {
     return new Response(JSON.stringify({ error: 'Job ID or Project ID required' }), {
       status: 400,
@@ -272,18 +272,52 @@ async function advanceStage(supabase: any, profile: any, jobId?: string, project
     });
   }
 
-  // Check stage requirements
-  const requirements = STAGE_REQUIREMENTS[workflow.current_stage] || [];
-  for (const requirement of requirements) {
-    if (!workflow[requirement]) {
-      return new Response(JSON.stringify({ 
-        error: `Cannot advance from ${workflow.current_stage}. Missing requirement: ${requirement}`
-      }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+  // === PHASE 11: Enhanced Gate Validation ===
+  const gateValidationResult = await validateGateRequirements(
+    supabase, 
+    profile, 
+    workflow, 
+    workflow.current_stage, 
+    newStage,
+    userId
+  );
+
+  if (!gateValidationResult.passed && !bypassGate) {
+    // Log failed validation
+    await supabase.from('production_gate_validations').insert({
+      tenant_id: profile.tenant_id,
+      project_id: workflow.project_id,
+      from_stage: workflow.current_stage,
+      to_stage: newStage,
+      validation_status: 'failed',
+      validation_results: gateValidationResult.details,
+      validated_by: userId,
+      validated_at: new Date().toISOString()
+    });
+
+    return new Response(JSON.stringify({ 
+      error: `Gate requirements not met for ${newStage}`,
+      gate_failures: gateValidationResult.failures,
+      details: gateValidationResult.details
+    }), {
+      status: 400,
+      headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+    });
   }
+
+  // Log gate validation (passed or bypassed)
+  await supabase.from('production_gate_validations').insert({
+    tenant_id: profile.tenant_id,
+    project_id: workflow.project_id,
+    from_stage: workflow.current_stage,
+    to_stage: newStage,
+    validation_status: bypassGate ? 'bypassed' : 'passed',
+    validation_results: gateValidationResult.details,
+    bypassed_by: bypassGate ? userId : null,
+    bypass_reason: bypassReason,
+    validated_by: userId,
+    validated_at: new Date().toISOString()
+  });
 
   // Update workflow stage
   const { error: updateError } = await supabase
@@ -311,7 +345,7 @@ async function advanceStage(supabase: any, profile: any, jobId?: string, project
       from_stage: workflow.current_stage,
       to_stage: newStage,
       changed_by: userId,
-      notes: notes || `Stage advanced from ${workflow.current_stage} to ${newStage}`,
+      notes: notes || `Stage advanced from ${workflow.current_stage} to ${newStage}${bypassGate ? ' (gate bypassed)' : ''}`,
       changed_at: new Date().toISOString()
     });
 
@@ -319,10 +353,110 @@ async function advanceStage(supabase: any, profile: any, jobId?: string, project
     success: true,
     previous_stage: workflow.current_stage,
     new_stage: newStage,
+    gate_validated: !bypassGate,
+    gate_bypassed: bypassGate,
     message: `Production stage advanced to ${newStage}`
   }), {
     headers: { ...corsHeaders, 'Content-Type': 'application/json' },
   });
+}
+
+// === PHASE 11: Gate Requirements Validation Function ===
+async function validateGateRequirements(
+  supabase: any, 
+  profile: any, 
+  workflow: any, 
+  fromStage: string, 
+  toStage: string,
+  userId: string
+): Promise<{
+  passed: boolean;
+  failures: string[];
+  details: Record<string, any>;
+}> {
+  const failures: string[] = [];
+  const details: Record<string, any> = {
+    checked_at: new Date().toISOString(),
+    from_stage: fromStage,
+    to_stage: toStage
+  };
+
+  // Get project details for more comprehensive validation
+  const { data: project } = await supabase
+    .from('projects')
+    .select('*, contacts(*)')
+    .eq('id', workflow.project_id)
+    .single();
+
+  // Stage-specific hard requirements
+  const stageRequirements = STAGE_REQUIREMENTS[fromStage] || [];
+  
+  for (const requirement of stageRequirements) {
+    const met = workflow[requirement] === true;
+    details[requirement] = met;
+    if (!met) {
+      failures.push(`Missing requirement: ${requirement.replace(/_/g, ' ')}`);
+    }
+  }
+
+  // === Critical Gate Checks ===
+  
+  // NOC Gate: Cannot proceed to materials_ordered without NOC
+  if (toStage === 'materials_ordered' && !workflow.noc_uploaded) {
+    failures.push('NOC document must be uploaded before ordering materials');
+    details.noc_gate_failed = true;
+  }
+
+  // Permit Gate: Cannot start work without permit approval
+  if (['in_progress', 'complete'].includes(toStage) && !workflow.permit_approved) {
+    failures.push('Building permit must be approved before starting work');
+    details.permit_gate_failed = true;
+  }
+
+  // Material Delivery Gate: Cannot start work without materials
+  if (toStage === 'in_progress' && !workflow.materials_delivered) {
+    failures.push('Materials must be delivered before starting work');
+    details.materials_gate_failed = true;
+  }
+
+  // Photo Documentation Gate: Check minimum photos per stage
+  if (project) {
+    const { count: photoCount } = await supabase
+      .from('photos')
+      .select('*', { count: 'exact', head: true })
+      .eq('project_id', project.id);
+
+    const minPhotosPerStage: Record<string, number> = {
+      'in_progress': 5,
+      'complete': 10,
+      'final_inspection': 15
+    };
+
+    const requiredPhotos = minPhotosPerStage[toStage] || 0;
+    if (photoCount < requiredPhotos) {
+      failures.push(`Minimum ${requiredPhotos} photos required (current: ${photoCount})`);
+      details.photo_count = photoCount;
+      details.required_photos = requiredPhotos;
+    }
+  }
+
+  // Final Inspection Gate: Work must be completed
+  if (toStage === 'final_inspection' && !workflow.work_completed) {
+    failures.push('Work must be marked complete before scheduling final inspection');
+    details.completion_gate_failed = true;
+  }
+
+  // Closed Gate: Final inspection must pass
+  if (toStage === 'closed' && !workflow.final_inspection_passed) {
+    failures.push('Final inspection must pass before closing project');
+    details.inspection_gate_failed = true;
+  }
+
+  return {
+    passed: failures.length === 0,
+    failures,
+    details
+  };
 }
 
 async function updateDocuments(supabase: any, profile: any, jobId?: string, projectId?: string, documentUpdates?: any, userId?: string) {

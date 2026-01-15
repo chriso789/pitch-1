@@ -3819,6 +3819,132 @@ export type Database = {
           },
         ]
       }
+      commission_payouts: {
+        Row: {
+          approved_at: string | null
+          approved_by: string | null
+          base_commission: number
+          bonus_commission: number | null
+          calculation_details: Json | null
+          contract_value: number
+          created_at: string | null
+          id: string
+          notes: string | null
+          paid_at: string | null
+          payment_reference: string | null
+          pipeline_entry_id: string | null
+          profit_margin: number | null
+          project_id: string | null
+          rule_id: string | null
+          status: string
+          tenant_id: string
+          total_commission: number
+          updated_at: string | null
+          user_id: string
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by?: string | null
+          base_commission?: number
+          bonus_commission?: number | null
+          calculation_details?: Json | null
+          contract_value: number
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          paid_at?: string | null
+          payment_reference?: string | null
+          pipeline_entry_id?: string | null
+          profit_margin?: number | null
+          project_id?: string | null
+          rule_id?: string | null
+          status?: string
+          tenant_id: string
+          total_commission: number
+          updated_at?: string | null
+          user_id: string
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by?: string | null
+          base_commission?: number
+          bonus_commission?: number | null
+          calculation_details?: Json | null
+          contract_value?: number
+          created_at?: string | null
+          id?: string
+          notes?: string | null
+          paid_at?: string | null
+          payment_reference?: string | null
+          pipeline_entry_id?: string | null
+          profit_margin?: number | null
+          project_id?: string | null
+          rule_id?: string | null
+          status?: string
+          tenant_id?: string
+          total_commission?: number
+          updated_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commission_payouts_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_payouts_approved_by_fkey"
+            columns: ["approved_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "commission_payouts_pipeline_entry_id_fkey"
+            columns: ["pipeline_entry_id"]
+            isOneToOne: false
+            referencedRelation: "pipeline_entries"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_payouts_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_payouts_rule_id_fkey"
+            columns: ["rule_id"]
+            isOneToOne: false
+            referencedRelation: "commission_rules"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_payouts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_payouts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_payouts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       commission_plans: {
         Row: {
           base_rate: number | null
@@ -3891,6 +4017,88 @@ export type Database = {
           },
           {
             foreignKeyName: "commission_plans_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      commission_rules: {
+        Row: {
+          applies_to_job_types: string[] | null
+          base_percentage: number | null
+          commission_type: string
+          created_at: string | null
+          created_by: string | null
+          description: string | null
+          flat_rate_amount: number | null
+          id: string
+          is_active: boolean | null
+          minimum_contract_value: number | null
+          name: string
+          priority: number | null
+          profit_bonus_tiers: Json | null
+          profit_split_percentage: number | null
+          role: string | null
+          tenant_id: string
+          updated_at: string | null
+        }
+        Insert: {
+          applies_to_job_types?: string[] | null
+          base_percentage?: number | null
+          commission_type: string
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          flat_rate_amount?: number | null
+          id?: string
+          is_active?: boolean | null
+          minimum_contract_value?: number | null
+          name: string
+          priority?: number | null
+          profit_bonus_tiers?: Json | null
+          profit_split_percentage?: number | null
+          role?: string | null
+          tenant_id: string
+          updated_at?: string | null
+        }
+        Update: {
+          applies_to_job_types?: string[] | null
+          base_percentage?: number | null
+          commission_type?: string
+          created_at?: string | null
+          created_by?: string | null
+          description?: string | null
+          flat_rate_amount?: number | null
+          id?: string
+          is_active?: boolean | null
+          minimum_contract_value?: number | null
+          name?: string
+          priority?: number | null
+          profit_bonus_tiers?: Json | null
+          profit_split_percentage?: number | null
+          role?: string | null
+          tenant_id?: string
+          updated_at?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "commission_rules_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "commission_rules_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "commission_rules_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -13716,6 +13924,78 @@ export type Database = {
           },
         ]
       }
+      manager_overrides: {
+        Row: {
+          created_at: string | null
+          effective_from: string | null
+          effective_to: string | null
+          id: string
+          is_active: boolean | null
+          manager_id: string
+          override_percentage: number
+          rep_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string | null
+          effective_from?: string | null
+          effective_to?: string | null
+          id?: string
+          is_active?: boolean | null
+          manager_id: string
+          override_percentage?: number
+          rep_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string | null
+          effective_from?: string | null
+          effective_to?: string | null
+          id?: string
+          is_active?: boolean | null
+          manager_id?: string
+          override_percentage?: number
+          rep_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "manager_overrides_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manager_overrides_manager_id_fkey"
+            columns: ["manager_id"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "manager_overrides_rep_id_fkey"
+            columns: ["rep_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "manager_overrides_rep_id_fkey"
+            columns: ["rep_id"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "manager_overrides_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       marketing_sessions: {
         Row: {
           analytics_consent: boolean | null
@@ -17526,6 +17806,94 @@ export type Database = {
         }
         Relationships: []
       }
+      production_gate_validations: {
+        Row: {
+          bypass_reason: string | null
+          bypassed_by: string | null
+          created_at: string | null
+          from_stage: string
+          id: string
+          project_id: string
+          tenant_id: string
+          to_stage: string
+          validated_at: string | null
+          validated_by: string | null
+          validation_results: Json | null
+          validation_status: string
+        }
+        Insert: {
+          bypass_reason?: string | null
+          bypassed_by?: string | null
+          created_at?: string | null
+          from_stage: string
+          id?: string
+          project_id: string
+          tenant_id: string
+          to_stage: string
+          validated_at?: string | null
+          validated_by?: string | null
+          validation_results?: Json | null
+          validation_status: string
+        }
+        Update: {
+          bypass_reason?: string | null
+          bypassed_by?: string | null
+          created_at?: string | null
+          from_stage?: string
+          id?: string
+          project_id?: string
+          tenant_id?: string
+          to_stage?: string
+          validated_at?: string | null
+          validated_by?: string | null
+          validation_results?: Json | null
+          validation_status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "production_gate_validations_bypassed_by_fkey"
+            columns: ["bypassed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_gate_validations_bypassed_by_fkey"
+            columns: ["bypassed_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "production_gate_validations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_gate_validations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_gate_validations_validated_by_fkey"
+            columns: ["validated_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "production_gate_validations_validated_by_fkey"
+            columns: ["validated_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       production_stage_history: {
         Row: {
           changed_at: string
@@ -17574,10 +17942,16 @@ export type Database = {
         Row: {
           color: string
           created_at: string | null
+          gate_documents_required: boolean | null
+          gate_requirements: Json | null
           icon: string | null
           id: string
           is_active: boolean | null
+          min_photos_required: number | null
           name: string
+          requires_material_order: boolean | null
+          requires_noc: boolean | null
+          requires_permit: boolean | null
           sort_order: number
           stage_key: string
           tenant_id: string
@@ -17586,10 +17960,16 @@ export type Database = {
         Insert: {
           color?: string
           created_at?: string | null
+          gate_documents_required?: boolean | null
+          gate_requirements?: Json | null
           icon?: string | null
           id?: string
           is_active?: boolean | null
+          min_photos_required?: number | null
           name: string
+          requires_material_order?: boolean | null
+          requires_noc?: boolean | null
+          requires_permit?: boolean | null
           sort_order: number
           stage_key: string
           tenant_id: string
@@ -17598,10 +17978,16 @@ export type Database = {
         Update: {
           color?: string
           created_at?: string | null
+          gate_documents_required?: boolean | null
+          gate_requirements?: Json | null
           icon?: string | null
           id?: string
           is_active?: boolean | null
+          min_photos_required?: number | null
           name?: string
+          requires_material_order?: boolean | null
+          requires_noc?: boolean | null
+          requires_permit?: boolean | null
           sort_order?: number
           stage_key?: string
           tenant_id?: string
@@ -25103,6 +25489,101 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      subcontractor_compliance: {
+        Row: {
+          coverage_amount: number | null
+          created_at: string | null
+          document_name: string | null
+          document_type: string
+          document_url: string | null
+          expires_at: string | null
+          file_path: string | null
+          id: string
+          is_verified: boolean | null
+          issued_at: string | null
+          policy_number: string | null
+          reminder_sent_at: string | null
+          status: string | null
+          subcontractor_id: string
+          tenant_id: string
+          updated_at: string | null
+          verification_notes: string | null
+          verified_at: string | null
+          verified_by: string | null
+        }
+        Insert: {
+          coverage_amount?: number | null
+          created_at?: string | null
+          document_name?: string | null
+          document_type: string
+          document_url?: string | null
+          expires_at?: string | null
+          file_path?: string | null
+          id?: string
+          is_verified?: boolean | null
+          issued_at?: string | null
+          policy_number?: string | null
+          reminder_sent_at?: string | null
+          status?: string | null
+          subcontractor_id: string
+          tenant_id: string
+          updated_at?: string | null
+          verification_notes?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Update: {
+          coverage_amount?: number | null
+          created_at?: string | null
+          document_name?: string | null
+          document_type?: string
+          document_url?: string | null
+          expires_at?: string | null
+          file_path?: string | null
+          id?: string
+          is_verified?: boolean | null
+          issued_at?: string | null
+          policy_number?: string | null
+          reminder_sent_at?: string | null
+          status?: string | null
+          subcontractor_id?: string
+          tenant_id?: string
+          updated_at?: string | null
+          verification_notes?: string | null
+          verified_at?: string | null
+          verified_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "subcontractor_compliance_subcontractor_id_fkey"
+            columns: ["subcontractor_id"]
+            isOneToOne: false
+            referencedRelation: "subcontractors"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subcontractor_compliance_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subcontractor_compliance_verified_by_fkey"
+            columns: ["verified_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subcontractor_compliance_verified_by_fkey"
+            columns: ["verified_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+        ]
       }
       subcontractor_documents: {
         Row: {
