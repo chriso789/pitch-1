@@ -180,9 +180,15 @@ serve(async (req) => {
     const modifiedPdfBytes = await pdfDoc.save();
     console.log(`[render-tagged-pdf] Generated PDF with ${modifiedPdfBytes.byteLength} bytes`);
 
-    // Return the PDF as base64
-    const base64Pdf = btoa(String.fromCharCode(...new Uint8Array(modifiedPdfBytes)));
-
+    // Return the PDF as base64 - use chunked conversion to avoid stack overflow
+    const uint8Array = new Uint8Array(modifiedPdfBytes);
+    let binary = '';
+    const chunkSize = 32768;
+    for (let i = 0; i < uint8Array.length; i += chunkSize) {
+      const chunk = uint8Array.subarray(i, i + chunkSize);
+      binary += String.fromCharCode.apply(null, Array.from(chunk));
+    }
+    const base64Pdf = btoa(binary);
     return new Response(
       JSON.stringify({
         success: true,
