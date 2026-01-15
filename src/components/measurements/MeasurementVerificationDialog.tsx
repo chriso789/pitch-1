@@ -19,6 +19,7 @@ import { ManualMeasurementEditor } from './ManualMeasurementEditor';
 import { FacetSplitterOverlay } from './FacetSplitterOverlay';
 import { SchematicRoofDiagram } from './SchematicRoofDiagram';
 import { RoofTracerOverlay } from './RoofTracerOverlay';
+import { RidgeCorrectionTool } from './RidgeCorrectionTool';
 import { MeasurementTracePanel } from './MeasurementTracePanel';
 import { MeasurementSystemLimitations } from '@/components/documentation/MeasurementSystemLimitations';
 import { ImageryAgeWarning } from './ImageryAgeWarning';
@@ -324,8 +325,8 @@ export function MeasurementVerificationDialog({
   const [validationOpen, setValidationOpen] = useState(false); // Validation report collapsible
   const [showReportPreview, setShowReportPreview] = useState(false); // Roofr-style report preview
   
-  // View mode toggle: 'satellite' for overlay, 'schematic' for clean diagram, 'trace' for manual roof tracing
-  const [viewMode, setViewMode] = useState<'satellite' | 'schematic' | 'trace'>('schematic');
+  // View mode toggle: 'satellite' for overlay, 'schematic' for clean diagram, 'trace' for manual roof tracing, 'correct-ridges' for ridge correction
+  const [viewMode, setViewMode] = useState<'satellite' | 'schematic' | 'trace' | 'correct-ridges'>('schematic');
   
   // Manual overlay offset adjustment controls
   const [overlayOffsetX, setOverlayOffsetX] = useState(0); // Horizontal offset in pixels
@@ -1561,6 +1562,22 @@ export function MeasurementVerificationDialog({
                       <Pencil className="h-3.5 w-3.5 mr-1.5" />
                       Trace
                     </Button>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant={viewMode === 'correct-ridges' ? 'default' : 'ghost'}
+                          size="sm"
+                          className="h-7 text-xs px-3"
+                          onClick={() => setViewMode('correct-ridges')}
+                        >
+                          <Edit3 className="h-3.5 w-3.5 mr-1.5" />
+                          Fix Ridges
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Manually correct ridge and hip lines to match satellite imagery</p>
+                      </TooltipContent>
+                    </Tooltip>
                   </div>
                   
                   {/* Re-analyze Roof Button */}
@@ -1863,6 +1880,118 @@ export function MeasurementVerificationDialog({
                           setViewMode('schematic');
                         } catch (err: any) {
                           console.error('Failed to save traced features:', err);
+                          toast({
+                            title: 'Save Failed',
+                            description: err.message,
+                            variant: 'destructive',
+                          });
+                        }
+                      }}
+                      onCancel={() => setViewMode('schematic')}
+                    />
+                  ) : viewMode === 'correct-ridges' ? (
+                    /* Ridge Correction Mode - Manually adjust ridge/hip positions */
+                    <RidgeCorrectionTool
+                      satelliteImageUrl={cleanSatelliteImageUrl}
+                      currentRidges={(() => {
+                        const features = dbMeasurement?.linear_features || measurement?.linear_features || [];
+                        return features
+                          .filter((f: any) => f.type === 'ridge')
+                          .map((f: any, i: number) => ({
+                            id: f.id || `ridge-${i}`,
+                            type: 'ridge' as const,
+                            startX: f.startX || 30,
+                            startY: f.startY || 50,
+                            endX: f.endX || 70,
+                            endY: f.endY || 50,
+                          }));
+                      })()}
+                      currentHips={(() => {
+                        const features = dbMeasurement?.linear_features || measurement?.linear_features || [];
+                        return features
+                          .filter((f: any) => f.type === 'hip')
+                          .map((f: any, i: number) => ({
+                            id: f.id || `hip-${i}`,
+                            type: 'hip' as const,
+                            startX: f.startX || 20,
+                            startY: f.startY || 20,
+                            endX: f.endX || 30,
+                            endY: f.endY || 50,
+                          }));
+                      })()}
+                      currentValleys={(() => {
+                        const features = dbMeasurement?.linear_features || measurement?.linear_features || [];
+                        return features
+                          .filter((f: any) => f.type === 'valley')
+                          .map((f: any, i: number) => ({
+                            id: f.id || `valley-${i}`,
+                            type: 'valley' as const,
+                            startX: f.startX || 50,
+                            startY: f.startY || 20,
+                            endX: f.endX || 50,
+                            endY: f.endY || 50,
+                          }));
+                      })()}
+                      canvasWidth={RESOLUTION_CONFIG[resolution].width}
+                      canvasHeight={RESOLUTION_CONFIG[resolution].height}
+                      onSave={async (correctedLines) => {
+                        try {
+                          if (!pipelineEntryId) {
+                            toast({ title: 'Missing property ID', variant: 'destructive' });
+                            return;
+                          }
+                          
+                          // Calculate totals from corrected lines
+                          const totals = {
+                            ridge_ft: correctedLines.filter(f => f.type === 'ridge').reduce((sum, f) => sum + (f.lengthFt || 0), 0),
+                            hip_ft: correctedLines.filter(f => f.type === 'hip').reduce((sum, f) => sum + (f.lengthFt || 0), 0),
+                            valley_ft: correctedLines.filter(f => f.type === 'valley').reduce((sum, f) => sum + (f.lengthFt || 0), 0),
+                          };
+                          
+                          // Preserve eave/rake features from existing data
+                          const existingFeatures = dbMeasurement?.linear_features || [];
+                          const eavesRakes = existingFeatures.filter((f: any) => 
+                            f.type === 'eave' || f.type === 'rake'
+                          );
+                          
+                          // Merge corrected ridges/hips/valleys with existing eaves/rakes
+                          const mergedFeatures = [...correctedLines, ...eavesRakes];
+                          
+                          // Update the roof_measurements record
+                          const { error } = await supabase
+                            .from('roof_measurements')
+                            .update({
+                              linear_features: mergedFeatures,
+                              total_ridge_length: Math.round(totals.ridge_ft),
+                              total_hip_length: Math.round(totals.hip_ft),
+                              total_valley_length: Math.round(totals.valley_ft),
+                              updated_at: new Date().toISOString(),
+                            })
+                            .eq('customer_id', pipelineEntryId);
+                          
+                          if (error) throw error;
+                          
+                          // Reload from database
+                          const { data: freshDb } = await supabase
+                            .from('roof_measurements')
+                            .select('*')
+                            .eq('customer_id', pipelineEntryId)
+                            .order('created_at', { ascending: false })
+                            .limit(1)
+                            .single();
+                          
+                          if (freshDb) {
+                            setDbMeasurement(freshDb);
+                          }
+                          
+                          toast({
+                            title: 'Ridge Corrections Saved',
+                            description: `Updated ${correctedLines.length} roof features`,
+                          });
+                          
+                          setViewMode('schematic');
+                        } catch (err: any) {
+                          console.error('Failed to save ridge corrections:', err);
                           toast({
                             title: 'Save Failed',
                             description: err.message,
