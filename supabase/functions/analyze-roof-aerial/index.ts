@@ -428,6 +428,10 @@ Deno.serve(async (req) => {
     }
     timings.footprint_microsoft = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0) - (timings.footprint_regrid || 0) - (timings.footprint_osm || 0);
 
+    // Select best image EARLY (needed for AI Vision step)
+    const selectedImage = googleImage.url ? googleImage : mapboxImage;
+    const imageSource = selectedImage.source;
+
     // ═══════════════════════════════════════════════════════════════════════════
     // STEP 4.5: AI Vision Building Detection (when all API sources fail)
     // Uses Claude Vision to trace building perimeter from satellite image
@@ -534,9 +538,8 @@ Deno.serve(async (req) => {
     }
     // ═══════════════════════════════════════════════════════════════════════════
 
-    // Select best image (prefer Google Maps for better measurement accuracy)
-    const selectedImage = googleImage.url ? googleImage : mapboxImage
-    const imageSource = selectedImage.source
+    // selectedImage and imageSource already declared above (before STEP 4.5)
+    const imageYear = new Date().getFullYear()
     const imageYear = new Date().getFullYear()
     
     // CRITICAL FIX: For coordinate conversion, we use LOGICAL size (what the zoom level represents)
