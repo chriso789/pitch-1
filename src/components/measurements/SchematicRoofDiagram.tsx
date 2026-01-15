@@ -1240,25 +1240,32 @@ export function SchematicRoofDiagram({
             )}
           </Badge>
           
-          {/* DSM Quality Indicator */}
+          {/* DSM / Ridge Detection Quality Indicator */}
           {measurement.dsm_available !== undefined && (
             <Badge 
               variant="outline"
               className={`text-[10px] gap-1 ${
                 measurement.dsm_available 
                   ? 'bg-green-50 text-green-700 border-green-300' 
-                  : 'bg-amber-50 text-amber-700 border-amber-300'
+                  : measurement.footprint_source 
+                  ? 'bg-amber-50 text-amber-700 border-amber-300'
+                  : 'bg-orange-50 text-orange-700 border-orange-300'
               }`}
             >
               {measurement.dsm_available ? (
                 <>
                   <CheckCircle className="h-2.5 w-2.5" />
-                  DSM Ridge Detection
+                  AI Ridge Detection
+                </>
+              ) : measurement.footprint_source ? (
+                <>
+                  <AlertTriangle className="h-2.5 w-2.5" />
+                  Geometry Estimated
                 </>
               ) : (
                 <>
                   <AlertTriangle className="h-2.5 w-2.5" />
-                  Skeleton Fallback
+                  Perimeter Only - Trace Footprint
                 </>
               )}
             </Badge>

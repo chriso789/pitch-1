@@ -79,15 +79,16 @@ const ContactForm: React.FC<ContactFormProps> = ({
   const [newTag, setNewTag] = useState("");
   const [assignedTo, setAssignedTo] = useState<string>("");
   const [tenantUsers, setTenantUsers] = useState<Array<{ id: string; name: string; email: string }>>([]);
-  // Hardcoded lead sources
-  const leadSources = [
+  // Dynamic lead sources from database
+  const [leadSources, setLeadSources] = useState<Array<{ id: string; name: string }>>([
     { id: "google", name: "Google" },
     { id: "facebook", name: "Facebook" },
     { id: "instagram", name: "Instagram" },
     { id: "sign", name: "Sign" },
     { id: "call_in", name: "Call In" },
     { id: "referral", name: "Referral" },
-  ];
+  ]);
+  const [isLoadingLeadSources, setIsLoadingLeadSources] = useState(false);
   const [draftLoaded, setDraftLoaded] = useState(false);
 
   // Load draft on mount
@@ -148,6 +149,38 @@ const ContactForm: React.FC<ContactFormProps> = ({
     fetchTenantUsers();
   }, [effectiveTenantId, currentUser?.tenant_id]);
 
+  // Fetch lead sources from database
+  useEffect(() => {
+    const fetchLeadSources = async () => {
+      const tenantToUse = effectiveTenantId || currentUser?.tenant_id;
+      if (!tenantToUse) return;
+
+      setIsLoadingLeadSources(true);
+      try {
+        const { data: sources, error } = await supabase
+          .from('lead_sources')
+          .select('id, name')
+          .eq('tenant_id', tenantToUse)
+          .eq('is_active', true)
+          .order('name');
+
+        if (error) {
+          console.error('Error fetching lead sources:', error);
+          return;
+        }
+
+        if (sources && sources.length > 0) {
+          setLeadSources(sources);
+        }
+      } catch (err) {
+        console.error('Error in fetchLeadSources:', err);
+      } finally {
+        setIsLoadingLeadSources(false);
+      }
+    };
+
+    fetchLeadSources();
+  }, [effectiveTenantId, currentUser?.tenant_id]);
 
   const handleInputChange = (field: keyof ContactFormData, value: string | string[]) => {
     setFormData(prev => ({ ...prev, [field]: value }));
