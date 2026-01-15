@@ -80,6 +80,8 @@ export interface AssembledGeometry {
   ridges: AssembledLine[];
   hips: AssembledLine[];
   valleys: AssembledLine[];
+  eaves: AssembledLine[];
+  rakes: AssembledLine[];
   quality: 'excellent' | 'good' | 'fair';
   warnings: string[];
   structureAnalysis?: StructureAnalysis;
@@ -206,7 +208,7 @@ function assembleFromCenters(
   });
   
   // Derive linear features from facet adjacencies
-  const { ridges, hips, valleys } = deriveLinearFeaturesFromFacets(facets, perimeter, centroid, structureAnalysis);
+  const { ridges, hips, valleys, eaves, rakes } = deriveLinearFeaturesFromFacets(facets, perimeter, centroid, structureAnalysis);
   
   // If facet generation failed, use azimuth-based fallback
   if (facets.length < 2 && segments.length >= 2) {
@@ -219,6 +221,8 @@ function assembleFromCenters(
     ridges,
     hips,
     valleys,
+    eaves,
+    rakes,
     quality: facets.length >= segments.length * 0.7 ? 'excellent' : 'good',
     warnings,
     structureAnalysis
@@ -383,11 +387,18 @@ function assembleFromAzimuths(
     hips.push({ id: 'hip_3', start: ne, end: ridgeEnd, lengthFt: distanceFt(ne, ridgeEnd) });
   }
   
+  // Classify perimeter edges as eaves or rakes
+  const eaves: AssembledLine[] = [];
+  const rakes: AssembledLine[] = [];
+  classifyPerimeterEdges(perimeter, isWider, eaves, rakes);
+  
   return {
     facets,
     ridges,
     hips,
     valleys: [],
+    eaves,
+    rakes,
     quality: facets.length >= 2 ? 'good' : 'fair',
     warnings: [...warnings, 'Used azimuth clustering - positions may be approximate'],
     structureAnalysis
@@ -433,11 +444,19 @@ function createFallbackGeometry(
     sourceSegmentIndex: -1
   }];
   
+  // Classify perimeter edges as eaves/rakes for fallback
+  const isWider = (bounds.maxX - bounds.minX) > (bounds.maxY - bounds.minY);
+  const eaves: AssembledLine[] = [];
+  const rakes: AssembledLine[] = [];
+  classifyPerimeterEdges(perimeter, isWider, eaves, rakes);
+  
   return {
     facets,
     ridges: [{ id: 'ridge_0', start: ridgeStart, end: ridgeEnd, lengthFt: distanceFt(ridgeStart, ridgeEnd) }],
     hips: [],
     valleys: [],
+    eaves,
+    rakes,
     quality: 'fair',
     warnings: [...warnings, 'Using perimeter-only fallback'],
     structureAnalysis
@@ -601,10 +620,12 @@ function deriveLinearFeaturesFromFacets(
   perimeter: XY[],
   centroid: XY,
   structureAnalysis?: StructureAnalysis
-): { ridges: AssembledLine[]; hips: AssembledLine[]; valleys: AssembledLine[] } {
+): { ridges: AssembledLine[]; hips: AssembledLine[]; valleys: AssembledLine[]; eaves: AssembledLine[]; rakes: AssembledLine[] } {
   const ridges: AssembledLine[] = [];
   const hips: AssembledLine[] = [];
   const valleys: AssembledLine[] = [];
+  const eaves: AssembledLine[] = [];
+  const rakes: AssembledLine[] = [];
   
   if (facets.length >= 2) {
     const bounds = getBounds(perimeter);
@@ -661,9 +682,76 @@ function deriveLinearFeaturesFromFacets(
       hips.push({ id: 'hip_2', start: nw, end: ridgeEnd, lengthFt: distanceFt(nw, ridgeEnd) });
       hips.push({ id: 'hip_3', start: ne, end: ridgeEnd, lengthFt: distanceFt(ne, ridgeEnd) });
     }
+    
+    // Classify perimeter edges as eaves or rakes based on ridge orientation
+    classifyPerimeterEdges(perimeter, isWider, eaves, rakes);
   }
   
-  return { ridges, hips, valleys };
+  return { ridges, hips, valleys, eaves, rakes };
+}
+
+/**
+ * Classify perimeter edges as eaves or rakes based on ridge orientation
+ * - Eaves: horizontal edges (parallel to ridge for horizontal ridge, perpendicular for vertical)
+ * - Rakes: sloped edges on gable ends
+ * 
+ * For hip roofs, most perimeter edges are eaves
+ */
+function classifyPerimeterEdges(
+  perimeter: XY[],
+  isHorizontalRidge: boolean,
+  eaves: AssembledLine[],
+  rakes: AssembledLine[]
+): void {
+  const n = perimeter.length;
+  
+  for (let i = 0; i < n; i++) {
+    const start = perimeter[i];
+    const end = perimeter[(i + 1) % n];
+    
+    // Skip very short edges
+    const length = distanceFt(start, end);
+    if (length < 2) continue;
+    
+    // Calculate edge angle (0° = east, 90° = north)
+    const dx = end[0] - start[0];
+    const dy = end[1] - start[1];
+    const angle = Math.abs(Math.atan2(dy, dx) * 180 / Math.PI);
+    
+    // Normalize to 0-90 range
+    const normalizedAngle = angle > 90 ? 180 - angle : angle;
+    
+    // For hip roofs, all perimeter edges are typically eaves
+    // For gable roofs:
+    // - Horizontal ridge: North/South edges are eaves, East/West edges are rakes
+    // - Vertical ridge: East/West edges are eaves, North/South edges are rakes
+    
+    // Classify based on edge orientation relative to ridge
+    // If ridge is horizontal (E-W), then N-S edges are eaves (angles near 90°)
+    // If ridge is vertical (N-S), then E-W edges are eaves (angles near 0°)
+    
+    const isEave = isHorizontalRidge 
+      ? normalizedAngle > 45  // Edge runs more N-S = eave for horizontal ridge
+      : normalizedAngle <= 45; // Edge runs more E-W = eave for vertical ridge
+    
+    if (isEave) {
+      eaves.push({
+        id: `eave_${eaves.length}`,
+        start,
+        end,
+        lengthFt: length
+      });
+    } else {
+      rakes.push({
+        id: `rake_${rakes.length}`,
+        start,
+        end,
+        lengthFt: length
+      });
+    }
+  }
+  
+  console.log(`📐 Classified perimeter: ${eaves.length} eaves (${eaves.reduce((s, e) => s + e.lengthFt, 0).toFixed(0)} ft), ${rakes.length} rakes (${rakes.reduce((s, r) => s + r.lengthFt, 0).toFixed(0)} ft)`);
 }
 
 function findPerimeterEdgesFacing(

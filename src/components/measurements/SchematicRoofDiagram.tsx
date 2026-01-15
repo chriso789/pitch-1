@@ -688,8 +688,82 @@ export function SchematicRoofDiagram({
     rake: tags['lf.rake'] || measurement?.total_rake_length || measurement?.summary?.rake_ft || 0,
     step: tags['lf.step'] || measurement?.summary?.step_ft || 0,
     total_area: tags['roof.total_area'] || measurement?.total_area_adjusted_sqft || measurement?.summary?.total_area_sqft || 0,
+    flat_area: measurement?.total_area_flat_sqft || measurement?.flat_area_sqft || 0,
     facet_count: measurement?.facet_count || facets.length || 0,
   }), [tags, measurement, facets]);
+  
+  // Calculate measurement verification metrics
+  const verificationMetrics = useMemo(() => {
+    // Calculate total eave+rake length from diagram segments
+    const diagramEaveLength = eaveSegments.reduce((sum, s) => sum + (s.length || 0), 0);
+    const diagramRakeLength = rakeSegments.reduce((sum, s) => sum + (s.length || 0), 0);
+    
+    // Calculate perimeter from perimeter segments
+    const perimeterLength = perimeterSegments.reduce((sum, s) => sum + (s.length || 0), 0);
+    
+    // Edge coverage: eave+rake should be close to perimeter for a valid measurement
+    const totalEdgeLength = diagramEaveLength + diagramRakeLength;
+    const edgeCoverage = perimeterLength > 0 ? (totalEdgeLength / perimeterLength) * 100 : 0;
+    
+    // Database vs diagram comparison
+    const dbEave = totals.eave;
+    const dbRake = totals.rake;
+    const dbTotal = dbEave + dbRake;
+    
+    // Facet verification
+    const storedFacets = facets.length;
+    const expectedFacets = measurement?.facet_count || 0;
+    const facetMismatch = expectedFacets > 0 && storedFacets !== expectedFacets;
+    
+    // Flat area vs adjusted area check
+    const flatArea = totals.flat_area;
+    const adjustedArea = totals.total_area;
+    const impliedMultiplier = flatArea > 0 ? adjustedArea / flatArea : 1;
+    
+    // Warnings
+    const warnings: string[] = [];
+    if (edgeCoverage < 50 && perimeterLength > 0) {
+      warnings.push(`Low edge coverage: ${edgeCoverage.toFixed(0)}%`);
+    }
+    if (facetMismatch) {
+      warnings.push(`Facets: ${storedFacets} stored vs ${expectedFacets} expected`);
+    }
+    if (diagramEaveLength === 0 && diagramRakeLength === 0 && perimeterLength > 0) {
+      warnings.push('No eave/rake segments in diagram');
+    }
+    
+    return {
+      diagramEaveLength,
+      diagramRakeLength,
+      perimeterLength,
+      edgeCoverage,
+      dbEave,
+      dbRake,
+      dbTotal,
+      storedFacets,
+      expectedFacets,
+      facetMismatch,
+      flatArea,
+      adjustedArea,
+      impliedMultiplier,
+      warnings,
+      hasIssues: warnings.length > 0
+    };
+  }, [eaveSegments, rakeSegments, perimeterSegments, totals, facets, measurement]);
+
+  // Log verification metrics for debugging
+  useEffect(() => {
+    if (verificationMetrics.hasIssues) {
+      console.warn('⚠️ Measurement verification issues:', verificationMetrics.warnings);
+      console.log('📊 Verification metrics:', {
+        perimeterLength: `${verificationMetrics.perimeterLength.toFixed(0)} ft`,
+        diagramEdges: `E: ${verificationMetrics.diagramEaveLength.toFixed(0)}' R: ${verificationMetrics.diagramRakeLength.toFixed(0)}'`,
+        dbEdges: `E: ${verificationMetrics.dbEave.toFixed(0)}' R: ${verificationMetrics.dbRake.toFixed(0)}'`,
+        coverage: `${verificationMetrics.edgeCoverage.toFixed(0)}%`,
+        facets: `${verificationMetrics.storedFacets}/${verificationMetrics.expectedFacets}`,
+      });
+    }
+  }, [verificationMetrics]);
   
   // Check if we should show "perimeter only" warning
   // Only show if: no database facets loaded AND measurement expects facets AND reconstructor didn't help
@@ -1189,9 +1263,9 @@ export function SchematicRoofDiagram({
         </div>
       )}
       
-      {/* QA Panel */}
+      {/* QA Panel - Enhanced with verification metrics */}
       {showQAPanel && geometryQA && (
-        <div className="absolute top-3 right-3 bg-slate-800/90 text-white rounded-lg px-3 py-2 shadow-lg text-[10px] font-mono">
+        <div className="absolute top-3 right-3 bg-slate-800/90 text-white rounded-lg px-3 py-2 shadow-lg text-[10px] font-mono max-w-[240px]">
           <div className="font-semibold text-xs mb-1">Geometry QA</div>
           <div className="grid gap-0.5">
             <div>Vertices: {geometryQA.vertexCount}</div>
@@ -1201,6 +1275,57 @@ export function SchematicRoofDiagram({
             </div>
             <div>Perimeter: <span className={geometryQA.perimeterStatus === 'ok' ? 'text-green-400' : 'text-amber-400'}>{geometryQA.perimeterStatus}</span></div>
           </div>
+          
+          {/* Verification Metrics Section */}
+          <div className="border-t border-slate-600 mt-1.5 pt-1.5">
+            <div className="text-amber-400 text-[9px] font-semibold mb-0.5">Edge Verification</div>
+            <div className="grid gap-0.5">
+              <div>Perimeter: <span className="text-cyan-300">{verificationMetrics.perimeterLength.toFixed(0)} LF</span></div>
+              <div className="flex gap-2">
+                <span style={{ color: FEATURE_COLORS.eave }}>E: {verificationMetrics.diagramEaveLength.toFixed(0)}'</span>
+                <span style={{ color: FEATURE_COLORS.rake }}>R: {verificationMetrics.diagramRakeLength.toFixed(0)}'</span>
+              </div>
+              <div>Coverage: 
+                <span className={verificationMetrics.edgeCoverage >= 80 ? 'text-green-400' : verificationMetrics.edgeCoverage >= 50 ? 'text-amber-400' : 'text-red-400'}>
+                  {' '}{verificationMetrics.edgeCoverage.toFixed(0)}%
+                </span>
+              </div>
+            </div>
+          </div>
+          
+          {/* Facet Verification */}
+          {verificationMetrics.facetMismatch && (
+            <div className="border-t border-slate-600 mt-1.5 pt-1.5">
+              <div className="text-red-400 text-[9px]">
+                ⚠️ Facets: {verificationMetrics.storedFacets}/{verificationMetrics.expectedFacets}
+              </div>
+            </div>
+          )}
+          
+          {/* Warnings */}
+          {verificationMetrics.warnings.length > 0 && (
+            <div className="border-t border-slate-600 mt-1.5 pt-1.5">
+              <div className="text-red-400 text-[9px]">
+                {verificationMetrics.warnings.map((w, i) => (
+                  <div key={i}>⚠️ {w}</div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+      
+      {/* Measurement Issues Badge - Shows when there are verification problems */}
+      {verificationMetrics.hasIssues && !showQAPanel && (
+        <div className="absolute top-3 right-3 z-10">
+          <Badge 
+            variant="outline"
+            className="bg-amber-50 text-amber-800 border-amber-300 text-xs gap-1 cursor-pointer"
+            onClick={() => setLocalShowDebugPanel(true)}
+          >
+            <AlertTriangle className="h-3 w-3" />
+            {verificationMetrics.warnings.length} Issue{verificationMetrics.warnings.length > 1 ? 's' : ''}
+          </Badge>
         </div>
       )}
       
