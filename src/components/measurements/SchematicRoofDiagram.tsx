@@ -1392,8 +1392,26 @@ export function SchematicRoofDiagram({
         );
       })()}
       
+      {/* CRITICAL WARNING: Solar BBox Fallback - Rectangular Approximation */}
+      {measurement?.footprint_source === 'solar_bbox_fallback' && (
+        <div className="absolute top-3 left-3 right-3 z-20 bg-red-100 border-2 border-red-400 rounded-lg px-4 py-3 shadow-lg animate-pulse">
+          <div className="flex items-start gap-3">
+            <AlertTriangle className="h-6 w-6 text-red-600 flex-shrink-0 mt-0.5" />
+            <div>
+              <div className="font-bold text-red-800 text-sm">⚠️ Rectangular Estimate - Manual Verification Required</div>
+              <div className="text-red-700 text-xs mt-1">
+                Using Solar API bounding box (4 vertices). Area may be <span className="font-bold">15-25% overestimated</span> due to rectangular approximation.
+              </div>
+              <div className="text-red-600 text-xs mt-1 font-medium">
+                Recommend: Draw accurate footprint or import from measurement report
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Footprint Source Badge - shows data origin for transparency */}
-      {(measurement?.footprint_source || measurement?.dsm_available !== undefined) && (
+      {(measurement?.footprint_source || measurement?.dsm_available !== undefined) && measurement?.footprint_source !== 'solar_bbox_fallback' && (
         <div className="absolute top-3 left-48 z-10 flex flex-col gap-1">
           {/* Primary source badge */}
           <Badge 
@@ -1401,6 +1419,8 @@ export function SchematicRoofDiagram({
               measurement.footprint_source?.includes('google_solar') ? 'default' :
               measurement.footprint_source === 'mapbox_vector' ? 'default' :
               measurement.footprint_source === 'regrid_parcel' ? 'secondary' :
+              measurement.footprint_source === 'osm_overpass' ? 'secondary' :
+              measurement.footprint_source === 'microsoft_buildings' ? 'secondary' :
               'outline'
             }
             className={`text-xs gap-1 ${
@@ -1414,6 +1434,10 @@ export function SchematicRoofDiagram({
                 ? 'bg-blue-600 hover:bg-blue-600 text-white'
                 : measurement.footprint_source === 'regrid_parcel'
                 ? 'bg-blue-600 hover:bg-blue-600 text-white'
+                : measurement.footprint_source === 'osm_overpass'
+                ? 'bg-indigo-600 hover:bg-indigo-600 text-white'
+                : measurement.footprint_source === 'microsoft_buildings'
+                ? 'bg-cyan-600 hover:bg-cyan-600 text-white'
                 : 'bg-amber-100 text-amber-800 border-amber-300'
             }`}
           >
@@ -1445,6 +1469,18 @@ export function SchematicRoofDiagram({
               <>
                 <Map className="h-3 w-3" />
                 Parcel Data ({Math.round((measurement.footprint_confidence || 0.85) * 100)}%)
+              </>
+            )}
+            {measurement.footprint_source === 'osm_overpass' && (
+              <>
+                <Map className="h-3 w-3" />
+                OSM Footprint ({Math.round((measurement.footprint_confidence || 0.85) * 100)}%)
+              </>
+            )}
+            {measurement.footprint_source === 'microsoft_buildings' && (
+              <>
+                <Layers className="h-3 w-3" />
+                MS Buildings ({Math.round((measurement.footprint_confidence || 0.88) * 100)}%)
               </>
             )}
             {measurement.footprint_source === 'ai_detection' && (
