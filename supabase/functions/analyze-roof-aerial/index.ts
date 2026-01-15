@@ -159,9 +159,12 @@ Deno.serve(async (req) => {
   const startTime = Date.now()
   
   try {
-    const { address, coordinates, customerId, userId } = await req.json()
+    const { address, coordinates, customerId, userId, forceFullAnalysis } = await req.json()
     console.log('🏠 Analyzing roof:', address)
     console.log('📍 Coordinates:', coordinates.lat, coordinates.lng)
+    if (forceFullAnalysis) {
+      console.log('🔄 forceFullAnalysis=true: Bypassing Solar Fast Path for full AI analysis')
+    }
 
     // Initialize Supabase client early for historical lookup
     const supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
@@ -217,7 +220,7 @@ Deno.serve(async (req) => {
     // Target: Complete in <15 seconds when Solar segments are available
     // ═══════════════════════════════════════════════════════════════════════════
     
-    if (solarData?.available && solarData?.roofSegments?.length >= 2 && solarData?.buildingFootprintSqft > 0) {
+    if (!forceFullAnalysis && solarData?.available && solarData?.roofSegments?.length >= 2 && solarData?.buildingFootprintSqft > 0) {
       console.log(`🚀 SOLAR FAST PATH: ${solarData.roofSegments.length} segments, ${solarData.buildingFootprintSqft.toFixed(0)} sqft`)
       
       try {
@@ -4391,12 +4394,68 @@ async function processSolarFastPath(
     }
   }
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // STEP 2.9: AI VISION BUILDING DETECTION (BEFORE Solar bbox fallback)
+  // Uses Claude Vision to trace building perimeter from satellite image
+  // This MUST run before falling back to low-fidelity bounding box
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (perimeterXY.length === 0 && selectedImage?.url) {
+    console.log('🤖 STEP 2.9: Using AI Vision to detect building footprint (Solar Fast Path)...')
+    
+    try {
+      const detectResponse = await fetch(
+        `${SUPABASE_URL}/functions/v1/detect-building-footprint`,
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+          },
+          body: JSON.stringify({
+            imageUrl: selectedImage.url,
+            lat: coordinates.lat,
+            lng: coordinates.lng,
+            imageWidth: 640,
+            imageHeight: 640
+          })
+        }
+      )
+
+      if (detectResponse.ok) {
+        const detectResult = await detectResponse.json()
+        
+        if (detectResult.success && detectResult.footprint?.vertices?.length >= 4) {
+          const aiVertices = detectResult.footprint.vertices
+          
+          // Convert {lat, lng} to [lng, lat] format for perimeter
+          perimeterXY = aiVertices.map((v: any) => [v.lng, v.lat])
+          footprintSource = 'ai_vision_detected' as any
+          footprintConfidence = (detectResult.footprint.confidence || 0.85) * 0.85
+          footprintVertexCount = aiVertices.length
+          
+          console.log(`✅ AI Vision footprint (Solar Fast Path): ${footprintVertexCount} vertices, confidence ${(footprintConfidence * 100).toFixed(0)}%`)
+          console.log(`   Building type: ${detectResult.footprint.building_type || 'residential'}`)
+        } else {
+          console.log(`⚠️ AI Vision returned no usable footprint: ${detectResult.error || 'insufficient vertices'}`)
+        }
+      } else {
+        const errorText = await detectResponse.text().catch(() => 'Unknown error')
+        console.warn(`⚠️ AI Vision detection failed (status ${detectResponse.status}): ${errorText}`)
+      }
+    } catch (aiVisionErr) {
+      console.warn('⚠️ AI Vision detection error in Solar Fast Path:', aiVisionErr)
+    }
+  }
+  // ═══════════════════════════════════════════════════════════════════════════
+  
   // STEP 3: Fallback to Solar bounding box (rectangle - lowest fidelity)
   // ⚠️ CRITICAL: Bounding box includes non-roof areas (patios, pools, landscaping)
   // This WILL overestimate area - mark as low confidence and require review
+  // This should only run if AI Vision also failed
   if (perimeterXY.length === 0 && boundingBox?.sw && boundingBox?.ne) {
     console.log('⚠️ STEP 3: Using Solar API bounding box as perimeter fallback (4 vertices - rectangle)')
     console.log('⚠️ WARNING: Bounding box includes non-roof areas - area may be significantly overestimated!')
+    console.log('⚠️ All better sources failed: Mapbox, Regrid, OSM, Microsoft, AI Vision')
     const sw = boundingBox.sw
     const ne = boundingBox.ne
     perimeterXY = [

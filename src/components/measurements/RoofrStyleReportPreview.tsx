@@ -181,6 +181,7 @@ export function RoofrStyleReportPreview({
             lat: roofMeasurementData.latitude,
             lng: roofMeasurementData.longitude,
           },
+          forceFullAnalysis: true, // Force full AI analysis on re-measure, bypass Solar Fast Path
         },
       });
       
