@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Package, Wrench, Search } from 'lucide-react';
 import { MaterialBrowser } from './MaterialBrowser';
 
@@ -19,10 +20,19 @@ interface AddItemDialogProps {
     sku?: string;
     material_id?: string;
     coverage_per_unit?: number;
+    sections?: string[];
   }) => void;
 }
 
 const UNITS = ['SQ', 'LF', 'EA', 'BX', 'RL', 'BDL', 'GAL', 'PC', 'LB'];
+
+const SECTION_OPTIONS = [
+  { value: 'roof', label: 'Roofing' },
+  { value: 'gutter', label: 'Gutters' },
+  { value: 'exterior', label: 'Exterior' },
+  { value: 'interior', label: 'Interior' },
+  { value: 'labor', label: 'Labor' },
+];
 
 export const AddItemDialog = ({ open, onOpenChange, onAdd }: AddItemDialogProps) => {
   const [tab, setTab] = useState<'catalog' | 'custom'>('catalog');
@@ -31,6 +41,7 @@ export const AddItemDialog = ({ open, onOpenChange, onAdd }: AddItemDialogProps)
   const [unit, setUnit] = useState('EA');
   const [unitCost, setUnitCost] = useState('');
   const [sku, setSku] = useState('');
+  const [sections, setSections] = useState<string[]>(['roof']);
 
   const handleMaterialSelect = (material: any) => {
     onAdd({
@@ -55,6 +66,7 @@ export const AddItemDialog = ({ open, onOpenChange, onAdd }: AddItemDialogProps)
       unit,
       unit_cost: parseFloat(unitCost) || 0,
       sku: sku || undefined,
+      sections: sections.length > 0 ? sections : undefined,
     });
 
     resetForm();
@@ -67,6 +79,15 @@ export const AddItemDialog = ({ open, onOpenChange, onAdd }: AddItemDialogProps)
     setUnitCost('');
     setSku('');
     setItemType('material');
+    setSections(['roof']);
+  };
+
+  const handleSectionToggle = (sectionValue: string, checked: boolean) => {
+    if (checked) {
+      setSections([...sections, sectionValue]);
+    } else {
+      setSections(sections.filter(s => s !== sectionValue));
+    }
   };
 
   return (
@@ -154,6 +175,25 @@ export const AddItemDialog = ({ open, onOpenChange, onAdd }: AddItemDialogProps)
                   />
                 </div>
               </div>
+            </div>
+
+            {/* Section Assignment */}
+            <div className="space-y-2">
+              <Label>Assign to Sections</Label>
+              <div className="flex flex-wrap gap-x-4 gap-y-2 p-3 border rounded-md bg-muted/30">
+                {SECTION_OPTIONS.map((section) => (
+                  <label key={section.value} className="flex items-center gap-2 text-sm cursor-pointer">
+                    <Checkbox
+                      checked={sections.includes(section.value)}
+                      onCheckedChange={(checked) => handleSectionToggle(section.value, !!checked)}
+                    />
+                    <span>{section.label}</span>
+                  </label>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Select which sections this item should appear in
+              </p>
             </div>
 
             <DialogFooter>

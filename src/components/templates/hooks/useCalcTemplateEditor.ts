@@ -28,6 +28,7 @@ export interface CalcTemplateItem {
   manufacturer: string | null;
   sort_order: number;
   active: boolean;
+  margin_override: number;
 }
 
 export interface CalcTemplate {
@@ -121,6 +122,7 @@ export const useCalcTemplateEditor = (templateId?: string) => {
             manufacturer: item.manufacturer,
             sort_order: item.sort_order,
             active: item.active,
+            margin_override: Number(item.margin_override) || 0,
           })),
       }));
 
@@ -143,6 +145,7 @@ export const useCalcTemplateEditor = (templateId?: string) => {
           manufacturer: item.manufacturer,
           sort_order: item.sort_order,
           active: item.active,
+          margin_override: Number(item.margin_override) || 0,
         }));
 
       if (ungroupedItems.length > 0) {
@@ -332,6 +335,7 @@ export const useCalcTemplateEditor = (templateId?: string) => {
         manufacturer: data.manufacturer,
         sort_order: data.sort_order,
         active: data.active,
+        margin_override: Number(data.margin_override) || 0,
       };
 
       setGroups(
@@ -369,6 +373,7 @@ export const useCalcTemplateEditor = (templateId?: string) => {
           sku_pattern: updates.sku_pattern,
           manufacturer: updates.manufacturer,
           active: updates.active,
+          margin_override: updates.margin_override,
         })
         .eq('id', itemId);
 

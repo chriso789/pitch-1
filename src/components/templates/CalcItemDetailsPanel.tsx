@@ -33,17 +33,6 @@ const UNITS = [
   { value: 'PC', label: 'PC (Piece)' },
 ];
 
-const MEASUREMENT_TYPES = [
-  { value: 'roof_area', label: 'Roof Area (Squares)' },
-  { value: 'ridges', label: 'Ridges (LF)' },
-  { value: 'hips', label: 'Hips (LF)' },
-  { value: 'valleys', label: 'Valleys (LF)' },
-  { value: 'rakes', label: 'Rakes (LF)' },
-  { value: 'eaves', label: 'Eaves (LF)' },
-  { value: 'drip_edge', label: 'Drip Edge (LF)' },
-  { value: 'step_flash', label: 'Step Flashing (LF)' },
-];
-
 export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
   item,
   profitMargin,
@@ -53,7 +42,12 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
   // Buffer changes locally - only save when Done is clicked
   const [localItem, setLocalItem] = useState<CalcTemplateItem>(item);
   const { calculatePrice, formatCurrency } = usePricingCalculation();
-  const pricing = calculatePrice(localItem.unit_cost, profitMargin, 'profit_margin');
+  
+  // Calculate effective margin (item override or template default)
+  const effectiveMargin = (localItem.margin_override && localItem.margin_override > 0) 
+    ? localItem.margin_override 
+    : profitMargin;
+  const pricing = calculatePrice(localItem.unit_cost, effectiveMargin, 'profit_margin');
 
   // Sync local state when switching items
   useEffect(() => {
@@ -162,6 +156,32 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
           />
         </div>
 
+        {/* Margin Override */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <Label htmlFor="margin_override">Item Margin Override</Label>
+            <span className="text-xs text-muted-foreground">
+              0% = use template default ({profitMargin}%)
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <Input
+              id="margin_override"
+              type="number"
+              step="1"
+              min="0"
+              max="100"
+              value={localItem.margin_override ?? 0}
+              onChange={(e) => handleLocalUpdate({ margin_override: parseFloat(e.target.value) || 0 })}
+              className="w-24"
+            />
+            <span className="text-muted-foreground">%</span>
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Set to 0% to use the template's default profit margin. Set a specific percentage to override for this item only.
+          </p>
+        </div>
+
         {/* Formula Builder */}
         <FormulaBuilder
           value={localItem.qty_formula}
@@ -207,7 +227,12 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
           </div>
           <div>
             <p className="text-muted-foreground">Margin</p>
-            <p className="font-semibold">{profitMargin}%</p>
+            <p className="font-semibold">
+              {effectiveMargin}%
+              {localItem.margin_override > 0 && (
+                <span className="text-xs text-orange-500 ml-1">(override)</span>
+              )}
+            </p>
           </div>
           <div>
             <p className="text-muted-foreground">Sell Price</p>

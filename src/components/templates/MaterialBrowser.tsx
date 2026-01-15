@@ -38,7 +38,8 @@ const SECTIONS = [
   { value: 'roof', label: 'Roofing' },
   { value: 'gutter', label: 'Gutters' },
   { value: 'exterior', label: 'Exterior' },
-  { value: 'interior', label: 'Interior' }
+  { value: 'interior', label: 'Interior' },
+  { value: 'labor', label: 'Labor' }
 ];
 
 export const MaterialBrowser = ({ onSelect }: MaterialBrowserProps) => {
