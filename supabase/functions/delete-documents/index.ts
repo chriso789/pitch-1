@@ -210,10 +210,12 @@ serve(async (req) => {
         // Only delete non-referenced docs
         const nonReferencedDocIds = document_ids.filter(id => !referencedDocIds.includes(id));
         if (nonReferencedDocIds.length === 0) {
+          // Return 200 with success:false to avoid FunctionsHttpError on client
+          // The blocked_ids and errors fields indicate which docs couldn't be deleted
           result.success = false;
           return new Response(
             JSON.stringify(result),
-            { status: 400, headers: { ...corsHeaders, "Content-Type": "application/json" } }
+            { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } }
           );
         }
         // Continue with non-referenced docs only

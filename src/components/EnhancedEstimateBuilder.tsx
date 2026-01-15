@@ -33,6 +33,7 @@ import { useLivePricing } from '@/hooks/useLivePricing';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { seedBrandTemplates, BRAND_TEMPLATES } from '@/lib/estimates/brandTemplateSeeder';
 import { MaterialAutocomplete, MaterialSuggestion } from '@/components/ui/material-autocomplete';
+import { TemplateCombobox } from './estimates/TemplateCombobox';
 
 // LineItemRow component for rendering individual line items
 const LineItemRow: React.FC<{
@@ -2147,50 +2148,20 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
                   </Button>
                 </div>
                 
-                {/* Roof Type Filter Pills */}
-                <div className="flex flex-wrap gap-1">
-                  {ROOF_TYPE_OPTIONS.map((option) => {
-                    const count = option.value === 'all' 
-                      ? templates.length 
-                      : templates.filter((t: any) => t.roof_type === option.value).length;
-                    return (
-                      <Button
-                        key={option.value}
-                        variant={roofTypeFilter === option.value ? "default" : "outline"}
-                        size="sm"
-                        className="h-6 px-2 text-xs"
-                        onClick={() => setRoofTypeFilter(option.value)}
-                      >
-                        {option.label}
-                        {count > 0 && (
-                          <span className="ml-1 opacity-70">({count})</span>
-                        )}
-                      </Button>
-                    );
-                  })}
-                </div>
-                
-                {/* Template Dropdown */}
-                <Select value={templateId} onValueChange={handleTemplateSelect}>
-                  <SelectTrigger className="h-9">
-                    <SelectValue placeholder="Select template to auto-populate items" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {filteredTemplates.map((template: any) => (
-                      <SelectItem key={template.id} value={template.id}>
-                        {template.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/* Template Dropdown - Searchable Combobox grouped by roof type */}
+                <TemplateCombobox
+                  templates={templates.map((t: any) => ({
+                    id: t.id,
+                    name: t.name,
+                    roof_type: t.roof_type || 'other'
+                  }))}
+                  value={templateId}
+                  onValueChange={handleTemplateSelect}
+                  placeholder="Search or select a template..."
+                />
                 
                 {templates.length === 0 && (
                   <p className="text-xs text-muted-foreground">No templates available - click Sync</p>
-                )}
-                {templates.length > 0 && filteredTemplates.length === 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    No {ROOF_TYPE_OPTIONS.find(o => o.value === roofTypeFilter)?.label} templates
-                  </p>
                 )}
               </div>
             </CardContent>

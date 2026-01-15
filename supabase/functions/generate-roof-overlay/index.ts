@@ -61,10 +61,18 @@ interface DetectedFeature {
 
 const IMAGE_ZOOM = 20
 const IMAGE_SIZE = 640
-const SNAP_THRESHOLD_FT = 3 // Max snap distance
+const SNAP_THRESHOLD_FT = 5 // Max snap distance (increased from 3 for better connectivity)
 const FT_TO_DEG = 1 / 364000 // Approximate feet to degrees at US latitudes
 const MIN_ALIGNMENT_SCORE = 90 // Target alignment score
 const MAX_ALIGNMENT_ATTEMPTS = 3 // Iterative refinement limit
+
+// Corner classification types
+interface ClassifiedCorner {
+  coord: [number, number];
+  type: 'convex' | 'reflex'; // convex = eave corner (hip endpoint), reflex = valley origin
+  angle: number;
+  index: number;
+}
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -293,45 +301,58 @@ async function detectAllFeaturesFromImage(
   coordinates: { lat: number; lng: number }
 ): Promise<{ ridges: RoofLine[]; hips: RoofLine[]; valleys: RoofLine[] }> {
   
-  // ENHANCED PROMPT with shadow detection and snapping rules
-  const prompt = `You are analyzing a satellite roof image. Your goal is to trace lines EXACTLY as they appear.
+  // Classify perimeter corners for better snapping hints
+  const classifiedCorners = classifyPerimeterCorners(perimeter)
+  const convexCorners = classifiedCorners.filter(c => c.type === 'convex')
+  const reflexCorners = classifiedCorners.filter(c => c.type === 'reflex')
+  
+  console.log(`📐 Corner analysis: ${convexCorners.length} convex (hip targets), ${reflexCorners.length} reflex (valley origins)`)
+
+  // ENHANCED PROMPT with shadow detection, corner classification, and strict topology rules
+  const prompt = `You are analyzing a satellite roof image. Your goal is to trace roof topology lines EXACTLY as they appear.
+
+BUILDING SHAPE ANALYSIS:
+- This building has ${perimeter.length} perimeter corners
+- ${convexCorners.length} CONVEX corners (outward-pointing, where hips terminate at eaves)
+- ${reflexCorners.length} REFLEX/CONCAVE corners (inward-pointing, L/T/U shaped junctions where valleys originate)
 
 DETECTION PRIORITIES (in order):
-1. PERIMETER: The visible roof edges corner-to-corner (already provided)
-2. RIDGES: The highest lines where two roof planes meet at the top
-   - Look for: BRIGHT LINEAR HIGHLIGHTS at roof peaks
-   - Usually run horizontally or along the longest building axis
-   - Both ends should touch perimeter corners OR other roof line endpoints
-   
-3. HIPS: Diagonal lines from ridge endpoints down to building corners
-   - Look for: DOUBLE-SHADOW EDGES (light on both sides of the line)
-   - Connect ridge ends DIAGONALLY DOWN to eave corners
-   - Each hip MUST start at a ridge endpoint and end at a perimeter corner
-   
-4. VALLEYS: Internal troughs where two roof planes slope inward
-   - Look for: DARK V-SHAPED SHADOWS forming linear troughs
-   - Water flows DOWN valleys toward eaves
-   - Common in L-shaped, T-shaped, or complex roofs
-   - Start at internal junction, end at ridge or perimeter
 
-CRITICAL SNAPPING RULES:
-- Every line START must touch: a perimeter corner OR another line endpoint
-- Every line END must touch: a perimeter corner OR another line endpoint
-- NO floating lines allowed - if an endpoint doesn't connect, adjust it
-- Hips connect ridge endpoints TO perimeter corners (not floating in space)
+1. RIDGES: The highest lines where two roof planes meet at the peak
+   - Look for: BRIGHT LINEAR HIGHLIGHTS running along roof peaks
+   - Usually run HORIZONTALLY or along the longest building axis
+   - Ridge ENDPOINTS are where HIPS connect to them
+   - A simple hip roof has 1 ridge with 4 hips (one to each corner)
+   
+2. HIPS: Diagonal lines from ridge endpoints DOWN to building corners
+   - Look for: SHADOW LINES angling diagonally from ridge to corners
+   - TOPOLOGY RULE: Every hip STARTS at a ridge endpoint and ENDS at a convex perimeter corner
+   - A standard hip roof has 4 hips connecting the 2 ridge endpoints to 4 building corners
+   - Hips should be roughly equal length on opposite sides
+   
+3. VALLEYS: Internal troughs where two roof wings meet
+   - Look for: DARK V-SHAPED SHADOWS forming linear troughs
+   - TOPOLOGY RULE: Valleys START at REFLEX corners (L/T/U junctions) and END at a ridge
+   - Only present in L-shaped, T-shaped, or complex buildings
+   - If building is rectangular with no inward corners, there are NO valleys
+
+CRITICAL TOPOLOGY RULES - MUST FOLLOW:
+1. Ridges: endpoints connect to hip intersections, usually near building center
+2. Hips: ALWAYS start at ridge endpoint, ALWAYS end at a convex building corner
+3. Valleys: ONLY exist if building has reflex (inward) corners
+4. Every convex corner should have exactly ONE hip connecting to it
+5. NO floating lines - every endpoint must connect to something
 
 For each feature, provide:
-- startX, startY, endX, endY (as percentages 0-100 from top-left)
+- startX, startY, endX, endY (as percentages 0-100 from image top-left)
 - confidence (0-100)
-- description: what visual evidence you see (e.g., "bright ridge highlight", "diagonal shadow")
-- snapStartTo: what this start point should connect to (e.g., "corner_NW", "ridge_end_left")
-- snapEndTo: what this end point should connect to
+- description: what visual evidence you see
 
-Return ONLY valid JSON in this exact format:
+Return ONLY valid JSON in this format:
 {
-  "ridges": [{"startX": 25, "startY": 45, "endX": 75, "endY": 45, "confidence": 92, "description": "bright linear highlight at roof peak", "snapStartTo": "hip_NW", "snapEndTo": "hip_NE"}],
-  "hips": [{"startX": 25, "startY": 45, "endX": 10, "endY": 80, "confidence": 88, "description": "double-shadow diagonal from ridge to corner", "snapStartTo": "ridge_left", "snapEndTo": "corner_SW"}],
-  "valleys": [{"startX": 50, "startY": 30, "endX": 50, "endY": 55, "confidence": 85, "description": "dark V-trough at L-junction", "snapStartTo": "wing_junction", "snapEndTo": "ridge_mid"}]
+  "ridges": [{"startX": 25, "startY": 45, "endX": 75, "endY": 45, "confidence": 92, "description": "bright horizontal highlight at roof peak"}],
+  "hips": [{"startX": 25, "startY": 45, "endX": 5, "endY": 10, "confidence": 88, "description": "diagonal shadow from ridge to NW corner"}, {"startX": 25, "startY": 45, "endX": 5, "endY": 90, "confidence": 87, "description": "diagonal shadow from ridge to SW corner"}],
+  "valleys": []
 }`
 
   try {
@@ -439,6 +460,69 @@ function pixelPctToGeo(
     center.lng + metersX / metersPerDegLng,
     center.lat + metersY / metersPerDegLat
   ]
+}
+
+// Classify perimeter corners as convex (hip endpoints) or reflex (valley origins)
+function classifyPerimeterCorners(perimeter: [number, number][]): ClassifiedCorner[] {
+  if (perimeter.length < 3) return []
+  
+  const corners: ClassifiedCorner[] = []
+  
+  for (let i = 0; i < perimeter.length; i++) {
+    const prev = perimeter[(i - 1 + perimeter.length) % perimeter.length]
+    const curr = perimeter[i]
+    const next = perimeter[(i + 1) % perimeter.length]
+    
+    // Calculate vectors
+    const v1x = curr[0] - prev[0]
+    const v1y = curr[1] - prev[1]
+    const v2x = next[0] - curr[0]
+    const v2y = next[1] - curr[1]
+    
+    // Cross product to determine turn direction
+    const cross = v1x * v2y - v1y * v2x
+    
+    // Calculate angle in degrees
+    const dot = v1x * v2x + v1y * v2y
+    const mag1 = Math.sqrt(v1x * v1x + v1y * v1y)
+    const mag2 = Math.sqrt(v2x * v2x + v2y * v2y)
+    const angle = Math.acos(Math.max(-1, Math.min(1, dot / (mag1 * mag2)))) * 180 / Math.PI
+    
+    // For a polygon traced clockwise:
+    // cross > 0 = left turn = convex (outward corner)
+    // cross < 0 = right turn = reflex (inward corner)
+    // For counter-clockwise, it's the opposite
+    // We determine winding based on polygon area sign
+    const polygonArea = calculatePolygonArea(perimeter)
+    const isClockwise = polygonArea < 0
+    
+    let type: 'convex' | 'reflex'
+    if (isClockwise) {
+      type = cross > 0 ? 'convex' : 'reflex'
+    } else {
+      type = cross < 0 ? 'convex' : 'reflex'
+    }
+    
+    corners.push({
+      coord: curr,
+      type,
+      angle,
+      index: i
+    })
+  }
+  
+  return corners
+}
+
+// Calculate signed polygon area (negative = clockwise, positive = counter-clockwise)
+function calculatePolygonArea(perimeter: [number, number][]): number {
+  let area = 0
+  for (let i = 0; i < perimeter.length; i++) {
+    const j = (i + 1) % perimeter.length
+    area += perimeter[i][0] * perimeter[j][1]
+    area -= perimeter[j][0] * perimeter[i][1]
+  }
+  return area / 2
 }
 
 // Apply learned corrections from database
