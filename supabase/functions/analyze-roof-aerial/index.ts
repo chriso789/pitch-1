@@ -1975,13 +1975,17 @@ async function detectRidgeLinesFromImage(
     `${i}: (${v.x.toFixed(1)}%, ${v.y.toFixed(1)}%) ${v.cornerType || ''}`
   ).join('\n');
 
-  const prompt = `You are a professional roof measurement expert. Your task is to TRACE THE EXACT RIDGE LINE(s) visible on this roof.
+  const prompt = `You are an expert roof analyst with advanced pattern recognition skills. Your CRITICAL task is to VISUALLY TRACE the exact ridge and hip line positions from this satellite/aerial imagery.
 
-WHAT IS A RIDGE?
-- The HIGHEST horizontal line where two sloped roof planes meet at the peak
-- Appears as a distinct shadow line or color change running along the roof top
-- Shadows fall AWAY from ridges on BOTH sides
-- On hip roofs, the ridge is SHORTER than the building width (hips connect corners to ridge ends)
+## WHAT TO LOOK FOR - VISUAL CUES:
+1. **SHADOW PATTERNS**: Ridges create a distinct LIGHT/DARK boundary. One side catches sun, the other is shadowed.
+2. **COLOR TRANSITIONS**: Ridge lines often show as a subtle color change where two roof planes meet.
+3. **SHINGLE DIRECTION CHANGES**: Where shingle rows change direction indicates a ridge or hip.
+4. **ROOF PEAK LINES**: The HIGHEST points form continuous lines across the roof.
+
+## RIDGE vs HIP:
+- **RIDGE**: Runs along the TOP of the roof, parallel to building length. Both sides slope DOWN from it.
+- **HIP**: Diagonal lines from building CORNERS to ridge ENDPOINTS. Slopes DOWN on both sides.
 
 PERIMETER CONTEXT (${perimeterVertices.length} vertices):
 ${perimeterInfo}
@@ -1989,32 +1993,43 @@ ${perimeterVertices.length > 8 ? `...and ${perimeterVertices.length - 8} more ve
 
 Bounds: (${bounds.topLeftX.toFixed(1)}%, ${bounds.topLeftY.toFixed(1)}%) to (${bounds.bottomRightX.toFixed(1)}%, ${bounds.bottomRightY.toFixed(1)}%)
 
-CRITICAL INSTRUCTIONS:
-1. Look at the SHADOW PATTERNS to identify where the ridge actually is
-2. The ridge should be INSIDE the perimeter, NOT at the edges
-3. For hip roofs, ridge endpoints should be where HIPS would connect (not at building corners)
-4. Ridge line should be roughly parallel to the longest dimension of the building
-5. Measure from where you SEE the ridge, not where geometry suggests
+## CRITICAL DETECTION RULES:
+1. **TRACE WHAT YOU SEE** - Follow the actual visible ridge/shadow line, NOT theoretical geometry
+2. Ridge should be INSIDE the perimeter by 10-20% from edges (not at the perimeter itself)
+3. For rectangular buildings: ridge typically at 50% of width, running parallel to length
+4. For hip roofs: ridge is SHORTER than building - it stops where hips connect (inset from corners)
+5. Look for the characteristic "X" or "Y" pattern where hips meet the ridge endpoints
+6. **EVEN IF UNCERTAIN**, provide your best estimate with lower confidence (50-70%)
 
-Return JSON:
+## RESPONSE FORMAT (JSON only):
 {
   "ridgeLines": [
     {
-      "startX": 35.5,
+      "startX": 25.0,
       "startY": 48.0,
-      "endX": 65.2,
+      "endX": 75.0,
       "endY": 48.5,
-      "confidence": 92,
-      "notes": "Main ridge running east-west, visible shadow line"
+      "confidence": 85,
+      "notes": "Main ridge - clear shadow boundary running E-W"
+    }
+  ],
+  "hipLines": [
+    {
+      "startX": 15.0,
+      "startY": 20.0,
+      "endX": 25.0,
+      "endY": 48.0,
+      "confidence": 80,
+      "notes": "NW hip from corner to ridge start"
     }
   ],
   "roofType": "hip" | "gable" | "cross-hip" | "L-shaped" | "complex",
   "ridgeDirection": "horizontal" | "vertical" | "diagonal" | "multiple",
   "ridgeCount": 1,
-  "qualityNotes": "Clear shadow pattern, high confidence ridge detection"
+  "qualityNotes": "Description of imagery quality and detection confidence"
 }
 
-Return ONLY valid JSON.`;
+IMPORTANT: Return ONLY valid JSON. Detect ALL visible ridges and hips.`;
 
   try {
     const response = await fetchWithTimeout('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -2093,7 +2108,8 @@ function deriveLinesToPerimeter(
   }
   
   // PRIORITY 1: Use AI-detected ridge lines if confidence is high enough
-  if (aiRidgeDetection && aiRidgeDetection.ridgeLines.length > 0 && aiRidgeDetection.averageConfidence >= 75) {
+  // LOWERED from 75% to 55% to reduce skeleton fallback rate
+  if (aiRidgeDetection && aiRidgeDetection.ridgeLines.length > 0 && aiRidgeDetection.averageConfidence >= 55) {
     console.log(`🎯 Using AI-detected ridge positions (confidence: ${aiRidgeDetection.averageConfidence.toFixed(0)}%)`);
     
     // Add AI-detected ridge lines
