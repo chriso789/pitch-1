@@ -223,7 +223,7 @@ const ProjectDetails = ({ projectId, onBack }: ProjectDetailsProps) => {
   const companyProfit = commission ? commission.company_profit || 0 : grossProfit;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-32 md:pb-16">
       <BackButton 
         label="Back to Dashboard"
         fallbackPath="/dashboard"

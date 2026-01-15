@@ -116,7 +116,7 @@ export function CrewJobDetail({ jobId, onBack }: CrewJobDetailProps) {
   }
 
   return (
-    <div className="min-h-screen bg-background pb-20">
+    <div className="min-h-screen bg-background pb-32">
       {/* Header */}
       <header className="sticky top-0 z-50 bg-background border-b">
         <div className="px-4 py-3 flex items-center gap-3">

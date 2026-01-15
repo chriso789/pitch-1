@@ -37,7 +37,7 @@ export const GlobalLayout = ({ children }: GlobalLayoutProps) => {
         </div>
         <div className={cn(
           "p-3 md:p-6",
-          "pb-20 md:pb-6" // Extra padding at bottom for mobile
+          "pb-32 md:pb-16" // Extra 30% scroll room at bottom
         )}>
           {children}
         </div>

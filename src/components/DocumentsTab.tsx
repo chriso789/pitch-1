@@ -66,7 +66,74 @@ const DOCUMENT_CATEGORIES = [
 
 const RECENT_DOCS_LIMIT = 10;
 
-export const DocumentsTab: React.FC<DocumentsTabProps> = ({ 
+// Inline thumbnail preview for documents - shows actual image for image files
+const DocumentThumbnail: React.FC<{
+  doc: Document;
+  fallbackIcon: React.ReactNode;
+  categoryColor: string;
+}> = ({ doc, fallbackIcon, categoryColor }) => {
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState(false);
+  
+  const isImage = doc.mime_type?.startsWith('image/') || 
+    doc.filename.match(/\.(jpg|jpeg|png|gif|webp|svg)$/i);
+  const isPDF = doc.mime_type === 'application/pdf' || 
+    doc.filename.endsWith('.pdf');
+  
+  useEffect(() => {
+    if (isImage && doc.file_path) {
+      // Check if it's already a full URL (external)
+      const isExternalUrl = doc.file_path.startsWith('http://') || 
+                           doc.file_path.startsWith('https://') || 
+                           doc.file_path.startsWith('data:');
+      
+      if (isExternalUrl) {
+        setThumbUrl(doc.file_path);
+      } else {
+        // Get public URL from storage
+        const bucket = doc.document_type === 'photo' ? 'customer-photos' : 'documents';
+        const { data } = supabase.storage.from(bucket).getPublicUrl(doc.file_path);
+        if (data?.publicUrl) {
+          setThumbUrl(data.publicUrl);
+        }
+      }
+    }
+  }, [doc.file_path, isImage, doc.document_type]);
+  
+  if (isImage && thumbUrl && !loadError) {
+    return (
+      <div className="w-12 h-12 rounded-lg overflow-hidden bg-muted flex-shrink-0 border">
+        <img 
+          src={thumbUrl}
+          alt={doc.filename}
+          className="w-full h-full object-cover"
+          onError={() => setLoadError(true)}
+          loading="lazy"
+        />
+      </div>
+    );
+  }
+  
+  if (isPDF) {
+    return (
+      <div className={`${categoryColor} text-white p-3 rounded-lg flex-shrink-0 relative`}>
+        {fallbackIcon}
+        <Badge className="absolute -bottom-1 -right-1 h-4 min-w-4 text-[10px] px-1 bg-red-500 border-0">
+          PDF
+        </Badge>
+      </div>
+    );
+  }
+  
+  // Default fallback - category icon
+  return (
+    <div className={`${categoryColor} text-white p-3 rounded-lg flex-shrink-0`}>
+      {fallbackIcon}
+    </div>
+  );
+};
+
+export const DocumentsTab: React.FC<DocumentsTabProps> = ({
   pipelineEntryId,
   onUploadComplete 
 }) => {
@@ -873,7 +940,7 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
       />
 
       {/* Recent Documents */}
-      <div className="space-y-4 pb-16">
+      <div className="space-y-4 pb-32">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h3 className="text-lg font-semibold">Recent Documents</h3>
@@ -961,9 +1028,11 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
                         className="flex items-center gap-4 flex-1 cursor-pointer hover:opacity-80"
                         onClick={() => setPreviewDoc(doc)}
                       >
-                        <div className={`${category?.color || 'bg-gray-500'} text-white p-3 rounded-lg`}>
-                          <Icon className="h-5 w-5" />
-                        </div>
+                        <DocumentThumbnail
+                          doc={doc}
+                          fallbackIcon={<Icon className="h-5 w-5" />}
+                          categoryColor={category?.color || 'bg-gray-500'}
+                        />
                         <div className="flex-1 min-w-0">
                           <p className="font-medium truncate">{doc.filename}</p>
                           <div className="flex items-center gap-3 text-sm text-muted-foreground">
