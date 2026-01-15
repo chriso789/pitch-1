@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { CalendarIcon, Plus } from 'lucide-react';
+import { CalendarIcon, Plus, Loader2 } from 'lucide-react';
 import { format } from 'date-fns';
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
@@ -40,7 +40,8 @@ const roofTypes = [
   { value: 'unknown', label: 'Unknown/Unsure' }
 ];
 
-const leadSources = [
+// Fallback lead sources if database fetch fails
+const fallbackLeadSources = [
   { value: 'google_ads', label: 'Google Ads' },
   { value: 'facebook_ads', label: 'Facebook Ads' },
   { value: 'referral', label: 'Customer Referral' },
@@ -72,7 +73,57 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
   });
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [leadSources, setLeadSources] = useState(fallbackLeadSources);
+  const [isLoadingSources, setIsLoadingSources] = useState(false);
   const { toast } = useToast();
+
+  // Fetch lead sources from database
+  useEffect(() => {
+    const fetchLeadSources = async () => {
+      setIsLoadingSources(true);
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session?.user) return;
+
+        // Get tenant_id from profile
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('tenant_id')
+          .eq('id', session.user.id)
+          .single();
+
+        if (!profile?.tenant_id) return;
+
+        // Fetch lead sources for this tenant
+        const { data: sources, error } = await supabase
+          .from('lead_sources')
+          .select('id, name')
+          .eq('tenant_id', profile.tenant_id)
+          .eq('is_active', true)
+          .order('name');
+
+        if (error) {
+          console.error('Error fetching lead sources:', error);
+          return;
+        }
+
+        if (sources && sources.length > 0) {
+          setLeadSources(sources.map(s => ({
+            value: s.id,
+            label: s.name
+          })));
+        }
+      } catch (err) {
+        console.error('Error in fetchLeadSources:', err);
+      } finally {
+        setIsLoadingSources(false);
+      }
+    };
+
+    if (open) {
+      fetchLeadSources();
+    }
+  }, [open]);
 
   const handleInputChange = (field: string, value: any) => {
     setFormData(prev => ({ ...prev, [field]: value }));
@@ -354,9 +405,20 @@ export function LeadForm({ open, onOpenChange, onLeadCreated }: LeadFormProps) {
           <div className="grid grid-cols-2 gap-4">
             <div>
               <Label htmlFor="leadSource">Lead Source</Label>
-              <Select value={formData.leadSource} onValueChange={(value) => handleInputChange('leadSource', value)}>
+              <Select 
+                value={formData.leadSource} 
+                onValueChange={(value) => handleInputChange('leadSource', value)}
+                disabled={isLoadingSources}
+              >
                 <SelectTrigger>
-                  <SelectValue placeholder="Select lead source" />
+                  {isLoadingSources ? (
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span className="text-muted-foreground">Loading...</span>
+                    </div>
+                  ) : (
+                    <SelectValue placeholder="Select lead source" />
+                  )}
                 </SelectTrigger>
                 <SelectContent>
                   {leadSources.map(source => (
