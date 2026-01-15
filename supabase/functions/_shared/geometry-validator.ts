@@ -17,7 +17,15 @@ export interface ValidationResult {
   };
 }
 
-export type FootprintSource = 'google_solar_api' | 'regrid_parcel' | 'ai_detection' | 'manual';
+export type FootprintSource = 
+  | 'google_solar_api' 
+  | 'regrid_parcel' 
+  | 'ai_detection' 
+  | 'manual'
+  | 'mapbox_vector'
+  | 'osm_overpass'
+  | 'microsoft_buildings'
+  | 'solar_bbox_fallback';
 
 /**
  * Haversine formula for calculating distance between GPS coordinates
@@ -215,8 +223,22 @@ export function validateGeometry(
     case 'google_solar_api':
       confidence *= 0.98; // Solar API is very reliable
       break;
+    case 'mapbox_vector':
+      confidence *= 0.96; // Mapbox vector is high fidelity
+      break;
+    case 'osm_overpass':
+      confidence *= 0.88; // OSM is good but community-maintained
+      break;
+    case 'microsoft_buildings':
+      confidence *= 0.92; // Microsoft/Esri is accurate ML-derived
+      break;
     case 'regrid_parcel':
       confidence *= 0.90; // Parcel data is good but may be outdated
+      break;
+    case 'solar_bbox_fallback':
+      confidence *= 0.55; // CRITICAL: Bounding box is just a rectangle, very inaccurate
+      warnings.push('⚠️ RECTANGULAR BOUNDING BOX - area likely overestimated by 15-25%');
+      warnings.push('Recommend using better footprint source or manual trace');
       break;
     case 'ai_detection':
       confidence *= 0.65; // AI detection is less reliable
@@ -361,4 +383,134 @@ export function formatValidationResult(result: ValidationResult): string {
   }
 
   return lines.join('\n');
+}
+
+/**
+ * Validate perimeter consistency against linear features
+ * Ensures eave + rake lengths match expected perimeter within tolerance
+ */
+export interface PerimeterConsistencyResult {
+  valid: boolean;
+  warnings: string[];
+  perimeterFt: number;
+  eaveTotal: number;
+  rakeTotal: number;
+  edgeCoverage: number;
+  calculatedAreaFromWkt: number;
+  expectedArea: number;
+  areaVariance: number;
+}
+
+export function validatePerimeterConsistency(
+  perimeterVertices: Array<{ lat: number; lng: number }>,
+  linearFeatures: Array<{ type: string; length_ft?: number; lengthFt?: number }>,
+  expectedArea: number
+): PerimeterConsistencyResult {
+  const warnings: string[] = [];
+  
+  // Calculate perimeter length
+  const perimeterFt = calculatePerimeterFt(perimeterVertices);
+  
+  // Sum eave and rake lengths from linear features
+  let eaveTotal = 0;
+  let rakeTotal = 0;
+  
+  linearFeatures.forEach(f => {
+    const length = f.length_ft || f.lengthFt || 0;
+    if (f.type?.toLowerCase() === 'eave') {
+      eaveTotal += length;
+    } else if (f.type?.toLowerCase() === 'rake') {
+      rakeTotal += length;
+    }
+  });
+  
+  const totalEdges = eaveTotal + rakeTotal;
+  
+  // Edge coverage: (eave + rake) should be 70-100% of perimeter for a valid measurement
+  // Less than 70% indicates missing edges
+  const edgeCoverage = perimeterFt > 0 ? (totalEdges / perimeterFt) * 100 : 0;
+  
+  // Calculate area from WKT polygon
+  const calculatedAreaFromWkt = calculateAreaSqFt(perimeterVertices);
+  
+  // Area variance: how much the calculated area differs from expected
+  const areaVariance = expectedArea > 0 
+    ? Math.abs(calculatedAreaFromWkt - expectedArea) / expectedArea * 100 
+    : 0;
+  
+  // Validation checks
+  if (edgeCoverage < 50 && perimeterFt > 0) {
+    warnings.push(`Low edge coverage: ${edgeCoverage.toFixed(0)}% (eave + rake should be >70% of perimeter)`);
+  } else if (edgeCoverage < 70 && perimeterFt > 0) {
+    warnings.push(`Moderate edge coverage: ${edgeCoverage.toFixed(0)}% - some edges may be missing`);
+  }
+  
+  if (areaVariance > 20) {
+    warnings.push(`Area mismatch: calculated ${Math.round(calculatedAreaFromWkt)} sqft vs expected ${Math.round(expectedArea)} sqft (${areaVariance.toFixed(0)}% variance)`);
+  } else if (areaVariance > 10) {
+    warnings.push(`Minor area variance: ${areaVariance.toFixed(0)}% between footprint and expected area`);
+  }
+  
+  // Check for rectangular footprint (4 vertices) which is likely a bounding box
+  if (perimeterVertices.length === 4) {
+    warnings.push('Rectangular footprint detected (4 vertices) - may be bounding box approximation');
+  }
+  
+  return {
+    valid: warnings.length === 0,
+    warnings,
+    perimeterFt,
+    eaveTotal,
+    rakeTotal,
+    edgeCoverage,
+    calculatedAreaFromWkt,
+    expectedArea,
+    areaVariance
+  };
+}
+
+/**
+ * Check if a footprint is likely a rectangular bounding box fallback
+ */
+export function isRectangularFallback(
+  vertices: Array<{ lat: number; lng: number }>,
+  source?: string
+): boolean {
+  // Explicit solar_bbox_fallback source
+  if (source === 'solar_bbox_fallback') {
+    return true;
+  }
+  
+  // Check vertex count (rectangles have exactly 4 vertices)
+  if (vertices.length !== 4) {
+    return false;
+  }
+  
+  // Check if angles are approximately 90 degrees (rectangular)
+  const angles = [];
+  for (let i = 0; i < 4; i++) {
+    const prev = vertices[(i - 1 + 4) % 4];
+    const curr = vertices[i];
+    const next = vertices[(i + 1) % 4];
+    
+    // Calculate vectors
+    const v1 = { lat: prev.lat - curr.lat, lng: prev.lng - curr.lng };
+    const v2 = { lat: next.lat - curr.lat, lng: next.lng - curr.lng };
+    
+    // Calculate angle using dot product
+    const dot = v1.lat * v2.lat + v1.lng * v2.lng;
+    const mag1 = Math.sqrt(v1.lat * v1.lat + v1.lng * v1.lng);
+    const mag2 = Math.sqrt(v2.lat * v2.lat + v2.lng * v2.lng);
+    
+    if (mag1 > 0 && mag2 > 0) {
+      const cosAngle = dot / (mag1 * mag2);
+      const angleDeg = Math.acos(Math.max(-1, Math.min(1, cosAngle))) * 180 / Math.PI;
+      angles.push(angleDeg);
+    }
+  }
+  
+  // Check if all angles are close to 90 degrees (±10°)
+  const allRightAngles = angles.every(a => Math.abs(a - 90) < 10);
+  
+  return allRightAngles;
 }
