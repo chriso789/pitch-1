@@ -23,6 +23,9 @@ import {
 import { loadPDFFromArrayBuffer, renderPageToDataUrl, isPDF, clearPageCache, type PDFDocumentProxy } from "@/lib/pdfRenderer";
 import { resolveStorageBucket } from "@/lib/documents/resolveStorageBucket";
 
+// PDF render scale used in canvas - coordinates must be normalized when saving
+const PDF_RENDER_SCALE = 1.5;
+
 interface TagPlacement {
   id?: string;
   tag_key: string;
@@ -505,15 +508,15 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
         updatePlacementsForPage(currentPage, existingTags);
       }
       
-      // Load tags for the new page
+      // Load tags for the new page - scale up from normalized PDF coords to canvas coords
       const pagePlacements = allPlacements.filter(p => p.page_number === pageNum);
       pagePlacements.forEach((placement) => {
         addTagToCanvas(
           placement.tag_key,
-          placement.x_position,
-          placement.y_position,
-          placement.width,
-          placement.height
+          placement.x_position * PDF_RENDER_SCALE,
+          placement.y_position * PDF_RENDER_SCALE,
+          placement.width * PDF_RENDER_SCALE,
+          placement.height * PDF_RENDER_SCALE
         );
       });
       
@@ -545,15 +548,15 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
           await fabricCanvas.set('backgroundImage', fabricImg);
           fabricCanvas.requestRenderAll();
           
-          // Load tags for page 1
+          // Load tags for page 1 - scale up from normalized PDF coords to canvas coords
           const pagePlacements = allPlacements.filter(p => p.page_number === 1);
           pagePlacements.forEach((placement) => {
             addTagToCanvas(
               placement.tag_key,
-              placement.x_position,
-              placement.y_position,
-              placement.width,
-              placement.height
+              placement.x_position * PDF_RENDER_SCALE,
+              placement.y_position * PDF_RENDER_SCALE,
+              placement.width * PDF_RENDER_SCALE,
+              placement.height * PDF_RENDER_SCALE
             );
           });
           
@@ -574,13 +577,14 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
     const objects = fabricCanvas.getObjects();
     const tagRects = objects.filter((obj: any) => obj.tagKey && !obj.isLabel);
     
+    // Normalize canvas coordinates to PDF coordinates (divide by scale)
     return tagRects.map((rect: any) => ({
       tag_key: rect.tagKey,
       page_number: currentPage,
-      x_position: rect.left || 0,
-      y_position: rect.top || 0,
-      width: (rect.width || 150) * (rect.scaleX || 1),
-      height: (rect.height || 24) * (rect.scaleY || 1),
+      x_position: (rect.left || 0) / PDF_RENDER_SCALE,
+      y_position: (rect.top || 0) / PDF_RENDER_SCALE,
+      width: ((rect.width || 150) * (rect.scaleX || 1)) / PDF_RENDER_SCALE,
+      height: ((rect.height || 24) * (rect.scaleY || 1)) / PDF_RENDER_SCALE,
       font_size: 12,
       font_family: "Arial",
       text_align: "left",
