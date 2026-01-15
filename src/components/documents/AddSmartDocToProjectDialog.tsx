@@ -144,8 +144,20 @@ export const AddSmartDocToProjectDialog: React.FC<AddSmartDocToProjectDialogProp
         context.lead = entry;
         if (entry.contacts) {
           const c = entry.contacts as Record<string, any>;
-          context.contact = c;
-          // Build property from contact address (using correct field names)
+          // Build contact with field aliases for tag resolution
+          context.contact = {
+            ...c,
+            // Aliases for common tag patterns (contact.address, contact.city, etc.)
+            address: c.address_street,
+            city: c.address_city,
+            state: c.address_state,
+            zip: c.address_zip,
+            // Computed fields
+            full_name: [c.first_name, c.last_name].filter(Boolean).join(' '),
+            full_address: [c.address_street, c.address_city, c.address_state, c.address_zip].filter(Boolean).join(', '),
+            mailing_address: [c.address_street, c.address_city, c.address_state, c.address_zip].filter(Boolean).join(', '),
+          };
+          // Build property from contact address for backwards compatibility
           context.property = {
             address: c.address_street,
             city: c.address_city,

@@ -70,6 +70,11 @@ export const tagRegistry: TagDefinition[] = [
   { key: 'contact.name', label: 'Full Name', description: 'Contact full name', category: 'contact', dataPath: 'contact.full_name', computed: true },
   { key: 'contact.phone', label: 'Phone', description: 'Contact phone', category: 'contact', dataPath: 'contact.phone', defaultFormat: 'phone' },
   { key: 'contact.email', label: 'Email', description: 'Contact email', category: 'contact', dataPath: 'contact.email' },
+  { key: 'contact.address', label: 'Street Address', description: 'Contact street address', category: 'contact', dataPath: 'contact.address' },
+  { key: 'contact.city', label: 'City', description: 'Contact city', category: 'contact', dataPath: 'contact.city' },
+  { key: 'contact.state', label: 'State', description: 'Contact state', category: 'contact', dataPath: 'contact.state' },
+  { key: 'contact.zip', label: 'ZIP Code', description: 'Contact ZIP code', category: 'contact', dataPath: 'contact.zip' },
+  { key: 'contact.full_address', label: 'Full Address', description: 'Complete contact address', category: 'contact', dataPath: 'contact.full_address', computed: true },
   { key: 'contact.mailing_address', label: 'Mailing Address', description: 'Full mailing address', category: 'contact', dataPath: 'contact.mailing_address', computed: true },
   { key: 'contact.preferred_contact_method', label: 'Preferred Contact', description: 'How they prefer to be contacted', category: 'contact', dataPath: 'contact.preferred_contact_method' },
 
