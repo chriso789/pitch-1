@@ -822,33 +822,101 @@ export function SchematicRoofDiagram({
           />
         )}
         
-        {/* Eave segments - thick dark green straight lines */}
-        {eaveSegments.map((seg, i) => (
-          <line
-            key={`eave-${i}`}
-            x1={seg.start.x}
-            y1={seg.start.y}
-            x2={seg.end.x}
-            y2={seg.end.y}
-            stroke={FEATURE_COLORS.eave}
-            strokeWidth={5}
-            strokeLinecap="square"
-          />
-        ))}
+        {/* Eave segments - thick dark green straight lines with length labels */}
+        {eaveSegments.map((seg, i) => {
+          const midX = (seg.start.x + seg.end.x) / 2;
+          const midY = (seg.start.y + seg.end.y) / 2;
+          const angle = Math.atan2(seg.end.y - seg.start.y, seg.end.x - seg.start.x) * 180 / Math.PI;
+          const displayAngle = angle > 90 || angle < -90 ? angle + 180 : angle;
+          const length = seg.length || 0;
+          
+          return (
+            <g key={`eave-${i}`}>
+              <line
+                x1={seg.start.x}
+                y1={seg.start.y}
+                x2={seg.end.x}
+                y2={seg.end.y}
+                stroke={FEATURE_COLORS.eave}
+                strokeWidth={5}
+                strokeLinecap="square"
+              />
+              {/* Eave length label */}
+              {showLengthLabels && length >= 3 && (
+                <g transform={`translate(${midX}, ${midY}) rotate(${displayAngle})`}>
+                  <rect
+                    x={-18}
+                    y={-11}
+                    width={36}
+                    height={18}
+                    fill="white"
+                    stroke={FEATURE_COLORS.eave}
+                    strokeWidth={1}
+                    rx={3}
+                  />
+                  <text
+                    x={0}
+                    y={4}
+                    textAnchor="middle"
+                    fontSize={11}
+                    fontWeight="bold"
+                    fill={FEATURE_COLORS.eave}
+                  >
+                    {Math.round(length)}'
+                  </text>
+                </g>
+              )}
+            </g>
+          );
+        })}
         
-        {/* Rake segments - thick cyan straight lines */}
-        {rakeSegments.map((seg, i) => (
-          <line
-            key={`rake-${i}`}
-            x1={seg.start.x}
-            y1={seg.start.y}
-            x2={seg.end.x}
-            y2={seg.end.y}
-            stroke={FEATURE_COLORS.rake}
-            strokeWidth={5}
-            strokeLinecap="square"
-          />
-        ))}
+        {/* Rake segments - thick cyan straight lines with length labels */}
+        {rakeSegments.map((seg, i) => {
+          const midX = (seg.start.x + seg.end.x) / 2;
+          const midY = (seg.start.y + seg.end.y) / 2;
+          const angle = Math.atan2(seg.end.y - seg.start.y, seg.end.x - seg.start.x) * 180 / Math.PI;
+          const displayAngle = angle > 90 || angle < -90 ? angle + 180 : angle;
+          const length = seg.length || 0;
+          
+          return (
+            <g key={`rake-${i}`}>
+              <line
+                x1={seg.start.x}
+                y1={seg.start.y}
+                x2={seg.end.x}
+                y2={seg.end.y}
+                stroke={FEATURE_COLORS.rake}
+                strokeWidth={5}
+                strokeLinecap="square"
+              />
+              {/* Rake length label */}
+              {showLengthLabels && length >= 3 && (
+                <g transform={`translate(${midX}, ${midY}) rotate(${displayAngle})`}>
+                  <rect
+                    x={-18}
+                    y={-11}
+                    width={36}
+                    height={18}
+                    fill="white"
+                    stroke={FEATURE_COLORS.rake}
+                    strokeWidth={1}
+                    rx={3}
+                  />
+                  <text
+                    x={0}
+                    y={4}
+                    textAnchor="middle"
+                    fontSize={11}
+                    fontWeight="bold"
+                    fill={FEATURE_COLORS.rake}
+                  >
+                    {Math.round(length)}'
+                  </text>
+                </g>
+              )}
+            </g>
+          );
+        })}
         
         {/* Linear features - ridges, hips, valleys (skip eaves/rakes as they're rendered with thick lines above) */}
         {linearFeatures
@@ -1166,16 +1234,38 @@ export function SchematicRoofDiagram({
         </div>
       )}
       
-      {/* Total Area Badge */}
-      {showTotals && totals.total_area > 0 && (
-        <div className="absolute top-3 left-3 bg-white/95 backdrop-blur border rounded-lg px-3 py-1.5 shadow-sm">
-          <div className="text-[10px] text-muted-foreground uppercase">Total Area</div>
-          <div className="text-lg font-bold">{Math.round(totals.total_area).toLocaleString()} sq ft</div>
-          {totals.facet_count > 0 && (
-            <div className="text-[10px] text-muted-foreground">{totals.facet_count} Facets</div>
-          )}
-        </div>
-      )}
+      {/* Total Area Badge - Shows FLAT × Pitch Multiplier = ADJUSTED */}
+      {showTotals && totals.total_area > 0 && (() => {
+        // Calculate pitch multiplier
+        const pitchStr = measurement?.predominant_pitch || tags?.['roof.pitch'] || '6/12';
+        const pitchParts = pitchStr.split('/');
+        const pitchNum = parseFloat(pitchParts[0]) || 6;
+        const pitchMultiplier = Math.sqrt(1 + (pitchNum / 12) ** 2);
+        
+        // Get flat area - either stored or calculate back from adjusted
+        const adjustedArea = totals.total_area;
+        const flatArea = measurement?.total_area_flat_sqft || measurement?.flat_area_sqft || (adjustedArea / pitchMultiplier);
+        
+        return (
+          <div className="absolute top-3 left-3 bg-white/95 backdrop-blur border rounded-lg px-3 py-2 shadow-sm">
+            <div className="text-[10px] text-muted-foreground uppercase mb-1">Total Area</div>
+            <div className="flex items-baseline gap-1.5">
+              <span className="text-sm font-semibold text-muted-foreground">{Math.round(flatArea).toLocaleString()}</span>
+              <span className="text-[10px] text-muted-foreground">FLAT</span>
+            </div>
+            <div className="text-[10px] text-muted-foreground">
+              × {pitchMultiplier.toFixed(3)} ({pitchStr})
+            </div>
+            <div className="flex items-baseline gap-1.5 border-t mt-1 pt-1">
+              <span className="text-lg font-bold text-primary">{Math.round(adjustedArea).toLocaleString()}</span>
+              <span className="text-[10px] text-muted-foreground">sq ft</span>
+            </div>
+            {totals.facet_count > 0 && (
+              <div className="text-[10px] text-muted-foreground">{totals.facet_count} Facets</div>
+            )}
+          </div>
+        );
+      })()}
       
       {/* Footprint Source Badge - shows data origin for transparency */}
       {(measurement?.footprint_source || measurement?.dsm_available !== undefined) && (
