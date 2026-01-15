@@ -540,7 +540,6 @@ Deno.serve(async (req) => {
 
     // selectedImage and imageSource already declared above (before STEP 4.5)
     const imageYear = new Date().getFullYear()
-    const imageYear = new Date().getFullYear()
     
     // CRITICAL FIX: For coordinate conversion, we use LOGICAL size (what the zoom level represents)
     const logicalImageSize = 640
