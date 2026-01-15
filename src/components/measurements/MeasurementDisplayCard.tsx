@@ -2,11 +2,13 @@ import { useState } from 'react';
 import { Card } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Satellite, Edit3, RefreshCw, Loader2, Sparkles, Pencil, AlertTriangle } from 'lucide-react';
+import { Satellite, Edit3, RefreshCw, Loader2, Sparkles, Pencil, AlertTriangle, Scan } from 'lucide-react';
 import { format } from 'date-fns';
 import { useRepullMeasurement } from '@/hooks/useMeasurement';
 import { toast } from 'sonner';
 import { FootprintImportDialog } from './FootprintImportDialog';
+import { FootprintDrawingDialog } from './FootprintDrawingDialog';
+import { supabase } from '@/integrations/supabase/client';
 
 interface MeasurementDisplayCardProps {
   measurement: any;
@@ -31,6 +33,8 @@ export function MeasurementDisplayCard({
 }: MeasurementDisplayCardProps) {
   const { repull, isRepulling } = useRepullMeasurement();
   const [showFootprintImport, setShowFootprintImport] = useState(false);
+  const [showFootprintDrawing, setShowFootprintDrawing] = useState(false);
+  const [isRedetecting, setIsRedetecting] = useState(false);
   
   const handleReanalyze = async () => {
     if (!propertyId || !lat || !lng) {
@@ -47,6 +51,45 @@ export function MeasurementDisplayCard({
     } catch (error: any) {
       console.error('Re-analysis failed:', error);
       toast.error(error.message || 'Failed to re-analyze roof');
+    }
+  };
+
+  const handleRedetectFootprint = async () => {
+    if (!lat || !lng || !measurement?.id) {
+      toast.error('Missing coordinates or measurement ID');
+      return;
+    }
+    
+    setIsRedetecting(true);
+    try {
+      toast.info('Re-detecting building footprint with AI vision...');
+      
+      const { data, error } = await supabase.functions.invoke('detect-building-footprint', {
+        body: {
+          coordinates: { lat, lng },
+          imageSize: 640,
+          zoom: 20,
+          measurementId: measurement.id
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast.success('Footprint re-detected!', {
+          description: `Found ${data.footprint.vertexCount} vertices with ${(data.footprint.confidence * 100).toFixed(0)}% confidence`
+        });
+        onRefresh?.();
+      } else {
+        toast.warning('Could not detect footprint', {
+          description: data?.error || 'Try manual drawing instead'
+        });
+      }
+    } catch (error: any) {
+      console.error('Re-detect error:', error);
+      toast.error(error.message || 'Failed to re-detect footprint');
+    } finally {
+      setIsRedetecting(false);
     }
   };
 
@@ -127,16 +170,32 @@ export function MeasurementDisplayCard({
               </div>
             </div>
           </div>
-          <div className="flex gap-2">
-            {measurement?.id && (
+          <div className="flex gap-2 flex-wrap">
+            {isSolarBboxFallback && lat && lng && (
+              <Button 
+                variant="default" 
+                size="sm" 
+                onClick={handleRedetectFootprint}
+                disabled={isRedetecting}
+                className="text-xs bg-orange-500 hover:bg-orange-600"
+              >
+                {isRedetecting ? (
+                  <Loader2 className="h-4 w-4 mr-1 animate-spin" />
+                ) : (
+                  <Scan className="h-4 w-4 mr-1" />
+                )}
+                Re-detect
+              </Button>
+            )}
+            {measurement?.id && lat && lng && (
               <Button 
                 variant="outline" 
                 size="sm" 
-                onClick={() => setShowFootprintImport(true)}
+                onClick={() => setShowFootprintDrawing(true)}
                 className="text-xs"
               >
                 <Pencil className="h-4 w-4 mr-1" />
-                Edit Footprint
+                Draw Footprint
               </Button>
             )}
             {propertyId && lat && lng && (
@@ -242,6 +301,20 @@ export function MeasurementDisplayCard({
           open={showFootprintImport}
           onClose={() => setShowFootprintImport(false)}
           measurementId={measurement.id}
+          currentAreaSqft={totalArea}
+          onSave={handleFootprintSaved}
+        />
+      )}
+
+      {/* Footprint Drawing Dialog */}
+      {measurement?.id && lat && lng && (
+        <FootprintDrawingDialog
+          open={showFootprintDrawing}
+          onClose={() => setShowFootprintDrawing(false)}
+          measurementId={measurement.id}
+          lat={lat}
+          lng={lng}
+          address={measurement.address}
           currentAreaSqft={totalArea}
           onSave={handleFootprintSaved}
         />
