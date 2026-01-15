@@ -27,6 +27,7 @@ interface ContactImportData {
   notes?: string;
   sales_rep_name?: string; // Name from CSV to match against profiles
   qualification_status?: string; // Status/disposition from CSV
+  estimated_value?: string; // Estimated amount/contract price from CSV
 }
 
 interface ProfileMatch {
@@ -294,6 +295,13 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'created by': 'sales_rep_name',
   'createdby': 'sales_rep_name',
   'created_by': 'sales_rep_name',
+  // Primary Salesperson variations (common CRM export format)
+  'primary salesperson': 'sales_rep_name',
+  'primary_salesperson': 'sales_rep_name',
+  'primarysalesperson': 'sales_rep_name',
+  'salesperson': 'sales_rep_name',
+  'sales person': 'sales_rep_name',
+  'salesperson name': 'sales_rep_name',
   
   // Status / Qualification Status variations
   'status': 'qualification_status',
@@ -309,6 +317,37 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'pipeline stage': 'qualification_status',
   'result': 'qualification_status',
   'outcome': 'qualification_status',
+  // Current Milestone variations (common CRM export format)
+  'current milestone': 'qualification_status',
+  'current_milestone': 'qualification_status',
+  'currentmilestone': 'qualification_status',
+  'milestone': 'qualification_status',
+  
+  // Estimated Value / Contract Price variations
+  'estimated': 'estimated_value',
+  'estimated amount': 'estimated_value',
+  'estimated_amount': 'estimated_value',
+  'estimatedamount': 'estimated_value',
+  'estimate': 'estimated_value',
+  'estimate amount': 'estimated_value',
+  'contract price': 'estimated_value',
+  'contract_price': 'estimated_value',
+  'contractprice': 'estimated_value',
+  'contract amount': 'estimated_value',
+  'contract_amount': 'estimated_value',
+  'contract value': 'estimated_value',
+  'job value': 'estimated_value',
+  'job_value': 'estimated_value',
+  'job amount': 'estimated_value',
+  'job price': 'estimated_value',
+  'price': 'estimated_value',
+  'amount': 'estimated_value',
+  'value': 'estimated_value',
+  'total': 'estimated_value',
+  'total amount': 'estimated_value',
+  'total_amount': 'estimated_value',
+  'deal value': 'estimated_value',
+  'deal_value': 'estimated_value',
 };
 
 /**
@@ -543,6 +582,8 @@ function normalizeRow(rawRow: Record<string, any>): ContactImportData {
       normalized.sales_rep_name = valueStr;
     } else if (mappedField === 'qualification_status') {
       normalized.qualification_status = valueStr;
+    } else if (mappedField === 'estimated_value') {
+      normalized.estimated_value = valueStr;
     } else if (mappedField) {
       // Only set if we don't already have a value (first match wins)
       if (!normalized[mappedField]) {
@@ -597,7 +638,19 @@ function normalizeRow(rawRow: Record<string, any>): ContactImportData {
     notes: secondaryNotes || undefined,
     sales_rep_name: normalized.sales_rep_name || undefined,
     qualification_status: normalizedStatus || undefined,
+    estimated_value: normalized.estimated_value || undefined,
   };
+}
+
+/**
+ * Parse estimated value from CSV (handles currency symbols, commas, etc.)
+ */
+function parseEstimatedValue(value: string | undefined): number | null {
+  if (!value) return null;
+  // Remove currency symbols, commas, whitespace, and common prefixes
+  const cleaned = value.replace(/[$€£,\s]/g, '').trim();
+  const parsed = parseFloat(cleaned);
+  return isNaN(parsed) ? null : parsed;
 }
 
 /**
@@ -968,6 +1021,8 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
   const [unmatchedColumns, setUnmatchedColumns] = useState<string[]>([]);
   const [metadataColumns, setMetadataColumns] = useState<string[]>([]);
   const [duplicateColumns, setDuplicateColumns] = useState<string[]>([]);
+  const [columnsToNotes, setColumnsToNotes] = useState<string[]>([]); // Track which unmapped columns should be added to notes
+  const [rawCsvData, setRawCsvData] = useState<Record<string, any>[]>([]); // Store raw CSV data for notes extraction
   const [headerStatus, setHeaderStatus] = useState<{ status: 'ok' | 'missing' | 'suspicious'; message: string }>({ status: 'ok', message: '' });
   const [validRowStats, setValidRowStats] = useState<{ validCount: number; totalCount: number; percentage: number }>({ validCount: 0, totalCount: 0, percentage: 0 });
   const [skipAnalysis, setSkipAnalysis] = useState<SkipAnalysis>({ missingName: 0, missingContact: 0, missingBoth: 0, importable: 0 });
@@ -1026,7 +1081,11 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
           setMetadataColumns(metadata);
           setDuplicateColumns(duplicates);
           setUnmatchedColumns(unmatched);
+          setColumnsToNotes([]); // Reset on new file
         }
+        
+        // Store raw data for notes extraction during import
+        setRawCsvData(rawData);
         
         // Normalize all rows using smart mapping
         const normalizedData = rawData.map(row => normalizeRow(row));
@@ -1110,7 +1169,26 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
           // Track unmatched sales reps
           const unmatchedReps = new Set<string>();
           
-          const contacts = importableRows.map(row => {
+          // Build a helper function to create notes from unmapped columns
+          const buildNotesFromUnmappedColumns = (rawRow: Record<string, any>, existingNotes: string | undefined): string | null => {
+            if (columnsToNotes.length === 0) return existingNotes || null;
+            
+            const additionalNotes: string[] = [];
+            for (const col of columnsToNotes) {
+              const value = rawRow[col];
+              if (value && String(value).trim()) {
+                additionalNotes.push(`${col}: ${String(value).trim()}`);
+              }
+            }
+            
+            if (additionalNotes.length === 0) return existingNotes || null;
+            
+            const unmappedSection = `--- Imported Data ---\n${additionalNotes.join('\n')}`;
+            return existingNotes ? `${existingNotes}\n\n${unmappedSection}` : unmappedSection;
+          };
+          
+          // Store original row data for pipeline entry creation
+          const contactsWithOriginal = importableRows.map((row, idx) => {
             // Match sales rep name to profile ID
             const assignedTo = matchSalesRepToProfile(row.sales_rep_name, profilesForMatching);
             
@@ -1123,69 +1201,107 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
             const hasName = (row.first_name && row.first_name.trim() !== '') || 
                             (row.last_name && row.last_name.trim() !== '');
             
+            // Get the corresponding raw row for unmapped column extraction
+            const rawRow = rawData[idx] || {};
+            const notesWithUnmapped = buildNotesFromUnmappedColumns(rawRow, row.notes);
+            
             return {
-              first_name: hasName ? (row.first_name || 'Unknown') : 'Homeowner',
-              last_name: row.last_name || '',
-              email: row.email || null,
-              phone: row.phone || null,
-              secondary_email: row.secondary_email || null,
-              secondary_phone: row.secondary_phone || null,
-              additional_emails: row.additional_emails?.length ? row.additional_emails : [],
-              additional_phones: row.additional_phones?.length ? row.additional_phones : [],
-              company_name: row.company_name || null,
-              address_street: row.address_street || null,
-              address_city: row.address_city || null,
-              address_state: row.address_state || null,
-              address_zip: row.address_zip || null,
-              lead_source: row.lead_source || 'csv_import',
-              tags: row.tags ? row.tags.split(',').map((t: string) => t.trim()) : [],
-              notes: row.notes || null,
-              tenant_id: profile.tenant_id,
-              location_id: currentLocationId || null,
-              type: 'homeowner' as const,
-              is_deleted: false,
-              assigned_to: assignedTo,
-              qualification_status: row.qualification_status || null,
+              contact: {
+                first_name: hasName ? (row.first_name || 'Unknown') : 'Homeowner',
+                last_name: row.last_name || '',
+                email: row.email || null,
+                phone: row.phone || null,
+                secondary_email: row.secondary_email || null,
+                secondary_phone: row.secondary_phone || null,
+                additional_emails: row.additional_emails?.length ? row.additional_emails : [],
+                additional_phones: row.additional_phones?.length ? row.additional_phones : [],
+                company_name: row.company_name || null,
+                address_street: row.address_street || null,
+                address_city: row.address_city || null,
+                address_state: row.address_state || null,
+                address_zip: row.address_zip || null,
+                lead_source: row.lead_source || 'csv_import',
+                tags: row.tags ? row.tags.split(',').map((t: string) => t.trim()) : [],
+                notes: notesWithUnmapped,
+                tenant_id: profile.tenant_id,
+                location_id: currentLocationId || null,
+                type: 'homeowner' as const,
+                is_deleted: false,
+                assigned_to: assignedTo,
+                qualification_status: row.qualification_status || null,
+              },
+              originalRow: row,
+              assignedTo,
             };
           });
 
           // Batch insert with smaller batches for large imports to prevent timeout
           // Use smaller batches for large imports to avoid statement timeout
-          const batchSize = contacts.length > 500 ? 25 : contacts.length > 100 ? 50 : 100;
+          const batchSize = contactsWithOriginal.length > 500 ? 25 : contactsWithOriginal.length > 100 ? 50 : 100;
           let successCount = 0;
           let failedCount = 0;
-          const totalBatches = Math.ceil(contacts.length / batchSize);
+          let pipelineEntriesCreated = 0;
 
-          for (let i = 0; i < contacts.length; i += batchSize) {
+          for (let i = 0; i < contactsWithOriginal.length; i += batchSize) {
             const batchNumber = Math.floor(i / batchSize) + 1;
-            const percentage = Math.round(((i + batchSize) / contacts.length) * 100);
-            setImportProgress(`Importing ${Math.min(i + batchSize, contacts.length)} of ${contacts.length} (${Math.min(percentage, 100)}%)`);
+            const percentage = Math.round(((i + batchSize) / contactsWithOriginal.length) * 100);
+            setImportProgress(`Importing ${Math.min(i + batchSize, contactsWithOriginal.length)} of ${contactsWithOriginal.length} (${Math.min(percentage, 100)}%)`);
             
-            const batch = contacts.slice(i, i + batchSize);
+            const batchItems = contactsWithOriginal.slice(i, i + batchSize);
+            const contactBatch = batchItems.map(item => item.contact);
             
             try {
-              const { data, error } = await supabase
+              const { data: insertedContacts, error } = await supabase
                 .from('contacts')
-                .insert(batch)
+                .insert(contactBatch)
                 .select('id'); // Only select id to reduce response size
 
               if (error) {
                 console.error(`Batch ${batchNumber} failed:`, error);
-                failedCount += batch.length;
+                failedCount += contactBatch.length;
                 // Continue with next batch instead of throwing - more resilient
                 continue;
               }
               
-              successCount += data?.length || 0;
+              successCount += insertedContacts?.length || 0;
+              
+              // Create pipeline entries for imported contacts with estimated values
+              if (insertedContacts && insertedContacts.length > 0) {
+                const pipelineEntries = insertedContacts.map((contact, idx) => {
+                  const originalRow = batchItems[idx]?.originalRow;
+                  const assignedTo = batchItems[idx]?.assignedTo;
+                  const estimatedValue = parseEstimatedValue(originalRow?.estimated_value);
+                  
+                  return {
+                    tenant_id: profile.tenant_id,
+                    contact_id: contact.id,
+                    location_id: currentLocationId || null,
+                    status: 'lead',
+                    assigned_to: assignedTo || null,
+                    estimated_value: estimatedValue,
+                  };
+                });
+                
+                const { data: createdPipelines, error: pipelineError } = await supabase
+                  .from('pipeline_entries')
+                  .insert(pipelineEntries)
+                  .select('id');
+                  
+                if (pipelineError) {
+                  console.error(`Pipeline entries batch ${batchNumber} failed:`, pipelineError);
+                } else {
+                  pipelineEntriesCreated += createdPipelines?.length || 0;
+                }
+              }
             } catch (batchError) {
               console.error(`Batch ${batchNumber} threw error:`, batchError);
-              failedCount += batch.length;
+              failedCount += contactBatch.length;
               // Continue instead of throwing
               continue;
             }
             
             // Add delay between batches for large imports to prevent overwhelming the DB
-            if (contacts.length > 100 && i + batchSize < contacts.length) {
+            if (contactsWithOriginal.length > 100 && i + batchSize < contactsWithOriginal.length) {
               await new Promise(resolve => setTimeout(resolve, 150));
             }
           }
@@ -1218,6 +1334,8 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
           setUnmatchedColumns([]);
           setMetadataColumns([]);
           setDuplicateColumns([]);
+          setColumnsToNotes([]);
+          setRawCsvData([]);
           setImportProgress('');
           setHeaderStatus({ status: 'ok', message: '' });
           setValidRowStats({ validCount: 0, totalCount: 0, percentage: 0 });
@@ -1250,6 +1368,8 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
     setUnmatchedColumns([]);
     setMetadataColumns([]);
     setDuplicateColumns([]);
+    setColumnsToNotes([]);
+    setRawCsvData([]);
     setHeaderStatus({ status: 'ok', message: '' });
     setValidRowStats({ validCount: 0, totalCount: 0, percentage: 0 });
     setSkipAnalysis({ missingName: 0, missingContact: 0, missingBoth: 0, importable: 0 });
@@ -1426,25 +1546,52 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
             </div>
           )}
 
-          {/* Truly Unmatched Columns Warning - only show if there are unmapped columns that aren't metadata/duplicates */}
+          {/* Truly Unmatched Columns - with Skip/Add to Notes option */}
           {unmatchedColumns.length > 0 && (
             <div className="p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
-              <div className="flex items-center gap-2 mb-2">
+              <div className="flex items-center gap-2 mb-3">
                 <AlertCircle className="h-4 w-4 text-amber-600" />
                 <span className="text-sm font-medium text-amber-700">
-                  {unmatchedColumns.length} columns not mapped (will be skipped):
+                  {unmatchedColumns.length} columns not auto-mapped:
                 </span>
               </div>
-              <div className="flex flex-wrap gap-2">
+              <div className="space-y-2">
                 {unmatchedColumns.map((col, i) => (
-                  <span 
+                  <div 
                     key={i} 
-                    className="text-xs px-2 py-1 bg-background rounded border text-muted-foreground"
+                    className="flex items-center justify-between bg-background rounded border px-3 py-2"
                   >
-                    {col}
-                  </span>
+                    <span className="text-sm font-medium">{col}</span>
+                    <div className="flex gap-4 text-sm">
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`col-action-${i}`}
+                          checked={!columnsToNotes.includes(col)}
+                          onChange={() => setColumnsToNotes(prev => prev.filter(c => c !== col))}
+                          className="h-3.5 w-3.5"
+                        />
+                        <span className="text-muted-foreground">Skip</span>
+                      </label>
+                      <label className="flex items-center gap-1.5 cursor-pointer">
+                        <input
+                          type="radio"
+                          name={`col-action-${i}`}
+                          checked={columnsToNotes.includes(col)}
+                          onChange={() => setColumnsToNotes(prev => [...prev, col])}
+                          className="h-3.5 w-3.5"
+                        />
+                        <span className="text-foreground">Add to Notes</span>
+                      </label>
+                    </div>
+                  </div>
                 ))}
               </div>
+              {columnsToNotes.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-2">
+                  {columnsToNotes.length} column{columnsToNotes.length > 1 ? 's' : ''} will be added to contact notes
+                </p>
+              )}
             </div>
           )}
 
@@ -1509,6 +1656,7 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
                       <th className="px-3 py-2 text-left whitespace-nowrap">Phone</th>
                       <th className="px-3 py-2 text-left whitespace-nowrap">City</th>
                       <th className="px-3 py-2 text-left whitespace-nowrap">Status</th>
+                      <th className="px-3 py-2 text-left whitespace-nowrap">Estimated</th>
                       <th className="px-3 py-2 text-left whitespace-nowrap">Assigned Rep</th>
                     </tr>
                   </thead>
@@ -1526,6 +1674,13 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
                               <Badge variant="outline" className="text-xs">
                                 {row.qualification_status.replace(/_/g, ' ')}
                               </Badge>
+                            ) : '-'}
+                          </td>
+                          <td className="px-3 py-2">
+                            {row.estimated_value ? (
+                              <span className="text-green-600 font-medium">
+                                ${parseEstimatedValue(row.estimated_value)?.toLocaleString() || row.estimated_value}
+                              </span>
                             ) : '-'}
                           </td>
                           <td className="px-3 py-2">
