@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { cn } from '@/lib/utils';
 import { supabase } from '@/integrations/supabase/client';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -891,31 +892,67 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
                   const Icon = category.icon;
                   const count = categoryCounts[category.value] || 0;
                   
-                  return (
-                    <Card 
-                      key={category.value}
-                      className="cursor-pointer hover:border-primary transition-colors group"
-                      onClick={() => setActiveFolder(category.value)}
-                    >
-                      <CardContent className="flex flex-col items-center justify-center p-3 space-y-1">
-                        <div className={`${category.color} text-white p-2 rounded-lg relative group-hover:scale-105 transition-transform`}>
-                          <Icon className="h-4 w-4" />
-                          {category.tracksCost && (
-                            <DollarSign className="absolute -top-1 -right-1 h-2.5 w-2.5" />
-                          )}
-                          {count > 0 && (
-                            <Badge 
-                              variant="secondary" 
-                              className="absolute -top-2 -right-2 h-4 min-w-4 px-0.5 flex items-center justify-center text-[10px]"
-                            >
-                              {count}
-                            </Badge>
-                          )}
-                        </div>
-                        <span className="text-xs font-medium text-center leading-tight">{category.label}</span>
-                      </CardContent>
-                    </Card>
-                  );
+                    // Map category colors to gradient classes for 3D effect
+                    const gradientMap: Record<string, string> = {
+                      'bg-blue-500': 'from-blue-400 via-blue-500 to-blue-600 shadow-blue-500/30',
+                      'bg-green-500': 'from-green-400 via-green-500 to-green-600 shadow-green-500/30',
+                      'bg-purple-500': 'from-purple-400 via-purple-500 to-purple-600 shadow-purple-500/30',
+                      'bg-orange-500': 'from-orange-400 via-orange-500 to-orange-600 shadow-orange-500/30',
+                      'bg-red-500': 'from-red-400 via-red-500 to-red-600 shadow-red-500/30',
+                      'bg-amber-500': 'from-amber-400 via-amber-500 to-amber-600 shadow-amber-500/30',
+                      'bg-cyan-500': 'from-cyan-400 via-cyan-500 to-cyan-600 shadow-cyan-500/30',
+                      'bg-gray-500': 'from-gray-400 via-gray-500 to-gray-600 shadow-gray-500/30',
+                      'bg-pink-500': 'from-pink-400 via-pink-500 to-pink-600 shadow-pink-500/30',
+                      'bg-indigo-500': 'from-indigo-400 via-indigo-500 to-indigo-600 shadow-indigo-500/30',
+                      'bg-teal-500': 'from-teal-400 via-teal-500 to-teal-600 shadow-teal-500/30',
+                      'bg-yellow-500': 'from-yellow-400 via-yellow-500 to-yellow-600 shadow-yellow-500/30',
+                    };
+                    const gradientClass = gradientMap[category.color] || 'from-gray-400 via-gray-500 to-gray-600 shadow-gray-500/30';
+                    
+                    return (
+                      <Card 
+                        key={category.value}
+                        className="cursor-pointer hover:border-primary/50 transition-all duration-300 group hover:shadow-lg"
+                        onClick={() => setActiveFolder(category.value)}
+                      >
+                        <CardContent className="flex flex-col items-center justify-center p-3 space-y-1.5">
+                          {/* 3D Icon Container */}
+                          <div 
+                            className={cn(
+                              // Base 3D styling with gradient
+                              "relative rounded-xl p-2.5 text-white",
+                              "bg-gradient-to-br",
+                              gradientClass,
+                              // 3D depth with layered shadows
+                              "shadow-lg",
+                              // Inner highlight for glossy 3D effect
+                              "before:absolute before:inset-0 before:rounded-xl before:bg-gradient-to-b before:from-white/30 before:via-white/5 before:to-transparent before:pointer-events-none",
+                              // Bottom reflection/shadow for depth
+                              "after:absolute after:-bottom-1 after:left-1/4 after:right-1/4 after:h-1.5 after:rounded-full after:bg-black/20 after:blur-sm after:transition-all after:duration-300",
+                              // Smooth hover animations
+                              "transition-all duration-300 ease-out",
+                              "group-hover:scale-110 group-hover:-translate-y-1",
+                              "group-hover:shadow-xl",
+                              "group-hover:after:left-1/3 group-hover:after:right-1/3 group-hover:after:-bottom-2 group-hover:after:blur-md",
+                            )}
+                          >
+                            <Icon className="h-4 w-4 drop-shadow-sm relative z-10" />
+                            {category.tracksCost && (
+                              <DollarSign className="absolute -top-1 -right-1 h-2.5 w-2.5 drop-shadow-sm" />
+                            )}
+                            {count > 0 && (
+                              <Badge 
+                                variant="secondary" 
+                                className="absolute -top-2 -right-2 h-4 min-w-4 px-0.5 flex items-center justify-center text-[10px] shadow-md"
+                              >
+                                {count}
+                              </Badge>
+                            )}
+                          </div>
+                          <span className="text-xs font-medium text-center leading-tight group-hover:text-primary transition-colors duration-300">{category.label}</span>
+                        </CardContent>
+                      </Card>
+                    );
                 })}
               </div>
             </CardContent>
