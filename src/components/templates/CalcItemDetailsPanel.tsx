@@ -169,27 +169,32 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
           onChange={(formula) => handleLocalUpdate({ qty_formula: formula })}
         />
 
-        {/* SKU Pattern */}
-        <div className="space-y-2">
-          <Label htmlFor="sku_pattern">SKU Pattern</Label>
-          <Input
-            id="sku_pattern"
-            value={localItem.sku_pattern || ''}
-            onChange={(e) => handleLocalUpdate({ sku_pattern: e.target.value })}
-            placeholder="e.g., ABC-SHINGLE-*"
-          />
-        </div>
+        {/* Material-only fields */}
+        {localItem.item_type === 'material' && (
+          <>
+            {/* SKU Pattern */}
+            <div className="space-y-2">
+              <Label htmlFor="sku_pattern">SKU Pattern</Label>
+              <Input
+                id="sku_pattern"
+                value={localItem.sku_pattern || ''}
+                onChange={(e) => handleLocalUpdate({ sku_pattern: e.target.value })}
+                placeholder="e.g., ABC-SHINGLE-*"
+              />
+            </div>
 
-        {/* Manufacturer */}
-        <div className="space-y-2">
-          <Label htmlFor="manufacturer">Manufacturer</Label>
-          <Input
-            id="manufacturer"
-            value={localItem.manufacturer || ''}
-            onChange={(e) => handleLocalUpdate({ manufacturer: e.target.value })}
-            placeholder="e.g., GAF, Owens Corning"
-          />
-        </div>
+            {/* Manufacturer */}
+            <div className="space-y-2">
+              <Label htmlFor="manufacturer">Manufacturer</Label>
+              <Input
+                id="manufacturer"
+                value={localItem.manufacturer || ''}
+                onChange={(e) => handleLocalUpdate({ manufacturer: e.target.value })}
+                placeholder="e.g., GAF, Owens Corning"
+              />
+            </div>
+          </>
+        )}
       </div>
 
       {/* Pricing Summary */}
