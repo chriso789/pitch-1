@@ -116,21 +116,6 @@ export const CalcTemplateDetailsPanel: React.FC<CalcTemplateDetailsPanelProps> =
           </p>
         </div>
 
-        {/* Overhead Percentage */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <Label>Overhead Percentage</Label>
-            <span className="text-sm font-medium">{template.overhead_percentage}%</span>
-          </div>
-          <Slider
-            value={[template.overhead_percentage]}
-            onValueChange={([value]) => onUpdate({ overhead_percentage: value })}
-            min={0}
-            max={50}
-            step={1}
-          />
-        </div>
-
         {/* Active Status */}
         <div className="flex items-center justify-between py-2">
           <div>

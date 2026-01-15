@@ -30,6 +30,14 @@ export const MEASUREMENT_TAGS: MeasurementTag[] = [
   { tag: 'roof.squares', label: 'Roof Area (Squares)', category: 'area', sampleValue: 28, unit: 'SQ' },
   { tag: 'roof.total_sqft', label: 'Roof Area (Sq Ft)', category: 'area', sampleValue: 2800, unit: 'SQFT' },
   
+  // Area with waste pre-calculated
+  { tag: 'waste.10pct.squares', label: 'Roof + 10% Waste (SQ)', category: 'area', sampleValue: 30.8, unit: 'SQ' },
+  { tag: 'waste.12pct.squares', label: 'Roof + 12% Waste (SQ)', category: 'area', sampleValue: 31.36, unit: 'SQ' },
+  { tag: 'waste.15pct.squares', label: 'Roof + 15% Waste (SQ)', category: 'area', sampleValue: 32.2, unit: 'SQ' },
+  { tag: 'waste.10pct.sqft', label: 'Roof + 10% Waste (Sqft)', category: 'area', sampleValue: 3080, unit: 'SQFT' },
+  { tag: 'waste.12pct.sqft', label: 'Roof + 12% Waste (Sqft)', category: 'area', sampleValue: 3136, unit: 'SQFT' },
+  { tag: 'waste.15pct.sqft', label: 'Roof + 15% Waste (Sqft)', category: 'area', sampleValue: 3220, unit: 'SQFT' },
+  
   // Linear measurements
   { tag: 'lf.ridge', label: 'Ridge Length', category: 'linear', sampleValue: 45, unit: 'LF' },
   { tag: 'lf.hip', label: 'Hip Length', category: 'linear', sampleValue: 32, unit: 'LF' },
@@ -38,6 +46,8 @@ export const MEASUREMENT_TAGS: MeasurementTag[] = [
   { tag: 'lf.eave', label: 'Eave Length', category: 'linear', sampleValue: 92, unit: 'LF' },
   { tag: 'lf.drip', label: 'Drip Edge Length', category: 'linear', sampleValue: 160, unit: 'LF' },
   { tag: 'lf.step', label: 'Step Flashing Length', category: 'linear', sampleValue: 24, unit: 'LF' },
+  { tag: 'lf.ridge_hip', label: 'Ridge + Hip (Combined)', category: 'linear', sampleValue: 77, unit: 'LF' },
+  { tag: 'lf.eave_rake', label: 'Eave + Rake (Combined)', category: 'linear', sampleValue: 160, unit: 'LF' },
   
   // Count measurements
   { tag: 'count.pipe_vent', label: 'Pipe Vents', category: 'count', sampleValue: 3, unit: 'EA' },
@@ -60,12 +70,18 @@ export const CONVERSION_PRESETS: Record<string, ConversionPreset[]> = {
   ],
   RL: [
     { label: '÷ 4 squares per roll', multiplier: 4, operation: 'divide' },
+    { label: '÷ 5 squares per roll (butyl)', multiplier: 5, operation: 'divide' },
+    { label: '÷ 10 squares per roll (synthetic)', multiplier: 10, operation: 'divide' },
     { label: '÷ 400 sqft per roll', multiplier: 400, operation: 'divide' },
+    { label: '÷ 500 sqft per roll (TPO)', multiplier: 500, operation: 'divide' },
     { label: 'Direct (1:1)', multiplier: 1, operation: 'multiply' },
     { label: 'Custom multiplier...', multiplier: null, operation: 'custom' },
   ],
   PC: [
+    { label: '÷ 3 LF per piece', multiplier: 3, operation: 'divide' },
     { label: '÷ 10 LF per piece', multiplier: 10, operation: 'divide' },
+    { label: '÷ 20 sqft per panel (5V metal)', multiplier: 20, operation: 'divide' },
+    { label: '÷ 16 sqft per panel (standing seam)', multiplier: 16, operation: 'divide' },
     { label: 'Direct (1:1)', multiplier: 1, operation: 'multiply' },
     { label: 'Custom multiplier...', multiplier: null, operation: 'custom' },
   ],
@@ -75,13 +91,29 @@ export const CONVERSION_PRESETS: Record<string, ConversionPreset[]> = {
   ],
   EA: [
     { label: 'Direct (1:1)', multiplier: 1, operation: 'multiply' },
+    { label: '× 80 screws per square', multiplier: 80, operation: 'multiply' },
+    { label: '× 90 tiles per square', multiplier: 90, operation: 'multiply' },
+    { label: '× 12 clips per square', multiplier: 12, operation: 'multiply' },
     { label: 'Custom multiplier...', multiplier: null, operation: 'custom' },
   ],
   BX: [
-    { label: '÷ coverage per box', multiplier: null, operation: 'custom' },
+    { label: '× 80 screws/SQ ÷ 250/box', multiplier: null, operation: 'custom' },
+    { label: '÷ 250 per box', multiplier: 250, operation: 'divide' },
+    { label: '÷ 5 (lbs per SQ)', multiplier: 5, operation: 'divide' },
     { label: 'Direct (1:1)', multiplier: 1, operation: 'multiply' },
+    { label: 'Custom multiplier...', multiplier: null, operation: 'custom' },
   ],
   GL: [
+    { label: 'Direct (1:1)', multiplier: 1, operation: 'multiply' },
+    { label: 'Custom multiplier...', multiplier: null, operation: 'custom' },
+  ],
+  BD: [
+    { label: '÷ 32 sqft per board (4x8)', multiplier: 32, operation: 'divide' },
+    { label: 'Direct (1:1)', multiplier: 1, operation: 'multiply' },
+    { label: 'Custom multiplier...', multiplier: null, operation: 'custom' },
+  ],
+  PL: [
+    { label: '÷ 500 sqft per pail', multiplier: 500, operation: 'divide' },
     { label: 'Direct (1:1)', multiplier: 1, operation: 'multiply' },
     { label: 'Custom multiplier...', multiplier: null, operation: 'custom' },
   ],
