@@ -148,15 +148,15 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
         {/* Measurement Type */}
         <div className="space-y-2">
           <Label>Measurement Type (Auto-calculate from)</Label>
-          <Select
-            value={item.measurement_type || ''}
-            onValueChange={(value) => onUpdate({ measurement_type: value || null })}
+        <Select
+            value={item.measurement_type || 'none'}
+            onValueChange={(value) => onUpdate({ measurement_type: value === 'none' ? null : value })}
           >
             <SelectTrigger>
               <SelectValue placeholder="Select measurement..." />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="">None (Manual Qty)</SelectItem>
+              <SelectItem value="none">None (Manual Qty)</SelectItem>
               {MEASUREMENT_TYPES.map((mt) => (
                 <SelectItem key={mt.value} value={mt.value}>
                   {mt.label}
