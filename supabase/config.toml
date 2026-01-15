@@ -704,7 +704,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.detect-building-footprint]
-verify_jwt = true
+verify_jwt = false
 
 [functions.validate-perimeter]
 verify_jwt = true

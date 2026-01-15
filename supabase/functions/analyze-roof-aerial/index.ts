@@ -425,6 +425,72 @@ Deno.serve(async (req) => {
     }
     timings.footprint_microsoft = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0) - (timings.footprint_regrid || 0) - (timings.footprint_osm || 0);
 
+    // ═══════════════════════════════════════════════════════════════════════════
+    // STEP 4.5: AI Vision Building Detection (when all API sources fail)
+    // Uses Claude Vision to trace building perimeter from satellite image
+    // ═══════════════════════════════════════════════════════════════════════════
+    if (!authoritativeFootprint && selectedImage?.url) {
+      console.log('🤖 STEP 4.5: Using AI Vision to detect building footprint from satellite image...');
+      
+      const aiVisionStart = Date.now();
+      try {
+        // Call the detect-building-footprint edge function
+        const detectResponse = await fetch(
+          `${SUPABASE_URL}/functions/v1/detect-building-footprint`,
+          {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${SUPABASE_SERVICE_ROLE_KEY}`
+            },
+            body: JSON.stringify({
+              imageUrl: selectedImage.url,
+              lat: coordinates.lat,
+              lng: coordinates.lng,
+              imageWidth: IMAGE_SIZE,
+              imageHeight: IMAGE_SIZE
+            })
+          }
+        );
+
+        if (detectResponse.ok) {
+          const detectResult = await detectResponse.json();
+          
+          if (detectResult.success && detectResult.footprint && detectResult.footprint.vertices?.length >= 4) {
+            const aiVertices = detectResult.footprint.vertices;
+            
+            // Use 0.75ft overhang for AI vision (medium confidence)
+            const expandedVertices = expandFootprintForOverhang(aiVertices, 0.75);
+            const validation = validateGeometry(expandedVertices, 'ai_vision_detected' as FootprintSource);
+            
+            if (validation.valid) {
+              authoritativeFootprint = {
+                vertices: expandedVertices,
+                confidence: (detectResult.footprint.confidence || 0.85) * 0.85, // Apply AI confidence factor
+                source: 'ai_vision_detected' as FootprintSource,
+                requiresManualReview: (detectResult.footprint.confidence || 0.85) < 0.8,
+                validation,
+              };
+              console.log(`✅ AI Vision footprint: ${validation.metrics.areaSqFt.toFixed(0)} sqft, ${aiVertices.length} vertices, ${((detectResult.footprint.confidence || 0.85) * 85).toFixed(0)}% confidence`);
+              console.log(`   Building type: ${detectResult.footprint.building_type || 'residential'}`);
+              console.log(`   Complexity: ${detectResult.footprint.estimated_complexity || 'unknown'}`);
+            } else {
+              console.log(`⚠️ AI Vision footprint failed validation: ${validation.errors.join(', ')}`);
+            }
+          } else {
+            console.log(`⚠️ AI Vision detection returned no usable footprint: ${detectResult.error || 'insufficient confidence'}`);
+          }
+        } else {
+          const errorText = await detectResponse.text().catch(() => 'Unknown error');
+          console.warn(`⚠️ AI Vision detection failed with status: ${detectResponse.status} - ${errorText}`);
+        }
+      } catch (aiVisionErr) {
+        console.warn('⚠️ AI Vision detection error:', aiVisionErr);
+      }
+      timings.footprint_ai_vision = Date.now() - aiVisionStart;
+    }
+    // ═══════════════════════════════════════════════════════════════════════════
+
     // STEP 5: LAST RESORT - Solar API bounding box (rectangular - lowest fidelity)
     // ⚠️ This creates a simple rectangle which often OVERESTIMATES area by 15-25%
     if (!authoritativeFootprint && solarData?.available && solarData?.boundingBox) {
@@ -449,12 +515,12 @@ Deno.serve(async (req) => {
         console.warn(`⚠️ Solar footprint failed validation: ${validation.errors.join(', ')}`);
       }
     }
-    timings.footprint_solar = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0) - (timings.footprint_regrid || 0) - (timings.footprint_osm || 0) - (timings.footprint_microsoft || 0);
+    timings.footprint_solar = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0) - (timings.footprint_regrid || 0) - (timings.footprint_osm || 0) - (timings.footprint_microsoft || 0) - (timings.footprint_ai_vision || 0);
     timings.footprint_total = Date.now() - footprintFetchStart;
 
     // Determine if we have a vector footprint (for conditional Florida shrinkage)
     const hasVectorFootprint = authoritativeFootprint && 
-      ['mapbox_vector', 'regrid_parcel', 'osm_buildings', 'microsoft_buildings'].includes(authoritativeFootprint.source);
+      ['mapbox_vector', 'regrid_parcel', 'osm_buildings', 'microsoft_buildings', 'ai_vision_detected'].includes(authoritativeFootprint.source);
     const usingSolarBboxFallback = authoritativeFootprint?.source === 'solar_bbox_fallback';
 
     // Log footprint source for tracking
