@@ -583,7 +583,7 @@ const ContactForm: React.FC<ContactFormProps> = ({
               <SelectContent className="bg-popover">
                 {tenantUsers.map((user) => (
                   <SelectItem key={user.id} value={user.id}>
-                    {user.name} {user.email && `(${user.email})`}
+                    {user.name}
                   </SelectItem>
                 ))}
               </SelectContent>
