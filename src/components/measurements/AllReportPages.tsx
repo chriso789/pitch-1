@@ -51,8 +51,7 @@ export const AllReportPages = forwardRef<HTMLDivElement, AllReportPagesProps>(({
   const hasWKTData = Object.values(wktLinearTotals).some(v => v > 0);
   
   // Extract measurement data
-  const totalArea = enrichedMeasurement?.total_area_adjusted_sqft || 
-                    enrichedMeasurement?.total_area_flat_sqft ||
+  const adjustedArea = enrichedMeasurement?.total_area_adjusted_sqft || 
                     measurement?.summary?.total_area_sqft || 
                     tags?.['roof.total_area'] || 
                     tags?.['roof.plan_area'] || 
@@ -61,11 +60,47 @@ export const AllReportPages = forwardRef<HTMLDivElement, AllReportPagesProps>(({
                 measurement?.summary?.pitch || 
                 tags?.['roof.pitch'] || '6/12';
   
+  // Calculate pitch multiplier and flat area
+  const pitchParts = pitch.split('/');
+  const pitchNum = parseFloat(pitchParts[0]) || 6;
+  const pitchMultiplier = Math.sqrt(1 + (pitchNum / 12) ** 2);
+  const flatArea = enrichedMeasurement?.total_area_flat_sqft || 
+                   measurement?.flat_area_sqft || 
+                   (adjustedArea / pitchMultiplier);
+  
+  // Use adjusted area as "totalArea" for backward compatibility
+  const totalArea = adjustedArea;
+  
   const facetCount = enrichedMeasurement?.facet_count || 
                      measurement?.facet_count || 
                      measurement?.faces?.length || 
                      tags?.['roof.faces_count'] || 
                      measurement?.facetCount || 4;
+  
+  // Extract individual eave/rake segments for verification table
+  const eaveSegments = useMemo(() => {
+    const wktFeatures = enrichedMeasurement?.linear_features_wkt || measurement?.linear_features_wkt || [];
+    return (wktFeatures as any[]).filter((f: any) => f.type?.toLowerCase() === 'eave').map((f: any, i: number) => ({
+      index: i + 1,
+      length: f.length_ft || 0
+    }));
+  }, [enrichedMeasurement, measurement]);
+  
+  const rakeSegments = useMemo(() => {
+    const wktFeatures = enrichedMeasurement?.linear_features_wkt || measurement?.linear_features_wkt || [];
+    return (wktFeatures as any[]).filter((f: any) => f.type?.toLowerCase() === 'rake').map((f: any, i: number) => ({
+      index: i + 1,
+      length: f.length_ft || 0
+    }));
+  }, [enrichedMeasurement, measurement]);
+  
+  const valleySegments = useMemo(() => {
+    const wktFeatures = enrichedMeasurement?.linear_features_wkt || measurement?.linear_features_wkt || [];
+    return (wktFeatures as any[]).filter((f: any) => f.type?.toLowerCase() === 'valley').map((f: any, i: number) => ({
+      index: i + 1,
+      length: f.length_ft || 0
+    }));
+  }, [enrichedMeasurement, measurement]);
   
   // Linear features
   const eaves = enrichedMeasurement?.total_eave_length || (hasWKTData ? wktLinearTotals.eave : (measurement?.summary?.eave_ft || tags?.['lf.eave'] || 0));
@@ -122,18 +157,25 @@ export const AllReportPages = forwardRef<HTMLDivElement, AllReportPagesProps>(({
             <p className="text-lg font-medium">{address}</p>
           </div>
 
-          <div className="grid grid-cols-3 gap-3 mb-6">
-            <div className="bg-primary/10 rounded-lg p-4 text-center">
-              <div className="text-3xl font-bold text-primary">{Math.round(totalArea).toLocaleString()}</div>
-              <div className="text-xs text-muted-foreground">Total Sq Ft</div>
+          {/* Area Calculation Breakdown */}
+          <div className="grid grid-cols-4 gap-3 mb-6">
+            <div className="bg-slate-100 rounded-lg p-4 text-center">
+              <div className="text-2xl font-bold text-slate-700">{Math.round(flatArea).toLocaleString()}</div>
+              <div className="text-xs text-muted-foreground">Flat Sq Ft</div>
+            </div>
+            <div className="bg-slate-50 rounded-lg p-4 text-center flex items-center justify-center">
+              <div>
+                <div className="text-lg text-slate-600">× {pitchMultiplier.toFixed(3)}</div>
+                <div className="text-xs text-muted-foreground">{pitch} pitch</div>
+              </div>
             </div>
             <div className="bg-primary/10 rounded-lg p-4 text-center">
-              <div className="text-3xl font-bold text-primary">{facetCount}</div>
+              <div className="text-2xl font-bold text-primary">{Math.round(totalArea).toLocaleString()}</div>
+              <div className="text-xs text-muted-foreground">Adjusted Sq Ft</div>
+            </div>
+            <div className="bg-primary/10 rounded-lg p-4 text-center">
+              <div className="text-2xl font-bold text-primary">{facetCount}</div>
               <div className="text-xs text-muted-foreground">Facets</div>
-            </div>
-            <div className="bg-primary/10 rounded-lg p-4 text-center">
-              <div className="text-3xl font-bold text-primary">{pitch}</div>
-              <div className="text-xs text-muted-foreground">Predominant Pitch</div>
             </div>
           </div>
 
@@ -235,6 +277,51 @@ export const AllReportPages = forwardRef<HTMLDivElement, AllReportPagesProps>(({
             <Badge className="bg-purple-500">Rakes</Badge>
             <Badge className="bg-orange-500">Step Flashing</Badge>
           </div>
+          
+          {/* Perimeter Verification Table */}
+          {(eaveSegments.length > 0 || rakeSegments.length > 0 || valleySegments.length > 0) && (
+            <div className="mt-4 border rounded-lg p-3 print:break-inside-avoid">
+              <h4 className="font-semibold text-sm mb-2">Segment Verification</h4>
+              <div className="text-xs text-muted-foreground mb-2">
+                Perimeter: Eaves ({formatFeetInches(eaves)}) + Rakes ({formatFeetInches(rakes)}) = {formatFeetInches(eaves + rakes)}
+              </div>
+              <div className="grid grid-cols-3 gap-4 text-xs">
+                {/* Eaves column */}
+                <div>
+                  <div className="font-medium mb-1" style={{ color: '#006400' }}>Eaves</div>
+                  {eaveSegments.map((seg) => (
+                    <div key={`eave-${seg.index}`} className="flex justify-between border-b border-dashed py-0.5">
+                      <span className="text-muted-foreground">Edge {seg.index}</span>
+                      <span className="font-mono">{seg.length.toFixed(1)}'</span>
+                    </div>
+                  ))}
+                  {eaveSegments.length === 0 && <div className="text-muted-foreground italic">None detected</div>}
+                </div>
+                {/* Rakes column */}
+                <div>
+                  <div className="font-medium mb-1" style={{ color: '#17A2B8' }}>Rakes</div>
+                  {rakeSegments.map((seg) => (
+                    <div key={`rake-${seg.index}`} className="flex justify-between border-b border-dashed py-0.5">
+                      <span className="text-muted-foreground">Edge {seg.index}</span>
+                      <span className="font-mono">{seg.length.toFixed(1)}'</span>
+                    </div>
+                  ))}
+                  {rakeSegments.length === 0 && <div className="text-muted-foreground italic">None detected</div>}
+                </div>
+                {/* Valleys column */}
+                <div>
+                  <div className="font-medium mb-1" style={{ color: '#DC3545' }}>Valleys</div>
+                  {valleySegments.map((seg) => (
+                    <div key={`valley-${seg.index}`} className="flex justify-between border-b border-dashed py-0.5">
+                      <span className="text-muted-foreground">Valley {seg.index}</span>
+                      <span className="font-mono">{seg.length.toFixed(1)}'</span>
+                    </div>
+                  ))}
+                  {valleySegments.length === 0 && <div className="text-muted-foreground italic">None detected</div>}
+                </div>
+              </div>
+            </div>
+          )}
         </ReportPage>
       </div>
 
