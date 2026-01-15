@@ -1039,9 +1039,24 @@ export const EnhancedEstimateBuilder: React.FC<EnhancedEstimateBuilderProps> = (
       
       tags['roof.total_sqft'] = tags['roof.total_sqft'] || roofArea;
       tags['roof.squares'] = tags['roof.squares'] || squares;
-      tags['waste.10pct.squares'] = tags['waste.10pct.squares'] || (squares * 1.1);
-      tags['waste.10pct.sqft'] = tags['waste.10pct.sqft'] || (roofArea * 1.1);
+      // 8% waste
+      tags['waste.8pct.sqft'] = tags['waste.8pct.sqft'] || (roofArea * 1.08);
+      tags['waste.8pct.squares'] = tags['waste.8pct.squares'] || (squares * 1.08);
+      // 10% waste
+      tags['waste.10pct.sqft'] = tags['waste.10pct.sqft'] || (roofArea * 1.10);
+      tags['waste.10pct.squares'] = tags['waste.10pct.squares'] || (squares * 1.10);
+      // 12% waste
+      tags['waste.12pct.sqft'] = tags['waste.12pct.sqft'] || (roofArea * 1.12);
+      tags['waste.12pct.squares'] = tags['waste.12pct.squares'] || (squares * 1.12);
+      // 15% waste
       tags['waste.15pct.sqft'] = tags['waste.15pct.sqft'] || (roofArea * 1.15);
+      tags['waste.15pct.squares'] = tags['waste.15pct.squares'] || (squares * 1.15);
+      // 17% waste
+      tags['waste.17pct.sqft'] = tags['waste.17pct.sqft'] || (roofArea * 1.17);
+      tags['waste.17pct.squares'] = tags['waste.17pct.squares'] || (squares * 1.17);
+      // 20% waste
+      tags['waste.20pct.sqft'] = tags['waste.20pct.sqft'] || (roofArea * 1.20);
+      tags['waste.20pct.squares'] = tags['waste.20pct.squares'] || (squares * 1.20);
       tags['lf.eave'] = tags['lf.eave'] || 0;
       tags['lf.rake'] = tags['lf.rake'] || 0;
       tags['lf.ridge'] = tags['lf.ridge'] || 0;
