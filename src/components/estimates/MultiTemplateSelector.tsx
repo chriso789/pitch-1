@@ -24,6 +24,7 @@ import { type PDFComponentOptions, getDefaultOptions } from './PDFComponentOptio
 import { useQueryClient } from '@tanstack/react-query';
 import { saveEstimatePdf } from '@/lib/estimates/estimatePdfSaver';
 import { useEstimatePricing, type LineItem } from '@/hooks/useEstimatePricing';
+import { TemplateCombobox } from './TemplateCombobox';
 // usePDFGeneration removed - now using useMultiPagePDFGeneration for all PDF operations
 import { useMultiPagePDFGeneration } from '@/hooks/useMultiPagePDFGeneration';
 
@@ -65,6 +66,7 @@ interface CompanyInfo {
 interface Template {
   id: string;
   name: string;
+  roof_type?: string;
   labor: Record<string, any>;
   overhead: Record<string, any>;
   currency: string;
@@ -612,20 +614,22 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
     try {
       const result = await supabaseClient
         .from('estimate_calculation_templates')
-        .select('*')
-        .eq('is_active', true);
+        .select('id, name, roof_type, labor, overhead, currency')
+        .eq('is_active', true)
+        .order('roof_type')
+        .order('name');
 
       if (result.error) throw result.error;
       
       const templatesData = (result.data || []).map((t: any) => ({
         id: t.id,
         name: t.name,
+        roof_type: t.roof_type || 'other',
         labor: t.labor || {},
         overhead: t.overhead || {},
         currency: t.currency || 'USD'
       }));
       
-      templatesData.sort((a, b) => a.name.localeCompare(b.name));
       setTemplates(templatesData);
     } catch (error) {
       console.error('Error fetching templates:', error);
@@ -1334,22 +1338,13 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
           <CardTitle>Select Estimate Template</CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <Select 
-            value={selectedTemplateId} 
+          <TemplateCombobox
+            templates={templates}
+            value={selectedTemplateId}
             onValueChange={handleTemplateSelect}
+            placeholder="Search or select a template..."
             disabled={isEditingLoadedEstimate}
-          >
-            <SelectTrigger className="w-full">
-              <SelectValue placeholder="Select a template..." />
-            </SelectTrigger>
-            <SelectContent className="bg-popover z-50">
-              {templates.map((template) => (
-                <SelectItem key={template.id} value={template.id}>
-                  {template.name}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          />
 
           {/* Show note when editing + option to recalculate */}
           {isEditingLoadedEstimate && selectedTemplateId && (
