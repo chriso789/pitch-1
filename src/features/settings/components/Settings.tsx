@@ -250,20 +250,7 @@ export const Settings = () => {
       case "materials":
         return <MaterialCatalogManager />;
       case "estimates":
-        return (
-          <Tabs value={activeSubTab} onValueChange={setActiveSubTab} className="w-full">
-            <TabsList>
-              <TabsTrigger value="templates">Templates</TabsTrigger>
-              <TabsTrigger value="calculator">Quick Calculator</TabsTrigger>
-            </TabsList>
-            <TabsContent value="templates" className="mt-6">
-              <EstimateTemplateList />
-            </TabsContent>
-            <TabsContent value="calculator" className="mt-6">
-              <EstimateBuilder />
-            </TabsContent>
-          </Tabs>
-        );
+        return <EstimateTemplateList />;
       case "commissions":
         return <CommissionManagement />;
       case "suppliers":
