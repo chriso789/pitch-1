@@ -123,6 +123,35 @@ export function assembleFacetsFromSolarSegments(
 ): AssembledGeometry {
   const warnings: string[] = [];
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PHASE 6: Detect rectangular footprints and prevent false complex geometry
+  // ═══════════════════════════════════════════════════════════════════════════
+  const isRectangular = checkIfRectangular(perimeter);
+  const footprintArea = calculatePolygonAreaSqft(perimeter);
+  const solarTotalArea = solarSegments.reduce((sum, s) => sum + (s.areaMeters2 || 0), 0) * 10.764;
+  
+  if (isRectangular) {
+    console.log(`⚠️ RECTANGULAR FOOTPRINT DETECTED: ${perimeter.length} vertices`);
+    warnings.push('Footprint is rectangular (likely bbox fallback) - geometry simplified');
+    
+    // If Solar segments suggest complex roof but footprint is rectangular,
+    // flag as needing footprint verification
+    if (solarSegments.length > 4) {
+      console.log(`⚠️ Complex segments (${solarSegments.length}) on rectangular footprint - needs verification`);
+      warnings.push(`Rectangular footprint with ${solarSegments.length} Solar segments - requires footprint verification`);
+    }
+  }
+  
+  // Check for area mismatch between Solar total and footprint
+  if (solarTotalArea > 0 && footprintArea > 0) {
+    const areaDiff = Math.abs(solarTotalArea - footprintArea) / footprintArea;
+    if (areaDiff > 0.15) {
+      console.log(`⚠️ Area mismatch: Solar ${solarTotalArea.toFixed(0)} sqft vs footprint ${footprintArea.toFixed(0)} sqft (${(areaDiff * 100).toFixed(0)}% diff)`);
+      warnings.push(`Area mismatch: Solar ${solarTotalArea.toFixed(0)} vs footprint ${footprintArea.toFixed(0)} sqft (${(areaDiff * 100).toFixed(0)}% variance)`);
+    }
+  }
+  // ═══════════════════════════════════════════════════════════════════════════
+  
   if (!solarSegments || solarSegments.length === 0) {
     warnings.push('No Solar segments available');
     return createFallbackGeometry(perimeter, predominantPitch, warnings, structureAnalysis);
@@ -132,11 +161,18 @@ export function assembleFacetsFromSolarSegments(
   const segmentsWithBounds = solarSegments.filter(s => s.boundingBox?.sw && s.boundingBox?.ne);
   const segmentsWithCenter = solarSegments.filter(s => s.center);
   
-  console.log(`🛰️ Solar Segment Assembler: ${solarSegments.length} segments, ${segmentsWithBounds.length} with bounds, ${segmentsWithCenter.length} with center`);
+  console.log(`🛰️ Solar Segment Assembler: ${solarSegments.length} segments, ${segmentsWithBounds.length} with bounds, ${segmentsWithCenter.length} with center, rectangular=${isRectangular}`);
   
   // Log structure analysis if available
   if (structureAnalysis) {
     console.log(`📐 Structure analysis: ${structureAnalysis.footprintShape}, front facing ${structureAnalysis.houseOrientation.frontFacing}, ${structureAnalysis.extensions.length} extensions, ${structureAnalysis.exclusions.length} exclusions`);
+  }
+  
+  // For rectangular footprints, prefer simpler azimuth-based assembly
+  // to avoid creating false complex geometry from wrong footprint
+  if (isRectangular && solarSegments.length >= 2) {
+    console.log(`📐 Using azimuth assembly for rectangular footprint`);
+    return assembleFromAzimuths(perimeter, solarSegments, predominantPitch, warnings, structureAnalysis);
   }
   
   // Use center positions if available (more accurate than bounding box)
@@ -156,6 +192,46 @@ export function assembleFacetsFromSolarSegments(
   
   warnings.push('Insufficient segment positioning data');
   return createFallbackGeometry(perimeter, predominantPitch, warnings, structureAnalysis);
+}
+
+/**
+ * Check if a polygon is rectangular (4 vertices with ~90° angles)
+ */
+function checkIfRectangular(perimeter: XY[]): boolean {
+  // Remove closing vertex if present
+  const uniqueVertices = perimeter.length > 3 && 
+    perimeter[0][0] === perimeter[perimeter.length - 1][0] &&
+    perimeter[0][1] === perimeter[perimeter.length - 1][1]
+    ? perimeter.slice(0, -1)
+    : perimeter;
+  
+  if (uniqueVertices.length !== 4) return false;
+  
+  // Check if all angles are approximately 90 degrees
+  const angles: number[] = [];
+  for (let i = 0; i < 4; i++) {
+    const prev = uniqueVertices[(i - 1 + 4) % 4];
+    const curr = uniqueVertices[i];
+    const next = uniqueVertices[(i + 1) % 4];
+    
+    const v1x = prev[0] - curr[0];
+    const v1y = prev[1] - curr[1];
+    const v2x = next[0] - curr[0];
+    const v2y = next[1] - curr[1];
+    
+    const dot = v1x * v2x + v1y * v2y;
+    const mag1 = Math.sqrt(v1x * v1x + v1y * v1y);
+    const mag2 = Math.sqrt(v2x * v2x + v2y * v2y);
+    
+    if (mag1 === 0 || mag2 === 0) return false;
+    
+    const cosAngle = dot / (mag1 * mag2);
+    const angle = Math.acos(Math.max(-1, Math.min(1, cosAngle))) * 180 / Math.PI;
+    angles.push(angle);
+  }
+  
+  // All angles should be close to 90 degrees (within 15 degrees tolerance)
+  return angles.every(angle => Math.abs(angle - 90) < 15);
 }
 
 /**
