@@ -13,7 +13,7 @@ import {
 import { ArrowLeft, Package, Wrench } from 'lucide-react';
 import { CalcTemplateItem } from './hooks/useCalcTemplateEditor';
 import { usePricingCalculation } from './hooks/usePricingCalculation';
-
+import { FormulaBuilder } from './FormulaBuilder';
 interface CalcItemDetailsPanelProps {
   item: CalcTemplateItem;
   profitMargin: number;
@@ -145,58 +145,12 @@ export const CalcItemDetailsPanel: React.FC<CalcItemDetailsPanelProps> = ({
           />
         </div>
 
-        {/* Measurement Type */}
-        <div className="space-y-2">
-          <Label>Measurement Type (Auto-calculate from)</Label>
-        <Select
-            value={item.measurement_type || 'none'}
-            onValueChange={(value) => onUpdate({ measurement_type: value === 'none' ? null : value })}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Select measurement..." />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="none">None (Manual Qty)</SelectItem>
-              {MEASUREMENT_TYPES.map((mt) => (
-                <SelectItem key={mt.value} value={mt.value}>
-                  {mt.label}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
-
-        {/* Coverage Per Unit */}
-        {item.measurement_type && (
-          <div className="space-y-2">
-            <Label htmlFor="coverage_per_unit">Coverage Per Unit</Label>
-            <Input
-              id="coverage_per_unit"
-              type="number"
-              step="0.01"
-              value={item.coverage_per_unit || ''}
-              onChange={(e) => onUpdate({ coverage_per_unit: parseFloat(e.target.value) || null })}
-              placeholder="e.g., 33.33 sq ft per bundle"
-            />
-            <p className="text-xs text-muted-foreground">
-              How much area/length does 1 {item.unit} cover? Used for auto-calculation.
-            </p>
-          </div>
-        )}
-
-        {/* Quantity Formula */}
-        <div className="space-y-2">
-          <Label htmlFor="qty_formula">Quantity Formula</Label>
-          <Input
-            id="qty_formula"
-            value={item.qty_formula}
-            onChange={(e) => onUpdate({ qty_formula: e.target.value })}
-            placeholder="e.g., ceil(roof.squares * 3)"
-          />
-          <p className="text-xs text-muted-foreground">
-            Use tags like roof.squares, lf.ridge, lf.hip. Functions: ceil(), floor(), round()
-          </p>
-        </div>
+        {/* Formula Builder */}
+        <FormulaBuilder
+          value={item.qty_formula}
+          unit={item.unit}
+          onChange={(formula) => onUpdate({ qty_formula: formula })}
+        />
 
         {/* SKU Pattern */}
         <div className="space-y-2">
