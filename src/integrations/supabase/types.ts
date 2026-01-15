@@ -9522,6 +9522,7 @@ export type Database = {
           item_name: string
           item_type: string
           manufacturer: string | null
+          margin_override: number | null
           measurement_type: string | null
           qty_formula: string
           sku_pattern: string | null
@@ -9542,6 +9543,7 @@ export type Database = {
           item_name: string
           item_type: string
           manufacturer?: string | null
+          margin_override?: number | null
           measurement_type?: string | null
           qty_formula?: string
           sku_pattern?: string | null
@@ -9562,6 +9564,7 @@ export type Database = {
           item_name?: string
           item_type?: string
           manufacturer?: string | null
+          margin_override?: number | null
           measurement_type?: string | null
           qty_formula?: string
           sku_pattern?: string | null

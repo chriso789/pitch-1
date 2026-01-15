@@ -27,7 +27,8 @@ const SECTIONS = [
   { value: 'roof', label: 'Roofing' },
   { value: 'gutter', label: 'Gutters' },
   { value: 'exterior', label: 'Exterior' },
-  { value: 'interior', label: 'Interior' }
+  { value: 'interior', label: 'Interior' },
+  { value: 'labor', label: 'Labor' }
 ];
 
 const CATEGORIES_BY_SECTION: Record<string, { value: string; label: string }[]> = {
@@ -52,6 +53,12 @@ const CATEGORIES_BY_SECTION: Record<string, { value: string; label: string }[]> 
     { value: 'paint', label: 'Paint' },
     { value: 'drywall', label: 'Drywall' },
     { value: 'trim', label: 'Trim' }
+  ],
+  labor: [
+    { value: 'installation', label: 'Installation' },
+    { value: 'removal', label: 'Removal & Tear-off' },
+    { value: 'repairs', label: 'Repairs' },
+    { value: 'specialty', label: 'Specialty Labor' }
   ]
 };
 
