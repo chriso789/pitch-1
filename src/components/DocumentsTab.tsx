@@ -817,9 +817,9 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
                 </Button>
               </div>
             </CardHeader>
-            <CardContent>
-              {/* Folder Grid */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <CardContent className="pt-0 pb-3">
+              {/* Folder Grid - Compact */}
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
                 {DOCUMENT_CATEGORIES.map((category) => {
                   const Icon = category.icon;
                   const count = categoryCounts[category.value] || 0;
@@ -830,25 +830,22 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
                       className="cursor-pointer hover:border-primary transition-colors group"
                       onClick={() => setActiveFolder(category.value)}
                     >
-                      <CardContent className="flex flex-col items-center justify-center p-6 space-y-2">
-                        <div className={`${category.color} text-white p-3 rounded-lg relative group-hover:scale-105 transition-transform`}>
-                          <Icon className="h-6 w-6" />
+                      <CardContent className="flex flex-col items-center justify-center p-3 space-y-1">
+                        <div className={`${category.color} text-white p-2 rounded-lg relative group-hover:scale-105 transition-transform`}>
+                          <Icon className="h-4 w-4" />
                           {category.tracksCost && (
-                            <DollarSign className="absolute -top-1 -right-1 h-3 w-3" />
+                            <DollarSign className="absolute -top-1 -right-1 h-2.5 w-2.5" />
                           )}
                           {count > 0 && (
                             <Badge 
                               variant="secondary" 
-                              className="absolute -top-2 -right-2 h-5 min-w-5 px-1 flex items-center justify-center text-xs"
+                              className="absolute -top-2 -right-2 h-4 min-w-4 px-0.5 flex items-center justify-center text-[10px]"
                             >
                               {count}
                             </Badge>
                           )}
                         </div>
-                        <span className="text-sm font-medium text-center">{category.label}</span>
-                        {category.tracksCost && (
-                          <span className="text-xs text-muted-foreground">Tracks cost</span>
-                        )}
+                        <span className="text-xs font-medium text-center leading-tight">{category.label}</span>
                       </CardContent>
                     </Card>
                   );
@@ -876,7 +873,7 @@ export const DocumentsTab: React.FC<DocumentsTabProps> = ({
       />
 
       {/* Recent Documents */}
-      <div className="space-y-4">
+      <div className="space-y-4 pb-16">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
             <h3 className="text-lg font-semibold">Recent Documents</h3>

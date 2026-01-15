@@ -8886,6 +8886,7 @@ export type Database = {
           customer_address: string
           customer_name: string
           customer_viewed_at: string | null
+          display_name: string | null
           estimate_number: string
           expires_at: string | null
           financing_options: Json | null
@@ -8973,6 +8974,7 @@ export type Database = {
           customer_address: string
           customer_name: string
           customer_viewed_at?: string | null
+          display_name?: string | null
           estimate_number: string
           expires_at?: string | null
           financing_options?: Json | null
@@ -9060,6 +9062,7 @@ export type Database = {
           customer_address?: string
           customer_name?: string
           customer_viewed_at?: string | null
+          display_name?: string | null
           estimate_number?: string
           expires_at?: string | null
           financing_options?: Json | null
