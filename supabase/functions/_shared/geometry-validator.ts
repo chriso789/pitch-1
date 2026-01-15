@@ -24,7 +24,9 @@ export type FootprintSource =
   | 'manual'
   | 'mapbox_vector'
   | 'osm_overpass'
+  | 'osm_buildings'
   | 'microsoft_buildings'
+  | 'ai_vision_detected'
   | 'solar_bbox_fallback';
 
 /**
@@ -227,6 +229,7 @@ export function validateGeometry(
       confidence *= 0.96; // Mapbox vector is high fidelity
       break;
     case 'osm_overpass':
+    case 'osm_buildings':
       confidence *= 0.88; // OSM is good but community-maintained
       break;
     case 'microsoft_buildings':
@@ -234,6 +237,10 @@ export function validateGeometry(
       break;
     case 'regrid_parcel':
       confidence *= 0.90; // Parcel data is good but may be outdated
+      break;
+    case 'ai_vision_detected':
+      confidence *= 0.85; // AI Vision detection - higher than bbox but needs review
+      warnings.push('AI Vision detected footprint - verify accuracy');
       break;
     case 'solar_bbox_fallback':
       confidence *= 0.55; // CRITICAL: Bounding box is just a rectangle, very inaccurate
