@@ -400,6 +400,130 @@ Be thorough - check ALL pages for data.`;
 }
 
 // -----------------------------
+// Extract measurements from image files (JPEG, PNG, HEIC)
+// -----------------------------
+async function extractFromImage(base64Data: string, mimeType: string): Promise<any> {
+  const lovableApiKey = Deno.env.get("LOVABLE_API_KEY");
+  
+  if (!lovableApiKey) {
+    console.log("roof-report-ingest: No LOVABLE_API_KEY, cannot extract from image");
+    return null;
+  }
+  
+  // Normalize mime type for HEIC
+  const normalizedMimeType = mimeType === 'image/heic' || mimeType === 'image/heif' 
+    ? 'image/jpeg' // HEIC is often converted to JPEG by the browser
+    : mimeType;
+  
+  const systemPrompt = `You are a roofing measurement report analyzer specializing in extracting data from screenshots.
+You are analyzing a screenshot or photo of a roof measurement report. CAREFULLY EXAMINE ALL visible text and numbers.
+
+CRITICAL INSTRUCTIONS:
+1. Look for Total Area, Sq Ft, or Square footage values
+2. Look for Linear Features (Eaves, Ridges, Hips, Valleys, Rakes) with lengths in feet
+3. Look for Pitch information (e.g., 5/12, 6:12)
+4. Look for address information
+5. Look for the report provider name (EagleView, Roofr, Hover, etc.)
+
+IMPORTANT: Extract the EXACT values shown. Do not estimate or guess.
+
+Return ONLY a valid JSON object (no markdown, no explanation) with these fields. Use null for any value not found:
+
+{
+  "provider": "detected provider name or 'screenshot'",
+  "address": "full property address if found",
+  "total_area_sqft": number or null,
+  "pitched_area_sqft": number or null,
+  "flat_area_sqft": number or null,
+  "perimeter_ft": number or null,
+  "facet_count": number or null,
+  "predominant_pitch": "X/12 format string or null",
+  "ridges_ft": number or null,
+  "hips_ft": number or null,
+  "valleys_ft": number or null,
+  "rakes_ft": number or null,
+  "eaves_ft": number or null,
+  "step_flashing_ft": number or null,
+  "drip_edge_ft": number or null
+}`;
+
+  try {
+    console.log("roof-report-ingest: Extracting measurements from image via Vision API...");
+    
+    const dataUrl = `data:${normalizedMimeType};base64,${base64Data}`;
+    
+    const response = await fetch("https://ai.gateway.lovable.dev/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${lovableApiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "google/gemini-2.5-flash",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { 
+            role: "user", 
+            content: [
+              { type: "text", text: "Extract all roof measurements from this screenshot:" },
+              { type: "image_url", image_url: { url: dataUrl } }
+            ]
+          }
+        ],
+      }),
+    });
+    
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error("roof-report-ingest: Image Vision API error:", response.status, errorText);
+      return null;
+    }
+    
+    const data = await response.json();
+    const responseContent = data.choices?.[0]?.message?.content;
+    
+    if (!responseContent) {
+      console.log("roof-report-ingest: No Vision API content returned for image");
+      return null;
+    }
+    
+    console.log("roof-report-ingest: Image Vision API response:", responseContent.substring(0, 500));
+    
+    const jsonMatch = responseContent.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      console.log("roof-report-ingest: Could not find JSON in image Vision response");
+      return null;
+    }
+    
+    const visionResult = JSON.parse(jsonMatch[0]);
+    console.log("roof-report-ingest: Image extraction successful", visionResult);
+    
+    return {
+      provider: visionResult.provider || "screenshot",
+      address: visionResult.address,
+      total_area_sqft: visionResult.total_area_sqft,
+      pitched_area_sqft: visionResult.pitched_area_sqft || visionResult.total_area_sqft,
+      flat_area_sqft: visionResult.flat_area_sqft,
+      facet_count: visionResult.facet_count,
+      predominant_pitch: visionResult.predominant_pitch,
+      ridges_ft: visionResult.ridges_ft,
+      hips_ft: visionResult.hips_ft,
+      valleys_ft: visionResult.valleys_ft,
+      rakes_ft: visionResult.rakes_ft,
+      eaves_ft: visionResult.eaves_ft,
+      drip_edge_ft: visionResult.drip_edge_ft,
+      step_flashing_ft: visionResult.step_flashing_ft,
+      perimeter_ft: visionResult.perimeter_ft,
+      pitches: null,
+      waste_table: null,
+    };
+  } catch (err) {
+    console.error("roof-report-ingest: Image extraction failed:", err);
+    return null;
+  }
+}
+
+// -----------------------------
 // AI-powered text extraction fallback
 // -----------------------------
 async function extractWithAI(text: string): Promise<any> {
@@ -754,6 +878,64 @@ serve(async (req) => {
 
     const supabase = createClient(supabaseUrl, serviceRole);
 
+    // Check if this is an image file (JPEG, PNG, HEIC)
+    const fileType: string = body.file_type ?? 'pdf';
+    const mimeType: string = body.mime_type ?? 'application/pdf';
+    const base64Image: string | null = body.base64_image ?? null;
+    
+    // Handle image files directly with Vision API
+    if (fileType === 'image' || base64Image) {
+      console.log("roof-report-ingest: Processing image file, type:", mimeType);
+      
+      const imageBase64 = base64Image || body.base64_pdf;
+      if (!imageBase64) {
+        return new Response(
+          JSON.stringify({ error: "missing_input", message: "No image data provided" }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
+        );
+      }
+      
+      // Use Vision API to extract measurements from the image
+      const visionResult = await extractFromImage(imageBase64, mimeType);
+      
+      if (visionResult && hasValidMeasurements(visionResult)) {
+        console.log("roof-report-ingest: Image extraction successful", {
+          provider: visionResult.provider,
+          total_area: visionResult.total_area_sqft,
+          pitch: visionResult.predominant_pitch
+        });
+        
+        // Store in database
+        const lead_id = body.lead_id ?? null;
+        const insertPayload = {
+          lead_id,
+          provider: visionResult.provider || "image_import",
+          address: visionResult.address ?? null,
+          file_url: null,
+          extracted_text: "Image-based import via Vision AI",
+          parsed: visionResult,
+        };
+        
+        const { data: reportRow, error: insertErr } = await supabase
+          .from("roof_vendor_reports")
+          .insert(insertPayload)
+          .select("*")
+          .single();
+          
+        if (insertErr) console.warn("roof_vendor_reports insert failed:", insertErr.message);
+        
+        return new Response(
+          JSON.stringify({ ok: true, provider: visionResult.provider || "image_import", parsed: visionResult, report_row: reportRow }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
+        );
+      } else {
+        return new Response(
+          JSON.stringify({ ok: false, message: "Could not extract measurements from image. Please ensure the image shows measurement data clearly." }),
+          { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
+        );
+      }
+    }
+
     let pdfBytes: Uint8Array | null = null;
     let file_url: string | null = body.file_url ?? null;
     const bucket: string | null = body.bucket ?? null;
@@ -784,7 +966,7 @@ serve(async (req) => {
       pdfBytes = arr;
     } else {
       return new Response(
-        JSON.stringify({ error: "missing_input", message: "Provide file_url OR (bucket+path) OR base64_pdf" }),
+        JSON.stringify({ error: "missing_input", message: "Provide file_url OR (bucket+path) OR base64_pdf OR base64_image" }),
         { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 400 },
       );
     }

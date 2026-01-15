@@ -66,11 +66,25 @@ export function ImportMeasurementReport({
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
+  const ACCEPTED_TYPES = [
+    'application/pdf',
+    'image/jpeg',
+    'image/jpg', 
+    'image/png',
+    'image/heic',
+    'image/heif'
+  ];
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0];
     if (selectedFile) {
-      if (selectedFile.type !== 'application/pdf') {
-        setError('Please upload a PDF file');
+      // Also accept files with no type (common for HEIC on some systems)
+      const isAcceptedType = ACCEPTED_TYPES.includes(selectedFile.type) || 
+        selectedFile.name.toLowerCase().endsWith('.heic') ||
+        selectedFile.name.toLowerCase().endsWith('.heif');
+        
+      if (!isAcceptedType) {
+        setError('Please upload a PDF or image file (JPG, PNG, HEIC)');
         return;
       }
       setFile(selectedFile);
@@ -99,10 +113,19 @@ export function ImportMeasurementReport({
       setUploading(false);
       setAnalyzing(true);
 
+      // Determine if this is an image file
+      const isImage = file.type.startsWith('image/') || 
+        file.name.toLowerCase().endsWith('.heic') ||
+        file.name.toLowerCase().endsWith('.heif');
+      const mimeType = file.type || (file.name.toLowerCase().endsWith('.heic') ? 'image/heic' : 'application/pdf');
+
       // Call the roof-report-ingest edge function
       const { data, error: fnError } = await supabase.functions.invoke('roof-report-ingest', {
         body: {
-          base64_pdf: base64,
+          base64_pdf: isImage ? undefined : base64,
+          base64_image: isImage ? base64 : undefined,
+          file_type: isImage ? 'image' : 'pdf',
+          mime_type: mimeType,
           lead_id: pipelineEntryId,
         },
       });
@@ -234,16 +257,16 @@ export function ImportMeasurementReport({
           {/* File Upload */}
           {!parsedData && (
             <div className="space-y-3">
-              <Label htmlFor="report-file">Report PDF</Label>
+              <Label htmlFor="report-file">Report File</Label>
               <Input
                 id="report-file"
                 type="file"
-                accept=".pdf,application/pdf"
+                accept=".pdf,.jpg,.jpeg,.png,.heic,.heif,application/pdf,image/jpeg,image/png,image/heic"
                 onChange={handleFileChange}
                 disabled={uploading || analyzing}
               />
               <p className="text-xs text-muted-foreground">
-                Supported: EagleView, Roofr, Hover reports
+                Supported: PDF reports or screenshots (JPG, PNG, HEIC)
               </p>
               
               {error && (
