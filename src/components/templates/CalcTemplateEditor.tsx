@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
   DndContext,
@@ -50,6 +50,14 @@ const CalcTemplateEditor: React.FC = () => {
   const [showAddGroupDialog, setShowAddGroupDialog] = useState(false);
   const [showAddItemDialog, setShowAddItemDialog] = useState(false);
   const [addToGroupId, setAddToGroupId] = useState<string | null>(null);
+  const [editingName, setEditingName] = useState(template?.name || '');
+
+  // Sync local editing state when template loads or changes externally
+  useEffect(() => {
+    if (template?.name) {
+      setEditingName(template.name);
+    }
+  }, [template?.name]);
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -122,11 +130,27 @@ const CalcTemplateEditor: React.FC = () => {
           <div>
             <div className="flex items-center gap-2 group">
               <Input
-                value={template.name}
-                onChange={(e) => saveTemplate({ name: e.target.value })}
-                className="text-xl font-semibold border-none bg-transparent px-1 h-auto 
-                           focus-visible:ring-1 focus-visible:ring-primary/50
-                           hover:bg-muted/50 rounded transition-colors max-w-md"
+                value={editingName}
+                onChange={(e) => setEditingName(e.target.value)}
+                onBlur={() => {
+                  if (editingName.trim() && editingName !== template.name) {
+                    saveTemplate({ name: editingName.trim() });
+                  } else {
+                    setEditingName(template.name);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.currentTarget.blur();
+                  }
+                  if (e.key === 'Escape') {
+                    setEditingName(template.name);
+                    e.currentTarget.blur();
+                  }
+                }}
+                className="text-xl font-semibold border border-transparent bg-transparent px-2 h-auto 
+                           focus-visible:ring-2 focus-visible:ring-primary/50 focus-visible:border-primary
+                           hover:border-muted-foreground/30 hover:bg-muted/50 rounded transition-all max-w-md"
                 placeholder="Template Name"
               />
               <Pencil className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
