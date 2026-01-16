@@ -1042,6 +1042,34 @@ serve(async (req) => {
     // Store raw + parsed
     const lead_id = body.lead_id ?? null;
 
+    // Compute PDF hash for deduplication
+    const hashBuffer = await crypto.subtle.digest('SHA-256', pdfBytes);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    const pdfHash = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+    console.log("roof-report-ingest: Computed PDF hash:", pdfHash.substring(0, 16) + "...");
+
+    // Check for duplicate by hash
+    const { data: existingReport } = await supabase
+      .from("roof_vendor_reports")
+      .select("id, address, provider, created_at")
+      .eq("file_hash", pdfHash)
+      .maybeSingle();
+
+    if (existingReport) {
+      console.log("roof-report-ingest: Duplicate PDF detected, returning existing report:", existingReport.id);
+      return new Response(
+        JSON.stringify({ 
+          ok: true, 
+          duplicate: true, 
+          existing_report_id: existingReport.id,
+          message: `Report already imported on ${existingReport.created_at}`,
+          provider: existingReport.provider,
+          address: existingReport.address,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" }, status: 200 },
+      );
+    }
+
     const insertPayload = {
       lead_id,
       provider: parsed.provider || provider,
@@ -1050,6 +1078,7 @@ serve(async (req) => {
       file_bucket: bucket,
       file_path: path,
       file_url,
+      file_hash: pdfHash,
       extracted_text: extractedText,
       parsed,
     };

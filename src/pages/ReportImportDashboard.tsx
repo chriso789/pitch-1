@@ -14,9 +14,11 @@ import { BulkReportImporter } from '@/components/measurements/BulkReportImporter
 
 interface ReportStats {
   totalReports: number;
+  uniqueReports: number;
   geocodedReports: number;
   trainingSessions: number;
   vendorVerifiedSessions: number;
+  sessionsWithAiData: number;
   byProvider: Record<string, number>;
 }
 
@@ -46,6 +48,7 @@ export default function ReportImportDashboard() {
   const [recentReports, setRecentReports] = useState<VendorReport[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [isCalculating, setIsCalculating] = useState(false);
+  const [isHydrating, setIsHydrating] = useState(false);
   const { toast } = useToast();
 
   const fetchData = async () => {
@@ -54,7 +57,7 @@ export default function ReportImportDashboard() {
       // Fetch vendor reports count by provider
       const { data: reports, error: reportsError } = await supabase
         .from('roof_vendor_reports')
-        .select('id, provider, address, created_at, parsed');
+        .select('id, provider, address, created_at, parsed, file_hash');
 
       if (reportsError) throw reportsError;
 
@@ -63,10 +66,10 @@ export default function ReportImportDashboard() {
         .from('roof_measurements_truth')
         .select('report_id, latitude, longitude, total_area_sqft');
 
-      // Fetch training sessions
+      // Fetch training sessions with ai_totals to check which have AI data
       const { data: sessions } = await supabase
         .from('roof_training_sessions')
-        .select('id, ground_truth_source, vendor_report_id');
+        .select('id, ground_truth_source, vendor_report_id, ai_totals');
 
       const geocodedSet = new Set(
         truthData?.filter(t => t.latitude && t.longitude).map(t => t.report_id) || []
@@ -76,6 +79,17 @@ export default function ReportImportDashboard() {
         sessions?.filter(s => s.ground_truth_source === 'vendor_report').map(s => s.vendor_report_id) || []
       );
 
+      // Count sessions with actual AI data (not empty objects)
+      const sessionsWithAiData = sessions?.filter(s => {
+        const ai = s.ai_totals as Record<string, number> | null;
+        return ai && Object.keys(ai).length > 0 && 
+          (ai.ridge > 0 || ai.hip > 0 || ai.valley > 0 || ai.eave > 0 || ai.rake > 0);
+      }).length || 0;
+
+      // Calculate unique reports by file_hash
+      const uniqueHashes = new Set(reports?.filter(r => r.file_hash).map(r => r.file_hash));
+      const uniqueReports = uniqueHashes.size || reports?.length || 0;
+
       // Calculate stats
       const byProvider: Record<string, number> = {};
       reports?.forEach(r => {
@@ -84,9 +98,11 @@ export default function ReportImportDashboard() {
 
       setStats({
         totalReports: reports?.length || 0,
+        uniqueReports,
         geocodedReports: geocodedSet.size,
         trainingSessions: sessions?.length || 0,
         vendorVerifiedSessions: sessions?.filter(s => s.ground_truth_source === 'vendor_report').length || 0,
+        sessionsWithAiData,
         byProvider,
       });
 
@@ -185,6 +201,34 @@ export default function ReportImportDashboard() {
       });
     } finally {
       setIsCalculating(false);
+    }
+  };
+
+  const hydrateVendorSessions = async () => {
+    setIsHydrating(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('measure', {
+        body: { action: 'hydrate-vendor-sessions', limit: 10 }
+      });
+      
+      if (error) throw error;
+
+      toast({
+        title: 'Hydration Complete',
+        description: `${data.hydrated || 0} sessions hydrated with AI measurements`,
+      });
+
+      // Refresh data
+      await fetchData();
+    } catch (err) {
+      console.error('Error hydrating sessions:', err);
+      toast({
+        title: 'Error',
+        description: 'Failed to hydrate vendor sessions',
+        variant: 'destructive',
+      });
+    } finally {
+      setIsHydrating(false);
     }
   };
 
