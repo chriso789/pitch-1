@@ -251,6 +251,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "agreement_instances_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "agreement_instances_pipeline_entry_id_fkey"
             columns: ["pipeline_entry_id"]
             isOneToOne: false
@@ -643,6 +650,119 @@ export type Database = {
           },
         ]
       }
+      ai_contact_memory: {
+        Row: {
+          contact_id: string
+          created_at: string
+          id: string
+          last_response_at: string | null
+          last_touch_at: string | null
+          risk_flags: string[]
+          summary: string
+          tags: string[]
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          contact_id: string
+          created_at?: string
+          id?: string
+          last_response_at?: string | null
+          last_touch_at?: string | null
+          risk_flags?: string[]
+          summary?: string
+          tags?: string[]
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          contact_id?: string
+          created_at?: string
+          id?: string
+          last_response_at?: string | null
+          last_touch_at?: string | null
+          risk_flags?: string[]
+          summary?: string
+          tags?: string[]
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_contact_memory_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_contact_memory_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "ai_contact_memory_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_conversations: {
+        Row: {
+          channel: string
+          contact_id: string
+          created_at: string
+          id: string
+          last_message_at: string
+          state: string
+          tenant_id: string
+        }
+        Insert: {
+          channel: string
+          contact_id: string
+          created_at?: string
+          id?: string
+          last_message_at?: string
+          state?: string
+          tenant_id: string
+        }
+        Update: {
+          channel?: string
+          contact_id?: string
+          created_at?: string
+          id?: string
+          last_message_at?: string
+          state?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_conversations_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_conversations_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "ai_conversations_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       ai_insights: {
         Row: {
           action_taken: Json | null
@@ -797,6 +917,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "ai_measurement_analysis_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "ai_measurement_analysis_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
@@ -805,6 +932,51 @@ export type Database = {
           },
           {
             foreignKeyName: "ai_measurement_analysis_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      ai_messages: {
+        Row: {
+          content: string
+          conversation_id: string
+          created_at: string
+          direction: string
+          id: string
+          meta: Json
+          tenant_id: string
+        }
+        Insert: {
+          content: string
+          conversation_id: string
+          created_at?: string
+          direction: string
+          id?: string
+          meta?: Json
+          tenant_id: string
+        }
+        Update: {
+          content?: string
+          conversation_id?: string
+          created_at?: string
+          direction?: string
+          id?: string
+          meta?: Json
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "ai_messages_conversation_id_fkey"
+            columns: ["conversation_id"]
+            isOneToOne: false
+            referencedRelation: "ai_conversations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_messages_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -859,6 +1031,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_outreach_queue_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "ai_outreach_queue_conversation_id_fkey"
@@ -943,6 +1122,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "ai_scheduling_suggestions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "ai_scheduling_suggestions_tenant_id_fkey"
@@ -1481,6 +1667,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "appointments_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "appointments_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
@@ -1563,6 +1756,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "asterisk_channels_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "asterisk_channels_pipeline_entry_id_fkey"
             columns: ["pipeline_entry_id"]
             isOneToOne: false
@@ -1619,6 +1819,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attorney_requests_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "attorney_requests_project_id_fkey"
@@ -2453,6 +2660,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "call_logs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "call_logs_pipeline_entry_id_fkey"
             columns: ["pipeline_entry_id"]
             isOneToOne: false
@@ -2717,6 +2931,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "calls_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "calls_conversation_id_fkey"
@@ -3248,6 +3469,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "canvassiq_properties_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "canvassiq_properties_created_by_fkey"
@@ -4357,6 +4585,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "communication_history_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "communication_history_pipeline_entry_id_fkey"
             columns: ["pipeline_entry_id"]
             isOneToOne: false
@@ -4569,6 +4804,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "communication_threads_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "communication_threads_pipeline_entry_id_fkey"
@@ -5489,6 +5731,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "contact_documents_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "contact_documents_original_document_id_fkey"
             columns: ["original_document_id"]
             isOneToOne: false
@@ -6052,6 +6301,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "conversations_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "conversations_location_id_fkey"
@@ -6812,6 +7068,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "customer_messages_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "customer_messages_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
@@ -6909,6 +7172,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "customer_photos_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "customer_photos_lead_id_fkey"
             columns: ["lead_id"]
             isOneToOne: false
@@ -7000,6 +7270,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "customer_portal_preferences_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: true
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "customer_portal_preferences_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -7052,6 +7329,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_portal_tokens_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "customer_portal_tokens_created_by_fkey"
@@ -7129,6 +7413,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "customer_referrals_referrer_contact_id_fkey"
+            columns: ["referrer_contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "customer_referrals_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -7198,6 +7489,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "customer_reviews_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "customer_reviews_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
@@ -7262,6 +7560,13 @@ export type Database = {
             isOneToOne: true
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_rewards_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: true
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "customer_rewards_tenant_id_fkey"
@@ -7345,6 +7650,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "customer_self_service_requests_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "customer_self_service_requests_project_id_fkey"
@@ -8255,6 +8567,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "documents_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "documents_linked_invoice_id_fkey"
             columns: ["linked_invoice_id"]
             isOneToOne: false
@@ -8683,6 +9002,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "email_sequence_enrollments_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "email_sequence_enrollments_sequence_id_fkey"
@@ -10319,6 +10645,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "external_lead_submissions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "external_lead_submissions_pipeline_entry_id_fkey"
             columns: ["pipeline_entry_id"]
             isOneToOne: false
@@ -10563,6 +10896,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "financing_applications_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "financing_applications_created_by_fkey"
@@ -11091,6 +11431,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "follow_up_instances_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "follow_up_instances_pipeline_entry_id_fkey"
@@ -12039,6 +12386,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "homeowner_portal_activity_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "homeowner_portal_activity_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
@@ -12128,6 +12482,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "homeowner_portal_permissions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: true
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "homeowner_portal_permissions_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -12180,6 +12541,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "homeowner_portal_sessions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "homeowner_portal_sessions_project_id_fkey"
@@ -12506,6 +12874,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "inbound_messages_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "inbound_messages_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -12721,6 +13096,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "insurance_claims_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "insurance_claims_created_by_fkey"
@@ -13443,6 +13825,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "jobs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "jobs_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
@@ -13696,6 +14085,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "lead_attribution_events_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "lead_attribution_events_pipeline_entry_id_fkey"
             columns: ["pipeline_entry_id"]
             isOneToOne: false
@@ -13803,6 +14199,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "lead_scoring_history_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
         ]
       }
@@ -14382,6 +14785,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "marketing_attributions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "marketing_attributions_pipeline_entry_id_fkey"
             columns: ["pipeline_entry_id"]
             isOneToOne: false
@@ -14501,6 +14911,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "marketing_sessions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "marketing_sessions_tenant_id_fkey"
@@ -15795,6 +16212,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "nurturing_enrollments_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "nurturing_enrollments_current_step_id_fkey"
             columns: ["current_step_id"]
             isOneToOne: false
@@ -16084,6 +16508,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "opt_outs_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "opt_outs_tenant_id_fkey"
@@ -16914,6 +17345,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "pipeline_entries_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "pipeline_entries_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
@@ -17239,6 +17677,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "portal_access_grants_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "portal_access_grants_granted_by_fkey"
             columns: ["granted_by"]
             isOneToOne: false
@@ -17486,6 +17931,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "presentation_sessions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "presentation_sessions_presentation_id_fkey"
@@ -20912,6 +21364,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "quote_tracking_links_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "quote_tracking_links_estimate_id_fkey"
             columns: ["estimate_id"]
             isOneToOne: false
@@ -21150,6 +21609,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "referral_codes_customer_id_fkey"
+            columns: ["customer_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "referral_codes_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -21218,11 +21684,25 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "referral_conversions_referred_contact_id_fkey"
+            columns: ["referred_contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "referral_conversions_referrer_contact_id_fkey"
             columns: ["referrer_contact_id"]
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_conversions_referrer_contact_id_fkey"
+            columns: ["referrer_contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "referral_conversions_tenant_id_fkey"
@@ -21289,6 +21769,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "referral_rewards_recipient_contact_id_fkey"
+            columns: ["recipient_contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "referral_rewards_referral_conversion_id_fkey"
@@ -21883,6 +22370,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reward_redemptions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "reward_redemptions_tenant_id_fkey"
@@ -23393,6 +23887,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "roof_training_sessions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "roof_training_sessions_corrected_ai_measurement_id_fkey"
             columns: ["corrected_ai_measurement_id"]
             isOneToOne: false
@@ -23907,6 +24408,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "satisfaction_surveys_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "satisfaction_surveys_project_id_fkey"
             columns: ["project_id"]
             isOneToOne: false
@@ -24123,6 +24631,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "security_alerts_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "security_alerts_resolved_by_fkey"
             columns: ["resolved_by"]
             isOneToOne: false
@@ -24207,6 +24722,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "service_quote_requests_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "service_quote_requests_project_id_fkey"
@@ -24753,6 +25275,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "skip_trace_results_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
         ]
       }
@@ -25639,6 +26168,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "sms_messages_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "sms_messages_conversation_id_fkey"
             columns: ["conversation_id"]
             isOneToOne: false
@@ -25732,6 +26268,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "sms_threads_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "sms_threads_location_id_fkey"
@@ -26243,6 +26786,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "subcontractor_documents_subcontractor_id_fkey"
+            columns: ["subcontractor_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "subcontractor_documents_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -26521,6 +27071,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "subcontractor_payment_requests_subcontractor_id_fkey"
+            columns: ["subcontractor_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "subcontractor_payment_requests_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -26710,6 +27267,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "subcontractor_ratings_subcontractor_id_fkey"
+            columns: ["subcontractor_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "subcontractor_ratings_tenant_id_fkey"
@@ -27516,6 +28080,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "tasks_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "tasks_created_by_fkey"
             columns: ["created_by"]
             isOneToOne: false
@@ -28142,6 +28713,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "territory_visits_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "territory_visits_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
@@ -28348,6 +28926,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "tracking_events_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "tracking_events_session_id_fkey"
@@ -28662,6 +29247,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "unified_inbox_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "unified_inbox_related_call_id_fkey"
             columns: ["related_call_id"]
             isOneToOne: false
@@ -28751,6 +29343,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unmatched_inbound_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "unmatched_inbound_conversation_id_fkey"
@@ -29760,6 +30359,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "visitor_consents_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "visitor_consents_session_id_fkey"
             columns: ["session_id"]
             isOneToOne: false
@@ -29983,6 +30589,13 @@ export type Database = {
             referencedColumns: ["id"]
           },
           {
+            foreignKeyName: "voice_recordings_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
             foreignKeyName: "voice_recordings_pipeline_entry_id_fkey"
             columns: ["pipeline_entry_id"]
             isOneToOne: false
@@ -30185,6 +30798,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "warranties_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "warranties_project_id_fkey"
@@ -30959,6 +31579,32 @@ export type Database = {
           },
         ]
       }
+      v_ai_aged_contacts: {
+        Row: {
+          contact_id: string | null
+          contact_type: Database["public"]["Enums"]["contact_type"] | null
+          days_dormant: number | null
+          email: string | null
+          first_name: string | null
+          has_pending_outreach: boolean | null
+          is_opted_out: boolean | null
+          last_activity_at: string | null
+          last_name: string | null
+          lead_source: string | null
+          phone: string | null
+          qualification_status: string | null
+          tenant_id: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "contacts_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       v_unmatched_inbox: {
         Row: {
           body: string | null
@@ -30986,6 +31632,13 @@ export type Database = {
             isOneToOne: false
             referencedRelation: "contacts"
             referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "unmatched_inbound_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
           },
           {
             foreignKeyName: "unmatched_inbound_conversation_id_fkey"

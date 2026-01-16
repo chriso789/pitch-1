@@ -720,3 +720,15 @@ verify_jwt = true
 
 [functions.export-wkt]
 verify_jwt = true
+
+[functions.ai-followup-generate]
+verify_jwt = true
+
+[functions.ai-followup-dispatch]
+verify_jwt = true
+
+[functions.ai-followup-runner]
+verify_jwt = false
+
+[functions.ai-inbound-router]
+verify_jwt = false
