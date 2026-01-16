@@ -732,3 +732,9 @@ verify_jwt = false
 
 [functions.ai-inbound-router]
 verify_jwt = false
+
+[functions.email-send]
+verify_jwt = true
+
+[functions.ai-project-status-answer]
+verify_jwt = false

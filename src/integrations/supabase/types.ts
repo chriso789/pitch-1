@@ -457,8 +457,10 @@ export type Database = {
           caller_number: string | null
           created_at: string | null
           escalated_to_human: boolean | null
+          escalation_reason: string | null
           gathered_data: Json | null
           id: string
+          project_status_provided: Json | null
           sentiment: string | null
           telnyx_call_control_id: string | null
           tenant_id: string | null
@@ -468,8 +470,10 @@ export type Database = {
           caller_number?: string | null
           created_at?: string | null
           escalated_to_human?: boolean | null
+          escalation_reason?: string | null
           gathered_data?: Json | null
           id?: string
+          project_status_provided?: Json | null
           sentiment?: string | null
           telnyx_call_control_id?: string | null
           tenant_id?: string | null
@@ -479,8 +483,10 @@ export type Database = {
           caller_number?: string | null
           created_at?: string | null
           escalated_to_human?: boolean | null
+          escalation_reason?: string | null
           gathered_data?: Json | null
           id?: string
+          project_status_provided?: Json | null
           sentiment?: string | null
           telnyx_call_control_id?: string | null
           tenant_id?: string | null
@@ -8406,19 +8412,106 @@ export type Database = {
           },
         ]
       }
+      document_field_submissions: {
+        Row: {
+          contact_id: string | null
+          created_at: string | null
+          document_id: string
+          field_value: string | null
+          id: string
+          ip_address: string | null
+          placement_id: string
+          recipient_type: string
+          signature_data: string | null
+          submitted_at: string | null
+          tenant_id: string
+          user_agent: string | null
+        }
+        Insert: {
+          contact_id?: string | null
+          created_at?: string | null
+          document_id: string
+          field_value?: string | null
+          id?: string
+          ip_address?: string | null
+          placement_id: string
+          recipient_type: string
+          signature_data?: string | null
+          submitted_at?: string | null
+          tenant_id: string
+          user_agent?: string | null
+        }
+        Update: {
+          contact_id?: string | null
+          created_at?: string | null
+          document_id?: string
+          field_value?: string | null
+          id?: string
+          ip_address?: string | null
+          placement_id?: string
+          recipient_type?: string
+          signature_data?: string | null
+          submitted_at?: string | null
+          tenant_id?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "document_field_submissions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "contacts"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_field_submissions_contact_id_fkey"
+            columns: ["contact_id"]
+            isOneToOne: false
+            referencedRelation: "v_ai_aged_contacts"
+            referencedColumns: ["contact_id"]
+          },
+          {
+            foreignKeyName: "document_field_submissions_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_field_submissions_placement_id_fkey"
+            columns: ["placement_id"]
+            isOneToOne: false
+            referencedRelation: "document_tag_placements"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "document_field_submissions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       document_tag_placements: {
         Row: {
           created_at: string | null
           document_id: string
+          field_options: Json | null
           font_family: string | null
           font_size: number | null
           height: number
           id: string
+          is_required: boolean | null
           page_number: number | null
+          placeholder_text: string | null
+          recipient_type: string | null
           tag_key: string
+          tag_type: string | null
           tenant_id: string
           text_align: string | null
           updated_at: string | null
+          validation_rules: Json | null
           width: number
           x_position: number
           y_position: number
@@ -8426,15 +8519,21 @@ export type Database = {
         Insert: {
           created_at?: string | null
           document_id: string
+          field_options?: Json | null
           font_family?: string | null
           font_size?: number | null
           height: number
           id?: string
+          is_required?: boolean | null
           page_number?: number | null
+          placeholder_text?: string | null
+          recipient_type?: string | null
           tag_key: string
+          tag_type?: string | null
           tenant_id: string
           text_align?: string | null
           updated_at?: string | null
+          validation_rules?: Json | null
           width: number
           x_position: number
           y_position: number
@@ -8442,15 +8541,21 @@ export type Database = {
         Update: {
           created_at?: string | null
           document_id?: string
+          field_options?: Json | null
           font_family?: string | null
           font_size?: number | null
           height?: number
           id?: string
+          is_required?: boolean | null
           page_number?: number | null
+          placeholder_text?: string | null
+          recipient_type?: string | null
           tag_key?: string
+          tag_type?: string | null
           tenant_id?: string
           text_align?: string | null
           updated_at?: string | null
+          validation_rules?: Json | null
           width?: number
           x_position?: number
           y_position?: number
