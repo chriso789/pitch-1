@@ -1,6 +1,6 @@
 /**
- * Unified Communications Hub
- * Central dashboard for all communications - SMS, Calls, Voicemail, Recordings, Email Activity
+ * Follow Up Hub
+ * Central dashboard for follow-ups and communications - SMS, Calls, Voicemail, Recordings, Email Activity
  */
 
 import { useState } from 'react';
@@ -68,7 +68,7 @@ const CommunicationsHub = () => {
       <div className="border-b px-4 py-3 shrink-0">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <h1 className="text-xl font-semibold">Communications Hub</h1>
+            <h1 className="text-xl font-semibold">Follow Up Hub</h1>
             {unreadCounts.total > 0 && (
               <Badge variant="destructive">{unreadCounts.total} unread</Badge>
             )}

@@ -69,7 +69,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
   const { user: currentUser, loading: userLoading, refetch: refetchUser } = useCurrentUser();
   const { user: authUser } = useAuth();
   const { currentLocation } = useLocationContext();
-  const [communicationsExpanded, setCommunicationsExpanded] = React.useState(false);
+  const [followUpExpanded, setFollowUpExpanded] = React.useState(false);
   
   // Instant display name from auth user_metadata (no loading state)
   const getInstantDisplayName = () => {
@@ -401,7 +401,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
             {/* Communications Expandable Section */}
             <div className="space-y-0.5">
               <button
-                onClick={() => setCommunicationsExpanded(!communicationsExpanded)}
+                onClick={() => setFollowUpExpanded(!followUpExpanded)}
                 className={cn(
                   "w-full flex items-center rounded-md text-left transition-colors group",
                   isCollapsed ? "px-2 py-2 justify-center" : "gap-3 px-3 py-2",
@@ -409,7 +409,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
                     ? "bg-primary/10 text-primary border-l-2 border-primary"
                     : "text-muted-foreground hover:bg-accent hover:text-accent-foreground border-l-2 border-transparent"
                 )}
-                title={isCollapsed ? "Communications" : undefined}
+                title={isCollapsed ? "Follow Up Hub" : undefined}
               >
                 <Phone className={cn(
                   "h-4 w-4 flex-shrink-0",
@@ -423,9 +423,9 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
                       "text-sm font-medium truncate flex-1",
                       activeSection === 'communications' ? "text-primary" : ""
                     )}>
-                      Communications
+                      Follow Up Hub
                     </span>
-                    {communicationsExpanded ? (
+                    {followUpExpanded ? (
                       <ChevronDown className="h-4 w-4" />
                     ) : (
                       <ChevronRight className="h-4 w-4" />
@@ -435,7 +435,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
               </button>
               
               {/* Communications Sub-items */}
-              {(communicationsExpanded || activeSection === 'communications') && !isCollapsed && (
+              {(followUpExpanded || activeSection === 'communications') && !isCollapsed && (
                 <div className="ml-4 pl-3 border-l border-border space-y-0.5">
                   <Link
                     to="/communications"
