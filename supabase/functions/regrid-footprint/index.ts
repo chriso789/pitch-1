@@ -117,20 +117,57 @@ Deno.serve(async (req) => {
 
     console.log(`[Regrid] Fetching footprint for lat=${lat}, lng=${lng}, address=${address || "N/A"}`);
 
-    // Try point lookup first (most accurate)
-    let regridUrl = `https://app.regrid.com/api/v1/parcel/point/${lng}/${lat}`;
+    // Try the v2 API first (newer format)
+    let regridUrl = `https://app.regrid.com/api/v2/parcels/point?lat=${lat}&lon=${lng}&return_geometry=true`;
     
-    const response = await fetch(regridUrl, {
+    let response = await fetch(regridUrl, {
       headers: {
         "Authorization": `Token ${REGRID_API_KEY}`,
         "Accept": "application/json",
       },
     });
 
+    // If v2 fails, try v1 API format
+    if (!response.ok) {
+      console.log(`[Regrid] v2 API returned ${response.status}, trying v1 format...`);
+      regridUrl = `https://app.regrid.com/api/v1/parcel/point/${lng}/${lat}`;
+      
+      response = await fetch(regridUrl, {
+        headers: {
+          "Authorization": `Token ${REGRID_API_KEY}`,
+          "Accept": "application/json",
+        },
+      });
+    }
+    
+    // If both fail, try address search as last resort
+    if (!response.ok && address) {
+      console.log(`[Regrid] Point lookup failed, trying address search...`);
+      const encodedAddress = encodeURIComponent(address);
+      regridUrl = `https://app.regrid.com/api/v2/parcels/address?query=${encodedAddress}&return_geometry=true`;
+      
+      response = await fetch(regridUrl, {
+        headers: {
+          "Authorization": `Token ${REGRID_API_KEY}`,
+          "Accept": "application/json",
+        },
+      });
+    }
+
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`[Regrid] API error: ${response.status} - ${errorText}`);
-      throw new Error(`Regrid API returned ${response.status}: ${errorText}`);
+      console.error(`[Regrid] All API attempts failed: ${response.status} - ${errorText}`);
+      
+      // Return a graceful failure instead of throwing
+      return new Response(
+        JSON.stringify({
+          success: false,
+          error: "Regrid API unavailable for this location",
+          suggestion: "Try using manual footprint tracing or a different address",
+          details: `API returned ${response.status}`,
+        }),
+        { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+      );
     }
 
     const data: RegridResponse = await response.json();
