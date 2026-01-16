@@ -1,9 +1,10 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { toast } from "sonner";
-import { Upload, FileText, AlertCircle, CheckCircle2, MapPin, UserCheck, UserX } from "lucide-react";
+import { Upload, FileText, AlertCircle, CheckCircle2, MapPin, UserCheck, UserX, UserPlus } from "lucide-react";
 import Papa from "papaparse";
 import { supabase } from "@/integrations/supabase/client";
 import { useLocation } from "@/contexts/LocationContext";
@@ -1115,6 +1116,7 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
   const [skipAnalysis, setSkipAnalysis] = useState<SkipAnalysis>({ missingName: 0, missingContact: 0, missingBoth: 0, importable: 0 });
   const [profilesForPreview, setProfilesForPreview] = useState<ProfileMatch[]>([]);
   const [repMatchStats, setRepMatchStats] = useState<{ matched: number; unmatched: string[] }>({ matched: 0, unmatched: [] });
+  const [manualRepMappings, setManualRepMappings] = useState<Record<string, string>>({});
 
   // Determine if import should be blocked
   const isImportBlocked = headerStatus.status === 'missing' || validRowStats.percentage < 5;
@@ -1189,6 +1191,7 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
           setDuplicateColumns(duplicates);
           setUnmatchedColumns(unmatched);
           setColumnsToNotes([]); // Reset on new file
+          setManualRepMappings({}); // Reset manual rep mappings on new file
         }
         
         // Store raw data for notes extraction during import
@@ -1317,10 +1320,11 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
           
           // Store original row data for pipeline entry creation
           const contactsWithOriginal = importableRows.map((row, idx) => {
-            // Match sales rep name to profile ID
-            const assignedTo = matchSalesRepToProfile(row.sales_rep_name, profilesForMatching);
+            // Match sales rep name to profile ID - check manual mappings first, then auto-match
+            const repName = row.sales_rep_name || '';
+            const assignedTo = manualRepMappings[repName] || matchSalesRepToProfile(repName, profilesForMatching);
             
-            // Track if we couldn't match a sales rep
+            // Track if we couldn't match a sales rep (and no manual mapping exists)
             if (row.sales_rep_name && !assignedTo) {
               unmatchedReps.add(row.sales_rep_name);
             }
@@ -1503,14 +1507,29 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
     setSkipAnalysis({ missingName: 0, missingContact: 0, missingBoth: 0, importable: 0 });
     setProfilesForPreview([]);
     setRepMatchStats({ matched: 0, unmatched: [] });
+    setManualRepMappings({});
   };
 
-  // Get rep match status for preview row
-  const getRepMatchStatus = (repName: string | undefined): 'matched' | 'unmatched' | 'none' => {
+  // Get rep match status for preview row - now considers manual mappings
+  const getRepMatchStatus = (repName: string | undefined): 'matched' | 'manual' | 'unmatched' | 'none' => {
     if (!repName) return 'none';
+    // Check if manually mapped first
+    if (manualRepMappings[repName]) return 'manual';
     const matched = matchSalesRepToProfile(repName, profilesForPreview);
     return matched ? 'matched' : 'unmatched';
   };
+
+  // Compute effective rep match stats considering manual mappings
+  const effectiveRepMatchStats = useMemo(() => {
+    const stillUnmatched = repMatchStats.unmatched.filter(rep => !manualRepMappings[rep]);
+    const manuallyMapped = repMatchStats.unmatched.filter(rep => manualRepMappings[rep]);
+    const totalMatched = repMatchStats.matched + manuallyMapped.length;
+    return {
+      matched: totalMatched,
+      manuallyMapped: manuallyMapped.length,
+      unmatched: stillUnmatched
+    };
+  }, [repMatchStats, manualRepMappings]);
 
   // Count total contact methods for preview
   const countContactMethods = (row: ContactImportData) => {
@@ -1725,24 +1744,74 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
 
           {/* Rep Assignment Summary */}
           {preview.length > 0 && (repMatchStats.matched > 0 || repMatchStats.unmatched.length > 0) && (
-            <div className={`p-3 rounded-lg border ${repMatchStats.unmatched.length > 0 ? 'bg-amber-500/10 border-amber-500/30' : 'bg-green-500/10 border-green-500/30'}`}>
+            <div className={`p-3 rounded-lg border ${effectiveRepMatchStats.unmatched.length > 0 ? 'bg-amber-500/10 border-amber-500/30' : 'bg-green-500/10 border-green-500/30'}`}>
               <div className="flex items-center gap-2 mb-2">
-                {repMatchStats.unmatched.length > 0 ? (
+                {effectiveRepMatchStats.unmatched.length > 0 ? (
                   <UserX className="h-4 w-4 text-amber-600" />
                 ) : (
                   <UserCheck className="h-4 w-4 text-green-600" />
                 )}
-                <span className={`text-sm font-medium ${repMatchStats.unmatched.length > 0 ? 'text-amber-700' : 'text-green-700'}`}>
-                  Rep Assignment: {repMatchStats.matched} contacts will be assigned
-                  {repMatchStats.unmatched.length > 0 && `, ${repMatchStats.unmatched.length} reps not found`}
+                <span className={`text-sm font-medium ${effectiveRepMatchStats.unmatched.length > 0 ? 'text-amber-700' : 'text-green-700'}`}>
+                  Rep Assignment: {effectiveRepMatchStats.matched} contacts will be assigned
+                  {effectiveRepMatchStats.manuallyMapped > 0 && (
+                    <span className="text-blue-600 ml-1">({effectiveRepMatchStats.manuallyMapped} manually mapped)</span>
+                  )}
+                  {effectiveRepMatchStats.unmatched.length > 0 && `, ${effectiveRepMatchStats.unmatched.length} reps not found`}
                 </span>
               </div>
+              
+              {/* Manual Rep Mapping UI */}
               {repMatchStats.unmatched.length > 0 && (
-                <div className="text-xs text-muted-foreground">
-                  <span className="font-medium">Unmatched reps:</span>{' '}
-                  {repMatchStats.unmatched.slice(0, 5).join(', ')}
-                  {repMatchStats.unmatched.length > 5 && ` and ${repMatchStats.unmatched.length - 5} more`}
-                  <span className="block mt-1 text-amber-600">These contacts will be imported without rep assignment.</span>
+                <div className="space-y-3 mt-3">
+                  <p className="text-xs font-medium text-foreground">Assign unmatched reps to existing team members:</p>
+                  <div className="space-y-2">
+                    {repMatchStats.unmatched.map((unmatchedRep) => (
+                      <div key={unmatchedRep} className="flex items-center gap-3 bg-background/50 p-2 rounded border">
+                        <div className="flex items-center gap-2 min-w-[140px]">
+                          {manualRepMappings[unmatchedRep] ? (
+                            <UserPlus className="h-4 w-4 text-blue-500" />
+                          ) : (
+                            <UserX className="h-4 w-4 text-amber-500" />
+                          )}
+                          <span className="text-sm font-medium truncate" title={unmatchedRep}>
+                            {unmatchedRep}
+                          </span>
+                        </div>
+                        <span className="text-muted-foreground text-sm">→</span>
+                        <Select
+                          value={manualRepMappings[unmatchedRep] || ''}
+                          onValueChange={(value) => {
+                            setManualRepMappings(prev => {
+                              if (value === '') {
+                                const { [unmatchedRep]: removed, ...rest } = prev;
+                                return rest;
+                              }
+                              return { ...prev, [unmatchedRep]: value };
+                            });
+                          }}
+                        >
+                          <SelectTrigger className="w-[200px] h-8 text-sm">
+                            <SelectValue placeholder="Select a rep..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="">
+                              <span className="text-muted-foreground">No assignment</span>
+                            </SelectItem>
+                            {profilesForPreview.map(profile => (
+                              <SelectItem key={profile.id} value={profile.id}>
+                                {profile.first_name} {profile.last_name}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    ))}
+                  </div>
+                  {effectiveRepMatchStats.unmatched.length > 0 && (
+                    <p className="text-xs text-amber-600">
+                      {effectiveRepMatchStats.unmatched.length} rep{effectiveRepMatchStats.unmatched.length > 1 ? 's' : ''} will be imported without assignment.
+                    </p>
+                  )}
                 </div>
               )}
             </div>
@@ -1816,11 +1885,15 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
                               <span className="flex items-center gap-1">
                                 {repStatus === 'matched' ? (
                                   <UserCheck className="h-3.5 w-3.5 text-green-600" />
+                                ) : repStatus === 'manual' ? (
+                                  <UserPlus className="h-3.5 w-3.5 text-blue-500" />
                                 ) : (
                                   <UserX className="h-3.5 w-3.5 text-amber-500" />
                                 )}
-                                <span className={repStatus === 'matched' ? 'text-foreground' : 'text-muted-foreground'}>
-                                  {row.sales_rep_name}
+                                <span className={repStatus === 'matched' || repStatus === 'manual' ? 'text-foreground' : 'text-muted-foreground'}>
+                                  {repStatus === 'manual' 
+                                    ? `${row.sales_rep_name} → ${profilesForPreview.find(p => p.id === manualRepMappings[row.sales_rep_name || ''])?.first_name || 'Assigned'}`
+                                    : row.sales_rep_name}
                                 </span>
                               </span>
                             ) : (
