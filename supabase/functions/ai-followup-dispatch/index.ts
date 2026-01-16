@@ -147,12 +147,57 @@ serve(async (req) => {
 
       console.log(`[ai-followup-dispatch] SMS sent to ${contact.phone}`);
     } else if (channel === "email") {
+      // Send via email-send edge function
       if (!contact.email) {
-        throw new Error("Contact missing email");
+        throw new Error("Contact missing email address for email channel");
+      }
+      
+      // Get company name for subject line
+      const { data: tenant } = await supabase
+        .from("tenants")
+        .select("name")
+        .eq("id", queueItem.tenant_id)
+        .single();
+      
+      const companyName = tenant?.name || "Your contractor";
+      
+      console.log(`[ai-followup-dispatch] Sending email to ${contact.email}`);
+      
+      const emailRes = await fetch(
+        `${Deno.env.get("SUPABASE_URL")}/functions/v1/email-send`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")}`,
+          },
+          body: JSON.stringify({
+            to: contact.email,
+            subject: `Following up - ${companyName}`,
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+                <p>Hi ${contact.first_name || "there"},</p>
+                <p>${generated.message}</p>
+                <p style="margin-top: 24px; color: #666; font-size: 14px;">
+                  Best regards,<br/>
+                  ${companyName}
+                </p>
+              </div>
+            `,
+            tenant_id: queueItem.tenant_id,
+            contact_id: queueItem.contact_id,
+          }),
+        }
+      );
+
+      if (!emailRes.ok) {
+        const errText = await emailRes.text();
+        console.error(`[ai-followup-dispatch] Email send failed:`, errText);
+        throw new Error(`Email send failed: ${errText}`);
       }
 
-      // TODO: Integrate with email-send function when available
-      console.log(`[ai-followup-dispatch] Email would be sent to ${contact.email} (not implemented)`);
+      const emailResult = await emailRes.json();
+      console.log(`[ai-followup-dispatch] ✅ Email sent successfully, message_id: ${emailResult.message_id}`);
     }
 
     // Get or create AI conversation for audit trail

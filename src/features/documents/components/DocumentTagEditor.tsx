@@ -51,8 +51,19 @@ interface DocumentTagEditorProps {
   onSave: () => void;
 }
 
+// Tag types for interactive fields
+type TagType = 'smart_tag' | 'text_input' | 'signature' | 'checkbox';
+type RecipientType = 'system' | 'homeowner' | 'contractor';
+
+interface SmartTagDef {
+  key: string;
+  label: string;
+  type?: TagType;
+  recipient?: RecipientType;
+}
+
 // Available smart tags grouped by category
-const SMART_TAG_CATEGORIES = {
+const SMART_TAG_CATEGORIES: Record<string, SmartTagDef[]> = {
   Contact: [
     { key: "contact.first_name", label: "First Name" },
     { key: "contact.last_name", label: "Last Name" },
@@ -141,6 +152,31 @@ const SMART_TAG_CATEGORIES = {
     { key: "today.year", label: "Current Year" },
     { key: "today.month", label: "Current Month" },
     { key: "today.weekday", label: "Current Weekday" },
+  ],
+  // NEW: Interactive Fields - Text Inputs
+  "📝 Text Fields": [
+    { key: "input.text", label: "Text Box", type: "text_input" as TagType, recipient: "homeowner" as RecipientType },
+    { key: "input.textarea", label: "Multi-line Text", type: "text_input" as TagType, recipient: "homeowner" as RecipientType },
+    { key: "input.date", label: "Date Field", type: "text_input" as TagType, recipient: "homeowner" as RecipientType },
+    { key: "input.number", label: "Number Field", type: "text_input" as TagType, recipient: "homeowner" as RecipientType },
+    { key: "input.testimonial", label: "Testimonial Box", type: "text_input" as TagType, recipient: "homeowner" as RecipientType },
+  ],
+  // NEW: Signature Fields
+  "✍️ Signatures": [
+    { key: "signature.homeowner", label: "Homeowner Signature", type: "signature" as TagType, recipient: "homeowner" as RecipientType },
+    { key: "signature.homeowner_date", label: "Homeowner Sign Date", type: "signature" as TagType, recipient: "homeowner" as RecipientType },
+    { key: "signature.homeowner_name", label: "Homeowner Printed Name", type: "signature" as TagType, recipient: "homeowner" as RecipientType },
+    { key: "signature.contractor", label: "Contractor Signature", type: "signature" as TagType, recipient: "contractor" as RecipientType },
+    { key: "signature.contractor_date", label: "Contractor Sign Date", type: "signature" as TagType, recipient: "contractor" as RecipientType },
+    { key: "signature.contractor_name", label: "Contractor Printed Name", type: "signature" as TagType, recipient: "contractor" as RecipientType },
+  ],
+  // NEW: Checkbox / Selection Fields
+  "☑️ Checkboxes": [
+    { key: "checkbox.single", label: "Single Checkbox", type: "checkbox" as TagType, recipient: "homeowner" as RecipientType },
+    { key: "checkbox.approval", label: "Approval Checkbox", type: "checkbox" as TagType, recipient: "homeowner" as RecipientType },
+    { key: "checkbox.terms", label: "Accept Terms", type: "checkbox" as TagType, recipient: "homeowner" as RecipientType },
+    { key: "checkbox.completion", label: "Work Completed", type: "checkbox" as TagType, recipient: "homeowner" as RecipientType },
+    { key: "checkbox.satisfaction", label: "Satisfied with Work", type: "checkbox" as TagType, recipient: "homeowner" as RecipientType },
   ],
 };
 
