@@ -80,6 +80,13 @@ const SMART_TAG_CATEGORIES: Record<string, SmartTagDef[]> = {
     { key: "contact.lead_source", label: "Lead Source" },
     { key: "contact.notes", label: "Notes" },
   ],
+  Job: [
+    { key: "job.number", label: "Job Number" },
+    { key: "job.name", label: "Job Name" },
+    { key: "job.status", label: "Job Status" },
+    { key: "job.type", label: "Job Type" },
+    { key: "job.created_date", label: "Job Created Date" },
+  ],
   Project: [
     { key: "project.name", label: "Project Name" },
     { key: "project.address", label: "Project Address" },
@@ -91,6 +98,16 @@ const SMART_TAG_CATEGORIES: Record<string, SmartTagDef[]> = {
     { key: "project.roof_type", label: "Roof Type" },
     { key: "project.lead_number", label: "Lead Number" },
     { key: "project.notes", label: "Project Notes" },
+  ],
+  "💰 Financial": [
+    { key: "job.total_cost", label: "Total Job Cost" },
+    { key: "job.material_cost", label: "Material Cost" },
+    { key: "job.labor_cost", label: "Labor Cost" },
+    { key: "job.amount_paid", label: "Amount Paid" },
+    { key: "job.remaining_balance", label: "Remaining Balance" },
+    { key: "job.deposit_amount", label: "Deposit Amount" },
+    { key: "job.profit", label: "Profit" },
+    { key: "job.margin_percent", label: "Margin %" },
   ],
   Estimate: [
     { key: "estimate.total", label: "Total Amount" },
@@ -145,23 +162,24 @@ const SMART_TAG_CATEGORIES: Record<string, SmartTagDef[]> = {
     { key: "insurance.date_of_loss", label: "Date of Loss" },
     { key: "insurance.deductible", label: "Deductible" },
   ],
-  Date: [
+  "📅 Date": [
     { key: "today.date", label: "Today's Date" },
-    { key: "today.date_long", label: "Today (Long)" },
+    { key: "today.date_long", label: "Today (Long Format)" },
     { key: "today.time", label: "Current Time" },
     { key: "today.year", label: "Current Year" },
     { key: "today.month", label: "Current Month" },
     { key: "today.weekday", label: "Current Weekday" },
   ],
-  // NEW: Interactive Fields - Text Inputs
+  // Interactive Fields - Text Inputs
   "📝 Text Fields": [
     { key: "input.text", label: "Text Box", type: "text_input" as TagType, recipient: "homeowner" as RecipientType },
     { key: "input.textarea", label: "Multi-line Text", type: "text_input" as TagType, recipient: "homeowner" as RecipientType },
-    { key: "input.date", label: "Date Field", type: "text_input" as TagType, recipient: "homeowner" as RecipientType },
+    { key: "input.date", label: "Date Field (Optional)", type: "text_input" as TagType, recipient: "homeowner" as RecipientType },
+    { key: "input.date_required", label: "Date Field (Required)", type: "text_input" as TagType, recipient: "homeowner" as RecipientType },
     { key: "input.number", label: "Number Field", type: "text_input" as TagType, recipient: "homeowner" as RecipientType },
     { key: "input.testimonial", label: "Testimonial Box", type: "text_input" as TagType, recipient: "homeowner" as RecipientType },
   ],
-  // NEW: Signature Fields
+  // Signature Fields
   "✍️ Signatures": [
     { key: "signature.homeowner", label: "Homeowner Signature", type: "signature" as TagType, recipient: "homeowner" as RecipientType },
     { key: "signature.homeowner_date", label: "Homeowner Sign Date", type: "signature" as TagType, recipient: "homeowner" as RecipientType },
@@ -170,9 +188,17 @@ const SMART_TAG_CATEGORIES: Record<string, SmartTagDef[]> = {
     { key: "signature.contractor_date", label: "Contractor Sign Date", type: "signature" as TagType, recipient: "contractor" as RecipientType },
     { key: "signature.contractor_name", label: "Contractor Printed Name", type: "signature" as TagType, recipient: "contractor" as RecipientType },
   ],
-  // NEW: Checkbox / Selection Fields
+  // Initials Fields
+  "🖊️ Initials": [
+    { key: "initials.homeowner", label: "Homeowner Initials (Required)", type: "signature" as TagType, recipient: "homeowner" as RecipientType },
+    { key: "initials.homeowner_optional", label: "Homeowner Initials (Optional)", type: "signature" as TagType, recipient: "homeowner" as RecipientType },
+    { key: "initials.contractor", label: "Contractor Initials (Required)", type: "signature" as TagType, recipient: "contractor" as RecipientType },
+    { key: "initials.contractor_optional", label: "Contractor Initials (Optional)", type: "signature" as TagType, recipient: "contractor" as RecipientType },
+  ],
+  // Checkbox / Selection Fields
   "☑️ Checkboxes": [
-    { key: "checkbox.single", label: "Single Checkbox", type: "checkbox" as TagType, recipient: "homeowner" as RecipientType },
+    { key: "checkbox.single", label: "Checkbox (Optional)", type: "checkbox" as TagType, recipient: "homeowner" as RecipientType },
+    { key: "checkbox.required", label: "Checkbox (Required)", type: "checkbox" as TagType, recipient: "homeowner" as RecipientType },
     { key: "checkbox.approval", label: "Approval Checkbox", type: "checkbox" as TagType, recipient: "homeowner" as RecipientType },
     { key: "checkbox.terms", label: "Accept Terms", type: "checkbox" as TagType, recipient: "homeowner" as RecipientType },
     { key: "checkbox.completion", label: "Work Completed", type: "checkbox" as TagType, recipient: "homeowner" as RecipientType },
