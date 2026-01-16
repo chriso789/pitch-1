@@ -4,7 +4,7 @@ import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { injectVariables, PresentationContext } from "@/lib/presentation-variables";
 import { NavigationLinkRenderer, NavigationLink } from "./mode/NavigationLinkRenderer";
-
+import { Ruler, Home, TrendingUp, Layers, CheckCircle, Phone, Mail } from "lucide-react";
 interface SlideRendererProps {
   slide: any;
   sessionId: string | null;
@@ -156,9 +156,142 @@ export const SlideRenderer = ({
             )}
             {content.ai_content && (
               <p className="text-2xl leading-relaxed whitespace-pre-wrap">{content.ai_content}</p>
+        )}
+      </div>
+    );
+
+  case "metrics":
+    return (
+      <div className="space-y-6">
+        <h2 className="text-4xl font-bold text-center">{slideTitle || "Property Measurements"}</h2>
+        <div className="grid grid-cols-2 gap-6">
+          <Card className="p-6 bg-primary/5 border-primary/20">
+            <div className="flex items-center gap-3 mb-2">
+              <Ruler className="h-6 w-6 text-primary" />
+              <span className="text-muted-foreground">Total Area</span>
+            </div>
+            <p className="text-3xl font-bold">{content.total_area || content.roof_area || "—"} sq ft</p>
+          </Card>
+          <Card className="p-6 bg-primary/5 border-primary/20">
+            <div className="flex items-center gap-3 mb-2">
+              <Layers className="h-6 w-6 text-primary" />
+              <span className="text-muted-foreground">Squares</span>
+            </div>
+            <p className="text-3xl font-bold">{content.squares || "—"}</p>
+          </Card>
+          <Card className="p-6 bg-primary/5 border-primary/20">
+            <div className="flex items-center gap-3 mb-2">
+              <TrendingUp className="h-6 w-6 text-primary" />
+              <span className="text-muted-foreground">Pitch</span>
+            </div>
+            <p className="text-3xl font-bold">{content.pitch || "—"}</p>
+          </Card>
+          <Card className="p-6 bg-primary/5 border-primary/20">
+            <div className="flex items-center gap-3 mb-2">
+              <Home className="h-6 w-6 text-primary" />
+              <span className="text-muted-foreground">Stories</span>
+            </div>
+            <p className="text-3xl font-bold">{content.stories || "—"}</p>
+          </Card>
+        </div>
+      </div>
+    );
+
+  case "content":
+    return (
+      <div className="space-y-6">
+        {(content.heading || slideTitle) && (
+          <h2 className="text-4xl font-bold">{content.heading || slideTitle}</h2>
+        )}
+        {content.body && (
+          <p className="text-2xl leading-relaxed whitespace-pre-wrap">{content.body}</p>
+        )}
+        {content.ai_content && (
+          <p className="text-2xl leading-relaxed whitespace-pre-wrap">{content.ai_content}</p>
+        )}
+        {content.image_url && (
+          <img
+            src={content.image_url}
+            alt={slideTitle || "Content image"}
+            className="w-full max-h-[50vh] object-cover rounded-lg mt-4"
+          />
+        )}
+      </div>
+    );
+
+  case "gallery":
+    const galleryImages = content.images || [];
+    return (
+      <div className="space-y-6">
+        <h2 className="text-4xl font-bold text-center">{slideTitle || "Photo Gallery"}</h2>
+        {galleryImages.length > 0 ? (
+          <div className="grid grid-cols-2 gap-4">
+            {galleryImages.slice(0, 6).map((image: any, index: number) => (
+              <div key={image.id || index} className="relative">
+                <img
+                  src={image.url}
+                  alt={image.caption || `Gallery image ${index + 1}`}
+                  className="rounded-lg object-cover aspect-video w-full"
+                />
+                {image.caption && (
+                  <p className="text-center text-muted-foreground mt-2">{image.caption}</p>
+                )}
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center text-muted-foreground py-12">
+            <p className="text-xl">No gallery images available</p>
+          </div>
+        )}
+      </div>
+    );
+
+  case "closing":
+    return (
+      <div className="space-y-8 text-center">
+        <CheckCircle className="h-20 w-20 text-primary mx-auto" />
+        <h2 className="text-4xl font-bold">{slideTitle || "Ready to Get Started?"}</h2>
+        {content.body && (
+          <p className="text-2xl leading-relaxed">{content.body}</p>
+        )}
+        {content.ai_content && (
+          <p className="text-2xl leading-relaxed">{content.ai_content}</p>
+        )}
+        
+        {(content.warranty || content.payment_terms) && (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mt-8 text-left">
+            {content.warranty && (
+              <Card className="p-6 bg-primary/5">
+                <h3 className="text-xl font-semibold mb-2">Warranty</h3>
+                <p className="text-lg text-muted-foreground">{content.warranty}</p>
+              </Card>
+            )}
+            {content.payment_terms && (
+              <Card className="p-6 bg-primary/5">
+                <h3 className="text-xl font-semibold mb-2">Payment Terms</h3>
+                <p className="text-lg text-muted-foreground">{content.payment_terms}</p>
+              </Card>
             )}
           </div>
-        );
+        )}
+
+        <div className="flex justify-center gap-12 mt-8">
+          {content.phone && (
+            <div className="flex items-center gap-3 text-xl">
+              <Phone className="h-6 w-6 text-primary" />
+              <span>{content.phone}</span>
+            </div>
+          )}
+          {content.email && (
+            <div className="flex items-center gap-3 text-xl">
+              <Mail className="h-6 w-6 text-primary" />
+              <span>{content.email}</span>
+            </div>
+          )}
+        </div>
+      </div>
+    );
 
       case "photo_gallery":
       case "property_photos":
