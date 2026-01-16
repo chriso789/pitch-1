@@ -7,7 +7,10 @@ import { TestimonialSlideEditor } from "./slide-editors/TestimonialSlideEditor";
 import { SignatureSlideEditor } from "./slide-editors/SignatureSlideEditor";
 import { SectionMenuSlideEditor } from "./slide-editors/SectionMenuSlideEditor";
 import { PricingComparisonSlideEditor } from "./slide-editors/PricingComparisonSlideEditor";
-
+import { MetricsSlideEditor } from "./slide-editors/MetricsSlideEditor";
+import { ContentSlideEditor } from "./slide-editors/ContentSlideEditor";
+import { GallerySlideEditor } from "./slide-editors/GallerySlideEditor";
+import { ClosingSlideEditor } from "./slide-editors/ClosingSlideEditor";
 interface SlideEditorProps {
   slide: any;
   onSlideUpdate: () => void;
@@ -19,13 +22,32 @@ export const SlideEditor = ({ slide, onSlideUpdate }: SlideEditorProps) => {
       case "title":
         return <TitleSlideEditor slide={slide} onUpdate={onSlideUpdate} />;
       case "text":
+      case "about":
+      case "about_us":
+      case "scope":
+      case "scope_of_work":
+      case "materials":
+      case "warranty":
+      case "timeline":
+      case "financing":
+      case "next_steps":
+      case "cta":
         return <TextSlideEditor slide={slide} onUpdate={onSlideUpdate} />;
+      case "content":
+        return <ContentSlideEditor slide={slide} onUpdate={onSlideUpdate} />;
       case "image":
         return <ImageSlideEditor slide={slide} onUpdate={onSlideUpdate} />;
       case "video":
         return <VideoSlideEditor slide={slide} onUpdate={onSlideUpdate} />;
+      case "metrics":
+        return <MetricsSlideEditor slide={slide} onUpdate={onSlideUpdate} />;
+      case "gallery":
+      case "photo_gallery":
+      case "property_photos":
+        return <GallerySlideEditor slide={slide} onUpdate={onSlideUpdate} />;
       case "estimate_summary":
       case "pricing":
+      case "estimate":
         return <EstimateSummarySlideEditor slide={slide} onUpdate={onSlideUpdate} />;
       case "testimonial":
         return <TestimonialSlideEditor slide={slide} onUpdate={onSlideUpdate} />;
@@ -36,6 +58,8 @@ export const SlideEditor = ({ slide, onSlideUpdate }: SlideEditorProps) => {
       case "pricing_comparison":
       case "good_better_best":
         return <PricingComparisonSlideEditor slide={slide} onUpdate={onSlideUpdate} />;
+      case "closing":
+        return <ClosingSlideEditor slide={slide} onUpdate={onSlideUpdate} />;
       default:
         return (
           <div className="text-center text-muted-foreground py-12">
