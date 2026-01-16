@@ -156,6 +156,7 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
   const [saving, setSaving] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [allPlacements, setAllPlacements] = useState<TagPlacement[]>([]);
+  const [placementsLoaded, setPlacementsLoaded] = useState(false);
   const [selectedObject, setSelectedObject] = useState<FabricObject | null>(null);
   const [zoom, setZoom] = useState(1);
   const [tenantId, setTenantId] = useState<string | null>(null);
@@ -246,6 +247,7 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
     setCurrentPage(1);
     setTotalPages(1);
     setAllPlacements([]);
+    setPlacementsLoaded(false);
     setLoadError(null);
     setPdfError(null);
     
@@ -349,6 +351,9 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
             font_family: p.font_family || "Arial",
             text_align: p.text_align || "left",
           })));
+          setPlacementsLoaded(true);
+        } else {
+          setPlacementsLoaded(true);
         }
       } catch (error) {
         console.error("Error loading document:", error, debugInfo);
@@ -446,6 +451,35 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
     loadImageContent();
   }, [documentUrl, fabricCanvas, isDocumentPdf, canvasReady]);
 
+  // Load existing placements onto canvas AFTER both placements are loaded AND canvas is rendered
+  useEffect(() => {
+    if (!placementsLoaded || !fabricCanvas || !canvasReady || pageRendering) return;
+    if (!isCanvasValid(fabricCanvas)) return;
+    if (allPlacements.length === 0) return;
+    
+    // Don't add duplicates - check if canvas already has tags
+    const existingTagsOnCanvas = fabricCanvas.getObjects().filter(
+      (obj: any) => obj.tagKey && !obj.isLabel
+    );
+    if (existingTagsOnCanvas.length > 0) return;
+    
+    console.log(`📌 Loading ${allPlacements.length} existing placements onto canvas for page ${currentPage}`);
+    
+    // Load tags for current page - scale up from normalized PDF coords to canvas coords
+    const pagePlacements = allPlacements.filter(p => p.page_number === currentPage);
+    pagePlacements.forEach((placement) => {
+      addTagToCanvas(
+        placement.tag_key,
+        placement.x_position * PDF_RENDER_SCALE,
+        placement.y_position * PDF_RENDER_SCALE,
+        placement.width * PDF_RENDER_SCALE,
+        placement.height * PDF_RENDER_SCALE
+      );
+    });
+    
+    fabricCanvas.requestRenderAll();
+  }, [placementsLoaded, allPlacements, fabricCanvas, canvasReady, pageRendering, currentPage]);
+
   // Render PDF page to canvas
   const renderPdfPage = async (pdf: PDFDocumentProxy, pageNum: number) => {
     if (!fabricCanvas || !isCanvasValid(fabricCanvas)) {
@@ -508,17 +542,7 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
         updatePlacementsForPage(currentPage, existingTags);
       }
       
-      // Load tags for the new page - scale up from normalized PDF coords to canvas coords
-      const pagePlacements = allPlacements.filter(p => p.page_number === pageNum);
-      pagePlacements.forEach((placement) => {
-        addTagToCanvas(
-          placement.tag_key,
-          placement.x_position * PDF_RENDER_SCALE,
-          placement.y_position * PDF_RENDER_SCALE,
-          placement.width * PDF_RENDER_SCALE,
-          placement.height * PDF_RENDER_SCALE
-        );
-      });
+      // Note: Tags are now loaded by a dedicated effect that responds to placementsLoaded
       
     } catch (error) {
       console.error("❌ Error rendering PDF page:", error);
@@ -548,17 +572,7 @@ export const DocumentTagEditor: React.FC<DocumentTagEditorProps> = ({
           await fabricCanvas.set('backgroundImage', fabricImg);
           fabricCanvas.requestRenderAll();
           
-          // Load tags for page 1 - scale up from normalized PDF coords to canvas coords
-          const pagePlacements = allPlacements.filter(p => p.page_number === 1);
-          pagePlacements.forEach((placement) => {
-            addTagToCanvas(
-              placement.tag_key,
-              placement.x_position * PDF_RENDER_SCALE,
-              placement.y_position * PDF_RENDER_SCALE,
-              placement.width * PDF_RENDER_SCALE,
-              placement.height * PDF_RENDER_SCALE
-            );
-          });
+          // Note: Tags are now loaded by a dedicated effect that responds to placementsLoaded
           
           resolve();
         } catch (err) {
