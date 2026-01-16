@@ -251,11 +251,13 @@ Deno.serve(async (req) => {
     // ═══════════════════════════════════════════════════════════════════════════
 
     // ═══════════════════════════════════════════════════════════════════════════
-    // 🏢 AUTHORITATIVE FOOTPRINT EXTRACTION - ENHANCED PRIORITY ORDER:
-    // 1. Mapbox Vector (highest fidelity - detailed polygon with many vertices)
-    // 2. Regrid parcel data (accurate building outlines)
-    // 3. OSM Overpass API (community-mapped buildings - no API key)
-    // 4. Microsoft/Esri Buildings (global coverage - no API key)  
+    // 🏢 AUTHORITATIVE FOOTPRINT EXTRACTION - COST-OPTIMIZED PRIORITY ORDER:
+    // Priority: FREE sources first, PAID (Regrid) as fallback
+    // 
+    // 1. Mapbox Vector (highest fidelity - included with Mapbox subscription)
+    // 2. Microsoft/Esri Buildings (FREE, 92% accuracy - better than Regrid!)
+    // 3. OSM Overpass API (FREE, community-mapped buildings)
+    // 4. Regrid parcel data (PAID ~$0.03-0.10/lookup - only when free sources fail)
     // 5. Solar API bounding box (rectangular, 4 vertices - LAST RESORT)
     // 6. AI Detection (fallback when all else fails)
     // ═══════════════════════════════════════════════════════════════════════════
@@ -326,75 +328,9 @@ Deno.serve(async (req) => {
     }
     timings.footprint_mapbox = Date.now() - footprintFetchStart;
 
-    // STEP 2: Fallback to Regrid parcel data (high-quality building outlines)
-    const REGRID_API_KEY = Deno.env.get('REGRID_API_KEY');
-    if (!authoritativeFootprint && REGRID_API_KEY) {
-      console.log('🗺️ STEP 2: Trying Regrid parcel data...');
-      
-      try {
-        const regridFootprint = await fetchRegridFootprint(coordinates.lat, coordinates.lng, REGRID_API_KEY);
-        
-        if (regridFootprint) {
-          // Use 0.5ft overhang for Regrid (vector-quality data)
-          const expandedVertices = expandFootprintForOverhang(regridFootprint.vertices, 0.5);
-          const validation = validateGeometry(expandedVertices, 'regrid_parcel');
-          
-          if (validation.valid) {
-            authoritativeFootprint = {
-              vertices: expandedVertices,
-              confidence: validation.confidence,
-              source: 'regrid_parcel',
-              requiresManualReview: false,
-              validation,
-            };
-            console.log(`✅ Regrid footprint: ${validation.metrics.areaSqFt.toFixed(0)} sqft, ${regridFootprint.vertices.length} vertices, ${(validation.confidence * 100).toFixed(0)}% confidence`);
-          }
-        }
-      } catch (regridErr) {
-        console.warn('⚠️ Regrid lookup failed:', regridErr);
-      }
-    }
-    timings.footprint_regrid = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0);
-
-    // STEP 3: Try OSM Overpass API (community-mapped buildings - free, no API key)
+    // STEP 2: Try Microsoft/Esri Buildings FIRST (FREE, 92% accuracy - better than Regrid!)
     if (!authoritativeFootprint) {
-      console.log('🗺️ STEP 3: Trying OSM Overpass API for building footprint...');
-      
-      try {
-        const osmResult = await fetchOSMBuildingFootprint(coordinates.lat, coordinates.lng, { searchRadius: 50 });
-        
-        if (osmResult.footprint && osmResult.footprint.vertexCount >= 4) {
-          const osmVertices = osmResult.footprint.coordinates.map(coord => ({
-            lat: coord[1],
-            lng: coord[0]
-          }));
-          
-          // Use 0.5ft overhang for OSM (vector-quality data)
-          const expandedVertices = expandFootprintForOverhang(osmVertices, 0.5);
-          const validation = validateGeometry(expandedVertices, 'osm_buildings' as FootprintSource);
-          
-          if (validation.valid) {
-            authoritativeFootprint = {
-              vertices: expandedVertices,
-              confidence: osmResult.footprint.confidence,
-              source: 'osm_buildings' as FootprintSource,
-              requiresManualReview: false,
-              validation,
-            };
-            console.log(`✅ OSM footprint: ${validation.metrics.areaSqFt.toFixed(0)} sqft, ${osmResult.footprint.vertexCount} vertices, ${(osmResult.footprint.confidence * 100).toFixed(0)}% confidence`);
-          }
-        } else {
-          console.log(`⚠️ OSM returned no usable footprint: ${osmResult.fallbackReason || osmResult.error || 'unknown'}`);
-        }
-      } catch (osmErr) {
-        console.warn('⚠️ OSM Overpass lookup failed:', osmErr);
-      }
-    }
-    timings.footprint_osm = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0) - (timings.footprint_regrid || 0);
-
-    // STEP 4: Try Microsoft/Esri Buildings (global coverage - free, no API key)
-    if (!authoritativeFootprint) {
-      console.log('🏢 STEP 4: Trying Microsoft/Esri Buildings API...');
+      console.log('🏢 STEP 2: Trying Microsoft/Esri Buildings API (FREE, 92% accuracy)...');
       
       try {
         const msResult = await fetchMicrosoftBuildingFootprint(coordinates.lat, coordinates.lng, { searchRadius: 50 });
@@ -426,7 +362,73 @@ Deno.serve(async (req) => {
         console.warn('⚠️ Microsoft Buildings lookup failed:', msErr);
       }
     }
-    timings.footprint_microsoft = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0) - (timings.footprint_regrid || 0) - (timings.footprint_osm || 0);
+    timings.footprint_microsoft = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0);
+
+    // STEP 3: Try OSM Overpass API (FREE, community-mapped buildings, 85% accuracy)
+    if (!authoritativeFootprint) {
+      console.log('🗺️ STEP 3: Trying OSM Overpass API for building footprint (FREE)...');
+      
+      try {
+        const osmResult = await fetchOSMBuildingFootprint(coordinates.lat, coordinates.lng, { searchRadius: 50 });
+        
+        if (osmResult.footprint && osmResult.footprint.vertexCount >= 4) {
+          const osmVertices = osmResult.footprint.coordinates.map(coord => ({
+            lat: coord[1],
+            lng: coord[0]
+          }));
+          
+          // Use 0.5ft overhang for OSM (vector-quality data)
+          const expandedVertices = expandFootprintForOverhang(osmVertices, 0.5);
+          const validation = validateGeometry(expandedVertices, 'osm_buildings' as FootprintSource);
+          
+          if (validation.valid) {
+            authoritativeFootprint = {
+              vertices: expandedVertices,
+              confidence: osmResult.footprint.confidence,
+              source: 'osm_buildings' as FootprintSource,
+              requiresManualReview: false,
+              validation,
+            };
+            console.log(`✅ OSM footprint: ${validation.metrics.areaSqFt.toFixed(0)} sqft, ${osmResult.footprint.vertexCount} vertices, ${(osmResult.footprint.confidence * 100).toFixed(0)}% confidence`);
+          }
+        } else {
+          console.log(`⚠️ OSM returned no usable footprint: ${osmResult.fallbackReason || osmResult.error || 'unknown'}`);
+        }
+      } catch (osmErr) {
+        console.warn('⚠️ OSM Overpass lookup failed:', osmErr);
+      }
+    }
+    timings.footprint_osm = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0) - (timings.footprint_microsoft || 0);
+
+    // STEP 4: Fallback to Regrid parcel data (PAID - only when free sources fail)
+    const REGRID_API_KEY = Deno.env.get('REGRID_API_KEY');
+    if (!authoritativeFootprint && REGRID_API_KEY) {
+      console.log('💰 STEP 4: Trying Regrid parcel data (PAID fallback)...');
+      
+      try {
+        const regridFootprint = await fetchRegridFootprint(coordinates.lat, coordinates.lng, REGRID_API_KEY);
+        
+        if (regridFootprint) {
+          // Use 0.5ft overhang for Regrid (vector-quality data)
+          const expandedVertices = expandFootprintForOverhang(regridFootprint.vertices, 0.5);
+          const validation = validateGeometry(expandedVertices, 'regrid_parcel');
+          
+          if (validation.valid) {
+            authoritativeFootprint = {
+              vertices: expandedVertices,
+              confidence: validation.confidence,
+              source: 'regrid_parcel',
+              requiresManualReview: false,
+              validation,
+            };
+            console.log(`✅ Regrid footprint: ${validation.metrics.areaSqFt.toFixed(0)} sqft, ${regridFootprint.vertices.length} vertices, ${(validation.confidence * 100).toFixed(0)}% confidence`);
+          }
+        }
+      } catch (regridErr) {
+        console.warn('⚠️ Regrid lookup failed:', regridErr);
+      }
+    }
+    timings.footprint_regrid = Date.now() - footprintFetchStart - (timings.footprint_mapbox || 0) - (timings.footprint_microsoft || 0) - (timings.footprint_osm || 0);
 
     // Select best image EARLY (needed for AI Vision step)
     const selectedImage = googleImage.url ? googleImage : mapboxImage;
