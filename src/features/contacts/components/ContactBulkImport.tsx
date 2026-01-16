@@ -194,6 +194,10 @@ const COLUMN_MAPPINGS: Record<string, string> = {
   'property.address': 'address_street',
   'skiptrace:property.address': 'address_street',
   'skiptrace:property.address.address': 'address_street',
+  // Location Address variations
+  'location address': 'address_street',
+  'location_address': 'address_street',
+  'locationaddress': 'address_street',
   
   'address_city': 'address_city',
   'city': 'address_city',

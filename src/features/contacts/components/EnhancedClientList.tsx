@@ -372,9 +372,9 @@ export const EnhancedClientList = () => {
           .order("created_at", { ascending: false })
           .range(from, from + BATCH_SIZE - 1);
         
-        // Apply location filter - include contacts with matching location_id OR null location_id
+        // Apply location filter - only show contacts explicitly assigned to this location
         if (currentLocationId && locations.length > 0) {
-          batchQuery = batchQuery.or(`location_id.eq.${currentLocationId},location_id.is.null`);
+          batchQuery = batchQuery.eq('location_id', currentLocationId);
         }
         
         const { data: batchData, error: batchError } = await batchQuery;
