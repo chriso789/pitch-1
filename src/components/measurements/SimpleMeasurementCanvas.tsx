@@ -75,7 +75,7 @@ export function SimpleMeasurementCanvas({
   const [isLoadingImage, setIsLoadingImage] = useState(true);
   const [isDetectingBuilding, setIsDetectingBuilding] = useState(false);
   const [pixelsPerFoot, setPixelsPerFoot] = useState(1);
-  const [mode, setMode] = useState<'select' | 'draw'>('draw');
+  const [mode, setMode] = useState<'select' | 'draw' | 'pan'>('select');
   const [detectedLinearFeatures, setDetectedLinearFeatures] = useState<any>(null);
   const [showLinearFeatures, setShowLinearFeatures] = useState(true);
   const [buildingPolygon, setBuildingPolygon] = useState<[number, number][]>([]);
@@ -106,6 +106,7 @@ export function SimpleMeasurementCanvas({
     addPoint,
     completePolygon,
     cancelDrawing,
+    removeLastPoint,
     movePoint,
     deletePolygon,
     undo,
@@ -123,6 +124,7 @@ export function SimpleMeasurementCanvas({
     onPolygonComplete: (polygon) => {
       const area = calculatePolygonArea(polygon.points, pixelsPerFoot);
       toast.success(`${polygon.label} completed: ${area.toFixed(0)} sq ft`);
+      setMode('select'); // Return to select mode after completing
       updateMeasurements();
     },
   });
@@ -204,16 +206,45 @@ export function SimpleMeasurementCanvas({
     loadImage();
   }, [satelliteImageUrl, width, height, currentZoom, propertyId, centerLat, centerLng]);
 
-  // Handle canvas clicks for drawing
+  // Handle canvas clicks for drawing and panning
   useEffect(() => {
     const canvas = fabricCanvasRef.current;
     if (!canvas) return;
 
-    const handleCanvasClick = (e: any) => {
-      if (mode !== 'draw') return;
+    let isPanning = false;
+    let lastPosX = 0;
+    let lastPosY = 0;
 
-      const pointer = canvas.getPointer(e.e);
-      addPoint({ x: pointer.x, y: pointer.y });
+    const handleCanvasClick = (e: any) => {
+      if (mode === 'draw') {
+        const pointer = canvas.getPointer(e.e);
+        addPoint({ x: pointer.x, y: pointer.y });
+      } else if (mode === 'pan') {
+        isPanning = true;
+        lastPosX = e.e.clientX;
+        lastPosY = e.e.clientY;
+        canvas.setCursor('grabbing');
+      }
+    };
+
+    const handleMouseMove = (e: any) => {
+      if (mode === 'pan' && isPanning) {
+        const vpt = canvas.viewportTransform;
+        if (vpt) {
+          vpt[4] += e.e.clientX - lastPosX;
+          vpt[5] += e.e.clientY - lastPosY;
+          canvas.requestRenderAll();
+          lastPosX = e.e.clientX;
+          lastPosY = e.e.clientY;
+        }
+      }
+    };
+
+    const handleMouseUp = () => {
+      isPanning = false;
+      if (mode === 'pan') {
+        canvas.setCursor('grab');
+      }
     };
 
     const handleDoubleClick = () => {
@@ -222,11 +253,24 @@ export function SimpleMeasurementCanvas({
       }
     };
 
+    // Set cursor based on mode
+    if (mode === 'pan') {
+      canvas.setCursor('grab');
+    } else if (mode === 'draw') {
+      canvas.setCursor('crosshair');
+    } else {
+      canvas.setCursor('default');
+    }
+
     canvas.on('mouse:down', handleCanvasClick);
+    canvas.on('mouse:move', handleMouseMove);
+    canvas.on('mouse:up', handleMouseUp);
     canvas.on('mouse:dblclick', handleDoubleClick);
 
     return () => {
       canvas.off('mouse:down', handleCanvasClick);
+      canvas.off('mouse:move', handleMouseMove);
+      canvas.off('mouse:up', handleMouseUp);
       canvas.off('mouse:dblclick', handleDoubleClick);
     };
   }, [mode, isDrawing, currentPoints, addPoint, completePolygon]);
@@ -485,9 +529,35 @@ export function SimpleMeasurementCanvas({
     startDrawing();
     if (isMobile) {
       vibrate('light');
-      toast.info('Tap to add corners. Double-tap to close polygon.');
+      toast.info('Tap to add corners. Use "Done" to complete or "Back" to remove points.');
     } else {
-      toast.info('Click to add corners. Click first point or double-click to close polygon.');
+      toast.info('Click to add corners. Click first point or double-click to close polygon. Press Escape to cancel.');
+    }
+  };
+
+  const handleCancelDrawing = () => {
+    cancelDrawing();
+    setMode('select');
+    if (isMobile) {
+      vibrate('light');
+    }
+    toast.info('Drawing cancelled');
+  };
+
+  const handleRemoveLastPoint = () => {
+    removeLastPoint();
+    if (isMobile) {
+      vibrate('light');
+    }
+  };
+
+  const handleSetMode = (newMode: 'select' | 'draw' | 'pan') => {
+    if (isDrawing && newMode !== 'draw') {
+      cancelDrawing();
+    }
+    setMode(newMode);
+    if (isMobile) {
+      vibrate('light');
     }
   };
 
@@ -622,7 +692,7 @@ export function SimpleMeasurementCanvas({
     };
   }, [fabricCanvasRef.current, isMobile]);
 
-  // Keyboard shortcuts for zoom
+  // Keyboard shortcuts for zoom and drawing
   useEffect(() => {
     if (isMobile) return;
 
@@ -630,6 +700,28 @@ export function SimpleMeasurementCanvas({
       const canvas = fabricCanvasRef.current;
       if (!canvas) return;
       
+      // Escape - cancel drawing
+      if (e.key === 'Escape' && isDrawing) {
+        e.preventDefault();
+        handleCancelDrawing();
+        return;
+      }
+      
+      // Backspace - remove last point
+      if (e.key === 'Backspace' && isDrawing && currentPoints.length > 0) {
+        e.preventDefault();
+        handleRemoveLastPoint();
+        return;
+      }
+      
+      // Enter - complete polygon
+      if (e.key === 'Enter' && isDrawing && currentPoints.length >= 3) {
+        e.preventDefault();
+        completePolygon();
+        return;
+      }
+      
+      // Zoom shortcuts
       if (e.key === '+' || e.key === '=') {
         e.preventDefault();
         const newZoom = Math.min(canvas.getZoom() * 1.1, 3);
@@ -648,11 +740,25 @@ export function SimpleMeasurementCanvas({
         canvas.renderAll();
         setFabricZoomLevel(1);
       }
+      
+      // Mode shortcuts (when not drawing)
+      if (!isDrawing) {
+        if (e.key === 'd' || e.key === 'D') {
+          e.preventDefault();
+          handleStartDrawing();
+        } else if (e.key === 'p' || e.key === 'P') {
+          e.preventDefault();
+          handleSetMode('pan');
+        } else if (e.key === 's' || e.key === 'S') {
+          e.preventDefault();
+          handleSetMode('select');
+        }
+      }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [fabricCanvasRef.current, isMobile]);
+  }, [fabricCanvasRef.current, isMobile, isDrawing, currentPoints.length, completePolygon]);
 
   // Network status monitoring
   useEffect(() => {
@@ -725,6 +831,7 @@ export function SimpleMeasurementCanvas({
           canUndo={canUndo}
           canRedo={canRedo}
           currentArea={getCurrentArea()}
+          currentPointCount={currentPoints.length}
           totalArea={getTotalArea()}
           facetCount={polygons.length}
           showLinearFeatures={showLinearFeatures}
@@ -739,6 +846,9 @@ export function SimpleMeasurementCanvas({
           onZoomOut={handleZoomOut}
           onZoomReset={handleZoomReset}
           onCompletePolygon={completePolygon}
+          onCancelDrawing={handleCancelDrawing}
+          onRemoveLastPoint={handleRemoveLastPoint}
+          onSetMode={handleSetMode}
         />
       </>
     );

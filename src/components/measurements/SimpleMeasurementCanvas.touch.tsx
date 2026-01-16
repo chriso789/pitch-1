@@ -8,7 +8,7 @@ import { useHapticFeedback } from '@/hooks/useHapticFeedback';
 
 export function useMobileMeasurementControls(
   canvas: FabricCanvas | null,
-  mode: 'select' | 'draw',
+  mode: 'select' | 'draw' | 'pan',
   isDrawing: boolean,
   addPoint: (point: { x: number; y: number }) => void,
   completePolygon: () => void,

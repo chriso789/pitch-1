@@ -20,14 +20,19 @@ import {
   RotateCcw,
   Menu,
   CheckCircle2,
+  X,
+  ChevronLeft,
+  Hand,
+  MousePointer2,
 } from 'lucide-react';
 
 interface MobileToolbarProps {
-  mode: 'select' | 'draw';
+  mode: 'select' | 'draw' | 'pan';
   isDrawing: boolean;
   canUndo: boolean;
   canRedo: boolean;
   currentArea: number;
+  currentPointCount?: number;
   totalArea: number;
   facetCount: number;
   showLinearFeatures: boolean;
@@ -42,6 +47,9 @@ interface MobileToolbarProps {
   onZoomOut: () => void;
   onZoomReset: () => void;
   onCompletePolygon?: () => void;
+  onCancelDrawing?: () => void;
+  onRemoveLastPoint?: () => void;
+  onSetMode?: (mode: 'select' | 'draw' | 'pan') => void;
   position?: 'bottom' | 'left' | 'right';
 }
 
@@ -51,6 +59,7 @@ export function MobileToolbar({
   canUndo,
   canRedo,
   currentArea,
+  currentPointCount = 0,
   totalArea,
   facetCount,
   showLinearFeatures,
@@ -65,6 +74,9 @@ export function MobileToolbar({
   onZoomOut,
   onZoomReset,
   onCompletePolygon,
+  onCancelDrawing,
+  onRemoveLastPoint,
+  onSetMode,
   position = 'bottom',
 }: MobileToolbarProps) {
   const isVertical = position === 'left' || position === 'right';
@@ -73,31 +85,89 @@ export function MobileToolbar({
     ? `fixed ${position}-0 top-0 bottom-0 w-20 bg-background border-${position === 'left' ? 'r' : 'l'} border-border p-2 z-50 flex flex-col gap-2`
     : "fixed bottom-0 left-0 right-0 bg-background border-t border-border p-4 safe-area-bottom z-50";
 
-  return (
-    <div className={containerClass}>
-      <div className="flex items-center justify-between gap-2">
-        {/* Primary Action - Large button */}
-        <Button
-          size="lg"
-          onClick={onStartDrawing}
-          disabled={isDrawing}
-          className="flex-1 h-14 text-base touch-target"
-        >
-          <Pencil className="h-5 w-5 mr-2" />
-          {isDrawing ? 'Drawing...' : 'Draw Facet'}
-        </Button>
+  // When actively drawing, show drawing-specific controls
+  if (isDrawing) {
+    return (
+      <div className={containerClass}>
+        <div className="flex items-center justify-between gap-2">
+          {/* Cancel Drawing */}
+          <Button
+            size="lg"
+            variant="destructive"
+            onClick={onCancelDrawing}
+            className="h-14 touch-target"
+          >
+            <X className="h-5 w-5" />
+          </Button>
 
-        {/* Complete Polygon button when drawing */}
-        {isDrawing && currentArea > 0 && (
+          {/* Remove Last Point */}
+          <Button
+            size="lg"
+            variant="outline"
+            onClick={onRemoveLastPoint}
+            disabled={currentPointCount < 1}
+            className="h-14 touch-target flex-1"
+          >
+            <ChevronLeft className="h-5 w-5 mr-1" />
+            Back
+          </Button>
+
+          {/* Complete Polygon - only when 3+ points */}
           <Button
             size="lg"
             variant="default"
             onClick={onCompletePolygon}
-            className="h-14 touch-target"
+            disabled={currentPointCount < 3}
+            className="h-14 touch-target flex-1"
           >
-            <CheckCircle2 className="h-5 w-5" />
+            <CheckCircle2 className="h-5 w-5 mr-2" />
+            Done
           </Button>
-        )}
+        </div>
+
+        {/* Live measurement display */}
+        <div className="mt-2 text-center">
+          <Badge variant="secondary" className="text-base px-4 py-2">
+            {currentPointCount} points • {currentArea.toFixed(0)} sq ft
+          </Badge>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={containerClass}>
+      <div className="flex items-center justify-between gap-2">
+        {/* Mode Toggle - Select / Draw / Pan */}
+        <div className="flex items-center gap-1 bg-muted rounded-lg p-1">
+          <Button
+            size="sm"
+            variant={mode === 'select' ? 'default' : 'ghost'}
+            onClick={() => onSetMode?.('select')}
+            className="h-12 w-12 p-0"
+            title="Select"
+          >
+            <MousePointer2 className="h-5 w-5" />
+          </Button>
+          <Button
+            size="sm"
+            variant={mode === 'draw' ? 'default' : 'ghost'}
+            onClick={onStartDrawing}
+            className="h-12 w-12 p-0"
+            title="Draw"
+          >
+            <Pencil className="h-5 w-5" />
+          </Button>
+          <Button
+            size="sm"
+            variant={mode === 'pan' ? 'default' : 'ghost'}
+            onClick={() => onSetMode?.('pan')}
+            className="h-12 w-12 p-0"
+            title="Pan"
+          >
+            <Hand className="h-5 w-5" />
+          </Button>
+        </div>
 
         {/* Auto-detect button */}
         <Button
@@ -105,9 +175,10 @@ export function MobileToolbar({
           variant="outline"
           onClick={onAutoDetect}
           disabled={isDetectingBuilding}
-          className="h-14 touch-target"
+          className="h-14 touch-target flex-1"
         >
-          <Home className="h-5 w-5" />
+          <Home className="h-5 w-5 mr-2" />
+          AI Detect
         </Button>
 
         {/* More options menu */}
@@ -238,11 +309,11 @@ export function MobileToolbar({
         </Sheet>
       </div>
 
-      {/* Live measurement display when drawing */}
-      {isDrawing && currentArea > 0 && (
+      {/* Summary display */}
+      {facetCount > 0 && (
         <div className="mt-2 text-center">
           <Badge variant="secondary" className="text-base px-4 py-2">
-            {currentArea.toFixed(0)} sq ft • {(currentArea / 100).toFixed(1)} squares
+            {facetCount} facets • {totalArea.toFixed(0)} sq ft
           </Badge>
         </div>
       )}
