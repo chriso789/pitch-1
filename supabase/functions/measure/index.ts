@@ -3404,13 +3404,13 @@ serve(async (req) => {
 
         const tenantId = profile.tenant_id;
 
-        // Fetch vendor-verified training sessions with both AI and traced totals
+        // Fetch vendor-verified training sessions that have traced_totals
+        // Note: We only need traced_totals (vendor measurements) - ai_totals may be empty
         const { data: sessions, error: sessionsError } = await supabase
           .from('roof_training_sessions')
-          .select('id, ai_totals, traced_totals, ground_truth_source, confidence_weight, vendor_report_id')
+          .select('id, ai_totals, traced_totals, ground_truth_source, confidence_weight, vendor_report_id, property_address, lat, lng')
           .eq('tenant_id', tenantId)
           .eq('ground_truth_source', 'vendor_report')
-          .not('ai_totals', 'is', null)
           .not('traced_totals', 'is', null);
 
         if (sessionsError) {
@@ -3418,10 +3418,19 @@ serve(async (req) => {
           return json({ ok: false, error: sessionsError.message }, corsHeaders, 500);
         }
 
-        if (!sessions || sessions.length === 0) {
+        // Filter out sessions with empty traced_totals objects
+        const validSessions = (sessions || []).filter(s => {
+          const traced = s.traced_totals as Record<string, number>;
+          return traced && Object.keys(traced).length > 0 && 
+            (traced.ridge > 0 || traced.hip > 0 || traced.valley > 0 || traced.eave > 0 || traced.rake > 0);
+        });
+
+        console.log(`📊 Found ${validSessions.length} vendor sessions with valid measurements (out of ${sessions?.length || 0} total)`);
+
+        if (validSessions.length === 0) {
           return json({
             ok: true,
-            message: 'No vendor-verified training sessions found. Import professional reports first.',
+            message: 'No vendor-verified training sessions with valid measurements found. Import professional reports first.',
             sessions_analyzed: 0,
             corrections: []
           }, corsHeaders);
@@ -3437,11 +3446,21 @@ serve(async (req) => {
           accumulators[type] = { ai_total: 0, vendor_total: 0, weighted_count: 0, sample_count: 0 };
         });
 
-        // Process each session
-        for (const session of sessions) {
+        // Process each session - for vendor reports without AI data, just use vendor totals for now
+        for (const session of validSessions) {
           const aiTotals = session.ai_totals as Record<string, number>;
           const vendorTotals = session.traced_totals as Record<string, number>;
           const weight = session.confidence_weight || 3.0; // Vendor reports get 3x weight
+
+          // Check if AI totals are populated (not empty object)
+          const hasAiData = aiTotals && Object.keys(aiTotals).length > 0 && 
+            (aiTotals.ridge > 0 || aiTotals.hip > 0 || aiTotals.valley > 0 || aiTotals.eave > 0 || aiTotals.rake > 0);
+
+          if (!hasAiData) {
+            // Skip this session for AI comparison, but log it
+            console.log(`⚠️ Session ${session.id} has vendor data but no AI data - needs hydration`);
+            continue;
+          }
 
           featureTypes.forEach(type => {
             // Handle both "ridge" and "ridge_ft" formats
@@ -3535,17 +3554,164 @@ serve(async (req) => {
           }
         }
 
-        console.log(`✅ Vendor report learning complete: ${sessions.length} sessions analyzed, ${corrections.filter(c => c.sample_count > 0).length} corrections updated`);
+        // Count sessions that actually had AI data
+        const sessionsWithAi = validSessions.filter(s => {
+          const ai = s.ai_totals as Record<string, number>;
+          return ai && Object.keys(ai).length > 0 && (ai.ridge > 0 || ai.hip > 0 || ai.valley > 0 || ai.eave > 0 || ai.rake > 0);
+        }).length;
+
+        console.log(`✅ Vendor report learning complete: ${validSessions.length} sessions, ${sessionsWithAi} with AI data, ${corrections.filter(c => c.sample_count > 0).length} corrections updated`);
 
         return json({
           ok: true,
-          message: `Learned from ${sessions.length} vendor reports (credit-free)`,
-          sessions_analyzed: sessions.length,
+          message: `Learned from ${sessionsWithAi} vendor reports with AI comparison (${validSessions.length} total sessions)`,
+          sessions_analyzed: validSessions.length,
+          sessions_with_ai_data: sessionsWithAi,
+          sessions_needing_hydration: validSessions.length - sessionsWithAi,
           corrections,
         }, corsHeaders);
       }
 
-      return json({ ok: false, error: 'Invalid action. Use: latest, pull, manual, manual-verify, generate-overlay, evaluate-overlay, store-corrections, get-learned-patterns, apply-corrections, or learn-from-vendor-reports' }, corsHeaders, 400);
+      // Route: action=hydrate-vendor-sessions (Generate AI measurements for vendor sessions missing them)
+      if (action === 'hydrate-vendor-sessions') {
+        console.log('🔄 Hydrating vendor sessions with AI measurements...');
+        
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          return json({ ok: false, error: 'Authentication required' }, corsHeaders, 401);
+        }
+
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('tenant_id')
+          .eq('id', user.id)
+          .single();
+
+        if (!profile?.tenant_id) {
+          return json({ ok: false, error: 'No tenant found' }, corsHeaders, 400);
+        }
+
+        const tenantId = profile.tenant_id;
+        const limit = body.limit || 5; // Process in small batches to avoid timeout
+
+        // Find vendor sessions with traced_totals but empty/missing ai_totals
+        const { data: sessions, error: sessionsError } = await supabase
+          .from('roof_training_sessions')
+          .select('id, traced_totals, lat, lng, property_address, vendor_report_id')
+          .eq('tenant_id', tenantId)
+          .eq('ground_truth_source', 'vendor_report')
+          .not('traced_totals', 'is', null)
+          .limit(limit);
+
+        if (sessionsError) {
+          console.error('Error fetching sessions:', sessionsError);
+          return json({ ok: false, error: sessionsError.message }, corsHeaders, 500);
+        }
+
+        // Filter to sessions that need hydration (missing or empty ai_totals)
+        const needsHydration: typeof sessions = [];
+        for (const session of sessions || []) {
+          const { data: fullSession } = await supabase
+            .from('roof_training_sessions')
+            .select('ai_totals')
+            .eq('id', session.id)
+            .single();
+          
+          const ai = fullSession?.ai_totals as Record<string, number>;
+          const hasAiData = ai && Object.keys(ai).length > 0 && 
+            (ai.ridge > 0 || ai.hip > 0 || ai.valley > 0 || ai.eave > 0 || ai.rake > 0);
+          
+          if (!hasAiData && session.lat && session.lng) {
+            needsHydration.push(session);
+          }
+        }
+
+        console.log(`Found ${needsHydration.length} sessions needing AI hydration`);
+
+        if (needsHydration.length === 0) {
+          return json({
+            ok: true,
+            message: 'All vendor sessions already have AI measurements',
+            hydrated: 0,
+            skipped: 0,
+          }, corsHeaders);
+        }
+
+        // Hydrate each session by generating AI measurement at lat/lng
+        const results = { hydrated: 0, failed: 0, errors: [] as string[] };
+
+        for (const session of needsHydration) {
+          try {
+            console.log(`🔄 Hydrating session ${session.id} at ${session.lat}, ${session.lng}...`);
+
+            // Use existing roof_measurements if available at this location
+            const { data: existingMeasurement } = await supabase
+              .from('roof_measurements')
+              .select('id, summary')
+              .gte('lat', session.lat! - 0.0001)
+              .lte('lat', session.lat! + 0.0001)
+              .gte('lng', session.lng! - 0.0001)
+              .lte('lng', session.lng! + 0.0001)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle();
+
+            let aiTotals: Record<string, number> | null = null;
+
+            if (existingMeasurement?.summary) {
+              const summary = existingMeasurement.summary as any;
+              aiTotals = {
+                ridge: summary.ridge_ft || summary.total_ridge_length || 0,
+                hip: summary.hip_ft || summary.total_hip_length || 0,
+                valley: summary.valley_ft || summary.total_valley_length || 0,
+                eave: summary.eave_ft || summary.total_eave_length || 0,
+                rake: summary.rake_ft || summary.total_rake_length || 0,
+              };
+              console.log(`  Found existing measurement ${existingMeasurement.id}, using its totals`);
+            }
+
+            if (aiTotals && (aiTotals.ridge > 0 || aiTotals.hip > 0 || aiTotals.valley > 0 || aiTotals.eave > 0 || aiTotals.rake > 0)) {
+              // Update the session with AI totals
+              const { error: updateError } = await supabase
+                .from('roof_training_sessions')
+                .update({ 
+                  ai_totals: aiTotals,
+                  ai_measurement_id: existingMeasurement?.id || null,
+                })
+                .eq('id', session.id);
+
+              if (updateError) {
+                console.error(`  Failed to update session:`, updateError.message);
+                results.failed++;
+                results.errors.push(`${session.id}: ${updateError.message}`);
+              } else {
+                console.log(`  ✓ Hydrated session with AI totals`);
+                results.hydrated++;
+              }
+            } else {
+              console.log(`  ⚠️ No AI measurement found at location, skipping`);
+              results.failed++;
+              results.errors.push(`${session.id}: No AI measurement at location`);
+            }
+          } catch (err) {
+            console.error(`  Error hydrating session ${session.id}:`, err);
+            results.failed++;
+            results.errors.push(`${session.id}: ${err instanceof Error ? err.message : String(err)}`);
+          }
+        }
+
+        console.log(`✅ Hydration complete: ${results.hydrated} hydrated, ${results.failed} failed`);
+
+        return json({
+          ok: true,
+          message: `Hydrated ${results.hydrated} vendor sessions with AI measurements`,
+          hydrated: results.hydrated,
+          failed: results.failed,
+          errors: results.errors.slice(0, 10), // Limit error list
+        }, corsHeaders);
+      }
+
+      return json({ ok: false, error: 'Invalid action. Use: latest, pull, manual, manual-verify, generate-overlay, evaluate-overlay, store-corrections, get-learned-patterns, apply-corrections, learn-from-vendor-reports, or hydrate-vendor-sessions' }, corsHeaders, 400);
     }
 
     // Fallback for GET requests (legacy path-based routing)

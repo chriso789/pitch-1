@@ -23479,6 +23479,7 @@ export type Database = {
           created_at: string
           extracted_text: string | null
           file_bucket: string | null
+          file_hash: string | null
           file_path: string | null
           file_url: string | null
           id: string
@@ -23492,6 +23493,7 @@ export type Database = {
           created_at?: string
           extracted_text?: string | null
           file_bucket?: string | null
+          file_hash?: string | null
           file_path?: string | null
           file_url?: string | null
           id?: string
@@ -23505,6 +23507,7 @@ export type Database = {
           created_at?: string
           extracted_text?: string | null
           file_bucket?: string | null
+          file_hash?: string | null
           file_path?: string | null
           file_url?: string | null
           id?: string
