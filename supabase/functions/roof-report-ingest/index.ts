@@ -1160,12 +1160,12 @@ serve(async (req) => {
             }
           }
 
-          // Create training session
+          // Create training session - use pipeline_entry_id if lead_id provided, otherwise leave null
           const { data: trainingSession, error: sessionError } = await supabase
             .from('roof_training_sessions')
             .insert({
               tenant_id: userTenantId,
-              property_id: lead_id,
+              pipeline_entry_id: lead_id || null, // Fixed: was property_id which doesn't exist
               ai_measurement_id: aiMeasurementId,
               vendor_report_id: reportRow.id,
               ground_truth_source: 'vendor_report',
@@ -1174,6 +1174,7 @@ serve(async (req) => {
               ai_totals: aiTotals || {},
               traced_totals: tracedTotals,
               property_address: parsed.address,
+              name: `Vendor Report - ${parsed.address || 'Unknown'}`,
               created_by: userId,
             })
             .select('id')
