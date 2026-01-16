@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, MapPin, CheckCircle2, AlertCircle, TrendingUp, Loader2, RefreshCw, BarChart3, Target } from 'lucide-react';
+import { GlobalLayout } from '@/shared/components/layout/GlobalLayout';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
@@ -210,7 +211,7 @@ export default function ReportImportDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
+    <GlobalLayout>
       <div className="container mx-auto py-6 space-y-6">
         {/* Header */}
         <div className="flex items-center justify-between">

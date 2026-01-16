@@ -110,6 +110,7 @@ import HomeownerPortalAdmin from "./pages/admin/HomeownerPortalAdmin";
 import HomeownerSetupAccount from "./pages/HomeownerSetupAccount";
 import CommissionReport from "./pages/CommissionReport";
 import RoofMeasurementTrainer from "./pages/RoofMeasurementTrainer";
+import ReportImportDashboard from "./pages/ReportImportDashboard";
 import PhoneSettings from "./pages/admin/PhoneSettings";
 import ActivityDashboardPage from "./pages/admin/ActivityDashboardPage";
 import CanvasserLeaderboardPage from "./pages/CanvasserLeaderboardPage";
@@ -311,6 +312,7 @@ const AppContent = () => {
         <Route path="/dispatch" element={<ProtectedRoute><DispatchDashboard /></ProtectedRoute>} />
         <Route path="/storm-canvass/config" element={<ProtectedRoute><StormCanvassConfig /></ProtectedRoute>} />
         <Route path="/storm-canvass/photos" element={<ProtectedRoute><StormCanvassPhotos /></ProtectedRoute>} />
+        <Route path="/report-import" element={<ProtectedRoute><ReportImportDashboard /></ProtectedRoute>} />
         
         {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
         <Route path="*" element={<NotFound />} />

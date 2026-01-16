@@ -49,12 +49,12 @@ serve(async (req) => {
 
     const tenantId = profile.tenant_id;
 
-    // Fetch training sessions with AI totals - include in_progress and completed
+    // Fetch training sessions with AI totals - include in_progress, completed, reviewed, AND vendor_verified
     const { data: rawSessions, error: sessionsError } = await admin
       .from("roof_training_sessions")
-      .select("id, ai_totals, traced_totals, status")
+      .select("id, ai_totals, traced_totals, status, ground_truth_source, confidence_weight")
       .eq("tenant_id", tenantId)
-      .in("status", ["completed", "in_progress", "reviewed"])
+      .in("status", ["completed", "in_progress", "reviewed", "vendor_verified"])
       .not("ai_totals", "is", null);
 
     if (sessionsError) {
@@ -120,17 +120,22 @@ serve(async (req) => {
 
     console.log(`Analyzing ${sessions.length} training sessions for tenant ${tenantId}`);
 
-    // Accumulate totals by feature type
+    // Accumulate totals by feature type with confidence weighting
     const featureTypes = ['ridge', 'hip', 'valley', 'eave', 'rake'];
-    const accumulators: Record<string, FeatureAccumulator> = {};
+    const accumulators: Record<string, FeatureAccumulator & { weighted_count: number }> = {};
     
     featureTypes.forEach(type => {
-      accumulators[type] = { ai_total: 0, manual_total: 0, count: 0 };
+      accumulators[type] = { ai_total: 0, manual_total: 0, count: 0, weighted_count: 0 };
     });
 
     sessions.forEach(session => {
       const aiTotals = session.ai_totals as Record<string, number> | null;
       const tracedTotals = session.traced_totals as Record<string, number> | null;
+      
+      // Apply higher weight to vendor-verified sessions (3x default)
+      const weight = session.ground_truth_source === 'vendor_report' 
+        ? (session.confidence_weight || 3.0) 
+        : 1.0;
 
       if (!aiTotals || !tracedTotals) return;
 
@@ -141,9 +146,10 @@ serve(async (req) => {
 
         // Only include if we have meaningful manual data
         if (manualVal > 0) {
-          accumulators[type].ai_total += aiVal;
-          accumulators[type].manual_total += manualVal;
+          accumulators[type].ai_total += aiVal * weight;
+          accumulators[type].manual_total += manualVal * weight;
           accumulators[type].count++;
+          accumulators[type].weighted_count += weight;
         }
       });
     });
