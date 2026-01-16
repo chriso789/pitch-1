@@ -22949,6 +22949,8 @@ export type Database = {
           facet_count: number | null
           flashing_ft: number | null
           flat_area_sqft: number | null
+          geocoded_at: string | null
+          geocoding_status: string | null
           hips_ft: number | null
           id: string
           latitude: number | null
@@ -22970,6 +22972,7 @@ export type Database = {
           valleys_ft: number | null
           wall_flashing_ft: number | null
           waste_table: Json | null
+          zip_code: string | null
         }
         Insert: {
           address?: string | null
@@ -22979,6 +22982,8 @@ export type Database = {
           facet_count?: number | null
           flashing_ft?: number | null
           flat_area_sqft?: number | null
+          geocoded_at?: string | null
+          geocoding_status?: string | null
           hips_ft?: number | null
           id?: string
           latitude?: number | null
@@ -23000,6 +23005,7 @@ export type Database = {
           valleys_ft?: number | null
           wall_flashing_ft?: number | null
           waste_table?: Json | null
+          zip_code?: string | null
         }
         Update: {
           address?: string | null
@@ -23009,6 +23015,8 @@ export type Database = {
           facet_count?: number | null
           flashing_ft?: number | null
           flat_area_sqft?: number | null
+          geocoded_at?: string | null
+          geocoding_status?: string | null
           hips_ft?: number | null
           id?: string
           latitude?: number | null
@@ -23030,6 +23038,7 @@ export type Database = {
           valleys_ft?: number | null
           wall_flashing_ft?: number | null
           waste_table?: Json | null
+          zip_code?: string | null
         }
         Relationships: [
           {
@@ -23067,6 +23076,65 @@ export type Database = {
           typical_regions?: string[] | null
         }
         Relationships: []
+      }
+      roof_regional_corrections: {
+        Row: {
+          confidence: number | null
+          correction_multiplier: number
+          created_at: string | null
+          feature_type: string
+          id: string
+          property_type: string | null
+          roof_style: string | null
+          sample_count: number | null
+          tenant_id: string
+          total_ai_ft: number | null
+          total_vendor_ft: number | null
+          updated_at: string | null
+          variance_pct: number | null
+          zip_prefix: string | null
+        }
+        Insert: {
+          confidence?: number | null
+          correction_multiplier?: number
+          created_at?: string | null
+          feature_type: string
+          id?: string
+          property_type?: string | null
+          roof_style?: string | null
+          sample_count?: number | null
+          tenant_id: string
+          total_ai_ft?: number | null
+          total_vendor_ft?: number | null
+          updated_at?: string | null
+          variance_pct?: number | null
+          zip_prefix?: string | null
+        }
+        Update: {
+          confidence?: number | null
+          correction_multiplier?: number
+          created_at?: string | null
+          feature_type?: string
+          id?: string
+          property_type?: string | null
+          roof_style?: string | null
+          sample_count?: number | null
+          tenant_id?: string
+          total_ai_ft?: number | null
+          total_vendor_ft?: number | null
+          updated_at?: string | null
+          variance_pct?: number | null
+          zip_prefix?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "roof_regional_corrections_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       roof_training_annotations: {
         Row: {
@@ -23238,11 +23306,13 @@ export type Database = {
           ai_measurement_id: string | null
           ai_totals: Json | null
           completed_at: string | null
+          confidence_weight: number | null
           contact_id: string | null
           corrected_ai_measurement_id: string | null
           created_at: string | null
           created_by: string | null
           description: string | null
+          ground_truth_source: string | null
           id: string
           lat: number | null
           lng: number | null
@@ -23255,16 +23325,19 @@ export type Database = {
           tenant_id: string
           traced_totals: Json | null
           updated_at: string | null
+          vendor_report_id: string | null
         }
         Insert: {
           ai_measurement_id?: string | null
           ai_totals?: Json | null
           completed_at?: string | null
+          confidence_weight?: number | null
           contact_id?: string | null
           corrected_ai_measurement_id?: string | null
           created_at?: string | null
           created_by?: string | null
           description?: string | null
+          ground_truth_source?: string | null
           id?: string
           lat?: number | null
           lng?: number | null
@@ -23277,16 +23350,19 @@ export type Database = {
           tenant_id: string
           traced_totals?: Json | null
           updated_at?: string | null
+          vendor_report_id?: string | null
         }
         Update: {
           ai_measurement_id?: string | null
           ai_totals?: Json | null
           completed_at?: string | null
+          confidence_weight?: number | null
           contact_id?: string | null
           corrected_ai_measurement_id?: string | null
           created_at?: string | null
           created_by?: string | null
           description?: string | null
+          ground_truth_source?: string | null
           id?: string
           lat?: number | null
           lng?: number | null
@@ -23299,6 +23375,7 @@ export type Database = {
           tenant_id?: string
           traced_totals?: Json | null
           updated_at?: string | null
+          vendor_report_id?: string | null
         }
         Relationships: [
           {
@@ -23341,6 +23418,13 @@ export type Database = {
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "roof_training_sessions_vendor_report_id_fkey"
+            columns: ["vendor_report_id"]
+            isOneToOne: false
+            referencedRelation: "roof_vendor_reports"
             referencedColumns: ["id"]
           },
         ]
