@@ -252,14 +252,15 @@ function calculateFootprintScore(candidate: FootprintCandidate, allCandidates: F
   const variance = Math.abs(candidate.areaSqft - median) / median
   score -= variance * 20
   
-  // Source preference
+  // Source preference - PRIORITIZE FREE SOURCES over paid Regrid
+  // Microsoft/Esri (92% accuracy) is MORE accurate than Regrid (90%) and FREE
   const sourceBonus: Record<string, number> = {
-    'mapbox_vector': 15,
-    'regrid_parcel': 12,
-    'osm_buildings': 8,
-    'microsoft_buildings': 8,
-    'manual': 20,
-    'solar_bbox_fallback': -20,
+    'manual': 20,              // User-drawn is gold standard
+    'mapbox_vector': 15,       // High quality, included with Mapbox subscription
+    'microsoft_buildings': 14, // FREE, ML-derived, 92% accuracy - BOOSTED
+    'osm_buildings': 10,       // FREE, community-maintained, 85% accuracy - BOOSTED
+    'regrid_parcel': 6,        // PAID - only use as last resort before bbox
+    'solar_bbox_fallback': -20,// Avoid rectangular estimates
   }
   score += sourceBonus[candidate.source] || 0
   
