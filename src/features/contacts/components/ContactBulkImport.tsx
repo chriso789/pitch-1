@@ -1322,7 +1322,10 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
           const contactsWithOriginal = importableRows.map((row, idx) => {
             // Match sales rep name to profile ID - check manual mappings first, then auto-match
             const repName = row.sales_rep_name || '';
-            const assignedTo = manualRepMappings[repName] || matchSalesRepToProfile(repName, profilesForMatching);
+            const manualMapping = manualRepMappings[repName];
+            const assignedTo = (manualMapping && manualMapping !== '__none__') 
+              ? manualMapping 
+              : matchSalesRepToProfile(repName, profilesForMatching);
             
             // Track if we couldn't match a sales rep (and no manual mapping exists)
             if (row.sales_rep_name && !assignedTo) {
@@ -1779,10 +1782,10 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
                         </div>
                         <span className="text-muted-foreground text-sm">→</span>
                         <Select
-                          value={manualRepMappings[unmatchedRep] || ''}
+                          value={manualRepMappings[unmatchedRep] || '__none__'}
                           onValueChange={(value) => {
                             setManualRepMappings(prev => {
-                              if (value === '') {
+                              if (value === '__none__') {
                                 const { [unmatchedRep]: removed, ...rest } = prev;
                                 return rest;
                               }
@@ -1794,7 +1797,7 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
                             <SelectValue placeholder="Select a rep..." />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="">
+                            <SelectItem value="__none__">
                               <span className="text-muted-foreground">No assignment</span>
                             </SelectItem>
                             {profilesForPreview.map(profile => (
