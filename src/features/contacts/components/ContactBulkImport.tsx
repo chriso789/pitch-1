@@ -1884,24 +1884,46 @@ export function ContactBulkImport({ open, onOpenChange, onImportComplete, curren
                             ) : '-'}
                           </td>
                           <td className="px-3 py-2">
-                            {row.sales_rep_name ? (
-                              <span className="flex items-center gap-1">
-                                {repStatus === 'matched' ? (
-                                  <UserCheck className="h-3.5 w-3.5 text-green-600" />
-                                ) : repStatus === 'manual' ? (
-                                  <UserPlus className="h-3.5 w-3.5 text-blue-500" />
-                                ) : (
-                                  <UserX className="h-3.5 w-3.5 text-amber-500" />
-                                )}
-                                <span className={repStatus === 'matched' || repStatus === 'manual' ? 'text-foreground' : 'text-muted-foreground'}>
-                                  {repStatus === 'manual' 
-                                    ? `${row.sales_rep_name} → ${profilesForPreview.find(p => p.id === manualRepMappings[row.sales_rep_name || ''])?.first_name || 'Assigned'}`
-                                    : row.sales_rep_name}
-                                </span>
-                              </span>
-                            ) : (
-                              <span className="text-muted-foreground">-</span>
-                            )}
+                            {(() => {
+                              // Get the actual assigned profile ID
+                              const repName = row.sales_rep_name || '';
+                              const manualMapping = manualRepMappings[repName];
+                              const autoMatchedId = repName ? matchSalesRepToProfile(repName, profilesForPreview) : null;
+                              const assignedProfileId = (manualMapping && manualMapping !== '__none__') 
+                                ? manualMapping 
+                                : autoMatchedId;
+                              
+                              // Find the profile to display
+                              const assignedProfile = assignedProfileId 
+                                ? profilesForPreview.find(p => p.id === assignedProfileId) 
+                                : null;
+                              
+                              if (assignedProfile) {
+                                const isManual = repStatus === 'manual';
+                                return (
+                                  <span className="flex items-center gap-1">
+                                    {isManual ? (
+                                      <UserPlus className="h-3.5 w-3.5 text-blue-500" />
+                                    ) : (
+                                      <UserCheck className="h-3.5 w-3.5 text-green-600" />
+                                    )}
+                                    <span className="text-foreground">
+                                      {assignedProfile.first_name} {assignedProfile.last_name?.charAt(0) || ''}.
+                                    </span>
+                                  </span>
+                                );
+                              } else if (row.sales_rep_name) {
+                                // Has a rep name but couldn't match
+                                return (
+                                  <span className="flex items-center gap-1">
+                                    <UserX className="h-3.5 w-3.5 text-amber-500" />
+                                    <span className="text-muted-foreground">{row.sales_rep_name}</span>
+                                  </span>
+                                );
+                              } else {
+                                return <span className="text-muted-foreground">-</span>;
+                              }
+                            })()}
                           </td>
                         </tr>
                       );

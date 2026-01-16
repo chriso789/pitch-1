@@ -31622,10 +31622,15 @@ export type Database = {
           tenant_id: string
         }[]
       }
-      format_clj_number: {
-        Args: { contact_num: number; job_num?: number; lead_num?: number }
-        Returns: string
-      }
+      format_clj_number:
+        | {
+            Args: { contact_num: number; job_num?: number; lead_num?: number }
+            Returns: string
+          }
+        | {
+            Args: { contact_num: string; job_num?: string; lead_num?: string }
+            Returns: string
+          }
       generate_clj_number: { Args: never; Returns: string }
       generate_contact_number: { Args: never; Returns: string }
       generate_envelope_number: { Args: never; Returns: string }
