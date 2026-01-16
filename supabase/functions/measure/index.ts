@@ -3382,7 +3382,170 @@ serve(async (req) => {
         }
       }
 
-      return json({ ok: false, error: 'Invalid action. Use: latest, pull, manual, manual-verify, generate-overlay, evaluate-overlay, store-corrections, get-learned-patterns, or apply-corrections' }, corsHeaders, 400);
+      // Route: action=learn-from-vendor-reports (Credit-free learning from imported professional reports)
+      if (action === 'learn-from-vendor-reports') {
+        console.log('📚 Starting credit-free learning from vendor reports...');
+        
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          return json({ ok: false, error: 'Authentication required' }, corsHeaders, 401);
+        }
+
+        // Get user's tenant
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('tenant_id')
+          .eq('id', user.id)
+          .single();
+
+        if (!profile?.tenant_id) {
+          return json({ ok: false, error: 'No tenant found' }, corsHeaders, 400);
+        }
+
+        const tenantId = profile.tenant_id;
+
+        // Fetch vendor-verified training sessions with both AI and traced totals
+        const { data: sessions, error: sessionsError } = await supabase
+          .from('roof_training_sessions')
+          .select('id, ai_totals, traced_totals, ground_truth_source, confidence_weight, vendor_report_id')
+          .eq('tenant_id', tenantId)
+          .eq('ground_truth_source', 'vendor_report')
+          .not('ai_totals', 'is', null)
+          .not('traced_totals', 'is', null);
+
+        if (sessionsError) {
+          console.error('Error fetching vendor sessions:', sessionsError);
+          return json({ ok: false, error: sessionsError.message }, corsHeaders, 500);
+        }
+
+        if (!sessions || sessions.length === 0) {
+          return json({
+            ok: true,
+            message: 'No vendor-verified training sessions found. Import professional reports first.',
+            sessions_analyzed: 0,
+            corrections: []
+          }, corsHeaders);
+        }
+
+        console.log(`📊 Found ${sessions.length} vendor-verified sessions to analyze`);
+
+        // Accumulate totals by feature type with weighted confidence
+        const featureTypes = ['ridge', 'hip', 'valley', 'eave', 'rake'];
+        const accumulators: Record<string, { ai_total: number; vendor_total: number; weighted_count: number; sample_count: number }> = {};
+        
+        featureTypes.forEach(type => {
+          accumulators[type] = { ai_total: 0, vendor_total: 0, weighted_count: 0, sample_count: 0 };
+        });
+
+        // Process each session
+        for (const session of sessions) {
+          const aiTotals = session.ai_totals as Record<string, number>;
+          const vendorTotals = session.traced_totals as Record<string, number>;
+          const weight = session.confidence_weight || 3.0; // Vendor reports get 3x weight
+
+          featureTypes.forEach(type => {
+            // Handle both "ridge" and "ridge_ft" formats
+            const aiVal = aiTotals?.[type] ?? aiTotals?.[`${type}_ft`] ?? 0;
+            const vendorVal = vendorTotals?.[type] ?? vendorTotals?.[`${type}_ft`] ?? 0;
+
+            if (vendorVal > 0) {
+              accumulators[type].ai_total += aiVal * weight;
+              accumulators[type].vendor_total += vendorVal * weight;
+              accumulators[type].weighted_count += weight;
+              accumulators[type].sample_count += 1;
+            }
+          });
+        }
+
+        // Calculate correction multipliers
+        const corrections: {
+          feature_type: string;
+          correction_multiplier: number;
+          sample_count: number;
+          confidence: number;
+          avg_variance_pct: number;
+          total_ai_ft: number;
+          total_vendor_ft: number;
+        }[] = [];
+
+        for (const type of featureTypes) {
+          const acc = accumulators[type];
+          
+          if (acc.sample_count === 0 || acc.vendor_total === 0) {
+            corrections.push({
+              feature_type: type,
+              correction_multiplier: 1.0,
+              sample_count: 0,
+              confidence: 0,
+              avg_variance_pct: 0,
+              total_ai_ft: 0,
+              total_vendor_ft: 0,
+            });
+            continue;
+          }
+
+          // Calculate weighted average multiplier
+          const multiplier = acc.vendor_total / acc.ai_total;
+          const clampedMultiplier = Math.max(0.5, Math.min(2.0, multiplier));
+          
+          // Calculate variance percentage
+          const variancePct = ((acc.ai_total - acc.vendor_total) / acc.vendor_total) * 100;
+          
+          // Calculate confidence (vendor reports are high confidence)
+          const confidenceFromSamples = Math.min(1, acc.sample_count / 5); // 5 vendor reports = max confidence
+          const absVariance = Math.abs(variancePct);
+          const confidenceFromAccuracy = absVariance < 5 ? 1 : absVariance < 15 ? 0.8 : 0.5;
+          const confidence = Math.min(0.95, confidenceFromSamples * 0.5 + confidenceFromAccuracy * 0.5);
+
+          corrections.push({
+            feature_type: type,
+            correction_multiplier: clampedMultiplier,
+            sample_count: acc.sample_count,
+            confidence,
+            avg_variance_pct: variancePct,
+            total_ai_ft: acc.ai_total / acc.weighted_count * acc.sample_count,
+            total_vendor_ft: acc.vendor_total / acc.weighted_count * acc.sample_count,
+          });
+
+          console.log(`${type}: Samples=${acc.sample_count}, Multiplier=${clampedMultiplier.toFixed(4)}, Variance=${variancePct.toFixed(1)}%, Confidence=${(confidence * 100).toFixed(0)}%`);
+        }
+
+        // Upsert correction factors to database
+        for (const correction of corrections) {
+          if (correction.sample_count === 0) continue;
+          
+          const { error: upsertError } = await supabase
+            .from('measurement_correction_factors')
+            .upsert({
+              tenant_id: tenantId,
+              feature_type: correction.feature_type,
+              correction_multiplier: correction.correction_multiplier,
+              sample_count: correction.sample_count,
+              confidence: correction.confidence,
+              avg_variance_pct: correction.avg_variance_pct,
+              total_ai_ft: correction.total_ai_ft,
+              total_manual_ft: correction.total_vendor_ft,
+              last_updated: new Date().toISOString(),
+            }, {
+              onConflict: 'tenant_id,feature_type',
+            });
+
+          if (upsertError) {
+            console.error(`Error upserting ${correction.feature_type}:`, upsertError);
+          }
+        }
+
+        console.log(`✅ Vendor report learning complete: ${sessions.length} sessions analyzed, ${corrections.filter(c => c.sample_count > 0).length} corrections updated`);
+
+        return json({
+          ok: true,
+          message: `Learned from ${sessions.length} vendor reports (credit-free)`,
+          sessions_analyzed: sessions.length,
+          corrections,
+        }, corsHeaders);
+      }
+
+      return json({ ok: false, error: 'Invalid action. Use: latest, pull, manual, manual-verify, generate-overlay, evaluate-overlay, store-corrections, get-learned-patterns, apply-corrections, or learn-from-vendor-reports' }, corsHeaders, 400);
     }
 
     // Fallback for GET requests (legacy path-based routing)

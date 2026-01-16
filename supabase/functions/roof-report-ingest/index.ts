@@ -1096,6 +1096,100 @@ serve(async (req) => {
     const { error: measErr } = await supabase.from("roof_measurements_truth").insert(m);
     if (measErr) console.warn("roof_measurements_truth insert failed:", measErr.message);
 
+    // AUTO-CREATE TRAINING SESSION from vendor report for AI learning
+    // This enables credit-free learning from professional measurement reports
+    if (parsed.ridges_ft || parsed.hips_ft || parsed.valleys_ft || parsed.eaves_ft || parsed.rakes_ft) {
+      try {
+        console.log("roof-report-ingest: Auto-creating training session from vendor report...");
+        
+        // Get authenticated user's tenant
+        const authHeader = req.headers.get('authorization');
+        let userTenantId: string | null = null;
+        let userId: string | null = null;
+        
+        if (authHeader) {
+          const token = authHeader.replace('Bearer ', '');
+          const { data: { user } } = await supabase.auth.getUser(token);
+          if (user) {
+            userId = user.id;
+            const { data: profile } = await supabase
+              .from('profiles')
+              .select('tenant_id')
+              .eq('id', user.id)
+              .single();
+            userTenantId = profile?.tenant_id;
+          }
+        }
+
+        if (userTenantId) {
+          // Build traced_totals from vendor measurements
+          const tracedTotals = {
+            ridge: parsed.ridges_ft || 0,
+            hip: parsed.hips_ft || 0,
+            valley: parsed.valleys_ft || 0,
+            eave: parsed.eaves_ft || 0,
+            rake: parsed.rakes_ft || 0,
+          };
+
+          // Check if we have an existing AI measurement to compare against
+          let aiMeasurementId: string | null = null;
+          let aiTotals: Record<string, number> | null = null;
+
+          if (lead_id) {
+            // Try to find existing AI measurement for this property
+            const { data: existingMeasurement } = await supabase
+              .from('roof_measurements')
+              .select('id, summary')
+              .eq('property_id', lead_id)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .single();
+
+            if (existingMeasurement) {
+              aiMeasurementId = existingMeasurement.id;
+              const summary = existingMeasurement.summary as any;
+              if (summary) {
+                aiTotals = {
+                  ridge: summary.ridge_ft || summary.total_ridge_length || 0,
+                  hip: summary.hip_ft || summary.total_hip_length || 0,
+                  valley: summary.valley_ft || summary.total_valley_length || 0,
+                  eave: summary.eave_ft || summary.total_eave_length || 0,
+                  rake: summary.rake_ft || summary.total_rake_length || 0,
+                };
+              }
+            }
+          }
+
+          // Create training session
+          const { data: trainingSession, error: sessionError } = await supabase
+            .from('roof_training_sessions')
+            .insert({
+              tenant_id: userTenantId,
+              property_id: lead_id,
+              ai_measurement_id: aiMeasurementId,
+              vendor_report_id: reportRow.id,
+              ground_truth_source: 'vendor_report',
+              confidence_weight: 3.0,
+              status: 'vendor_verified',
+              ai_totals: aiTotals || {},
+              traced_totals: tracedTotals,
+              property_address: parsed.address,
+              created_by: userId,
+            })
+            .select('id')
+            .single();
+
+          if (sessionError) {
+            console.warn("roof-report-ingest: Training session creation failed:", sessionError.message);
+          } else {
+            console.log("roof-report-ingest: Created training session:", trainingSession?.id);
+          }
+        }
+      } catch (sessionErr) {
+        console.warn("roof-report-ingest: Training session auto-creation error:", sessionErr);
+      }
+    }
+
     console.log("roof-report-ingest: Successfully processed report", { 
       provider: parsed.provider || provider, 
       address: parsed.address,
