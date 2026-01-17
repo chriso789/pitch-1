@@ -25,6 +25,7 @@ import {
   Lock
 } from "lucide-react";
 import EstimateVersionControl from './EstimateVersionControl';
+import { CreateEstimateDialog } from '@/components/estimates/CreateEstimateDialog';
 import { cn } from "@/lib/utils";
 import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
@@ -46,6 +47,7 @@ const Estimates = () => {
   const [locations, setLocations] = useState([]);
   const [versionControlOpen, setVersionControlOpen] = useState(false);
   const [selectedEstimateId, setSelectedEstimateId] = useState<string | null>(null);
+  const [showCreateEstimate, setShowCreateEstimate] = useState(false);
   const { toast } = useToast();
   
   // Extract stable primitive values to avoid infinite re-renders
@@ -376,7 +378,7 @@ const Estimates = () => {
             </Badge>
           )}
         </div>
-        <Button className="gradient-primary">
+        <Button className="gradient-primary" onClick={() => setShowCreateEstimate(true)}>
           <FileText className="h-4 w-4 mr-2" />
           Create Estimate
         </Button>
@@ -506,7 +508,7 @@ const Estimates = () => {
                 : "Create your first estimate to get started"
             }
           </p>
-          <Button className="gradient-primary">
+          <Button className="gradient-primary" onClick={() => setShowCreateEstimate(true)}>
             <FileText className="h-4 w-4 mr-2" />
             Create Estimate
           </Button>
@@ -522,6 +524,12 @@ const Estimates = () => {
           onVersionRollback={handleVersionRollback}
         />
       )}
+
+      {/* Create Estimate Dialog */}
+      <CreateEstimateDialog
+        open={showCreateEstimate}
+        onOpenChange={setShowCreateEstimate}
+      />
     </div>
   );
 };
