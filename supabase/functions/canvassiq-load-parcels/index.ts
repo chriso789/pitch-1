@@ -67,9 +67,10 @@ serve(async (req) => {
       console.error('[canvassiq-load-parcels] Error checking existing:', existingError);
     }
 
-    // If properties already exist, return them
-    if (existingProperties && existingProperties.length > 0) {
-      console.log(`[canvassiq-load-parcels] Found ${existingProperties.length} existing properties`);
+    // Calculate expected density - allow loading if we don't have enough properties
+    const expectedDensity = 50; // Minimum properties expected in area
+    if (existingProperties && existingProperties.length >= expectedDensity) {
+      console.log(`[canvassiq-load-parcels] Area has sufficient coverage: ${existingProperties.length} properties`);
       return new Response(
         JSON.stringify({ 
           success: true, 
@@ -80,6 +81,13 @@ serve(async (req) => {
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
     }
+    
+    console.log(`[canvassiq-load-parcels] Area needs more properties: ${existingProperties?.length || 0} < ${expectedDensity}`);
+    // Keep track of existing place_ids to avoid duplicates
+    const existingPlaceIds = new Set<string>();
+    (existingProperties || []).forEach((p: any) => {
+      if (p.address_hash) existingPlaceIds.add(p.address_hash);
+    });
 
     // Use Google Geocoding API to get real property addresses
     let properties: any[] = [];
@@ -223,9 +231,9 @@ async function loadRealParcelsFromGeocoding(
     console.log('[canvassiq-load-parcels] No Mapbox token - properties will use geocoded coordinates');
   }
   
-  // Create a grid of points to reverse geocode - spacing ~30m apart for residential areas
-  const gridSpacing = 0.0003; // ~30 meters in degrees
-  const gridSize = Math.min(5, Math.ceil(radius * 10)); // Limit grid size based on radius
+  // Create a grid of points to reverse geocode - spacing ~20m apart for residential areas
+  const gridSpacing = 0.00025; // ~25 meters in degrees for better density
+  const gridSize = Math.max(8, Math.min(15, Math.ceil(radius * 30))); // Larger grid for more coverage
   
   console.log(`[canvassiq-load-parcels] Creating ${gridSize}x${gridSize} grid for reverse geocoding`);
   
