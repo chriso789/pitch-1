@@ -3464,6 +3464,7 @@ export type Database = {
           id: string
           lat: number
           lng: number
+          normalized_address_key: string | null
           notes: string | null
           original_lat: number | null
           original_lng: number | null
@@ -3498,6 +3499,7 @@ export type Database = {
           id?: string
           lat: number
           lng: number
+          normalized_address_key?: string | null
           notes?: string | null
           original_lat?: number | null
           original_lng?: number | null
@@ -3532,6 +3534,7 @@ export type Database = {
           id?: string
           lat?: number
           lng?: number
+          normalized_address_key?: string | null
           notes?: string | null
           original_lat?: number | null
           original_lng?: number | null
@@ -32636,6 +32639,7 @@ export type Database = {
           id: string
           lat: number
           lng: number
+          normalized_address_key: string | null
           notes: string | null
           original_lat: number | null
           original_lng: number | null

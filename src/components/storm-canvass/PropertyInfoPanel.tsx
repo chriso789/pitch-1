@@ -94,6 +94,31 @@ export default function PropertyInfoPanel({
     }
   }, [property?.id]);
 
+  // Calculate property coordinates (before early return for hooks consistency)
+  const propertyLat = property?.lat || (typeof property?.address === 'string' 
+    ? JSON.parse(property?.address || '{}')?.lat 
+    : property?.address?.lat);
+  const propertyLng = property?.lng || (typeof property?.address === 'string' 
+    ? JSON.parse(property?.address || '{}')?.lng 
+    : property?.address?.lng);
+
+  // Calculate distance in meters for verification (MUST be before early return)
+  const distanceMeters = useMemo(() => {
+    if (!property || !propertyLat || !propertyLng) return 0;
+    return calculateDistanceMeters(
+      userLocation.lat,
+      userLocation.lng,
+      propertyLat,
+      propertyLng
+    );
+  }, [property, userLocation.lat, userLocation.lng, propertyLat, propertyLng]);
+
+  // Get verification status based on distance (MUST be before early return)
+  const verification = useMemo<DistanceVerification>(() => {
+    return getVerificationStatus(distanceMeters);
+  }, [distanceMeters]);
+
+  // Early return AFTER all hooks
   if (!property) return null;
 
   // Parse address and homeowner data
@@ -161,26 +186,6 @@ export default function PropertyInfoPanel({
   const ownerName = property.owner_name || homeowner?.name || 'Unknown Owner';
   const fullAddress = address?.formatted || 
     `${address?.street || ''}, ${address?.city || ''} ${address?.state || ''} ${address?.zip || ''}`.trim();
-
-  // Get property coordinates
-  const propertyLat = property.lat || address?.lat;
-  const propertyLng = property.lng || address?.lng;
-
-  // Calculate distance in meters for verification
-  const distanceMeters = useMemo(() => {
-    if (!propertyLat || !propertyLng) return 0;
-    return calculateDistanceMeters(
-      userLocation.lat,
-      userLocation.lng,
-      propertyLat,
-      propertyLng
-    );
-  }, [userLocation.lat, userLocation.lng, propertyLat, propertyLng]);
-
-  // Get verification status based on distance
-  const verification = useMemo<DistanceVerification>(() => {
-    return getVerificationStatus(distanceMeters);
-  }, [distanceMeters]);
 
   // Legacy distance in miles for display
   const distance = verification.distanceMiles;
