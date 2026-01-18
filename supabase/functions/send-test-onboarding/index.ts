@@ -15,7 +15,7 @@ const generateEnterpriseEmailHtml = (firstName: string, companyName: string, onb
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta http-equiv="X-UA-Compatible" content="IE=edge">
   <meta name="x-apple-disable-message-reformatting">
-  <title>Welcome to PITCH CRM - ${companyName}</title>
+  <title>Welcome to PITCH CRM™ - ${companyName}</title>
   <!--[if mso]>
   <style>
     table {border-collapse: collapse;}
@@ -62,7 +62,7 @@ const generateEnterpriseEmailHtml = (firstName: string, companyName: string, onb
                               </td>
                               <td style="vertical-align: middle;">
                                 <span style="font-size: 38px; font-weight: 800; color: #ffffff; font-family: 'Helvetica Neue', Arial, sans-serif; letter-spacing: -1px;">PITCH</span>
-                                <span style="font-size: 38px; font-weight: 800; color: #d4af37; font-family: 'Helvetica Neue', Arial, sans-serif; letter-spacing: -1px;"> CRM</span>
+                                <span style="font-size: 38px; font-weight: 800; color: #d4af37; font-family: 'Helvetica Neue', Arial, sans-serif; letter-spacing: -1px;"> CRM</span><sup style="font-size: 14px; color: #d4af37;">™</sup>
                               </td>
                             </tr>
                           </table>
@@ -186,7 +186,7 @@ const generateEnterpriseEmailHtml = (firstName: string, companyName: string, onb
                       </tr>
                     </table>
                     <p style="margin: 16px 0 0; color: #166534; font-size: 15px; font-weight: 600; background: #dcfce7; padding: 12px 16px; border-radius: 8px; text-align: center;">
-                      ✓ All included in your PITCH CRM subscription
+                      ✓ All included in your PITCH CRM™ subscription
                     </p>
                   </td>
                 </tr>

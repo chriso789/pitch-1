@@ -300,10 +300,56 @@ async function sendSMS(
   context: any,
   config: any
 ): Promise<any> {
-  // This would integrate with your SMS sending function
-  // For now, we'll queue it
-  console.log('SMS action triggered but not implemented yet');
-  return { smsQueued: true, message: config.message };
+  if (!context.contactId) {
+    throw new Error('Contact ID is required to send SMS');
+  }
+
+  // Get contact phone number
+  const { data: contact, error: contactError } = await supabase
+    .from('contacts')
+    .select('phone, first_name, last_name')
+    .eq('id', context.contactId)
+    .single();
+
+  if (contactError || !contact?.phone) {
+    throw new Error('Contact phone number not found');
+  }
+
+  // Build message from template
+  const messageBody = config.template 
+    ? config.template
+        .replace('{{first_name}}', contact.first_name || '')
+        .replace('{{last_name}}', contact.last_name || '')
+    : config.message || 'Follow-up message from PITCH CRM™';
+
+  // Call the SMS send edge function
+  const smsResponse = await fetch(
+    `${Deno.env.get('SUPABASE_URL')}/functions/v1/sms-send-reply`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+      },
+      body: JSON.stringify({
+        to: contact.phone,
+        message: messageBody,
+        tenantId: context.tenantId,
+        contactId: context.contactId
+      })
+    }
+  );
+
+  if (!smsResponse.ok) {
+    const errorText = await smsResponse.text();
+    console.error('SMS send failed:', errorText);
+    throw new Error(`SMS send failed: ${smsResponse.status}`);
+  }
+
+  const smsResult = await smsResponse.json();
+  console.log('SMS sent successfully:', smsResult);
+
+  return { smsSent: true, messageId: smsResult.message_id, to: contact.phone };
 }
 
 async function sendEmail(
@@ -311,8 +357,64 @@ async function sendEmail(
   context: any,
   config: any
 ): Promise<any> {
-  // This would integrate with your email sending function
-  // For now, we'll queue it
-  console.log('Email action triggered but not implemented yet');
-  return { emailQueued: true, subject: config.subject };
+  if (!context.contactId) {
+    throw new Error('Contact ID is required to send email');
+  }
+
+  // Get contact email
+  const { data: contact, error: contactError } = await supabase
+    .from('contacts')
+    .select('email, first_name, last_name')
+    .eq('id', context.contactId)
+    .single();
+
+  if (contactError || !contact?.email) {
+    throw new Error('Contact email not found');
+  }
+
+  // Build email content from template
+  const subject = config.subject || 'Follow-up from PITCH CRM™';
+  const body = config.template 
+    ? config.template
+        .replace('{{first_name}}', contact.first_name || '')
+        .replace('{{last_name}}', contact.last_name || '')
+    : config.body || 'Thank you for your interest. We wanted to follow up with you.';
+
+  // Call the email send edge function
+  const emailResponse = await fetch(
+    `${Deno.env.get('SUPABASE_URL')}/functions/v1/email-send`,
+    {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`
+      },
+      body: JSON.stringify({
+        to: contact.email,
+        subject: subject,
+        html: `<div style="font-family: sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <p>Hi ${contact.first_name || 'there'},</p>
+          <p>${body}</p>
+          <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 32px 0;" />
+          <p style="color: #64748b; font-size: 12px;">
+            © ${new Date().getFullYear()} PITCH CRM™. All rights reserved.<br/>
+            PITCH™ and PITCH CRM™ are trademarks of PITCH CRM, Inc.
+          </p>
+        </div>`,
+        tenant_id: context.tenantId,
+        contact_id: context.contactId
+      })
+    }
+  );
+
+  if (!emailResponse.ok) {
+    const errorText = await emailResponse.text();
+    console.error('Email send failed:', errorText);
+    throw new Error(`Email send failed: ${emailResponse.status}`);
+  }
+
+  const emailResult = await emailResponse.json();
+  console.log('Email sent successfully:', emailResult);
+
+  return { emailSent: true, messageId: emailResult.id, to: contact.email };
 }

@@ -508,8 +508,82 @@ Deno.serve(async (req) => {
           metadata: { recipient_name: recipientName, custom_message: customMessage }
         });
         
-        // TODO: Integrate with email sending function
-        console.log(`[generate-proposal] Would send email to ${recipientEmail} with link: ${shareUrl}`);
+        // Send proposal email
+        const emailHtml = `
+          <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto; padding: 32px;">
+            <div style="text-align: center; margin-bottom: 32px;">
+              <h1 style="color: #0f172a; font-size: 28px; margin: 0;">Your Proposal is Ready</h1>
+            </div>
+            
+            <p style="color: #475569; font-size: 16px; line-height: 1.6;">
+              Hi ${recipientName || 'there'},
+            </p>
+            
+            ${customMessage ? `<p style="color: #475569; font-size: 16px; line-height: 1.6;">${customMessage}</p>` : ''}
+            
+            <p style="color: #475569; font-size: 16px; line-height: 1.6;">
+              We've prepared a detailed proposal for your roofing project. Click the button below to view your personalized estimate with multiple options and financing available.
+            </p>
+            
+            <div style="text-align: center; margin: 32px 0;">
+              <a href="${shareUrl}" style="display: inline-block; background: linear-gradient(135deg, #16a34a 0%, #15803d 100%); color: #ffffff; text-decoration: none; padding: 16px 40px; border-radius: 10px; font-size: 16px; font-weight: 600;">
+                View Your Proposal
+              </a>
+            </div>
+            
+            <div style="background: #f8fafc; border-radius: 12px; padding: 20px; margin: 24px 0;">
+              <p style="margin: 0 0 8px; color: #64748b; font-size: 14px;">
+                <strong>Estimate #:</strong> ${estimate.estimate_number}
+              </p>
+              <p style="margin: 0 0 8px; color: #64748b; font-size: 14px;">
+                <strong>Property:</strong> ${estimate.customer_address || 'Your property'}
+              </p>
+              <p style="margin: 0; color: #64748b; font-size: 14px;">
+                <strong>Valid Until:</strong> ${estimate.expires_at ? new Date(estimate.expires_at).toLocaleDateString() : '30 days'}
+              </p>
+            </div>
+            
+            <p style="color: #64748b; font-size: 14px; line-height: 1.6;">
+              If you have any questions, simply reply to this email or give us a call.
+            </p>
+            
+            <hr style="border: none; border-top: 1px solid #e2e8f0; margin: 32px 0;" />
+            
+            <p style="color: #94a3b8; font-size: 12px; margin: 0 0 8px 0;">
+              © ${new Date().getFullYear()} ${estimate.tenants?.name || 'PITCH CRM™'}. All rights reserved.
+            </p>
+            <p style="color: #94a3b8; font-size: 11px; margin: 0;">
+              PITCH™ and PITCH CRM™ are trademarks of PITCH CRM, Inc.
+            </p>
+          </div>
+        `;
+
+        try {
+          const emailResponse = await fetch(
+            `${supabaseUrl}/functions/v1/email-send`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${supabaseKey}`,
+              },
+              body: JSON.stringify({
+                to: recipientEmail,
+                subject: `Your Proposal from ${estimate.tenants?.name || 'PITCH CRM™'} - ${estimate.estimate_number}`,
+                html: emailHtml,
+                tenant_id: tenantId,
+              }),
+            }
+          );
+
+          if (!emailResponse.ok) {
+            console.error('[generate-proposal] Email send failed:', await emailResponse.text());
+          } else {
+            console.log(`[generate-proposal] Email sent to ${recipientEmail}`);
+          }
+        } catch (emailError) {
+          console.error('[generate-proposal] Email error:', emailError);
+        }
         
         return new Response(JSON.stringify({
           ok: true,

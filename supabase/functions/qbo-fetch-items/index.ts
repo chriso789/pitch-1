@@ -45,13 +45,58 @@ Deno.serve(async (req) => {
       throw new Error('No active QuickBooks connection found');
     }
 
-    // Check if token needs refresh
+    // Check if token needs refresh (add 5-minute buffer)
     const tokenExpiresAt = new Date(connection.expires_at);
     const now = new Date();
+    const bufferMs = 5 * 60 * 1000; // 5 minutes
     
-    if (tokenExpiresAt <= now) {
-      // TODO: Implement token refresh logic
-      throw new Error('QuickBooks token expired. Please reconnect.');
+    if (tokenExpiresAt.getTime() <= now.getTime() + bufferMs) {
+      console.log('QuickBooks token expired or expiring soon, refreshing...');
+      
+      // Refresh the token using Intuit's OAuth 2.0 endpoint
+      const refreshResponse = await fetch('https://oauth.platform.intuit.com/oauth2/v1/tokens/bearer', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/x-www-form-urlencoded',
+          'Accept': 'application/json',
+          'Authorization': `Basic ${btoa(`${Deno.env.get('QBO_CLIENT_ID')}:${Deno.env.get('QBO_CLIENT_SECRET')}`)}`,
+        },
+        body: new URLSearchParams({
+          grant_type: 'refresh_token',
+          refresh_token: connection.refresh_token,
+        }),
+      });
+
+      if (!refreshResponse.ok) {
+        const errorText = await refreshResponse.text();
+        console.error('Token refresh failed:', errorText);
+        throw new Error('QuickBooks token refresh failed. Please reconnect your account.');
+      }
+
+      const tokenData = await refreshResponse.json();
+      
+      // Calculate new expiry time
+      const newExpiresAt = new Date(Date.now() + (tokenData.expires_in * 1000));
+      
+      // Update tokens in database
+      const { error: updateError } = await supabase
+        .from('qbo_connections')
+        .update({
+          access_token: tokenData.access_token,
+          refresh_token: tokenData.refresh_token,
+          expires_at: newExpiresAt.toISOString(),
+          updated_at: new Date().toISOString(),
+        })
+        .eq('id', connection.id);
+
+      if (updateError) {
+        console.error('Failed to update tokens:', updateError);
+        throw new Error('Failed to save refreshed tokens');
+      }
+
+      // Update connection object for API call
+      connection.access_token = tokenData.access_token;
+      console.log('QuickBooks token refreshed successfully');
     }
 
     // Fetch Service Items from QBO
