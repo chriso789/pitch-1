@@ -2,6 +2,7 @@
 import { useEffect, useRef, useCallback, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
+import { toast } from 'sonner';
 
 interface GooglePropertyMarkersLayerProps {
   map: google.maps.Map;
@@ -67,6 +68,54 @@ export default function GooglePropertyMarkersLayer({
   const markersRef = useRef<google.maps.Marker[]>([]);
   const [currentZoom, setCurrentZoom] = useState(18);
   const loadingRef = useRef(false);
+  const loadingParcelsRef = useRef(false);
+  const lastLoadCenter = useRef<{ lat: number; lng: number } | null>(null);
+
+  // Calculate load radius based on zoom level
+  const getLoadRadius = useCallback((zoom: number): number => {
+    if (zoom >= 18) return 0.15;
+    if (zoom >= 16) return 0.25;
+    if (zoom >= 14) return 0.5;
+    return 1;
+  }, []);
+
+  // Load parcels from edge function when no properties exist in the area
+  const loadParcelsFromEdgeFunction = useCallback(async (lat: number, lng: number, radius: number) => {
+    if (!profile?.tenant_id || loadingParcelsRef.current) return;
+    
+    // Avoid loading same area twice
+    if (lastLoadCenter.current) {
+      const dist = Math.sqrt(
+        Math.pow(lat - lastLoadCenter.current.lat, 2) + 
+        Math.pow(lng - lastLoadCenter.current.lng, 2)
+      );
+      if (dist < 0.001) return; // Less than ~100m, skip
+    }
+    
+    loadingParcelsRef.current = true;
+    lastLoadCenter.current = { lat, lng };
+    
+    try {
+      console.log('[GooglePropertyMarkersLayer] Loading parcels from edge function at', lat, lng);
+      
+      const { data, error } = await supabase.functions.invoke('canvassiq-load-parcels', {
+        body: { lat, lng, radius, tenant_id: profile.tenant_id }
+      });
+
+      if (error) {
+        console.error('[GooglePropertyMarkersLayer] Error loading parcels:', error);
+        return;
+      }
+
+      if (data?.properties?.length > 0) {
+        toast.success(`Loaded ${data.properties.length} properties`);
+      }
+    } catch (err) {
+      console.error('[GooglePropertyMarkersLayer] Edge function error:', err);
+    } finally {
+      loadingParcelsRef.current = false;
+    }
+  }, [profile?.tenant_id]);
 
   const getDispositionColor = (disposition: string | null): string => {
     if (!disposition) return DEFAULT_COLOR;
@@ -135,6 +184,7 @@ export default function GooglePropertyMarkersLayer({
       const ne = bounds.getNorthEast();
       const sw = bounds.getSouthWest();
       const zoom = map.getZoom() || 18;
+      const center = map.getCenter();
       
       // Calculate limit based on zoom
       const limit = zoom >= 17 ? 500 : zoom >= 15 ? 300 : 100;
@@ -152,6 +202,45 @@ export default function GooglePropertyMarkersLayer({
       if (error) {
         console.error('Error loading properties:', error);
         loadingRef.current = false;
+        return;
+      }
+      
+      // If no properties found and zoom is appropriate, load from edge function
+      if ((!properties || properties.length === 0) && zoom >= 14 && center) {
+        console.log('[GooglePropertyMarkersLayer] No properties found, loading parcels...');
+        loadingRef.current = false;
+        await loadParcelsFromEdgeFunction(center.lat(), center.lng(), getLoadRadius(zoom));
+        // Re-query after loading parcels
+        const { data: newProperties } = await supabase
+          .from('canvassiq_properties')
+          .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at')
+          .eq('tenant_id', profile.tenant_id)
+          .gte('lat', sw.lat())
+          .lte('lat', ne.lat())
+          .gte('lng', sw.lng())
+          .lte('lng', ne.lng())
+          .limit(limit);
+        
+        if (newProperties && newProperties.length > 0) {
+          clearMarkers();
+          newProperties.forEach((property: CanvassiqProperty) => {
+            if (!property.lat || !property.lng) return;
+            
+            const marker = new google.maps.Marker({
+              position: { lat: property.lat, lng: property.lng },
+              map,
+              icon: createMarkerIcon(property, zoom),
+              optimized: true,
+            });
+            
+            marker.addListener('click', () => {
+              onPropertyClick(property);
+            });
+            
+            markersRef.current.push(marker);
+          });
+        }
+        setCurrentZoom(zoom);
         return;
       }
       
@@ -182,7 +271,7 @@ export default function GooglePropertyMarkersLayer({
     } finally {
       loadingRef.current = false;
     }
-  }, [profile?.tenant_id, map, createMarkerIcon, clearMarkers, onPropertyClick]);
+  }, [profile?.tenant_id, map, createMarkerIcon, clearMarkers, onPropertyClick, loadParcelsFromEdgeFunction, getLoadRadius]);
 
   // Update marker sizes when zoom changes
   const updateMarkerSizes = useCallback(() => {
