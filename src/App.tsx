@@ -127,6 +127,9 @@ import StormCanvassPhotos from "./pages/StormCanvassPhotos";
 import UnmatchedInboxPage from "./pages/UnmatchedInboxPage";
 import AIFollowupQueuePage from "./pages/AIFollowupQueuePage";
 import CallCenterPage from "./pages/CallCenterPage";
+import Privacy from "./pages/legal/Privacy";
+import Terms from "./pages/legal/Terms";
+import Security from "./pages/legal/Security";
 // QueryClient is now imported from @/lib/queryClient with enterprise-optimized settings
 
 const AppContent = () => {
@@ -211,6 +214,12 @@ const AppContent = () => {
         <Route path="/request-setup-link" element={<RequestSetupLink />} />
         <Route path="/pricing" element={<Pricing />} />
         <Route path="/features" element={<Features />} />
+        
+        {/* Legal pages */}
+        <Route path="/legal/privacy" element={<Privacy />} />
+        <Route path="/legal/terms" element={<Terms />} />
+        <Route path="/legal/security" element={<Security />} />
+        
         <Route path="/quickbooks/callback" element={<QuickBooksCallback />} />
         <Route path="/google-calendar/callback" element={<GoogleCalendarCallback />} />
         <Route path="/reports/:token" element={<PublicReportViewer />} />

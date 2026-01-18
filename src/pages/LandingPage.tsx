@@ -167,7 +167,7 @@ const LandingPage = () => {
                 <Zap className="w-4 h-4 sm:w-5 sm:h-5 text-white" />
               </div>
               <span className="text-xl sm:text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
-                PITCH CRM
+                PITCH CRM™
               </span>
             </div>
             <div className="flex items-center space-x-2 sm:space-x-4">
@@ -339,7 +339,7 @@ const LandingPage = () => {
         <div className="container mx-auto max-w-6xl">
           <div className="text-center mb-16">
             <h2 className="text-4xl md:text-5xl font-bold text-slate-900 mb-4">
-              See PITCH CRM in Action
+              See PITCH CRM™ in Action
             </h2>
             <p className="text-xl text-slate-600">
               Professional tools that match the quality of enterprise software
@@ -394,7 +394,7 @@ const LandingPage = () => {
               Loved by Construction Pros
             </h2>
             <p className="text-xl text-slate-600">
-              See what our customers have to say about PITCH CRM
+              See what our customers have to say about PITCH CRM™
             </p>
           </div>
 
@@ -433,7 +433,7 @@ const LandingPage = () => {
             Ready to Transform Your Sales Process?
           </h2>
           <p className="text-xl mb-8 opacity-90">
-            Join hundreds of construction companies already using PITCH CRM to close more deals and save thousands.
+            Join hundreds of construction companies already using PITCH CRM™ to close more deals and save thousands.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
             <Button 
@@ -467,7 +467,7 @@ const LandingPage = () => {
                 <div className="w-8 h-8 bg-gradient-to-br from-blue-600 to-purple-600 rounded-lg flex items-center justify-center">
                   <Zap className="w-5 h-5 text-white" />
                 </div>
-                <span className="text-xl font-bold">PITCH CRM</span>
+                <span className="text-xl font-bold">PITCH CRM™</span>
               </div>
               <p className="text-slate-400 text-sm">
                 The AI-powered CRM for construction businesses.
@@ -476,32 +476,33 @@ const LandingPage = () => {
             <div>
               <h4 className="font-bold mb-4">Product</h4>
               <ul className="space-y-2 text-slate-400 text-sm">
-                <li><a href="#" className="hover:text-white">Features</a></li>
-                <li><a href="#" className="hover:text-white">Pricing</a></li>
-                <li><a href="#" className="hover:text-white">Integration</a></li>
-                <li><a href="#" className="hover:text-white">API</a></li>
+                <li><a href="/features" className="hover:text-white transition-colors">Features</a></li>
+                <li><a href="/pricing" className="hover:text-white transition-colors">Pricing</a></li>
+                <li><a href="/integration" className="hover:text-white transition-colors">Integration</a></li>
+                <li><a href="/demo-request" className="hover:text-white transition-colors">Request Demo</a></li>
               </ul>
             </div>
             <div>
               <h4 className="font-bold mb-4">Company</h4>
               <ul className="space-y-2 text-slate-400 text-sm">
-                <li><a href="#" className="hover:text-white">About</a></li>
-                <li><a href="#" className="hover:text-white">Blog</a></li>
-                <li><a href="#" className="hover:text-white">Careers</a></li>
-                <li><a href="#" className="hover:text-white">Contact</a></li>
+                <li><a href="/demo-request" className="hover:text-white transition-colors">Contact</a></li>
+                <li><a href="/help" className="hover:text-white transition-colors">Support</a></li>
               </ul>
             </div>
             <div>
               <h4 className="font-bold mb-4">Legal</h4>
               <ul className="space-y-2 text-slate-400 text-sm">
-                <li><a href="#" className="hover:text-white">Privacy</a></li>
-                <li><a href="#" className="hover:text-white">Terms</a></li>
-                <li><a href="#" className="hover:text-white">Security</a></li>
+                <li><a href="/legal/privacy" className="hover:text-white transition-colors">Privacy Policy</a></li>
+                <li><a href="/legal/terms" className="hover:text-white transition-colors">Terms of Service</a></li>
+                <li><a href="/legal/security" className="hover:text-white transition-colors">Security</a></li>
               </ul>
             </div>
           </div>
-          <div className="border-t border-slate-800 pt-8 text-center text-slate-400 text-sm">
-            <p>&copy; 2024 PITCH CRM. All rights reserved.</p>
+          <div className="border-t border-slate-800 pt-8 text-center text-slate-400 text-sm space-y-3">
+            <p>&copy; {new Date().getFullYear()} PITCH CRM™. All rights reserved.</p>
+            <p className="text-xs text-slate-500 max-w-2xl mx-auto">
+              PITCH™ and PITCH CRM™ are trademarks of PITCH CRM, Inc. This software is not affiliated with, endorsed by, or connected to any other product or service with a similar name.
+            </p>
           </div>
         </div>
       </footer>
