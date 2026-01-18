@@ -34,6 +34,15 @@ const DISPOSITION_COLORS: Record<string, string> = {
 
 const DEFAULT_COLOR = '#D4A84B';
 
+// Grid cell size for tracking loaded areas (~200m cells)
+const GRID_CELL_SIZE = 0.002;
+
+function getGridCell(lat: number, lng: number): string {
+  const cellLat = Math.floor(lat / GRID_CELL_SIZE) * GRID_CELL_SIZE;
+  const cellLng = Math.floor(lng / GRID_CELL_SIZE) * GRID_CELL_SIZE;
+  return `${cellLat.toFixed(4)}_${cellLng.toFixed(4)}`;
+}
+
 function getStreetNumber(address: any): string {
   if (!address) return '';
   
@@ -42,18 +51,15 @@ function getStreetNumber(address: any): string {
     try {
       parsed = JSON.parse(address);
     } catch {
-      // Try to extract number from string directly
       const match = address.match(/^(\d+)/);
       return match ? match[1] : '';
     }
   }
   
-  // First check for explicit street_number field (from Google Geocoding)
   if (parsed?.street_number) {
     return parsed.street_number;
   }
   
-  // Fall back to extracting from street or formatted address
   const street = parsed?.street || parsed?.formatted || parsed?.address_line1 || '';
   const match = street.match(/^(\d+)/);
   return match ? match[1] : '';
@@ -67,9 +73,10 @@ export default function GooglePropertyMarkersLayer({
   const { profile } = useUserProfile();
   const markersRef = useRef<google.maps.Marker[]>([]);
   const [currentZoom, setCurrentZoom] = useState(18);
+  const [isLoading, setIsLoading] = useState(false);
   const loadingRef = useRef(false);
   const loadingParcelsRef = useRef(false);
-  const lastLoadCenter = useRef<{ lat: number; lng: number } | null>(null);
+  const loadedGridCellsRef = useRef<Set<string>>(new Set());
 
   // Calculate load radius based on zoom level
   const getLoadRadius = useCallback((zoom: number): number => {
@@ -79,24 +86,23 @@ export default function GooglePropertyMarkersLayer({
     return 1;
   }, []);
 
-  // Load parcels from edge function when no properties exist in the area
+  // Load parcels from edge function for a specific grid cell
   const loadParcelsFromEdgeFunction = useCallback(async (lat: number, lng: number, radius: number) => {
-    if (!profile?.tenant_id || loadingParcelsRef.current) return;
+    if (!profile?.tenant_id || loadingParcelsRef.current) return false;
     
-    // Avoid loading same area twice
-    if (lastLoadCenter.current) {
-      const dist = Math.sqrt(
-        Math.pow(lat - lastLoadCenter.current.lat, 2) + 
-        Math.pow(lng - lastLoadCenter.current.lng, 2)
-      );
-      if (dist < 0.001) return; // Less than ~100m, skip
+    const gridCell = getGridCell(lat, lng);
+    
+    // Skip if this grid cell was already loaded
+    if (loadedGridCellsRef.current.has(gridCell)) {
+      return false;
     }
     
     loadingParcelsRef.current = true;
-    lastLoadCenter.current = { lat, lng };
+    loadedGridCellsRef.current.add(gridCell);
+    setIsLoading(true);
     
     try {
-      console.log('[GooglePropertyMarkersLayer] Loading parcels from edge function at', lat, lng);
+      console.log('[GooglePropertyMarkersLayer] Loading parcels for grid cell', gridCell, 'at', lat, lng);
       
       const { data, error } = await supabase.functions.invoke('canvassiq-load-parcels', {
         body: { lat, lng, radius, tenant_id: profile.tenant_id }
@@ -104,16 +110,23 @@ export default function GooglePropertyMarkersLayer({
 
       if (error) {
         console.error('[GooglePropertyMarkersLayer] Error loading parcels:', error);
-        return;
+        loadedGridCellsRef.current.delete(gridCell); // Allow retry
+        return false;
       }
 
       if (data?.properties?.length > 0) {
         toast.success(`Loaded ${data.properties.length} properties`);
+        return true;
       }
+      
+      return false;
     } catch (err) {
       console.error('[GooglePropertyMarkersLayer] Edge function error:', err);
+      loadedGridCellsRef.current.delete(gridCell); // Allow retry
+      return false;
     } finally {
       loadingParcelsRef.current = false;
+      setIsLoading(false);
     }
   }, [profile?.tenant_id]);
 
@@ -205,43 +218,52 @@ export default function GooglePropertyMarkersLayer({
         return;
       }
       
-      // If no properties found and zoom is appropriate, load from edge function
-      if ((!properties || properties.length === 0) && zoom >= 14 && center) {
-        console.log('[GooglePropertyMarkersLayer] No properties found, loading parcels...');
-        loadingRef.current = false;
-        await loadParcelsFromEdgeFunction(center.lat(), center.lng(), getLoadRadius(zoom));
-        // Re-query after loading parcels
-        const { data: newProperties } = await supabase
-          .from('canvassiq_properties')
-          .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at')
-          .eq('tenant_id', profile.tenant_id)
-          .gte('lat', sw.lat())
-          .lte('lat', ne.lat())
-          .gte('lng', sw.lng())
-          .lte('lng', ne.lng())
-          .limit(limit);
+      // Check if we're in a new grid cell that hasn't been loaded yet
+      if (zoom >= 14 && center) {
+        const currentGridCell = getGridCell(center.lat(), center.lng());
         
-        if (newProperties && newProperties.length > 0) {
-          clearMarkers();
-          newProperties.forEach((property: CanvassiqProperty) => {
-            if (!property.lat || !property.lng) return;
+        // Load parcels for new grid cells
+        if (!loadedGridCellsRef.current.has(currentGridCell)) {
+          console.log('[GooglePropertyMarkersLayer] New grid cell detected:', currentGridCell);
+          loadingRef.current = false;
+          const loaded = await loadParcelsFromEdgeFunction(center.lat(), center.lng(), getLoadRadius(zoom));
+          
+          if (loaded) {
+            // Re-query after loading new parcels
+            const { data: newProperties } = await supabase
+              .from('canvassiq_properties')
+              .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at')
+              .eq('tenant_id', profile.tenant_id)
+              .gte('lat', sw.lat())
+              .lte('lat', ne.lat())
+              .gte('lng', sw.lng())
+              .lte('lng', ne.lng())
+              .limit(limit);
             
-            const marker = new google.maps.Marker({
-              position: { lat: property.lat, lng: property.lng },
-              map,
-              icon: createMarkerIcon(property, zoom),
-              optimized: true,
-            });
-            
-            marker.addListener('click', () => {
-              onPropertyClick(property);
-            });
-            
-            markersRef.current.push(marker);
-          });
+            if (newProperties && newProperties.length > 0) {
+              clearMarkers();
+              newProperties.forEach((property: CanvassiqProperty) => {
+                if (!property.lat || !property.lng) return;
+                
+                const marker = new google.maps.Marker({
+                  position: { lat: property.lat, lng: property.lng },
+                  map,
+                  icon: createMarkerIcon(property, zoom),
+                  optimized: true,
+                });
+                
+                marker.addListener('click', () => {
+                  onPropertyClick(property);
+                });
+                
+                markersRef.current.push(marker);
+              });
+            }
+            setCurrentZoom(zoom);
+            loadingRef.current = false;
+            return;
+          }
         }
-        setCurrentZoom(zoom);
-        return;
       }
       
       // Clear existing markers
