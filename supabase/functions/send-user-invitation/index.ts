@@ -169,30 +169,40 @@ const getEmailTemplate = (data: UserInvitationRequest): { subject: string; html:
   if (ownerName) {
     ownerSection = `
       <div style="background: #f9fafb; border-radius: 12px; padding: 24px; margin: 32px 0; border: 1px solid #e5e7eb;">
-        <div style="display: flex; align-items: flex-start; gap: 16px;">
-          ${ownerHeadshot ? `
-            <img 
-              src="${ownerHeadshot}" 
-              alt="${ownerName}" 
-              style="width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 3px solid ${primaryColor};"
-            />
-          ` : `
-            <div style="width: 64px; height: 64px; border-radius: 50%; background: linear-gradient(135deg, ${primaryColor} 0%, ${secondaryColor} 100%); display: flex; align-items: center; justify-content: center; color: white; font-size: 24px; font-weight: bold;">
-              ${ownerName.charAt(0).toUpperCase()}
-            </div>
-          `}
-          <div style="flex: 1;">
-            <p style="margin: 0 0 8px 0; font-style: italic; color: #4b5563; font-size: 15px; line-height: 1.6;">
-              "Welcome to the ${companyName} family! We're thrilled to have you join our team. I'm personally excited about what we'll accomplish together. Don't hesitate to reach out if you need anything!"
-            </p>
-            <p style="margin: 0; font-weight: 600; color: ${primaryColor};">
-              — ${ownerName}
-            </p>
-            <p style="margin: 4px 0 0 0; font-size: 13px; color: #6b7280;">
-              ${ownerTitle || 'Owner'}, ${companyName}
-            </p>
-          </div>
-        </div>
+        <table cellpadding="0" cellspacing="0" border="0" width="100%">
+          <tr>
+            <td valign="top" width="80" style="padding-right: 16px;">
+              ${ownerHeadshot ? `
+                <img 
+                  src="${ownerHeadshot}" 
+                  alt="${ownerName}" 
+                  width="64"
+                  height="64"
+                  style="width: 64px; height: 64px; border-radius: 50%; border: 3px solid ${primaryColor};"
+                />
+              ` : `
+                <table cellpadding="0" cellspacing="0" border="0" style="width: 64px; height: 64px;">
+                  <tr>
+                    <td align="center" valign="middle" style="width: 64px; height: 64px; border-radius: 50%; background-color: ${primaryColor}; color: white; font-size: 24px; font-weight: bold; line-height: 64px; text-align: center;">
+                      ${ownerName.charAt(0).toUpperCase()}
+                    </td>
+                  </tr>
+                </table>
+              `}
+            </td>
+            <td valign="top">
+              <p style="margin: 0 0 8px 0; font-style: italic; color: #4b5563; font-size: 15px; line-height: 1.6;">
+                "Welcome to the ${companyName} family! We're thrilled to have you join our team. I'm personally excited about what we'll accomplish together. Don't hesitate to reach out if you need anything!"
+              </p>
+              <p style="margin: 0; font-weight: 600; color: ${primaryColor};">
+                — ${ownerName}
+              </p>
+              <p style="margin: 4px 0 0 0; font-size: 13px; color: #6b7280;">
+                ${ownerTitle || 'Owner'}, ${companyName}
+              </p>
+            </td>
+          </tr>
+        </table>
       </div>
     `;
   }
