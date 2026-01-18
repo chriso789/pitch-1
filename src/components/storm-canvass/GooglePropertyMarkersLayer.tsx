@@ -34,13 +34,30 @@ const DISPOSITION_COLORS: Record<string, string> = {
 
 const DEFAULT_COLOR = '#D4A84B';
 
-// Grid cell size for tracking loaded areas (~200m cells)
-const GRID_CELL_SIZE = 0.002;
+// Grid cell size for tracking loaded areas (~100m cells for finer granularity)
+const GRID_CELL_SIZE = 0.001;
 
 function getGridCell(lat: number, lng: number): string {
   const cellLat = Math.floor(lat / GRID_CELL_SIZE) * GRID_CELL_SIZE;
   const cellLng = Math.floor(lng / GRID_CELL_SIZE) * GRID_CELL_SIZE;
   return `${cellLat.toFixed(4)}_${cellLng.toFixed(4)}`;
+}
+
+// Get all visible grid cells within map bounds
+function getVisibleGridCells(bounds: google.maps.LatLngBounds): string[] {
+  const ne = bounds.getNorthEast();
+  const sw = bounds.getSouthWest();
+  const cells: string[] = [];
+  
+  const startLat = Math.floor(sw.lat() / GRID_CELL_SIZE) * GRID_CELL_SIZE;
+  const startLng = Math.floor(sw.lng() / GRID_CELL_SIZE) * GRID_CELL_SIZE;
+  
+  for (let lat = startLat; lat <= ne.lat(); lat += GRID_CELL_SIZE) {
+    for (let lng = startLng; lng <= ne.lng(); lng += GRID_CELL_SIZE) {
+      cells.push(getGridCell(lat, lng));
+    }
+  }
+  return cells;
 }
 
 function getStreetNumber(address: any): string {
@@ -75,7 +92,6 @@ export default function GooglePropertyMarkersLayer({
   const [currentZoom, setCurrentZoom] = useState(18);
   const [isLoading, setIsLoading] = useState(false);
   const loadingRef = useRef(false);
-  const loadingParcelsRef = useRef(false);
   const loadedGridCellsRef = useRef<Set<string>>(new Set());
 
   // Calculate load radius based on zoom level
@@ -86,23 +102,16 @@ export default function GooglePropertyMarkersLayer({
     return 1;
   }, []);
 
-  // Load parcels from edge function for a specific grid cell
-  const loadParcelsFromEdgeFunction = useCallback(async (lat: number, lng: number, radius: number) => {
-    if (!profile?.tenant_id || loadingParcelsRef.current) return false;
+  // Load parcels from edge function for a specific location (not grid cell locked)
+  const loadParcelsFromEdgeFunction = useCallback(async (lat: number, lng: number, radius: number, gridCells: string[]) => {
+    if (!profile?.tenant_id) return false;
     
-    const gridCell = getGridCell(lat, lng);
-    
-    // Skip if this grid cell was already loaded
-    if (loadedGridCellsRef.current.has(gridCell)) {
-      return false;
-    }
-    
-    loadingParcelsRef.current = true;
-    loadedGridCellsRef.current.add(gridCell);
+    // Mark all cells as being loaded
+    gridCells.forEach(cell => loadedGridCellsRef.current.add(cell));
     setIsLoading(true);
     
     try {
-      console.log('[GooglePropertyMarkersLayer] Loading parcels for grid cell', gridCell, 'at', lat, lng);
+      console.log('[GooglePropertyMarkersLayer] Loading parcels for', gridCells.length, 'cells at', lat.toFixed(5), lng.toFixed(5));
       
       const { data, error } = await supabase.functions.invoke('canvassiq-load-parcels', {
         body: { lat, lng, radius, tenant_id: profile.tenant_id }
@@ -110,22 +119,23 @@ export default function GooglePropertyMarkersLayer({
 
       if (error) {
         console.error('[GooglePropertyMarkersLayer] Error loading parcels:', error);
-        loadedGridCellsRef.current.delete(gridCell); // Allow retry
+        // Allow retry on error
+        gridCells.forEach(cell => loadedGridCellsRef.current.delete(cell));
         return false;
       }
 
       if (data?.properties?.length > 0) {
+        console.log('[GooglePropertyMarkersLayer] Loaded', data.properties.length, 'properties');
         toast.success(`Loaded ${data.properties.length} properties`);
         return true;
       }
       
-      return false;
+      return data?.count === 0 ? true : false; // Consider 0 results as "loaded" for that area
     } catch (err) {
       console.error('[GooglePropertyMarkersLayer] Edge function error:', err);
-      loadedGridCellsRef.current.delete(gridCell); // Allow retry
+      gridCells.forEach(cell => loadedGridCellsRef.current.delete(cell));
       return false;
     } finally {
-      loadingParcelsRef.current = false;
       setIsLoading(false);
     }
   }, [profile?.tenant_id]);
@@ -218,15 +228,20 @@ export default function GooglePropertyMarkersLayer({
         return;
       }
       
-      // Check if we're in a new grid cell that hasn't been loaded yet
-      if (zoom >= 14 && center) {
-        const currentGridCell = getGridCell(center.lat(), center.lng());
+      // Check for unloaded grid cells in the visible area
+      if (zoom >= 14 && bounds) {
+        const visibleCells = getVisibleGridCells(bounds);
+        const unloadedCells = visibleCells.filter(cell => !loadedGridCellsRef.current.has(cell));
         
-        // Load parcels for new grid cells
-        if (!loadedGridCellsRef.current.has(currentGridCell)) {
-          console.log('[GooglePropertyMarkersLayer] New grid cell detected:', currentGridCell);
+        if (unloadedCells.length > 0) {
+          console.log('[GooglePropertyMarkersLayer] Unloaded cells:', unloadedCells.length, 'of', visibleCells.length);
+          
+          // Load parcels for the center of the visible area with all unloaded cells
+          const centerLat = (ne.lat() + sw.lat()) / 2;
+          const centerLng = (ne.lng() + sw.lng()) / 2;
+          
           loadingRef.current = false;
-          const loaded = await loadParcelsFromEdgeFunction(center.lat(), center.lng(), getLoadRadius(zoom));
+          const loaded = await loadParcelsFromEdgeFunction(centerLat, centerLng, getLoadRadius(zoom), unloadedCells);
           
           if (loaded) {
             // Re-query after loading new parcels
