@@ -53,10 +53,10 @@ serve(async (req) => {
     const minLng = lng - radiusInDegrees;
     const maxLng = lng + radiusInDegrees;
 
-    // Check existing properties
+    // Check existing properties - include normalized_address_key for proper deduplication
     const { data: existingProperties, error: existingError } = await supabase
       .from('canvassiq_properties')
-      .select('id, lat, lng')
+      .select('id, lat, lng, normalized_address_key')
       .eq('tenant_id', tenant_id)
       .gte('lat', minLat)
       .lte('lat', maxLat)
@@ -83,10 +83,10 @@ serve(async (req) => {
     }
     
     console.log(`[canvassiq-load-parcels] Area needs more properties: ${existingProperties?.length || 0} < ${expectedDensity}`);
-    // Keep track of existing place_ids to avoid duplicates
-    const existingPlaceIds = new Set<string>();
+    // Keep track of existing normalized address keys to avoid duplicates
+    const existingAddressKeys = new Set<string>();
     (existingProperties || []).forEach((p: any) => {
-      if (p.address_hash) existingPlaceIds.add(p.address_hash);
+      if (p.normalized_address_key) existingAddressKeys.add(p.normalized_address_key);
     });
 
     // Use Google Geocoding API to get real property addresses
@@ -94,19 +94,22 @@ serve(async (req) => {
     
     if (googleMapsApiKey) {
       console.log('[canvassiq-load-parcels] Using Google Geocoding API for real addresses');
-      properties = await loadRealParcelsFromGeocoding(lat, lng, radius, tenant_id, googleMapsApiKey);
+      properties = await loadRealParcelsFromGeocoding(lat, lng, radius, tenant_id, googleMapsApiKey, existingAddressKeys);
     } else {
       console.log('[canvassiq-load-parcels] No Google API key, falling back to sample data');
       properties = generateSampleParcels(lat, lng, radius, tenant_id);
     }
     
-    console.log(`[canvassiq-load-parcels] Generated ${properties.length} properties`);
+    console.log(`[canvassiq-load-parcels] Generated ${properties.length} new properties`);
 
-    // Insert properties
+    // Insert properties using UPSERT to handle any remaining duplicates
     if (properties.length > 0) {
       const { data: inserted, error: insertError } = await supabase
         .from('canvassiq_properties')
-        .insert(properties)
+        .upsert(properties, { 
+          onConflict: 'tenant_id,normalized_address_key',
+          ignoreDuplicates: true 
+        })
         .select('id, lat, lng, address, disposition');
 
       if (insertError) {
@@ -117,7 +120,7 @@ serve(async (req) => {
         );
       }
 
-      console.log(`[canvassiq-load-parcels] Inserted ${inserted?.length || 0} properties`);
+      console.log(`[canvassiq-load-parcels] Upserted ${inserted?.length || 0} properties`);
 
       return new Response(
         JSON.stringify({ 
@@ -220,12 +223,16 @@ async function loadRealParcelsFromGeocoding(
   centerLng: number, 
   radius: number, 
   tenantId: string,
-  apiKey: string
+  apiKey: string,
+  existingAddressKeys: Set<string> = new Set()
 ): Promise<any[]> {
   const properties: any[] = [];
   const seenPlaceIds = new Set<string>();
-  // NEW: Track seen addresses to deduplicate multiple lots with same mailing address
+  // Track seen addresses to deduplicate multiple lots with same mailing address
   const seenAddresses = new Map<string, { lat: number; lng: number; distance: number }>();
+  
+  // Pre-populate with existing addresses from database to avoid re-inserting
+  console.log(`[canvassiq-load-parcels] Skipping ${existingAddressKeys.size} addresses already in database`);
   
   // Create a grid of points to reverse geocode
   // Larger grid for more coverage, tighter spacing for density
@@ -278,7 +285,12 @@ async function loadRealParcelsFromGeocoding(
           Math.pow(result.lng - centerLng, 2)
         );
         
-        // Check if we already have this address
+        // Skip if this address already exists in the database
+        if (existingAddressKeys.has(normalizedAddressKey)) {
+          continue;
+        }
+        
+        // Check if we already have this address in this batch
         const existingEntry = seenAddresses.get(normalizedAddressKey);
         
         if (!existingEntry) {
@@ -296,25 +308,25 @@ async function loadRealParcelsFromGeocoding(
             original_lat: result.lat,
             original_lng: result.lng,
             building_snapped: false,
-            address: JSON.stringify({
+            // Store address as proper JSON object (not stringified)
+            address: {
               street: `${result.street_number} ${result.street_name}`,
               street_number: result.street_number,
               street_name: result.street_name,
               formatted: result.formatted_address,
               place_id: result.place_id,
               normalized_key: normalizedAddressKey
-            }),
+            },
             address_hash: result.place_id,
             normalized_address_key: normalizedAddressKey,
-            distance_from_center: distanceFromCenter,
             disposition: null,
             owner_name: null,
-            property_data: JSON.stringify({
+            property_data: {
               source: 'google_geocoding',
               geocoded_at: new Date().toISOString(),
               building_snapped: false,
               deduplicated: false
-            })
+            }
           });
         } else if (distanceFromCenter < existingEntry.distance) {
           // This entry is closer to center, replace the existing one
@@ -336,22 +348,22 @@ async function loadRealParcelsFromGeocoding(
               lng: result.lng,
               original_lat: result.lat,
               original_lng: result.lng,
-              address: JSON.stringify({
+              // Store address as proper JSON object (not stringified)
+              address: {
                 street: `${result.street_number} ${result.street_name}`,
                 street_number: result.street_number,
                 street_name: result.street_name,
                 formatted: result.formatted_address,
                 place_id: result.place_id,
                 normalized_key: normalizedAddressKey
-              }),
+              },
               address_hash: result.place_id,
-              distance_from_center: distanceFromCenter,
-              property_data: JSON.stringify({
+              property_data: {
                 source: 'google_geocoding',
                 geocoded_at: new Date().toISOString(),
                 building_snapped: false,
-                deduplicated: true // Mark as deduplicated
-              })
+                deduplicated: true
+              }
             };
           }
         }
@@ -365,16 +377,15 @@ async function loadRealParcelsFromGeocoding(
     }
   }
   
-  // Clean up temporary fields before returning
+  // KEEP normalized_address_key for the unique index constraint
+  // Only remove internal tracking fields
   for (const prop of candidateProperties) {
-    delete prop.normalized_address_key;
-    delete prop.distance_from_center;
     properties.push(prop);
   }
   
   const elapsed = Date.now() - startTime;
-  const duplicatesRemoved = seenPlaceIds.size - properties.length;
-  console.log(`[canvassiq-load-parcels] Found ${properties.length} unique addresses (${duplicatesRemoved} duplicates removed) in ${elapsed}ms`);
+  const skippedExisting = existingAddressKeys.size;
+  console.log(`[canvassiq-load-parcels] Found ${properties.length} new addresses (skipped ${skippedExisting} existing) in ${elapsed}ms`);
   return properties;
 }
 
