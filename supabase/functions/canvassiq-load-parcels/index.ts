@@ -136,6 +136,74 @@ serve(async (req) => {
   }
 });
 
+// Get building centroid from Mapbox Building Footprints API
+async function getBuildingCentroid(
+  lat: number, 
+  lng: number, 
+  mapboxToken: string
+): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const url = `https://api.mapbox.com/v4/mapbox.mapbox-streets-v8/tilequery/${lng},${lat}.json?radius=30&layers=building&limit=5&access_token=${mapboxToken}`;
+    
+    const response = await fetch(url);
+    if (!response.ok) {
+      console.error('[getBuildingCentroid] Mapbox API error:', response.status);
+      return null;
+    }
+    
+    const data = await response.json();
+    
+    if (!data.features || data.features.length === 0) {
+      return null;
+    }
+    
+    // Find closest building polygon
+    const buildings = data.features.filter((f: any) => 
+      f.geometry?.type === 'Polygon' && 
+      f.geometry?.coordinates?.[0]?.length >= 4
+    );
+    
+    if (buildings.length === 0) {
+      // Check for point features (smaller buildings)
+      const points = data.features.filter((f: any) => f.geometry?.type === 'Point');
+      if (points.length > 0) {
+        const point = points[0];
+        return {
+          lng: point.geometry.coordinates[0],
+          lat: point.geometry.coordinates[1]
+        };
+      }
+      return null;
+    }
+    
+    // Sort by distance and take closest
+    buildings.sort((a: any, b: any) => {
+      const distA = a.properties?.tilequery?.distance || Infinity;
+      const distB = b.properties?.tilequery?.distance || Infinity;
+      return distA - distB;
+    });
+    
+    const building = buildings[0];
+    const ring = building.geometry.coordinates[0];
+    
+    // Calculate centroid of building polygon
+    let sumLng = 0, sumLat = 0;
+    const n = ring.length - 1; // Exclude closing coordinate
+    for (let i = 0; i < n; i++) {
+      sumLng += ring[i][0];
+      sumLat += ring[i][1];
+    }
+    
+    return {
+      lng: sumLng / n,
+      lat: sumLat / n
+    };
+  } catch (err) {
+    console.error('[getBuildingCentroid] Error:', err);
+    return null;
+  }
+}
+
 // Load real property data using Google Geocoding API reverse geocoding
 async function loadRealParcelsFromGeocoding(
   centerLat: number, 
@@ -146,6 +214,7 @@ async function loadRealParcelsFromGeocoding(
 ): Promise<any[]> {
   const properties: any[] = [];
   const seenPlaceIds = new Set<string>();
+  const mapboxToken = Deno.env.get('MAPBOX_ACCESS_TOKEN');
   
   // Create a grid of points to reverse geocode - spacing ~30m apart for residential areas
   const gridSpacing = 0.0003; // ~30 meters in degrees
@@ -164,10 +233,28 @@ async function loadRealParcelsFromGeocoding(
         if (result && result.place_id && !seenPlaceIds.has(result.place_id)) {
           seenPlaceIds.add(result.place_id);
           
+          // Snap to building centroid using Mapbox for accurate positioning
+          let finalLat = result.lat;
+          let finalLng = result.lng;
+          let buildingSnapped = false;
+          
+          if (mapboxToken) {
+            const buildingCenter = await getBuildingCentroid(result.lat, result.lng, mapboxToken);
+            if (buildingCenter) {
+              finalLat = buildingCenter.lat;
+              finalLng = buildingCenter.lng;
+              buildingSnapped = true;
+              console.log(`[canvassiq-load-parcels] Snapped ${result.street_number} to building centroid`);
+            }
+          }
+          
           properties.push({
             tenant_id: tenantId,
-            lat: result.lat,
-            lng: result.lng,
+            lat: finalLat,
+            lng: finalLng,
+            original_lat: result.lat,
+            original_lng: result.lng,
+            building_snapped: buildingSnapped,
             address: JSON.stringify({
               street: `${result.street_number} ${result.street_name}`,
               street_number: result.street_number,
@@ -180,7 +267,8 @@ async function loadRealParcelsFromGeocoding(
             owner_name: null,
             property_data: JSON.stringify({
               source: 'google_geocoding',
-              geocoded_at: new Date().toISOString()
+              geocoded_at: new Date().toISOString(),
+              building_snapped: buildingSnapped
             })
           });
         }

@@ -3378,6 +3378,7 @@ export type Database = {
         Row: {
           address: Json
           address_hash: string
+          building_snapped: boolean | null
           contact_id: string | null
           created_at: string | null
           created_by: string | null
@@ -3397,6 +3398,8 @@ export type Database = {
           lat: number
           lng: number
           notes: string | null
+          original_lat: number | null
+          original_lng: number | null
           owner_name: string | null
           phone_numbers: string[] | null
           place_id: string | null
@@ -3409,6 +3412,7 @@ export type Database = {
         Insert: {
           address?: Json
           address_hash: string
+          building_snapped?: boolean | null
           contact_id?: string | null
           created_at?: string | null
           created_by?: string | null
@@ -3428,6 +3432,8 @@ export type Database = {
           lat: number
           lng: number
           notes?: string | null
+          original_lat?: number | null
+          original_lng?: number | null
           owner_name?: string | null
           phone_numbers?: string[] | null
           place_id?: string | null
@@ -3440,6 +3446,7 @@ export type Database = {
         Update: {
           address?: Json
           address_hash?: string
+          building_snapped?: boolean | null
           contact_id?: string | null
           created_at?: string | null
           created_by?: string | null
@@ -3459,6 +3466,8 @@ export type Database = {
           lat?: number
           lng?: number
           notes?: string | null
+          original_lat?: number | null
+          original_lng?: number | null
           owner_name?: string | null
           phone_numbers?: string[] | null
           place_id?: string | null
@@ -32523,6 +32532,7 @@ export type Database = {
         Returns: {
           address: Json
           address_hash: string
+          building_snapped: boolean | null
           contact_id: string | null
           created_at: string | null
           created_by: string | null
@@ -32542,6 +32552,8 @@ export type Database = {
           lat: number
           lng: number
           notes: string | null
+          original_lat: number | null
+          original_lng: number | null
           owner_name: string | null
           phone_numbers: string[] | null
           place_id: string | null
