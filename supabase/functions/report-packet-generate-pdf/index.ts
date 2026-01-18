@@ -38,6 +38,93 @@ interface SectionConfig {
   display_name?: string;
 }
 
+// Helper to chunk array
+function chunkArray<T>(array: T[], size: number): T[][] {
+  const chunks: T[][] = [];
+  for (let i = 0; i < array.length; i += size) {
+    chunks.push(array.slice(i, i + size));
+  }
+  return chunks;
+}
+
+// Helper to create photo grid page (3x2 layout)
+async function createPhotoGridPage(
+  pdfDoc: typeof PDFDocument.prototype,
+  branding: BrandingSnapshot,
+  photos: any[],
+  pageNumber: number,
+  currentPage: number,
+  totalPages: number,
+  showCaptions: boolean,
+  supabase: any
+): Promise<void> {
+  const page = pdfDoc.addPage([612, 792]); // Letter size
+  const helveticaBold = await pdfDoc.embedFont(StandardFonts.HelveticaBold);
+  const helvetica = await pdfDoc.embedFont(StandardFonts.Helvetica);
+  
+  const { width, height } = page.getSize();
+  
+  // Header
+  page.drawRectangle({
+    x: 0, y: height - 60, width: width, height: 60,
+    color: rgb(0.15, 0.39, 0.92),
+  });
+  
+  page.drawText('Photo Documentation', {
+    x: 50, y: height - 38, size: 16, font: helveticaBold, color: rgb(1, 1, 1),
+  });
+  
+  page.drawText(`Page ${currentPage} of ${totalPages}`, {
+    x: width - 120, y: height - 38, size: 10, font: helvetica, color: rgb(0.9, 0.9, 0.9),
+  });
+
+  // Photo grid: 2 columns x 3 rows
+  const margin = 40;
+  const photoWidth = (width - margin * 3) / 2;
+  const photoHeight = 180;
+  const captionHeight = showCaptions ? 20 : 0;
+  const gap = 15;
+  
+  let startY = height - 80;
+  
+  for (let i = 0; i < photos.length && i < 6; i++) {
+    const col = i % 2;
+    const row = Math.floor(i / 2);
+    
+    const x = margin + col * (photoWidth + gap);
+    const y = startY - row * (photoHeight + captionHeight + gap) - photoHeight;
+    
+    // Photo placeholder box
+    page.drawRectangle({
+      x, y, width: photoWidth, height: photoHeight,
+      borderColor: rgb(0.8, 0.8, 0.8), borderWidth: 1, color: rgb(0.95, 0.95, 0.95),
+    });
+    
+    // Photo label
+    const photo = photos[i];
+    const label = photo.description || photo.category || `Photo ${i + 1}`;
+    
+    if (showCaptions) {
+      page.drawText(label.substring(0, 40), {
+        x: x + 5, y: y - 15, size: 8, font: helvetica, color: rgb(0.3, 0.3, 0.3),
+      });
+    }
+    
+    // Timestamp if available
+    if (photo.created_at) {
+      const timestamp = new Date(photo.created_at).toLocaleDateString();
+      page.drawText(timestamp, {
+        x: x + 5, y: y + 5, size: 7, font: helvetica, color: rgb(0.5, 0.5, 0.5),
+      });
+    }
+  }
+  
+  // Footer
+  page.drawText(`© ${new Date().getFullYear()} ${branding.company_name || 'PITCH CRM™'}`, {
+    x: margin, y: 30, size: 8, font: helvetica, color: rgb(0.5, 0.5, 0.5),
+  });
+}
+
 // Helper to create separator page
 async function createSeparatorPage(
   pdfDoc: typeof PDFDocument.prototype,
@@ -498,10 +585,64 @@ serve(async (req) => {
           break;
 
         case 'photos':
-          // Create a placeholder photos page
-          await createSeparatorPage(mergedPdf, branding, 'Photo Documentation', pageNumber);
-          pageNumber++;
-          // TODO: Implement actual photo grid pages
+          // Create photo documentation pages with grid layout
+          const photoConfig = section.config || {};
+          const photosPerPage = (photoConfig as any).photos_per_page || 6;
+          const showCaptions = (photoConfig as any).show_captions !== false;
+          
+          // Fetch photos from job_photos or pipeline entry
+          let photos: any[] = [];
+          
+          try {
+            // Try to get photos from the packet's pipeline entry or project
+            const { data: packetData } = await supabase
+              .from('report_packets')
+              .select('pipeline_entry_id, project_id')
+              .eq('id', packet_id)
+              .single();
+            
+            if (packetData?.pipeline_entry_id) {
+              const { data: entryPhotos } = await supabase
+                .from('job_photos')
+                .select('*')
+                .eq('pipeline_entry_id', packetData.pipeline_entry_id)
+                .order('created_at', { ascending: true });
+              photos = entryPhotos || [];
+            } else if (packetData?.project_id) {
+              const { data: projectPhotos } = await supabase
+                .from('job_photos')
+                .select('*')
+                .eq('project_id', packetData.project_id)
+                .order('created_at', { ascending: true });
+              photos = projectPhotos || [];
+            }
+          } catch (e) {
+            console.error('Error fetching photos:', e);
+          }
+
+          if (photos.length === 0) {
+            // Create placeholder page if no photos
+            await createSeparatorPage(mergedPdf, branding, 'Photo Documentation', pageNumber);
+            pageNumber++;
+          } else {
+            // Create photo grid pages
+            const photoChunks = chunkArray(photos, photosPerPage);
+            
+            for (let chunkIndex = 0; chunkIndex < photoChunks.length; chunkIndex++) {
+              const chunk = photoChunks[chunkIndex];
+              await createPhotoGridPage(
+                mergedPdf, 
+                branding, 
+                chunk, 
+                pageNumber, 
+                chunkIndex + 1, 
+                photoChunks.length,
+                showCaptions,
+                supabase
+              );
+              pageNumber++;
+            }
+          }
           break;
 
         case 'signature':
