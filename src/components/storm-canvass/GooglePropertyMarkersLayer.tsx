@@ -20,6 +20,8 @@ interface CanvassiqProperty {
   owner_name: string | null;
   tenant_id: string;
   created_at: string;
+  normalized_address_key?: string | null;
+  building_snapped?: boolean | null;
 }
 
 // Disposition colors matching the original design
@@ -84,6 +86,70 @@ function getStreetNumber(address: any): string {
   const street = parsed?.street || parsed?.formatted || parsed?.address_line1 || '';
   const match = street.match(/^(\d+)/);
   return match ? match[1] : '';
+}
+
+// Get normalized address key for deduplication
+function getNormalizedAddressKey(property: CanvassiqProperty): string {
+  // Use pre-computed key if available
+  if (property.normalized_address_key) {
+    return property.normalized_address_key;
+  }
+  
+  // Fallback: compute from address
+  let parsed = property.address;
+  if (typeof parsed === 'string') {
+    try {
+      parsed = JSON.parse(parsed);
+    } catch {
+      return '';
+    }
+  }
+  
+  const streetNumber = parsed?.street_number || '';
+  const streetName = parsed?.street_name || parsed?.street || '';
+  
+  return `${streetNumber}_${streetName}`.toLowerCase()
+    .replace(/\s+street\b/gi, ' st')
+    .replace(/\s+avenue\b/gi, ' ave')
+    .replace(/\s+boulevard\b/gi, ' blvd')
+    .replace(/\s+drive\b/gi, ' dr')
+    .replace(/\s+road\b/gi, ' rd')
+    .replace(/\s+lane\b/gi, ' ln')
+    .replace(/[^a-z0-9_]/g, '')
+    .replace(/_+/g, '_');
+}
+
+// Deduplicate properties by normalized address key
+// Prefer: building_snapped=true, then newest created_at
+function deduplicateProperties(properties: CanvassiqProperty[]): CanvassiqProperty[] {
+  const addressMap = new Map<string, CanvassiqProperty>();
+  
+  for (const property of properties) {
+    const key = getNormalizedAddressKey(property);
+    if (!key || key === '_') continue;
+    
+    const existing = addressMap.get(key);
+    if (!existing) {
+      addressMap.set(key, property);
+    } else {
+      // Prefer snapped properties
+      const currentSnapped = property.building_snapped === true;
+      const existingSnapped = existing.building_snapped === true;
+      
+      if (currentSnapped && !existingSnapped) {
+        addressMap.set(key, property);
+      } else if (currentSnapped === existingSnapped) {
+        // If same snapped status, prefer newer
+        const currentDate = new Date(property.created_at || 0).getTime();
+        const existingDate = new Date(existing.created_at || 0).getTime();
+        if (currentDate > existingDate) {
+          addressMap.set(key, property);
+        }
+      }
+    }
+  }
+  
+  return Array.from(addressMap.values());
 }
 
 export default function GooglePropertyMarkersLayer({
@@ -216,15 +282,18 @@ export default function GooglePropertyMarkersLayer({
       // Calculate limit based on zoom
       const limit = zoom >= 17 ? 500 : zoom >= 15 ? 300 : 100;
       
-      const { data: properties, error } = await supabase
+      const { data: rawProperties, error } = await supabase
         .from('canvassiq_properties')
-        .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at')
+        .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
         .eq('tenant_id', profile.tenant_id)
         .gte('lat', sw.lat())
         .lte('lat', ne.lat())
         .gte('lng', sw.lng())
         .lte('lng', ne.lng())
         .limit(limit);
+      
+      // Client-side deduplication to handle any remaining duplicates
+      const properties = rawProperties ? deduplicateProperties(rawProperties as CanvassiqProperty[]) : [];
       
       if (error) {
         console.error('Error loading properties:', error);
@@ -248,10 +317,10 @@ export default function GooglePropertyMarkersLayer({
           const loaded = await loadParcelsFromEdgeFunction(centerLat, centerLng, getLoadRadius(zoom), unloadedCells);
           
           if (loaded) {
-            // Re-query after loading new parcels
-            const { data: newProperties } = await supabase
+            // Re-query after loading new parcels with deduplication
+            const { data: newRawProperties } = await supabase
               .from('canvassiq_properties')
-              .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at')
+              .select('id, lat, lng, disposition, address, owner_name, phone_numbers, emails, homeowner, searchbug_data, tenant_id, created_at, normalized_address_key, building_snapped')
               .eq('tenant_id', profile.tenant_id)
               .gte('lat', sw.lat())
               .lte('lat', ne.lat())
@@ -259,7 +328,9 @@ export default function GooglePropertyMarkersLayer({
               .lte('lng', ne.lng())
               .limit(limit);
             
-            if (newProperties && newProperties.length > 0) {
+            const newProperties = newRawProperties ? deduplicateProperties(newRawProperties as CanvassiqProperty[]) : [];
+            
+            if (newProperties.length > 0) {
               clearMarkers();
               newProperties.forEach((property: CanvassiqProperty) => {
                 if (!property.lat || !property.lng) return;
