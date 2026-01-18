@@ -214,7 +214,14 @@ async function loadRealParcelsFromGeocoding(
 ): Promise<any[]> {
   const properties: any[] = [];
   const seenPlaceIds = new Set<string>();
-  const mapboxToken = Deno.env.get('MAPBOX_ACCESS_TOKEN');
+  // Try MAPBOX_ACCESS_TOKEN first, fall back to MAPBOX_PUBLIC_TOKEN
+  const mapboxToken = Deno.env.get('MAPBOX_ACCESS_TOKEN') || Deno.env.get('MAPBOX_PUBLIC_TOKEN');
+  
+  if (mapboxToken) {
+    console.log('[canvassiq-load-parcels] Mapbox token available for building snapping');
+  } else {
+    console.log('[canvassiq-load-parcels] No Mapbox token - properties will use geocoded coordinates');
+  }
   
   // Create a grid of points to reverse geocode - spacing ~30m apart for residential areas
   const gridSpacing = 0.0003; // ~30 meters in degrees
