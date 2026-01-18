@@ -112,16 +112,21 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
   useEffect(() => {
     if (existingEstimate?.line_items) {
       const items = existingEstimate.line_items as unknown as Record<string, LineItem[]>;
-      const sectionKey = sectionType === 'material' ? 'materials' : 'labor';
-      if (items[sectionKey] && items[sectionKey].length > 0) {
-        setLineItems(items[sectionKey]);
+      // Check both possible keys: 'materials'/'labor' and 'material'/'labor'
+      const primaryKey = sectionType === 'material' ? 'materials' : 'labor';
+      const fallbackKey = sectionType === 'material' ? 'material' : 'labor';
+      const sectionItems = items[primaryKey] || items[fallbackKey];
+      
+      if (sectionItems && sectionItems.length > 0) {
+        console.log(`[TemplateSectionSelector] Loading ${sectionType} items:`, sectionItems.length);
+        setLineItems(sectionItems);
       }
     }
     
     if (existingEstimate?.template_id) {
       setSelectedTemplateId(existingEstimate.template_id);
     }
-  }, [existingEstimate, sectionType]);
+  }, [existingEstimate?.id, existingEstimate?.line_items, existingEstimate?.template_id, sectionType]);
 
   // Save line items mutation
   const saveLineItemsMutation = useMutation({
@@ -172,8 +177,11 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
       return total;
     },
     onSuccess: (total) => {
+      // Invalidate all estimate-related queries for cache synchronization
       queryClient.invalidateQueries({ queryKey: ['enhanced-estimate-items', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['estimate-costs', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['cost-lock-status', pipelineEntryId] });
       onTotalChange?.(total);
       toast.success('Line items saved');
     },
