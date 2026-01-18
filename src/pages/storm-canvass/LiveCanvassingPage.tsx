@@ -15,8 +15,10 @@ import { CanvassPhotoCapture } from '@/components/storm-canvass/CanvassPhotoCapt
 import { OfflinePhotoSyncManager } from '@/components/storm-canvass/OfflinePhotoSyncManager';
 import PropertyInfoPanel from '@/components/storm-canvass/PropertyInfoPanel';
 import { locationService } from '@/services/locationService';
+import { gpsTrailService } from '@/services/gpsTrailService';
 import { useToast } from '@/hooks/use-toast';
 import { useStormCanvass } from '@/hooks/useStormCanvass';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 import { supabase } from '@/integrations/supabase/client';
 
 // Default location (Tampa, FL) for instant map load before GPS acquires
@@ -50,6 +52,7 @@ export default function LiveCanvassingPage() {
   const navigate = useNavigate();
   const { toast } = useToast();
   const { getDispositions } = useStormCanvass();
+  const { profile } = useUserProfile();
   // Start with default location for instant map load
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number }>(DEFAULT_LOCATION);
   const [hasGPS, setHasGPS] = useState(false);
@@ -74,6 +77,7 @@ export default function LiveCanvassingPage() {
   } | null>(null);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
   const previousLocation = useRef<{ lat: number; lng: number } | null>(null);
+  const gpsTrailStarted = useRef(false);
 
   useEffect(() => {
     // Load dispositions
@@ -83,6 +87,28 @@ export default function LiveCanvassingPage() {
     };
     loadDispositions();
   }, []);
+
+  // Start GPS trail recording when user profile is available
+  useEffect(() => {
+    if (profile?.id && profile?.tenant_id && !gpsTrailStarted.current) {
+      gpsTrailStarted.current = true;
+      gpsTrailService.startRecording(profile.id, profile.tenant_id)
+        .then((sessionId) => {
+          console.log('[LiveCanvassingPage] GPS trail recording started:', sessionId);
+        })
+        .catch((err) => {
+          console.error('[LiveCanvassingPage] Failed to start GPS trail:', err);
+        });
+    }
+
+    // Cleanup on unmount
+    return () => {
+      if (gpsTrailStarted.current) {
+        gpsTrailService.stopRecording();
+        gpsTrailStarted.current = false;
+      }
+    };
+  }, [profile?.id, profile?.tenant_id]);
 
   useEffect(() => {
     // Request initial location with skipGeocoding for faster response

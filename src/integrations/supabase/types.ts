@@ -3199,6 +3199,73 @@ export type Database = {
         }
         Relationships: []
       }
+      canvass_gps_trail: {
+        Row: {
+          accuracy_meters: number | null
+          altitude: number | null
+          created_at: string
+          heading: number | null
+          id: string
+          lat: number
+          lng: number
+          recorded_at: string
+          session_id: string | null
+          speed_mps: number | null
+          tenant_id: string
+          user_id: string
+        }
+        Insert: {
+          accuracy_meters?: number | null
+          altitude?: number | null
+          created_at?: string
+          heading?: number | null
+          id?: string
+          lat: number
+          lng: number
+          recorded_at?: string
+          session_id?: string | null
+          speed_mps?: number | null
+          tenant_id: string
+          user_id: string
+        }
+        Update: {
+          accuracy_meters?: number | null
+          altitude?: number | null
+          created_at?: string
+          heading?: number | null
+          id?: string
+          lat?: number
+          lng?: number
+          recorded_at?: string
+          session_id?: string | null
+          speed_mps?: number | null
+          tenant_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "canvass_gps_trail_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "canvass_gps_trail_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "canvass_gps_trail_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+        ]
+      }
       canvass_sessions: {
         Row: {
           created_at: string | null
@@ -3595,48 +3662,66 @@ export type Database = {
           accuracy_meters: number | null
           created_at: string | null
           disposition: string
+          distance_meters: number | null
           duration_seconds: number | null
           ended_at: string | null
+          gps_accuracy: number | null
           id: string
+          is_verified: boolean | null
           lat: number | null
           lng: number | null
           notes: string | null
           property_id: string
+          property_lat: number | null
+          property_lng: number | null
           started_at: string | null
           tenant_id: string
           user_id: string
+          verification_status: string | null
           visit_type: string
         }
         Insert: {
           accuracy_meters?: number | null
           created_at?: string | null
           disposition: string
+          distance_meters?: number | null
           duration_seconds?: number | null
           ended_at?: string | null
+          gps_accuracy?: number | null
           id?: string
+          is_verified?: boolean | null
           lat?: number | null
           lng?: number | null
           notes?: string | null
           property_id: string
+          property_lat?: number | null
+          property_lng?: number | null
           started_at?: string | null
           tenant_id: string
           user_id: string
+          verification_status?: string | null
           visit_type?: string
         }
         Update: {
           accuracy_meters?: number | null
           created_at?: string | null
           disposition?: string
+          distance_meters?: number | null
           duration_seconds?: number | null
           ended_at?: string | null
+          gps_accuracy?: number | null
           id?: string
+          is_verified?: boolean | null
           lat?: number | null
           lng?: number | null
           notes?: string | null
           property_id?: string
+          property_lat?: number | null
+          property_lng?: number | null
           started_at?: string | null
           tenant_id?: string
           user_id?: string
+          verification_status?: string | null
           visit_type?: string
         }
         Relationships: [
