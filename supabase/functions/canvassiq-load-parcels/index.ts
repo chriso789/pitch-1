@@ -214,6 +214,7 @@ async function getBuildingCentroid(
 
 // Load real property data using Google Geocoding API reverse geocoding
 // OPTIMIZED: Parallel batch processing for 5-10x faster loading
+// DEDUPLICATION: Only keep one marker per normalized street address (mailing address)
 async function loadRealParcelsFromGeocoding(
   centerLat: number, 
   centerLng: number, 
@@ -223,6 +224,8 @@ async function loadRealParcelsFromGeocoding(
 ): Promise<any[]> {
   const properties: any[] = [];
   const seenPlaceIds = new Set<string>();
+  // NEW: Track seen addresses to deduplicate multiple lots with same mailing address
+  const seenAddresses = new Map<string, { lat: number; lng: number; distance: number }>();
   
   // Create a grid of points to reverse geocode
   // Larger grid for more coverage, tighter spacing for density
@@ -246,6 +249,9 @@ async function loadRealParcelsFromGeocoding(
   const batchSize = 15; // Process 15 at a time
   const startTime = Date.now();
   
+  // Temporary storage for deduplication
+  const candidateProperties: any[] = [];
+  
   for (let i = 0; i < gridPoints.length; i += batchSize) {
     const batch = gridPoints.slice(i, i + batchSize);
     
@@ -259,42 +265,152 @@ async function loadRealParcelsFromGeocoding(
       if (result && result.place_id && !seenPlaceIds.has(result.place_id)) {
         seenPlaceIds.add(result.place_id);
         
-        // Skip building snapping for speed - use Google's geocoded coordinates directly
-        properties.push({
-          tenant_id: tenantId,
-          lat: result.lat,
-          lng: result.lng,
-          original_lat: result.lat,
-          original_lng: result.lng,
-          building_snapped: false, // Mark for potential later snapping
-          address: JSON.stringify({
-            street: `${result.street_number} ${result.street_name}`,
-            street_number: result.street_number,
-            street_name: result.street_name,
-            formatted: result.formatted_address,
-            place_id: result.place_id
-          }),
-          address_hash: result.place_id,
-          disposition: null,
-          owner_name: null,
-          property_data: JSON.stringify({
-            source: 'google_geocoding',
-            geocoded_at: new Date().toISOString(),
-            building_snapped: false
-          })
-        });
+        // Create normalized address key for deduplication
+        // This handles cases where multiple lots have same street number/name
+        const normalizedAddressKey = normalizeAddressKey(
+          result.street_number,
+          result.street_name
+        );
+        
+        // Calculate distance from center for tie-breaking
+        const distanceFromCenter = Math.sqrt(
+          Math.pow(result.lat - centerLat, 2) + 
+          Math.pow(result.lng - centerLng, 2)
+        );
+        
+        // Check if we already have this address
+        const existingEntry = seenAddresses.get(normalizedAddressKey);
+        
+        if (!existingEntry) {
+          // First time seeing this address
+          seenAddresses.set(normalizedAddressKey, {
+            lat: result.lat,
+            lng: result.lng,
+            distance: distanceFromCenter
+          });
+          
+          candidateProperties.push({
+            tenant_id: tenantId,
+            lat: result.lat,
+            lng: result.lng,
+            original_lat: result.lat,
+            original_lng: result.lng,
+            building_snapped: false,
+            address: JSON.stringify({
+              street: `${result.street_number} ${result.street_name}`,
+              street_number: result.street_number,
+              street_name: result.street_name,
+              formatted: result.formatted_address,
+              place_id: result.place_id,
+              normalized_key: normalizedAddressKey
+            }),
+            address_hash: result.place_id,
+            normalized_address_key: normalizedAddressKey,
+            distance_from_center: distanceFromCenter,
+            disposition: null,
+            owner_name: null,
+            property_data: JSON.stringify({
+              source: 'google_geocoding',
+              geocoded_at: new Date().toISOString(),
+              building_snapped: false,
+              deduplicated: false
+            })
+          });
+        } else if (distanceFromCenter < existingEntry.distance) {
+          // This entry is closer to center, replace the existing one
+          console.log(`[canvassiq-load-parcels] Replacing duplicate address ${normalizedAddressKey} with closer coordinates`);
+          seenAddresses.set(normalizedAddressKey, {
+            lat: result.lat,
+            lng: result.lng,
+            distance: distanceFromCenter
+          });
+          
+          // Find and update the existing candidate
+          const existingIdx = candidateProperties.findIndex(
+            p => p.normalized_address_key === normalizedAddressKey
+          );
+          if (existingIdx !== -1) {
+            candidateProperties[existingIdx] = {
+              ...candidateProperties[existingIdx],
+              lat: result.lat,
+              lng: result.lng,
+              original_lat: result.lat,
+              original_lng: result.lng,
+              address: JSON.stringify({
+                street: `${result.street_number} ${result.street_name}`,
+                street_number: result.street_number,
+                street_name: result.street_name,
+                formatted: result.formatted_address,
+                place_id: result.place_id,
+                normalized_key: normalizedAddressKey
+              }),
+              address_hash: result.place_id,
+              distance_from_center: distanceFromCenter,
+              property_data: JSON.stringify({
+                source: 'google_geocoding',
+                geocoded_at: new Date().toISOString(),
+                building_snapped: false,
+                deduplicated: true // Mark as deduplicated
+              })
+            };
+          }
+        }
+        // If existing entry is closer, skip this one (don't add duplicate)
       }
     }
     
-    // Small delay between batches to avoid rate limiting (much faster than per-request)
+    // Small delay between batches to avoid rate limiting
     if (i + batchSize < gridPoints.length) {
       await new Promise(resolve => setTimeout(resolve, 50));
     }
   }
   
+  // Clean up temporary fields before returning
+  for (const prop of candidateProperties) {
+    delete prop.normalized_address_key;
+    delete prop.distance_from_center;
+    properties.push(prop);
+  }
+  
   const elapsed = Date.now() - startTime;
-  console.log(`[canvassiq-load-parcels] Found ${properties.length} unique addresses in ${elapsed}ms`);
+  const duplicatesRemoved = seenPlaceIds.size - properties.length;
+  console.log(`[canvassiq-load-parcels] Found ${properties.length} unique addresses (${duplicatesRemoved} duplicates removed) in ${elapsed}ms`);
   return properties;
+}
+
+/**
+ * Normalize address key for deduplication
+ * Handles variations like "123 Main St" vs "123 Main Street"
+ */
+function normalizeAddressKey(streetNumber: string, streetName: string): string {
+  // Convert to lowercase
+  let normalized = `${streetNumber}_${streetName}`.toLowerCase();
+  
+  // Normalize common street suffixes
+  const suffixMap: Record<string, string> = {
+    'street': 'st',
+    'avenue': 'ave',
+    'boulevard': 'blvd',
+    'drive': 'dr',
+    'road': 'rd',
+    'lane': 'ln',
+    'court': 'ct',
+    'place': 'pl',
+    'circle': 'cir',
+    'way': 'way',
+    'terrace': 'ter',
+    'highway': 'hwy',
+    'parkway': 'pkwy',
+  };
+  
+  for (const [full, short] of Object.entries(suffixMap)) {
+    normalized = normalized.replace(new RegExp(`\\b${full}\\b`, 'g'), short);
+  }
+  
+  // Remove extra spaces and special characters
+  normalized = normalized.replace(/[^a-z0-9_]/g, '').replace(/_+/g, '_');
+  
+  return normalized;
 }
 
 // Reverse geocode a single point to get the street address

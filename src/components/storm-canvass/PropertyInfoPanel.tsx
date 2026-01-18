@@ -1,9 +1,9 @@
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Phone, Mail, MapPin, Navigation, User, Plus, Home, Clock, 
   ThumbsUp, ThumbsDown, X, AlertTriangle, DollarSign, CheckCircle,
   Cloud, Sun, Compass, Calculator, FileText, Camera, CalendarPlus,
-  History, StickyNote, UserPlus, Loader2, Sparkles
+  History, StickyNote, UserPlus, Loader2, Sparkles, ShieldCheck, ShieldAlert
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from '@/components/ui/sheet';
@@ -13,11 +13,17 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 import FastEstimateModal from './FastEstimateModal';
+import { 
+  calculateDistanceMeters, 
+  getVerificationStatus, 
+  type DistanceVerification 
+} from '@/hooks/useDistanceVerification';
 
 interface PropertyInfoPanelProps {
   open: boolean;
@@ -156,16 +162,48 @@ export default function PropertyInfoPanel({
   const fullAddress = address?.formatted || 
     `${address?.street || ''}, ${address?.city || ''} ${address?.state || ''} ${address?.zip || ''}`.trim();
 
-  // Calculate distance
-  const distance = calculateDistance(
-    userLocation.lat,
-    userLocation.lng,
-    property.lat || address?.lat,
-    property.lng || address?.lng
-  );
+  // Get property coordinates
+  const propertyLat = property.lat || address?.lat;
+  const propertyLng = property.lng || address?.lng;
+
+  // Calculate distance in meters for verification
+  const distanceMeters = useMemo(() => {
+    if (!propertyLat || !propertyLng) return 0;
+    return calculateDistanceMeters(
+      userLocation.lat,
+      userLocation.lng,
+      propertyLat,
+      propertyLng
+    );
+  }, [userLocation.lat, userLocation.lng, propertyLat, propertyLng]);
+
+  // Get verification status based on distance
+  const verification = useMemo<DistanceVerification>(() => {
+    return getVerificationStatus(distanceMeters);
+  }, [distanceMeters]);
+
+  // Legacy distance in miles for display
+  const distance = verification.distanceMiles;
 
   const handleDisposition = async (dispositionId: string) => {
     if (!profile?.tenant_id || !property.id) return;
+
+    // Check if rep is too far (blocked)
+    if (verification.isBlocked) {
+      toast.error('You are too far from this property to set a disposition. Please move closer.', {
+        description: `Current distance: ${Math.round(verification.distanceFeet)} ft (max: 328 ft / 100m)`,
+        duration: 5000,
+      });
+      return;
+    }
+
+    // Show warning if in warning zone
+    if (verification.isWarning) {
+      toast.warning('You are far from this property. Move closer for verified visits.', {
+        description: `Current distance: ${Math.round(verification.distanceFeet)} ft`,
+        duration: 3000,
+      });
+    }
 
     try {
       const { error } = await supabase
@@ -179,7 +217,7 @@ export default function PropertyInfoPanel({
 
       if (error) throw error;
 
-      // Log the visit
+      // Log the visit with distance tracking
       await supabase.from('canvassiq_visits').insert({
         property_id: property.id,
         tenant_id: profile.tenant_id,
@@ -188,6 +226,12 @@ export default function PropertyInfoPanel({
         visit_type: 'door_knock',
         lat: userLocation.lat,
         lng: userLocation.lng,
+        property_lat: propertyLat,
+        property_lng: propertyLng,
+        distance_meters: verification.distanceMeters,
+        gps_accuracy: null, // Will be populated from geolocation API if available
+        is_verified: verification.isWithinRange,
+        verification_status: verification.verificationStatus,
         started_at: new Date().toISOString(),
       });
 
@@ -196,10 +240,17 @@ export default function PropertyInfoPanel({
         user_id: profile.id,
         tenant_id: profile.tenant_id,
         activity_type: 'door_knock',
-        metadata: { property_id: property.id, disposition: dispositionId }
+        metadata: { 
+          property_id: property.id, 
+          disposition: dispositionId,
+          distance_meters: verification.distanceMeters,
+          is_verified: verification.isWithinRange,
+          verification_status: verification.verificationStatus
+        }
       });
 
-      toast.success(`Marked as ${dispositionId.replace(/_/g, ' ')}`);
+      const verifiedText = verification.isWithinRange ? ' ✓ Verified' : '';
+      toast.success(`Marked as ${dispositionId.replace(/_/g, ' ')}${verifiedText}`);
       onDispositionUpdate();
     } catch (err) {
       console.error('Error updating disposition:', err);
@@ -263,11 +314,20 @@ export default function PropertyInfoPanel({
                   <MapPin className="h-3.5 w-3.5" />
                   {fullAddress}
                 </p>
-                {distance > 0 && (
-                  <Badge variant="secondary" className="mt-2 text-xs">
-                    📍 {distance.toFixed(2)} mi away
-                  </Badge>
-                )}
+                {/* Distance Verification Badge */}
+                <Badge 
+                  variant={verification.badgeVariant} 
+                  className={cn(
+                    "mt-2 text-xs",
+                    verification.isWithinRange && "bg-green-500 hover:bg-green-600",
+                    verification.isWarning && "bg-yellow-500 hover:bg-yellow-600 text-black",
+                    verification.isBlocked && "bg-red-500 hover:bg-red-600"
+                  )}
+                >
+                  {verification.isWithinRange && <ShieldCheck className="h-3 w-3 mr-1" />}
+                  {verification.isBlocked && <ShieldAlert className="h-3 w-3 mr-1" />}
+                  {verification.badgeText}
+                </Badge>
               </div>
               {property.disposition && (
                 <Badge className={cn("text-white text-xs", getDispositionBgColor(property.disposition))}>
