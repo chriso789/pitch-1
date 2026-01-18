@@ -3,6 +3,7 @@ import { useEffect, useRef, useCallback, useState } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useUserProfile } from '@/contexts/UserProfileContext';
 import { toast } from 'sonner';
+import { useDebounce } from '@/hooks/useDebounce';
 
 interface GooglePropertyMarkersLayerProps {
   map: google.maps.Map;
@@ -34,8 +35,11 @@ const DISPOSITION_COLORS: Record<string, string> = {
 
 const DEFAULT_COLOR = '#D4A84B';
 
-// Grid cell size for tracking loaded areas (~100m cells for finer granularity)
-const GRID_CELL_SIZE = 0.001;
+// Grid cell size for tracking loaded areas (~150m cells)
+const GRID_CELL_SIZE = 0.0015;
+
+// Debounce delay for map movement (ms)
+const LOAD_DEBOUNCE_MS = 300;
 
 function getGridCell(lat: number, lng: number): string {
   const cellLat = Math.floor(lat / GRID_CELL_SIZE) * GRID_CELL_SIZE;
@@ -321,22 +325,47 @@ export default function GooglePropertyMarkersLayer({
     }
   }, [map, currentZoom, loadProperties]);
 
-  // Set up map event listeners
+  // Debounced load trigger
+  const loadDebounceRef = useRef<NodeJS.Timeout | null>(null);
+  
+  const debouncedLoadProperties = useCallback(() => {
+    if (loadDebounceRef.current) {
+      clearTimeout(loadDebounceRef.current);
+    }
+    loadDebounceRef.current = setTimeout(() => {
+      loadProperties();
+    }, LOAD_DEBOUNCE_MS);
+  }, [loadProperties]);
+
+  // Set up map event listeners with debouncing
   useEffect(() => {
     if (!map) return;
     
-    const idleListener = map.addListener('idle', loadProperties);
+    // Use debounced version to prevent rapid-fire API calls during panning
+    const idleListener = map.addListener('idle', debouncedLoadProperties);
     const zoomListener = map.addListener('zoom_changed', updateMarkerSizes);
     
-    // Initial load
+    // Initial load (immediate, no debounce)
     loadProperties();
     
     return () => {
+      if (loadDebounceRef.current) {
+        clearTimeout(loadDebounceRef.current);
+      }
       google.maps.event.removeListener(idleListener);
       google.maps.event.removeListener(zoomListener);
       clearMarkers();
     };
-  }, [map, loadProperties, updateMarkerSizes, clearMarkers]);
+  }, [map, loadProperties, debouncedLoadProperties, updateMarkerSizes, clearMarkers]);
+
+  // Show loading indicator
+  useEffect(() => {
+    if (isLoading) {
+      toast.loading('Loading properties...', { id: 'property-loading' });
+    } else {
+      toast.dismiss('property-loading');
+    }
+  }, [isLoading]);
 
   return null;
 }
