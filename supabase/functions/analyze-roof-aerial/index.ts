@@ -554,6 +554,7 @@ Deno.serve(async (req) => {
     // ═══════════════════════════════════════════════════════════════════════════
     let buildingIsolation: any;
     let perimeterResult: any;
+    let footprintCheck: any;
     
     if (authoritativeFootprint && authoritativeFootprint.vertices.length >= 4) {
       // FAST PATH: Convert authoritative footprint vertices to pixel coordinates
@@ -592,6 +593,16 @@ Deno.serve(async (req) => {
         source: authoritativeFootprint.source
       };
       
+      // Set footprintCheck for fast path (authoritative footprints are pre-validated)
+      footprintCheck = {
+        isValid: true,
+        spanXPct: 100,
+        spanYPct: 100,
+        estimatedPerimeterFt: authoritativeFootprint.estimatedPerimeterFt || 0,
+        longSegments: [],
+        failureReason: null
+      };
+      
       console.log(`⏱️ FAST PATH: Skipped Pass 1 & 2, using authoritative footprint: ${Date.now() - startTime}ms`);
     } else {
       // SLOW PATH: Run AI Vision passes (no authoritative footprint available)
@@ -626,7 +637,7 @@ Deno.serve(async (req) => {
       console.log(`⏱️ Pass 2 (perimeter vertices) complete: ${Date.now() - startTime}ms`)
       
       // NEW: FOOTPRINT SANITY CHECK - verify vertices span the full roof
-      const footprintCheck = validateFootprintCoverage(perimeterResult.vertices, buildingIsolation.bounds, solarData, coordinates, logicalImageSize)
+      footprintCheck = validateFootprintCoverage(perimeterResult.vertices, buildingIsolation.bounds, solarData, coordinates, logicalImageSize)
       console.log(`📐 Footprint check: span=${footprintCheck.spanXPct.toFixed(1)}% x ${footprintCheck.spanYPct.toFixed(1)}%, perimeter=${footprintCheck.estimatedPerimeterFt.toFixed(0)}ft, ${footprintCheck.longSegments.length} long segments`)
       
       // If footprint check fails, run CORNER COMPLETION PASS
