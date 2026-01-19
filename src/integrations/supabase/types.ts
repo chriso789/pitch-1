@@ -5931,6 +5931,7 @@ export type Database = {
           address_zip: string | null
           assigned_to: string | null
           brand_id: string | null
+          canvassiq_property_id: string | null
           clj_formatted_number: string | null
           clj_number: string | null
           company_name: string | null
@@ -5987,6 +5988,7 @@ export type Database = {
           address_zip?: string | null
           assigned_to?: string | null
           brand_id?: string | null
+          canvassiq_property_id?: string | null
           clj_formatted_number?: string | null
           clj_number?: string | null
           company_name?: string | null
@@ -6043,6 +6045,7 @@ export type Database = {
           address_zip?: string | null
           assigned_to?: string | null
           brand_id?: string | null
+          canvassiq_property_id?: string | null
           clj_formatted_number?: string | null
           clj_number?: string | null
           company_name?: string | null
@@ -6108,6 +6111,13 @@ export type Database = {
             columns: ["brand_id"]
             isOneToOne: false
             referencedRelation: "brands"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "contacts_canvassiq_property_id_fkey"
+            columns: ["canvassiq_property_id"]
+            isOneToOne: false
+            referencedRelation: "canvassiq_properties"
             referencedColumns: ["id"]
           },
           {
