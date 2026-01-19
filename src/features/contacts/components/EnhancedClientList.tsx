@@ -374,7 +374,10 @@ export const EnhancedClientList = () => {
         
         // Apply location filter - only show contacts explicitly assigned to this location
         if (currentLocationId && locations.length > 0) {
+          console.log("Applying location filter:", currentLocationId);
           batchQuery = batchQuery.eq('location_id', currentLocationId);
+        } else {
+          console.log("No location filter applied - currentLocationId:", currentLocationId, "locations.length:", locations.length);
         }
         
         const { data: batchData, error: batchError } = await batchQuery;
@@ -514,7 +517,7 @@ export const EnhancedClientList = () => {
     } finally {
       setLoading(false);
     }
-  }, [currentLocationId, activeCompanyId]);
+  }, [currentLocationId, activeCompanyId, locations]);
 
   const filterData = () => {
     console.log(`=== FilterData called ===`);
