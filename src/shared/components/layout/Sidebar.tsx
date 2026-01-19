@@ -34,7 +34,8 @@ import {
   MessageSquare,
   Bot,
   PhoneCall,
-  Mic
+  Mic,
+  ClipboardCheck
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -110,6 +111,7 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
     if (path.startsWith('/communications')) return 'communications';
     if (path.startsWith('/smartdocs')) return 'smartdocs';
     if (path.startsWith('/presentations')) return 'presentations';
+    if (path.startsWith('/permits')) return 'permits';
     if (path.startsWith('/crew')) return 'crew';
     if (path.startsWith('/homeowner')) return 'homeowner';
     if (path.startsWith('/admin/monitoring')) return 'monitoring';
@@ -273,6 +275,13 @@ const Sidebar = ({ isCollapsed = false, onNavigate }: SidebarProps) => {
       path: "/presentations",
       icon: Presentation,
       description: "Sales presentation builder"
+    },
+    {
+      name: "Permit Expediter",
+      href: "permits",
+      path: "/permits/expediter",
+      icon: ClipboardCheck,
+      description: "Permit packet builder & tracker"
     }
   ];
 

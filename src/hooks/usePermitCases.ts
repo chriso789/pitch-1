@@ -219,18 +219,26 @@ export function useJobsReadyForPermitting(tenantId: string | undefined) {
     queryFn: async (): Promise<PermitExpediterJob[]> => {
       if (!tenantId) return [];
       
-      // Get jobs from the tenant
+      // Get jobs from the tenant with contact data for address
       const { data: jobs, error } = await supabase
         .from('jobs')
         .select(`
           id,
           job_number,
-          street_address,
-          city,
-          state,
-          zip,
+          address_street,
           created_at,
-          contact_id
+          contact_id,
+          contacts (
+            id,
+            first_name,
+            last_name,
+            address_street,
+            address_city,
+            address_state,
+            address_zip,
+            latitude,
+            longitude
+          )
         `)
         .eq('tenant_id', tenantId)
         .order('created_at', { ascending: false })
@@ -262,12 +270,27 @@ export function useJobsReadyForPermitting(tenantId: string | undefined) {
         const permitCase = (permitCases || []).find(pc => pc.job_id === job.id);
         const parcel = (parcelData || []).find(p => p.job_id === job.id);
         const hasMeasurements = (measurements || []).some(m => m.job_id === job.id);
+        
+        // Get address from contact or job
+        const contact = job.contacts;
+        const addressParts = [
+          contact?.address_street || job.address_street,
+          contact?.address_city,
+          contact?.address_state,
+          contact?.address_zip
+        ].filter(Boolean);
+        const fullAddress = addressParts.join(', ') || 'No address';
+        
+        // Get contact name
+        const contactName = contact 
+          ? `${contact.first_name || ''} ${contact.last_name || ''}`.trim() || 'Unknown'
+          : 'Unknown';
 
         return {
           id: permitCase?.id || job.id,
           job_id: job.id,
           job_number: job.job_number || undefined,
-          address: [job.street_address, job.city, job.state, job.zip].filter(Boolean).join(', '),
+          address: fullAddress,
           parcel_id: parcel?.parcel_id || null,
           jurisdiction_type: permitCase?.jurisdiction_type || null,
           county_name: permitCase?.county_name || null,
@@ -278,7 +301,7 @@ export function useJobsReadyForPermitting(tenantId: string | undefined) {
           has_measurements: hasMeasurements,
           has_product_approvals: false,
           has_parcel_data: !!parcel?.parcel_id,
-          contact_name: 'Unknown',
+          contact_name: contactName,
           created_at: job.created_at || new Date().toISOString(),
         };
       });
