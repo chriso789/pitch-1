@@ -751,15 +751,17 @@ Deno.serve(async (req) => {
     console.log(`⏱️ Line derivation complete: ${derivedLines.length} lines from vertices`)
     
     // Calculate actual roof area from perimeter vertices using Shoelace formula
+    // CRITICAL: Pass authoritativeFootprint source to prevent Solar override when we have OSM/Mapbox
     const actualAreaSqft = calculateAreaFromPerimeterVertices(
       perimeterResult.vertices,
       coordinates,
       logicalImageSize,
       IMAGE_ZOOM,
       solarData,
-      address
+      address,
+      authoritativeFootprint?.source // NEW: Pass footprint source for authority check
     )
-    console.log(`📐 Validated area from perimeter: ${actualAreaSqft.toFixed(0)} sqft`)
+    console.log(`📐 Validated area from perimeter: ${actualAreaSqft.toFixed(0)} sqft (source: ${authoritativeFootprint?.source || 'ai_detection'})`)
     
     // Derive facet count from roof geometry AND detected lines
     const preLinearFeaturesForFacets = convertDerivedLinesToWKT(
@@ -3532,11 +3534,23 @@ function calculateAreaFromPerimeterVertices(
   imageSize: number,
   zoom: number,
   solarData?: any,
-  address?: string
+  address?: string,
+  footprintSource?: string // NEW: Footprint source for authority determination
 ): number {
   if (!vertices || vertices.length < 3) {
     console.warn('⚠️ Invalid vertices for area calculation')
     return solarData?.buildingFootprintSqft || 1500
+  }
+  
+  // CRITICAL: Determine if we have an authoritative polygon source
+  // When we have OSM/Mapbox/Microsoft footprints, we should trust the polygon area
+  // and NOT override with Solar API (which is often a bounding box approximation)
+  const hasAuthoritativePolygon = footprintSource && [
+    'mapbox_vector', 'osm_buildings', 'osm_overpass', 'microsoft_buildings', 'regrid_parcel'
+  ].includes(footprintSource);
+  
+  if (hasAuthoritativePolygon) {
+    console.log(`📐 Using AUTHORITATIVE footprint source: ${footprintSource} - polygon area will be trusted`);
   }
   
   const metersPerPixel = (156543.03392 * Math.cos(imageCenter.lat * Math.PI / 180)) / Math.pow(2, zoom)
@@ -3631,7 +3645,7 @@ function calculateAreaFromPerimeterVertices(
     }
   }
   
-  // Solar API validation
+  // Solar API validation - BUT skip override when we have authoritative polygon
   if (solarData?.available && solarData?.buildingFootprintSqft) {
     const solarFootprint = solarData.buildingFootprintSqft
     const variance = Math.abs(calculatedArea - solarFootprint) / solarFootprint
@@ -3643,35 +3657,49 @@ function calculateAreaFromPerimeterVertices(
     // PHASE 6: Check if this is historical Solar data - apply tighter override
     const isHistorical = solarData.isHistorical === true
     if (isHistorical) {
-      console.log(`📐 HISTORICAL Solar validation: AI=${calculatedArea.toFixed(0)}, Historical Solar=${solarFootprint.toFixed(0)}, variance=${(variance * 100).toFixed(1)}%, ratio=${overShoot.toFixed(2)}x`)
+      console.log(`📐 HISTORICAL Solar validation: Polygon=${calculatedArea.toFixed(0)}, Historical Solar=${solarFootprint.toFixed(0)}, variance=${(variance * 100).toFixed(1)}%, ratio=${overShoot.toFixed(2)}x`)
     } else {
-      console.log(`📐 Solar validation: AI=${calculatedArea.toFixed(0)}, Solar=${solarFootprint.toFixed(0)}, variance=${(variance * 100).toFixed(1)}%, ratio=${overShoot.toFixed(2)}x`)
+      console.log(`📐 Solar validation: Polygon=${calculatedArea.toFixed(0)}, Solar=${solarFootprint.toFixed(0)}, variance=${(variance * 100).toFixed(1)}%, ratio=${overShoot.toFixed(2)}x`)
     }
     
-    // PHASE 6: Historical Solar override - tighter 15% threshold since we have verified ground truth
-    if (isHistorical && overShoot > 1.15) {
-      console.warn(`⚠️ HISTORICAL OVERRIDE: AI area is ${(overShoot * 100).toFixed(0)}% of historical Solar - using historical as ground truth`)
-      calculatedArea = solarFootprint
-    }
-    // NEW: Double-count detection - if AI is 125%+ of Solar, very likely tracing two buildings
-    else if (overShoot > ROOF_AREA_CAPS.DOUBLE_COUNT_WARNING_THRESHOLD) {
-      console.warn(`⚠️ DOUBLE-COUNT WARNING: AI area is ${(overShoot * 100).toFixed(0)}% of Solar - using Solar as ground truth`)
-      calculatedArea = solarFootprint
-    } else if (variance > varianceThreshold) {
-      if (calculatedArea < solarFootprint * 0.85) {
-        // AI under-detected - use weighted blend
-        const blendedArea = (calculatedArea * 0.4) + (solarFootprint * 0.6)
-        console.log(`📐 BLEND: ${blendedArea.toFixed(0)} sqft (40% AI + 60% Solar)`)
-        calculatedArea = blendedArea
-      } else if (isFlorida && calculatedArea > solarFootprint * 1.1) {
-        console.log(`📐 FLORIDA: Using Solar to exclude screen enclosure`)
-        calculatedArea = solarFootprint
-      } else if (calculatedArea > solarFootprint * 1.2) {
-        console.log(`📐 OVERRIDE: Using Solar as ground truth`)
+    // CRITICAL: When we have authoritative polygon (OSM/Mapbox/Microsoft), TRUST IT
+    // Solar API footprint is often a bounding box that over-measures by 15-25%
+    // Only flag for review, do NOT override the polygon area
+    if (hasAuthoritativePolygon) {
+      if (variance > 0.25) {
+        console.log(`📐 ⚠️ HIGH VARIANCE (${(variance * 100).toFixed(0)}%) between ${footprintSource} polygon and Solar API - flagging for review but TRUSTING polygon`)
+        console.log(`📐 ✅ Using ${footprintSource} polygon area: ${calculatedArea.toFixed(0)} sqft (Solar bbox would be ${solarFootprint.toFixed(0)} sqft)`)
+      } else {
+        console.log(`📐 ✅ Polygon area validated within ${(variance * 100).toFixed(1)}% of Solar API`)
+      }
+      // DO NOT override calculatedArea - trust the polygon
+    } else {
+      // NO authoritative polygon - use legacy Solar validation/override logic
+      // PHASE 6: Historical Solar override - tighter 15% threshold since we have verified ground truth
+      if (isHistorical && overShoot > 1.15) {
+        console.warn(`⚠️ HISTORICAL OVERRIDE: AI area is ${(overShoot * 100).toFixed(0)}% of historical Solar - using historical as ground truth`)
         calculatedArea = solarFootprint
       }
-    } else {
-      console.log(`📐 ✅ AI within ${(variance * 100).toFixed(1)}% of Solar API`)
+      // Double-count detection - if AI is 125%+ of Solar, very likely tracing two buildings
+      else if (overShoot > ROOF_AREA_CAPS.DOUBLE_COUNT_WARNING_THRESHOLD) {
+        console.warn(`⚠️ DOUBLE-COUNT WARNING: AI area is ${(overShoot * 100).toFixed(0)}% of Solar - using Solar as ground truth`)
+        calculatedArea = solarFootprint
+      } else if (variance > varianceThreshold) {
+        if (calculatedArea < solarFootprint * 0.85) {
+          // AI under-detected - use weighted blend
+          const blendedArea = (calculatedArea * 0.4) + (solarFootprint * 0.6)
+          console.log(`📐 BLEND: ${blendedArea.toFixed(0)} sqft (40% AI + 60% Solar)`)
+          calculatedArea = blendedArea
+        } else if (isFlorida && calculatedArea > solarFootprint * 1.1) {
+          console.log(`📐 FLORIDA: Using Solar to exclude screen enclosure`)
+          calculatedArea = solarFootprint
+        } else if (calculatedArea > solarFootprint * 1.2) {
+          console.log(`📐 OVERRIDE: Using Solar as ground truth`)
+          calculatedArea = solarFootprint
+        }
+      } else {
+        console.log(`📐 ✅ AI within ${(variance * 100).toFixed(1)}% of Solar API`)
+      }
     }
   }
   
