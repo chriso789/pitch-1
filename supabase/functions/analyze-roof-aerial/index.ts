@@ -2721,6 +2721,15 @@ function deriveLinesToPerimeter(
     })
   }
   
+  // DEBUG: Log perimeter edge generation
+  const perimeterEdges = lines.filter(l => l.source === 'perimeter_edge')
+  console.log(`🔧 deriveLinesToPerimeter: Generated ${perimeterEdges.length} perimeter edges from ${perimeterVertices.length} vertices`)
+  if (perimeterEdges.length > 0 && perimeterEdges.length <= 6) {
+    perimeterEdges.forEach((edge, i) => {
+      console.log(`   Edge ${i+1}: ${edge.type} (${edge.startX.toFixed(1)},${edge.startY.toFixed(1)})→(${edge.endX.toFixed(1)},${edge.endY.toFixed(1)})`)
+    })
+  }
+  
   const dedupedLines = removeDuplicateLines(lines)
   
   // FALLBACK: If no eaves detected after all attempts, compute from perimeter directly
@@ -3050,27 +3059,37 @@ function convertDerivedLinesToWKT(
   const linearFeatures: any[] = []
   let featureId = 1
   
-  derivedLines.forEach((line) => {
+  // DEBUG: Log input for diagnostics
+  console.log(`🔧 convertDerivedLinesToWKT: Processing ${derivedLines.length} lines, imageSize=${imageSize}, zoom=${zoom}`)
+  const typeBreakdown = derivedLines.reduce((acc, l) => { acc[l.type] = (acc[l.type] || 0) + 1; return acc }, {} as Record<string, number>)
+  console.log(`🔧 Input line types:`, typeBreakdown)
+  
+  derivedLines.forEach((line, idx) => {
+    // Convert from pixel percentage (0-100) to actual pixel offset from center
     const startPixelX = ((line.startX / 100) - 0.5) * imageSize
     const startPixelY = ((line.startY / 100) - 0.5) * imageSize
     const endPixelX = ((line.endX / 100) - 0.5) * imageSize
     const endPixelY = ((line.endY / 100) - 0.5) * imageSize
     
+    // Convert pixels to meters
     const startMetersX = startPixelX * metersPerPixel
     const startMetersY = startPixelY * metersPerPixel
     const endMetersX = endPixelX * metersPerPixel
     const endMetersY = endPixelY * metersPerPixel
     
+    // Convert meters to geographic offset
     const startLngOffset = startMetersX / metersPerDegLng
     const startLatOffset = -startMetersY / metersPerDegLat
     const endLngOffset = endMetersX / metersPerDegLng
     const endLatOffset = -endMetersY / metersPerDegLat
     
+    // Final geographic coordinates
     const startLng = imageCenter.lng + startLngOffset
     const startLat = imageCenter.lat + startLatOffset
     const endLng = imageCenter.lng + endLngOffset
     const endLat = imageCenter.lat + endLatOffset
     
+    // Calculate length in feet
     const dx = (endLng - startLng) * metersPerDegLng
     const dy = (endLat - startLat) * metersPerDegLat
     const plan_length_ft = Math.sqrt(dx * dx + dy * dy) * 3.28084
@@ -3083,6 +3102,12 @@ function convertDerivedLinesToWKT(
       ? plan_length_ft * slopeFactor 
       : plan_length_ft
     
+    // DEBUG: Log each line conversion (first 10 only to avoid spam)
+    if (idx < 10) {
+      console.log(`🔧 Line ${idx + 1}: ${line.type} - pixels(${line.startX.toFixed(1)},${line.startY.toFixed(1)})→(${line.endX.toFixed(1)},${line.endY.toFixed(1)}) = ${plan_length_ft.toFixed(1)}ft`)
+    }
+    
+    // Include all lines >= 3 feet (was filtering out valid perimeter edges)
     if (plan_length_ft >= 3) {
       linearFeatures.push({
         id: `VERTEX_${line.type}_${featureId++}`,
@@ -3093,6 +3118,8 @@ function convertDerivedLinesToWKT(
         surface_length_ft: Math.round(surface_length_ft * 10) / 10,
         source: line.source
       })
+    } else {
+      console.warn(`⚠️ Skipped short line: ${line.type} = ${plan_length_ft.toFixed(1)}ft (pixels: ${line.startX.toFixed(1)},${line.startY.toFixed(1)} → ${line.endX.toFixed(1)},${line.endY.toFixed(1)})`)
     }
   })
   
