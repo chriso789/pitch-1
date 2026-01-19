@@ -896,14 +896,27 @@ export function SchematicRoofDiagram({
           />
         )}
         
-        {/* Eave segments - thick dark green straight lines with length labels and IDs */}
+        {/* Eave segments - thick dark green straight lines with length labels and direction */}
         {eaveSegments.map((seg, i) => {
           const midX = (seg.start.x + seg.end.x) / 2;
           const midY = (seg.start.y + seg.end.y) / 2;
           const angle = Math.atan2(seg.end.y - seg.start.y, seg.end.x - seg.start.x) * 180 / Math.PI;
           const displayAngle = angle > 90 || angle < -90 ? angle + 180 : angle;
           const length = seg.length || 0;
-          const edgeId = `E${i + 1}`;
+          
+          // Calculate cardinal direction from GPS coordinates if available
+          // SVG Y is inverted, so we need to adjust for compass
+          // North is -Y in SVG space, East is +X
+          const dx = seg.end.x - seg.start.x;
+          const dy = seg.end.y - seg.start.y;
+          // Convert SVG angle to compass bearing (0=North, 90=East)
+          const svgAngleRad = Math.atan2(-dy, dx); // Negate dy because SVG Y is inverted
+          const compassBearing = (90 - (svgAngleRad * 180 / Math.PI) + 360) % 360;
+          // Eave direction is perpendicular to the edge (outward facing)
+          const facingBearing = (compassBearing + 90) % 360;
+          const direction = getDirectionFromAzimuth(facingBearing);
+          const edgeLabel = `${direction} Eave`;
+          const labelWidth = edgeLabel.length * 5 + 30; // Dynamic width based on label length
           
           return (
             <g key={`eave-${i}`}>
@@ -916,13 +929,13 @@ export function SchematicRoofDiagram({
                 strokeWidth={5}
                 strokeLinecap="square"
               />
-              {/* Eave length label - show all segments >= 1ft */}
+              {/* Eave length label with direction - show all segments >= 1ft */}
               {showLengthLabels && length >= 1 && (
                 <g transform={`translate(${midX}, ${midY}) rotate(${displayAngle})`}>
                   <rect
-                    x={-26}
+                    x={-labelWidth / 2}
                     y={-11}
-                    width={52}
+                    width={labelWidth}
                     height={18}
                     fill="white"
                     stroke={FEATURE_COLORS.eave}
@@ -937,7 +950,7 @@ export function SchematicRoofDiagram({
                     fontWeight="bold"
                     fill={FEATURE_COLORS.eave}
                   >
-                    {edgeId}: {length.toFixed(1)}'
+                    {edgeLabel} {length.toFixed(1)}'
                   </text>
                 </g>
               )}
@@ -945,14 +958,25 @@ export function SchematicRoofDiagram({
           );
         })}
         
-        {/* Rake segments - thick cyan straight lines with length labels and IDs */}
+        {/* Rake segments - thick cyan straight lines with length labels and direction */}
         {rakeSegments.map((seg, i) => {
           const midX = (seg.start.x + seg.end.x) / 2;
           const midY = (seg.start.y + seg.end.y) / 2;
           const angle = Math.atan2(seg.end.y - seg.start.y, seg.end.x - seg.start.x) * 180 / Math.PI;
           const displayAngle = angle > 90 || angle < -90 ? angle + 180 : angle;
           const length = seg.length || 0;
-          const edgeId = `R${i + 1}`;
+          
+          // Calculate cardinal direction from GPS coordinates if available
+          const dx = seg.end.x - seg.start.x;
+          const dy = seg.end.y - seg.start.y;
+          // Convert SVG angle to compass bearing (0=North, 90=East)
+          const svgAngleRad = Math.atan2(-dy, dx); // Negate dy because SVG Y is inverted
+          const compassBearing = (90 - (svgAngleRad * 180 / Math.PI) + 360) % 360;
+          // Rake direction is perpendicular to the edge (outward facing)
+          const facingBearing = (compassBearing + 90) % 360;
+          const direction = getDirectionFromAzimuth(facingBearing);
+          const edgeLabel = `${direction} Rake`;
+          const labelWidth = edgeLabel.length * 5 + 30; // Dynamic width based on label length
           
           return (
             <g key={`rake-${i}`}>
@@ -965,13 +989,13 @@ export function SchematicRoofDiagram({
                 strokeWidth={5}
                 strokeLinecap="square"
               />
-              {/* Rake length label - show all segments >= 1ft */}
+              {/* Rake length label with direction - show all segments >= 1ft */}
               {showLengthLabels && length >= 1 && (
                 <g transform={`translate(${midX}, ${midY}) rotate(${displayAngle})`}>
                   <rect
-                    x={-26}
+                    x={-labelWidth / 2}
                     y={-11}
-                    width={52}
+                    width={labelWidth}
                     height={18}
                     fill="white"
                     stroke={FEATURE_COLORS.rake}
@@ -986,7 +1010,7 @@ export function SchematicRoofDiagram({
                     fontWeight="bold"
                     fill={FEATURE_COLORS.rake}
                   >
-                    {edgeId}: {length.toFixed(1)}'
+                    {edgeLabel} {length.toFixed(1)}'
                   </text>
                 </g>
               )}
@@ -1005,6 +1029,11 @@ export function SchematicRoofDiagram({
             // Set stroke width based on feature type
             const strokeWidth = feature.type === 'hip' ? 4 : feature.type === 'valley' ? 4 : 4;
             
+            // Type label for clarity
+            const typeLabel = feature.type.charAt(0).toUpperCase() + feature.type.slice(1);
+            const labelText = `${typeLabel} ${Math.round(feature.length)}'`;
+            const labelWidth = labelText.length * 6 + 8;
+            
             return (
               <g key={`${feature.type}-${i}`}>
                 <path
@@ -1016,7 +1045,7 @@ export function SchematicRoofDiagram({
                   strokeDasharray={isDashed ? '10,5' : undefined}
                 />
                 
-                {/* Length label at midpoint */}
+                {/* Length label at midpoint with type */}
                 {showLengthLabels && feature.length > 0 && feature.points.length >= 2 && (
                   (() => {
                     const midIdx = Math.floor(feature.points.length / 2);
@@ -1031,22 +1060,24 @@ export function SchematicRoofDiagram({
                     return (
                       <g transform={`translate(${midX}, ${midY}) rotate(${displayAngle})`}>
                         <rect
-                          x={-16}
+                          x={-labelWidth / 2}
                           y={-10}
-                          width={32}
+                          width={labelWidth}
                           height={16}
                           fill="white"
+                          stroke={feature.color}
+                          strokeWidth={1}
                           rx={3}
                         />
                         <text
                           x={0}
                           y={4}
                           textAnchor="middle"
-                          fontSize={11}
+                          fontSize={10}
                           fontWeight="bold"
                           fill={feature.color}
                         >
-                          {Math.round(feature.length)}'
+                          {labelText}
                         </text>
                       </g>
                     );
