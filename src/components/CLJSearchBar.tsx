@@ -52,7 +52,7 @@ export const CLJSearchBar = () => {
         const profileQuery = await supabase
           .from('profiles')
           .select('tenant_id')
-          .eq('user_id', user.id)
+          .eq('id', user.id)
           .maybeSingle();
         
         const profile = profileQuery.data as { tenant_id: string | null } | null;
