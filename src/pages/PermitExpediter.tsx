@@ -33,7 +33,7 @@ import {
 } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useJobsReadyForPermitting, useCreatePermitCase } from '@/hooks/usePermitCases';
-import { useProfile } from '@/hooks/useProfile';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 import { 
   PERMIT_STATUS_LABELS, 
   PERMIT_STATUS_COLORS,
@@ -43,8 +43,8 @@ import {
 import { PermitCaseDetailSheet } from '@/components/permits/PermitCaseDetailSheet';
 
 export default function PermitExpediter() {
-  const { data: profile } = useProfile();
-  const tenantId = profile?.tenant_id;
+  const { profile } = useUserProfile();
+  const tenantId = profile?.tenant_id || profile?.active_tenant_id;
   
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('all');

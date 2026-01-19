@@ -21,10 +21,29 @@ export async function buildPermitContext(
 ): Promise<PermitContext> {
   const { jobId, estimateId } = options;
 
-  // Fetch job
+  // Fetch job with contact data
   const { data: job, error: jobError } = await supabase
     .from('jobs')
-    .select('*')
+    .select(`
+      id,
+      job_number,
+      address_street,
+      tenant_id,
+      contact_id,
+      contacts (
+        id,
+        first_name,
+        last_name,
+        address_street,
+        address_city,
+        address_state,
+        address_zip,
+        latitude,
+        longitude,
+        phone,
+        email
+      )
+    `)
     .eq('id', jobId)
     .single();
 
@@ -50,23 +69,27 @@ export async function buildPermitContext(
     .limit(1)
     .maybeSingle();
 
-  // Build full address
-  const fullAddress = [job.street_address, job.city, job.state, job.zip]
-    .filter(Boolean)
-    .join(', ');
+  // Get address from contact or job
+  const contact = job.contacts;
+  const fullAddress = [
+    contact?.address_street || job.address_street,
+    contact?.address_city,
+    contact?.address_state,
+    contact?.address_zip
+  ].filter(Boolean).join(', ') || '';
 
   const context: PermitContext = {
     job: {
       id: job.id,
       address: {
         full: fullAddress,
-        street: job.street_address || undefined,
-        city: job.city || undefined,
-        state: job.state || undefined,
-        zip: job.zip || undefined,
+        street: contact?.address_street || job.address_street || undefined,
+        city: contact?.address_city || undefined,
+        state: contact?.address_state || undefined,
+        zip: contact?.address_zip || undefined,
       },
-      lat: job.latitude || undefined,
-      lng: job.longitude || undefined,
+      lat: contact?.latitude || undefined,
+      lng: contact?.longitude || undefined,
     },
     permit_case: {
       jurisdiction_type: null,

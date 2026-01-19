@@ -130,6 +130,7 @@ import CallCenterPage from "./pages/CallCenterPage";
 import Privacy from "./pages/legal/Privacy";
 import Terms from "./pages/legal/Terms";
 import Security from "./pages/legal/Security";
+import PermitExpediter from "./pages/PermitExpediter";
 // QueryClient is now imported from @/lib/queryClient with enterprise-optimized settings
 
 const AppContent = () => {
@@ -304,6 +305,7 @@ const AppContent = () => {
         <Route path="/templates/calc-editor/:templateId" element={<ProtectedRoute><CalcTemplateEditorPage /></ProtectedRoute>} />
         <Route path="/proposals/create/:projectId" element={<ProtectedRoute><ProposalEditorPage /></ProtectedRoute>} />
         <Route path="/proposal-analytics" element={<ProtectedRoute><ProposalAnalyticsPage /></ProtectedRoute>} />
+        <Route path="/permits/expediter" element={<ProtectedRoute><PermitExpediter /></ProtectedRoute>} />
         
         {/* Protected admin routes */}
         <Route path="/admin/companies" element={<ProtectedRoute><CompanyAdminPage /></ProtectedRoute>} />
