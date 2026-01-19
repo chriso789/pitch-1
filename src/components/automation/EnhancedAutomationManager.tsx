@@ -52,114 +52,66 @@ import {
 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { AUTOMATION_EVENTS } from '@/lib/automations/triggerAutomation';
+import type { Json } from '@/integrations/supabase/types';
 
 // ============================================
-// TYPES
+// TYPES - Aligned with actual database schema
 // ============================================
-
-interface Trigger {
-  type: string;
-  params?: Record<string, any>;
-}
-
-interface Condition {
-  field: string;
-  operator: string;
-  value: string;
-}
 
 interface Action {
   type: string;
   params: Record<string, any>;
 }
 
+interface TriggerConditions {
+  field?: string;
+  operator?: string;
+  value?: string;
+  conditions?: Array<{
+    field: string;
+    operator: string;
+    value: string;
+  }>;
+  logic?: 'and' | 'or';
+}
+
 interface Automation {
   id: string;
   name: string;
-  description?: string;
-  triggers: Trigger[];
-  conditions: Condition[];
-  actions: Action[];
-  condition_logic: 'and' | 'or';
-  is_active: boolean;
-  created_at: string;
-  updated_at: string;
+  description?: string | null;
+  trigger_type: string;
+  trigger_conditions: TriggerConditions | null;
+  actions: Action[] | null;
+  is_active: boolean | null;
+  created_at: string | null;
+  updated_at: string | null;
+  tenant_id: string;
 }
 
 interface AutomationLog {
-  id: number;
-  fired_at: string;
-  event: string;
-  cause: string;
-  input: any;
-  outcome: string;
-  result: any;
+  id: string;
+  triggered_at: string | null;
+  status: string | null;
+  trigger_data: any;
+  execution_result: any;
+  error_message: string | null;
 }
 
 // ============================================
 // CONSTANTS
 // ============================================
 
-const TRIGGER_CATEGORIES = {
-  lead: {
-    label: 'Lead Events',
-    icon: Zap,
-    triggers: [
-      { type: 'lead_created', label: 'Lead Created' },
-      { type: 'lead_status_changed', label: 'Lead Status Changed' },
-      { type: 'lead_assigned', label: 'Lead Assigned' },
-      { type: 'lead_score_updated', label: 'Lead Score Updated' },
-    ],
-  },
-  pipeline: {
-    label: 'Pipeline Events',
-    icon: ArrowRight,
-    triggers: [
-      { type: 'pipeline_stage_changed', label: 'Pipeline Stage Changed' },
-      { type: 'pipeline_entry_created', label: 'Pipeline Entry Created' },
-    ],
-  },
-  contract: {
-    label: 'Contract Events',
-    icon: FileText,
-    triggers: [
-      { type: 'contract_sent', label: 'Contract Sent' },
-      { type: 'contract_signed', label: 'Contract Signed' },
-      { type: 'contract_expired', label: 'Contract Expired' },
-      { type: 'change_order_requested', label: 'Change Order Requested' },
-    ],
-  },
-  job: {
-    label: 'Job Events',
-    icon: CheckSquare,
-    triggers: [
-      { type: 'job_created', label: 'Job Created' },
-      { type: 'job_milestone_changed', label: 'Job Milestone Changed' },
-      { type: 'job_completed', label: 'Job Completed' },
-    ],
-  },
-  appointment: {
-    label: 'Appointment Events',
-    icon: Clock,
-    triggers: [
-      { type: 'appointment_scheduled', label: 'Appointment Scheduled' },
-      { type: 'appointment_confirmed', label: 'Appointment Confirmed' },
-      { type: 'appointment_cancelled', label: 'Appointment Cancelled' },
-      { type: 'appointment_completed', label: 'Appointment Completed' },
-    ],
-  },
-  financial: {
-    label: 'Financial Events',
-    icon: CreditCard,
-    triggers: [
-      { type: 'payment_received', label: 'Payment Received' },
-      { type: 'invoice_sent', label: 'Invoice Sent' },
-      { type: 'invoice_overdue', label: 'Invoice Overdue' },
-      { type: 'financing_approved', label: 'Financing Approved' },
-    ],
-  },
-};
+const TRIGGER_TYPES = [
+  { type: 'lead_created', label: 'Lead Created', category: 'Lead Events', icon: Zap },
+  { type: 'lead_status_changed', label: 'Lead Status Changed', category: 'Lead Events', icon: Zap },
+  { type: 'pipeline_stage_changed', label: 'Pipeline Stage Changed', category: 'Pipeline Events', icon: ArrowRight },
+  { type: 'contract_sent', label: 'Contract Sent', category: 'Contract Events', icon: FileText },
+  { type: 'contract_signed', label: 'Contract Signed', category: 'Contract Events', icon: FileText },
+  { type: 'payment_received', label: 'Payment Received', category: 'Financial Events', icon: CreditCard },
+  { type: 'appointment_scheduled', label: 'Appointment Scheduled', category: 'Appointment Events', icon: Clock },
+  { type: 'job_milestone_changed', label: 'Job Milestone Changed', category: 'Job Events', icon: CheckSquare },
+  { type: 'manual', label: 'Manual Trigger', category: 'Other', icon: Play },
+];
 
 const CONDITION_OPERATORS = [
   { value: 'eq', label: 'Equals' },
@@ -197,14 +149,16 @@ export const EnhancedAutomationManager: React.FC = () => {
   const [logsLoading, setLogsLoading] = useState(false);
   const { toast } = useToast();
 
-  // Form state
+  // Form state - aligned with actual schema
   const [formData, setFormData] = useState({
     name: '',
     description: '',
     is_active: true,
-    condition_logic: 'and' as 'and' | 'or',
-    triggers: [] as Trigger[],
-    conditions: [] as Condition[],
+    trigger_type: '',
+    trigger_conditions: {
+      conditions: [] as Array<{ field: string; operator: string; value: string }>,
+      logic: 'and' as 'and' | 'or',
+    },
     actions: [] as Action[],
   });
 
@@ -217,13 +171,11 @@ export const EnhancedAutomationManager: React.FC = () => {
 
       if (error) throw error;
       
-      // Parse JSON fields
-      const parsed = (data || []).map((a: any) => ({
+      // Parse and normalize data
+      const parsed = (data || []).map((a) => ({
         ...a,
-        triggers: a.triggers || [],
-        conditions: a.conditions || [],
-        actions: a.actions || [],
-        condition_logic: a.condition_logic || 'and',
+        trigger_conditions: (a.trigger_conditions as unknown as TriggerConditions) || { conditions: [], logic: 'and' },
+        actions: Array.isArray(a.actions) ? (a.actions as unknown as Action[]) : [],
       }));
       
       setAutomations(parsed);
@@ -246,11 +198,11 @@ export const EnhancedAutomationManager: React.FC = () => {
         .from('automation_logs')
         .select('*')
         .eq('automation_id', automationId)
-        .order('fired_at', { ascending: false })
+        .order('triggered_at', { ascending: false })
         .limit(50);
 
       if (error) throw error;
-      setLogs((data || []) as unknown as AutomationLog[]);
+      setLogs((data || []) as AutomationLog[]);
     } catch (error) {
       console.error('Error fetching logs:', error);
     } finally {
@@ -273,9 +225,8 @@ export const EnhancedAutomationManager: React.FC = () => {
       name: '',
       description: '',
       is_active: true,
-      condition_logic: 'and',
-      triggers: [],
-      conditions: [],
+      trigger_type: '',
+      trigger_conditions: { conditions: [], logic: 'and' },
       actions: [],
     });
     setEditingAutomation(null);
@@ -288,14 +239,17 @@ export const EnhancedAutomationManager: React.FC = () => {
 
   const openEditDialog = (automation: Automation) => {
     setEditingAutomation(automation);
+    const triggerConds = automation.trigger_conditions || { conditions: [], logic: 'and' };
     setFormData({
       name: automation.name,
       description: automation.description || '',
-      is_active: automation.is_active,
-      condition_logic: automation.condition_logic,
-      triggers: automation.triggers,
-      conditions: automation.conditions,
-      actions: automation.actions,
+      is_active: automation.is_active ?? true,
+      trigger_type: automation.trigger_type,
+      trigger_conditions: {
+        conditions: triggerConds.conditions || [],
+        logic: triggerConds.logic || 'and',
+      },
+      actions: automation.actions || [],
     });
     setDialogOpen(true);
   };
@@ -306,8 +260,8 @@ export const EnhancedAutomationManager: React.FC = () => {
       return;
     }
 
-    if (formData.triggers.length === 0) {
-      toast({ title: 'Error', description: 'At least one trigger is required', variant: 'destructive' });
+    if (!formData.trigger_type) {
+      toast({ title: 'Error', description: 'Trigger type is required', variant: 'destructive' });
       return;
     }
 
@@ -320,10 +274,9 @@ export const EnhancedAutomationManager: React.FC = () => {
       const automationData = {
         name: formData.name,
         description: formData.description || null,
-        triggers: formData.triggers as unknown as any,
-        conditions: formData.conditions.length > 0 ? formData.conditions as unknown as any : null,
-        actions: formData.actions as unknown as any,
-        condition_logic: formData.condition_logic,
+        trigger_type: formData.trigger_type,
+        trigger_conditions: formData.trigger_conditions as unknown as Json,
+        actions: formData.actions as unknown as Json,
         is_active: formData.is_active,
         updated_at: new Date().toISOString(),
       };
@@ -359,7 +312,7 @@ export const EnhancedAutomationManager: React.FC = () => {
     }
   };
 
-  const toggleAutomation = async (id: string, currentStatus: boolean) => {
+  const toggleAutomation = async (id: string, currentStatus: boolean | null) => {
     try {
       const { error } = await supabase
         .from('automations')
@@ -404,45 +357,38 @@ export const EnhancedAutomationManager: React.FC = () => {
   };
 
   // ============================================
-  // TRIGGER MANAGEMENT
-  // ============================================
-
-  const addTrigger = (type: string) => {
-    setFormData((prev) => ({
-      ...prev,
-      triggers: [...prev.triggers, { type, params: {} }],
-    }));
-  };
-
-  const removeTrigger = (index: number) => {
-    setFormData((prev) => ({
-      ...prev,
-      triggers: prev.triggers.filter((_, i) => i !== index),
-    }));
-  };
-
-  // ============================================
   // CONDITION MANAGEMENT
   // ============================================
 
   const addCondition = () => {
     setFormData((prev) => ({
       ...prev,
-      conditions: [...prev.conditions, { field: '', operator: 'eq', value: '' }],
+      trigger_conditions: {
+        ...prev.trigger_conditions,
+        conditions: [...prev.trigger_conditions.conditions, { field: '', operator: 'eq', value: '' }],
+      },
     }));
   };
 
-  const updateCondition = (index: number, updates: Partial<Condition>) => {
+  const updateCondition = (index: number, updates: Partial<{ field: string; operator: string; value: string }>) => {
     setFormData((prev) => ({
       ...prev,
-      conditions: prev.conditions.map((c, i) => (i === index ? { ...c, ...updates } : c)),
+      trigger_conditions: {
+        ...prev.trigger_conditions,
+        conditions: prev.trigger_conditions.conditions.map((c, i) => 
+          i === index ? { ...c, ...updates } : c
+        ),
+      },
     }));
   };
 
   const removeCondition = (index: number) => {
     setFormData((prev) => ({
       ...prev,
-      conditions: prev.conditions.filter((_, i) => i !== index),
+      trigger_conditions: {
+        ...prev.trigger_conditions,
+        conditions: prev.trigger_conditions.conditions.filter((_, i) => i !== index),
+      },
     }));
   };
 
@@ -509,97 +455,254 @@ export const EnhancedAutomationManager: React.FC = () => {
   };
 
   // ============================================
+  // RENDER HELPERS
+  // ============================================
+
+  const getTriggerLabel = (type: string) => {
+    return TRIGGER_TYPES.find((t) => t.type === type)?.label || type;
+  };
+
+  const getActionIcon = (type: string) => {
+    const action = ACTION_TYPES.find((a) => a.type === type);
+    return action?.icon || Zap;
+  };
+
+  const renderActionParams = (action: Action, index: number) => {
+    const { type, params } = action;
+
+    switch (type) {
+      case 'send_email':
+        return (
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Subject</Label>
+              <Input
+                value={params.subject || ''}
+                onChange={(e) => updateAction(index, { ...params, subject: e.target.value })}
+                placeholder="Email subject..."
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Body</Label>
+              <Textarea
+                value={params.body || ''}
+                onChange={(e) => updateAction(index, { ...params, body: e.target.value })}
+                placeholder="Email body... Use {{contact.first_name}} for dynamic tags"
+                rows={3}
+              />
+            </div>
+          </div>
+        );
+
+      case 'send_sms':
+        return (
+          <div>
+            <Label className="text-xs">Message</Label>
+            <Textarea
+              value={params.message || ''}
+              onChange={(e) => updateAction(index, { ...params, message: e.target.value })}
+              placeholder="SMS message... Use {{contact.first_name}} for dynamic tags"
+              rows={2}
+            />
+          </div>
+        );
+
+      case 'assign_task':
+        return (
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">Task Title</Label>
+              <Input
+                value={params.title || ''}
+                onChange={(e) => updateAction(index, { ...params, title: e.target.value })}
+                placeholder="Task title..."
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label className="text-xs">Due In (hours)</Label>
+                <Input
+                  type="number"
+                  value={params.due_date_offset || 24}
+                  onChange={(e) => updateAction(index, { ...params, due_date_offset: parseInt(e.target.value) })}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Priority</Label>
+                <Select
+                  value={params.priority || 'medium'}
+                  onValueChange={(v) => updateAction(index, { ...params, priority: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="low">Low</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="high">High</SelectItem>
+                    <SelectItem value="urgent">Urgent</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          </div>
+        );
+
+      case 'webhook':
+        return (
+          <div className="space-y-3">
+            <div>
+              <Label className="text-xs">URL</Label>
+              <Input
+                value={params.url || ''}
+                onChange={(e) => updateAction(index, { ...params, url: e.target.value })}
+                placeholder="https://..."
+              />
+            </div>
+            <div>
+              <Label className="text-xs">Method</Label>
+              <Select
+                value={params.method || 'POST'}
+                onValueChange={(v) => updateAction(index, { ...params, method: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="POST">POST</SelectItem>
+                  <SelectItem value="PUT">PUT</SelectItem>
+                  <SelectItem value="GET">GET</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        );
+
+      case 'change_status':
+        return (
+          <div>
+            <Label className="text-xs">New Status</Label>
+            <Input
+              value={params.new_status || ''}
+              onChange={(e) => updateAction(index, { ...params, new_status: e.target.value })}
+              placeholder="e.g., qualified, appointment_set"
+            />
+          </div>
+        );
+
+      default:
+        return (
+          <div className="text-xs text-muted-foreground">
+            Configure this action via JSON params
+          </div>
+        );
+    }
+  };
+
+  // ============================================
   // RENDER
   // ============================================
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-12">
-        <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-2xl font-bold">Automation Manager</h2>
+          <h2 className="text-2xl font-bold">Automations</h2>
           <p className="text-muted-foreground">
-            Create powerful automations to streamline your workflows
+            Create automated workflows triggered by events
           </p>
         </div>
         <Button onClick={openCreateDialog}>
-          <Plus className="w-4 h-4 mr-2" />
+          <Plus className="h-4 w-4 mr-2" />
           Create Automation
         </Button>
       </div>
 
-      <Tabs defaultValue="automations" className="w-full">
-        <TabsList>
-          <TabsTrigger value="automations">Automations ({automations.length})</TabsTrigger>
-          <TabsTrigger value="logs">Execution Logs</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="automations" className="mt-4">
-          {automations.length === 0 ? (
-            <Card>
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <Zap className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-medium">No automations yet</h3>
-                <p className="text-muted-foreground mb-4">
-                  Create your first automation to get started
-                </p>
-                <Button onClick={openCreateDialog}>Create Automation</Button>
+      {loading ? (
+        <div className="flex items-center justify-center py-12">
+          <div className="animate-spin h-8 w-8 border-2 border-primary border-t-transparent rounded-full" />
+        </div>
+      ) : automations.length === 0 ? (
+        <Card>
+          <CardContent className="py-12 text-center">
+            <Zap className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
+            <h3 className="text-lg font-semibold mb-2">No automations yet</h3>
+            <p className="text-muted-foreground mb-4">
+              Create your first automation to streamline your workflows
+            </p>
+            <Button onClick={openCreateDialog}>
+              <Plus className="h-4 w-4 mr-2" />
+              Create Automation
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="grid gap-4">
+          {automations.map((automation) => (
+            <Card key={automation.id}>
+              <CardContent className="p-4">
+                <div className="flex items-start justify-between">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h3 className="font-semibold">{automation.name}</h3>
+                      <Badge variant={automation.is_active ? 'default' : 'secondary'}>
+                        {automation.is_active ? 'Active' : 'Inactive'}
+                      </Badge>
+                    </div>
+                    {automation.description && (
+                      <p className="text-sm text-muted-foreground mb-2">
+                        {automation.description}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Badge variant="outline" className="text-xs">
+                        <Zap className="h-3 w-3 mr-1" />
+                        {getTriggerLabel(automation.trigger_type)}
+                      </Badge>
+                      {(automation.actions?.length || 0) > 0 && (
+                        <span>→ {automation.actions?.length} action(s)</span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Switch
+                      checked={automation.is_active ?? false}
+                      onCheckedChange={() => toggleAutomation(automation.id, automation.is_active)}
+                    />
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => openEditDialog(automation)}
+                    >
+                      <Edit className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => {
+                        setSelectedAutomationId(automation.id);
+                      }}
+                    >
+                      <History className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => deleteAutomation(automation.id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                </div>
               </CardContent>
             </Card>
-          ) : (
-            <div className="grid gap-4">
-              {automations.map((automation) => (
-                <AutomationCard
-                  key={automation.id}
-                  automation={automation}
-                  onEdit={() => openEditDialog(automation)}
-                  onToggle={() => toggleAutomation(automation.id, automation.is_active)}
-                  onDelete={() => deleteAutomation(automation.id)}
-                  onViewLogs={() => setSelectedAutomationId(automation.id)}
-                />
-              ))}
-            </div>
-          )}
-        </TabsContent>
-
-        <TabsContent value="logs" className="mt-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <History className="h-5 w-5" />
-                Execution History
-              </CardTitle>
-              <CardDescription>
-                {selectedAutomationId
-                  ? `Showing logs for selected automation`
-                  : 'Select an automation to view its logs'}
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              {selectedAutomationId ? (
-                <LogsTable logs={logs} loading={logsLoading} />
-              ) : (
-                <div className="text-center py-8 text-muted-foreground">
-                  <History className="h-8 w-8 mx-auto mb-2 opacity-50" />
-                  <p>Click "View Logs" on an automation to see its execution history</p>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+          ))}
+        </div>
+      )}
 
       {/* Create/Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
+        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingAutomation ? 'Edit Automation' : 'Create Automation'}
@@ -609,140 +712,106 @@ export const EnhancedAutomationManager: React.FC = () => {
             </DialogDescription>
           </DialogHeader>
 
-          <ScrollArea className="flex-1 pr-4">
-            <div className="space-y-6 py-4">
-              {/* Basic Info */}
-              <div className="space-y-4">
-                <div>
-                  <Label htmlFor="name">Name *</Label>
-                  <Input
-                    id="name"
-                    value={formData.name}
-                    onChange={(e) => setFormData((p) => ({ ...p, name: e.target.value }))}
-                    placeholder="e.g., Welcome Email Sequence"
-                  />
-                </div>
-                <div>
-                  <Label htmlFor="description">Description</Label>
-                  <Textarea
-                    id="description"
-                    value={formData.description}
-                    onChange={(e) => setFormData((p) => ({ ...p, description: e.target.value }))}
-                    placeholder="Describe what this automation does..."
-                    rows={2}
-                  />
-                </div>
-                <div className="flex items-center gap-2">
-                  <Switch
-                    id="active"
-                    checked={formData.is_active}
-                    onCheckedChange={(checked) => setFormData((p) => ({ ...p, is_active: checked }))}
-                  />
-                  <Label htmlFor="active">Active</Label>
-                </div>
+          <Tabs defaultValue="basics" className="w-full">
+            <TabsList className="grid w-full grid-cols-4">
+              <TabsTrigger value="basics">Basics</TabsTrigger>
+              <TabsTrigger value="trigger">Trigger</TabsTrigger>
+              <TabsTrigger value="conditions">Conditions</TabsTrigger>
+              <TabsTrigger value="actions">Actions</TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="basics" className="space-y-4 mt-4">
+              <div>
+                <Label>Name *</Label>
+                <Input
+                  value={formData.name}
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
+                  placeholder="My Automation"
+                />
               </div>
+              <div>
+                <Label>Description</Label>
+                <Textarea
+                  value={formData.description}
+                  onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+                  placeholder="Describe what this automation does..."
+                  rows={3}
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <Switch
+                  checked={formData.is_active}
+                  onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                />
+                <Label>Active</Label>
+              </div>
+            </TabsContent>
 
-              <Separator />
-
-              {/* Triggers */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-medium">Triggers</h3>
-                    <p className="text-sm text-muted-foreground">
-                      When should this automation run?
-                    </p>
-                  </div>
-                </div>
-
-                {formData.triggers.length > 0 && (
-                  <div className="space-y-2">
-                    {formData.triggers.map((trigger, index) => (
-                      <div
-                        key={index}
-                        className="flex items-center gap-2 p-3 bg-muted rounded-lg"
-                      >
-                        <Zap className="h-4 w-4 text-primary" />
-                        <span className="flex-1">{trigger.type.replace(/_/g, ' ')}</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => removeTrigger(index)}
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                <Accordion type="single" collapsible className="w-full">
-                  {Object.entries(TRIGGER_CATEGORIES).map(([key, category]) => (
-                    <AccordionItem key={key} value={key}>
-                      <AccordionTrigger className="hover:no-underline">
+            <TabsContent value="trigger" className="space-y-4 mt-4">
+              <div>
+                <Label>Trigger Event *</Label>
+                <Select
+                  value={formData.trigger_type}
+                  onValueChange={(v) => setFormData({ ...formData, trigger_type: v })}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select a trigger..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TRIGGER_TYPES.map((trigger) => (
+                      <SelectItem key={trigger.type} value={trigger.type}>
                         <div className="flex items-center gap-2">
-                          <category.icon className="h-4 w-4" />
-                          {category.label}
+                          <trigger.icon className="h-4 w-4" />
+                          {trigger.label}
                         </div>
-                      </AccordionTrigger>
-                      <AccordionContent>
-                        <div className="grid grid-cols-2 gap-2 pt-2">
-                          {category.triggers.map((trigger) => (
-                            <Button
-                              key={trigger.type}
-                              variant="outline"
-                              size="sm"
-                              className="justify-start"
-                              onClick={() => addTrigger(trigger.type)}
-                              disabled={formData.triggers.some((t) => t.type === trigger.type)}
-                            >
-                              <Plus className="h-3 w-3 mr-2" />
-                              {trigger.label}
-                            </Button>
-                          ))}
-                        </div>
-                      </AccordionContent>
-                    </AccordionItem>
-                  ))}
-                </Accordion>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              {formData.trigger_type && (
+                <div className="p-4 bg-muted rounded-lg">
+                  <p className="text-sm">
+                    This automation will run when: <strong>{getTriggerLabel(formData.trigger_type)}</strong>
+                  </p>
+                </div>
+              )}
+            </TabsContent>
+
+            <TabsContent value="conditions" className="space-y-4 mt-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <Label>Conditions</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Optional filters to control when the automation runs
+                  </p>
+                </div>
+                <Select
+                  value={formData.trigger_conditions.logic}
+                  onValueChange={(v: 'and' | 'or') => 
+                    setFormData({
+                      ...formData,
+                      trigger_conditions: { ...formData.trigger_conditions, logic: v },
+                    })
+                  }
+                >
+                  <SelectTrigger className="w-24">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="and">AND</SelectItem>
+                    <SelectItem value="or">OR</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
 
-              <Separator />
-
-              {/* Conditions */}
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-medium">Conditions (Optional)</h3>
-                    <p className="text-sm text-muted-foreground">
-                      Only run when these conditions are met
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Label className="text-sm">Match:</Label>
-                    <Select
-                      value={formData.condition_logic}
-                      onValueChange={(v) =>
-                        setFormData((p) => ({ ...p, condition_logic: v as 'and' | 'or' }))
-                      }
-                    >
-                      <SelectTrigger className="w-24">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="and">All</SelectItem>
-                        <SelectItem value="or">Any</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-
-                {formData.conditions.map((condition, index) => (
+              <div className="space-y-2">
+                {formData.trigger_conditions.conditions.map((condition, index) => (
                   <div key={index} className="flex items-center gap-2">
                     <Input
-                      placeholder="Field (e.g., contact.status)"
                       value={condition.field}
                       onChange={(e) => updateCondition(index, { field: e.target.value })}
+                      placeholder="Field (e.g., contact.status)"
                       className="flex-1"
                     />
                     <Select
@@ -761,61 +830,95 @@ export const EnhancedAutomationManager: React.FC = () => {
                       </SelectContent>
                     </Select>
                     <Input
-                      placeholder="Value"
                       value={condition.value}
                       onChange={(e) => updateCondition(index, { value: e.target.value })}
+                      placeholder="Value"
                       className="flex-1"
                     />
-                    <Button variant="ghost" size="sm" onClick={() => removeCondition(index)}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeCondition(index)}
+                    >
                       <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 ))}
-
-                <Button variant="outline" size="sm" onClick={addCondition}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Add Condition
-                </Button>
               </div>
 
-              <Separator />
+              <Button variant="outline" size="sm" onClick={addCondition}>
+                <Plus className="h-4 w-4 mr-2" />
+                Add Condition
+              </Button>
+            </TabsContent>
 
-              {/* Actions */}
-              <div className="space-y-4">
+            <TabsContent value="actions" className="space-y-4 mt-4">
+              <div className="flex items-center justify-between">
                 <div>
-                  <h3 className="text-lg font-medium">Actions</h3>
-                  <p className="text-sm text-muted-foreground">
-                    What should happen when triggered?
+                  <Label>Actions *</Label>
+                  <p className="text-xs text-muted-foreground">
+                    What should happen when this automation runs
                   </p>
                 </div>
-
-                {formData.actions.map((action, index) => (
-                  <ActionEditor
-                    key={index}
-                    action={action}
-                    onUpdate={(params) => updateAction(index, params)}
-                    onRemove={() => removeAction(index)}
-                  />
-                ))}
-
-                <div className="flex flex-wrap gap-2">
-                  {ACTION_TYPES.map((actionType) => (
-                    <Button
-                      key={actionType.type}
-                      variant="outline"
-                      size="sm"
-                      onClick={() => addAction(actionType.type)}
-                    >
-                      <actionType.icon className="h-4 w-4 mr-2" />
-                      {actionType.label}
-                    </Button>
-                  ))}
-                </div>
               </div>
-            </div>
-          </ScrollArea>
 
-          <DialogFooter className="mt-4">
+              <div className="space-y-4">
+                {formData.actions.map((action, index) => {
+                  const ActionIcon = getActionIcon(action.type);
+                  return (
+                    <Card key={index}>
+                      <CardContent className="p-4">
+                        <div className="flex items-start justify-between mb-3">
+                          <div className="flex items-center gap-2">
+                            <ActionIcon className="h-4 w-4" />
+                            <span className="font-medium text-sm">
+                              {ACTION_TYPES.find((a) => a.type === action.type)?.label}
+                            </span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeAction(index)}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                        {renderActionParams(action, index)}
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+
+              <Accordion type="single" collapsible>
+                <AccordionItem value="add-action">
+                  <AccordionTrigger>
+                    <div className="flex items-center gap-2">
+                      <Plus className="h-4 w-4" />
+                      Add Action
+                    </div>
+                  </AccordionTrigger>
+                  <AccordionContent>
+                    <div className="grid grid-cols-2 gap-2 pt-2">
+                      {ACTION_TYPES.map((action) => (
+                        <Button
+                          key={action.type}
+                          variant="outline"
+                          className="justify-start"
+                          onClick={() => addAction(action.type)}
+                        >
+                          <action.icon className="h-4 w-4 mr-2" />
+                          {action.label}
+                        </Button>
+                      ))}
+                    </div>
+                  </AccordionContent>
+                </AccordionItem>
+              </Accordion>
+            </TabsContent>
+          </Tabs>
+
+          <DialogFooter>
             <Button variant="outline" onClick={() => setDialogOpen(false)}>
               Cancel
             </Button>
@@ -825,404 +928,60 @@ export const EnhancedAutomationManager: React.FC = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
-  );
-};
 
-// ============================================
-// SUB-COMPONENTS
-// ============================================
+      {/* Logs Dialog */}
+      <Dialog open={!!selectedAutomationId} onOpenChange={() => setSelectedAutomationId(null)}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Automation Logs</DialogTitle>
+            <DialogDescription>
+              Recent execution history for this automation
+            </DialogDescription>
+          </DialogHeader>
 
-const AutomationCard: React.FC<{
-  automation: Automation;
-  onEdit: () => void;
-  onToggle: () => void;
-  onDelete: () => void;
-  onViewLogs: () => void;
-}> = ({ automation, onEdit, onToggle, onDelete, onViewLogs }) => {
-  const triggerLabel = automation.triggers.length > 0
-    ? automation.triggers.map((t) => t.type.replace(/_/g, ' ')).join(', ')
-    : 'No triggers';
-
-  const actionCount = automation.actions.length;
-
-  return (
-    <Card>
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div className="space-y-1">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              {automation.name}
-              <Badge variant={automation.is_active ? 'default' : 'secondary'}>
-                {automation.is_active ? 'Active' : 'Inactive'}
-              </Badge>
-            </CardTitle>
-            {automation.description && (
-              <CardDescription>{automation.description}</CardDescription>
-            )}
-          </div>
-          <div className="flex items-center gap-1">
-            <Button variant="ghost" size="sm" onClick={onViewLogs}>
-              <History className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="sm" onClick={onToggle}>
-              {automation.is_active ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-            </Button>
-            <Button variant="ghost" size="sm" onClick={onEdit}>
-              <Edit className="h-4 w-4" />
-            </Button>
-            <Button variant="ghost" size="sm" onClick={onDelete}>
-              <Trash2 className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="flex items-center gap-4 text-sm text-muted-foreground">
-          <div className="flex items-center gap-1">
-            <Zap className="h-4 w-4" />
-            <span className="capitalize">{triggerLabel}</span>
-          </div>
-          <div className="flex items-center gap-1">
-            <ArrowRight className="h-4 w-4" />
-            <span>{actionCount} action{actionCount !== 1 ? 's' : ''}</span>
-          </div>
-          {automation.conditions.length > 0 && (
-            <div className="flex items-center gap-1">
-              <AlertCircle className="h-4 w-4" />
-              <span>{automation.conditions.length} condition{automation.conditions.length !== 1 ? 's' : ''}</span>
-            </div>
-          )}
-        </div>
-      </CardContent>
-    </Card>
-  );
-};
-
-const ActionEditor: React.FC<{
-  action: Action;
-  onUpdate: (params: Record<string, any>) => void;
-  onRemove: () => void;
-}> = ({ action, onUpdate, onRemove }) => {
-  const actionInfo = ACTION_TYPES.find((a) => a.type === action.type);
-  const Icon = actionInfo?.icon || Zap;
-
-  const updateParam = (key: string, value: any) => {
-    onUpdate({ ...action.params, [key]: value });
-  };
-
-  return (
-    <Card className="bg-muted/50">
-      <CardHeader className="pb-3">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Icon className="h-4 w-4 text-primary" />
-            <span className="font-medium">{actionInfo?.label || action.type}</span>
-          </div>
-          <Button variant="ghost" size="sm" onClick={onRemove}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-3">
-        {action.type === 'send_email' && (
-          <>
-            <div>
-              <Label className="text-xs">Recipient Type</Label>
-              <Select
-                value={action.params.recipient_type || 'contact'}
-                onValueChange={(v) => updateParam('recipient_type', v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="contact">Contact/Homeowner</SelectItem>
-                  <SelectItem value="sales_rep">Sales Rep</SelectItem>
-                  <SelectItem value="project_manager">Project Manager</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Subject</Label>
-              <Input
-                value={action.params.subject || ''}
-                onChange={(e) => updateParam('subject', e.target.value)}
-                placeholder="Email subject..."
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Body (supports &#123;&#123;tags&#125;&#125;)</Label>
-              <Textarea
-                value={action.params.body || ''}
-                onChange={(e) => updateParam('body', e.target.value)}
-                placeholder="Email body..."
-                rows={3}
-              />
-            </div>
-          </>
-        )}
-
-        {action.type === 'send_sms' && (
-          <>
-            <div>
-              <Label className="text-xs">Recipient Type</Label>
-              <Select
-                value={action.params.recipient_type || 'contact'}
-                onValueChange={(v) => updateParam('recipient_type', v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="contact">Contact/Homeowner</SelectItem>
-                  <SelectItem value="sales_rep">Sales Rep</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">Message (supports &#123;&#123;tags&#125;&#125;)</Label>
-              <Textarea
-                value={action.params.message || ''}
-                onChange={(e) => updateParam('message', e.target.value)}
-                placeholder="SMS message..."
-                rows={2}
-              />
-            </div>
-          </>
-        )}
-
-        {action.type === 'assign_task' && (
-          <>
-            <div>
-              <Label className="text-xs">Task Title</Label>
-              <Input
-                value={action.params.title || ''}
-                onChange={(e) => updateParam('title', e.target.value)}
-                placeholder="Task title..."
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Description</Label>
-              <Textarea
-                value={action.params.description || ''}
-                onChange={(e) => updateParam('description', e.target.value)}
-                placeholder="Task description..."
-                rows={2}
-              />
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <Label className="text-xs">Due In (hours)</Label>
-                <Input
-                  type="number"
-                  value={action.params.due_date_offset || 24}
-                  onChange={(e) => updateParam('due_date_offset', parseInt(e.target.value))}
-                />
+          <ScrollArea className="h-[400px]">
+            {logsLoading ? (
+              <div className="flex items-center justify-center py-8">
+                <div className="animate-spin h-6 w-6 border-2 border-primary border-t-transparent rounded-full" />
               </div>
-              <div>
-                <Label className="text-xs">Priority</Label>
-                <Select
-                  value={action.params.priority || 'medium'}
-                  onValueChange={(v) => updateParam('priority', v)}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="low">Low</SelectItem>
-                    <SelectItem value="medium">Medium</SelectItem>
-                    <SelectItem value="high">High</SelectItem>
-                  </SelectContent>
-                </Select>
+            ) : logs.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                No execution logs yet
               </div>
-            </div>
-            <div>
-              <Label className="text-xs">Assign To</Label>
-              <Select
-                value={action.params.assignee_type || 'sales_rep'}
-                onValueChange={(v) => updateParam('assignee_type', v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="sales_rep">Sales Rep</SelectItem>
-                  <SelectItem value="project_manager">Project Manager</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </>
-        )}
-
-        {action.type === 'change_status' && (
-          <>
-            <div>
-              <Label className="text-xs">Entity Type</Label>
-              <Select
-                value={action.params.entity_type || 'contact'}
-                onValueChange={(v) => updateParam('entity_type', v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="contact">Contact/Lead</SelectItem>
-                  <SelectItem value="job">Job</SelectItem>
-                  <SelectItem value="project">Project</SelectItem>
-                  <SelectItem value="pipeline_entry">Pipeline Entry</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label className="text-xs">New Status</Label>
-              <Input
-                value={action.params.new_status || ''}
-                onChange={(e) => updateParam('new_status', e.target.value)}
-                placeholder="New status value..."
-              />
-            </div>
-          </>
-        )}
-
-        {action.type === 'webhook' && (
-          <>
-            <div>
-              <Label className="text-xs">Webhook URL</Label>
-              <Input
-                value={action.params.url || ''}
-                onChange={(e) => updateParam('url', e.target.value)}
-                placeholder="https://..."
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Method</Label>
-              <Select
-                value={action.params.method || 'POST'}
-                onValueChange={(v) => updateParam('method', v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="POST">POST</SelectItem>
-                  <SelectItem value="PUT">PUT</SelectItem>
-                  <SelectItem value="PATCH">PATCH</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </>
-        )}
-
-        {action.type === 'push_doc' && (
-          <>
-            <div>
-              <Label className="text-xs">Template ID</Label>
-              <Input
-                value={action.params.template_id || ''}
-                onChange={(e) => updateParam('template_id', e.target.value)}
-                placeholder="Document template ID..."
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Send To</Label>
-              <Select
-                value={action.params.recipient_type || 'contact'}
-                onValueChange={(v) => updateParam('recipient_type', v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="contact">Contact/Homeowner</SelectItem>
-                  <SelectItem value="sales_rep">Sales Rep</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </>
-        )}
-
-        {action.type === 'create_payment_link' && (
-          <>
-            <div>
-              <Label className="text-xs">Product Name</Label>
-              <Input
-                value={action.params.product_name || ''}
-                onChange={(e) => updateParam('product_name', e.target.value)}
-                placeholder="Payment description..."
-              />
-            </div>
-            <div>
-              <Label className="text-xs">Send To</Label>
-              <Select
-                value={action.params.recipient_type || 'contact'}
-                onValueChange={(v) => updateParam('recipient_type', v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="contact">Contact/Homeowner</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </>
-        )}
-      </CardContent>
-    </Card>
-  );
-};
-
-const LogsTable: React.FC<{ logs: AutomationLog[]; loading: boolean }> = ({ logs, loading }) => {
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center py-8">
-        <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-primary"></div>
-      </div>
-    );
-  }
-
-  if (logs.length === 0) {
-    return (
-      <div className="text-center py-8 text-muted-foreground">
-        <History className="h-8 w-8 mx-auto mb-2 opacity-50" />
-        <p>No execution logs yet</p>
-      </div>
-    );
-  }
-
-  return (
-    <ScrollArea className="h-[400px]">
-      <div className="space-y-2">
-        {logs.map((log) => (
-          <div key={log.id} className="flex items-start gap-3 p-3 bg-muted/50 rounded-lg">
-            {log.outcome === 'success' ? (
-              <CheckCircle className="h-5 w-5 text-success mt-0.5 shrink-0" />
-            ) : log.outcome === 'error' ? (
-              <XCircle className="h-5 w-5 text-destructive mt-0.5 shrink-0" />
             ) : (
-              <AlertCircle className="h-5 w-5 text-warning mt-0.5 shrink-0" />
-            )}
-            <div className="flex-1 space-y-1 min-w-0">
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="capitalize">
-                  {log.event?.replace(/_/g, ' ')}
-                </Badge>
-                <span className="text-xs text-muted-foreground">
-                  {new Date(log.fired_at).toLocaleString()}
-                </span>
+              <div className="space-y-2">
+                {logs.map((log) => (
+                  <Card key={log.id}>
+                    <CardContent className="p-3">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          {log.status === 'success' ? (
+                            <CheckCircle className="h-4 w-4 text-green-500" />
+                          ) : log.status === 'failed' ? (
+                            <XCircle className="h-4 w-4 text-red-500" />
+                          ) : (
+                            <AlertCircle className="h-4 w-4 text-yellow-500" />
+                          )}
+                          <span className="text-sm font-medium">
+                            {log.status || 'Unknown'}
+                          </span>
+                        </div>
+                        <span className="text-xs text-muted-foreground">
+                          {log.triggered_at ? new Date(log.triggered_at).toLocaleString() : 'N/A'}
+                        </span>
+                      </div>
+                      {log.error_message && (
+                        <p className="text-xs text-red-500 mt-2">{log.error_message}</p>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
               </div>
-              <p className="text-sm text-muted-foreground">{log.cause}</p>
-              {log.result && (
-                <pre className="text-xs bg-background p-2 rounded overflow-auto max-h-24">
-                  {JSON.stringify(log.result, null, 2)}
-                </pre>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-    </ScrollArea>
+            )}
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
+    </div>
   );
 };
 

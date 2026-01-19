@@ -190,6 +190,34 @@ export default function PropertyInfoPanel({
   // Legacy distance in miles for display
   const distance = verification.distanceMiles;
 
+  // Helper to parse first/last name from owner name
+  const parseFirstName = (name: string | undefined): string => {
+    if (!name) return 'Unknown';
+    const parts = name.trim().split(/\s+/);
+    return parts[0] || 'Unknown';
+  };
+
+  const parseLastName = (name: string | undefined): string => {
+    if (!name) return 'Owner';
+    const parts = name.trim().split(/\s+/);
+    return parts.slice(1).join(' ') || 'Owner';
+  };
+
+  // Map disposition to qualification status
+  const mapDispositionToStatus = (disposition: string): string => {
+    const statusMap: Record<string, string> = {
+      'interested': 'qualified',
+      'new_roof': 'qualified',
+      'follow_up': 'follow_up',
+      'callback': 'follow_up',
+      'not_home': 'new_lead',
+      'not_contacted': 'new_lead',
+      'not_interested': 'unqualified',
+      'unqualified': 'unqualified',
+    };
+    return statusMap[disposition] || 'new_lead';
+  };
+
   const handleDisposition = async (dispositionId: string) => {
     if (!profile?.tenant_id || !property.id) return;
 
@@ -234,7 +262,7 @@ export default function PropertyInfoPanel({
         property_lat: propertyLat,
         property_lng: propertyLng,
         distance_meters: verification.distanceMeters,
-        gps_accuracy: null, // Will be populated from geolocation API if available
+        gps_accuracy: null,
         is_verified: verification.isWithinRange,
         verification_status: verification.verificationStatus,
         started_at: new Date().toISOString(),
@@ -253,6 +281,65 @@ export default function PropertyInfoPanel({
           verification_status: verification.verificationStatus
         }
       });
+
+      // Auto-create contact for positive dispositions
+      const POSITIVE_DISPOSITIONS = ['interested', 'follow_up', 'callback', 'new_roof'];
+      
+      if (POSITIVE_DISPOSITIONS.includes(dispositionId)) {
+        // Check if contact already exists for this property
+        const { data: existingContact } = await supabase
+          .from('contacts')
+          .select('id')
+          .eq('canvassiq_property_id', property.id)
+          .maybeSingle();
+
+        if (!existingContact) {
+          const selectedOwnerData = enrichedOwners.find(o => o.id === selectedOwner) || displayOwners[0];
+          const ownerFullName = selectedOwnerData?.name || property.owner_name || homeowner?.name;
+
+          const newContact = {
+            tenant_id: profile.tenant_id,
+            type: 'homeowner' as const,
+            first_name: parseFirstName(ownerFullName),
+            last_name: parseLastName(ownerFullName),
+            phone: phoneNumbers?.[0] || null,
+            email: emails?.[0] || null,
+            address_street: address?.street || address?.formatted || fullAddress,
+            address_city: address?.city || null,
+            address_state: address?.state || null,
+            address_zip: address?.zip || null,
+            latitude: propertyLat,
+            longitude: propertyLng,
+            lead_source: 'Storm Canvass',
+            qualification_status: mapDispositionToStatus(dispositionId),
+            canvassiq_property_id: property.id,
+            created_by: profile.id,
+            metadata: {
+              canvass_disposition: dispositionId,
+              canvassed_at: new Date().toISOString(),
+              canvassed_by: profile.id,
+              distance_meters: verification.distanceMeters,
+              is_verified: verification.isWithinRange,
+            }
+          };
+
+          const { data: createdContact, error: contactError } = await supabase
+            .from('contacts')
+            .insert([newContact])
+            .select()
+            .single();
+
+          if (createdContact && !contactError) {
+            // Link property to contact
+            await supabase
+              .from('canvassiq_properties')
+              .update({ contact_id: createdContact.id })
+              .eq('id', property.id);
+
+            toast.success(`Contact created: ${createdContact.first_name} ${createdContact.last_name}`);
+          }
+        }
+      }
 
       const verifiedText = verification.isWithinRange ? ' ✓ Verified' : '';
       toast.success(`Marked as ${dispositionId.replace(/_/g, ' ')}${verifiedText}`);
@@ -280,9 +367,52 @@ export default function PropertyInfoPanel({
     }
   };
 
-  const handleAddCustomer = () => {
-    // Would integrate with lead creation flow
-    toast.info('Opening lead creation...');
+  const handleAddCustomer = async () => {
+    if (!profile?.tenant_id || !property?.id) return;
+
+    try {
+      const selectedOwnerData = enrichedOwners.find(o => o.id === selectedOwner) || displayOwners[0];
+      const ownerFullName = selectedOwnerData?.name || property.owner_name || homeowner?.name;
+
+      const newContact = {
+        tenant_id: profile.tenant_id,
+        type: 'homeowner' as const,
+        first_name: parseFirstName(ownerFullName),
+        last_name: parseLastName(ownerFullName),
+        phone: phoneNumbers?.[0] || null,
+        email: emails?.[0] || null,
+        address_street: address?.street || address?.formatted || fullAddress,
+        address_city: address?.city || null,
+        address_state: address?.state || null,
+        address_zip: address?.zip || null,
+        latitude: propertyLat,
+        longitude: propertyLng,
+        lead_source: 'Storm Canvass',
+        qualification_status: property.disposition ? mapDispositionToStatus(property.disposition) : 'new_lead',
+        canvassiq_property_id: property.id,
+        created_by: profile.id,
+      };
+
+      const { data: createdContact, error } = await supabase
+        .from('contacts')
+        .insert([newContact])
+        .select()
+        .single();
+
+      if (error) throw error;
+
+      // Link property to contact
+      await supabase
+        .from('canvassiq_properties')
+        .update({ contact_id: createdContact.id })
+        .eq('id', property.id);
+
+      toast.success('Customer added successfully!');
+      onOpenChange(false);
+    } catch (err: any) {
+      console.error('Error creating contact:', err);
+      toast.error('Failed to add customer');
+    }
   };
 
   const handleToolAction = (tool: string) => {
