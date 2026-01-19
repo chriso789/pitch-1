@@ -1331,7 +1331,94 @@ export function SchematicRoofDiagram({
         </div>
       )}
       
-      {/* Legend */}
+      {/* Verification Overlay - Always visible showing calculated sums */}
+      {showTotals && (
+        <div className="absolute bottom-3 right-3 bg-white/95 backdrop-blur border rounded-lg p-2.5 shadow-sm text-[10px] min-w-[180px]">
+          <div className="font-semibold text-muted-foreground uppercase tracking-wide mb-1.5 flex items-center gap-1.5">
+            <CheckCircle className="h-3 w-3 text-green-600" />
+            Calculated Totals
+          </div>
+          <div className="space-y-1">
+            {/* Linear features from diagram segments */}
+            <div className="grid grid-cols-2 gap-x-3 gap-y-0.5">
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-0.5" style={{ backgroundColor: FEATURE_COLORS.eave }} />
+                <span className="text-muted-foreground">Eaves:</span>
+                <span className="font-semibold">{Math.round(verificationMetrics.diagramEaveLength)}'</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-0.5" style={{ backgroundColor: FEATURE_COLORS.rake }} />
+                <span className="text-muted-foreground">Rakes:</span>
+                <span className="font-semibold">{Math.round(verificationMetrics.diagramRakeLength)}'</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-0.5" style={{ backgroundColor: FEATURE_COLORS.ridge }} />
+                <span className="text-muted-foreground">Ridge:</span>
+                <span className="font-semibold">{Math.round(totals.ridge)}'</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <div className="w-3 h-0.5" style={{ backgroundColor: FEATURE_COLORS.hip }} />
+                <span className="text-muted-foreground">Hips:</span>
+                <span className="font-semibold">{Math.round(totals.hip)}'</span>
+              </div>
+            </div>
+            
+            {/* Perimeter and edge coverage */}
+            <div className="border-t pt-1 mt-1 space-y-0.5">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Perimeter:</span>
+                <span className="font-semibold">{Math.round(verificationMetrics.perimeterLength)}'</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Edge Sum (E+R):</span>
+                <span className="font-semibold">{Math.round(verificationMetrics.diagramEaveLength + verificationMetrics.diagramRakeLength)}'</span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Coverage:</span>
+                <span className={`font-semibold ${verificationMetrics.edgeCoverage >= 85 ? 'text-green-600' : verificationMetrics.edgeCoverage >= 60 ? 'text-amber-600' : 'text-red-600'}`}>
+                  {verificationMetrics.edgeCoverage.toFixed(0)}%
+                </span>
+              </div>
+            </div>
+            
+            {/* Area comparison */}
+            <div className="border-t pt-1 mt-1 space-y-0.5">
+              <div className="flex justify-between">
+                <span className="text-muted-foreground">Flat Area:</span>
+                <span className="font-semibold">{Math.round(verificationMetrics.flatArea).toLocaleString()} sqft</span>
+              </div>
+              {measurement?.solar_building_footprint_sqft && (
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Solar API:</span>
+                  <span className={`font-semibold ${Math.abs(verificationMetrics.flatArea - measurement.solar_building_footprint_sqft) / measurement.solar_building_footprint_sqft > 0.15 ? 'text-amber-600' : 'text-muted-foreground'}`}>
+                    {Math.round(measurement.solar_building_footprint_sqft).toLocaleString()} sqft
+                  </span>
+                </div>
+              )}
+              {verificationMetrics.adjustedArea > 0 && (
+                <div className="flex justify-between font-semibold">
+                  <span className="text-muted-foreground">Adjusted:</span>
+                  <span className="text-primary">{Math.round(verificationMetrics.adjustedArea).toLocaleString()} sqft</span>
+                </div>
+              )}
+            </div>
+            
+            {/* Warnings inline */}
+            {verificationMetrics.warnings.length > 0 && (
+              <div className="border-t pt-1 mt-1">
+                {verificationMetrics.warnings.map((w, i) => (
+                  <div key={i} className="text-amber-600 text-[9px] flex items-center gap-1">
+                    <AlertTriangle className="h-2.5 w-2.5" />
+                    {w}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+      
+      {/* Legend - moved to bottom-left */}
       {showLegend && (
         <div className="absolute bottom-3 left-3 bg-white/95 backdrop-blur border rounded-lg p-2.5 shadow-sm">
           <div className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wide mb-1.5">
