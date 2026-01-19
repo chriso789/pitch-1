@@ -563,13 +563,13 @@ Deno.serve(async (req) => {
       // CRITICAL FIX: Preserve BOTH pixel AND geo coordinates for proper area/perimeter calculation
       // The calculateAreaFromPerimeterVertices function needs valid coordinates in either format
       const perimeterVertices = authoritativeFootprint.vertices.map((v, i) => {
-        const pixel = geoToPixel(v.lat, v.lng, coordinates.lat, coordinates.lng, logicalImageSize, IMAGE_ZOOM);
-        const xPct = (pixel.x / logicalImageSize) * 100;
-        const yPct = (pixel.y / logicalImageSize) * 100;
+        // FIX: Pass coordinates object, not separate lat/lng - geoToPixel expects { lat, lng } as 3rd param
+        const pixel = geoToPixel(v.lat, v.lng, coordinates, logicalImageSize, IMAGE_ZOOM);
+        // geoToPixel already returns 0-100 percentages, no conversion needed
         
         return {
-          x: xPct,  // Pixel percentage (0-100)
-          y: yPct,
+          x: pixel.x,  // Pixel percentage (0-100) - already converted by geoToPixel
+          y: pixel.y,
           lat: v.lat,  // PRESERVE original geo coords for area calculation
           lng: v.lng,
           type: 'corner' as const,
