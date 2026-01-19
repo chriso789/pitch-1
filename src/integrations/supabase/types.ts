@@ -9916,6 +9916,94 @@ export type Database = {
           },
         ]
       }
+      erecord_submissions: {
+        Row: {
+          book: string | null
+          county_clerk_office: string | null
+          created_at: string
+          document_type: string
+          fee_amount: number | null
+          id: string
+          instrument_number: string | null
+          job_id: string | null
+          metadata: Json | null
+          page: string | null
+          permit_case_id: string | null
+          recorded_at: string | null
+          recorded_document_url: string | null
+          rejection_reason: string | null
+          simplifile_reference_id: string | null
+          submission_status: string | null
+          submitted_at: string | null
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          book?: string | null
+          county_clerk_office?: string | null
+          created_at?: string
+          document_type: string
+          fee_amount?: number | null
+          id?: string
+          instrument_number?: string | null
+          job_id?: string | null
+          metadata?: Json | null
+          page?: string | null
+          permit_case_id?: string | null
+          recorded_at?: string | null
+          recorded_document_url?: string | null
+          rejection_reason?: string | null
+          simplifile_reference_id?: string | null
+          submission_status?: string | null
+          submitted_at?: string | null
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          book?: string | null
+          county_clerk_office?: string | null
+          created_at?: string
+          document_type?: string
+          fee_amount?: number | null
+          id?: string
+          instrument_number?: string | null
+          job_id?: string | null
+          metadata?: Json | null
+          page?: string | null
+          permit_case_id?: string | null
+          recorded_at?: string | null
+          recorded_document_url?: string | null
+          rejection_reason?: string | null
+          simplifile_reference_id?: string | null
+          submission_status?: string | null
+          submitted_at?: string | null
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "erecord_submissions_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "erecord_submissions_permit_case_id_fkey"
+            columns: ["permit_case_id"]
+            isOneToOne: false
+            referencedRelation: "permit_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "erecord_submissions_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       estimate_approvals: {
         Row: {
           approval_notes: string | null
@@ -16938,6 +17026,60 @@ export type Database = {
           },
         ]
       }
+      permit_application_templates: {
+        Row: {
+          authority_id: string
+          created_at: string
+          id: string
+          is_active: boolean
+          permit_type: string
+          template_json: Json
+          template_key: string
+          tenant_id: string
+          updated_at: string
+          version: number
+        }
+        Insert: {
+          authority_id: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          permit_type: string
+          template_json: Json
+          template_key: string
+          tenant_id: string
+          updated_at?: string
+          version?: number
+        }
+        Update: {
+          authority_id?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          permit_type?: string
+          template_json?: Json
+          template_key?: string
+          tenant_id?: string
+          updated_at?: string
+          version?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "permit_application_templates_authority_id_fkey"
+            columns: ["authority_id"]
+            isOneToOne: false
+            referencedRelation: "permitting_authorities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permit_application_templates_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       permit_applications: {
         Row: {
           application_number: string | null
@@ -17054,6 +17196,287 @@ export type Database = {
           },
         ]
       }
+      permit_case_events: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          details: Json
+          event_type: Database["public"]["Enums"]["permit_event_type"]
+          id: string
+          message: string | null
+          permit_case_id: string
+          tenant_id: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          details?: Json
+          event_type: Database["public"]["Enums"]["permit_event_type"]
+          id?: string
+          message?: string | null
+          permit_case_id: string
+          tenant_id: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          details?: Json
+          event_type?: Database["public"]["Enums"]["permit_event_type"]
+          id?: string
+          message?: string | null
+          permit_case_id?: string
+          tenant_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "permit_case_events_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permit_case_events_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "permit_case_events_permit_case_id_fkey"
+            columns: ["permit_case_id"]
+            isOneToOne: false
+            referencedRelation: "permit_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permit_case_events_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      permit_cases: {
+        Row: {
+          application_field_values: Json
+          approved_at: string | null
+          authority_id: string | null
+          calculation_results: Json
+          city_name: string | null
+          county_name: string | null
+          created_at: string
+          created_by: string | null
+          estimate_id: string | null
+          expires_at: string | null
+          fee_actual: number | null
+          fee_estimate: number | null
+          fee_paid: boolean | null
+          id: string
+          job_id: string
+          jurisdiction_type:
+            | Database["public"]["Enums"]["jurisdiction_type"]
+            | null
+          missing_items: Json
+          noc_generated_at: string | null
+          noc_instrument_number: string | null
+          noc_recorded_at: string | null
+          noc_required: boolean | null
+          packet_url: string | null
+          permit_number: string | null
+          state: string
+          status: Database["public"]["Enums"]["permit_case_status"]
+          submitted_at: string | null
+          template_id: string | null
+          tenant_id: string
+          updated_at: string
+          validation_errors: Json
+        }
+        Insert: {
+          application_field_values?: Json
+          approved_at?: string | null
+          authority_id?: string | null
+          calculation_results?: Json
+          city_name?: string | null
+          county_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          estimate_id?: string | null
+          expires_at?: string | null
+          fee_actual?: number | null
+          fee_estimate?: number | null
+          fee_paid?: boolean | null
+          id?: string
+          job_id: string
+          jurisdiction_type?:
+            | Database["public"]["Enums"]["jurisdiction_type"]
+            | null
+          missing_items?: Json
+          noc_generated_at?: string | null
+          noc_instrument_number?: string | null
+          noc_recorded_at?: string | null
+          noc_required?: boolean | null
+          packet_url?: string | null
+          permit_number?: string | null
+          state?: string
+          status?: Database["public"]["Enums"]["permit_case_status"]
+          submitted_at?: string | null
+          template_id?: string | null
+          tenant_id: string
+          updated_at?: string
+          validation_errors?: Json
+        }
+        Update: {
+          application_field_values?: Json
+          approved_at?: string | null
+          authority_id?: string | null
+          calculation_results?: Json
+          city_name?: string | null
+          county_name?: string | null
+          created_at?: string
+          created_by?: string | null
+          estimate_id?: string | null
+          expires_at?: string | null
+          fee_actual?: number | null
+          fee_estimate?: number | null
+          fee_paid?: boolean | null
+          id?: string
+          job_id?: string
+          jurisdiction_type?:
+            | Database["public"]["Enums"]["jurisdiction_type"]
+            | null
+          missing_items?: Json
+          noc_generated_at?: string | null
+          noc_instrument_number?: string | null
+          noc_recorded_at?: string | null
+          noc_required?: boolean | null
+          packet_url?: string | null
+          permit_number?: string | null
+          state?: string
+          status?: Database["public"]["Enums"]["permit_case_status"]
+          submitted_at?: string | null
+          template_id?: string | null
+          tenant_id?: string
+          updated_at?: string
+          validation_errors?: Json
+        }
+        Relationships: [
+          {
+            foreignKeyName: "permit_cases_authority_id_fkey"
+            columns: ["authority_id"]
+            isOneToOne: false
+            referencedRelation: "permitting_authorities"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permit_cases_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permit_cases_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "permit_cases_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permit_cases_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "permit_application_templates"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permit_cases_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      permit_documents: {
+        Row: {
+          created_at: string
+          created_by: string | null
+          file_size_bytes: number | null
+          id: string
+          kind: Database["public"]["Enums"]["permit_doc_kind"]
+          meta: Json
+          permit_case_id: string
+          storage_bucket: string
+          storage_path: string
+          tenant_id: string
+          title: string
+        }
+        Insert: {
+          created_at?: string
+          created_by?: string | null
+          file_size_bytes?: number | null
+          id?: string
+          kind: Database["public"]["Enums"]["permit_doc_kind"]
+          meta?: Json
+          permit_case_id: string
+          storage_bucket: string
+          storage_path: string
+          tenant_id: string
+          title: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string | null
+          file_size_bytes?: number | null
+          id?: string
+          kind?: Database["public"]["Enums"]["permit_doc_kind"]
+          meta?: Json
+          permit_case_id?: string
+          storage_bucket?: string
+          storage_path?: string
+          tenant_id?: string
+          title?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "permit_documents_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permit_documents_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "user_activity_summary"
+            referencedColumns: ["user_id"]
+          },
+          {
+            foreignKeyName: "permit_documents_permit_case_id_fkey"
+            columns: ["permit_case_id"]
+            isOneToOne: false
+            referencedRelation: "permit_cases"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permit_documents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       permit_inspections: {
         Row: {
           correction_items: string[] | null
@@ -17145,6 +17568,185 @@ export type Database = {
           },
           {
             foreignKeyName: "permit_inspections_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      permit_job_measurements: {
+        Row: {
+          created_at: string
+          eaves_ft: number | null
+          hips_ft: number | null
+          id: string
+          job_id: string
+          measured_at: string
+          predominant_pitch: string | null
+          rakes_ft: number | null
+          raw_json: Json
+          report_bucket: string | null
+          report_path: string | null
+          ridges_ft: number | null
+          source: string
+          squares: number | null
+          stories: number | null
+          tenant_id: string
+          total_roof_area_sqft: number | null
+          updated_at: string
+          valleys_ft: number | null
+        }
+        Insert: {
+          created_at?: string
+          eaves_ft?: number | null
+          hips_ft?: number | null
+          id?: string
+          job_id: string
+          measured_at?: string
+          predominant_pitch?: string | null
+          rakes_ft?: number | null
+          raw_json?: Json
+          report_bucket?: string | null
+          report_path?: string | null
+          ridges_ft?: number | null
+          source: string
+          squares?: number | null
+          stories?: number | null
+          tenant_id: string
+          total_roof_area_sqft?: number | null
+          updated_at?: string
+          valleys_ft?: number | null
+        }
+        Update: {
+          created_at?: string
+          eaves_ft?: number | null
+          hips_ft?: number | null
+          id?: string
+          job_id?: string
+          measured_at?: string
+          predominant_pitch?: string | null
+          rakes_ft?: number | null
+          raw_json?: Json
+          report_bucket?: string | null
+          report_path?: string | null
+          ridges_ft?: number | null
+          source?: string
+          squares?: number | null
+          stories?: number | null
+          tenant_id?: string
+          total_roof_area_sqft?: number | null
+          updated_at?: string
+          valleys_ft?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "permit_job_measurements_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "permit_job_measurements_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      permitting_authorities: {
+        Row: {
+          application_modes: string[]
+          boundary_geojson: Json | null
+          boundary_source: string | null
+          boundary_version: string | null
+          city_name: string | null
+          contact_address: string | null
+          contact_email: string | null
+          contact_phone: string | null
+          county_name: string
+          created_at: string
+          default_required_attachments: Json
+          expedite_available: boolean | null
+          expedite_requirements: string[] | null
+          fee_structure: Json | null
+          id: string
+          is_active: boolean
+          jurisdiction_type: Database["public"]["Enums"]["jurisdiction_type"]
+          notes: string | null
+          office_hours: string | null
+          portal_type: Database["public"]["Enums"]["portal_type"]
+          portal_url: string | null
+          processing_days_expedited: number | null
+          processing_days_standard: number | null
+          special_requirements: string[] | null
+          state: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          application_modes?: string[]
+          boundary_geojson?: Json | null
+          boundary_source?: string | null
+          boundary_version?: string | null
+          city_name?: string | null
+          contact_address?: string | null
+          contact_email?: string | null
+          contact_phone?: string | null
+          county_name: string
+          created_at?: string
+          default_required_attachments?: Json
+          expedite_available?: boolean | null
+          expedite_requirements?: string[] | null
+          fee_structure?: Json | null
+          id?: string
+          is_active?: boolean
+          jurisdiction_type: Database["public"]["Enums"]["jurisdiction_type"]
+          notes?: string | null
+          office_hours?: string | null
+          portal_type?: Database["public"]["Enums"]["portal_type"]
+          portal_url?: string | null
+          processing_days_expedited?: number | null
+          processing_days_standard?: number | null
+          special_requirements?: string[] | null
+          state?: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          application_modes?: string[]
+          boundary_geojson?: Json | null
+          boundary_source?: string | null
+          boundary_version?: string | null
+          city_name?: string | null
+          contact_address?: string | null
+          contact_email?: string | null
+          contact_phone?: string | null
+          county_name?: string
+          created_at?: string
+          default_required_attachments?: Json
+          expedite_available?: boolean | null
+          expedite_requirements?: string[] | null
+          fee_structure?: Json | null
+          id?: string
+          is_active?: boolean
+          jurisdiction_type?: Database["public"]["Enums"]["jurisdiction_type"]
+          notes?: string | null
+          office_hours?: string | null
+          portal_type?: Database["public"]["Enums"]["portal_type"]
+          portal_url?: string | null
+          processing_days_expedited?: number | null
+          processing_days_standard?: number | null
+          special_requirements?: string[] | null
+          state?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "permitting_authorities_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -18816,6 +19418,72 @@ export type Database = {
         }
         Relationships: []
       }
+      product_approval_documents: {
+        Row: {
+          approval_kind: string
+          approval_number: string
+          created_at: string
+          expires_on: string | null
+          extracted_fields: Json
+          fetched_at: string
+          id: string
+          product_id: string
+          revision: string | null
+          source_url: string | null
+          storage_bucket: string
+          storage_path: string
+          tenant_id: string
+          updated_at: string
+        }
+        Insert: {
+          approval_kind: string
+          approval_number: string
+          created_at?: string
+          expires_on?: string | null
+          extracted_fields?: Json
+          fetched_at?: string
+          id?: string
+          product_id: string
+          revision?: string | null
+          source_url?: string | null
+          storage_bucket: string
+          storage_path: string
+          tenant_id: string
+          updated_at?: string
+        }
+        Update: {
+          approval_kind?: string
+          approval_number?: string
+          created_at?: string
+          expires_on?: string | null
+          extracted_fields?: Json
+          fetched_at?: string
+          id?: string
+          product_id?: string
+          revision?: string | null
+          source_url?: string | null
+          storage_bucket?: string
+          storage_path?: string
+          tenant_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "product_approval_documents_product_id_fkey"
+            columns: ["product_id"]
+            isOneToOne: false
+            referencedRelation: "products"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "product_approval_documents_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       product_catalog: {
         Row: {
           brand: string
@@ -19186,14 +19854,20 @@ export type Database = {
       }
       products: {
         Row: {
+          approval_expires_on: string | null
           category: string | null
           created_at: string | null
           created_by: string | null
           description: string | null
+          extracted_approval_fields: Json | null
+          fl_product_approval_no: string | null
+          hvhz_approved: boolean | null
           id: string
           is_active: boolean | null
           manufacturer: string | null
+          miami_dade_noa_no: string | null
           name: string
+          requires_noa: boolean | null
           sku: string
           specifications: Json | null
           srs_item_code: string | null
@@ -19203,14 +19877,20 @@ export type Database = {
           vendor_id: string | null
         }
         Insert: {
+          approval_expires_on?: string | null
           category?: string | null
           created_at?: string | null
           created_by?: string | null
           description?: string | null
+          extracted_approval_fields?: Json | null
+          fl_product_approval_no?: string | null
+          hvhz_approved?: boolean | null
           id?: string
           is_active?: boolean | null
           manufacturer?: string | null
+          miami_dade_noa_no?: string | null
           name: string
+          requires_noa?: boolean | null
           sku: string
           specifications?: Json | null
           srs_item_code?: string | null
@@ -19220,14 +19900,20 @@ export type Database = {
           vendor_id?: string | null
         }
         Update: {
+          approval_expires_on?: string | null
           category?: string | null
           created_at?: string | null
           created_by?: string | null
           description?: string | null
+          extracted_approval_fields?: Json | null
+          fl_product_approval_no?: string | null
+          hvhz_approved?: boolean | null
           id?: string
           is_active?: boolean | null
           manufacturer?: string | null
+          miami_dade_noa_no?: string | null
           name?: string
+          requires_noa?: boolean | null
           sku?: string
           specifications?: Json | null
           srs_item_code?: string | null
@@ -20265,6 +20951,90 @@ export type Database = {
           },
           {
             foreignKeyName: "projects_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      property_parcel_cache: {
+        Row: {
+          assessed_value: number | null
+          county_name: string
+          created_at: string
+          fetched_at: string
+          folio: string | null
+          id: string
+          job_id: string
+          land_use: string | null
+          legal_description: string | null
+          owner_mailing_address: string | null
+          owner_name: string | null
+          parcel_id: string | null
+          raw_json: Json
+          situs_address: string | null
+          source_name: string
+          source_url: string | null
+          subdivision: string | null
+          tenant_id: string
+          updated_at: string
+          year_built: number | null
+        }
+        Insert: {
+          assessed_value?: number | null
+          county_name: string
+          created_at?: string
+          fetched_at?: string
+          folio?: string | null
+          id?: string
+          job_id: string
+          land_use?: string | null
+          legal_description?: string | null
+          owner_mailing_address?: string | null
+          owner_name?: string | null
+          parcel_id?: string | null
+          raw_json?: Json
+          situs_address?: string | null
+          source_name: string
+          source_url?: string | null
+          subdivision?: string | null
+          tenant_id: string
+          updated_at?: string
+          year_built?: number | null
+        }
+        Update: {
+          assessed_value?: number | null
+          county_name?: string
+          created_at?: string
+          fetched_at?: string
+          folio?: string | null
+          id?: string
+          job_id?: string
+          land_use?: string | null
+          legal_description?: string | null
+          owner_mailing_address?: string | null
+          owner_name?: string | null
+          parcel_id?: string | null
+          raw_json?: Json
+          situs_address?: string | null
+          source_name?: string
+          source_url?: string | null
+          subdivision?: string | null
+          tenant_id?: string
+          updated_at?: string
+          year_built?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "property_parcel_cache_job_id_fkey"
+            columns: ["job_id"]
+            isOneToOne: false
+            referencedRelation: "jobs"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "property_parcel_cache_tenant_id_fkey"
             columns: ["tenant_id"]
             isOneToOne: false
             referencedRelation: "tenants"
@@ -28568,6 +29338,50 @@ export type Database = {
           },
         ]
       }
+      tenant_erecording_credentials: {
+        Row: {
+          account_id: string | null
+          api_key_encrypted: string | null
+          created_at: string
+          id: string
+          is_active: boolean | null
+          provider: string
+          tenant_id: string
+          test_mode: boolean | null
+          updated_at: string
+        }
+        Insert: {
+          account_id?: string | null
+          api_key_encrypted?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          provider?: string
+          tenant_id: string
+          test_mode?: boolean | null
+          updated_at?: string
+        }
+        Update: {
+          account_id?: string | null
+          api_key_encrypted?: string | null
+          created_at?: string
+          id?: string
+          is_active?: boolean | null
+          provider?: string
+          tenant_id?: string
+          test_mode?: boolean | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "tenant_erecording_credentials_tenant_id_fkey"
+            columns: ["tenant_id"]
+            isOneToOne: false
+            referencedRelation: "tenants"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       tenant_estimate_settings: {
         Row: {
           created_at: string | null
@@ -33853,6 +34667,7 @@ export type Database = {
         | "production"
         | "final_payment"
         | "closed"
+      jurisdiction_type: "COUNTY" | "CITY"
       lead_source:
         | "referral"
         | "canvassing"
@@ -33887,6 +34702,39 @@ export type Database = {
         | "failed"
         | "refunded"
         | "canceled"
+      permit_case_status:
+        | "NOT_STARTED"
+        | "DRAFT_BUILT"
+        | "WAITING_ON_DOCS"
+        | "READY_TO_SUBMIT"
+        | "SUBMITTED"
+        | "IN_REVIEW"
+        | "CORRECTIONS_REQUIRED"
+        | "APPROVED"
+        | "REJECTED"
+        | "VOID"
+      permit_doc_kind:
+        | "PERMIT_APPLICATION"
+        | "PERMIT_PACKET"
+        | "CHECKLIST"
+        | "NOTICE_OF_COMMENCEMENT"
+        | "PRODUCT_APPROVAL"
+        | "MEASUREMENT_REPORT"
+        | "OTHER"
+      permit_event_type:
+        | "CREATED"
+        | "JURISDICTION_DETECTED"
+        | "TEMPLATE_SELECTED"
+        | "PROPERTY_DATA_FETCHED"
+        | "APPROVALS_LINKED"
+        | "CALCS_RUN"
+        | "APPLICATION_GENERATED"
+        | "PACKET_GENERATED"
+        | "SUBMITTED"
+        | "CORRECTION_NOTED"
+        | "APPROVED"
+        | "REJECTED"
+        | "ERROR"
       pipeline_status:
         | "lead"
         | "legal_review"
@@ -33903,6 +34751,7 @@ export type Database = {
         | "ready_for_approval"
         | "production"
         | "final_payment"
+      portal_type: "ACCELA" | "ENERGOV" | "ETRAKIT" | "CUSTOM" | "UNKNOWN"
       report_file_kind:
         | "measurement_pdf"
         | "estimate_pdf"
@@ -34147,6 +34996,7 @@ export const Constants = {
         "final_payment",
         "closed",
       ],
+      jurisdiction_type: ["COUNTY", "CITY"],
       lead_source: [
         "referral",
         "canvassing",
@@ -34185,6 +35035,42 @@ export const Constants = {
         "refunded",
         "canceled",
       ],
+      permit_case_status: [
+        "NOT_STARTED",
+        "DRAFT_BUILT",
+        "WAITING_ON_DOCS",
+        "READY_TO_SUBMIT",
+        "SUBMITTED",
+        "IN_REVIEW",
+        "CORRECTIONS_REQUIRED",
+        "APPROVED",
+        "REJECTED",
+        "VOID",
+      ],
+      permit_doc_kind: [
+        "PERMIT_APPLICATION",
+        "PERMIT_PACKET",
+        "CHECKLIST",
+        "NOTICE_OF_COMMENCEMENT",
+        "PRODUCT_APPROVAL",
+        "MEASUREMENT_REPORT",
+        "OTHER",
+      ],
+      permit_event_type: [
+        "CREATED",
+        "JURISDICTION_DETECTED",
+        "TEMPLATE_SELECTED",
+        "PROPERTY_DATA_FETCHED",
+        "APPROVALS_LINKED",
+        "CALCS_RUN",
+        "APPLICATION_GENERATED",
+        "PACKET_GENERATED",
+        "SUBMITTED",
+        "CORRECTION_NOTED",
+        "APPROVED",
+        "REJECTED",
+        "ERROR",
+      ],
       pipeline_status: [
         "lead",
         "legal_review",
@@ -34202,6 +35088,7 @@ export const Constants = {
         "production",
         "final_payment",
       ],
+      portal_type: ["ACCELA", "ENERGOV", "ETRAKIT", "CUSTOM", "UNKNOWN"],
       report_file_kind: [
         "measurement_pdf",
         "estimate_pdf",
