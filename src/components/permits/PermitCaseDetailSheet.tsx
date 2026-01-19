@@ -26,7 +26,10 @@ import {
   AlertCircle,
   Download,
   RefreshCw,
+  Loader2,
 } from 'lucide-react';
+import { toast } from 'sonner';
+import { supabase } from '@/integrations/supabase/client';
 import type { PermitExpediterJob } from '@/lib/permits/types';
 import { PERMIT_STATUS_LABELS, PERMIT_STATUS_COLORS } from '@/lib/permits/types';
 
@@ -34,16 +37,133 @@ interface PermitCaseDetailSheetProps {
   job: PermitExpediterJob | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  permitCaseId?: string;
+  onRefresh?: () => void;
 }
 
 export function PermitCaseDetailSheet({
   job,
   open,
   onOpenChange,
+  permitCaseId,
+  onRefresh,
 }: PermitCaseDetailSheetProps) {
   const [activeTab, setActiveTab] = useState('overview');
+  
+  // Loading states for each action
+  const [isDetectingJurisdiction, setIsDetectingJurisdiction] = useState(false);
+  const [isFetchingProperty, setIsFetchingProperty] = useState(false);
+  const [isBuildingApplication, setIsBuildingApplication] = useState(false);
+  const [isGeneratingPacket, setIsGeneratingPacket] = useState(false);
 
   if (!job) return null;
+
+  const handleDetectJurisdiction = async () => {
+    if (!permitCaseId || !job?.job_id) {
+      toast.error('Missing permit case or job ID');
+      return;
+    }
+    
+    setIsDetectingJurisdiction(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('permit-detect-jurisdiction', {
+        body: { permit_case_id: permitCaseId, job_id: job.job_id }
+      });
+      
+      if (error) throw error;
+      
+      if (data?.authority) {
+        toast.success(`Jurisdiction detected: ${data.authority.name}`);
+      } else {
+        toast.info('No jurisdiction boundary found - may require manual entry');
+      }
+      onRefresh?.();
+    } catch (err: any) {
+      console.error('Failed to detect jurisdiction:', err);
+      toast.error(err?.message || 'Failed to detect jurisdiction');
+    } finally {
+      setIsDetectingJurisdiction(false);
+    }
+  };
+
+  const handleFetchPropertyData = async () => {
+    if (!permitCaseId || !job?.job_id) {
+      toast.error('Missing permit case or job ID');
+      return;
+    }
+    
+    setIsFetchingProperty(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('permit-fetch-property-data', {
+        body: { 
+          permit_case_id: permitCaseId, 
+          job_id: job.job_id, 
+          address: job.address 
+        }
+      });
+      
+      if (error) throw error;
+      
+      if (data?.parcel) {
+        toast.success('Property data fetched successfully');
+      } else {
+        toast.info('No parcel data found for this address');
+      }
+      onRefresh?.();
+    } catch (err: any) {
+      console.error('Failed to fetch property data:', err);
+      toast.error(err?.message || 'Failed to fetch property data');
+    } finally {
+      setIsFetchingProperty(false);
+    }
+  };
+
+  const handleBuildApplication = async () => {
+    if (!permitCaseId || !job?.job_id) {
+      toast.error('Missing permit case or job ID');
+      return;
+    }
+    
+    setIsBuildingApplication(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('permit-application-generator', {
+        body: { 
+          action: 'generate_application', 
+          permit_case_id: permitCaseId, 
+          job_id: job.job_id 
+        }
+      });
+      
+      if (error) throw error;
+      
+      toast.success('Permit application generated');
+      onRefresh?.();
+    } catch (err: any) {
+      console.error('Failed to build application:', err);
+      toast.error(err?.message || 'Failed to build permit application');
+    } finally {
+      setIsBuildingApplication(false);
+    }
+  };
+
+  const handleGeneratePacket = async () => {
+    if (!permitCaseId) {
+      toast.error('Missing permit case ID');
+      return;
+    }
+    
+    setIsGeneratingPacket(true);
+    try {
+      // For now, show a placeholder toast - this will need a dedicated edge function
+      toast.info('Permit packet generation coming soon');
+      onRefresh?.();
+    } catch (err: any) {
+      console.error('Failed to generate packet:', err);
+      toast.error(err?.message || 'Failed to generate permit packet');
+    } finally {
+      setIsGeneratingPacket(false);
+    }
+  };
 
   return (
     <Sheet open={open} onOpenChange={onOpenChange}>
@@ -112,9 +232,19 @@ export function PermitCaseDetailSheet({
                       <span>Jurisdiction not yet detected</span>
                     </div>
                   )}
-                  <Button variant="outline" size="sm" className="w-full mt-2">
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Detect Jurisdiction
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full mt-2"
+                    onClick={handleDetectJurisdiction}
+                    disabled={isDetectingJurisdiction}
+                  >
+                    {isDetectingJurisdiction ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                    )}
+                    {isDetectingJurisdiction ? 'Detecting...' : 'Detect Jurisdiction'}
                   </Button>
                 </CardContent>
               </Card>
@@ -160,13 +290,30 @@ export function PermitCaseDetailSheet({
                   </CardTitle>
                 </CardHeader>
                 <CardContent className="space-y-2">
-                  <Button className="w-full" disabled={!job.has_measurements || !job.has_parcel_data}>
-                    <FileText className="h-4 w-4 mr-2" />
-                    Build Permit Application
+                  <Button 
+                    className="w-full" 
+                    disabled={!job.has_measurements || !job.has_parcel_data || isBuildingApplication}
+                    onClick={handleBuildApplication}
+                  >
+                    {isBuildingApplication ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <FileText className="h-4 w-4 mr-2" />
+                    )}
+                    {isBuildingApplication ? 'Building...' : 'Build Permit Application'}
                   </Button>
-                  <Button variant="outline" className="w-full">
-                    <Download className="h-4 w-4 mr-2" />
-                    Generate Permit Packet
+                  <Button 
+                    variant="outline" 
+                    className="w-full"
+                    disabled={isGeneratingPacket}
+                    onClick={handleGeneratePacket}
+                  >
+                    {isGeneratingPacket ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <Download className="h-4 w-4 mr-2" />
+                    )}
+                    {isGeneratingPacket ? 'Generating...' : 'Generate Permit Packet'}
                   </Button>
                 </CardContent>
               </Card>
@@ -188,9 +335,19 @@ export function PermitCaseDetailSheet({
                     Fetch property data from the county property appraiser to populate
                     owner name, legal description, and other permit requirements.
                   </div>
-                  <Button variant="outline" size="sm" className="w-full">
-                    <RefreshCw className="h-4 w-4 mr-2" />
-                    Fetch Property Data
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    className="w-full"
+                    onClick={handleFetchPropertyData}
+                    disabled={isFetchingProperty}
+                  >
+                    {isFetchingProperty ? (
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    ) : (
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                    )}
+                    {isFetchingProperty ? 'Fetching...' : 'Fetch Property Data'}
                   </Button>
                 </CardContent>
               </Card>
