@@ -1,5 +1,5 @@
 // Visual Formula Builder Component
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { Label } from '@/components/ui/label';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -34,6 +34,12 @@ export const FormulaBuilder: React.FC<FormulaBuilderProps> = ({
   unit,
   onChange,
 }) => {
+  // Store onChange in a ref to avoid effect dependency issues
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
   // Builder state
   const [isAutoCalc, setIsAutoCalc] = useState(!!value);
   const [measurementTag, setMeasurementTag] = useState('');
@@ -44,12 +50,20 @@ export const FormulaBuilder: React.FC<FormulaBuilderProps> = ({
   const [customWaste, setCustomWaste] = useState(10);
   const [rounding, setRounding] = useState<'ceil' | 'floor' | 'round' | 'none'>('ceil');
   const [showAdvanced, setShowAdvanced] = useState(false);
+  
+  // Track the last formula we generated to prevent parsing our own output
+  const lastGeneratedFormulaRef = useRef<string>('');
 
   // Get presets for current unit
   const presets = useMemo(() => getPresetsForUnit(unit), [unit]);
 
   // Parse existing formula on mount or when value changes externally
   useEffect(() => {
+    // Don't re-parse if this is a formula we just generated
+    if (value === lastGeneratedFormulaRef.current) {
+      return;
+    }
+    
     if (!value) {
       setIsAutoCalc(false);
       return;
@@ -96,10 +110,11 @@ export const FormulaBuilder: React.FC<FormulaBuilderProps> = ({
   const effectiveWaste = isCustomWaste ? customWaste : wastePercent;
   const effectiveOperation = isCustomMultiplier ? conversionOperation : (currentPreset?.operation === 'custom' ? conversionOperation : currentPreset?.operation || 'multiply');
 
-  // Build formula whenever state changes
+  // Build formula whenever state changes - use ref for onChange to avoid dependency
   useEffect(() => {
     if (!isAutoCalc) {
-      onChange('');
+      lastGeneratedFormulaRef.current = '';
+      onChangeRef.current('');
       return;
     }
 
@@ -113,8 +128,9 @@ export const FormulaBuilder: React.FC<FormulaBuilderProps> = ({
       rounding
     );
     
-    onChange(formula);
-  }, [isAutoCalc, measurementTag, effectiveMultiplier, effectiveOperation, effectiveWaste, rounding, onChange]);
+    lastGeneratedFormulaRef.current = formula;
+    onChangeRef.current(formula);
+  }, [isAutoCalc, measurementTag, effectiveMultiplier, effectiveOperation, effectiveWaste, rounding]);
 
   // Calculate preview
   const preview = useMemo(() => {

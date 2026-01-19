@@ -91,33 +91,35 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
     refetchOnMount: 'always'
   });
 
-  const selectedEstimateId = (pipelineData?.metadata as any)?.selected_estimate_id;
+  // Use effectiveEstimateId: prefer selected_estimate_id, fallback to enhanced_estimate_id
+  const metadata = pipelineData?.metadata as any;
+  const effectiveEstimateId = metadata?.selected_estimate_id ?? metadata?.enhanced_estimate_id;
 
-  // Fetch existing estimate to get saved line items - using selected_estimate_id
+  // Fetch existing estimate to get saved line items - using effectiveEstimateId
   const { data: existingEstimate, isLoading: estimateLoading } = useQuery({
-    queryKey: ['enhanced-estimate-items', pipelineEntryId, selectedEstimateId, sectionType],
+    queryKey: ['enhanced-estimate-items', pipelineEntryId, effectiveEstimateId, sectionType],
     queryFn: async () => {
-      if (!selectedEstimateId) return null;
+      if (!effectiveEstimateId) return null;
       
-      console.log('[TemplateSectionSelector] Fetching estimate:', selectedEstimateId, 'for section:', sectionType);
+      console.log('[TemplateSectionSelector] Fetching estimate:', effectiveEstimateId, 'for section:', sectionType);
       
       const { data, error } = await supabase
         .from('enhanced_estimates')
         .select('id, line_items, template_id, material_cost_locked_at, labor_cost_locked_at')
-        .eq('id', selectedEstimateId)
+        .eq('id', effectiveEstimateId)
         .single();
       
       if (error) throw error;
       console.log('[TemplateSectionSelector] Estimate loaded:', { id: data?.id, hasLineItems: !!data?.line_items });
       return data;
     },
-    enabled: !!selectedEstimateId,
+    enabled: !!effectiveEstimateId,
     staleTime: 0, // Always consider stale so it refetches
     refetchOnMount: 'always' // Always refetch when component mounts
   });
 
   // Track loading state
-  const isLoadingData = pipelineDataLoading || (!!selectedEstimateId && estimateLoading);
+  const isLoadingData = pipelineDataLoading || (!!effectiveEstimateId && estimateLoading);
 
   // Load line items when estimate data changes - using useEffect for proper state management
   useEffect(() => {
@@ -126,32 +128,48 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
       estimateId: existingEstimate?.id,
       hasLineItems: !!existingEstimate?.line_items,
       sectionType,
-      selectedEstimateId
+      effectiveEstimateId
     });
     
     if (existingEstimate?.line_items) {
-      const items = existingEstimate.line_items as unknown as Record<string, LineItem[]>;
+      const items = existingEstimate.line_items as unknown as Record<string, any[]>;
       // Check both possible keys: 'materials'/'labor' and 'material'/'labor'
       const primaryKey = sectionType === 'material' ? 'materials' : 'labor';
       const fallbackKey = sectionType === 'material' ? 'material' : 'labor';
-      const sectionItems = items[primaryKey] || items[fallbackKey];
+      const rawSectionItems = items[primaryKey] || items[fallbackKey];
       
       console.log('[TemplateSectionSelector] Line items found:', {
         primaryKey,
         fallbackKey,
-        itemCount: sectionItems?.length || 0,
+        itemCount: rawSectionItems?.length || 0,
         keys: Object.keys(items)
       });
       
-      if (sectionItems && sectionItems.length > 0) {
-        setLineItems(sectionItems);
+      if (rawSectionItems && rawSectionItems.length > 0) {
+        // Normalize line items - handle qty_original/unit_cost_original fallbacks
+        const normalizedItems: LineItem[] = rawSectionItems.map((item: any) => {
+          const qty = (item.qty > 0 ? item.qty : (item.qty_original ?? 0));
+          const unitCost = (item.unit_cost > 0 ? item.unit_cost : (item.unit_cost_original ?? 0));
+          const lineTotal = (item.line_total > 0 ? item.line_total : (qty * unitCost));
+          
+          return {
+            id: item.id || crypto.randomUUID(),
+            item_name: item.item_name || item.name || 'Unknown Item',
+            qty: qty,
+            unit: item.unit || 'ea',
+            unit_cost: unitCost,
+            line_total: lineTotal
+          };
+        });
+        
+        setLineItems(normalizedItems);
       }
     }
     
     if (existingEstimate?.template_id) {
       setSelectedTemplateId(existingEstimate.template_id);
     }
-  }, [existingEstimate?.id, existingEstimate?.line_items, existingEstimate?.template_id, sectionType, selectedEstimateId]);
+  }, [existingEstimate?.id, existingEstimate?.line_items, existingEstimate?.template_id, sectionType, effectiveEstimateId]);
 
   // Save line items mutation
   const saveLineItemsMutation = useMutation({
@@ -160,8 +178,8 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
       const costKey = sectionType === 'material' ? 'material_cost' : 'labor_cost';
       const total = items.reduce((sum, item) => sum + item.line_total, 0);
 
-      // Use the selected estimate ID directly - this is the canonical source
-      if (!selectedEstimateId) {
+      // Use the effectiveEstimateId - this is the canonical source
+      if (!effectiveEstimateId) {
         throw new Error('No estimate selected. Please select an estimate first.');
       }
 
@@ -169,7 +187,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
       const { data: existing, error: fetchError } = await supabase
         .from('enhanced_estimates')
         .select('id, line_items, material_cost, labor_cost')
-        .eq('id', selectedEstimateId)
+        .eq('id', effectiveEstimateId)
         .single();
 
       if (fetchError) throw fetchError;
@@ -196,7 +214,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
           selling_price: sellingPrice,
           template_id: selectedTemplateId || null
         })
-        .eq('id', selectedEstimateId);
+        .eq('id', effectiveEstimateId);
       if (error) throw error;
 
       return total;

@@ -135,10 +135,13 @@ export const SavedEstimatesList: React.FC<SavedEstimatesListProps> = ({
 
       if (error) throw error;
 
-      // Invalidate queries to refresh - including the hyperlink bar
+      // Invalidate queries to refresh - including the hyperlink bar and TemplateSectionSelector
       queryClient.invalidateQueries({ queryKey: ['pipeline-entry-metadata', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-selected-estimate', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['enhanced-estimate-items', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['lead-requirements', pipelineEntryId] });
       queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['estimate-costs', pipelineEntryId] });
       
       // Call external handler if provided
       if (onEstimateSelect && newSelectedId) {

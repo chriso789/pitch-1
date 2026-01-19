@@ -929,6 +929,7 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
 
       if (createError) throw createError;
 
+      // Update pipeline entry metadata - set BOTH enhanced_estimate_id and selected_estimate_id
       await supabaseClient
         .from('pipeline_entries')
         .update({
@@ -936,13 +937,18 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
             ...metadata,
             selected_template_id: selectedTemplateId,
             estimate_created_at: new Date().toISOString(),
-            enhanced_estimate_id: newEstimate.id
+            enhanced_estimate_id: newEstimate.id,
+            selected_estimate_id: newEstimate.id  // Also set as selected so Materials/Labor tabs load it
           }
         })
         .eq('id', pipelineEntryId);
 
-      // Invalidate saved estimates query to refresh the list
+      // Invalidate saved estimates query and selection-related queries to refresh everything
       queryClient.invalidateQueries({ queryKey: ['saved-estimates', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-entry-metadata', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['pipeline-selected-estimate', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['enhanced-estimate-items', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['hyperlink-data', pipelineEntryId] });
 
       toast({
         title: 'Estimate Created',

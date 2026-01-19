@@ -242,6 +242,9 @@ export const ApprovalRequirementsBubbles: React.FC<ApprovalRequirementsBubblesPr
       setSelectedEstimateId(estimateId);
       setOpenEstimatePopover(false);
       
+      // Invalidate all estimate-related queries for consistency
+      const queryClient = await import('@tanstack/react-query').then(m => m.useQueryClient);
+      
       toast({
         title: "Estimate Selected",
         description: "This estimate has been approved for the project budget.",
