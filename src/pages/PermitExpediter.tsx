@@ -78,11 +78,23 @@ export default function PermitExpediter() {
   const handleCreateCase = async (job: PermitExpediterJob) => {
     if (!tenantId || !profile?.id) return;
     
-    await createPermitCase.mutateAsync({
+    const createdCase = await createPermitCase.mutateAsync({
       tenantId,
       jobId: job.job_id,
       userId: profile.id,
     });
+    
+    // Refetch the list and open the detail sheet with updated job data
+    await refetch();
+    
+    // Update the job with the new permit case ID and open detail sheet
+    const updatedJob: PermitExpediterJob = {
+      ...job,
+      id: createdCase.id,
+      status: 'NOT_STARTED',
+    };
+    setSelectedJob(updatedJob);
+    setIsDetailOpen(true);
   };
 
   const handleViewDetails = (job: PermitExpediterJob) => {
