@@ -113,7 +113,7 @@ export const EstimatePDFTemplate: React.FC<EstimatePDFTemplateProps> = ({
   customerAddress,
   customerPhone,
   customerEmail,
-  companyName = 'PITCH CRM™',
+  companyName = 'Your Company',
   companyLogo,
   companyInfo,
   companyLocations,

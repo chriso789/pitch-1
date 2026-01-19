@@ -85,7 +85,7 @@ export const UserManagement = () => {
   const [payStructure, setPayStructure] = useState({
     pay_type: 'commission' as 'hourly' | 'commission',
     hourly_rate: 25,
-    overhead_rate: 5,
+    overhead_rate: 10,
     commission_structure: 'profit_split' as 'profit_split' | 'sales_percentage',
     commission_rate: 50
   });
@@ -352,7 +352,7 @@ export const UserManagement = () => {
       setPayStructure({
         pay_type: 'commission',
         hourly_rate: 25,
-        overhead_rate: 5,
+        overhead_rate: 10,
         commission_structure: 'profit_split',
         commission_rate: 50
       });
