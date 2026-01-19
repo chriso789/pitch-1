@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Input } from '@/components/ui/input';
-import { Search, ExternalLink } from 'lucide-react';
+import { Search, User, Briefcase } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useNavigate } from 'react-router-dom';
 import { useToast } from '@/hooks/use-toast';
+import { Badge } from '@/components/ui/badge';
 import {
   Command,
   CommandEmpty,
@@ -18,10 +19,11 @@ import {
 } from "@/components/ui/popover";
 
 interface SearchResult {
-  entity_type: 'contact' | 'lead' | 'job';
+  entity_type: 'contact' | 'job';
   entity_id: string;
-  clj_number: string;
   entity_name: string;
+  entity_subtext: string;
+  clj_number: string;
   entity_status: string;
 }
 
@@ -34,7 +36,7 @@ export const CLJSearchBar = () => {
   const { toast } = useToast();
 
   useEffect(() => {
-    const searchCLJ = async () => {
+    const searchAll = async () => {
       if (searchTerm.length < 2) {
         setResults([]);
         return;
@@ -52,40 +54,26 @@ export const CLJSearchBar = () => {
           .select('tenant_id')
           .eq('user_id', user.id)
           .maybeSingle();
-
-        const tenantId = profileQuery.data?.tenant_id;
-        if (!tenantId) return;
-
-        // Call the RPC function using REST API
-        const SUPABASE_URL = "https://alxelfrbjzkmtnsulcei.supabase.co";
-        const SUPABASE_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFseGVsZnJianprbXRuc3VsY2VpIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NTgxNTYyNzcsImV4cCI6MjA3MzczMjI3N30.ouuzXBD8iercLbbxtueioRppHsywgpgxEdDqt6AaMtM";
         
-        const { data: session } = await supabase.auth.getSession();
-        const response = await fetch(
-          `${SUPABASE_URL}/rest/v1/rpc/search_by_clj_number`,
-          {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'apikey': SUPABASE_KEY,
-              'Authorization': `Bearer ${session.session?.access_token}`
-            },
-            body: JSON.stringify({
-              tenant_id_param: tenantId,
-              clj_search: searchTerm
-            })
-          }
-        );
+        const profile = profileQuery.data as { tenant_id: string | null } | null;
 
-        if (!response.ok) throw new Error('Search failed');
-        const data = await response.json();
+        if (!profile?.tenant_id) return;
+
+        // Call the universal search RPC
+        const { data, error } = await supabase.rpc('search_contacts_and_jobs', {
+          p_tenant_id: profile.tenant_id,
+          p_search_term: searchTerm,
+          p_limit: 10
+        });
+
+        if (error) throw error;
         setResults((data || []) as SearchResult[]);
         setOpen(true);
       } catch (error) {
         console.error('Search error:', error);
         toast({
           title: 'Search failed',
-          description: 'Could not search by C-L-J number',
+          description: 'Could not search contacts and jobs',
           variant: 'destructive'
         });
       } finally {
@@ -93,14 +81,13 @@ export const CLJSearchBar = () => {
       }
     };
 
-    const timeoutId = setTimeout(searchCLJ, 300);
+    const timeoutId = setTimeout(searchAll, 300);
     return () => clearTimeout(timeoutId);
   }, [searchTerm, toast]);
 
   const handleSelect = (result: SearchResult) => {
-    const routes = {
+    const routes: Record<string, string> = {
       contact: `/contacts/${result.entity_id}`,
-      lead: `/pipeline?highlight=${result.entity_id}`,
       job: `/projects/${result.entity_id}`
     };
 
@@ -109,16 +96,20 @@ export const CLJSearchBar = () => {
     setSearchTerm('');
   };
 
+  // Group results by type
+  const contacts = results.filter(r => r.entity_type === 'contact');
+  const jobs = results.filter(r => r.entity_type === 'job');
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
         <div className="relative w-full max-w-sm">
           <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
           <Input
-            placeholder="Search by C-L-J (e.g., 1-2-3)"
+            placeholder="Search contacts, jobs..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-9 font-mono"
+            className="pl-9"
           />
         </div>
       </PopoverTrigger>
@@ -131,25 +122,54 @@ export const CLJSearchBar = () => {
             {!loading && results.length === 0 && searchTerm.length >= 2 && (
               <CommandEmpty>No results found</CommandEmpty>
             )}
-            {!loading && results.length > 0 && (
-              <CommandGroup heading="Results">
-                {results.map((result) => (
+            
+            {/* Contacts Group */}
+            {!loading && contacts.length > 0 && (
+              <CommandGroup heading="Contacts">
+                {contacts.map((result) => (
                   <CommandItem
-                    key={`${result.entity_type}-${result.entity_id}`}
+                    key={`contact-${result.entity_id}`}
                     onSelect={() => handleSelect(result)}
-                    className="flex items-center justify-between"
+                    className="flex items-center justify-between cursor-pointer"
                   >
-                    <div className="flex flex-col">
-                      <span className="font-medium">{result.entity_name}</span>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span className="font-mono">{result.clj_number}</span>
-                        <span>•</span>
-                        <span className="capitalize">{result.entity_type}</span>
-                        <span>•</span>
-                        <span>{result.entity_status}</span>
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <User className="h-4 w-4 text-blue-500 shrink-0" />
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-medium truncate">{result.entity_name}</span>
+                        <span className="text-xs text-muted-foreground truncate">
+                          {result.entity_subtext}
+                        </span>
                       </div>
                     </div>
-                    <ExternalLink className="h-4 w-4" />
+                    <Badge variant="outline" className="text-xs shrink-0 ml-2">
+                      {result.entity_status}
+                    </Badge>
+                  </CommandItem>
+                ))}
+              </CommandGroup>
+            )}
+            
+            {/* Jobs Group */}
+            {!loading && jobs.length > 0 && (
+              <CommandGroup heading="Jobs">
+                {jobs.map((result) => (
+                  <CommandItem
+                    key={`job-${result.entity_id}`}
+                    onSelect={() => handleSelect(result)}
+                    className="flex items-center justify-between cursor-pointer"
+                  >
+                    <div className="flex items-center gap-2 flex-1 min-w-0">
+                      <Briefcase className="h-4 w-4 text-green-500 shrink-0" />
+                      <div className="flex flex-col min-w-0">
+                        <span className="font-medium truncate">{result.entity_name}</span>
+                        <span className="text-xs text-muted-foreground truncate">
+                          {result.entity_subtext}
+                        </span>
+                      </div>
+                    </div>
+                    <Badge variant="outline" className="text-xs shrink-0 ml-2">
+                      {result.clj_number || result.entity_status}
+                    </Badge>
                   </CommandItem>
                 ))}
               </CommandGroup>
