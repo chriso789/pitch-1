@@ -32,7 +32,7 @@ export const RepPayStructureConfig: React.FC<RepPayStructureConfigProps> = ({
   const [config, setConfig] = useState<PayStructureConfig>({
     pay_type: initialPayType,
     hourly_rate: 25,
-    overhead_rate: 5,
+    overhead_rate: 10,
     commission_structure: 'profit_split',
     commission_rate: 50
   });

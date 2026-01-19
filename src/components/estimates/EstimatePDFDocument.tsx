@@ -339,7 +339,7 @@ export const EstimatePDFDocument: React.FC<EstimatePDFDocumentProps> = ({
   customerAddress,
   customerPhone,
   customerEmail,
-  companyName = 'PITCH CRM™',
+  companyName = 'Your Company',
   companyLogo,
   companyInfo,
   companyLocations,
