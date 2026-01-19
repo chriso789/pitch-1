@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Sheet,
   SheetContent,
@@ -24,14 +25,59 @@ import {
   Clock,
   CheckCircle2,
   AlertCircle,
+  AlertTriangle,
   Download,
   RefreshCw,
   Loader2,
+  ExternalLink,
+  XCircle,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { supabase } from '@/integrations/supabase/client';
 import type { PermitExpediterJob } from '@/lib/permits/types';
 import { PERMIT_STATUS_LABELS, PERMIT_STATUS_COLORS } from '@/lib/permits/types';
+
+// Types for permit_build_case response
+interface MissingItem {
+  key: string;
+  severity: 'error' | 'warning';
+  message: string;
+}
+
+interface PermitDocument {
+  id: string;
+  kind: string;
+  title: string;
+  bucket: string;
+  path: string;
+  signed_url: string;
+  content_type: string;
+}
+
+interface NextAction {
+  action: string;
+  label: string;
+  url?: string;
+  items?: string[];
+}
+
+interface ContextPreview {
+  authority?: {
+    county_name?: string;
+    city_name?: string;
+    portal_type?: string;
+  };
+  measurements?: {
+    total_roof_area_sqft?: number;
+    predominant_pitch?: string;
+  };
+  products?: {
+    primary?: {
+      manufacturer?: string;
+      model?: string;
+    };
+  };
+}
 
 interface PermitCaseDetailSheetProps {
   job: PermitExpediterJob | null;
@@ -48,6 +94,7 @@ export function PermitCaseDetailSheet({
   permitCaseId,
   onRefresh,
 }: PermitCaseDetailSheetProps) {
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('overview');
   
   // Loading states for each action
@@ -55,6 +102,12 @@ export function PermitCaseDetailSheet({
   const [isFetchingProperty, setIsFetchingProperty] = useState(false);
   const [isBuildingApplication, setIsBuildingApplication] = useState(false);
   const [isGeneratingPacket, setIsGeneratingPacket] = useState(false);
+
+  // Build case response state
+  const [missingItems, setMissingItems] = useState<MissingItem[]>([]);
+  const [generatedDocuments, setGeneratedDocuments] = useState<PermitDocument[]>([]);
+  const [nextActions, setNextActions] = useState<NextAction[]>([]);
+  const [contextPreview, setContextPreview] = useState<ContextPreview | null>(null);
 
   if (!job) return null;
 
@@ -119,28 +172,48 @@ export function PermitCaseDetailSheet({
   };
 
   const handleBuildApplication = async () => {
-    if (!permitCaseId || !job?.job_id) {
-      toast.error('Missing permit case or job ID');
+    if (!job?.job_id) {
+      toast.error('Missing job ID');
       return;
     }
     
     setIsBuildingApplication(true);
     try {
-      const { data, error } = await supabase.functions.invoke('permit-application-generator', {
-        body: { 
-          action: 'generate_application', 
-          permit_case_id: permitCaseId, 
-          job_id: job.job_id 
+      const { data, error } = await supabase.functions.invoke('permit_build_case', {
+        body: {
+          job_id: job.job_id,
+          estimate_id: null,
+          options: {
+            auto_detect_jurisdiction: true,
+            auto_fetch_parcel: true,
+            generate_application_pdf: true,
+            generate_packet_zip: true,
+          }
         }
       });
       
       if (error) throw error;
       
-      toast.success('Permit application generated');
+      // Store response data for display
+      setMissingItems(data.missing_items || []);
+      setGeneratedDocuments(data.documents || []);
+      setNextActions(data.next_actions || []);
+      setContextPreview(data.context_preview || null);
+
+      // Show appropriate feedback
+      const errors = (data.missing_items || []).filter((m: MissingItem) => m.severity === 'error');
+      if (errors.length > 0) {
+        toast.warning(`Permit packet built with ${errors.length} items needing attention`);
+      } else if ((data.documents || []).length > 0) {
+        toast.success('Permit packet built successfully!');
+      } else {
+        toast.success('Permit case updated');
+      }
+      
       onRefresh?.();
     } catch (err: any) {
-      console.error('Failed to build application:', err);
-      toast.error(err?.message || 'Failed to build permit application');
+      console.error('Failed to build permit case:', err);
+      toast.error(err?.message || 'Failed to build permit case');
     } finally {
       setIsBuildingApplication(false);
     }
@@ -154,14 +227,54 @@ export function PermitCaseDetailSheet({
     
     setIsGeneratingPacket(true);
     try {
-      // For now, show a placeholder toast - this will need a dedicated edge function
-      toast.info('Permit packet generation coming soon');
+      const { data, error } = await supabase.functions.invoke('permit_generate_documents', {
+        body: {
+          permit_case_id: permitCaseId,
+          outputs: ['APPLICATION_PDF', 'CHECKLIST_PDF', 'PACKET_ZIP'],
+          options: { overwrite: true }
+        }
+      });
+      
+      if (error) throw error;
+      
+      if (data?.documents?.length > 0) {
+        setGeneratedDocuments(data.documents);
+        toast.success('Permit packet generated');
+      } else {
+        toast.info('No documents generated');
+      }
       onRefresh?.();
     } catch (err: any) {
       console.error('Failed to generate packet:', err);
       toast.error(err?.message || 'Failed to generate permit packet');
     } finally {
       setIsGeneratingPacket(false);
+    }
+  };
+
+  const handleResolveItem = (key: string) => {
+    switch (key) {
+      case 'missing.authority_not_configured':
+        navigate('/settings/permitting-authorities');
+        onOpenChange(false);
+        break;
+      case 'missing.product_mapping_primary':
+      case 'missing.product_mapping_components':
+        toast.info('Product mapping coming soon');
+        break;
+      case 'missing.parcel_legal_description':
+      case 'missing.parcel_id':
+        handleFetchPropertyData();
+        break;
+      case 'missing.measurements_total_roof_area':
+      case 'missing.measurements_report':
+        toast.info('Import measurements from the job page');
+        break;
+      case 'missing.estimate_selected':
+        toast.info('Select an estimate for this permit case');
+        break;
+      default:
+        toast.info(`Resolution for ${key} coming soon`);
     }
   };
 
@@ -249,6 +362,53 @@ export function PermitCaseDetailSheet({
                 </CardContent>
               </Card>
 
+              {/* Context Preview (when available) */}
+              {contextPreview && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <ClipboardList className="h-4 w-4" />
+                      Permit Summary
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2 text-sm">
+                    {contextPreview.authority && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Authority</span>
+                        <span className="font-medium">
+                          {contextPreview.authority.city_name || contextPreview.authority.county_name}
+                          {contextPreview.authority.portal_type && ` (${contextPreview.authority.portal_type})`}
+                        </span>
+                      </div>
+                    )}
+                    {contextPreview.measurements && (
+                      <>
+                        <div className="flex justify-between">
+                          <span className="text-muted-foreground">Roof Area</span>
+                          <span className="font-medium">
+                            {contextPreview.measurements.total_roof_area_sqft?.toLocaleString()} sq ft
+                          </span>
+                        </div>
+                        {contextPreview.measurements.predominant_pitch && (
+                          <div className="flex justify-between">
+                            <span className="text-muted-foreground">Pitch</span>
+                            <span className="font-medium">{contextPreview.measurements.predominant_pitch}</span>
+                          </div>
+                        )}
+                      </>
+                    )}
+                    {contextPreview.products?.primary && (
+                      <div className="flex justify-between">
+                        <span className="text-muted-foreground">Primary Product</span>
+                        <span className="font-medium">
+                          {contextPreview.products.primary.manufacturer} {contextPreview.products.primary.model}
+                        </span>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Readiness Checklist */}
               <Card>
                 <CardHeader className="pb-3">
@@ -281,6 +441,62 @@ export function PermitCaseDetailSheet({
                 </CardContent>
               </Card>
 
+              {/* Missing Items Section */}
+              {missingItems.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <AlertCircle className="h-4 w-4 text-yellow-500" />
+                      Items Needing Attention ({missingItems.length})
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {missingItems.map(item => (
+                      <div key={item.key} className="flex items-center justify-between p-2 rounded border bg-muted/30">
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          {item.severity === 'error' ? 
+                            <XCircle className="h-4 w-4 text-destructive shrink-0" /> : 
+                            <AlertTriangle className="h-4 w-4 text-yellow-500 shrink-0" />
+                          }
+                          <span className="text-sm truncate">{item.message}</span>
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => handleResolveItem(item.key)} className="shrink-0 ml-2">
+                          Resolve
+                        </Button>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Generated Documents */}
+              {generatedDocuments.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <FileText className="h-4 w-4" />
+                      Generated Documents
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent className="space-y-2">
+                    {generatedDocuments.map(doc => (
+                      <div key={doc.id} className="flex items-center justify-between p-2 border rounded">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <FileText className="h-5 w-5 shrink-0" />
+                          <div className="min-w-0">
+                            <div className="font-medium text-sm truncate">{doc.title}</div>
+                            <div className="text-xs text-muted-foreground">{doc.kind}</div>
+                          </div>
+                        </div>
+                        <Button size="sm" variant="outline" onClick={() => window.open(doc.signed_url, '_blank')}>
+                          <Download className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    ))}
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Actions */}
               <Card>
                 <CardHeader className="pb-3">
@@ -292,7 +508,7 @@ export function PermitCaseDetailSheet({
                 <CardContent className="space-y-2">
                   <Button 
                     className="w-full" 
-                    disabled={!job.has_measurements || !job.has_parcel_data || isBuildingApplication}
+                    disabled={isBuildingApplication}
                     onClick={handleBuildApplication}
                   >
                     {isBuildingApplication ? (
@@ -300,12 +516,12 @@ export function PermitCaseDetailSheet({
                     ) : (
                       <FileText className="h-4 w-4 mr-2" />
                     )}
-                    {isBuildingApplication ? 'Building...' : 'Build Permit Application'}
+                    {isBuildingApplication ? 'Building...' : 'Build Permit Packet'}
                   </Button>
                   <Button 
                     variant="outline" 
                     className="w-full"
-                    disabled={isGeneratingPacket}
+                    disabled={isGeneratingPacket || !permitCaseId}
                     onClick={handleGeneratePacket}
                   >
                     {isGeneratingPacket ? (
@@ -313,8 +529,23 @@ export function PermitCaseDetailSheet({
                     ) : (
                       <Download className="h-4 w-4 mr-2" />
                     )}
-                    {isGeneratingPacket ? 'Generating...' : 'Generate Permit Packet'}
+                    {isGeneratingPacket ? 'Generating...' : 'Regenerate Documents'}
                   </Button>
+                  
+                  {/* Next Actions - Portal Link */}
+                  {nextActions.map(action => (
+                    action.action === 'OPEN_PERMITTING_PORTAL' && action.url ? (
+                      <Button 
+                        key={action.action}
+                        variant="secondary"
+                        className="w-full"
+                        onClick={() => window.open(action.url, '_blank')}
+                      >
+                        <ExternalLink className="h-4 w-4 mr-2" />
+                        {action.label}
+                      </Button>
+                    ) : null
+                  ))}
                 </CardContent>
               </Card>
             </TabsContent>
@@ -474,9 +705,7 @@ function ChecklistItem({
         )}
       </div>
       <div>
-        <div className={`font-medium ${!checked && 'text-muted-foreground'}`}>
-          {label}
-        </div>
+        <div className={`font-medium ${checked ? '' : 'text-muted-foreground'}`}>{label}</div>
         <div className="text-sm text-muted-foreground">{description}</div>
       </div>
     </div>
@@ -485,9 +714,9 @@ function ChecklistItem({
 
 function InfoRow({ label, value }: { label: string; value: string }) {
   return (
-    <div className="flex justify-between">
+    <div className="flex justify-between text-sm">
       <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium text-right max-w-[60%]">{value}</span>
+      <span className="font-medium text-right max-w-[60%] truncate">{value}</span>
     </div>
   );
 }
@@ -502,14 +731,11 @@ function TimelineEvent({
   timestamp: string;
 }) {
   return (
-    <div className="flex gap-3">
-      <div className="flex flex-col items-center">
-        <div className="w-2 h-2 rounded-full bg-primary" />
-        <div className="w-px h-full bg-border" />
-      </div>
-      <div className="pb-4">
-        <div className="font-medium">{message}</div>
-        <div className="text-sm text-muted-foreground">
+    <div className="flex items-start gap-3">
+      <div className="mt-0.5 h-2 w-2 rounded-full bg-primary" />
+      <div className="flex-1">
+        <div className="text-sm font-medium">{message}</div>
+        <div className="text-xs text-muted-foreground">
           {new Date(timestamp).toLocaleString()}
         </div>
       </div>

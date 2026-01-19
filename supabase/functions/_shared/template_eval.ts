@@ -223,7 +223,7 @@ function evaluateExpression(
   if (expr.includes('/')) {
     const [leftStr, rightStr] = expr.split('/').map(s => s.trim());
     const left = resolveRef(leftStr, context) ?? values[leftStr];
-    const right = parseFloat(rightStr) || resolveRef(rightStr, context) ?? values[rightStr];
+    const right = parseFloat(rightStr) || (resolveRef(rightStr, context) ?? values[rightStr]);
     
     if (typeof left === 'number' && typeof right === 'number' && right !== 0) {
       return left / right;
@@ -234,7 +234,7 @@ function evaluateExpression(
   if (expr.includes('*')) {
     const [leftStr, rightStr] = expr.split('*').map(s => s.trim());
     const left = resolveRef(leftStr, context) ?? values[leftStr];
-    const right = parseFloat(rightStr) || resolveRef(rightStr, context) ?? values[rightStr];
+    const right = parseFloat(rightStr) || (resolveRef(rightStr, context) ?? values[rightStr]);
     
     if (typeof left === 'number' && typeof right === 'number') {
       return left * right;
