@@ -560,20 +560,49 @@ Deno.serve(async (req) => {
       // FAST PATH: Convert authoritative footprint vertices to pixel coordinates
       console.log(`🚀 SKIPPING SLOW AI PASSES: Using ${authoritativeFootprint.source} footprint with ${authoritativeFootprint.vertices.length} vertices`);
       
-      // Convert geo coordinates to pixel coordinates for the perimeter
+      // CRITICAL FIX: Preserve BOTH pixel AND geo coordinates for proper area/perimeter calculation
+      // The calculateAreaFromPerimeterVertices function needs valid coordinates in either format
       const perimeterVertices = authoritativeFootprint.vertices.map((v, i) => {
         const pixel = geoToPixel(v.lat, v.lng, coordinates.lat, coordinates.lng, logicalImageSize, IMAGE_ZOOM);
+        const xPct = (pixel.x / logicalImageSize) * 100;
+        const yPct = (pixel.y / logicalImageSize) * 100;
+        
         return {
-          x: (pixel.x / logicalImageSize) * 100,  // Convert to percentage
-          y: (pixel.y / logicalImageSize) * 100,
+          x: xPct,  // Pixel percentage (0-100)
+          y: yPct,
+          lat: v.lat,  // PRESERVE original geo coords for area calculation
+          lng: v.lng,
           type: 'corner' as const,
-          label: `corner_${i + 1}`
+          label: `corner_${i + 1}`,
+          cornerType: 'perimeter'
         };
       });
       
       // Calculate bounding box from footprint
       const xCoords = perimeterVertices.map(v => v.x);
       const yCoords = perimeterVertices.map(v => v.y);
+      
+      // VALIDATION: Check for invalid pixel coordinates (outside 0-100 range indicates conversion error)
+      const invalidVertices = perimeterVertices.filter(v => v.x < 0 || v.x > 100 || v.y < 0 || v.y > 100 || isNaN(v.x) || isNaN(v.y));
+      if (invalidVertices.length > 0) {
+        console.warn(`⚠️ ${invalidVertices.length} vertices have invalid pixel coordinates - footprint may be off-center`);
+      }
+      
+      // Calculate perimeter in feet directly from geo coordinates for validation
+      let estimatedPerimeterFt = 0;
+      const metersPerDegLat = 111320;
+      const metersPerDegLng = 111320 * Math.cos(coordinates.lat * Math.PI / 180);
+      
+      for (let i = 0; i < authoritativeFootprint.vertices.length; i++) {
+        const v1 = authoritativeFootprint.vertices[i];
+        const v2 = authoritativeFootprint.vertices[(i + 1) % authoritativeFootprint.vertices.length];
+        const dLat = (v2.lat - v1.lat) * metersPerDegLat;
+        const dLng = (v2.lng - v1.lng) * metersPerDegLng;
+        const segmentFt = Math.sqrt(dLat * dLat + dLng * dLng) * 3.28084;
+        estimatedPerimeterFt += segmentFt;
+      }
+      
+      console.log(`📐 Fast path perimeter calculation: ${estimatedPerimeterFt.toFixed(1)} ft from ${authoritativeFootprint.vertices.length} vertices`);
       
       buildingIsolation = {
         bounds: {
@@ -593,12 +622,12 @@ Deno.serve(async (req) => {
         source: authoritativeFootprint.source
       };
       
-      // Set footprintCheck for fast path (authoritative footprints are pre-validated)
+      // Set footprintCheck for fast path with calculated perimeter
       footprintCheck = {
         isValid: true,
         spanXPct: 100,
         spanYPct: 100,
-        estimatedPerimeterFt: authoritativeFootprint.estimatedPerimeterFt || 0,
+        estimatedPerimeterFt: estimatedPerimeterFt,
         longSegments: [],
         failureReason: null
       };
@@ -3095,27 +3124,52 @@ function convertPerimeterToWKT(
   const metersPerDegLat = 111320
   const metersPerDegLng = 111320 * Math.cos(imageCenter.lat * Math.PI / 180)
   
+  // CRITICAL FIX: Use lat/lng if available (more accurate), fall back to pixel conversion
   const wktPoints = vertices.map((pt: any) => {
-    const pixelX = ((pt.x / 100) - 0.5) * imageSize
-    const pixelY = ((pt.y / 100) - 0.5) * imageSize
-    const metersX = pixelX * metersPerPixel
-    const metersY = pixelY * metersPerPixel
-    const lngOffset = metersX / metersPerDegLng
-    const latOffset = -metersY / metersPerDegLat
-    return `${(imageCenter.lng + lngOffset).toFixed(8)} ${(imageCenter.lat + latOffset).toFixed(8)}`
+    // Priority 1: Use preserved lat/lng coordinates if available
+    if (typeof pt.lat === 'number' && typeof pt.lng === 'number' && !isNaN(pt.lat) && !isNaN(pt.lng)) {
+      return `${pt.lng.toFixed(8)} ${pt.lat.toFixed(8)}`
+    }
+    
+    // Priority 2: Convert from pixel percentages
+    if (typeof pt.x === 'number' && typeof pt.y === 'number' && !isNaN(pt.x) && !isNaN(pt.y)) {
+      const pixelX = ((pt.x / 100) - 0.5) * imageSize
+      const pixelY = ((pt.y / 100) - 0.5) * imageSize
+      const metersX = pixelX * metersPerPixel
+      const metersY = pixelY * metersPerPixel
+      const lngOffset = metersX / metersPerDegLng
+      const latOffset = -metersY / metersPerDegLat
+      return `${(imageCenter.lng + lngOffset).toFixed(8)} ${(imageCenter.lat + latOffset).toFixed(8)}`
+    }
+    
+    // Fallback: use image center (will produce degenerate polygon)
+    console.warn(`⚠️ Invalid vertex for WKT: x=${pt.x}, y=${pt.y}, lat=${pt.lat}, lng=${pt.lng}`)
+    return `${imageCenter.lng.toFixed(8)} ${imageCenter.lat.toFixed(8)}`
   })
   
   wktPoints.push(wktPoints[0])
   
+  // Calculate perimeter using same coordinate priority
   let totalPerimeterFt = 0
   const segmentLengths: number[] = []
   
   for (let i = 0; i < vertices.length; i++) {
     const v1 = vertices[i]
     const v2 = vertices[(i + 1) % vertices.length]
-    const dx = ((v2.x - v1.x) / 100) * imageSize * metersPerPixel
-    const dy = ((v2.y - v1.y) / 100) * imageSize * metersPerPixel
-    const segmentFt = Math.sqrt(dx * dx + dy * dy) * 3.28084
+    let segmentFt = 0
+    
+    // Priority 1: Calculate from lat/lng if available
+    if (typeof v1.lat === 'number' && typeof v1.lng === 'number' && typeof v2.lat === 'number' && typeof v2.lng === 'number') {
+      const dLat = (v2.lat - v1.lat) * metersPerDegLat
+      const dLng = (v2.lng - v1.lng) * metersPerDegLng
+      segmentFt = Math.sqrt(dLat * dLat + dLng * dLng) * 3.28084
+    } else {
+      // Priority 2: Calculate from pixel coordinates
+      const dx = ((v2.x - v1.x) / 100) * imageSize * metersPerPixel
+      const dy = ((v2.y - v1.y) / 100) * imageSize * metersPerPixel
+      segmentFt = Math.sqrt(dx * dx + dy * dy) * 3.28084
+    }
+    
     segmentLengths.push(Math.round(segmentFt * 10) / 10)
     totalPerimeterFt += segmentFt
   }
@@ -3459,23 +3513,45 @@ function calculateAreaFromPerimeterVertices(
   }
   
   const metersPerPixel = (156543.03392 * Math.cos(imageCenter.lat * Math.PI / 180)) / Math.pow(2, zoom)
+  const metersPerDegLat = 111320
+  const metersPerDegLng = 111320 * Math.cos(imageCenter.lat * Math.PI / 180)
   
-  const feetVertices = vertices.map(v => {
-    if (typeof v.x === 'number' && typeof v.y === 'number' && v.x <= 100 && v.y <= 100) {
-      return {
-        x: ((v.x / 100) - 0.5) * imageSize * metersPerPixel * 3.28084,
-        y: ((v.y / 100) - 0.5) * imageSize * metersPerPixel * 3.28084
-      }
+  // CRITICAL FIX: Prefer lat/lng if available (more accurate), fall back to pixel coordinates
+  const feetVertices = vertices.map((v, idx) => {
+    // Priority 1: Use lat/lng if present (preserved from authoritative footprint)
+    if (typeof v.lat === 'number' && typeof v.lng === 'number' && !isNaN(v.lat) && !isNaN(v.lng)) {
+      const x = (v.lng - imageCenter.lng) * metersPerDegLng * 3.28084
+      const y = (v.lat - imageCenter.lat) * metersPerDegLat * 3.28084
+      if (idx === 0) console.log(`📐 Using lat/lng coords: first vertex at (${x.toFixed(1)}, ${y.toFixed(1)}) ft`)
+      return { x, y }
     }
-    const metersPerDegLat = 111320
-    const metersPerDegLng = 111320 * Math.cos(imageCenter.lat * Math.PI / 180)
-    return {
-      x: ((v.lng || 0) - imageCenter.lng) * metersPerDegLng * 3.28084,
-      y: ((v.lat || 0) - imageCenter.lat) * metersPerDegLat * 3.28084
+    
+    // Priority 2: Use pixel percentages (x, y in 0-100 range)
+    if (typeof v.x === 'number' && typeof v.y === 'number' && v.x >= 0 && v.x <= 100 && v.y >= 0 && v.y <= 100 && !isNaN(v.x) && !isNaN(v.y)) {
+      const x = ((v.x / 100) - 0.5) * imageSize * metersPerPixel * 3.28084
+      const y = ((v.y / 100) - 0.5) * imageSize * metersPerPixel * 3.28084
+      if (idx === 0) console.log(`📐 Using pixel coords: first vertex at (${x.toFixed(1)}, ${y.toFixed(1)}) ft`)
+      return { x, y }
     }
+    
+    // Fallback: log warning and return 0 (will trigger Solar fallback)
+    console.warn(`⚠️ Vertex ${idx} has invalid coordinates: x=${v.x}, y=${v.y}, lat=${v.lat}, lng=${v.lng}`)
+    return { x: 0, y: 0 }
   })
   
-  // Shoelace formula
+  // Check for all-zero vertices (indicates coordinate conversion failure)
+  const nonZeroVertices = feetVertices.filter(v => v.x !== 0 || v.y !== 0)
+  if (nonZeroVertices.length < 3) {
+    console.warn(`⚠️ Coordinate conversion failed: ${feetVertices.length - nonZeroVertices.length} vertices at origin`)
+    // Use Solar API as ground truth
+    if (solarData?.available && solarData?.buildingFootprintSqft) {
+      console.log(`📐 Using Solar API footprint as fallback: ${solarData.buildingFootprintSqft.toFixed(0)} sqft`)
+      return solarData.buildingFootprintSqft
+    }
+    return 1500 // Minimum fallback
+  }
+  
+  // Shoelace formula for area
   let area = 0
   for (let i = 0; i < feetVertices.length; i++) {
     const j = (i + 1) % feetVertices.length
@@ -3488,20 +3564,31 @@ function calculateAreaFromPerimeterVertices(
   
   // Calculate perimeter for validation
   let perimeterFt = 0
+  const segmentLengths: number[] = []
   for (let i = 0; i < feetVertices.length; i++) {
     const v1 = feetVertices[i]
     const v2 = feetVertices[(i + 1) % feetVertices.length]
-    perimeterFt += Math.sqrt(Math.pow(v2.x - v1.x, 2) + Math.pow(v2.y - v1.y, 2))
+    const segLen = Math.sqrt(Math.pow(v2.x - v1.x, 2) + Math.pow(v2.y - v1.y, 2))
+    segmentLengths.push(Math.round(segLen * 10) / 10)
+    perimeterFt += segLen
   }
   
   console.log(`📐 Calculated perimeter: ${perimeterFt.toFixed(1)} ft from ${feetVertices.length} vertices`)
+  console.log(`📐 Edge segments (ft): ${segmentLengths.join(', ')}`)
   
   // Area/Perimeter ratio validation - catches multi-building traces
   const areaPerimeterRatio = calculatedArea / perimeterFt
   console.log(`📐 Area/Perimeter ratio: ${areaPerimeterRatio.toFixed(1)} (expect 10-20)`)
   
-  // NEW: Check for multi-building trace using Area/Perimeter ratio
-  // A single rectangular building has ratio ~10-18, multiple buildings traced as one will have ratio > 22
+  // Validate ratio is sane (not NaN or extreme values)
+  if (isNaN(areaPerimeterRatio) || areaPerimeterRatio < 1 || areaPerimeterRatio > 100) {
+    console.warn(`⚠️ Invalid area/perimeter ratio: ${areaPerimeterRatio} - using Solar fallback`)
+    if (solarData?.available && solarData?.buildingFootprintSqft) {
+      return solarData.buildingFootprintSqft
+    }
+  }
+  
+  // Check for multi-building trace using Area/Perimeter ratio
   if (areaPerimeterRatio > ROOF_AREA_CAPS.AREA_PERIMETER_MAX_RATIO) {
     console.warn(`⚠️ MULTI-BUILDING WARNING: Area/Perimeter ratio ${areaPerimeterRatio.toFixed(1)} > ${ROOF_AREA_CAPS.AREA_PERIMETER_MAX_RATIO} - likely tracing multiple buildings!`)
     
