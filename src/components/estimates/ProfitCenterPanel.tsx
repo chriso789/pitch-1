@@ -60,7 +60,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
     };
   }, [pipelineEntryId, queryClient]);
 
-  // Fetch sales rep's commission settings
+  // Fetch sales rep's commission settings (use both overhead_rate and personal_overhead_rate)
   const { data: salesRepData, isLoading: isLoadingRep } = useQuery({
     queryKey: ['sales-rep-commission', pipelineEntryId],
     queryFn: async () => {
@@ -71,6 +71,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
           profiles!pipeline_entries_assigned_to_fkey(
             first_name,
             last_name,
+            overhead_rate,
             personal_overhead_rate,
             commission_rate
           )
@@ -79,7 +80,7 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
         .single();
       
       if (error) throw error;
-      return data?.profiles as SalesRepData | null;
+      return data?.profiles as (SalesRepData & { overhead_rate: number | null }) | null;
     },
     enabled: !!pipelineEntryId,
   });
@@ -124,8 +125,11 @@ const ProfitCenterPanel: React.FC<ProfitCenterPanelProps> = ({
 
   const formatPercent = (value: number) => `${value.toFixed(1)}%`;
 
-  // Get rates from sales rep profile (with defaults)
-  const overheadRate = salesRepData?.personal_overhead_rate ?? 10;
+  // Get rates from sales rep profile (with proper fallback logic)
+  // Use effectiveOverheadRate: prefer personal_overhead_rate > 0, else overhead_rate, else default 10
+  const personalOverhead = salesRepData?.personal_overhead_rate ?? 0;
+  const baseOverhead = (salesRepData as any)?.overhead_rate ?? 10;
+  const overheadRate = personalOverhead > 0 ? personalOverhead : baseOverhead;
   const commissionRate = salesRepData?.commission_rate ?? 50;
   const repName = salesRepData 
     ? `${salesRepData.first_name || ''} ${salesRepData.last_name || ''}`.trim() 

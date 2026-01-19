@@ -95,22 +95,26 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     enabled: !!pipelineEntryId,
   });
 
-  // Fetch sales rep's overhead rate
+  // Fetch sales rep's overhead rate (use both overhead_rate and personal_overhead_rate for fallback)
   const { data: salesRepData } = useQuery({
     queryKey: ['sales-rep-overhead', pipelineEntryId],
     queryFn: async () => {
       const { data, error } = await supabase
         .from('pipeline_entries')
-        .select('assigned_to, profiles!pipeline_entries_assigned_to_fkey(personal_overhead_rate)')
+        .select('assigned_to, profiles!pipeline_entries_assigned_to_fkey(overhead_rate, personal_overhead_rate)')
         .eq('id', pipelineEntryId!)
         .single();
       if (error) throw error;
-      return data?.profiles?.personal_overhead_rate || 0;
+      const profile = data?.profiles as { overhead_rate: number | null; personal_overhead_rate: number | null } | null;
+      // Use effectiveOverheadRate: prefer personal_overhead_rate > 0, else overhead_rate, else default 10
+      const personal = profile?.personal_overhead_rate ?? 0;
+      const base = profile?.overhead_rate ?? 10;
+      return personal > 0 ? personal : base;
     },
     enabled: !!pipelineEntryId,
   });
 
-  const salesRepOverheadRate = salesRepData || 0;
+  const salesRepOverheadRate = salesRepData ?? 10;
 
   // Mutation to update estimate selling price
   const updatePriceMutation = useMutation({
@@ -175,9 +179,8 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
     }
   };
 
-  // Calculate overhead based on sales rep's personal overhead rate
+  // Calculate overhead based on sales rep's effective overhead rate
   const calculateRepOverhead = () => {
-    if (!salesRepOverheadRate) return hyperlinkData?.overhead || 0;
     const salePrice = hyperlinkData?.sale_price || calculations?.selling_price || 0;
     return salePrice * (salesRepOverheadRate / 100);
   };
@@ -225,7 +228,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       label: 'Overhead',
       icon: Settings,
       value: formatCurrency(calculateRepOverhead()),
-      hint: salesRepOverheadRate ? `Rep: ${salesRepOverheadRate}%` : null,
+      hint: `${salesRepOverheadRate}%`,
       description: 'Overhead and administrative costs'
     },
     {
@@ -286,9 +289,7 @@ const EstimateHyperlinkBar: React.FC<EstimateHyperlinkBarProps> = ({
       value: formatCurrency(calculateRepOverhead() || calculations?.overhead_amount || 0),
       hint: !isReady 
         ? 'Pending calculations' 
-        : salesRepOverheadRate 
-        ? `Rep: ${salesRepOverheadRate}%` 
-        : null,
+        : `${salesRepOverheadRate}%`,
       description: 'Overhead and administrative costs'
     },
     {
