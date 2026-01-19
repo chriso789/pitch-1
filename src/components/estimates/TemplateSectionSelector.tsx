@@ -74,7 +74,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
   });
 
   // First fetch the selected_estimate_id from pipeline_entries metadata
-  const { data: pipelineData } = useQuery({
+  const { data: pipelineData, isLoading: pipelineDataLoading } = useQuery({
     queryKey: ['pipeline-selected-estimate', pipelineEntryId],
     queryFn: async () => {
       const { data, error } = await supabase
@@ -84,17 +84,22 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
         .single();
       
       if (error) throw error;
+      console.log('[TemplateSectionSelector] Pipeline metadata loaded:', data?.metadata);
       return data;
-    }
+    },
+    staleTime: 0, // Always refetch to get latest selected_estimate_id
+    refetchOnMount: 'always'
   });
 
   const selectedEstimateId = (pipelineData?.metadata as any)?.selected_estimate_id;
 
   // Fetch existing estimate to get saved line items - using selected_estimate_id
-  const { data: existingEstimate } = useQuery({
+  const { data: existingEstimate, isLoading: estimateLoading } = useQuery({
     queryKey: ['enhanced-estimate-items', pipelineEntryId, selectedEstimateId, sectionType],
     queryFn: async () => {
       if (!selectedEstimateId) return null;
+      
+      console.log('[TemplateSectionSelector] Fetching estimate:', selectedEstimateId, 'for section:', sectionType);
       
       const { data, error } = await supabase
         .from('enhanced_estimates')
@@ -103,13 +108,27 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
         .single();
       
       if (error) throw error;
+      console.log('[TemplateSectionSelector] Estimate loaded:', { id: data?.id, hasLineItems: !!data?.line_items });
       return data;
     },
-    enabled: !!selectedEstimateId
+    enabled: !!selectedEstimateId,
+    staleTime: 0, // Always consider stale so it refetches
+    refetchOnMount: 'always' // Always refetch when component mounts
   });
+
+  // Track loading state
+  const isLoadingData = pipelineDataLoading || (!!selectedEstimateId && estimateLoading);
 
   // Load line items when estimate data changes - using useEffect for proper state management
   useEffect(() => {
+    console.log('[TemplateSectionSelector] useEffect triggered:', {
+      hasEstimate: !!existingEstimate,
+      estimateId: existingEstimate?.id,
+      hasLineItems: !!existingEstimate?.line_items,
+      sectionType,
+      selectedEstimateId
+    });
+    
     if (existingEstimate?.line_items) {
       const items = existingEstimate.line_items as unknown as Record<string, LineItem[]>;
       // Check both possible keys: 'materials'/'labor' and 'material'/'labor'
@@ -117,8 +136,14 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
       const fallbackKey = sectionType === 'material' ? 'material' : 'labor';
       const sectionItems = items[primaryKey] || items[fallbackKey];
       
+      console.log('[TemplateSectionSelector] Line items found:', {
+        primaryKey,
+        fallbackKey,
+        itemCount: sectionItems?.length || 0,
+        keys: Object.keys(items)
+      });
+      
       if (sectionItems && sectionItems.length > 0) {
-        console.log(`[TemplateSectionSelector] Loading ${sectionType} items:`, sectionItems.length);
         setLineItems(sectionItems);
       }
     }
@@ -126,7 +151,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
     if (existingEstimate?.template_id) {
       setSelectedTemplateId(existingEstimate.template_id);
     }
-  }, [existingEstimate?.id, existingEstimate?.line_items, existingEstimate?.template_id, sectionType]);
+  }, [existingEstimate?.id, existingEstimate?.line_items, existingEstimate?.template_id, sectionType, selectedEstimateId]);
 
   // Save line items mutation
   const saveLineItemsMutation = useMutation({
@@ -308,8 +333,16 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
         </div>
       </div>
 
+      {/* Loading State */}
+      {isLoadingData && (
+        <div className="flex items-center justify-center py-8 text-muted-foreground">
+          <Loader2 className="h-5 w-5 animate-spin mr-2" />
+          <span>Loading {sectionType === 'material' ? 'materials' : 'labor'} line items...</span>
+        </div>
+      )}
+
       {/* Line Items Table */}
-      {lineItems.length > 0 && (
+      {!isLoadingData && lineItems.length > 0 && (
         <div className="border rounded-lg overflow-hidden">
           <Table>
             <TableHeader>
@@ -376,8 +409,8 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
         </div>
       )}
 
-      {/* Add Item Form - only show if not locked */}
-      {!isLocked && (
+      {/* Add Item Form - only show if not locked and not loading */}
+      {!isLocked && !isLoadingData && (
         isAddingItem ? (
           <div className="flex items-end gap-2 p-3 border rounded-lg bg-muted/30">
             <div className="flex-1">
