@@ -31,6 +31,7 @@ interface ParsedMeasurements {
   address?: string | null;
   total_area_sqft?: number | null;
   pitched_area_sqft?: number | null;
+  flat_area_sqft?: number | null;
   facet_count?: number | null;
   predominant_pitch?: string | null;
   ridges_ft?: number | null;
@@ -39,6 +40,10 @@ interface ParsedMeasurements {
   rakes_ft?: number | null;
   eaves_ft?: number | null;
   drip_edge_ft?: number | null;
+  perimeter_ft?: number | null;
+  step_flashing_ft?: number | null;
+  squares?: number | null;
+  hip_ridge_cap_lf?: number | null;
   waste_table?: Array<{
     waste_pct: number;
     area_sqft: number | null;
@@ -179,6 +184,7 @@ export function ImportMeasurementReport({
         roof_area_sq_ft: parsedData.total_area_sqft,
         total_area_sqft: parsedData.total_area_sqft,
         pitched_area_sqft: parsedData.pitched_area_sqft,
+        flat_area_sqft: parsedData.flat_area_sqft,
         predominant_pitch: parsedData.predominant_pitch,
         facet_count: parsedData.facet_count,
         ridges_lf: parsedData.ridges_ft,
@@ -187,7 +193,12 @@ export function ImportMeasurementReport({
         rakes_lf: parsedData.rakes_ft,
         eaves_lf: parsedData.eaves_ft,
         drip_edge_lf: parsedData.drip_edge_ft,
+        perimeter_ft: parsedData.perimeter_ft,
+        step_flashing_lf: parsedData.step_flashing_ft,
         waste_table: parsedData.waste_table,
+        // Xactimate-specific fields
+        squares: parsedData.squares,
+        hip_ridge_cap_lf: parsedData.hip_ridge_cap_lf,
         source: `imported_${parsedData.provider}`,
         imported_at: new Date().toISOString(),
       };
@@ -249,7 +260,7 @@ export function ImportMeasurementReport({
             Import Measurement Report
           </DialogTitle>
           <DialogDescription>
-            Upload an EagleView, Roofr, or other measurement report (PDF) to extract measurements.
+            Upload an EagleView, Roofr, Xactimate, or other measurement report (PDF) to extract measurements.
           </DialogDescription>
         </DialogHeader>
 
