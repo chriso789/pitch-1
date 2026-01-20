@@ -127,8 +127,9 @@ serve(async (req) => {
   try {
     const { endpoint, params } = await req.json();
     
-    // Define which endpoints require authentication
-    const publicEndpoints = ['geocode', 'autocomplete'];
+    // Define which endpoints can be accessed without authentication
+    // satellite, geocode, autocomplete are public for map display functionality
+    const publicEndpoints = ['geocode', 'autocomplete', 'satellite', 'directions', 'streetview'];
     const requiresAuth = !publicEndpoints.includes(endpoint);
     
     let user = null;
