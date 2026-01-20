@@ -4073,6 +4073,7 @@ async function saveEdgesToDatabase(
 }
 
 // Generate facet polygons - ALWAYS returns at least 1 fallback facet
+// FIXED: Now generates facets using actual ridge/hip vertex coordinates for precise alignment
 function generateFacetPolygons(
   perimeterVertices: any[],
   interiorJunctions: any[],
@@ -4119,8 +4120,115 @@ function generateFacetPolygons(
   
   const directions = ['north', 'south', 'east', 'west', 'northeast', 'southeast', 'southwest', 'northwest']
   
-  // Try to generate multiple facets based on geometry
-  if (facetCount >= 4 && (hipLines.length >= 2 || ridgeLines.length >= 1)) {
+  // ═══════════════════════════════════════════════════════════════════════════
+  // NEW: Hip Roof Precise Facet Generation using actual ridge/hip coordinates
+  // This ensures facets align exactly with drawn hip and ridge lines
+  // ═══════════════════════════════════════════════════════════════════════════
+  if (facetCount >= 4 && hipLines.length >= 4 && ridgeLines.length >= 1) {
+    console.log(`📐 Generating ${facetCount} facets using ridge/hip coordinates for precise alignment`)
+    
+    // Get ridge endpoints - these are the vertices where hips converge
+    const ridge = ridgeLines[0]
+    const ridgeStart = { x: ridge.startX, y: ridge.startY }
+    const ridgeEnd = { x: ridge.endX, y: ridge.endY }
+    
+    // Sort perimeter vertices clockwise from top-left
+    const sortedPerimeter = [...perimeterVertices].sort((a, b) => {
+      const angleA = Math.atan2(a.y - centroidY, a.x - centroidX)
+      const angleB = Math.atan2(b.y - centroidY, b.x - centroidX)
+      return angleA - angleB
+    })
+    
+    // Find the 4 corners (assuming rectangular base) - closest to actual corners
+    const minX = Math.min(...sortedPerimeter.map(v => v.x))
+    const maxX = Math.max(...sortedPerimeter.map(v => v.x))
+    const minY = Math.min(...sortedPerimeter.map(v => v.y))
+    const maxY = Math.max(...sortedPerimeter.map(v => v.y))
+    
+    // Find vertices closest to each corner
+    const findClosest = (targetX: number, targetY: number) => {
+      return sortedPerimeter.reduce((closest, v) => {
+        const d = Math.sqrt((v.x - targetX) ** 2 + (v.y - targetY) ** 2)
+        return d < closest.dist ? { v, dist: d } : closest
+      }, { v: sortedPerimeter[0], dist: Infinity }).v
+    }
+    
+    const topLeft = findClosest(minX, minY)
+    const topRight = findClosest(maxX, minY)
+    const bottomRight = findClosest(maxX, maxY)
+    const bottomLeft = findClosest(minX, maxY)
+    
+    // Create 4 facets: each connects 2 corners to the nearest ridge endpoint
+    // For a standard hip roof: front eave to ridge, back eave to ridge, left hip triangle, right hip triangle
+    
+    // Front facet (top/north side) - from top-left to top-right, connecting to ridge
+    const frontFacet = [topLeft, topRight, ridgeEnd, ridgeStart].map(toLatLng)
+    frontFacet.push(frontFacet[0]) // Close polygon
+    facetPolygons.push({
+      facetNumber: 1,
+      points: frontFacet,
+      centroid: { 
+        lng: frontFacet.reduce((s, p) => s + p.lng, 0) / frontFacet.length,
+        lat: frontFacet.reduce((s, p) => s + p.lat, 0) / frontFacet.length
+      },
+      primaryDirection: 'north',
+      azimuthDegrees: 0,
+      shapeType: 'trapezoid',
+      areaEstimate: areaPerFacet
+    })
+    
+    // Right hip triangle - from top-right to bottom-right to ridge endpoint
+    const rightFacet = [topRight, bottomRight, ridgeEnd].map(toLatLng)
+    rightFacet.push(rightFacet[0])
+    facetPolygons.push({
+      facetNumber: 2,
+      points: rightFacet,
+      centroid: {
+        lng: rightFacet.reduce((s, p) => s + p.lng, 0) / rightFacet.length,
+        lat: rightFacet.reduce((s, p) => s + p.lat, 0) / rightFacet.length
+      },
+      primaryDirection: 'east',
+      azimuthDegrees: 90,
+      shapeType: 'triangle',
+      areaEstimate: areaPerFacet * 0.5
+    })
+    
+    // Back facet (bottom/south side) - from bottom-right to bottom-left, connecting to ridge
+    const backFacet = [bottomRight, bottomLeft, ridgeStart, ridgeEnd].map(toLatLng)
+    backFacet.push(backFacet[0])
+    facetPolygons.push({
+      facetNumber: 3,
+      points: backFacet,
+      centroid: {
+        lng: backFacet.reduce((s, p) => s + p.lng, 0) / backFacet.length,
+        lat: backFacet.reduce((s, p) => s + p.lat, 0) / backFacet.length
+      },
+      primaryDirection: 'south',
+      azimuthDegrees: 180,
+      shapeType: 'trapezoid',
+      areaEstimate: areaPerFacet
+    })
+    
+    // Left hip triangle - from bottom-left to top-left to ridge endpoint
+    const leftFacet = [bottomLeft, topLeft, ridgeStart].map(toLatLng)
+    leftFacet.push(leftFacet[0])
+    facetPolygons.push({
+      facetNumber: 4,
+      points: leftFacet,
+      centroid: {
+        lng: leftFacet.reduce((s, p) => s + p.lng, 0) / leftFacet.length,
+        lat: leftFacet.reduce((s, p) => s + p.lat, 0) / leftFacet.length
+      },
+      primaryDirection: 'west',
+      azimuthDegrees: 270,
+      shapeType: 'triangle',
+      areaEstimate: areaPerFacet * 0.5
+    })
+    
+    console.log(`📐 Created 4 hip roof facets using ridge endpoints at (${ridgeStart.x.toFixed(1)}%, ${ridgeStart.y.toFixed(1)}%) and (${ridgeEnd.x.toFixed(1)}%, ${ridgeEnd.y.toFixed(1)}%)`)
+    
+  } else if (facetCount >= 4 && ridgeLines.length >= 1) {
+    // Fallback: centroid-based radial segmentation
     const verticesWithAngles = perimeterVertices.map(v => {
       const angle = Math.atan2(v.y - centroidY, v.x - centroidX) * 180 / Math.PI
       return { ...v, angle: (angle + 360) % 360 }
@@ -4156,14 +4264,19 @@ function generateFacetPolygons(
       }
     }
   } else if (facetCount === 2 && ridgeLines.length >= 1) {
+    // Gable roof: split by ridge line
     const ridge = ridgeLines[0]
     const ridgeMidY = (ridge.startY + ridge.endY) / 2
+    const ridgeStart = toLatLng({ x: ridge.startX, y: ridge.startY })
+    const ridgeEnd = toLatLng({ x: ridge.endX, y: ridge.endY })
     
     const northVertices = perimeterVertices.filter(v => v.y < ridgeMidY)
     const southVertices = perimeterVertices.filter(v => v.y >= ridgeMidY)
     
     if (northVertices.length >= 2) {
+      // Include ridge endpoints to ensure facet aligns with ridge line
       const facetPoints = northVertices.map(toLatLng)
+      facetPoints.push(ridgeEnd, ridgeStart) // Add ridge endpoints
       facetPoints.push(facetPoints[0])
       const facetCentroidLng = facetPoints.reduce((sum, p) => sum + p.lng, 0) / facetPoints.length
       const facetCentroidLat = facetPoints.reduce((sum, p) => sum + p.lat, 0) / facetPoints.length
@@ -4181,6 +4294,7 @@ function generateFacetPolygons(
     
     if (southVertices.length >= 2) {
       const facetPoints = southVertices.map(toLatLng)
+      facetPoints.push(ridgeStart, ridgeEnd) // Add ridge endpoints (reversed order)
       facetPoints.push(facetPoints[0])
       const facetCentroidLng = facetPoints.reduce((sum, p) => sum + p.lng, 0) / facetPoints.length
       const facetCentroidLat = facetPoints.reduce((sum, p) => sum + p.lat, 0) / facetPoints.length
