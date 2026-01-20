@@ -681,36 +681,49 @@ export function SchematicRoofDiagram({
     return (result as any).qaData as GeometryQA | undefined;
   }, [perimeterPath, perimeterSegments, linearFeatures, bounds, svgPadding, facetPaths]);
 
-  // Extract totals from tags or measurement summary
-  const totals = useMemo(() => ({
-    ridge: tags['lf.ridge'] || measurement?.total_ridge_length || measurement?.summary?.ridge_ft || 0,
-    hip: tags['lf.hip'] || measurement?.total_hip_length || measurement?.summary?.hip_ft || 0,
-    valley: tags['lf.valley'] || measurement?.total_valley_length || measurement?.summary?.valley_ft || 0,
-    eave: tags['lf.eave'] || measurement?.total_eave_length || measurement?.summary?.eave_ft || 0,
-    rake: tags['lf.rake'] || measurement?.total_rake_length || measurement?.summary?.rake_ft || 0,
-    step: tags['lf.step'] || measurement?.summary?.step_ft || 0,
-    total_area: tags['roof.total_area'] || measurement?.total_area_adjusted_sqft || measurement?.summary?.total_area_sqft || 0,
-    flat_area: (() => {
-      // Priority 1: Stored flat area
-      if (measurement?.total_area_flat_sqft && measurement.total_area_flat_sqft > 0) 
-        return measurement.total_area_flat_sqft;
-      if (measurement?.flat_area_sqft && measurement.flat_area_sqft > 0) 
-        return measurement.flat_area_sqft;
-      
-      // Priority 2: Back-calculate from adjusted area using pitch
-      const adjustedArea = tags['roof.total_area'] || measurement?.total_area_adjusted_sqft || 0;
-      if (adjustedArea > 0) {
-        const pitchStr = measurement?.predominant_pitch || '6/12';
-        const pitchParts = pitchStr.split('/');
-        const pitchNum = parseFloat(pitchParts[0]) || 6;
-        const pitchMultiplier = Math.sqrt(1 + (pitchNum / 12) ** 2);
-        return adjustedArea / pitchMultiplier;
-      }
-      
-      return 0;
-    })(),
-    facet_count: measurement?.facet_count || facets.length || 0,
-  }), [tags, measurement, facets]);
+  // Extract totals - PRIORITY: sum from actual WKT geometry, fallback to DB columns
+  const totals = useMemo(() => {
+    // Sum linear feature lengths from the ACTUAL rendered geometry (linearFeatures array)
+    // This ensures the totals panel matches what's drawn on the diagram
+    const wktRidge = linearFeatures.filter(f => f.type === 'ridge').reduce((sum, f) => sum + (f.length || 0), 0);
+    const wktHip = linearFeatures.filter(f => f.type === 'hip').reduce((sum, f) => sum + (f.length || 0), 0);
+    const wktValley = linearFeatures.filter(f => f.type === 'valley').reduce((sum, f) => sum + (f.length || 0), 0);
+    const wktEave = linearFeatures.filter(f => f.type === 'eave').reduce((sum, f) => sum + (f.length || 0), 0);
+    const wktRake = linearFeatures.filter(f => f.type === 'rake').reduce((sum, f) => sum + (f.length || 0), 0);
+    
+    console.log(`📏 Linear totals from WKT geometry: Ridge=${wktRidge.toFixed(0)}' Hip=${wktHip.toFixed(0)}' Valley=${wktValley.toFixed(0)}' Eave=${wktEave.toFixed(0)}' Rake=${wktRake.toFixed(0)}'`);
+    
+    return {
+      // Use WKT-derived totals, fallback to tags or DB columns only if WKT has no data
+      ridge: wktRidge > 0 ? wktRidge : (tags['lf.ridge'] || measurement?.total_ridge_length || measurement?.summary?.ridge_ft || 0),
+      hip: wktHip > 0 ? wktHip : (tags['lf.hip'] || measurement?.total_hip_length || measurement?.summary?.hip_ft || 0),
+      valley: wktValley > 0 ? wktValley : (tags['lf.valley'] || measurement?.total_valley_length || measurement?.summary?.valley_ft || 0),
+      eave: wktEave > 0 ? wktEave : (tags['lf.eave'] || measurement?.total_eave_length || measurement?.summary?.eave_ft || 0),
+      rake: wktRake > 0 ? wktRake : (tags['lf.rake'] || measurement?.total_rake_length || measurement?.summary?.rake_ft || 0),
+      step: tags['lf.step'] || measurement?.summary?.step_ft || 0,
+      total_area: tags['roof.total_area'] || measurement?.total_area_adjusted_sqft || measurement?.summary?.total_area_sqft || 0,
+      flat_area: (() => {
+        // Priority 1: Stored flat area
+        if (measurement?.total_area_flat_sqft && measurement.total_area_flat_sqft > 0) 
+          return measurement.total_area_flat_sqft;
+        if (measurement?.flat_area_sqft && measurement.flat_area_sqft > 0) 
+          return measurement.flat_area_sqft;
+        
+        // Priority 2: Back-calculate from adjusted area using pitch
+        const adjustedArea = tags['roof.total_area'] || measurement?.total_area_adjusted_sqft || 0;
+        if (adjustedArea > 0) {
+          const pitchStr = measurement?.predominant_pitch || '6/12';
+          const pitchParts = pitchStr.split('/');
+          const pitchNum = parseFloat(pitchParts[0]) || 6;
+          const pitchMultiplier = Math.sqrt(1 + (pitchNum / 12) ** 2);
+          return adjustedArea / pitchMultiplier;
+        }
+        
+        return 0;
+      })(),
+      facet_count: measurement?.facet_count || facets.length || 0,
+    };
+  }, [linearFeatures, tags, measurement, facets]);
   
   // Calculate measurement verification metrics
   const verificationMetrics = useMemo(() => {
