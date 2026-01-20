@@ -5079,6 +5079,39 @@ async function processSolarFastPath(
   
   console.log(`📐 Linear features from assembler: ${linearFeatures.length} (${linearFeatures.filter(f => f.type === 'ridge').length} ridges, ${linearFeatures.filter(f => f.type === 'hip').length} hips, ${linearFeatures.filter(f => f.type === 'valley').length} valleys)`)
   
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📏 RECALCULATE LINEAR TOTALS FROM ACTUAL WKT GEOMETRY
+  // ═══════════════════════════════════════════════════════════════════════════
+  // The heuristic estimates above (lines 4972-4985) are now replaced by actual
+  // lengths from the assembled geometry. This ensures the database stores
+  // accurate totals that match what's displayed on the diagram.
+  const wktLinearTotals = {
+    ridge: linearFeatures.filter(f => f.type === 'ridge').reduce((sum, f) => sum + (f.length_ft || 0), 0),
+    hip: linearFeatures.filter(f => f.type === 'hip').reduce((sum, f) => sum + (f.length_ft || 0), 0),
+    valley: linearFeatures.filter(f => f.type === 'valley').reduce((sum, f) => sum + (f.length_ft || 0), 0),
+    eave: linearFeatures.filter(f => f.type === 'eave').reduce((sum, f) => sum + (f.length_ft || 0), 0),
+    rake: linearFeatures.filter(f => f.type === 'rake').reduce((sum, f) => sum + (f.length_ft || 0), 0),
+  };
+  
+  console.log(`📏 Linear totals from WKT geometry:`);
+  console.log(`   Ridge: ${wktLinearTotals.ridge.toFixed(0)}' (was heuristic: ${linearMeasurements.ridge}')`);
+  console.log(`   Hip: ${wktLinearTotals.hip.toFixed(0)}' (was heuristic: ${linearMeasurements.hip}')`);
+  console.log(`   Valley: ${wktLinearTotals.valley.toFixed(0)}'`);
+  console.log(`   Eave: ${wktLinearTotals.eave.toFixed(0)}' (was heuristic: ${linearMeasurements.eave}')`);
+  console.log(`   Rake: ${wktLinearTotals.rake.toFixed(0)}' (was heuristic: ${linearMeasurements.rake}')`);
+  
+  // Override heuristic linearMeasurements with actual WKT totals
+  // Use WKT values if available, otherwise fall back to heuristics
+  const finalLinearMeasurements = {
+    eave: wktLinearTotals.eave > 0 ? Math.round(wktLinearTotals.eave) : linearMeasurements.eave,
+    rake: wktLinearTotals.rake > 0 ? Math.round(wktLinearTotals.rake) : linearMeasurements.rake,
+    hip: wktLinearTotals.hip > 0 ? Math.round(wktLinearTotals.hip) : linearMeasurements.hip,
+    valley: wktLinearTotals.valley > 0 ? Math.round(wktLinearTotals.valley) : linearMeasurements.valley,
+    ridge: wktLinearTotals.ridge > 0 ? Math.round(wktLinearTotals.ridge) : linearMeasurements.ridge,
+  };
+  
+  console.log(`📏 Final linear measurements to save: Ridge=${finalLinearMeasurements.ridge}' Hip=${finalLinearMeasurements.hip}' Valley=${finalLinearMeasurements.valley}' Eave=${finalLinearMeasurements.eave}' Rake=${finalLinearMeasurements.rake}'`);
+  
   // Build facet polygons for database
   const facetPolygons = assembledGeometry.facets.map((facet: any, index: number) => ({
     facetNumber: index + 1,
@@ -5162,11 +5195,11 @@ async function processSolarFastPath(
     roof_type: roofTypeFromTopology,
     complexity_rating: complexity,
     facet_count: segmentCount, // Use Solar segment count (11 for this property)
-    total_eave_length: linearMeasurements.eave,
-    total_rake_length: linearMeasurements.rake,
-    total_hip_length: linearMeasurements.hip,
-    total_valley_length: linearMeasurements.valley,
-    total_ridge_length: linearMeasurements.ridge,
+    total_eave_length: finalLinearMeasurements.eave,
+    total_rake_length: finalLinearMeasurements.rake,
+    total_hip_length: finalLinearMeasurements.hip,
+    total_valley_length: finalLinearMeasurements.valley,
+    total_ridge_length: finalLinearMeasurements.ridge,
     material_calculations: materials,
     linear_features_wkt: linearFeatures,
     perimeter_wkt: perimeterWkt,
@@ -5243,7 +5276,7 @@ async function processSolarFastPath(
         totalSquares: totalSquares,
         wasteFactor: wasteFactor,
         facets: [],
-        linear: linearMeasurements,
+        linear: finalLinearMeasurements,
         materials: materials,
         predominantPitch: predominantPitch,
         linearFeaturesWkt: linearFeatures,
