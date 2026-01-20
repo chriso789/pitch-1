@@ -33976,23 +33976,40 @@ export type Database = {
         }
         Returns: string
       }
-      search_contacts_and_jobs: {
-        Args: {
-          p_limit?: number
-          p_location_id?: string
-          p_search_term: string
-          p_tenant_id: string
-        }
-        Returns: {
-          clj_number: string
-          entity_id: string
-          entity_name: string
-          entity_status: string
-          entity_subtext: string
-          entity_type: string
-          match_score: number
-        }[]
-      }
+      search_contacts_and_jobs:
+        | {
+            Args: {
+              p_limit?: number
+              p_location_id?: string
+              p_search_term: string
+              p_tenant_id: string
+            }
+            Returns: {
+              clj_number: string
+              entity_id: string
+              entity_name: string
+              entity_status: string
+              entity_subtext: string
+              entity_type: string
+              match_score: number
+            }[]
+          }
+        | {
+            Args: {
+              p_location_id?: string
+              p_search_term: string
+              p_tenant_id: string
+            }
+            Returns: {
+              clj_number: string
+              entity_id: string
+              entity_name: string
+              entity_status: string
+              entity_subtext: string
+              entity_type: string
+              match_score: number
+            }[]
+          }
       seed_dynamic_tags: { Args: { p_tenant_id: string }; Returns: undefined }
       show_limit: { Args: never; Returns: number }
       show_trgm: { Args: { "": string }; Returns: string[] }
