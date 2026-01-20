@@ -3545,12 +3545,19 @@ function calculateAreaFromPerimeterVertices(
   // CRITICAL: Determine if we have an authoritative polygon source
   // When we have OSM/Mapbox/Microsoft footprints, we should trust the polygon area
   // and NOT override with Solar API (which is often a bounding box approximation)
+  // NOTE: solar_bbox_fallback is NOT authoritative - it's a simple rectangle that over-estimates
   const hasAuthoritativePolygon = footprintSource && [
     'mapbox_vector', 'osm_buildings', 'osm_overpass', 'microsoft_buildings', 'regrid_parcel'
   ].includes(footprintSource);
   
+  // CRITICAL: When using solar_bbox_fallback, the bounding box typically over-estimates by 15-25%
+  // We should calculate area from the actual polygon vertices using shoelace, not trust the Solar sqft
+  const isSolarBboxFallback = footprintSource === 'solar_bbox_fallback';
+  
   if (hasAuthoritativePolygon) {
     console.log(`📐 Using AUTHORITATIVE footprint source: ${footprintSource} - polygon area will be trusted`);
+  } else if (isSolarBboxFallback) {
+    console.log(`⚠️ Using solar_bbox_fallback - calculating area from polygon vertices (not Solar API sqft)`);
   }
   
   const metersPerPixel = (156543.03392 * Math.cos(imageCenter.lat * Math.PI / 180)) / Math.pow(2, zoom)
@@ -3645,8 +3652,9 @@ function calculateAreaFromPerimeterVertices(
     }
   }
   
-  // Solar API validation - BUT skip override when we have authoritative polygon
-  if (solarData?.available && solarData?.buildingFootprintSqft) {
+  // Solar API validation - BUT skip override when we have authoritative polygon OR solar_bbox_fallback
+  // For solar_bbox_fallback, the Solar sqft IS the bounding box area, which over-estimates
+  if (solarData?.available && solarData?.buildingFootprintSqft && !isSolarBboxFallback) {
     const solarFootprint = solarData.buildingFootprintSqft
     const variance = Math.abs(calculatedArea - solarFootprint) / solarFootprint
     const overShoot = calculatedArea / solarFootprint
@@ -3701,6 +3709,10 @@ function calculateAreaFromPerimeterVertices(
         console.log(`📐 ✅ AI within ${(variance * 100).toFixed(1)}% of Solar API`)
       }
     }
+  } else if (isSolarBboxFallback) {
+    // When using solar_bbox_fallback, the shoelace calculation IS the best we have
+    // The Solar buildingFootprintSqft is the same bounding box area - don't override with itself
+    console.log(`📐 solar_bbox_fallback: Using shoelace polygon area ${calculatedArea.toFixed(0)} sqft (not overriding with Solar bbox ${solarData?.buildingFootprintSqft?.toFixed(0) || 'N/A'} sqft)`)
   }
   
   // Hard caps - lowered to catch errors

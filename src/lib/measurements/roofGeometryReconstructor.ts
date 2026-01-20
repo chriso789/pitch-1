@@ -156,8 +156,18 @@ function reconstructRectangularRoof(vertices: GPSCoord[], pitch: string): Recons
   const nw = vertices.reduce((best, v) => 
     (v.lat - v.lng > best.lat - best.lng) ? v : best, vertices[0]);
   
-  // Calculate ridge endpoints (inset from short sides)
-  const inset = (isWider ? height : width) * 0.4;
+  // Calculate ridge endpoints: Use proper hip roof geometry
+  // For a hip roof, the ridge inset should be proportional to the shorter dimension
+  // The standard formula: ridge starts/ends at inset = (shorter_dimension / 2) from the short edges
+  // This ensures hip angles are typically ~45 degrees
+  const shortDim = isWider ? height : width;
+  const longDim = isWider ? width : height;
+  
+  // Inset from each end = half of short dimension (creates ~45° hips)
+  // But cap at 40% of long dimension to ensure ridge has reasonable length
+  const insetRatio = Math.min(shortDim / 2, longDim * 0.4);
+  const inset = insetRatio;
+  
   const centerLat = (bounds.minLat + bounds.maxLat) / 2;
   const centerLng = (bounds.minLng + bounds.maxLng) / 2;
   
@@ -254,7 +264,7 @@ function reconstructRectangularRoof(vertices: GPSCoord[], pitch: string): Recons
     });
   }
   
-  // Create 4 facets with proper polygon shapes
+  // Create 4 facets with proper polygon shapes - pass actual ridge endpoints
   const facets = createRectangularFacets(sw, se, ne, nw, ridgeStart, ridgeEnd, pitch, isWider);
   
   return {
