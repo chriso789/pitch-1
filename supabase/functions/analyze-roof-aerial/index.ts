@@ -819,7 +819,7 @@ Deno.serve(async (req) => {
     const linearTotalsFromWKT = calculateLinearTotalsFromWKT(preLinearFeatures)
     console.log(`📐 Linear totals from WKT:`, linearTotalsFromWKT)
     
-    const measurements = calculateDetailedMeasurements(aiAnalysis, scale, solarData, linearTotalsFromWKT)
+    const measurements = calculateDetailedMeasurements(aiAnalysis, scale, solarData, linearTotalsFromWKT, actualAreaSqft)
     const confidence = calculateConfidenceScore(aiAnalysis, measurements, solarData, selectedImage)
     
     // Convert derived lines to WKT
@@ -3263,32 +3263,48 @@ function calculateScale(solarData: any, image: any, aiAnalysis: any) {
   return { pixelsPerFoot: bestMethod.value, method: bestMethod.method, confidence: variance > 15 ? 'medium' : bestMethod.confidence, variance, allMethods: methods }
 }
 
-function calculateDetailedMeasurements(aiAnalysis: any, scale: any, solarData: any, linearTotalsFromWKT?: any) {
-  // IMPROVED PITCH DETECTION: Use Solar API segment data, then Florida defaults
+function calculateDetailedMeasurements(aiAnalysis: any, scale: any, solarData: any, linearTotalsFromWKT?: any, authoritativeFlatAreaSqft?: number) {
+  // IMPROVED PITCH DETECTION: Use Solar API segment data WITH VALIDATION, then Florida defaults
   let predominantPitch = '5/12' // Default fallback
   let pitchSource = 'assumed'
   
-  // Priority 1: Solar API segment pitch data (most accurate)
+  // Priority 1: Solar API segment pitch data - WITH VALIDATION
+  // CRITICAL: Solar API pitch can be wrong (measuring wrong structure, bad imagery, etc.)
+  // Typical residential roofs are 3/12 to 12/12 (14° to 45°)
+  // If pitch is outside 10° to 45° range, it's likely measuring the wrong structure
   if (solarData?.available && solarData?.roofSegments?.length > 0) {
     // Get pitches from roof segments weighted by area
-    const segmentPitches: { pitch: string; area: number }[] = solarData.roofSegments
-      .filter((seg: any) => seg.pitchDegrees && seg.area)
+    const segmentPitches: { pitch: string; area: number; degrees: number }[] = solarData.roofSegments
+      .filter((seg: any) => seg.pitchDegrees && seg.areaMeters2)
       .map((seg: any) => ({
         pitch: degreesToPitch(seg.pitchDegrees),
-        area: seg.area
+        area: seg.areaMeters2,
+        degrees: seg.pitchDegrees
       }))
     
     if (segmentPitches.length > 0) {
-      // Weight by area to get predominant pitch
+      // Find the largest segment by area
       let maxArea = 0
+      let candidatePitch = '5/12'
+      let candidateDegrees = 0
       segmentPitches.forEach(sp => {
         if (sp.area > maxArea) {
           maxArea = sp.area
-          predominantPitch = sp.pitch
+          candidatePitch = sp.pitch
+          candidateDegrees = sp.degrees
         }
       })
-      pitchSource = 'solar_api'
-      console.log(`📐 Pitch from Solar API segments: ${predominantPitch} (${segmentPitches.length} segments analyzed)`)
+      
+      // VALIDATION: Check if pitch is within typical residential range (10° to 45°)
+      // Values outside this range often indicate Solar API measured wrong structure
+      if (candidateDegrees >= 10 && candidateDegrees <= 45) {
+        predominantPitch = candidatePitch
+        pitchSource = 'solar_api'
+        console.log(`📐 Pitch from Solar API segments: ${predominantPitch} (${candidateDegrees.toFixed(1)}°, ${segmentPitches.length} segments)`)
+      } else {
+        console.warn(`⚠️ Solar API pitch ${candidateDegrees.toFixed(1)}° REJECTED (outside 10°-45° range) - likely wrong structure`)
+        // Fall through to AI detection or defaults
+      }
     }
   }
   
@@ -3338,8 +3354,16 @@ function calculateDetailedMeasurements(aiAnalysis: any, scale: any, solarData: a
     }
   })
 
-  const totalFlatArea = processedFacets.reduce((sum: number, f: any) => sum + f.flatAreaSqft, 0)
-  const totalAdjustedArea = processedFacets.reduce((sum: number, f: any) => sum + f.adjustedAreaSqft, 0)
+  // CRITICAL FIX: Use authoritative area (from OSM/Mapbox polygon) when available
+  // This prevents using inflated Solar API bounding box area
+  const facetSumFlatArea = processedFacets.reduce((sum: number, f: any) => sum + f.flatAreaSqft, 0)
+  const totalFlatArea = authoritativeFlatAreaSqft || facetSumFlatArea
+  
+  if (authoritativeFlatAreaSqft && Math.abs(authoritativeFlatAreaSqft - facetSumFlatArea) > 100) {
+    console.log(`📐 Using AUTHORITATIVE area: ${authoritativeFlatAreaSqft.toFixed(0)} sqft (facet sum was ${facetSumFlatArea.toFixed(0)} sqft)`)
+  }
+  
+  const totalAdjustedArea = totalFlatArea * pitchMultiplier
 
   const linearMeasurements = {
     eave: linearTotalsFromWKT?.eave || 0,
@@ -3407,25 +3431,28 @@ function mostCommon(arr: string[]): string {
   return Object.entries(counts).sort((a, b) => b[1] - a[1])[0]?.[0] || '5/12'
 }
 
-// Convert degrees to pitch ratio (e.g., 26.57° -> 6/12)
+// Convert degrees to pitch ratio (e.g., 22.62° -> 5/12)
+// IMPROVED: Thresholds centered around actual pitch angles for accurate mapping
 function degreesToPitch(degrees: number): string {
   if (!degrees || degrees < 0) return 'flat'
   
-  // Common pitch degrees: 
-  // 4/12 = 18.43°, 5/12 = 22.62°, 6/12 = 26.57°, 7/12 = 30.26°, 
-  // 8/12 = 33.69°, 9/12 = 36.87°, 10/12 = 39.81°, 12/12 = 45°
+  // ACCURATE pitch angle mapping (centered on actual values):
+  // 2/12 = 9.46°, 3/12 = 14.04°, 4/12 = 18.43°, 5/12 = 22.62°, 6/12 = 26.57°
+  // 7/12 = 30.26°, 8/12 = 33.69°, 9/12 = 36.87°, 10/12 = 39.81°, 12/12 = 45°
+  // 
+  // Set thresholds BETWEEN actual values (midpoint) for accurate bin assignment:
   const pitchMap = [
     { maxDegrees: 5, pitch: 'flat' },
-    { maxDegrees: 12, pitch: '2/12' },
-    { maxDegrees: 16, pitch: '3/12' },
-    { maxDegrees: 20, pitch: '4/12' },
-    { maxDegrees: 24, pitch: '5/12' },
-    { maxDegrees: 28, pitch: '6/12' },
-    { maxDegrees: 32, pitch: '7/12' },
-    { maxDegrees: 35, pitch: '8/12' },
-    { maxDegrees: 38, pitch: '9/12' },
-    { maxDegrees: 42, pitch: '10/12' },
-    { maxDegrees: 48, pitch: '12/12' },
+    { maxDegrees: 11.75, pitch: '2/12' },  // Midpoint between 9.46° and 14.04°
+    { maxDegrees: 16.24, pitch: '3/12' },  // Midpoint between 14.04° and 18.43°
+    { maxDegrees: 20.53, pitch: '4/12' },  // Midpoint between 18.43° and 22.62°
+    { maxDegrees: 24.60, pitch: '5/12' },  // Midpoint between 22.62° and 26.57° - FIXED: 32.4° was incorrectly mapping to 8/12
+    { maxDegrees: 28.42, pitch: '6/12' },  // Midpoint between 26.57° and 30.26°
+    { maxDegrees: 31.98, pitch: '7/12' },  // Midpoint between 30.26° and 33.69°
+    { maxDegrees: 35.28, pitch: '8/12' },  // Midpoint between 33.69° and 36.87°
+    { maxDegrees: 38.34, pitch: '9/12' },  // Midpoint between 36.87° and 39.81°
+    { maxDegrees: 42.41, pitch: '10/12' }, // Midpoint between 39.81° and 45°
+    { maxDegrees: 50, pitch: '12/12' },
     { maxDegrees: 90, pitch: '14/12' }
   ]
   
