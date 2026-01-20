@@ -5135,7 +5135,9 @@ async function processSolarFastPath(
   const { data: measurementRecord, error: saveError } = await supabase.from('roof_measurements').insert({
     customer_id: customerId || null,
     measured_by: userId || null,
-    property_address: address,
+    property_address: address || 'Unknown Address',
+    target_lat: coordinates.lat,
+    target_lng: coordinates.lng,
     gps_coordinates: { lat: coordinates.lat, lng: coordinates.lng },
     google_maps_image_url: googleImage.url,
     mapbox_image_url: mapboxImage.url,

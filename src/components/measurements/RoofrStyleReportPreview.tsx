@@ -87,8 +87,10 @@ export function RoofrStyleReportPreview({
       footprint_requires_review,
       dsm_available,
       created_at,
-      latitude,
-      longitude
+      target_lat,
+      target_lng,
+      gps_coordinates,
+      customer_id
     `;
     
     try {
@@ -111,7 +113,24 @@ export function RoofrStyleReportPreview({
         }
       }
       
-      // PRIORITY 2: Fallback to address lookup if no measurementId or not found
+      // PRIORITY 2: Fetch by customer_id (pipeline entry id) if available
+      if (!data && pipelineEntryId) {
+        const result = await supabase
+          .from('roof_measurements')
+          .select(selectFields)
+          .eq('customer_id', pipelineEntryId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        data = result.data;
+        error = result.error;
+        
+        if (data) {
+          console.log('📐 Fetched roof_measurements by customer_id (pipeline entry):', pipelineEntryId);
+        }
+      }
+      
+      // PRIORITY 3: Fallback to address lookup if no measurementId or customer_id found
       if (!data && address) {
         const normalizedAddress = address.split(',')[0].trim().toUpperCase();
         const result = await supabase
@@ -137,25 +156,40 @@ export function RoofrStyleReportPreview({
       if (data) {
         const wktFeatures = data.linear_features_wkt as any[];
         const vertices = data.footprint_vertices_geo as any[];
+        
+        // Extract coordinates from available fields (target_lat/lng or gps_coordinates)
+        const gpsCoords = data.gps_coordinates as any;
+        const latitude = data.target_lat || gpsCoords?.lat || null;
+        const longitude = data.target_lng || gpsCoords?.lng || null;
+        
+        // Enhance data with extracted coordinates
+        const enhancedData = {
+          ...data,
+          latitude,
+          longitude,
+        };
+        
         console.log('📐 Loaded roof_measurements:', {
           id: data.id,
           facet_count: data.facet_count,
           total_area: data.total_area_adjusted_sqft,
+          flat_area: data.total_area_flat_sqft,
           footprint_source: data.footprint_source,
           vertex_count: vertices?.length || 'unknown',
           perimeter_wkt: (data.perimeter_wkt as string)?.substring(0, 50),
           linear_features_wkt: wktFeatures?.length || 0,
           created_at: data.created_at,
+          coordinates: { lat: latitude, lng: longitude },
         });
-        setRoofMeasurementData(data);
-        return data;
+        setRoofMeasurementData(enhancedData);
+        return enhancedData;
       }
       return null;
     } catch (err) {
       console.error('Error fetching roof_measurements:', err);
       return null;
     }
-  }, [activeMeasurementId, address]);
+  }, [activeMeasurementId, address, pipelineEntryId]);
 
   useEffect(() => {
     if (open) {
