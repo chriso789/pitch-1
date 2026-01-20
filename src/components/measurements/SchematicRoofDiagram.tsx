@@ -690,7 +690,25 @@ export function SchematicRoofDiagram({
     rake: tags['lf.rake'] || measurement?.total_rake_length || measurement?.summary?.rake_ft || 0,
     step: tags['lf.step'] || measurement?.summary?.step_ft || 0,
     total_area: tags['roof.total_area'] || measurement?.total_area_adjusted_sqft || measurement?.summary?.total_area_sqft || 0,
-    flat_area: measurement?.total_area_flat_sqft || measurement?.flat_area_sqft || 0,
+    flat_area: (() => {
+      // Priority 1: Stored flat area
+      if (measurement?.total_area_flat_sqft && measurement.total_area_flat_sqft > 0) 
+        return measurement.total_area_flat_sqft;
+      if (measurement?.flat_area_sqft && measurement.flat_area_sqft > 0) 
+        return measurement.flat_area_sqft;
+      
+      // Priority 2: Back-calculate from adjusted area using pitch
+      const adjustedArea = tags['roof.total_area'] || measurement?.total_area_adjusted_sqft || 0;
+      if (adjustedArea > 0) {
+        const pitchStr = measurement?.predominant_pitch || '6/12';
+        const pitchParts = pitchStr.split('/');
+        const pitchNum = parseFloat(pitchParts[0]) || 6;
+        const pitchMultiplier = Math.sqrt(1 + (pitchNum / 12) ** 2);
+        return adjustedArea / pitchMultiplier;
+      }
+      
+      return 0;
+    })(),
     facet_count: measurement?.facet_count || facets.length || 0,
   }), [tags, measurement, facets]);
   
@@ -1566,21 +1584,11 @@ export function SchematicRoofDiagram({
         );
       })()}
       
-      {/* CRITICAL WARNING: Solar BBox Fallback - Rectangular Approximation */}
+      {/* CRITICAL WARNING: Solar BBox Fallback - Compact single line */}
       {measurement?.footprint_source === 'solar_bbox_fallback' && (
-        <div className="absolute top-3 left-3 right-3 z-20 bg-red-100 border-2 border-red-400 rounded-lg px-4 py-3 shadow-lg animate-pulse">
-          <div className="flex items-start gap-3">
-            <AlertTriangle className="h-6 w-6 text-red-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <div className="font-bold text-red-800 text-sm">⚠️ Rectangular Estimate - Manual Verification Required</div>
-              <div className="text-red-700 text-xs mt-1">
-                Using Solar API bounding box (4 vertices). Area may be <span className="font-bold">15-25% overestimated</span> due to rectangular approximation.
-              </div>
-              <div className="text-red-600 text-xs mt-1 font-medium">
-                Recommend: Draw accurate footprint or import from measurement report
-              </div>
-            </div>
-          </div>
+        <div className="absolute top-1 left-1/2 -translate-x-1/2 z-20 bg-destructive text-destructive-foreground rounded-full px-3 py-1 shadow-md text-[10px] font-medium flex items-center gap-1.5">
+          <AlertTriangle className="h-3 w-3" />
+          <span>Rectangular Estimate - Import Report for Accuracy</span>
         </div>
       )}
       

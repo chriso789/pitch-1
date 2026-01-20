@@ -4922,10 +4922,49 @@ async function processSolarFastPath(
     return { success: false, reason: 'Solar assembly failed' }
   }
   
-  // Calculate measurements
+  // ═══════════════════════════════════════════════════════════════════════════
+  // 📐 AUTHORITATIVE AREA: Calculate from polygon if available, else Solar API
+  // ═══════════════════════════════════════════════════════════════════════════
+  let authoritativeFlatArea = totalFlatArea; // Default to Solar API
+  
+  if (perimeterXY.length >= 4 && footprintSource !== 'solar_bbox_fallback') {
+    // Calculate area from actual polygon vertices using Shoelace formula
+    const avgLat = perimeterXY.reduce((s, v) => s + v[1], 0) / perimeterXY.length;
+    const metersPerDegLat = 111320;
+    const metersPerDegLng = 111320 * Math.cos(avgLat * Math.PI / 180);
+    
+    // Convert to feet
+    const verticesFt = perimeterXY.map(v => ({
+      x: v[0] * metersPerDegLng * 3.28084,
+      y: v[1] * metersPerDegLat * 3.28084
+    }));
+    
+    // Shoelace formula
+    let polygonArea = 0;
+    for (let i = 0; i < verticesFt.length; i++) {
+      const j = (i + 1) % verticesFt.length;
+      polygonArea += verticesFt[i].x * verticesFt[j].y;
+      polygonArea -= verticesFt[j].x * verticesFt[i].y;
+    }
+    polygonArea = Math.abs(polygonArea / 2);
+    
+    // Validate polygon area is reasonable (between 50% and 150% of Solar API)
+    if (polygonArea > totalFlatArea * 0.5 && polygonArea < totalFlatArea * 1.5) {
+      authoritativeFlatArea = polygonArea;
+      console.log(`📐 Authoritative area from ${footprintSource} polygon: ${polygonArea.toFixed(0)} sqft (vs Solar: ${totalFlatArea.toFixed(0)} sqft, diff: ${((polygonArea - totalFlatArea) / totalFlatArea * 100).toFixed(1)}%)`);
+    } else {
+      console.log(`⚠️ Polygon area ${polygonArea.toFixed(0)} sqft rejected (outside 50-150% of Solar ${totalFlatArea.toFixed(0)} sqft), using Solar API`);
+    }
+  } else {
+    console.log(`📐 Using Solar API buildingFootprintSqft: ${totalFlatArea.toFixed(0)} sqft (footprintSource: ${footprintSource})`);
+  }
+  
+  // Calculate measurements using authoritative flat area
   const pitchMultiplier = getSlopeFactorFromPitch(predominantPitch) || 1.083
-  const totalAdjustedArea = totalFlatArea * pitchMultiplier
+  const totalAdjustedArea = authoritativeFlatArea * pitchMultiplier
   const totalSquares = totalAdjustedArea / 100
+  
+  console.log(`📐 Final: Flat=${authoritativeFlatArea.toFixed(0)} sqft × ${pitchMultiplier.toFixed(3)} = ${totalAdjustedArea.toFixed(0)} sqft adjusted (${totalSquares.toFixed(1)} squares)`)
   
   // Get segment count for facet_count field (use Solar API data directly)
   const segmentCount = solarData.roofSegments.length
@@ -5083,7 +5122,7 @@ async function processSolarFastPath(
     confidence: footprintConfidence,
     source: footprintSource,
     requiresManualReview: footprintSource === 'solar_bbox_fallback', // Flag if using rectangle fallback
-    validation: { valid: true, areaSqFt: totalFlatArea },
+    validation: { valid: true, areaSqFt: authoritativeFlatArea },
   };
   
   // Determine if DSM data was available (for badge display)
@@ -5104,10 +5143,10 @@ async function processSolarFastPath(
     image_source: imageSource,
     image_year: solarImageYear,
     solar_api_available: true,
-    solar_building_footprint_sqft: totalFlatArea,
+    solar_building_footprint_sqft: totalFlatArea, // Original Solar API value for reference
     solar_api_response: solarData,
-    ai_detection_data: { ...aiAnalysis, source: 'solar_fast_path', footprint_source: footprintSource },
-    total_area_flat_sqft: totalFlatArea,
+    ai_detection_data: { ...aiAnalysis, source: 'solar_fast_path', footprint_source: footprintSource, solar_original_sqft: totalFlatArea, authoritative_sqft: authoritativeFlatArea },
+    total_area_flat_sqft: authoritativeFlatArea, // Use authoritative polygon area
     total_area_adjusted_sqft: totalAdjustedArea,
     total_squares: totalSquares,
     waste_factor_percent: (wasteFactor - 1) * 100,
