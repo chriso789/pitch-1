@@ -115,11 +115,34 @@ const FACET_COLORS = [
  * @param predominantPitch - Default pitch to use (e.g., "6/12")
  * @param structureAnalysis - Optional structure analysis for L/T-shape handling
  */
+// AI-detected ridge/hip override interface
+export interface AIRidgeOverride {
+  ridgeLines?: Array<{
+    startLng: number;
+    startLat: number;
+    endLng: number;
+    endLat: number;
+    confidence: number;
+    lengthFt?: number;
+  }>;
+  hipLines?: Array<{
+    startLng: number;
+    startLat: number;
+    endLng: number;
+    endLat: number;
+    confidence: number;
+    lengthFt?: number;
+  }>;
+  averageConfidence: number;
+  source: 'ai_vision' | 'geometric_fallback';
+}
+
 export function assembleFacetsFromSolarSegments(
   perimeter: XY[],
   solarSegments: SolarSegment[],
   predominantPitch: string = '6/12',
-  structureAnalysis?: StructureAnalysis
+  structureAnalysis?: StructureAnalysis,
+  aiRidgeOverride?: AIRidgeOverride
 ): AssembledGeometry {
   const warnings: string[] = [];
   
@@ -172,7 +195,7 @@ export function assembleFacetsFromSolarSegments(
   // to avoid creating false complex geometry from wrong footprint
   if (isRectangular && solarSegments.length >= 2) {
     console.log(`📐 Using azimuth assembly for rectangular footprint`);
-    return assembleFromAzimuths(perimeter, solarSegments, predominantPitch, warnings, structureAnalysis);
+    return assembleFromAzimuths(perimeter, solarSegments, predominantPitch, warnings, structureAnalysis, aiRidgeOverride);
   }
   
   // Use center positions if available (more accurate than bounding box)
@@ -187,7 +210,7 @@ export function assembleFacetsFromSolarSegments(
   
   // Use azimuth clustering as last resort
   if (solarSegments.length >= 2) {
-    return assembleFromAzimuths(perimeter, solarSegments, predominantPitch, warnings, structureAnalysis);
+    return assembleFromAzimuths(perimeter, solarSegments, predominantPitch, warnings, structureAnalysis, aiRidgeOverride);
   }
   
   warnings.push('Insufficient segment positioning data');
@@ -344,7 +367,8 @@ function assembleFromAzimuths(
   segments: SolarSegment[],
   pitch: string,
   warnings: string[],
-  structureAnalysis?: StructureAnalysis
+  structureAnalysis?: StructureAnalysis,
+  aiRidgeOverride?: AIRidgeOverride
 ): AssembledGeometry {
   const centroid = getCentroid(perimeter);
   const bounds = getBounds(perimeter);
@@ -374,16 +398,36 @@ function assembleFromAzimuths(
     console.log(`📐 Using structure analysis ridge direction: ${structureAnalysis.mainStructure.ridgeDirection}`);
   }
   
-  // Calculate ridge inset based on building proportions
-  const shortSide = isWider ? (bounds.maxY - bounds.minY) : (bounds.maxX - bounds.minX);
-  const insetFactor = 0.4; // Ridge endpoints inset 40% from short side
+  // ═══════════════════════════════════════════════════════════════════════════
+  // PRIORITY: Use AI-detected ridge positions when available (more accurate)
+  // ═══════════════════════════════════════════════════════════════════════════
+  let ridgeStart: XY;
+  let ridgeEnd: XY;
+  let usingAIRidge = false;
   
-  const ridgeStart: XY = isWider 
-    ? [bounds.minX + shortSide * insetFactor, (bounds.minY + bounds.maxY) / 2]
-    : [(bounds.minX + bounds.maxX) / 2, bounds.minY + shortSide * insetFactor];
-  const ridgeEnd: XY = isWider
-    ? [bounds.maxX - shortSide * insetFactor, (bounds.minY + bounds.maxY) / 2]
-    : [(bounds.minX + bounds.maxX) / 2, bounds.maxY - shortSide * insetFactor];
+  if (aiRidgeOverride && aiRidgeOverride.ridgeLines && aiRidgeOverride.ridgeLines.length > 0 && aiRidgeOverride.averageConfidence >= 55) {
+    // Use AI-detected ridge positions (convert from lat/lng to [lng, lat] XY format)
+    const aiRidge = aiRidgeOverride.ridgeLines[0]; // Use primary ridge
+    ridgeStart = [aiRidge.startLng, aiRidge.startLat];
+    ridgeEnd = [aiRidge.endLng, aiRidge.endLat];
+    usingAIRidge = true;
+    console.log(`🎯 Using AI-detected ridge: (${aiRidge.startLng.toFixed(6)}, ${aiRidge.startLat.toFixed(6)}) to (${aiRidge.endLng.toFixed(6)}, ${aiRidge.endLat.toFixed(6)}), confidence=${aiRidgeOverride.averageConfidence.toFixed(0)}%`);
+    if (aiRidge.lengthFt) {
+      console.log(`🎯 AI ridge length: ${aiRidge.lengthFt.toFixed(1)} ft`);
+    }
+  } else {
+    // FALLBACK: Calculate ridge inset based on building proportions
+    const shortSide = isWider ? (bounds.maxY - bounds.minY) : (bounds.maxX - bounds.minX);
+    const insetFactor = 0.4; // Ridge endpoints inset 40% from short side
+    
+    ridgeStart = isWider 
+      ? [bounds.minX + shortSide * insetFactor, (bounds.minY + bounds.maxY) / 2]
+      : [(bounds.minX + bounds.maxX) / 2, bounds.minY + shortSide * insetFactor];
+    ridgeEnd = isWider
+      ? [bounds.maxX - shortSide * insetFactor, (bounds.minY + bounds.maxY) / 2]
+      : [(bounds.minX + bounds.maxX) / 2, bounds.maxY - shortSide * insetFactor];
+    console.log(`📐 Using calculated ridge (no AI override): insetFactor=${insetFactor}`);
+  }
   
   groupedByDirection.forEach((dirSegments, direction) => {
     // Find perimeter edges that face this direction

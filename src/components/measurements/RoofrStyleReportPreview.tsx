@@ -60,7 +60,7 @@ export function RoofrStyleReportPreview({
   const [isRunningDebug, setIsRunningDebug] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
   
-  const totalPages = 7;
+  const totalPages = 6;
   
   // Fetch roof_measurements data - prioritize activeMeasurementId, fallback to address
   const fetchRoofMeasurements = useCallback(async (targetMeasurementId?: string) => {
@@ -792,7 +792,6 @@ export function RoofrStyleReportPreview({
                   { num: 4, label: 'Areas' },
                   { num: 5, label: 'Pitch' },
                   { num: 6, label: 'Summary' },
-                  { num: 7, label: 'Materials' },
                 ].map(({ num, label }) => (
                   <button
                     key={num}
