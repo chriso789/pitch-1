@@ -225,6 +225,7 @@ export function SchematicRoofDiagram({
   const [localShowDebugPanel, setLocalShowDebugPanel] = useState(showDebugPanel);
   const [diagramSource, setDiagramSource] = useState<'database' | 'reconstructed' | 'perimeter'>('perimeter');
   const [reconstructedGeometry, setReconstructedGeometry] = useState<ReconstructedRoof | null>(null);
+  const [showWarningBanner, setShowWarningBanner] = useState(true);
   
   // Fetch facets from database if measurementId is provided
   useEffect(() => {
@@ -1274,25 +1275,50 @@ export function SchematicRoofDiagram({
         </div>
       )}
       
-      {/* Rectangular Approximation Warning */}
-      {perimeterCoords.length > 0 && perimeterCoords.length <= 4 && (
+      {/* Rectangular Approximation Warning - Dismissible */}
+      {showWarningBanner && perimeterCoords.length > 0 && perimeterCoords.length <= 4 && (
         <div className="absolute top-3 right-16 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 shadow-sm flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
           <div className="text-xs text-amber-800">
-            <div className="font-semibold">Rectangular Approximation</div>
-            <div className="text-amber-600">{perimeterCoords.length} vertices - Draw footprint for accuracy</div>
+            <div className="font-semibold">Rectangular Estimate</div>
+            <div className="text-amber-600">{perimeterCoords.length} vertices</div>
           </div>
+          <button 
+            onClick={() => setShowWarningBanner(false)}
+            className="ml-1 p-0.5 rounded hover:bg-amber-200 transition-colors"
+            title="Dismiss warning"
+          >
+            <EyeOff className="h-3.5 w-3.5 text-amber-600" />
+          </button>
         </div>
       )}
       
-      {/* Perimeter Only Warning */}
-      {showPerimeterOnlyWarning && perimeterCoords.length > 4 && (
+      {/* Collapsed warning badge */}
+      {!showWarningBanner && perimeterCoords.length > 0 && perimeterCoords.length <= 4 && (
+        <button
+          onClick={() => setShowWarningBanner(true)}
+          className="absolute top-3 right-16 bg-amber-100 border border-amber-300 rounded-full p-1.5 shadow-sm hover:bg-amber-200 transition-colors"
+          title="Show warning"
+        >
+          <AlertTriangle className="h-3.5 w-3.5 text-amber-600" />
+        </button>
+      )}
+      
+      {/* Perimeter Only Warning - Dismissible */}
+      {showWarningBanner && showPerimeterOnlyWarning && perimeterCoords.length > 4 && (
         <div className="absolute top-3 right-16 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 shadow-sm flex items-center gap-2">
-          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <AlertTriangle className="h-4 w-4 text-amber-600 shrink-0" />
           <div className="text-xs text-amber-800">
             <div className="font-semibold">Perimeter Only</div>
             <div className="text-amber-600">Facet geometry unavailable</div>
           </div>
+          <button 
+            onClick={() => setShowWarningBanner(false)}
+            className="ml-1 p-0.5 rounded hover:bg-amber-200 transition-colors"
+            title="Dismiss warning"
+          >
+            <EyeOff className="h-3.5 w-3.5 text-amber-600" />
+          </button>
         </div>
       )}
       
