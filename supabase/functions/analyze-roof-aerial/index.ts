@@ -26,7 +26,7 @@ import { computeStraightSkeleton } from '../_shared/straight-skeleton.ts'
 import { reconstructRoofGeometry, roofToLinearFeaturesWKT } from '../_shared/roof-geometry-reconstructor.ts'
 
 // Import solar segment assembler for accurate facet positioning from Google Solar data
-import { assembleFacetsFromSolarSegments, type AssembledGeometry, type SolarSegment } from '../_shared/solar-segment-assembler.ts'
+import { assembleFacetsFromSolarSegments, type AssembledGeometry, type SolarSegment, type AIRidgeOverride } from '../_shared/solar-segment-assembler.ts'
 
 // Import authoritative footprint extractors - prioritize ground-truth data over AI guessing
 import { 
@@ -911,10 +911,30 @@ Deno.serve(async (req) => {
       console.log(`🛰️ Attempting Solar Segment Assembly with ${solarData.roofSegments.length} segments...`);
       
       try {
+        // Convert AI ridge detection result to assembler format
+        const aiRidgeOverrideForAssembler = aiRidgeDetection && aiRidgeDetection.ridgeLines.length > 0 ? {
+          ridgeLines: aiRidgeDetection.ridgeLines.map(ridge => {
+            const startGeo = pixelToGeoInternal(ridge.startX, ridge.startY, coordinates, logicalImageSize, IMAGE_ZOOM);
+            const endGeo = pixelToGeoInternal(ridge.endX, ridge.endY, coordinates, logicalImageSize, IMAGE_ZOOM);
+            return {
+              startLng: startGeo.lng,
+              startLat: startGeo.lat,
+              endLng: endGeo.lng,
+              endLat: endGeo.lat,
+              confidence: ridge.confidence,
+              lengthFt: ridge.lengthFt
+            };
+          }),
+          averageConfidence: aiRidgeDetection.averageConfidence,
+          source: aiRidgeDetection.source
+        } : undefined;
+        
         const assembledGeometry = assembleFacetsFromSolarSegments(
           perimeterXY,
           solarData.roofSegments as SolarSegment[],
-          measurements.predominantPitch
+          measurements.predominantPitch,
+          undefined, // structureAnalysis
+          aiRidgeOverrideForAssembler
         );
         
         if (assembledGeometry.facets.length >= 2) {
@@ -2222,11 +2242,11 @@ async function detectRidgeLinesFromImage(
     `${i}: (${v.x.toFixed(1)}%, ${v.y.toFixed(1)}%) ${v.cornerType || ''}`
   ).join('\n');
 
-  const prompt = `You are an expert roof analyst with advanced pattern recognition skills. Your CRITICAL task is to VISUALLY TRACE the exact ridge and hip line positions from this satellite/aerial imagery.
+  const prompt = `You are an expert roof analyst with advanced pattern recognition skills. Your CRITICAL task is to VISUALLY TRACE the EXACT ridge and hip line positions from this satellite/aerial imagery.
 
 ## WHAT TO LOOK FOR - VISUAL CUES:
 1. **SHADOW PATTERNS**: Ridges create a distinct LIGHT/DARK boundary. One side catches sun, the other is shadowed.
-2. **COLOR TRANSITIONS**: Ridge lines often show as a subtle color change where two roof planes meet.
+2. **COLOR TRANSITIONS**: Ridge lines show as a subtle color change where two roof planes meet.
 3. **SHINGLE DIRECTION CHANGES**: Where shingle rows change direction indicates a ridge or hip.
 4. **ROOF PEAK LINES**: The HIGHEST points form continuous lines across the roof.
 
@@ -2236,17 +2256,22 @@ async function detectRidgeLinesFromImage(
 
 PERIMETER CONTEXT (${perimeterVertices.length} vertices):
 ${perimeterInfo}
-${perimeterVertices.length > 8 ? `...and ${perimeterVertices.length - 8} more vertices` : ''}
+${perimeterVertices.length > 8 ? '...and ' + (perimeterVertices.length - 8) + ' more vertices' : ''}
 
 Bounds: (${bounds.topLeftX.toFixed(1)}%, ${bounds.topLeftY.toFixed(1)}%) to (${bounds.bottomRightX.toFixed(1)}%, ${bounds.bottomRightY.toFixed(1)}%)
 
-## CRITICAL DETECTION RULES:
+## CRITICAL DETECTION RULES FOR RIDGE LENGTH ACCURACY:
 1. **TRACE WHAT YOU SEE** - Follow the actual visible ridge/shadow line, NOT theoretical geometry
-2. Ridge should be INSIDE the perimeter by 10-20% from edges (not at the perimeter itself)
-3. For rectangular buildings: ridge typically at 50% of width, running parallel to length
-4. For hip roofs: ridge is SHORTER than building - it stops where hips connect (inset from corners)
-5. Look for the characteristic "X" or "Y" pattern where hips meet the ridge endpoints
-6. **EVEN IF UNCERTAIN**, provide your best estimate with lower confidence (50-70%)
+2. **RIDGE ENDPOINTS ARE WHERE HIPS MEET** - On hip roofs, the ridge does NOT extend to the building edges. It ENDS where the hip lines converge. Look for the "V" or "Y" junction point.
+3. For typical hip roofs: Ridge length is usually 40-60% of building length (NOT the full length)
+4. **Look for the exact pixel where the ridge shadow/line TERMINATES** - this is the ridge endpoint
+5. Hip lines connect building corners to these ridge endpoints
+6. Ridge should be INSIDE the perimeter by significant margin (15-30% from short edges on hip roofs)
+7. **EVEN IF UNCERTAIN**, provide your best estimate with lower confidence (50-70%)
+
+## EXAMPLE FOR A 50ft x 30ft HIP ROOF:
+- Ridge runs ~25-30ft (NOT 50ft) because hips inset from each end
+- 4 hip lines of ~20-25ft each from corners to ridge endpoints
 
 ## RESPONSE FORMAT (JSON only):
 {
