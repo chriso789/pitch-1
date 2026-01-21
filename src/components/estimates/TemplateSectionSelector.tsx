@@ -8,6 +8,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Plus, Trash2, Loader2, Lock, CheckCircle, Download } from 'lucide-react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
+import { useUserProfile } from '@/contexts/UserProfileContext';
 import { format } from 'date-fns';
 import { LaborOrderExport } from '@/components/orders/LaborOrderExport';
 import { MaterialLineItemsExport } from '@/components/orders/MaterialLineItemsExport';
@@ -52,11 +53,13 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
   onLockSuccess
 }) => {
   const queryClient = useQueryClient();
+  const { profile } = useUserProfile();
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>('');
   const [lineItems, setLineItems] = useState<LineItem[]>([]);
   const [isAddingItem, setIsAddingItem] = useState(false);
   const [newItem, setNewItem] = useState({ item_name: '', qty: 1, unit: 'ea', unit_cost: 0 });
   const [showLockDialog, setShowLockDialog] = useState(false);
+  const [isCreatingEstimate, setIsCreatingEstimate] = useState(false);
 
   // Fetch templates for this tenant
   const { data: templates, isLoading: templatesLoading } = useQuery({
@@ -284,9 +287,76 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
     saveLineItemsMutation.mutate(filtered);
   };
 
+  // Create estimate if none exists, then add item
+  const handleCreateEstimateAndAddItem = async () => {
+    if (!profile?.tenant_id) {
+      toast.error('Unable to determine tenant');
+      return;
+    }
+
+    setIsCreatingEstimate(true);
+    try {
+      // Create a new enhanced_estimate for this pipeline entry
+      const { data: newEstimate, error: createError } = await supabase
+        .from('enhanced_estimates')
+        .insert({
+          pipeline_entry_id: pipelineEntryId,
+          tenant_id: profile.tenant_id,
+          status: 'draft',
+          line_items: { materials: [], labor: [] }
+        } as any)
+        .select()
+        .single();
+
+      if (createError) throw createError;
+
+      // Update pipeline entry metadata with the new estimate ID
+      const { data: pipelineEntry } = await supabase
+        .from('pipeline_entries')
+        .select('metadata')
+        .eq('id', pipelineEntryId)
+        .single();
+
+      const existingMetadata = (pipelineEntry?.metadata as Record<string, any>) || {};
+      
+      const { error: updateError } = await supabase
+        .from('pipeline_entries')
+        .update({
+          metadata: {
+            ...existingMetadata,
+            selected_estimate_id: newEstimate.id,
+            enhanced_estimate_id: newEstimate.id
+          }
+        })
+        .eq('id', pipelineEntryId);
+
+      if (updateError) throw updateError;
+
+      // Invalidate queries to refresh the estimate data
+      queryClient.invalidateQueries({ queryKey: ['pipeline-selected-estimate', pipelineEntryId] });
+      queryClient.invalidateQueries({ queryKey: ['enhanced-estimate-items', pipelineEntryId] });
+      
+      toast.success('Estimate created');
+      
+      // Now show the add item form
+      setIsAddingItem(true);
+    } catch (error: any) {
+      console.error('Error creating estimate:', error);
+      toast.error(error.message || 'Failed to create estimate');
+    } finally {
+      setIsCreatingEstimate(false);
+    }
+  };
+
   // Add new item
-  const handleAddItem = () => {
+  const handleAddItem = async () => {
     if (!newItem.item_name) return;
+
+    // If no estimate exists, create one first
+    if (!effectiveEstimateId) {
+      await handleCreateEstimateAndAddItem();
+      return;
+    }
     
     const item: LineItem = {
       id: crypto.randomUUID(),
@@ -427,7 +497,7 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
         </div>
       )}
 
-      {/* Add Item Form - only show if not locked and not loading */}
+      {/* Add Item Form - ALWAYS show if not locked and not loading */}
       {!isLocked && !isLoadingData && (
         isAddingItem ? (
           <div className="flex items-end gap-2 p-3 border rounded-lg bg-muted/30">
@@ -467,17 +537,30 @@ export const TemplateSectionSelector: React.FC<TemplateSectionSelectorProps> = (
                 className="h-8"
               />
             </div>
-            <Button onClick={handleAddItem} size="sm">Add</Button>
+            <Button onClick={handleAddItem} size="sm" disabled={isCreatingEstimate}>
+              {isCreatingEstimate ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Add'}
+            </Button>
             <Button variant="ghost" size="sm" onClick={() => setIsAddingItem(false)}>Cancel</Button>
           </div>
         ) : (
           <Button 
             variant="outline" 
             className="w-full" 
-            onClick={() => setIsAddingItem(true)}
+            onClick={() => {
+              if (!effectiveEstimateId) {
+                handleCreateEstimateAndAddItem();
+              } else {
+                setIsAddingItem(true);
+              }
+            }}
+            disabled={isCreatingEstimate}
           >
-            <Plus className="h-4 w-4 mr-2" />
-            Add Line Item
+            {isCreatingEstimate ? (
+              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            ) : (
+              <Plus className="h-4 w-4 mr-2" />
+            )}
+            {!effectiveEstimateId ? 'Create Estimate & Add Line Item' : 'Add Line Item'}
           </Button>
         )
       )}

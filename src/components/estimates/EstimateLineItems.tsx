@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { supabase } from '@/integrations/supabase/client';
-import { Loader2, Package, Trash2 } from 'lucide-react';
+import { Loader2, Package, Trash2, Plus } from 'lucide-react';
 import { MaterialOrderDialog } from '@/components/orders/MaterialOrderDialog';
 import { toast } from 'sonner';
 
@@ -20,6 +20,7 @@ interface EstimateLineItemsProps {
   showOrderButton?: boolean;
   editable?: boolean;
   onItemDeleted?: () => void;
+  onAddItem?: () => void;
 }
 
 export const EstimateLineItems: React.FC<EstimateLineItemsProps> = ({
@@ -27,7 +28,8 @@ export const EstimateLineItems: React.FC<EstimateLineItemsProps> = ({
   className = '',
   showOrderButton = false,
   editable = false,
-  onItemDeleted
+  onItemDeleted,
+  onAddItem
 }) => {
   const [loading, setLoading] = useState(true);
   const [lineItems, setLineItems] = useState<EstimateLineItem[]>([]);
@@ -162,12 +164,20 @@ export const EstimateLineItems: React.FC<EstimateLineItemsProps> = ({
         <CardHeader>
           <div className="flex items-center justify-between">
             <CardTitle>Estimate Line Items</CardTitle>
-            {showOrderButton && lineItems.length > 0 && (
-              <Button onClick={() => setShowOrderDialog(true)}>
-                <Package className="h-4 w-4 mr-2" />
-                Create Material Order
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {editable && onAddItem && (
+                <Button variant="outline" size="sm" onClick={onAddItem}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  Add Line Item
+                </Button>
+              )}
+              {showOrderButton && lineItems.length > 0 && (
+                <Button onClick={() => setShowOrderDialog(true)}>
+                  <Package className="h-4 w-4 mr-2" />
+                  Create Material Order
+                </Button>
+              )}
+            </div>
           </div>
         </CardHeader>
       <CardContent>
