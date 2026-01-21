@@ -68,17 +68,56 @@ type Provider = "roofr" | "eagleview" | "roofscope" | "hover" | "google" | "xact
 
 function detectProvider(text: string): Provider {
   const t = text.toLowerCase();
+  
+  // Early returns for clearly branded reports
   if (t.includes("this report was prepared by roofr")) return "roofr";
   if (t.includes("eagle view technologies") || t.includes("eagleview")) return "eagleview";
   if (t.includes("roofscope")) return "roofscope";
   if (t.includes("hover.to") || t.includes("hover inc")) return "hover";
   if (t.includes("google maps") || t.includes("imagery ©") || t.includes("map data ©")) return "google";
-  // Xactimate detection - look for specific patterns
-  if (t.includes("xactimate") || t.includes("xactanalysis") || 
-      t.includes("sketch1") || t.includes("xactware") ||
-      (t.includes("number of squares") && t.includes("surface area")) ||
-      (t.includes("total ridge length") && t.includes("total hip length")) ||
-      t.includes("job_")) return "xactimate";
+  
+  // Enhanced Xactimate detection with scoring system
+  // Xactimate reports (including insurance adjuster reports) have specific patterns
+  const xactimatePatterns = [
+    'xactimate',
+    'xactanalysis',
+    'xactware',
+    'sketch1',
+    'number of squares',
+    'surface area',
+    'total perimeter length',
+    'total ridge length',
+    'total hip length',
+    'total valley length',
+    'job_',                    // Job identifiers like "job_123456"
+    'slide insurance',         // Common Xactimate user
+    'independent adjuster',    // Insurance adjuster reports
+    'xact estimate',
+    'xact analysis',
+    'f1\n',                    // Facet labels F1, F2, etc
+    'f2\n',
+    'f3\n',
+    'hip / ridge cap',         // Line item format
+    'hip & ridge cap',
+    'drip edge',
+    'starter',
+  ];
+  
+  // Count matching patterns
+  let xactimateScore = 0;
+  for (const pattern of xactimatePatterns) {
+    if (t.includes(pattern)) {
+      xactimateScore++;
+      console.log("roof-report-ingest: Xactimate pattern matched:", pattern);
+    }
+  }
+  
+  // If 2+ patterns match, it's likely Xactimate
+  if (xactimateScore >= 2) {
+    console.log(`roof-report-ingest: Xactimate detected (${xactimateScore} patterns matched)`);
+    return "xactimate";
+  }
+  
   return "generic";
 }
 

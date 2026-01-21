@@ -166,28 +166,73 @@ export function UnifiedMeasurementPanel({
   });
 
   // Fetch raw vendor reports (roof_vendor_reports) for history
+  // Include reports linked to this lead AND recent reports from same tenant
   const { data: vendorReports } = useQuery({
-    queryKey: ['vendor-reports', pipelineEntryId],
+    queryKey: ['vendor-reports-history', pipelineEntryId, address],
     queryFn: async () => {
-      const { data, error } = await supabase
+      // First, get reports directly linked to this lead
+      const { data: byLead, error: leadError } = await supabase
         .from('roof_vendor_reports')
-        .select('id, provider, address, created_at, parsed')
+        .select('id, provider, address, created_at, parsed, lead_id')
         .eq('lead_id', pipelineEntryId)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error('Error fetching vendor reports:', error);
-        return [];
+      if (leadError) {
+        console.error('Error fetching vendor reports by lead:', leadError);
       }
-      return (data || []).map(r => ({
-        id: r.id,
-        provider: r.provider,
-        address: r.address,
-        created_at: r.created_at,
-        parsed: (r.parsed && typeof r.parsed === 'object' && !Array.isArray(r.parsed)) 
-          ? r.parsed as Record<string, any>
-          : null
-      }));
+
+      // Also get recent reports (last 60 days) that might be relevant
+      const sixtyDaysAgo = new Date(Date.now() - 60 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: recentAll, error: recentError } = await supabase
+        .from('roof_vendor_reports')
+        .select('id, provider, address, created_at, parsed, lead_id')
+        .gte('created_at', sixtyDaysAgo)
+        .order('created_at', { ascending: false })
+        .limit(20);
+
+      if (recentError) {
+        console.error('Error fetching recent vendor reports:', recentError);
+      }
+
+      // Merge and dedupe, marking which are linked to this lead
+      const combined = new Map<string, {
+        id: string;
+        provider: string | null;
+        address: string | null;
+        created_at: string;
+        parsed: Record<string, any> | null;
+        linkedToLead: boolean;
+      }>();
+
+      (byLead || []).forEach(r => {
+        combined.set(r.id, {
+          id: r.id,
+          provider: r.provider,
+          address: r.address,
+          created_at: r.created_at,
+          parsed: (r.parsed && typeof r.parsed === 'object' && !Array.isArray(r.parsed)) 
+            ? r.parsed as Record<string, any>
+            : null,
+          linkedToLead: true,
+        });
+      });
+
+      (recentAll || []).forEach(r => {
+        if (!combined.has(r.id)) {
+          combined.set(r.id, {
+            id: r.id,
+            provider: r.provider,
+            address: r.address,
+            created_at: r.created_at,
+            parsed: (r.parsed && typeof r.parsed === 'object' && !Array.isArray(r.parsed)) 
+              ? r.parsed as Record<string, any>
+              : null,
+            linkedToLead: r.lead_id === pipelineEntryId,
+          });
+        }
+      });
+
+      return Array.from(combined.values());
     },
     enabled: !!pipelineEntryId,
   });
@@ -647,6 +692,7 @@ interface MeasurementHistorySectionProps {
     address: string | null;
     created_at: string;
     parsed: Record<string, any> | null;
+    linkedToLead?: boolean;
   }>;
   aiMeasurements: Array<{
     id: string;
@@ -810,39 +856,59 @@ function MeasurementHistorySection({
         {/* Vendor Reports */}
         {vendorReports.map((report) => {
           const sqft = report.parsed?.total_area_sqft || 0;
+          const isLinked = report.linkedToLead;
+          const hasValidData = sqft >= 500; // Minimum reasonable roof size
+          
           return (
             <div 
               key={report.id}
-              className="flex items-center justify-between p-3 border rounded-lg bg-muted/30"
+              className={`flex items-center justify-between p-3 border rounded-lg ${
+                isLinked ? 'bg-primary/5 border-primary/20' : 'bg-muted/30'
+              }`}
             >
               <div className="flex items-center gap-3 min-w-0">
-                <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 shrink-0">
-                  <FileText className="h-3 w-3 mr-1" />
-                  {report.provider || 'Report'}
-                </Badge>
+                <div className="flex flex-col gap-1">
+                  <Badge variant="outline" className="bg-warning/10 text-warning border-warning/30 shrink-0">
+                    <FileText className="h-3 w-3 mr-1" />
+                    {report.provider || 'Report'}
+                  </Badge>
+                  {isLinked && (
+                    <Badge variant="outline" className="text-xs bg-primary/10 text-primary border-primary/30">
+                      This Lead
+                    </Badge>
+                  )}
+                </div>
                 <div className="min-w-0">
                   <p className="text-sm font-medium truncate">
-                    {sqft.toLocaleString()} sqft
+                    {hasValidData ? `${sqft.toLocaleString()} sqft` : 'No valid data'}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {format(new Date(report.created_at), 'MMM d, yyyy')}
                   </p>
+                  {report.address && (
+                    <p className="text-xs text-muted-foreground truncate max-w-[150px]">
+                      {report.address}
+                    </p>
+                  )}
                 </div>
               </div>
               <Button 
                 size="sm" 
-                variant="outline" 
+                variant={hasValidData ? "outline" : "ghost"}
                 onClick={() => handleSaveVendorReport(report)}
-                disabled={isSaving === report.id}
+                disabled={isSaving === report.id || !hasValidData}
                 className="shrink-0"
+                title={!hasValidData ? "Report has no valid measurement data" : "Save to this lead"}
               >
                 {isSaving === report.id ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
+                ) : hasValidData ? (
                   <>
                     <ArrowRight className="h-4 w-4 mr-1" />
                     Save
                   </>
+                ) : (
+                  <span className="text-xs text-muted-foreground">Invalid</span>
                 )}
               </Button>
             </div>
