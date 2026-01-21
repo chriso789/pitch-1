@@ -9,6 +9,7 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
@@ -39,6 +40,13 @@ interface SectionedLineItemsTableProps {
   taxRate?: number;
   onTaxEnabledChange?: (enabled: boolean) => void;
   className?: string;
+  // Inline add item form props
+  isAddingItem?: boolean;
+  addingItemType?: 'material' | 'labor';
+  newItem?: { item_name: string; qty: number; unit: string; unit_cost: number };
+  onNewItemChange?: (item: { item_name: string; qty: number; unit: string; unit_cost: number }) => void;
+  onSaveNewItem?: () => void;
+  onCancelAddItem?: () => void;
 }
 
 const formatCurrency = (amount: number): string => {
@@ -68,6 +76,12 @@ export function SectionedLineItemsTable({
   taxRate = 7,
   onTaxEnabledChange,
   className = '',
+  isAddingItem = false,
+  addingItemType,
+  newItem,
+  onNewItemChange,
+  onSaveNewItem,
+  onCancelAddItem,
 }: SectionedLineItemsTableProps) {
   const [editingCell, setEditingCell] = useState<EditableCell | null>(null);
   const [editValue, setEditValue] = useState('');
@@ -257,6 +271,56 @@ export function SectionedLineItemsTable({
               </TableCell>
             </TableRow>
           )}
+          {/* Inline Add Material Form */}
+          {isAddingItem && addingItemType === 'material' && newItem && onNewItemChange && (
+            <TableRow className="bg-primary/5 border-2 border-primary/30">
+              <TableCell colSpan={editable ? 5 : 4} className="py-3">
+                <div className="flex items-end gap-2 flex-wrap">
+                  <div className="flex-1 min-w-[200px]">
+                    <Label className="text-xs">Item Name</Label>
+                    <Input
+                      value={newItem.item_name}
+                      onChange={(e) => onNewItemChange({ ...newItem, item_name: e.target.value })}
+                      placeholder="Item name"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="w-20">
+                    <Label className="text-xs">Qty</Label>
+                    <Input
+                      type="number"
+                      value={newItem.qty}
+                      onChange={(e) => onNewItemChange({ ...newItem, qty: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <div className="w-16">
+                    <Label className="text-xs">Unit</Label>
+                    <Input
+                      value={newItem.unit}
+                      onChange={(e) => onNewItemChange({ ...newItem, unit: e.target.value })}
+                      placeholder="ea"
+                    />
+                  </div>
+                  <div className="w-24">
+                    <Label className="text-xs">Unit Cost</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={newItem.unit_cost}
+                      onChange={(e) => onNewItemChange({ ...newItem, unit_cost: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <Button onClick={onSaveNewItem} size="sm">
+                    <Check className="h-4 w-4 mr-1" />
+                    Add
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={onCancelAddItem}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
+              </TableCell>
+            </TableRow>
+          )}
           {materialItems.length > 0 && renderSectionSubtotal('Materials Subtotal', materialsTotal)}
 
           {/* Labor Section */}
@@ -278,6 +342,56 @@ export function SectionedLineItemsTable({
                   <Plus className="h-4 w-4 mr-2" />
                   Add Labor Item
                 </Button>
+              </TableCell>
+            </TableRow>
+          )}
+          {/* Inline Add Labor Form */}
+          {isAddingItem && addingItemType === 'labor' && newItem && onNewItemChange && (
+            <TableRow className="bg-primary/5 border-2 border-primary/30">
+              <TableCell colSpan={editable ? 5 : 4} className="py-3">
+                <div className="flex items-end gap-2 flex-wrap">
+                  <div className="flex-1 min-w-[200px]">
+                    <Label className="text-xs">Item Name</Label>
+                    <Input
+                      value={newItem.item_name}
+                      onChange={(e) => onNewItemChange({ ...newItem, item_name: e.target.value })}
+                      placeholder="Item name"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="w-20">
+                    <Label className="text-xs">Qty</Label>
+                    <Input
+                      type="number"
+                      value={newItem.qty}
+                      onChange={(e) => onNewItemChange({ ...newItem, qty: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <div className="w-16">
+                    <Label className="text-xs">Unit</Label>
+                    <Input
+                      value={newItem.unit}
+                      onChange={(e) => onNewItemChange({ ...newItem, unit: e.target.value })}
+                      placeholder="ea"
+                    />
+                  </div>
+                  <div className="w-24">
+                    <Label className="text-xs">Unit Cost</Label>
+                    <Input
+                      type="number"
+                      step="0.01"
+                      value={newItem.unit_cost}
+                      onChange={(e) => onNewItemChange({ ...newItem, unit_cost: parseFloat(e.target.value) || 0 })}
+                    />
+                  </div>
+                  <Button onClick={onSaveNewItem} size="sm">
+                    <Check className="h-4 w-4 mr-1" />
+                    Add
+                  </Button>
+                  <Button variant="ghost" size="sm" onClick={onCancelAddItem}>
+                    <X className="h-4 w-4" />
+                  </Button>
+                </div>
               </TableCell>
             </TableRow>
           )}

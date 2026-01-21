@@ -1477,69 +1477,18 @@ export const MultiTemplateSelector: React.FC<MultiTemplateSelectorProps> = ({
               onResetItem={handleResetItem}
               onAddItem={handleAddLineItem}
               editable={true}
+              isAddingItem={isAddingItem}
+              addingItemType={newItemType}
+              newItem={newItem}
+              onNewItemChange={setNewItem}
+              onSaveNewItem={handleSaveNewItem}
+              onCancelAddItem={handleCancelAddItem}
             />
           </CardContent>
         </Card>
       )}
 
-      {/* Add Line Item Form */}
-      {isAddingItem && (
-        <Card className="border-primary/50">
-          <CardHeader className="pb-2">
-            <CardTitle className="text-sm flex items-center gap-2">
-              Add {newItemType === 'material' ? 'Material' : 'Labor'} Item
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex items-end gap-2 flex-wrap">
-              <div className="flex-1 min-w-[200px]">
-                <Label className="text-xs">Item Name</Label>
-                <Input
-                  value={newItem.item_name}
-                  onChange={(e) => setNewItem({ ...newItem, item_name: e.target.value })}
-                  placeholder="Item name"
-                  autoFocus
-                />
-              </div>
-              <div className="w-20">
-                <Label className="text-xs">Qty</Label>
-                <Input
-                  type="number"
-                  value={newItem.qty}
-                  onChange={(e) => setNewItem({ ...newItem, qty: parseFloat(e.target.value) || 0 })}
-                />
-              </div>
-              <div className="w-20">
-                <Label className="text-xs">Unit</Label>
-                <Input
-                  value={newItem.unit}
-                  onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
-                  placeholder="ea"
-                />
-              </div>
-              <div className="w-24">
-                <Label className="text-xs">Unit Cost</Label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  value={newItem.unit_cost}
-                  onChange={(e) => setNewItem({ ...newItem, unit_cost: parseFloat(e.target.value) || 0 })}
-                />
-              </div>
-              <div className="flex gap-2">
-                <Button onClick={handleSaveNewItem} size="sm">
-                  <Check className="h-4 w-4 mr-1" />
-                  Add
-                </Button>
-                <Button variant="ghost" size="sm" onClick={handleCancelAddItem}>
-                  <X className="h-4 w-4 mr-1" />
-                  Cancel
-                </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+      {/* Add Line Item Form now renders inline in SectionedLineItemsTable */}
 
       {/* No Template Selected State */}
       {selectedTemplateId && !fetchingItems && lineItems.length === 0 && !isAddingItem && (
